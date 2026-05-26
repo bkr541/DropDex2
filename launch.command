@@ -62,15 +62,14 @@ mkdir -p "$LOG_DIR"
 
 # Validate env file and required API key.
 if [[ ! -f "$DIR/.env" && ! -f "$DIR/.env.local" ]]; then
-  echo "Missing .env or .env.local in the project root."
-  echo "DropDex expects GEMINI_API_KEY. Copy .env.example and fill it in."
-  exit 1
+  echo "No .env file found — creating one from .env.example."
+  cp "$DIR/.env.example" "$DIR/.env"
+  echo "Add your GEMINI_API_KEY to $DIR/.env for AI features."
 fi
 
 if ! has_env_var "GEMINI_API_KEY"; then
-  echo "Missing GEMINI_API_KEY in .env or .env.local."
-  echo "Copy .env.example, rename it to .env, and set your Gemini API key."
-  exit 1
+  echo "Warning: GEMINI_API_KEY not set in .env — AI features will not work."
+  echo "Edit $DIR/.env and add your Gemini API key."
 fi
 
 echo "Cleaning up anything already using port 3000..."
