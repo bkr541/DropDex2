@@ -1,33 +1,69 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #0a0b0d;
-  --color-foreground: #f8fafc; /* slate-100 */
-  
-  --color-card: #0d0f12;
-  --color-card-foreground: #f8fafc;
-  
-  --color-popover: #0d0f12;
-  --color-popover-foreground: #f8fafc;
-  
-  --color-primary: #00f2ff; /* Sleek Cyan */
-  --color-primary-foreground: #0a0b0d;
-  
-  --color-secondary: #bc13fe; /* Sleek Purple */
-  --color-secondary-foreground: #ffffff;
-  
-  --color-accent: #00f2ff;
-  --color-accent-foreground: #0a0b0d;
-  
-  --color-muted: #1e293b; /* slate-800 */
-  --color-muted-foreground: #64748b; /* slate-500 */
-  
-  --color-border: rgba(255, 255, 255, 0.1);
-  --color-input: rgba(255, 255, 255, 0.05);
-  --color-ring: #00f2ff;
+  --color-background: #0c0e1c;
+  --color-foreground: #f0ede9;
 
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --color-card: #151729;
+  --color-card-foreground: #f0ede9;
+
+  --color-popover: #151729;
+  --color-popover-foreground: #f0ede9;
+
+  --color-primary: #cf6b65;
+  --color-primary-foreground: #ffffff;
+
+  --color-secondary: #e8937e;
+  --color-secondary-foreground: #ffffff;
+
+  --color-accent: #cf6b65;
+  --color-accent-foreground: #ffffff;
+
+  --color-muted: #1e2238;
+  --color-muted-foreground: #7e8598;
+
+  --color-border: rgba(240, 237, 233, 0.10);
+  --color-input: rgba(240, 237, 233, 0.05);
+  --color-ring: #cf6b65;
+
+  --font-sans: 'Orbitron', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Dark-mode defaults for surface/panel tokens */
+:root {
+  --color-panel: #0c0e1c;
+  --color-panel-alt: #151729;
+  --color-surface: rgba(240, 237, 233, 0.05);
+  --color-surface-hover: rgba(240, 237, 233, 0.10);
+  --color-border-subtle: rgba(240, 237, 233, 0.10);
+  --color-border-faint: rgba(240, 237, 233, 0.05);
+  --color-avatar-bg: #1e2238;
+  --color-text-subdued: #c4beba;
+}
+
+/* ── Light mode ── */
+[data-theme="light"] {
+  --color-background: #f2efed;
+  --color-foreground: #1a1c2e;
+  --color-card: #ffffff;
+  --color-card-foreground: #1a1c2e;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #1a1c2e;
+  --color-primary-foreground: #ffffff;
+  --color-muted: #ebe7e4;
+  --color-muted-foreground: #6b6f80;
+  --color-border: rgba(26, 28, 46, 0.10);
+  --color-input: rgba(26, 28, 46, 0.06);
+
+  --color-panel: #ffffff;
+  --color-panel-alt: #f5f2ef;
+  --color-surface: rgba(26, 28, 46, 0.05);
+  --color-surface-hover: rgba(26, 28, 46, 0.09);
+  --color-border-subtle: rgba(26, 28, 46, 0.10);
+  --color-border-faint: rgba(26, 28, 46, 0.06);
+  --color-avatar-bg: #e5e0dc;
+  --color-text-subdued: #4a4d60;
 }
 
 @layer base {
@@ -40,32 +76,51 @@
   }
 }
 
-/* Glassmorphism utility */
+/* Glassmorphism */
 .glass {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(240, 237, 233, 0.03);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(240, 237, 233, 0.10);
+}
+
+[data-theme="light"] .glass {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(26, 28, 46, 0.08);
 }
 
 .neon-border {
-  box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
-  border: 1px solid rgba(0, 242, 255, 0.5);
+  box-shadow: 0 0 15px rgba(207, 107, 101, 0.3);
+  border: 1px solid rgba(207, 107, 101, 0.5);
 }
 
 .neon-text-blue {
-  text-shadow: 0 0 10px rgba(0, 242, 255, 0.5);
+  text-shadow: 0 0 10px rgba(207, 107, 101, 0.6);
 }
 
 .neon-text-purple {
-  text-shadow: 0 0 10px rgba(188, 19, 254, 0.5);
+  text-shadow: 0 0 10px rgba(232, 147, 126, 0.6);
+}
+
+[data-theme="light"] .neon-text-blue,
+[data-theme="light"] .neon-text-purple {
+  text-shadow: none;
 }
 
 .brand-gradient {
-  background: linear-gradient(135deg, #00f2ff 0%, #bc13fe 100%);
+  background: linear-gradient(135deg, #e8937e 0%, #cf6b65 100%);
 }
 
-/* Custom scrollbar */
+/* Ambient background blobs — soften in light mode */
+.ambience-blob {
+  transition: opacity 0.3s;
+}
+
+[data-theme="light"] .ambience-blob {
+  opacity: 0.4;
+}
+
+/* Scrollbar */
 ::-webkit-scrollbar {
   width: 4px;
 }
@@ -75,7 +130,7 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(240, 237, 233, 0.1);
   border-radius: 10px;
 }
 
@@ -83,3 +138,6 @@
   background: var(--color-primary);
 }
 
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(26, 28, 46, 0.15);
+}
