@@ -1,0 +1,6 @@
+{
+  "name": "DropDex",
+  "description": "Mobile-first DJ memory companion to browse and review Rekordbox playlists before live sets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

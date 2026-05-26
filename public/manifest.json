@@ -1,0 +1,17 @@
+{
+  "name": "DropDex",
+  "short_name": "DropDex",
+  "description": "DJ Memory Companion",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0a0a0c",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3062/3062634.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
