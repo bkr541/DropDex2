@@ -130,3 +130,11 @@ export interface ScrapeStartResponse {
   artist_name: string;
   status: string;
 }
+
+export interface SearchArtist {
+  id: string;
+  name: string;
+  normalized_name: string | null;
+  source_artist_url: string | null;
+  genres: string[];
+}

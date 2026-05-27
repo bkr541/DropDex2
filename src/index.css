@@ -141,3 +141,11 @@
 html[data-theme="light"] ::-webkit-scrollbar-thumb {
   background: rgba(26, 28, 46, 0.15);
 }
+
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
