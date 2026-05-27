@@ -21,6 +21,8 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
+from postgrest.exceptions import APIError
+
 from app.discovery.models import (
     ArtistNotFoundError,
     ArtistRecord,
@@ -852,6 +854,61 @@ class TestCollaborativeSetlistRelationships:
             mock_repo.set_job_running.assert_called_once()
             mock_repo.set_job_completed.assert_called_once()
             assert summary.status == JobStatus.COMPLETED
+
+        _run(_inner())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Error diagnostic tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestErrorDiagnostics:
+
+    def test_42p10_on_link_result_logs_schema_hint(self):
+        """
+        When link_result_to_artist raises a PostgREST APIError with code 42P10
+        (no unique constraint matching ON CONFLICT), the service must:
+        1. Log a message containing the constraint name and the migration hint.
+        2. Mark the job failed with the safe user-readable message (not the DB error).
+        3. Raise DiscoveryJobError (not propagate the raw APIError).
+        The frontend error message must not contain any DB internals.
+        """
+        exc_42p10 = APIError(
+            {"message": "there is no unique or exclusion constraint matching the ON CONFLICT specification",
+             "code": "42P10", "hint": None, "details": None}
+        )
+        mock_repo = _make_mock_repo()
+        mock_repo.link_result_to_artist.side_effect = exc_42p10
+        scrape_result = _make_scrape_result(["tl001"])
+
+        async def _inner():
+            with patch(
+                "app.discovery.service.scrape_artist_setlists",
+                new_callable=AsyncMock,
+                return_value=scrape_result,
+            ):
+                with patch("app.discovery.service.log") as mock_log:
+                    with pytest.raises(DiscoveryJobError):
+                        await run_discovery_for_artist(_ARTIST_ID, _USER_ID, repo=mock_repo)
+
+                    # At least one error-level call must mention the constraint and migration
+                    error_messages = " ".join(
+                        str(c) for c in mock_log.error.call_args_list
+                    )
+                    assert "42P10" in error_messages or "artist_set_result_artists" in error_messages, (
+                        "A 42P10 failure must log a schema-action hint referencing "
+                        "artist_set_result_artists or the 42P10 error code"
+                    )
+
+            # Job must be marked failed, not completed
+            mock_repo.set_job_failed.assert_called_once()
+            mock_repo.set_job_completed.assert_not_called()
+
+            # User-facing message must be sanitized
+            failed_message = mock_repo.set_job_failed.call_args[0][1]
+            assert "42P10" not in failed_message
+            assert "ON CONFLICT" not in failed_message
+            assert "constraint" not in failed_message.lower() or "Please try again" in failed_message
 
         _run(_inner())
 

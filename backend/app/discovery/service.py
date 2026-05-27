@@ -33,6 +33,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from postgrest.exceptions import APIError
+
 from app.config import settings
 from app.discovery.models import (
     ArtistNotFoundError,
@@ -171,6 +173,16 @@ async def run_discovery_for_artist(
 
     except Exception as exc:
         # Log full technical detail; store only a controlled summary in the DB.
+        if isinstance(exc, APIError) and getattr(exc, "code", None) == "42P10":
+            log.error(
+                "[discovery] Job %s — relationship upsert rejected (42P10). "
+                "Confirm that artist_set_result_artists has a unique constraint/index on "
+                "(set_result_id, artist_id).  Apply migration 040000 or run: "
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "artist_set_result_artists_set_result_artist_uidx "
+                "ON public.artist_set_result_artists (set_result_id, artist_id);",
+                job_id,
+            )
         log.exception("[discovery] Job %s failed: %s", job_id, exc)
         _safe_set_failed(
             repo,
