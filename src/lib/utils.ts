@@ -23,13 +23,24 @@ export function getDeterministicBars(seed: string, count: number = 40): number[]
   return bars;
 }
 
-export function formatDuration(seconds: number): string {
+export function formatDuration(seconds: number | null | undefined): string {
+  if (!seconds) return '0:00';
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export function formatKey(key: string): string {
-  // Rekordbox keys sometimes come in different formats, but usually 1A, 2A, etc or C#, Db
+export function formatKey(key: string | null | undefined): string {
   return key || 'N/A';
+}
+
+export function formatPosition(pos: number): string {
+  return pos.toString().padStart(3, '0');
+}
+
+export function formatPlaylistDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }

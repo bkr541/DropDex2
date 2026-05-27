@@ -6,3 +6,23 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# rekordbox database files — may contain private library metadata
+*.db
+exportLibrary.db
+
+# Python importer artefacts
+importer/.venv/
+importer/__pycache__/
+importer/dropdex_importer/__pycache__/
+importer/*.egg-info/
+__pycache__/
+*.pyc
+
+# Backend
+backend/.venv/
+backend/__pycache__/
+backend/app/__pycache__/
+backend/tests/__pycache__/
+backend/*.egg-info/
+# backend/.env is covered by the root .env* pattern above

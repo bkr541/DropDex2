@@ -1,0 +1,18 @@
+# ── pyrekordbox ───────────────────────────────────────────────────────────────
+# DeviceLibraryPlus (exportLibrary.db support) is NOT in any PyPI release.
+# The stable PyPI package is 0.4.4 — it does NOT include DeviceLibraryPlus.
+# Pinned to the exact git commit where DeviceLibraryPlus support was added.
+pyrekordbox @ git+https://github.com/dylanljones/pyrekordbox.git@f695541827cc488af267d6ca8a8e0052598d85a0
+
+# ── SQLCipher ─────────────────────────────────────────────────────────────────
+# Required to open the encrypted exportLibrary.db.
+# sqlcipher3 has macOS arm64 / Python 3.13 wheels on PyPI.
+# sqlcipher3-binary (the alternative) has no arm64/3.13 wheel; use sqlcipher3 instead.
+sqlcipher3>=0.5.0
+
+# ── Supabase client ───────────────────────────────────────────────────────────
+# Server-side client used with the service-role key to bypass RLS for inserts.
+supabase>=2.4.0,<3.0.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0
