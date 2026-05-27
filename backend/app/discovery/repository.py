@@ -78,7 +78,7 @@ class DiscoveryRepository:
         # Primary search: artists table
         resp = (
             self._client.table("artists")
-            .select("id, name, normalized_name")
+            .select("id, name, normalized_name, profile_image_url")
             .ilike("normalized_name", pattern)
             .limit(limit)
             .execute()
@@ -92,6 +92,7 @@ class DiscoveryRepository:
                 id=aid,
                 name=row["name"],
                 normalized_name=row.get("normalized_name"),
+                profile_image_url=row.get("profile_image_url"),
             ))
             seen_ids.add(aid)
 
@@ -100,7 +101,7 @@ class DiscoveryRepository:
         if remaining > 0:
             alias_resp = (
                 self._client.table("artist_aliases")
-                .select("alias_text, normalized_alias, artists(id, name, normalized_name)")
+                .select("alias_text, normalized_alias, artists(id, name, normalized_name, profile_image_url)")
                 .ilike("normalized_alias", pattern)
                 .limit(remaining + 5)
                 .execute()
@@ -115,6 +116,7 @@ class DiscoveryRepository:
                     name=artist_row.get("name", ""),
                     normalized_name=artist_row.get("normalized_name"),
                     matched_alias=row.get("alias_text"),
+                    profile_image_url=artist_row.get("profile_image_url"),
                 ))
                 seen_ids.add(aid)
                 if len(candidates) >= limit:

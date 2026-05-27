@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { User, Loader2, RefreshCw, Search, Layers } from 'lucide-react';
+import { User, Loader2, RefreshCw, Search, Layers, Activity } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useArtistDiscoverySearch } from '../../hooks/useArtistDiscoverySearch';
 import { useArtistSetlists } from '../../hooks/useArtistSetlists';
@@ -8,7 +8,7 @@ import { useDiscoveryScrapeJob } from '../../hooks/useDiscoveryScrapeJob';
 import { startArtistSetlistScrape } from '../../lib/api/discovery';
 import { ArtistSearchInput } from './ArtistSearchInput';
 import { ArtistSearchResults } from './ArtistSearchResults';
-import { DiscoveryScrapeProgress } from './DiscoveryScrapeProgress';
+import { DiscoveryScrapeProgressModal } from './DiscoveryScrapeProgressModal';
 import { ArtistSetlistResults } from './ArtistSetlistResults';
 import type { DiscoveryArtist, DiscoverySetlistResult } from '../../types';
 
@@ -16,10 +16,30 @@ interface DiscoveryViewProps {
   accessToken: string | null;
 }
 
+function SelectedArtistThumb({ artist }: { artist: DiscoveryArtist }) {
+  const [imgError, setImgError] = useState(false);
+  if (artist.profile_image_url && !imgError) {
+    return (
+      <img
+        src={artist.profile_image_url}
+        alt={artist.name}
+        className="w-10 h-10 rounded-xl object-cover bg-primary/10 shrink-0"
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+  return (
+    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+      <User size={18} className="text-primary" />
+    </div>
+  );
+}
+
 export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
   const [query, setQuery] = useState('');
   const [selectedArtist, setSelectedArtist] = useState<DiscoveryArtist | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [showScrapeModal, setShowScrapeModal] = useState(false);
   const [selectedSetlist, setSelectedSetlist] = useState<DiscoverySetlistResult | null>(null);
   const [scrapeError, setScrapeError] = useState<string | null>(null);
   const [scrapeStarting, setScrapeStarting] = useState(false);
@@ -52,6 +72,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
     setSelectedArtist(artist);
     setQuery('');
     setActiveJobId(null);
+    setShowScrapeModal(false);
     setScrapeError(null);
     setSelectedSetlist(null);
   };
@@ -63,6 +84,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
     try {
       const response = await startArtistSetlistScrape(selectedArtist.id, accessToken);
       setActiveJobId(response.job_id);
+      setShowScrapeModal(true);
     } catch (err: unknown) {
       setScrapeError(err instanceof Error ? err.message : 'Failed to start scrape');
     } finally {
@@ -76,6 +98,13 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
 
   return (
     <div className="space-y-8 md:max-w-5xl md:mx-auto">
+      {/* Scrape progress modal */}
+      <DiscoveryScrapeProgressModal
+        isOpen={showScrapeModal}
+        onClose={() => setShowScrapeModal(false)}
+        job={scrapeJob}
+      />
+
       {/* Artist search input */}
       <div className="space-y-4">
         <ArtistSearchInput
@@ -102,9 +131,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
         >
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                <User size={18} className="text-primary" />
-              </div>
+              <SelectedArtistThumb artist={selectedArtist} />
               <div className="min-w-0">
                 <p className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">
                   Selected Artist
@@ -114,12 +141,14 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
             </div>
 
             <button
-              onClick={handleStartScrape}
-              disabled={isJobActive || scrapeStarting}
+              onClick={isJobActive ? () => setShowScrapeModal(true) : handleStartScrape}
+              disabled={scrapeStarting}
               className={cn(
                 'flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95 shrink-0',
-                isJobActive || scrapeStarting
+                scrapeStarting
                   ? 'bg-[var(--color-surface)] text-muted-foreground cursor-not-allowed'
+                  : isJobActive
+                  ? 'bg-secondary/10 text-secondary hover:bg-secondary/20'
                   : hasSetlists
                   ? 'bg-secondary/10 text-secondary hover:bg-secondary/20'
                   : 'bg-primary text-white hover:bg-primary/90',
@@ -132,8 +161,8 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
                 </>
               ) : isJobActive ? (
                 <>
-                  <Loader2 size={14} className="animate-spin" />
-                  Scraping…
+                  <Activity size={14} className="animate-pulse" />
+                  View Progress
                 </>
               ) : hasSetlists ? (
                 <>
@@ -153,11 +182,6 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
             <p className="text-xs text-red-400 mt-3 font-mono">{scrapeError}</p>
           )}
         </motion.div>
-      )}
-
-      {/* Active scrape progress */}
-      {scrapeJob && !showSearchResults && (
-        <DiscoveryScrapeProgress job={scrapeJob} />
       )}
 
       {/* Setlists grid */}

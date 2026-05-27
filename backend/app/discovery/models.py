@@ -85,6 +85,7 @@ class ArtistSearchCandidate(BaseModel):
     name: str
     normalized_name: Optional[str] = None
     matched_alias: Optional[str] = None
+    profile_image_url: Optional[str] = None
 
 
 class ScrapeStartResponse(BaseModel):

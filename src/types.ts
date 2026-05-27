@@ -71,6 +71,7 @@ export interface DiscoveryArtist {
   name: string;
   normalized_name: string | null;
   matched_alias: string | null;
+  profile_image_url: string | null;
 }
 
 export interface DiscoveryListenSource {

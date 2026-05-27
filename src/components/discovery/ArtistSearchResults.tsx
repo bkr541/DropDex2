@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion } from 'motion/react';
 import { User } from 'lucide-react';
 import type { DiscoveryArtist } from '../../types';
@@ -6,6 +7,25 @@ interface ArtistSearchResultsProps {
   results: DiscoveryArtist[];
   onSelect: (artist: DiscoveryArtist) => void;
   query: string;
+}
+
+function ArtistThumb({ artist }: { artist: DiscoveryArtist }) {
+  const [imgError, setImgError] = useState(false);
+  if (artist.profile_image_url && !imgError) {
+    return (
+      <img
+        src={artist.profile_image_url}
+        alt={artist.name}
+        className="w-9 h-9 rounded-lg object-cover bg-primary/10 shrink-0"
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+  return (
+    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+      <User size={16} className="text-primary" />
+    </div>
+  );
 }
 
 export function ArtistSearchResults({ results, onSelect, query }: ArtistSearchResultsProps) {
@@ -33,9 +53,7 @@ export function ArtistSearchResults({ results, onSelect, query }: ArtistSearchRe
           onClick={() => onSelect(artist)}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] hover:border-primary/30 transition-all text-left"
         >
-          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-            <User size={16} className="text-primary" />
-          </div>
+          <ArtistThumb artist={artist} />
           <div className="min-w-0">
             <p className="font-bold text-sm text-foreground">{artist.name}</p>
             {artist.matched_alias && (
