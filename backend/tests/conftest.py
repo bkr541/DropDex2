@@ -12,5 +12,5 @@ os.environ.setdefault("SUPABASE_URL", "https://placeholder.supabase.co")
 os.environ.setdefault("SUPABASE_SECRET_KEY", "placeholder-service-role-key")
 # JWT secret must be at least 32 characters for HS256
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-jwt-secret-at-least-32-chars-xxxxx")
-os.environ.setdefault("FRONTEND_ORIGIN", "http://localhost:5173")
+os.environ.setdefault("FRONTEND_ORIGIN", "http://127.0.0.1:3000")
 os.environ.setdefault("MAX_UPLOAD_BYTES", "52428800")

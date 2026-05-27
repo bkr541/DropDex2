@@ -64,7 +64,7 @@ brew install sqlcipher
 ```bash
 npm install
 cp .env.example .env        # fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
-npm run dev                 # http://localhost:5173
+npm run dev                 # http://127.0.0.1:3000
 ```
 
 ### 2. Parser package
@@ -107,7 +107,7 @@ Run in order against your Supabase project (SQL editor or `supabase db push`):
 | `SUPABASE_URL` | Yes | Supabase project URL |
 | `SUPABASE_SECRET_KEY` | Yes | Service-role key — server-side only, never in frontend |
 | `SUPABASE_JWT_SECRET` | Yes | JWT secret for token validation |
-| `FRONTEND_ORIGIN` | No | Allowed CORS origin (default: `http://localhost:5173`) |
+| `FRONTEND_ORIGIN` | No | Allowed CORS origin (default: `http://127.0.0.1:3000`) |
 | `MAX_UPLOAD_BYTES` | No | Max upload size in bytes (default: 52 428 800 / 50 MB) |
 
 ## Security rules

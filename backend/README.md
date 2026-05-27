@@ -27,7 +27,7 @@ cp .env.example .env
 | `SUPABASE_URL` | Supabase Dashboard → Settings → API → Project URL |
 | `SUPABASE_SECRET_KEY` | Supabase Dashboard → Settings → API → Project API Keys → `service_role` |
 | `SUPABASE_JWT_SECRET` | Supabase Dashboard → Settings → API → JWT Settings → JWT Secret |
-| `FRONTEND_ORIGIN` | URL of the Vite dev server or production frontend (default: `http://localhost:5173`) |
+| `FRONTEND_ORIGIN` | URL of the Vite dev server or production frontend (default: `http://127.0.0.1:3000`) |
 | `MAX_UPLOAD_BYTES` | Upload size cap in bytes (default: 52428800 = 50 MB) |
 
 ## Local setup
@@ -79,7 +79,7 @@ cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
-The frontend Vite dev server runs on port 5173 by default. CORS is configured
+The frontend Vite dev server runs on port 3000 by default. CORS is configured
 to allow only `FRONTEND_ORIGIN`.
 
 ## Running tests

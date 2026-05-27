@@ -6,8 +6,8 @@ class Settings(BaseSettings):
 
     supabase_url: str
     supabase_secret_key: str
-    supabase_jwt_secret: str
-    frontend_origin: str = "http://localhost:5173"
+    supabase_jwt_secret: str | None = None  # HS256 legacy/test only; ES256 uses JWKS
+    frontend_origin: str = "http://127.0.0.1:3000"
     max_upload_bytes: int = 52_428_800  # 50 MB
 
 

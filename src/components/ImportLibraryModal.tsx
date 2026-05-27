@@ -99,7 +99,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
-            className="w-full max-w-sm glass p-8 rounded-3xl"
+            className="w-full max-w-sm bg-[var(--color-panel)] border border-[var(--color-border-subtle)] p-8 rounded-3xl shadow-2xl"
           >
 
             {/* ── Idle / Selected ── */}

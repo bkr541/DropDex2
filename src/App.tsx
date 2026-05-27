@@ -585,7 +585,7 @@ export default function App() {
                           <p className="text-muted-foreground">No playlists in this import.</p>
                         </div>
                       )}
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                      <div className="flex flex-col gap-3">
                         {playlists.map((playlist) => (
                           <motion.div
                             key={playlist.id}
@@ -900,7 +900,7 @@ export default function App() {
                     <Loader2 className="animate-spin text-primary" size={32} />
                   </div>
                 )}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="flex flex-col gap-4">
                   {reviewTracks.map((t) => (
                     <div
                       key={t.id}
