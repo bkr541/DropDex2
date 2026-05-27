@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .auth import get_current_user_id
 from .config import settings
+from .discovery.routes import router as discovery_router
 from .import_service import run_import
 from .models import ImportResponse
 
@@ -23,9 +24,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],
     allow_credentials=True,
-    allow_methods=["POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+app.include_router(discovery_router)
 
 
 @app.get("/health")

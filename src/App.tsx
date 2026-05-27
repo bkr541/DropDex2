@@ -26,6 +26,7 @@ import {
   Tag,
   Disc3,
   Calendar,
+  Radio,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatDuration, formatKey, formatPosition, formatPlaylistDuration, getDeterministicBars } from './lib/utils';
@@ -39,11 +40,12 @@ import { useTrackPlaylists } from './hooks/useTrackPlaylists';
 import { useImportList } from './hooks/useImportList';
 import { fetchSimilarTracks, fetchReviewTracks, setActiveImport, deleteImport } from './lib/queries/rekordbox';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
+import { DiscoveryView } from './components/discovery/DiscoveryView';
 import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport } from './types';
 
 type Theme = 'dark' | 'light';
-type View = 'home' | 'playlist' | 'track' | 'review' | 'settings';
+type View = 'home' | 'playlist' | 'track' | 'review' | 'settings' | 'discovery';
 
 // --- Components ---
 
@@ -322,11 +324,13 @@ export default function App() {
     else if (currentView === 'playlist') setCurrentView('home');
     else if (currentView === 'review') setCurrentView('home');
     else if (currentView === 'settings') setCurrentView('home');
+    else if (currentView === 'discovery') setCurrentView('home');
   };
 
   const sidebarNavItems: { view: View; icon: React.ElementType; label: string; activeColor: string; activeBg: string }[] = [
     { view: 'home', icon: Music, label: 'Library', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'review', icon: TrendingUp, label: 'Review', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
+    { view: 'discovery', icon: Radio, label: 'Discover', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'search' as any, icon: Search, label: 'Search', activeColor: 'text-foreground', activeBg: 'bg-[var(--color-surface)] border-[var(--color-border-subtle)]' },
   ];
 
@@ -457,11 +461,17 @@ export default function App() {
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em]">App Configuration</p>
               </div>
             )}
+            {currentView === 'discovery' && (
+              <div>
+                <h2 className="text-2xl font-black italic">Artist Discovery</h2>
+                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em]">Setlists via 1001Tracklists</p>
+              </div>
+            )}
           </div>
         )}
 
         {/* Scrollable content */}
-        <main className={cn('flex-1 overflow-y-auto px-4 md:px-8 pb-32 md:pb-8', currentView === 'home' && 'pt-6')}>
+        <main className={cn('flex-1 overflow-y-auto px-4 md:px-8 pb-32 md:pb-8', (currentView === 'home' || currentView === 'discovery') && 'pt-6')}>
           <AnimatePresence mode="wait">
 
             {/* ── Home ── */}
@@ -1136,12 +1146,24 @@ export default function App() {
               </motion.div>
             )}
 
+            {/* ── Discovery ── */}
+            {currentView === 'discovery' && (
+              <motion.div
+                key="discovery"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+              >
+                <DiscoveryView accessToken={session?.access_token ?? null} />
+              </motion.div>
+            )}
+
           </AnimatePresence>
         </main>
       </div>
 
       {/* ── Mobile-only: bottom nav ── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 glass border-t border-[var(--color-border-subtle)] px-8 pt-4 pb-8 flex justify-between items-center z-40">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 glass border-t border-[var(--color-border-subtle)] px-6 pt-4 pb-8 flex justify-between items-center z-40">
         <button
           onClick={() => setCurrentView('home')}
           className={cn(
@@ -1162,9 +1184,15 @@ export default function App() {
           <TrendingUp size={20} />
           <span className="text-[8px] font-bold uppercase tracking-widest">Review</span>
         </button>
-        <button className="flex flex-col items-center gap-1 text-muted-foreground hover:text-foreground transition-colors">
-          <Search size={20} />
-          <span className="text-[8px] font-bold uppercase tracking-widest">Search</span>
+        <button
+          onClick={() => setCurrentView('discovery')}
+          className={cn(
+            'flex flex-col items-center gap-1 transition-all',
+            currentView === 'discovery' ? 'text-primary neon-text-blue' : 'text-muted-foreground'
+          )}
+        >
+          <Radio size={20} />
+          <span className="text-[8px] font-bold uppercase tracking-widest">Discover</span>
         </button>
         <button
           onClick={() => setCurrentView('settings')}

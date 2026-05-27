@@ -12,6 +12,34 @@ DJ library companion for rekordbox USB collections. Upload your USB database, br
 - Maintain multiple import snapshots and switch the active library
 - Review mode for scanning your collection track by track
 
+## Discovery
+
+The **Discover** tab lets you search the DropDex artist catalog and pull their
+setlists from 1001Tracklists.
+
+- Search by artist name — only artists already in the DropDex catalog appear
+- Click **Find Setlists** to start a background scrape job for the selected artist
+- Watch live progress (queued → running → completed/failed)
+- Browse saved setlist cards with artwork, date, track IDs, genre chips, and
+  view/like counts
+- Click the 1001Tracklists link on any card to open the original set page
+- Re-run the scrape at any time via **Refresh Results** to pick up new sets
+
+**Implementation note:** All scraping runs in the FastAPI backend (Playwright +
+Chromium). The frontend never contacts 1001Tracklists.com directly — it only
+talks to the DropDex backend API. The scraper uses the public rendered search
+page; it does not capture or replay any `acc` tokens, session cookies, or
+private API calls.
+
+**Rate guidance:** The scraper introduces a configurable delay between
+pagination requests (`TRACKLISTS_SCRAPER_DELAY_MS`, default 1 s). Avoid
+triggering repeated rapid scrapes for the same artist. One scrape per artist
+per session is the expected usage pattern.
+
+**Current limitation:** Individual track extraction from a selected setlist is
+not yet implemented. The `Select Set` button stores the selection and shows a
+placeholder — full track scraping is the next planned phase.
+
 ## Architecture
 
 | Layer | Technology |
@@ -20,6 +48,7 @@ DJ library companion for rekordbox USB collections. Upload your USB database, br
 | Auth & DB | Supabase (Auth, Postgres, Row Level Security) |
 | Import backend | Python 3.11+ / FastAPI / uvicorn |
 | Library parser | pyrekordbox + sqlcipher3 |
+| Discovery scraper | Playwright + Chromium + selectolax |
 
 ### Import pipeline
 
@@ -87,8 +116,11 @@ uvicorn app.main:app --reload   # http://localhost:8000
 
 Run in order against your Supabase project (SQL editor or `supabase db push`):
 
-1. `supabase/migrations/20260526120000_rekordbox_schema.sql` — tables and RLS
+1. `supabase/migrations/20260526120000_rekordbox_schema.sql` — rekordbox tables and RLS
 2. `supabase/migrations/20260526130000_user_settings.sql` — active import management
+3. `supabase/migrations/20260527010000_create_genres_and_artist_genres.sql` — genres catalog
+4. `supabase/migrations/20260527020000_backfill_artists_genres_from_site_db.sql` — genre backfill
+5. `supabase/migrations/20260527030000_create_discovery_scrape_job_support.sql` — discovery tables, artists, scrape jobs, setlist results
 
 ## Environment variables
 
@@ -109,6 +141,10 @@ Run in order against your Supabase project (SQL editor or `supabase db push`):
 | `SUPABASE_JWT_SECRET` | Yes | JWT secret for token validation |
 | `FRONTEND_ORIGIN` | No | Allowed CORS origin (default: `http://127.0.0.1:3000`) |
 | `MAX_UPLOAD_BYTES` | No | Max upload size in bytes (default: 52 428 800 / 50 MB) |
+| `TRACKLISTS_SCRAPER_HEADLESS` | No | Run Chromium headless (default: `true`) |
+| `TRACKLISTS_SCRAPER_NAVIGATION_TIMEOUT_MS` | No | Playwright wait timeout in ms (default: `30000`) |
+| `TRACKLISTS_SCRAPER_DELAY_MS` | No | Delay between pagination clicks in ms (default: `1000`) |
+| `TRACKLISTS_SCRAPER_MAX_PAGES` | No | Hard ceiling on pages scraped per artist (default: `50`) |
 
 ## Security rules
 
