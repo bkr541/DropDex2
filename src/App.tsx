@@ -341,11 +341,7 @@ export default function App() {
       {/* ── Desktop sidebar ── */}
       <aside className="hidden md:flex flex-col w-60 shrink-0 border-r border-[var(--color-border-subtle)] bg-[var(--color-panel)] z-40">
         <div className="h-16 flex items-center gap-3 px-6 border-b border-[var(--color-border-subtle)] shrink-0">
-          <div className="w-8 h-8 brand-gradient rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(207,107,101,0.4)] shrink-0">
-            <div className="w-4 h-4 bg-[var(--color-panel)] rounded-sm rotate-45 flex items-center justify-center">
-              <div className="w-1 h-1 bg-primary rounded-full" />
-            </div>
-          </div>
+          <img src="/logos/dropdexlogo.png" alt="DropDex" className="w-8 h-8 object-contain shrink-0" />
           <span className="text-xl font-black tracking-tighter uppercase leading-none">
             Drop<span className="text-primary">Dex</span>
           </span>
@@ -393,11 +389,7 @@ export default function App() {
             {currentView !== 'home' && <IconButton icon={ChevronLeft} onClick={goBack} />}
             {currentView === 'home' && (
               <div className="flex items-center gap-3 md:hidden">
-                <div className="w-8 h-8 brand-gradient rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(207,107,101,0.4)]">
-                  <div className="w-4 h-4 bg-[var(--color-panel)] rounded-sm rotate-45 flex items-center justify-center">
-                    <div className="w-1 h-1 bg-primary rounded-full" />
-                  </div>
-                </div>
+                <img src="/logos/dropdexlogo.png" alt="DropDex" className="w-8 h-8 object-contain shrink-0" />
                 <span className="text-xl font-black tracking-tighter uppercase leading-none">
                   Drop<span className="text-primary">Dex</span>
                 </span>
