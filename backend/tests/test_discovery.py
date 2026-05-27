@@ -453,75 +453,107 @@ class TestDiscoveryRepository:
         assert insert_call["requested_by_user_id"] == _USER_ID
         assert insert_call["artist_id"] == _ARTIST_ID
 
-    # ── upsert_set_result — critical dedup assertion ──────────────────────────
+    # ── upsert_set_result ─────────────────────────────────────────────────────
+    #
+    # upsert_set_result uses a select-then-insert/update pattern:
+    #   • NEW record (select returns empty): INSERT with provenance fields
+    #     (artist_id, search_run_id) included.
+    #   • EXISTING record (select returns data): UPDATE mutable fields only —
+    #     artist_id MUST NOT be in the update payload to preserve provenance.
 
-    def test_upsert_set_result_uses_upsert_not_insert(self):
-        """
-        upsert_set_result must call .upsert(..., on_conflict="source,source_tracklist_id")
-        and NOT .insert(…).  This verifies the deduplication contract.
-        """
+    def test_upsert_set_result_inserts_new_record_with_provenance(self):
+        """For a new (source, source_tracklist_id), INSERT is called with artist_id + search_run_id."""
         mock_client, mock_table = _make_supabase_mock()
-        mock_table.upsert.return_value.execute.return_value.data = [{"id": _RESULT_ID1}]
+        # select returns empty → new record path
+        mock_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+        mock_table.insert.return_value.execute.return_value.data = [{"id": _RESULT_ID1}]
         repo = self._repo(mock_client)
 
         result = _make_parsed_result("tl001")
         returned_id = repo.upsert_set_result(_RUN_ID, _ARTIST_ID, result)
 
-        mock_table.upsert.assert_called_once()
-        mock_table.insert.assert_not_called()
+        mock_table.insert.assert_called_once()
+        mock_table.update.assert_not_called()
 
-        upsert_kwargs = mock_table.upsert.call_args[1]
-        assert upsert_kwargs.get("on_conflict") == "source,source_tracklist_id", (
-            "on_conflict must target exactly (source, source_tracklist_id)"
-        )
-        assert returned_id == _RESULT_ID1
-
-    def test_upsert_set_result_payload_fields(self):
-        """The upsert payload must include all required fields from the parsed result."""
-        mock_client, mock_table = _make_supabase_mock()
-        mock_table.upsert.return_value.execute.return_value.data = [{"id": _RESULT_ID1}]
-        repo = self._repo(mock_client)
-
-        result = _make_parsed_result("tl001")
-        repo.upsert_set_result(_RUN_ID, _ARTIST_ID, result)
-
-        payload = mock_table.upsert.call_args[0][0]
+        payload = mock_table.insert.call_args[0][0]
         assert payload["source"] == "1001tracklists"
         assert payload["source_tracklist_id"] == "tl001"
-        assert payload["artist_id"] == _ARTIST_ID
+        assert payload["artist_id"] == _ARTIST_ID, "provenance: artist_id must be set on initial insert"
         assert payload["search_run_id"] == _RUN_ID
         assert "normalized_title" in payload
         assert payload["views"] == 500
+        assert returned_id == _RESULT_ID1
+
+    def test_upsert_set_result_updates_mutable_fields_preserves_provenance(self):
+        """For an existing row, UPDATE is called and artist_id must NOT be in the payload."""
+        mock_client, mock_table = _make_supabase_mock()
+        # select returns existing row → update path
+        mock_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+            {"id": _RESULT_ID1}
+        ]
+        mock_table.update.return_value.eq.return_value.execute.return_value.data = []
+        repo = self._repo(mock_client)
+
+        result = _make_parsed_result("tl001")
+        returned_id = repo.upsert_set_result(_RUN_ID, _ARTIST_ID, result)
+
+        mock_table.update.assert_called_once()
+        mock_table.insert.assert_not_called()
+
+        update_payload = mock_table.update.call_args[0][0]
+        assert "artist_id" not in update_payload, (
+            "artist_id must NOT be overwritten on conflict — it is provenance only"
+        )
+        assert "search_run_id" not in update_payload, (
+            "search_run_id must NOT be overwritten on conflict"
+        )
+        assert update_payload["views"] == 500
+        assert "normalized_title" in update_payload
+        assert returned_id == _RESULT_ID1
 
     # ── link_result_to_artist ──────────────────────────────────────────────────
+    #
+    # link_result_to_artist now uses upsert with on_conflict=(set_result_id, artist_id)
+    # and ignore_duplicates=True, replacing the old select-then-insert pattern.
+    # The unique index artist_set_result_artists_set_result_artist_uidx (migration
+    # 040000) makes the single-round-trip upsert safe.
 
-    def test_link_result_to_artist_inserts_when_absent(self):
+    def test_link_result_to_artist_upserts_with_correct_conflict_target(self):
+        """upsert must target (set_result_id, artist_id) and set ignore_duplicates=True."""
         mock_client, mock_table = _make_supabase_mock()
-        # select returns no rows → insert should be called
-        mock_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
-        mock_table.insert.return_value.execute.return_value.data = [{"id": "link-uuid"}]
+        mock_table.upsert.return_value.execute.return_value.data = [{"id": "link-uuid"}]
         repo = self._repo(mock_client)
 
         repo.link_result_to_artist(_RESULT_ID1, _ARTIST_ID, "ILLENIUM")
 
-        mock_table.insert.assert_called_once()
-        insert_payload = mock_table.insert.call_args[0][0]
-        assert insert_payload["set_result_id"] == _RESULT_ID1
-        assert insert_payload["artist_id"] == _ARTIST_ID
-        assert insert_payload["display_name"] == "ILLENIUM"
-        assert insert_payload["normalized_name"] == "illenium"
+        mock_table.upsert.assert_called_once()
+        mock_table.insert.assert_not_called()
+        mock_table.select.assert_not_called()  # no pre-check needed with unique index
 
-    def test_link_result_to_artist_skips_insert_when_already_linked(self):
-        """No duplicate insert when the artist–result link already exists."""
+        upsert_kwargs = mock_table.upsert.call_args[1]
+        assert upsert_kwargs.get("on_conflict") == "set_result_id,artist_id", (
+            "conflict target must be (set_result_id, artist_id)"
+        )
+        assert upsert_kwargs.get("ignore_duplicates") is True, (
+            "ignore_duplicates must be True so re-linking is a no-op"
+        )
+        upsert_payload = mock_table.upsert.call_args[0][0]
+        assert upsert_payload["set_result_id"] == _RESULT_ID1
+        assert upsert_payload["artist_id"] == _ARTIST_ID
+        assert upsert_payload["display_name"] == "ILLENIUM"
+        assert upsert_payload["normalized_name"] == "illenium"
+
+    def test_link_result_to_artist_is_idempotent_via_ignore_duplicates(self):
+        """Calling link twice for the same pair must not raise — empty data response is fine."""
         mock_client, mock_table = _make_supabase_mock()
-        # select returns an existing row
-        mock_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
-            {"id": "existing-link-uuid"}
-        ]
+        # Simulate conflict: upsert returns empty data (DO NOTHING)
+        mock_table.upsert.return_value.execute.return_value.data = []
         repo = self._repo(mock_client)
 
         repo.link_result_to_artist(_RESULT_ID1, _ARTIST_ID, "ILLENIUM")
+        repo.link_result_to_artist(_RESULT_ID1, _ARTIST_ID, "ILLENIUM")
 
+        assert mock_table.upsert.call_count == 2
         mock_table.insert.assert_not_called()
 
     # ── set_job_running / completed / failed ──────────────────────────────────
@@ -564,6 +596,264 @@ class TestDiscoveryRepository:
         assert update_payload["status"] == "failed"
         assert update_payload["error_message"] == "Discovery scrape encountered an error."
         assert "completed_at" in update_payload
+
+    # ── get_set_results_paginated: junction query ─────────────────────────────
+
+    def test_get_set_results_paginated_queries_through_junction_table(self):
+        """Retrieval must go via artist_set_result_artists, not filter on artist_set_results.artist_id."""
+        mock_client, mock_table = _make_supabase_mock()
+
+        # Step 1: junction query response (.select().eq().execute())
+        mock_table.select.return_value.eq.return_value.execute.return_value.data = [
+            {"set_result_id": _RESULT_ID1},
+        ]
+
+        # Step 2: results query response (.select().in_().order().range().execute())
+        results_resp = MagicMock()
+        results_resp.data = [{
+            "id": _RESULT_ID1,
+            "source_tracklist_id": "tl001",
+            "source_url": "https://example.com/tl001",
+            "title": "ILLENIUM @ EDC 2026",
+            "set_date": "2026-05-18",
+            "ided_tracks": 20,
+            "total_tracks": 20,
+            "completion_pct": 100.0,
+            "views": 500,
+            "likes": None,
+            "music_styles": [],
+            "listen_sources": None,
+            "artwork_url": None,
+            "creator_username": None,
+            "creator_profile_url": None,
+            "duration_text": None,
+            "duration_seconds": None,
+            "updated_at": None,
+        }]
+        results_resp.count = 1
+        mock_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value = results_resp
+
+        repo = self._repo(mock_client)
+        results, total = repo.get_set_results_paginated(_ARTIST_ID, limit=20, offset=0)
+
+        # Verify junction table was queried
+        table_calls = [c.args[0] for c in mock_client.table.call_args_list]
+        assert "artist_set_result_artists" in table_calls, (
+            "retrieval must query the junction table artist_set_result_artists"
+        )
+        assert total == 1
+        assert len(results) == 1
+        assert results[0].title == "ILLENIUM @ EDC 2026"
+
+    def test_get_set_results_paginated_returns_empty_when_no_junction_rows(self):
+        """If the junction table has no rows for the artist, return ([], 0) immediately."""
+        mock_client, mock_table = _make_supabase_mock()
+        mock_table.select.return_value.eq.return_value.execute.return_value.data = []
+
+        repo = self._repo(mock_client)
+        results, total = repo.get_set_results_paginated(_ARTIST_ID, limit=20, offset=0)
+
+        assert results == []
+        assert total == 0
+        # artist_set_results should NOT be queried at all
+        table_calls = [c.args[0] for c in mock_client.table.call_args_list]
+        assert "artist_set_results" not in table_calls, (
+            "artist_set_results must not be queried when junction returns no rows"
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Collaborative setlist relationship tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+_CRANKDAT_ID = "22222222-0000-0000-0000-000000000002"
+_CRANKDAT = ArtistRecord(
+    id=_CRANKDAT_ID,
+    name="Crankdat",
+    normalized_name="crankdat",
+    source="1001tracklists",
+)
+_COLLAB_TRACKLIST_ID = "collab-tl-001"
+
+
+class TestCollaborativeSetlistRelationships:
+    """
+    Verifies the ILLENIUM/Crankdat collaborative-set scenario end-to-end:
+
+    1. Scrape ILLENIUM → result saved, junction row for ILLENIUM created.
+    2. Same source_tracklist_id discovered for Crankdat → shared result updated
+       (mutable fields only), junction row for Crankdat created, ILLENIUM's
+       junction row is untouched.
+    3. Fetching ILLENIUM setlists still returns the shared result.
+    4. Fetching Crankdat setlists also returns the shared result.
+    5. Re-running a scrape does not create duplicate junction rows.
+    6. Retrieval goes through artist_set_result_artists, not artist_id on results.
+    """
+
+    # ── Service-level tests (mock repo) ──────────────────────────────────────
+
+    def test_illenium_scrape_saves_result_and_creates_junction_row(self):
+        """upsert_set_result and link_result_to_artist are both called for the searching artist."""
+        mock_repo = _make_mock_repo()
+        scrape_result = _make_scrape_result([_COLLAB_TRACKLIST_ID])
+
+        async def _inner():
+            with patch(
+                "app.discovery.service.scrape_artist_setlists",
+                new_callable=AsyncMock,
+                return_value=scrape_result,
+            ):
+                await run_discovery_for_artist(_ARTIST_ID, _USER_ID, repo=mock_repo)
+
+            mock_repo.upsert_set_result.assert_called_once()
+            mock_repo.link_result_to_artist.assert_called_once()
+            link_args = mock_repo.link_result_to_artist.call_args.args
+            assert link_args[1] == _ARTIST_ID, "junction row must be for ILLENIUM"
+            assert link_args[2] == "ILLENIUM"
+
+        _run(_inner())
+
+    def test_crankdat_scrape_creates_own_junction_row_without_touching_illenium(self):
+        """
+        Scraping Crankdat for the same tracklist_id calls upsert (updating mutable
+        fields) and link for Crankdat only.  ILLENIUM's junction row is not touched
+        by the Crankdat scrape — the service has no code that removes old links.
+        """
+        crankdat_mock = _make_mock_repo(
+            artist=_CRANKDAT,
+            job_summary=ScrapeJobSummary(
+                id=_JOB_ID,
+                artist_id=_CRANKDAT_ID,
+                status=JobStatus.COMPLETED,
+            ),
+        )
+        scrape_result = _make_scrape_result([_COLLAB_TRACKLIST_ID])
+
+        async def _inner():
+            with patch(
+                "app.discovery.service.scrape_artist_setlists",
+                new_callable=AsyncMock,
+                return_value=scrape_result,
+            ):
+                await run_discovery_for_artist(_CRANKDAT_ID, _USER_ID, repo=crankdat_mock)
+
+            crankdat_mock.upsert_set_result.assert_called_once()
+            crankdat_mock.link_result_to_artist.assert_called_once()
+            link_args = crankdat_mock.link_result_to_artist.call_args.args
+            assert link_args[1] == _CRANKDAT_ID, "junction row must be for Crankdat"
+            assert link_args[2] == "Crankdat"
+            # Verify no call attempted to link ILLENIUM (would modify the wrong artist)
+            for c in crankdat_mock.link_result_to_artist.call_args_list:
+                assert c.args[1] != _ARTIST_ID, (
+                    "Crankdat scrape must not create/modify an ILLENIUM junction row"
+                )
+
+        _run(_inner())
+
+    def test_repeated_scrape_calls_link_again_but_repo_upsert_is_idempotent(self):
+        """
+        Running the service twice for the same artist calls link_result_to_artist
+        twice.  The repository uses upsert with ignore_duplicates so the second
+        call is a safe no-op at the DB level.
+        """
+        mock_repo = _make_mock_repo()
+        mock_repo.upsert_set_result.side_effect = [_RESULT_ID1, _RESULT_ID1]
+        scrape_result = _make_scrape_result([_COLLAB_TRACKLIST_ID])
+
+        async def _inner():
+            with patch(
+                "app.discovery.service.scrape_artist_setlists",
+                new_callable=AsyncMock,
+                return_value=scrape_result,
+            ):
+                await run_discovery_for_artist(_ARTIST_ID, _USER_ID, repo=mock_repo)
+                await run_discovery_for_artist(_ARTIST_ID, _USER_ID, repo=mock_repo)
+
+            assert mock_repo.link_result_to_artist.call_count == 2
+            for c in mock_repo.link_result_to_artist.call_args_list:
+                assert c.args[0] == _RESULT_ID1, "same result ID both times"
+                assert c.args[1] == _ARTIST_ID
+
+        _run(_inner())
+
+    def test_upsert_does_not_overwrite_artist_id_on_conflict(self):
+        """
+        When the same tracklist_id is scraped for a second artist, the repository
+        UPDATE payload must NOT include artist_id (provenance must be preserved).
+        """
+        mock_client, mock_table = _make_supabase_mock()
+        # Simulate existing row — triggers the update path
+        mock_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+            {"id": _RESULT_ID1}
+        ]
+        mock_table.update.return_value.eq.return_value.execute.return_value.data = []
+        repo = TestDiscoveryRepository()._repo(mock_client)
+
+        collab_result = _make_parsed_result(_COLLAB_TRACKLIST_ID)
+        repo.upsert_set_result(_RUN_ID, _CRANKDAT_ID, collab_result)
+
+        update_payload = mock_table.update.call_args[0][0]
+        assert "artist_id" not in update_payload, (
+            "artist_id (ILLENIUM's provenance) must not be overwritten when Crankdat scrapes the same result"
+        )
+
+    # ── Repository-level retrieval tests ─────────────────────────────────────
+
+    def test_illenium_retrieval_uses_junction_not_direct_artist_id_filter(self):
+        """get_set_results_paginated must query the junction table for ILLENIUM's results."""
+        mock_client, mock_table = _make_supabase_mock()
+
+        mock_table.select.return_value.eq.return_value.execute.return_value.data = [
+            {"set_result_id": _RESULT_ID1},
+        ]
+        results_resp = MagicMock()
+        results_resp.data = [{
+            "id": _RESULT_ID1,
+            "source_tracklist_id": _COLLAB_TRACKLIST_ID,
+            "source_url": "https://example.com",
+            "title": "Crankdat & ILLENIUM @ Get Cranked",
+            "set_date": "2026-03-10",
+            "ided_tracks": None, "total_tracks": None, "completion_pct": None,
+            "views": None, "likes": None, "music_styles": [], "listen_sources": None,
+            "artwork_url": None, "creator_username": None, "creator_profile_url": None,
+            "duration_text": None, "duration_seconds": None, "updated_at": None,
+        }]
+        results_resp.count = 1
+        mock_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value = results_resp
+
+        repo = TestDiscoveryRepository()._repo(mock_client)
+        results, total = repo.get_set_results_paginated(_ARTIST_ID, limit=20, offset=0)
+
+        table_calls = [c.args[0] for c in mock_client.table.call_args_list]
+        assert "artist_set_result_artists" in table_calls
+        assert total == 1
+        assert results[0].title == "Crankdat & ILLENIUM @ Get Cranked"
+
+    def test_scrape_jobs_rls_is_enabled_and_backend_uses_service_role(self):
+        """
+        Document that RLS is enabled on scrape_jobs (migration 040000) and that
+        the backend's use of the service-role key means all existing job operations
+        continue to work without any policy changes — service-role bypasses RLS.
+        """
+        mock_repo = _make_mock_repo()
+        scrape_result = _make_scrape_result(["tl001"])
+
+        async def _inner():
+            with patch(
+                "app.discovery.service.scrape_artist_setlists",
+                new_callable=AsyncMock,
+                return_value=scrape_result,
+            ):
+                summary = await run_discovery_for_artist(_ARTIST_ID, _USER_ID, repo=mock_repo)
+
+            # Job creation, running, and completion all succeeded via mock repo
+            # (simulating service-role access which bypasses RLS)
+            mock_repo.create_scrape_job.assert_called_once_with(_USER_ID, _ARTIST_ID)
+            mock_repo.set_job_running.assert_called_once()
+            mock_repo.set_job_completed.assert_called_once()
+            assert summary.status == JobStatus.COMPLETED
+
+        _run(_inner())
 
 
 # ══════════════════════════════════════════════════════════════════════════════

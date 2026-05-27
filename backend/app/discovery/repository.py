@@ -284,19 +284,26 @@ class DiscoveryRepository:
         result: ParsedSetlistResult,
     ) -> str:
         """
-        Upsert one artist_set_results row using (source, source_tracklist_id) as
-        the conflict identity.
+        Insert or update an artist_set_results row for a scraped setlist entry.
 
-        On conflict, mutable fields (views, likes, completion counts, artwork,
-        raw_result_json) are overwritten with the freshest scraped values.
-        Stable fields (title, set_date, source_url) are also refreshed since
-        they may have been corrected on the source site.
+        If the row is NEW (no existing row for source + source_tracklist_id):
+            Insert with all mutable fields PLUS provenance fields (artist_id,
+            search_run_id).  artist_id records which artist's scrape first
+            discovered this result; it is never overwritten.
+
+        If the row already EXISTS:
+            Update only the mutable metadata fields (title, views, completion
+            counts, artwork, etc.).  artist_id is intentionally excluded from
+            the update so that a later scrape for a different artist cannot
+            erase the original provenance.
+
+        The artist → setlist relationship for the scraping artist is always
+        written separately via link_result_to_artist; do not rely on
+        artist_set_results.artist_id for retrieval.
 
         Returns the row UUID (newly inserted or existing after update).
         """
-        data = {
-            "source": result.source,
-            "source_tracklist_id": result.source_tracklist_id,
+        mutable_fields: dict = {
             "source_url": result.source_url,
             "title": result.title,
             "normalized_title": _normalize(result.title),
@@ -320,15 +327,35 @@ class DiscoveryRepository:
             "created_age_text": result.created_age_text,
             "updated_age_text": result.updated_age_text,
             "raw_result_json": result.raw_result_json,
-            # artist_id: the artist whose search produced this result row.
-            # For co-headliner sets, the junction table captures all artists;
-            # this column records the primary searched-for artist.
+        }
+
+        existing = (
+            self._client.table("artist_set_results")
+            .select("id")
+            .eq("source", result.source)
+            .eq("source_tracklist_id", result.source_tracklist_id)
+            .execute()
+        )
+
+        if existing.data:
+            # Row exists — refresh mutable metadata but preserve provenance.
+            row_id = str(existing.data[0]["id"])
+            self._client.table("artist_set_results").update(
+                mutable_fields
+            ).eq("id", row_id).execute()
+            return row_id
+
+        # New row — record provenance alongside mutable fields.
+        insert_data = {
+            **mutable_fields,
+            "source": result.source,
+            "source_tracklist_id": result.source_tracklist_id,
             "artist_id": artist_id,
             "search_run_id": search_run_id,
         }
         resp = (
             self._client.table("artist_set_results")
-            .upsert(data, on_conflict="source,source_tracklist_id")
+            .insert(insert_data)
             .execute()
         )
         return str(resp.data[0]["id"])
@@ -343,25 +370,22 @@ class DiscoveryRepository:
         Ensure a row exists in artist_set_result_artists linking this result to
         the searched-for artist.
 
-        A select-then-insert guards against duplicate links in the absence of a
-        confirmed unique index on (set_result_id, artist_id).  The extra round
-        trip is acceptable given the low call frequency per job.
+        Uses upsert with ON CONFLICT (set_result_id, artist_id) DO NOTHING so
+        that repeated calls for the same pair are idempotent in a single round
+        trip.  The unique index
+        artist_set_result_artists_set_result_artist_uidx (added in migration
+        040000) makes this safe.
         """
-        existing = (
-            self._client.table("artist_set_result_artists")
-            .select("id")
-            .eq("set_result_id", set_result_id)
-            .eq("artist_id", artist_id)
-            .execute()
-        )
-        if existing.data:
-            return
-        self._client.table("artist_set_result_artists").insert({
-            "set_result_id": set_result_id,
-            "artist_id": artist_id,
-            "display_name": artist_name,
-            "normalized_name": _normalize(artist_name),
-        }).execute()
+        self._client.table("artist_set_result_artists").upsert(
+            {
+                "set_result_id": set_result_id,
+                "artist_id": artist_id,
+                "display_name": artist_name,
+                "normalized_name": _normalize(artist_name),
+            },
+            on_conflict="set_result_id,artist_id",
+            ignore_duplicates=True,
+        ).execute()
 
     def get_job_summary_for_user(
         self,
@@ -412,7 +436,21 @@ class DiscoveryRepository:
         """
         Fetch saved setlist results for an artist, newest set first.
         NULL set_dates sort to the end.
+
+        Queries through artist_set_result_artists (the authoritative junction)
+        so that collaborative sets appear for every linked artist regardless of
+        which artist's scrape first created the shared result row.
         """
+        junction_resp = (
+            self._client.table("artist_set_result_artists")
+            .select("set_result_id")
+            .eq("artist_id", artist_id)
+            .execute()
+        )
+        set_result_ids = [r["set_result_id"] for r in junction_resp.data]
+        if not set_result_ids:
+            return []
+
         resp = (
             self._client.table("artist_set_results")
             .select(
@@ -421,7 +459,7 @@ class DiscoveryRepository:
                 "music_styles, artwork_url, creator_username, "
                 "creator_profile_url, duration_text, duration_seconds"
             )
-            .eq("artist_id", artist_id)
+            .in_("id", set_result_ids)
             .order("set_date", desc=True, nullsfirst=False)
             .execute()
         )
@@ -436,9 +474,26 @@ class DiscoveryRepository:
         """
         Fetch a page of setlist results for an artist, newest set first.
 
-        Returns (results, total_count) where total_count is the full row count
-        for the artist regardless of the requested page window.
+        Returns (results, total_count) where total_count is the full junction
+        row count for the artist regardless of the requested page window.
+
+        Step 1: resolve all set_result_ids for this artist via the junction.
+        Step 2: paginate the actual result rows ordered by set_date DESC.
+
+        This two-query approach guarantees that collaborative sets — discovered
+        originally under a different artist — still appear for this artist once
+        link_result_to_artist has been called for them.
         """
+        junction_resp = (
+            self._client.table("artist_set_result_artists")
+            .select("set_result_id")
+            .eq("artist_id", artist_id)
+            .execute()
+        )
+        set_result_ids = [r["set_result_id"] for r in junction_resp.data]
+        if not set_result_ids:
+            return [], 0
+
         resp = (
             self._client.table("artist_set_results")
             .select(
@@ -448,7 +503,7 @@ class DiscoveryRepository:
                 "creator_profile_url, duration_text, duration_seconds, updated_at",
                 count="exact",
             )
-            .eq("artist_id", artist_id)
+            .in_("id", set_result_ids)
             .order("set_date", desc=True, nullsfirst=False)
             .range(offset, offset + limit - 1)
             .execute()
