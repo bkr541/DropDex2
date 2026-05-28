@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Loader2, ListMusic, ChevronDown } from 'lucide-react';
 import { ArtistHero } from './ArtistHero';
 import { ArtistStylesSidebar } from './ArtistStylesSidebar';
-import { ArtistResultsTabs, type ArtistTabId } from './ArtistResultsTabs';
+import { type ArtistTabId } from './ArtistResultsTabs';
 import { ArtistResultsToolbar, type SortKey } from './ArtistResultsToolbar';
 import { ArtistSetlistCard } from './ArtistSetlistCard';
 import type { DiscoveryArtist, DiscoverySetlistResult, DiscoveryScrapeJob } from '../../types';
@@ -37,8 +37,7 @@ interface ArtistPageProps {
   scrapeJob: DiscoveryScrapeJob | null;
   scrapeStarting: boolean;
   scrapeError: string | null;
-  selectedSetlist: DiscoverySetlistResult | null;
-  onSelectSetlist: (setlist: DiscoverySetlistResult) => void;
+  onOpenSetlist: (setlist: DiscoverySetlistResult) => void;
   onRefresh: () => void;
   onViewProgress: () => void;
   onLoadMore: () => void;
@@ -55,16 +54,27 @@ export function ArtistPage({
   scrapeJob,
   scrapeStarting,
   scrapeError,
-  selectedSetlist,
-  onSelectSetlist,
+  onOpenSetlist,
   onRefresh,
   onViewProgress,
   onLoadMore,
 }: ArtistPageProps) {
   const [activeTab, setActiveTab] = useState<ArtistTabId>('all');
   const [sortKey, setSortKey] = useState<SortKey>('date_desc');
+  const [filterQuery, setFilterQuery] = useState('');
 
-  const displayed = sortSetlists(setlists, sortKey);
+  const q = filterQuery.trim().toLowerCase();
+  const filtered =
+    q.length >= 2
+      ? setlists.filter(
+          (s) =>
+            (s.title ?? '').toLowerCase().includes(q) ||
+            (s.creator_username ?? '').toLowerCase().includes(q) ||
+            (s.music_styles ?? []).some((style) => style.toLowerCase().includes(q)) ||
+            (s.set_date ?? '').includes(q),
+        )
+      : setlists;
+  const displayed = sortSetlists(filtered, sortKey);
 
   return (
     <div className="space-y-6">
@@ -81,9 +91,6 @@ export function ArtistPage({
       {scrapeError && (
         <p className="text-xs text-red-400 font-mono px-1">{scrapeError}</p>
       )}
-
-      {/* Category tabs */}
-      <ArtistResultsTabs activeTab={activeTab} onTabChange={setActiveTab} total={total} />
 
       {/* Two-column layout: sidebar + results */}
       <div className="flex flex-col lg:flex-row gap-6 items-start">
@@ -122,6 +129,10 @@ export function ArtistPage({
                 loaded={setlists.length}
                 sortKey={sortKey}
                 onSortChange={setSortKey}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                filterQuery={filterQuery}
+                onFilterChange={setFilterQuery}
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -129,8 +140,7 @@ export function ArtistPage({
                   <ArtistSetlistCard
                     key={setlist.id}
                     setlist={setlist}
-                    isSelected={selectedSetlist?.id === setlist.id}
-                    onSelect={onSelectSetlist}
+                    onOpen={onOpenSetlist}
                   />
                 ))}
               </div>

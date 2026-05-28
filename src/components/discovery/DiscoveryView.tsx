@@ -8,6 +8,7 @@ import { ArtistSearchInput } from './ArtistSearchInput';
 import { ArtistSearchResults } from './ArtistSearchResults';
 import { DiscoveryScrapeProgressModal } from './DiscoveryScrapeProgressModal';
 import { ArtistPage } from './ArtistPage';
+import { TrackListPage } from './TrackListPage';
 import type { DiscoveryArtist, DiscoverySetlistResult } from '../../types';
 
 interface DiscoveryViewProps {
@@ -19,7 +20,8 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
   const [selectedArtist, setSelectedArtist] = useState<DiscoveryArtist | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [showScrapeModal, setShowScrapeModal] = useState(false);
-  const [selectedSetlist, setSelectedSetlist] = useState<DiscoverySetlistResult | null>(null);
+  const [selectedSetlistForDetail, setSelectedSetlistForDetail] =
+    useState<DiscoverySetlistResult | null>(null);
   const [scrapeError, setScrapeError] = useState<string | null>(null);
   const [scrapeStarting, setScrapeStarting] = useState(false);
   const [showArtistPage, setShowArtistPage] = useState(false);
@@ -68,7 +70,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
     setActiveJobId(null);
     setShowScrapeModal(false);
     setScrapeError(null);
-    setSelectedSetlist(null);
+    setSelectedSetlistForDetail(null);
     setShowArtistPage(false);
   };
 
@@ -87,6 +89,14 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
     }
   };
 
+  const handleOpenSetlist = (setlist: DiscoverySetlistResult) => {
+    setSelectedSetlistForDetail(setlist);
+  };
+
+  const handleBackFromTrackList = () => {
+    setSelectedSetlistForDetail(null);
+  };
+
   const showSearchResults = query.trim().length >= 2;
 
   return (
@@ -98,30 +108,38 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
         job={scrapeJob}
       />
 
-      {/* Search input — always visible */}
-      <div className="space-y-4 mb-8">
-        <ArtistSearchInput
-          value={query}
-          onChange={setQuery}
-          onClear={() => setQuery('')}
-          loading={searchLoading}
-          placeholder={
-            selectedArtist && showArtistPage
-              ? `Search for a different artist…`
-              : 'Search DropDex artists…'
-          }
-        />
-        {showSearchResults && (
-          <ArtistSearchResults
-            results={searchResults}
-            onSelect={handleArtistSelect}
-            query={query.trim()}
+      {/* Search input — hidden while viewing a set's track list */}
+      {!selectedSetlistForDetail && (
+        <div className="space-y-4 mb-8">
+          <ArtistSearchInput
+            value={query}
+            onChange={setQuery}
+            onClear={() => setQuery('')}
+            loading={searchLoading}
+            placeholder={
+              selectedArtist && showArtistPage
+                ? `Search for a different artist…`
+                : 'Search DropDex artists…'
+            }
           />
-        )}
-      </div>
+          {showSearchResults && (
+            <ArtistSearchResults
+              results={searchResults}
+              onSelect={handleArtistSelect}
+              query={query.trim()}
+            />
+          )}
+        </div>
+      )}
 
       {/* Main content area */}
-      {!showSearchResults && (
+      {selectedSetlistForDetail ? (
+        <TrackListPage
+          setlist={selectedSetlistForDetail}
+          accessToken={accessToken}
+          onBack={handleBackFromTrackList}
+        />
+      ) : !showSearchResults ? (
         <>
           {selectedArtist && showArtistPage ? (
             <motion.div
@@ -140,10 +158,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
                 scrapeJob={scrapeJob}
                 scrapeStarting={scrapeStarting}
                 scrapeError={scrapeError}
-                selectedSetlist={selectedSetlist}
-                onSelectSetlist={(s) =>
-                  setSelectedSetlist((prev) => (prev?.id === s.id ? null : s))
-                }
+                onOpenSetlist={handleOpenSetlist}
                 onRefresh={handleStartScrape}
                 onViewProgress={() => setShowScrapeModal(true)}
                 onLoadMore={loadMore}
@@ -160,7 +175,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
             </div>
           ) : null}
         </>
-      )}
+      ) : null}
     </div>
   );
 }

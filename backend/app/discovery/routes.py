@@ -3,15 +3,15 @@ FastAPI router for the DropDex artist-setlist discovery API.
 
 Endpoints
 ─────────
-GET  /api/discovery/artists/search                        – Search DropDex artist catalog
-POST /api/discovery/artists/{artist_id}/setlists/scrape   – Queue a scrape job (202)
-GET  /api/discovery/scrape-jobs/{job_id}                  – Poll job progress
-GET  /api/discovery/artists/{artist_id}/setlists          – Retrieve stored setlists
+GET  /api/discovery/artists/search                            – Search DropDex artist catalog
+POST /api/discovery/artists/{artist_id}/setlists/scrape       – Queue a scrape job (202)
+GET  /api/discovery/scrape-jobs/{job_id}                      – Poll job progress
+GET  /api/discovery/artists/{artist_id}/setlists              – Retrieve stored setlists
+GET  /api/discovery/setlists/{set_result_id}/tracks           – Retrieve saved set tracks
+POST /api/discovery/setlists/{set_result_id}/tracks/scrape    – Scrape individual set tracks
 
 All endpoints require a valid Supabase Bearer token.  user_id is always derived
 from the JWT; it is never accepted from the request body or URL parameters.
-
-Individual set-page track scraping is not included in this phase.
 """
 
 from __future__ import annotations
@@ -26,11 +26,16 @@ from app.config import settings
 from app.discovery.job_runner import run_discovery_background
 from app.discovery.models import (
     ArtistSearchCandidate,
+    DetailScrapeError,
+    InvalidSetlistUrlError,
     ScrapeJobResponse,
     ScrapeStartResponse,
+    SetlistDetailResponse,
     SetlistsPage,
+    SetResultNotFoundError,
 )
 from app.discovery.repository import DiscoveryRepository
+from app.discovery.service import get_setlist_tracks_response, run_setlist_detail_scrape
 
 log = logging.getLogger(__name__)
 
@@ -197,3 +202,83 @@ async def get_setlists(
         offset=offset,
         results=results,
     )
+
+
+# ── 5. Get stored set tracks ──────────────────────────────────────────────────
+
+@router.get(
+    "/setlists/{set_result_id}/tracks",
+    response_model=SetlistDetailResponse,
+    summary="Retrieve stored individual tracks for a saved setlist",
+)
+async def get_set_tracks(
+    set_result_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> SetlistDetailResponse:
+    """
+    Return the saved set metadata and any individual track rows already stored
+    for this setlist.
+
+    - Does **not** trigger a new browser scrape.
+    - When no tracks have been scraped yet, ``tracks`` is an empty list and
+      ``setlist.detail_scrape_status`` will be ``"not_scraped"``.
+    - Returns ``404`` if the set result UUID is not in the DropDex catalog.
+    """
+    try:
+        return get_setlist_tracks_response(set_result_id)
+    except SetResultNotFoundError:
+        raise HTTPException(status_code=404, detail="Set result not found")
+
+
+# ── 6. Scrape individual set tracks ───────────────────────────────────────────
+
+@router.post(
+    "/setlists/{set_result_id}/tracks/scrape",
+    response_model=SetlistDetailResponse,
+    summary="Scrape individual tracks for a saved setlist",
+)
+async def scrape_set_tracks(
+    set_result_id: str,
+    refresh: bool = Query(
+        False,
+        description=(
+            "When false (default), return existing tracks without scraping if "
+            "they are already saved.  When true, always re-scrape and replace "
+            "stale rows."
+        ),
+    ),
+    user_id: str = Depends(get_current_user_id),
+) -> SetlistDetailResponse:
+    """
+    Fetch individual track rows from the 1001Tracklists setlist page identified
+    by ``set_result_id``.
+
+    **Why synchronous, not queued:**
+    A detail scrape targets a single page and completes in 5–15 seconds.
+    Artist-search scrapes are background tasks because they page through 50+
+    result pages.  Adding a ``scrape_jobs`` polling loop for a single-page
+    operation would add latency and complexity with no benefit.  The frontend
+    awaits this POST directly.
+
+    - The source URL is resolved from the stored record — the browser never
+      receives a caller-supplied URL.
+    - Returns ``404`` when the set result UUID is unknown.
+    - Returns ``400`` when the stored URL fails the safe-domain validation
+      (HTTPS, ``www.1001tracklists.com``, ``/tracklist/`` path prefix).
+    - Returns ``503`` on browser or persistence failures.
+    """
+    try:
+        return await run_setlist_detail_scrape(set_result_id, refresh=refresh)
+    except SetResultNotFoundError:
+        raise HTTPException(status_code=404, detail="Set result not found")
+    except InvalidSetlistUrlError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Stored setlist URL is not supported: {exc}",
+        )
+    except DetailScrapeError as exc:
+        log.error("[routes] Detail scrape failed for set=%s: %s", set_result_id, exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Set detail scrape encountered an error. Please try again.",
+        )

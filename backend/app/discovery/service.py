@@ -39,12 +39,20 @@ from app.config import settings
 from app.discovery.models import (
     ArtistNotFoundError,
     ArtistRecord,
+    DetailScrapeError,
     DiscoveryJobError,
+    InvalidSetlistUrlError,
     JobStatus,
     ScrapeJobSummary,
+    SetlistDetailResponse,
+    SetResultNotFoundError,
 )
 from app.discovery.repository import DiscoveryRepository
-from app.discovery.scrapers.tracklists1001.browser_client import scrape_artist_setlists
+from app.discovery.scrapers.tracklists1001.browser_client import (
+    scrape_artist_setlists,
+    scrape_setlist_detail,
+    validate_setlist_url,
+)
 
 log = logging.getLogger(__name__)
 
@@ -216,4 +224,186 @@ def _safe_set_failed(
         log.exception(
             "[discovery] Could not mark job %s as failed — DB may be unavailable",
             job_id,
+        )
+
+
+# ── Set-detail workflow ───────────────────────────────────────────────────────
+
+def get_setlist_tracks_response(
+    set_result_id: str,
+    *,
+    repo: Optional[DiscoveryRepository] = None,
+) -> SetlistDetailResponse:
+    """
+    Read-only path: load the stored set summary and track rows without scraping.
+
+    Used by GET /api/discovery/setlists/{set_result_id}/tracks.
+
+    Raises
+    ------
+    SetResultNotFoundError
+        When set_result_id is not present in artist_set_results.
+    """
+    if repo is None:
+        repo = _make_repo()
+
+    summary = repo.get_set_result_full(set_result_id)
+    if summary is None:
+        raise SetResultNotFoundError(
+            f"Set result '{set_result_id}' not found in the DropDex catalog"
+        )
+
+    tracks = repo.get_set_tracks(set_result_id)
+    return SetlistDetailResponse(setlist=summary, tracks=tracks)
+
+
+async def run_setlist_detail_scrape(
+    set_result_id: str,
+    *,
+    refresh: bool = False,
+    repo: Optional[DiscoveryRepository] = None,
+) -> SetlistDetailResponse:
+    """
+    Scrape, parse and persist individual track rows for a saved setlist result.
+
+    Why this is a direct (synchronous-to-the-caller) endpoint rather than a
+    background job:
+    - A detail scrape targets ONE page, completing in ~5–15 seconds.
+    - Artist-search scrapes use background + polling because they can span 50+
+      pages and run for minutes.  That overhead is wrong here.
+    - The frontend can await this POST directly and immediately render tracks.
+
+    Parameters
+    ----------
+    set_result_id:
+        UUID of an existing public.artist_set_results row.
+    refresh:
+        When False (default): return stored tracks if they exist; only scrape
+        when no tracks have been saved for this set yet.
+        When True: always re-scrape and replace stale rows.
+    repo:
+        DiscoveryRepository instance.  Inject a mock in tests.
+
+    Returns
+    -------
+    SetlistDetailResponse with set metadata and ordered tracks.
+
+    Raises
+    ------
+    SetResultNotFoundError
+        When set_result_id is not in artist_set_results.
+    InvalidSetlistUrlError
+        When the stored source_url fails the safe-URL validation check.
+    DetailScrapeError
+        When scraping or persistence fails (detail_scrape_status set to 'failed').
+    """
+    if repo is None:
+        repo = _make_repo()
+
+    # ── 1. Load the set result ────────────────────────────────────────────────
+    summary = repo.get_set_result_full(set_result_id)
+    if summary is None:
+        raise SetResultNotFoundError(
+            f"Set result '{set_result_id}' not found in the DropDex catalog"
+        )
+
+    # ── 2. Return cached tracks when refresh is not requested ─────────────────
+    existing_tracks = repo.get_set_tracks(set_result_id)
+    if existing_tracks and not refresh:
+        log.info(
+            "[detail] set=%s has %d cached tracks; returning without scraping",
+            set_result_id,
+            len(existing_tracks),
+        )
+        return SetlistDetailResponse(setlist=summary, tracks=existing_tracks)
+
+    # ── 3. Validate stored source URL before handing it to Playwright ─────────
+    try:
+        validate_setlist_url(summary.source_url)
+    except ValueError as exc:
+        log.error(
+            "[detail] set=%s stored source_url failed validation: %s",
+            set_result_id,
+            exc,
+        )
+        raise InvalidSetlistUrlError(str(exc)) from exc
+
+    # ── 4. Mark running ───────────────────────────────────────────────────────
+    repo.set_detail_running(set_result_id)
+
+    # ── 5. Scrape the detail page ─────────────────────────────────────────────
+    try:
+        detail = await scrape_setlist_detail(summary.source_url)
+    except Exception as exc:
+        log.exception(
+            "[detail] set=%s scrape failed at %s: %s",
+            set_result_id,
+            summary.source_url,
+            exc,
+        )
+        _safe_set_detail_failed(
+            repo,
+            set_result_id,
+            "Set detail scrape failed. Please try again.",
+        )
+        raise DetailScrapeError(
+            f"Detail scrape for set {set_result_id} failed: {type(exc).__name__}"
+        ) from exc
+
+    # ── 6. Persist tracks ─────────────────────────────────────────────────────
+    try:
+        if refresh:
+            keep_ids = {t.source_position_id for t in detail.tracks}
+            repo.delete_stale_set_tracks(set_result_id, keep_ids)
+
+        repo.upsert_set_tracks(set_result_id, detail.tracks)
+        repo.set_detail_completed(
+            set_result_id,
+            parsed_track_count=len(detail.tracks),
+            has_timed_cues=detail.has_timed_cues,
+            source_numeric_tracklist_id=detail.source_numeric_tracklist_id,
+            raw_detail_metadata_json=detail.raw_metadata_json,
+        )
+        log.info(
+            "[detail] set=%s completed — tracks=%d timed_cues=%s",
+            set_result_id,
+            len(detail.tracks),
+            detail.has_timed_cues,
+        )
+    except Exception as exc:
+        log.exception(
+            "[detail] set=%s persistence failed: %s",
+            set_result_id,
+            exc,
+        )
+        _safe_set_detail_failed(
+            repo,
+            set_result_id,
+            "Failed to save set tracks. Please try again.",
+        )
+        raise DetailScrapeError(
+            f"Track persistence for set {set_result_id} failed: {type(exc).__name__}"
+        ) from exc
+
+    # ── 7. Build and return the fresh response ────────────────────────────────
+    fresh_summary = repo.get_set_result_full(set_result_id)
+    saved_tracks = repo.get_set_tracks(set_result_id)
+    return SetlistDetailResponse(
+        setlist=fresh_summary or summary,
+        tracks=saved_tracks,
+    )
+
+
+def _safe_set_detail_failed(
+    repo: DiscoveryRepository,
+    set_result_id: str,
+    message: str,
+) -> None:
+    """Mark the detail scrape failed; suppress secondary DB errors."""
+    try:
+        repo.set_detail_failed(set_result_id, message)
+    except Exception:
+        log.exception(
+            "[detail] Could not mark set %s detail as failed — DB may be unavailable",
+            set_result_id,
         )

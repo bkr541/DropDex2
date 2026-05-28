@@ -121,6 +121,51 @@ class SetlistsPage(BaseModel):
     results: list[SavedSetlistResult]
 
 
+# ── Set-detail models ─────────────────────────────────────────────────────────
+
+class SetTrackRecord(BaseModel):
+    """One saved track row from public.artist_set_tracks."""
+    id: str
+    set_result_id: str
+    source: str
+    source_position_id: str
+    source_track_id: Optional[str] = None
+    sequence_index: int
+    track_number: Optional[int] = None
+    played_with_previous: bool
+    cue_seconds: Optional[int] = None
+    cue_text: Optional[str] = None
+    title: Optional[str] = None
+    artist_text: Optional[str] = None
+    label_text: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    duration_text: Optional[str] = None
+    source_track_url: Optional[str] = None
+    artwork_url: Optional[str] = None
+
+
+class SetlistDetailSummary(BaseModel):
+    """Set-level metadata returned alongside individual tracks."""
+    id: str
+    title: str
+    source_url: str
+    set_date: Optional[str] = None
+    artwork_url: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    track_count: Optional[int] = None          # total_tracks from the search scrape
+    parsed_track_count: Optional[int] = None   # track rows saved after detail scrape
+    detail_scrape_status: str
+    detail_scraped_at: Optional[str] = None
+    detail_scrape_error: Optional[str] = None
+    has_timed_cues: Optional[bool] = None
+
+
+class SetlistDetailResponse(BaseModel):
+    """Response body for both the GET and POST detail-scrape endpoints."""
+    setlist: SetlistDetailSummary
+    tracks: list[SetTrackRecord]
+
+
 # ── Typed exceptions ──────────────────────────────────────────────────────────
 
 class ArtistNotFoundError(ValueError):
@@ -129,3 +174,15 @@ class ArtistNotFoundError(ValueError):
 
 class DiscoveryJobError(RuntimeError):
     """Raised when a scrape job fails after creation (job is marked failed in DB)."""
+
+
+class SetResultNotFoundError(ValueError):
+    """Raised when a requested set_result_id is absent from artist_set_results."""
+
+
+class InvalidSetlistUrlError(ValueError):
+    """Raised when the stored source_url fails the safe-URL validation check."""
+
+
+class DetailScrapeError(RuntimeError):
+    """Raised when a detail-page scrape or persistence step fails."""

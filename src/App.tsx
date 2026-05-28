@@ -401,7 +401,7 @@ export default function App() {
 
         {/* View subheader */}
         {currentView !== 'home' && (
-          <div className="px-6 py-4 bg-[var(--color-panel)] border-b border-[var(--color-border-subtle)] shrink-0">
+          <div className="px-6 py-4 shrink-0">
             {currentView === 'playlist' && (
               <div>
                 <div className="flex items-center gap-2 mb-1">

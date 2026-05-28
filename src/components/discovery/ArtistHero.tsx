@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { User, RefreshCw, Loader2, Activity, Search } from 'lucide-react';
+import { MusicNote01Icon } from 'hugeicons-react';
 import { cn } from '../../lib/utils';
 import type { DiscoveryArtist, DiscoverySetlistResult, DiscoveryScrapeJob } from '../../types';
 
@@ -50,6 +51,46 @@ export function ArtistHero({
       {/* Background tint */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
 
+      {/* Refresh / Find button — top right */}
+      <div className="absolute top-4 right-4 sm:top-5 sm:right-5 z-10">
+        <button
+          onClick={isJobActive ? onViewProgress : onRefresh}
+          disabled={scrapeStarting}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 shadow-sm',
+            scrapeStarting
+              ? 'bg-[var(--color-surface)] text-muted-foreground cursor-not-allowed'
+              : isJobActive
+              ? 'bg-secondary/10 text-secondary border border-secondary/25 hover:bg-secondary/20'
+              : hasSetlists
+              ? 'bg-[var(--color-surface)] text-foreground border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)]'
+              : 'bg-primary text-white hover:bg-primary/90',
+          )}
+        >
+          {scrapeStarting ? (
+            <>
+              <Loader2 size={11} className="animate-spin" />
+              Starting…
+            </>
+          ) : isJobActive ? (
+            <>
+              <Activity size={11} className="animate-pulse" />
+              View Progress
+            </>
+          ) : hasSetlists ? (
+            <>
+              <RefreshCw size={11} />
+              Refresh Results
+            </>
+          ) : (
+            <>
+              <Search size={11} />
+              Find Setlists
+            </>
+          )}
+        </button>
+      </div>
+
       <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-6">
         {/* Artist image */}
         <div className="shrink-0">
@@ -71,9 +112,9 @@ export function ArtistHero({
           )}
         </div>
 
-        {/* Info + actions */}
-        <div className="flex-1 min-w-0 text-center sm:text-left">
-          <p className="text-[8px] uppercase tracking-[0.25em] text-muted-foreground mb-1.5">Artist</p>
+        {/* Info */}
+        <div className="flex-1 min-w-0 text-center sm:text-left pr-24 sm:pr-28">
+          <p className="text-[8px] uppercase tracking-[0.25em] text-muted-foreground mb-0.5">Artist</p>
           <h1 className="text-3xl md:text-4xl font-black leading-tight">{artist.name}</h1>
 
           {topStyles.length > 0 && (
@@ -81,52 +122,14 @@ export function ArtistHero({
               {topStyles.map((style) => (
                 <span
                   key={style}
-                  className="px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest bg-primary/10 text-primary border border-primary/15"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest bg-primary/10 text-primary border border-primary/15"
                 >
+                  <MusicNote01Icon size={9} className="shrink-0" />
                   {style}
                 </span>
               ))}
             </div>
           )}
-
-          <div className="mt-5 flex flex-wrap gap-2 justify-center sm:justify-start">
-            <button
-              onClick={isJobActive ? onViewProgress : onRefresh}
-              disabled={scrapeStarting}
-              className={cn(
-                'flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95 shadow-sm',
-                scrapeStarting
-                  ? 'bg-[var(--color-surface)] text-muted-foreground cursor-not-allowed'
-                  : isJobActive
-                  ? 'bg-secondary/10 text-secondary border border-secondary/25 hover:bg-secondary/20'
-                  : hasSetlists
-                  ? 'bg-[var(--color-surface)] text-foreground border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)]'
-                  : 'bg-primary text-white hover:bg-primary/90',
-              )}
-            >
-              {scrapeStarting ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  Starting…
-                </>
-              ) : isJobActive ? (
-                <>
-                  <Activity size={14} className="animate-pulse" />
-                  View Progress
-                </>
-              ) : hasSetlists ? (
-                <>
-                  <RefreshCw size={14} />
-                  Refresh Results
-                </>
-              ) : (
-                <>
-                  <Search size={14} />
-                  Find Setlists
-                </>
-              )}
-            </button>
-          </div>
         </div>
       </div>
     </div>

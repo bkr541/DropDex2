@@ -26,12 +26,15 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
+from urllib.parse import urlparse
 
 from playwright.async_api import Page, TimeoutError as PWTimeoutError, async_playwright
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.config import settings
 from app.discovery.scrapers.tracklists1001 import selectors as S
+from app.discovery.scrapers.tracklists1001.detail_parser import ParsedTracklistDetail, parse_tracklist_detail
+from app.discovery.scrapers.tracklists1001.detail_selectors import TRACK_ROW as _DETAIL_TRACK_ROW
 from app.discovery.scrapers.tracklists1001.models import ArtistSetlistScrapeResult, PageScrapeAudit
 from app.discovery.scrapers.tracklists1001.parser import ParsedSetlistResult, parse_result_page
 
@@ -251,3 +254,104 @@ async def _paginate_results(
         current_page = next_raw
 
     return all_results, reported_total, audits
+
+
+# ── Setlist detail scraper ────────────────────────────────────────────────────
+
+_ALLOWED_HOST   = "www.1001tracklists.com"
+_REQUIRED_SCHEME = "https"
+_REQUIRED_PATH_PREFIX = "/tracklist/"
+
+
+def validate_setlist_url(url: str) -> None:
+    """
+    Confirm the URL is a safe 1001Tracklists setlist page before navigating.
+
+    Raises ValueError with a descriptive reason string on any violation so the
+    caller can surface a clean 400 response without leaking internal detail.
+
+    Accepted form:
+      https://www.1001tracklists.com/tracklist/<slug>/<name>.html
+    """
+    try:
+        parts = urlparse(url)
+    except Exception as exc:
+        raise ValueError(f"Unparseable URL: {exc}") from exc
+
+    if parts.scheme != _REQUIRED_SCHEME:
+        raise ValueError(
+            f"Setlist URL must use HTTPS (got scheme '{parts.scheme}')"
+        )
+    if parts.netloc != _ALLOWED_HOST:
+        raise ValueError(
+            f"Setlist URL must point to {_ALLOWED_HOST} (got '{parts.netloc}')"
+        )
+    if not parts.path.startswith(_REQUIRED_PATH_PREFIX):
+        raise ValueError(
+            f"Setlist URL path must start with '{_REQUIRED_PATH_PREFIX}' "
+            f"(got '{parts.path}')"
+        )
+
+
+async def scrape_setlist_detail(source_url: str) -> ParsedTracklistDetail:
+    """
+    Navigate to a single 1001Tracklists setlist detail page with Playwright,
+    wait for the track rows to render, extract the full HTML and parse it.
+
+    Parameters
+    ----------
+    source_url:
+        The stored ``artist_set_results.source_url`` value.  Must already have
+        passed ``validate_setlist_url``; callers should validate before calling
+        this function.
+
+    Returns
+    -------
+    ParsedTracklistDetail from the detail parser.
+
+    Raises
+    ------
+    ValueError
+        When the URL fails validation (callers should treat this as a 400).
+    PWTimeoutError
+        When the page fails to load or track rows never appear within the
+        configured timeout.
+    """
+    validate_setlist_url(source_url)
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=settings.tracklists_scraper_headless)
+        context = await browser.new_context()
+        page = await context.new_page()
+        page.set_default_timeout(settings.tracklists_scraper_navigation_timeout_ms)
+        try:
+            log.info("[1001tl-detail] Navigating to %s", source_url)
+            await page.goto(source_url, wait_until="domcontentloaded")
+            await page.wait_for_load_state("networkidle")
+
+            # Wait for at least one track row to appear.  If none appear within
+            # the timeout, the page may be private, removed, or structure-changed.
+            try:
+                await page.wait_for_selector(
+                    _DETAIL_TRACK_ROW,
+                    timeout=settings.tracklists_scraper_navigation_timeout_ms,
+                )
+            except PWTimeoutError:
+                log.warning(
+                    "[1001tl-detail] No track rows found at %s within timeout; "
+                    "parsing anyway (may return empty list)",
+                    source_url,
+                )
+
+            html = await page.content()
+        finally:
+            await browser.close()
+
+    detail = parse_tracklist_detail(html)
+    log.info(
+        "[1001tl-detail] Parsed %d tracks from %s (timed_cues=%s)",
+        len(detail.tracks),
+        source_url,
+        detail.has_timed_cues,
+    )
+    return detail

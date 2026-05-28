@@ -25,10 +25,13 @@ from app.discovery.models import (
     SavedSetlistResult,
     ScrapeJobResponse,
     ScrapeJobSummary,
+    SetlistDetailSummary,
+    SetTrackRecord,
     JobStatus,
 )
 from app.discovery.scrapers.tracklists1001.models import PageScrapeAudit
 from app.discovery.scrapers.tracklists1001.parser import ParsedSetlistResult
+from app.discovery.scrapers.tracklists1001.detail_parser import ParsedTrackPosition
 
 log = logging.getLogger(__name__)
 
@@ -538,3 +541,185 @@ class DiscoveryRepository:
                 updated_at=row.get("updated_at"),
             ))
         return results
+
+    # ── Set-detail reads ──────────────────────────────────────────────────────
+
+    def get_set_result_full(self, set_result_id: str) -> Optional[SetlistDetailSummary]:
+        """
+        Fetch one artist_set_results row including the detail-scrape columns
+        added in migration 070000.  Returns None when the ID is unknown.
+        """
+        resp = (
+            self._client.table("artist_set_results")
+            .select(
+                "id, title, source_url, set_date, artwork_url, duration_seconds, "
+                "total_tracks, detail_scrape_status, detail_scraped_at, "
+                "detail_scrape_error, has_timed_cues, parsed_track_count"
+            )
+            .eq("id", set_result_id)
+            .execute()
+        )
+        if not resp.data:
+            return None
+        row = resp.data[0]
+        return SetlistDetailSummary(
+            id=str(row["id"]),
+            title=row["title"],
+            source_url=row["source_url"],
+            set_date=row.get("set_date"),
+            artwork_url=row.get("artwork_url"),
+            duration_seconds=row.get("duration_seconds"),
+            track_count=row.get("total_tracks"),
+            parsed_track_count=row.get("parsed_track_count"),
+            detail_scrape_status=row.get("detail_scrape_status") or "not_scraped",
+            detail_scraped_at=row.get("detail_scraped_at"),
+            detail_scrape_error=row.get("detail_scrape_error"),
+            has_timed_cues=row.get("has_timed_cues"),
+        )
+
+    def get_set_tracks(self, set_result_id: str) -> list[SetTrackRecord]:
+        """
+        Return all saved tracks for a set, ordered by sequence_index ascending.
+        Returns an empty list when no tracks have been saved yet.
+        """
+        resp = (
+            self._client.table("artist_set_tracks")
+            .select(
+                "id, set_result_id, source, source_position_id, source_track_id, "
+                "sequence_index, track_number, played_with_previous, "
+                "cue_seconds, cue_text, title, artist_text, label_text, "
+                "duration_seconds, duration_text, source_track_url, artwork_url"
+            )
+            .eq("set_result_id", set_result_id)
+            .order("sequence_index", desc=False)
+            .execute()
+        )
+        return [
+            SetTrackRecord(
+                id=str(row["id"]),
+                set_result_id=str(row["set_result_id"]),
+                source=row["source"],
+                source_position_id=row["source_position_id"],
+                source_track_id=row.get("source_track_id"),
+                sequence_index=row["sequence_index"],
+                track_number=row.get("track_number"),
+                played_with_previous=bool(row.get("played_with_previous", False)),
+                cue_seconds=row.get("cue_seconds"),
+                cue_text=row.get("cue_text"),
+                title=row.get("title"),
+                artist_text=row.get("artist_text"),
+                label_text=row.get("label_text"),
+                duration_seconds=row.get("duration_seconds"),
+                duration_text=row.get("duration_text"),
+                source_track_url=row.get("source_track_url"),
+                artwork_url=row.get("artwork_url"),
+            )
+            for row in resp.data
+        ]
+
+    # ── Set-detail status transitions ─────────────────────────────────────────
+
+    def set_detail_running(self, set_result_id: str) -> None:
+        """Mark the set result's detail scrape as in-progress."""
+        self._client.table("artist_set_results").update(
+            {"detail_scrape_status": "running", "detail_scrape_error": None}
+        ).eq("id", set_result_id).execute()
+
+    def set_detail_completed(
+        self,
+        set_result_id: str,
+        *,
+        parsed_track_count: int,
+        has_timed_cues: bool,
+        source_numeric_tracklist_id: Optional[str],
+        raw_detail_metadata_json: Optional[dict],
+    ) -> None:
+        """Mark the set result's detail scrape as completed and store metadata."""
+        self._client.table("artist_set_results").update(
+            {
+                "detail_scrape_status": "completed",
+                "detail_scraped_at": _now_iso(),
+                "detail_scrape_error": None,
+                "parsed_track_count": parsed_track_count,
+                "has_timed_cues": has_timed_cues,
+                "source_numeric_tracklist_id": source_numeric_tracklist_id,
+                "raw_detail_metadata_json": raw_detail_metadata_json,
+            }
+        ).eq("id", set_result_id).execute()
+
+    def set_detail_failed(self, set_result_id: str, error_message: str) -> None:
+        """Mark the set result's detail scrape as failed with a sanitised message."""
+        self._client.table("artist_set_results").update(
+            {
+                "detail_scrape_status": "failed",
+                "detail_scrape_error": error_message,
+            }
+        ).eq("id", set_result_id).execute()
+
+    # ── Set-track persistence ─────────────────────────────────────────────────
+
+    def upsert_set_tracks(
+        self,
+        set_result_id: str,
+        tracks: list[ParsedTrackPosition],
+    ) -> None:
+        """
+        Insert or update track rows in artist_set_tracks.
+
+        The unique constraint (set_result_id, source_position_id) is the conflict
+        target so the same set can be re-scraped without creating duplicates.
+        All fields are overwritten on conflict so that corrected metadata is
+        always stored.
+
+        Batches all rows in a single round-trip to PostgREST.
+        """
+        if not tracks:
+            return
+        rows = [
+            {
+                "set_result_id": set_result_id,
+                "source": _SOURCE,
+                "source_position_id": t.source_position_id,
+                "source_track_id": t.source_track_id,
+                "sequence_index": t.sequence_index,
+                "track_number": t.track_number,
+                "played_with_previous": t.played_with_previous,
+                "cue_seconds": t.cue_seconds,
+                "cue_text": t.cue_text,
+                "title": t.title,
+                "artist_text": t.artist_text,
+                "label_text": t.label_text,
+                "duration_seconds": t.duration_seconds,
+                "duration_text": t.duration_text,
+                "source_track_url": t.source_track_url,
+                "artwork_url": t.artwork_url,
+                "raw_track_json": t.raw_track_json,
+            }
+            for t in tracks
+        ]
+        self._client.table("artist_set_tracks").upsert(
+            rows,
+            on_conflict="set_result_id,source_position_id",
+        ).execute()
+
+    def delete_stale_set_tracks(
+        self,
+        set_result_id: str,
+        keep_position_ids: set[str],
+    ) -> None:
+        """
+        Remove track rows for a set whose source_position_id is not in the
+        latest parsed result.  Called on refresh to clean up positions that
+        were removed or renumbered by the source site.
+
+        When keep_position_ids is empty (parser returned nothing) all existing
+        rows are deleted — this matches a real page with zero tracks.
+        """
+        query = (
+            self._client.table("artist_set_tracks")
+            .delete()
+            .eq("set_result_id", set_result_id)
+        )
+        if keep_position_ids:
+            query = query.not_.in_("source_position_id", list(keep_position_ids))
+        query.execute()

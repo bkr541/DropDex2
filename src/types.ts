@@ -139,3 +139,45 @@ export interface SearchArtist {
   source_artist_url: string | null;
   genres: string[];
 }
+
+// ── Set-detail (individual track rows) types ──────────────────────────────────
+
+export interface DiscoverySetTrack {
+  id: string;
+  set_result_id: string;
+  source: string;
+  source_position_id: string;
+  source_track_id: string | null;
+  sequence_index: number;
+  track_number: number | null;
+  played_with_previous: boolean;
+  cue_seconds: number | null;
+  cue_text: string | null;
+  title: string | null;
+  artist_text: string | null;
+  label_text: string | null;
+  duration_seconds: number | null;
+  duration_text: string | null;
+  source_track_url: string | null;
+  artwork_url: string | null;
+}
+
+export interface DiscoverySetlistDetailSummary {
+  id: string;
+  title: string;
+  source_url: string;
+  set_date: string | null;
+  artwork_url: string | null;
+  duration_seconds: number | null;
+  track_count: number | null;
+  parsed_track_count: number | null;
+  detail_scrape_status: 'not_scraped' | 'queued' | 'running' | 'completed' | 'failed';
+  detail_scraped_at: string | null;
+  detail_scrape_error: string | null;
+  has_timed_cues: boolean | null;
+}
+
+export interface DiscoverySetTracklistDetail {
+  setlist: DiscoverySetlistDetailSummary;
+  tracks: DiscoverySetTrack[];
+}

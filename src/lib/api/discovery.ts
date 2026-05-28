@@ -2,6 +2,7 @@ import type {
   DiscoveryArtist,
   DiscoveryScrapeJob,
   DiscoverySetlistsPage,
+  DiscoverySetTracklistDetail,
   ScrapeStartResponse,
 } from '../../types';
 
@@ -63,4 +64,33 @@ export async function fetchArtistSetlists(
   );
   if (!response.ok) throw new Error(await parseError(response));
   return response.json() as Promise<DiscoverySetlistsPage>;
+}
+
+export async function fetchSetlistTracks(
+  setResultId: string,
+  accessToken: string,
+): Promise<DiscoverySetTracklistDetail> {
+  const response = await fetch(
+    `${API_BASE}/api/discovery/setlists/${encodeURIComponent(setResultId)}/tracks`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!response.ok) throw new Error(await parseError(response));
+  return response.json() as Promise<DiscoverySetTracklistDetail>;
+}
+
+export async function scrapeSetlistTracks(
+  setResultId: string,
+  accessToken: string,
+  refresh = false,
+): Promise<DiscoverySetTracklistDetail> {
+  const params = refresh ? '?refresh=true' : '';
+  const response = await fetch(
+    `${API_BASE}/api/discovery/setlists/${encodeURIComponent(setResultId)}/tracks/scrape${params}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  if (!response.ok) throw new Error(await parseError(response));
+  return response.json() as Promise<DiscoverySetTracklistDetail>;
 }

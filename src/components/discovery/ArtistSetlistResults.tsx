@@ -7,8 +7,7 @@ interface ArtistSetlistResultsProps {
   total: number;
   loading: boolean;
   error: string | null;
-  selectedSetlist: DiscoverySetlistResult | null;
-  onSelectSetlist: (setlist: DiscoverySetlistResult) => void;
+  onOpenSetlist: (setlist: DiscoverySetlistResult) => void;
 }
 
 export function ArtistSetlistResults({
@@ -16,8 +15,7 @@ export function ArtistSetlistResults({
   total,
   loading,
   error,
-  selectedSetlist,
-  onSelectSetlist,
+  onOpenSetlist,
 }: ArtistSetlistResultsProps) {
   if (loading) {
     return (
@@ -64,8 +62,7 @@ export function ArtistSetlistResults({
           <ArtistSetlistCard
             key={setlist.id}
             setlist={setlist}
-            isSelected={selectedSetlist?.id === setlist.id}
-            onSelect={onSelectSetlist}
+            onOpen={onOpenSetlist}
           />
         ))}
       </div>

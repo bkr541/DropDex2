@@ -7,15 +7,14 @@ import {
   Eye,
   Heart,
   ExternalLink,
-  CheckCircle2,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { DiscoverySetlistResult } from '../../types';
 
 interface ArtistSetlistCardProps {
   setlist: DiscoverySetlistResult;
-  isSelected: boolean;
-  onSelect: (setlist: DiscoverySetlistResult) => void;
+  onOpen: (setlist: DiscoverySetlistResult) => void;
 }
 
 function ArtworkImage({ url, title }: { url: string; title: string }) {
@@ -37,7 +36,7 @@ function ArtworkImage({ url, title }: { url: string; title: string }) {
   );
 }
 
-export function ArtistSetlistCard({ setlist, isSelected, onSelect }: ArtistSetlistCardProps) {
+export function ArtistSetlistCard({ setlist, onOpen }: ArtistSetlistCardProps) {
   const title = setlist.title ?? 'Untitled Set';
   const completionPct = setlist.completion_pct != null ? Math.round(setlist.completion_pct) : null;
 
@@ -45,11 +44,12 @@ export function ArtistSetlistCard({ setlist, isSelected, onSelect }: ArtistSetli
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={() => onOpen(setlist)}
       className={cn(
-        'flex flex-col rounded-2xl overflow-hidden border transition-all shadow-sm',
-        isSelected
-          ? 'border-primary/50 shadow-[0_4px_24px_rgba(207,107,101,0.18)] bg-[var(--color-surface-hover)]'
-          : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:shadow-md hover:border-primary/20 hover:bg-[var(--color-surface-hover)]',
+        'flex flex-col rounded-2xl overflow-hidden border transition-all shadow-sm cursor-pointer',
+        'border-[var(--color-border-subtle)] bg-[var(--color-surface)]',
+        'hover:shadow-md hover:border-primary/30 hover:bg-[var(--color-surface-hover)]',
       )}
     >
       {/* Artwork */}
@@ -59,13 +59,6 @@ export function ArtistSetlistCard({ setlist, isSelected, onSelect }: ArtistSetli
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Music2 size={36} className="text-primary/20" />
-          </div>
-        )}
-
-        {/* Selected badge */}
-        {isSelected && (
-          <div className="absolute top-2.5 right-2.5 bg-primary rounded-full p-0.5 shadow">
-            <CheckCircle2 size={16} className="text-white" />
           </div>
         )}
 
@@ -163,21 +156,21 @@ export function ArtistSetlistCard({ setlist, isSelected, onSelect }: ArtistSetli
         {/* Footer actions */}
         <div className="flex items-center gap-2 mt-auto pt-2">
           <button
-            onClick={() => onSelect(setlist)}
-            className={cn(
-              'flex-1 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95',
-              isSelected
-                ? 'bg-primary text-white'
-                : 'bg-primary/10 text-primary hover:bg-primary/20',
-            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen(setlist);
+            }}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95 bg-primary/10 text-primary hover:bg-primary/20"
           >
-            {isSelected ? 'Selected' : 'Select Set'}
+            View Tracks
+            <ChevronRight size={12} />
           </button>
           {setlist.source_url && (
             <a
               href={setlist.source_url}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
               className="p-2 rounded-xl bg-[var(--color-avatar-bg)] text-muted-foreground hover:text-foreground transition-colors"
               title="View on 1001Tracklists"
             >
