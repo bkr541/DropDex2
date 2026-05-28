@@ -65,7 +65,7 @@ export function PlaylistOverviewCard({
         className="text-left w-full rounded-2xl overflow-hidden border border-[var(--color-border-subtle)] hover:border-primary/25 hover:shadow-md transition-all bg-[var(--color-surface)]"
       >
         {/* Artwork or polished fallback */}
-        <div className="relative aspect-square overflow-hidden">
+        <div className="relative aspect-video overflow-hidden">
           {artworkUrl && !imgError ? (
             <img
               src={artworkUrl}

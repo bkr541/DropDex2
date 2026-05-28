@@ -6,7 +6,13 @@ import { LibraryHero } from './LibraryHero';
 import { PlaylistOverviewCard } from './PlaylistOverviewCard';
 import { RecentlyAddedTracksTable } from './RecentlyAddedTracksTable';
 import { LibrarySearchResults } from './LibrarySearchResults';
-import type { RekordboxImport, RekordboxTrack, UserPlaylistProfile } from '../../types';
+import type {
+  RekordboxImport,
+  RekordboxTrack,
+  UserPlaylistProfile,
+  UserProfile,
+  UserGenrePreference,
+} from '../../types';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 
 interface LibraryViewProps {
@@ -19,10 +25,13 @@ interface LibraryViewProps {
   recentTracks: RekordboxTrack[];
   recentTracksLoading: boolean;
   importId: string | null;
+  profile: UserProfile | null;
+  genres: UserGenrePreference[];
   onPlaylistClick: (p: PlaylistWithCount) => void;
   onEditPlaylist: (p: PlaylistWithCount) => void;
   onTrackClick: (t: RekordboxTrack) => void;
   onImport: () => void;
+  onEditProfile: () => void;
 }
 
 function EmptyLibrary({ onImport }: { onImport: () => void }) {
@@ -60,10 +69,13 @@ export function LibraryView({
   recentTracks,
   recentTracksLoading,
   importId,
+  profile,
+  genres,
   onPlaylistClick,
   onEditPlaylist,
   onTrackClick,
   onImport,
+  onEditProfile,
 }: LibraryViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const { results: searchResults, loading: searchLoading } = useRekordboxSearch(
@@ -75,10 +87,10 @@ export function LibraryView({
 
   return (
     <div className="space-y-6 md:max-w-7xl md:mx-auto">
-      {/* Search input — always visible */}
-      <div className="relative">
+      {/* Search input — material underline style */}
+      <div className="lib-search-wrapper">
         <Search
-          className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none z-10"
           size={16}
         />
         <input
@@ -86,7 +98,7 @@ export function LibraryView({
           placeholder="Search tracks, artists, genres…"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-2xl py-3.5 pl-11 pr-4 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-sm font-medium text-foreground placeholder:text-muted-foreground"
+          className="lib-search-input"
         />
       </div>
 
@@ -139,7 +151,13 @@ export function LibraryView({
             {/* Library */}
             {!importLoading && !importError && latestImport && (
               <>
-                <LibraryHero latestImport={latestImport} onImport={onImport} />
+                <LibraryHero
+                  latestImport={latestImport}
+                  profile={profile}
+                  genres={genres}
+                  onImport={onImport}
+                  onEditProfile={onEditProfile}
+                />
 
                 {/* Playlists */}
                 <section className="space-y-3">
@@ -163,13 +181,13 @@ export function LibraryView({
                   ) : (
                     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
                       {playlists.map((playlist) => {
-                        const profile = playlistProfilesByRbId.get(playlist.rekordbox_playlist_id);
+                        const prof = playlistProfilesByRbId.get(playlist.rekordbox_playlist_id);
                         return (
                           <PlaylistOverviewCard
                             key={playlist.id}
                             playlist={playlist}
-                            artworkUrl={profile?.artwork_url}
-                            displayName={profile?.display_name}
+                            artworkUrl={prof?.artwork_url}
+                            displayName={prof?.display_name}
                             onClick={() => onPlaylistClick(playlist)}
                             onEdit={() => onEditPlaylist(playlist)}
                           />

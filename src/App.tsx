@@ -28,6 +28,8 @@ import { useAuthSession } from './hooks/useAuthSession';
 import { useLatestRekordboxImport } from './hooks/useLatestRekordboxImport';
 import { useRekordboxPlaylists } from './hooks/useRekordboxPlaylists';
 import { useUserPlaylistProfiles } from './hooks/useUserPlaylistProfiles';
+import { useUserProfile } from './hooks/useUserProfile';
+import { useUserPreferences } from './hooks/useUserPreferences';
 import { useRekordboxPlaylistTracks } from './hooks/useRekordboxPlaylistTracks';
 import { useRecentTracks } from './hooks/useRekordboxTracks';
 import { useTrackPlaylists } from './hooks/useTrackPlaylists';
@@ -40,12 +42,13 @@ import { LibraryView } from './components/library/LibraryView';
 import { PlaylistEditView } from './components/library/PlaylistEditView';
 import { TrackDetailView } from './components/library/TrackDetailView';
 import { WaveformDisplay } from './components/library/WaveformDisplay';
+import { EditProfileView } from './components/profile/EditProfileView';
 import { buildPlaylistIdentityKey } from './lib/queries/userPlaylists';
 import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 
 type Theme = 'dark' | 'light';
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search' | 'edit-profile';
 
 // --- Components ---
 
@@ -148,7 +151,9 @@ export default function App() {
   const importId = latestImport?.id ?? null;
 
   const { playlists, loading: playlistsLoading } = useRekordboxPlaylists(importId);
-  const { profiles: playlistProfiles, refetch: refetchProfiles } = useUserPlaylistProfiles(userId);
+  const { profiles: playlistProfiles, refetch: refetchProfiles, upsertLocal: upsertLocalProfile } = useUserPlaylistProfiles(userId);
+  const { profile: userProfile, refetch: refetchUserProfile } = useUserProfile(userId);
+  const { genres: userGenres, refetch: refetchUserGenres } = useUserPreferences(userId);
   const { tracks: playlistTracks, loading: playlistTracksLoading } =
     useRekordboxPlaylistTracks(selectedPlaylist?.id ?? null);
   const { tracks: recentTracks, loading: recentTracksLoading } = useRecentTracks(importId);
@@ -210,8 +215,8 @@ export default function App() {
 
   // Map rekordbox_playlist_id → profile for the current device
   const playlistProfilesByRbId = useMemo(() => {
-    const deviceName = latestImport?.device_name;
-    if (!deviceName) return new Map<string, UserPlaylistProfile>();
+    // Treat null device_name as '' — consistent with how PlaylistEditView builds the key
+    const deviceName = latestImport?.device_name ?? '';
     const prefix = `${deviceName}::`;
     const map = new Map<string, UserPlaylistProfile>();
     for (const [key, profile] of playlistProfiles) {
@@ -228,8 +233,11 @@ export default function App() {
 
   // Profile for the playlist being edited
   const existingProfileForEditing = useMemo(() => {
-    if (!editingPlaylist || !latestImport?.device_name) return null;
-    const key = buildPlaylistIdentityKey(latestImport.device_name, editingPlaylist.rekordbox_playlist_id);
+    if (!editingPlaylist) return null;
+    const key = buildPlaylistIdentityKey(
+      latestImport?.device_name ?? '',
+      editingPlaylist.rekordbox_playlist_id,
+    );
     return playlistProfiles.get(key) ?? null;
   }, [editingPlaylist, latestImport?.device_name, playlistProfiles]);
 
@@ -299,10 +307,15 @@ export default function App() {
     if (currentView === 'track') setCurrentView(previousView);
     else if (currentView === 'playlist') setCurrentView('home');
     else if (currentView === 'playlist-edit') { setCurrentView(previousView); setEditingPlaylist(null); }
+    else if (currentView === 'edit-profile') setCurrentView('home');
     else if (currentView === 'review') setCurrentView('home');
     else if (currentView === 'settings') setCurrentView('home');
     else if (currentView === 'discovery') setCurrentView('home');
     else if (currentView === 'search') setCurrentView('home');
+  };
+
+  const handleEditProfile = () => {
+    setCurrentView('edit-profile');
   };
 
   const handleEditPlaylist = (playlist: PlaylistWithCount) => {
@@ -319,8 +332,10 @@ export default function App() {
     });
   };
 
+  const libraryLabel = userProfile?.display_name ?? 'My Library';
+
   const sidebarNavItems: { view: View; icon: React.ElementType; label: string; activeColor: string; activeBg: string }[] = [
-    { view: 'home', icon: Music, label: 'Library', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
+    { view: 'home', icon: Music, label: libraryLabel, activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'review', icon: TrendingUp, label: 'Review', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
     { view: 'discovery', icon: Radio, label: 'Discover', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'search', icon: Search, label: 'Search', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
@@ -512,6 +527,17 @@ export default function App() {
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Melodic Dubstep &amp; Future Bass</p>
               </div>
             )}
+            {currentView === 'edit-profile' && (
+              <div>
+                <div className="flex items-center gap-2">
+                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                    <ChevronLeft size={20} />
+                  </button>
+                  <h2 className="text-2xl font-black italic">Edit Profile</h2>
+                </div>
+                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Your Artist Identity</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -537,10 +563,13 @@ export default function App() {
                   recentTracks={recentTracks}
                   recentTracksLoading={recentTracksLoading}
                   importId={importId}
+                  profile={userProfile}
+                  genres={userGenres}
                   onPlaylistClick={handlePlaylistClick}
                   onEditPlaylist={handleEditPlaylist}
                   onTrackClick={handleTrackClick}
                   onImport={() => setIsImportModalOpen(true)}
+                  onEditProfile={handleEditProfile}
                 />
               </motion.div>
             )}
@@ -648,7 +677,8 @@ export default function App() {
                   totalDuration={editingPlaylist.id === selectedPlaylist?.id ? totalDuration : null}
                   topKey={editingPlaylist.id === selectedPlaylist?.id ? topKey : null}
                   onImport={() => setIsImportModalOpen(true)}
-                  onSaved={(_saved) => {
+                  onSaved={(saved) => {
+                    upsertLocalProfile(saved);
                     void refetchProfiles();
                     setCurrentView(previousView);
                     setEditingPlaylist(null);
@@ -967,6 +997,27 @@ export default function App() {
               </motion.div>
             )}
 
+            {/* ── Edit Profile ── */}
+            {currentView === 'edit-profile' && userId && (
+              <motion.div
+                key="edit-profile"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                className="pt-2"
+              >
+                <EditProfileView
+                  userId={userId}
+                  existingProfile={userProfile}
+                  onPreferencesChanged={() => void refetchUserGenres()}
+                  onSaved={(_saved) => {
+                    void refetchUserProfile();
+                    void refetchUserGenres();
+                  }}
+                />
+              </motion.div>
+            )}
+
           </AnimatePresence>
         </main>
       </div>
@@ -981,7 +1032,9 @@ export default function App() {
           )}
         >
           <Music size={20} />
-          <span className="text-[8px] font-bold uppercase tracking-widest">Library</span>
+          <span className="text-[8px] font-bold uppercase tracking-widest truncate max-w-[56px]">
+            {libraryLabel}
+          </span>
         </button>
         <button
           onClick={() => setCurrentView('review')}

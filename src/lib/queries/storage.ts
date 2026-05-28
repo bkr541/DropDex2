@@ -24,7 +24,7 @@ export async function uploadAvatar(userId: string, file: File): Promise<string> 
 
   if (uploadError) throw uploadError;
 
-  const { data } = await supabase.storage.from(AVATAR_BUCKET).createSignedUrl(path, 3600);
+  const { data } = await supabase.storage.from(AVATAR_BUCKET).createSignedUrl(path, 31_536_000);
   if (!data?.signedUrl) throw new Error('Failed to generate signed URL for avatar');
   return data.signedUrl;
 }

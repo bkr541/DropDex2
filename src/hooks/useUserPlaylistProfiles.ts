@@ -26,5 +26,13 @@ export function useUserPlaylistProfiles(userId: string | null) {
     void load();
   }, [load]);
 
-  return { profiles, loading, refetch: load };
+  const upsertLocal = useCallback((profile: UserPlaylistProfile) => {
+    setProfiles((prev) => {
+      const next = new Map(prev);
+      next.set(profile.playlist_identity_key, profile);
+      return next;
+    });
+  }, []);
+
+  return { profiles, loading, refetch: load, upsertLocal };
 }

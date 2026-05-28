@@ -36,6 +36,28 @@ export async function deleteUserArtist(userId: string, artistId: string): Promis
   if (error) throw error;
 }
 
+export async function searchGenres(query: string): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await supabase
+    .from('genres')
+    .select('id, name')
+    .ilike('name', `%${query}%`)
+    .order('name')
+    .limit(8);
+  if (error) throw error;
+  return (data ?? []).map((g) => ({ id: String(g.id), name: String(g.name) }));
+}
+
+export async function searchArtistsByName(query: string): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await supabase
+    .from('artists')
+    .select('id, name')
+    .ilike('name', `%${query}%`)
+    .order('name')
+    .limit(8);
+  if (error) throw error;
+  return (data ?? []).map((a) => ({ id: String(a.id), name: String(a.name) }));
+}
+
 // ── Genre preferences (max 5) ─────────────────────────────────────────────────
 
 export async function fetchUserGenres(userId: string): Promise<UserGenrePreference[]> {
