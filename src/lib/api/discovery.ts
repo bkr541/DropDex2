@@ -1,5 +1,6 @@
 import type {
   DiscoveryArtist,
+  DiscoveryArtistDetail,
   DiscoveryScrapeJob,
   DiscoverySetlistsPage,
   DiscoverySetTracklistDetail,
@@ -23,6 +24,18 @@ export async function searchDiscoveryArtists(
   );
   if (!response.ok) throw new Error(await parseError(response));
   return response.json() as Promise<DiscoveryArtist[]>;
+}
+
+export async function fetchArtistDetail(
+  artistId: string,
+  accessToken: string,
+): Promise<DiscoveryArtistDetail> {
+  const response = await fetch(
+    `${API_BASE}/api/discovery/artists/${encodeURIComponent(artistId)}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!response.ok) throw new Error(await parseError(response));
+  return response.json() as Promise<DiscoveryArtistDetail>;
 }
 
 export async function startArtistSetlistScrape(

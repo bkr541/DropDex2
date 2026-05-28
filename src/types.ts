@@ -181,3 +181,96 @@ export interface DiscoverySetTracklistDetail {
   setlist: DiscoverySetlistDetailSummary;
   tracks: DiscoverySetTrack[];
 }
+
+export interface DiscoveryArtistGenre {
+  id: string;
+  name: string;
+}
+
+export interface DiscoveryArtistDetail {
+  id: string;
+  name: string;
+  normalized_name: string | null;
+  aliases: string[];
+  source: string | null;
+  source_artist_url: string | null;
+  profile_image_url: string | null;
+  genres: DiscoveryArtistGenre[];
+  stored_setlist_count: number;
+  stored_track_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+// ── User profile ──────────────────────────────────────────────────────────────
+
+export interface UserProfile {
+  user_id: string;
+  display_name: string;
+  username: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  spotify_url: string | null;
+  soundcloud_url: string | null;
+  instagram_url: string | null;
+  youtube_url: string | null;
+  website_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── User preferences ──────────────────────────────────────────────────────────
+
+export interface UserArtistPreference {
+  user_id: string;
+  artist_id: string;
+  position: number;
+  created_at: string;
+  artist?: {
+    id: string;
+    name: string;
+    normalized_name: string | null;
+    profile_image_url: string | null;
+  };
+}
+
+export interface UserGenrePreference {
+  user_id: string;
+  genre_id: string;
+  position: number;
+  created_at: string;
+  genre?: {
+    id: string;
+    name: string;
+    normalized_name: string;
+  };
+}
+
+// ── User searches ─────────────────────────────────────────────────────────────
+
+export type UserSearchResultType = 'artist' | 'genre' | 'setlist';
+
+export interface UserSearch {
+  id: string;
+  user_id: string;
+  query_text: string;
+  normalized_query: string;
+  result_type: UserSearchResultType | null;
+  result_id: string | null;
+  search_count: number;
+  last_searched_at: string;
+  created_at: string;
+}
+
+// ── User playlist profile ─────────────────────────────────────────────────────
+
+export interface UserPlaylistProfile {
+  id: string;
+  user_id: string;
+  playlist_identity_key: string;
+  display_name: string | null;
+  description: string | null;
+  artwork_url: string | null;
+  created_at: string;
+  updated_at: string;
+}

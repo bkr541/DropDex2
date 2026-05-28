@@ -166,6 +166,35 @@ class SetlistDetailResponse(BaseModel):
     tracks: list[SetTrackRecord]
 
 
+# ── Artist detail ─────────────────────────────────────────────────────────────
+
+class ArtistGenre(BaseModel):
+    """One canonical genre entry linked via artist_genres → genres."""
+    id: str
+    name: str
+
+
+class ArtistDetailResponse(BaseModel):
+    """
+    Full artist detail returned by GET /api/discovery/artists/{artist_id}.
+
+    Genres come from the artist_genres junction, NOT from setlist music_styles.
+    stored_setlist_count and stored_track_count are live DB counts.
+    """
+    id: str
+    name: str
+    normalized_name: Optional[str] = None
+    aliases: list[str] = []
+    source: Optional[str] = None
+    source_artist_url: Optional[str] = None
+    profile_image_url: Optional[str] = None
+    genres: list[ArtistGenre] = []
+    stored_setlist_count: int = 0
+    stored_track_count: int = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
 # ── Typed exceptions ──────────────────────────────────────────────────────────
 
 class ArtistNotFoundError(ValueError):

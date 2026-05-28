@@ -27,6 +27,8 @@ from jose import jwt
 from app.main import app
 from app.config import settings
 from app.discovery.models import (
+    ArtistDetailResponse,
+    ArtistGenre,
     ArtistRecord,
     ArtistSearchCandidate,
     JobStatus,
@@ -564,3 +566,92 @@ class TestCORSMethods:
                 },
             )
         assert "access-control-allow-origin" in resp.headers
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Artist detail
+# ══════════════════════════════════════════════════════════════════════════════
+
+_ARTIST_DETAIL = ArtistDetailResponse(
+    id=_ARTIST_ID,
+    name="ILLENIUM",
+    normalized_name="illenium",
+    aliases=[],
+    source="1001tracklists",
+    source_artist_url="https://www.1001tracklists.com/dj/illenium/",
+    profile_image_url=None,
+    genres=[ArtistGenre(id="g1", name="Melodic Bass")],
+    stored_setlist_count=42,
+    stored_track_count=840,
+    created_at="2026-05-27T00:00:00+00:00",
+    updated_at="2026-05-27T00:00:00+00:00",
+)
+
+
+class TestGetArtistDetail:
+    """GET /api/discovery/artists/{artist_id}"""
+
+    def test_requires_authentication(self):
+        """Missing Authorization header → 422."""
+        resp = client.get(f"/api/discovery/artists/{_ARTIST_ID}")
+        assert resp.status_code == 422
+
+    def test_returns_404_when_artist_not_found(self):
+        mock = _mock_repo()
+        mock.get_artist_detail.return_value = None
+        with patch("app.discovery.routes.DiscoveryRepository", return_value=mock):
+            resp = client.get(
+                f"/api/discovery/artists/{_ARTIST_ID}",
+                headers=_auth(),
+            )
+        assert resp.status_code == 404
+
+    def test_returns_full_artist_detail(self):
+        mock = _mock_repo()
+        mock.get_artist_detail.return_value = _ARTIST_DETAIL
+        with patch("app.discovery.routes.DiscoveryRepository", return_value=mock):
+            resp = client.get(
+                f"/api/discovery/artists/{_ARTIST_ID}",
+                headers=_auth(),
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == _ARTIST_ID
+        assert data["name"] == "ILLENIUM"
+        assert data["source"] == "1001tracklists"
+        assert data["stored_setlist_count"] == 42
+        assert data["stored_track_count"] == 840
+        assert len(data["genres"]) == 1
+        assert data["genres"][0]["name"] == "Melodic Bass"
+        assert data["source_artist_url"] == "https://www.1001tracklists.com/dj/illenium/"
+
+    def test_detail_with_no_genres_or_counts(self):
+        """Artists with no genres or setlists still return a valid response."""
+        empty_detail = ArtistDetailResponse(
+            id=_ARTIST_ID,
+            name="New Artist",
+            stored_setlist_count=0,
+            stored_track_count=0,
+        )
+        mock = _mock_repo()
+        mock.get_artist_detail.return_value = empty_detail
+        with patch("app.discovery.routes.DiscoveryRepository", return_value=mock):
+            resp = client.get(
+                f"/api/discovery/artists/{_ARTIST_ID}",
+                headers=_auth(),
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["genres"] == []
+        assert data["stored_setlist_count"] == 0
+
+    def test_search_literal_not_matched_as_artist_id(self):
+        """GET /artists/search must not be swallowed by /{artist_id}."""
+        mock = _mock_repo(search_results=[])
+        with patch("app.discovery.routes.DiscoveryRepository", return_value=mock):
+            resp = client.get(
+                "/api/discovery/artists/search?q=test",
+                headers=_auth(),
+            )
+        assert resp.status_code == 200
+        assert isinstance(resp.json(), list)

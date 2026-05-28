@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { useArtistDiscoverySearch } from '../../hooks/useArtistDiscoverySearch';
+import { useArtistDetail } from '../../hooks/useArtistDetail';
 import { useArtistSetlists } from '../../hooks/useArtistSetlists';
 import { useDiscoveryScrapeJob } from '../../hooks/useDiscoveryScrapeJob';
 import { startArtistSetlistScrape } from '../../lib/api/discovery';
@@ -41,6 +42,10 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
     hasMore,
   } = useArtistSetlists(selectedArtist?.id ?? null, accessToken);
   const { job: scrapeJob } = useDiscoveryScrapeJob(activeJobId, accessToken);
+  const { detail: artistDetail, loading: detailLoading } = useArtistDetail(
+    selectedArtist?.id ?? null,
+    accessToken,
+  );
 
   // Transition to artist page once the initial setlist load finishes (even if empty)
   const prevSetlistsLoadingRef = useRef(false);
@@ -149,6 +154,8 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
             >
               <ArtistPage
                 artist={selectedArtist}
+                artistDetail={artistDetail}
+                detailLoading={detailLoading}
                 setlists={setlists}
                 total={total}
                 loading={setlistsLoading}

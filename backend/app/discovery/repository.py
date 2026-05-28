@@ -20,6 +20,8 @@ from typing import Optional
 from supabase import Client, create_client
 
 from app.discovery.models import (
+    ArtistDetailResponse,
+    ArtistGenre,
     ArtistRecord,
     ArtistSearchCandidate,
     SavedSetlistResult,
@@ -144,6 +146,80 @@ class DiscoveryRepository:
             normalized_name=row.get("normalized_name"),
             source=row.get("source"),
             source_artist_url=row.get("source_artist_url"),
+        )
+
+    def get_artist_detail(self, artist_id: str) -> Optional[ArtistDetailResponse]:
+        """
+        Return full artist detail for the detail-page hero, or None if not found.
+
+        Executes up to four queries:
+          1. artists row (all display-relevant fields)
+          2. artist_genres → genres join (canonical genres, NOT setlist music_styles)
+          3. artist_set_result_artists count + IDs (stored setlist count)
+          4. artist_set_tracks count via IN (stored track count; skipped when 0 setlists)
+        """
+        # ── 1. Artist row ─────────────────────────────────────────────────────
+        resp = (
+            self._client.table("artists")
+            .select(
+                "id, name, normalized_name, aliases, source, "
+                "source_artist_url, profile_image_url, created_at, updated_at"
+            )
+            .eq("id", artist_id)
+            .execute()
+        )
+        if not resp.data:
+            return None
+        row = resp.data[0]
+
+        # ── 2. Canonical genres ───────────────────────────────────────────────
+        genre_resp = (
+            self._client.table("artist_genres")
+            .select("genres(id, name)")
+            .eq("artist_id", artist_id)
+            .execute()
+        )
+        genres: list[ArtistGenre] = []
+        for g_row in genre_resp.data:
+            g = g_row.get("genres")
+            if isinstance(g, dict) and g.get("id"):
+                genres.append(ArtistGenre(id=str(g["id"]), name=g["name"]))
+
+        # ── 3. Stored setlist count (via authoritative junction) ──────────────
+        junction_resp = (
+            self._client.table("artist_set_result_artists")
+            .select("set_result_id", count="exact")
+            .eq("artist_id", artist_id)
+            .execute()
+        )
+        setlist_count = junction_resp.count or 0
+
+        # ── 4. Stored track count (skipped when no setlists) ──────────────────
+        track_count = 0
+        if setlist_count > 0:
+            set_result_ids = [r["set_result_id"] for r in junction_resp.data]
+            if set_result_ids:
+                track_resp = (
+                    self._client.table("artist_set_tracks")
+                    .select("id", count="exact")
+                    .in_("set_result_id", set_result_ids)
+                    .execute()
+                )
+                track_count = track_resp.count or 0
+
+        return ArtistDetailResponse(
+            id=str(row["id"]),
+            name=row["name"],
+            normalized_name=row.get("normalized_name"),
+            aliases=row.get("aliases") or [],
+            source=row.get("source"),
+            source_artist_url=row.get("source_artist_url"),
+            profile_image_url=row.get("profile_image_url"),
+            genres=genres,
+            stored_setlist_count=setlist_count,
+            stored_track_count=track_count,
+            created_at=row.get("created_at"),
+            updated_at=row.get("updated_at"),
         )
 
     # ── Scrape jobs ───────────────────────────────────────────────────────────

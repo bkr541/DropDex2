@@ -25,6 +25,7 @@ from app.auth import get_current_user_id
 from app.config import settings
 from app.discovery.job_runner import run_discovery_background
 from app.discovery.models import (
+    ArtistDetailResponse,
     ArtistSearchCandidate,
     DetailScrapeError,
     InvalidSetlistUrlError,
@@ -80,7 +81,36 @@ async def search_artists(
     return repo.search_artists(q, limit=_SEARCH_LIMIT)
 
 
-# ── 2. Start scrape ───────────────────────────────────────────────────────────
+# ── 2. Artist detail ─────────────────────────────────────────────────────────
+# Registered AFTER /artists/search so FastAPI matches the literal "search"
+# path first before the {artist_id} parameter.
+
+@router.get(
+    "/artists/{artist_id}",
+    response_model=ArtistDetailResponse,
+    summary="Get full artist detail for the Artist Page hero",
+)
+async def get_artist_detail(
+    artist_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> ArtistDetailResponse:
+    """
+    Return full stored artist detail including canonical genres, stored setlist
+    and track counts, source URL, and image.
+
+    - Genres are the canonical ``artist_genres`` values — not scrape-derived
+      ``music_styles`` from setlist rows.
+    - Counts are live DB values; no scrape is triggered.
+    - Returns ``404`` when the artist UUID is unknown.
+    """
+    repo = _make_repo()
+    detail = repo.get_artist_detail(artist_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Artist not found")
+    return detail
+
+
+# ── 4. Start scrape ───────────────────────────────────────────────────────────
 
 @router.post(
     "/artists/{artist_id}/setlists/scrape",
@@ -144,7 +174,7 @@ async def start_scrape(
     )
 
 
-# ── 3. Job status ─────────────────────────────────────────────────────────────
+# ── 5. Job status ─────────────────────────────────────────────────────────────
 
 @router.get(
     "/scrape-jobs/{job_id}",
@@ -168,7 +198,7 @@ async def get_scrape_job(
     return job
 
 
-# ── 4. Retrieve saved setlists ────────────────────────────────────────────────
+# ── 6. Retrieve saved setlists ────────────────────────────────────────────────
 
 @router.get(
     "/artists/{artist_id}/setlists",
@@ -204,7 +234,7 @@ async def get_setlists(
     )
 
 
-# ── 5. Get stored set tracks ──────────────────────────────────────────────────
+# ── 7. Get stored set tracks ──────────────────────────────────────────────────
 
 @router.get(
     "/setlists/{set_result_id}/tracks",
@@ -230,7 +260,7 @@ async def get_set_tracks(
         raise HTTPException(status_code=404, detail="Set result not found")
 
 
-# ── 6. Scrape individual set tracks ───────────────────────────────────────────
+# ── 8. Scrape individual set tracks ───────────────────────────────────────────
 
 @router.post(
     "/setlists/{set_result_id}/tracks/scrape",

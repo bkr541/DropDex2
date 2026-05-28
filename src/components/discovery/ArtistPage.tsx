@@ -5,7 +5,7 @@ import { ArtistStylesSidebar } from './ArtistStylesSidebar';
 import { type ArtistTabId } from './ArtistResultsTabs';
 import { ArtistResultsToolbar, type SortKey } from './ArtistResultsToolbar';
 import { ArtistSetlistCard } from './ArtistSetlistCard';
-import type { DiscoveryArtist, DiscoverySetlistResult, DiscoveryScrapeJob } from '../../types';
+import type { DiscoveryArtist, DiscoveryArtistDetail, DiscoverySetlistResult, DiscoveryScrapeJob } from '../../types';
 
 function sortSetlists(
   setlists: DiscoverySetlistResult[],
@@ -28,6 +28,8 @@ function sortSetlists(
 
 interface ArtistPageProps {
   artist: DiscoveryArtist;
+  artistDetail: DiscoveryArtistDetail | null;
+  detailLoading: boolean;
   setlists: DiscoverySetlistResult[];
   total: number;
   loading: boolean;
@@ -45,6 +47,8 @@ interface ArtistPageProps {
 
 export function ArtistPage({
   artist,
+  artistDetail,
+  detailLoading,
   setlists,
   total,
   loading,
@@ -81,11 +85,13 @@ export function ArtistPage({
       {/* Hero */}
       <ArtistHero
         artist={artist}
-        setlists={setlists}
+        artistDetail={artistDetail}
+        detailLoading={detailLoading}
         scrapeJob={scrapeJob}
         scrapeStarting={scrapeStarting}
         onRefresh={onRefresh}
         onViewProgress={onViewProgress}
+        hasSetlists={setlists.length > 0}
       />
 
       {scrapeError && (

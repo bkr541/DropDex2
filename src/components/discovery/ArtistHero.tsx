@@ -1,44 +1,33 @@
 import { useState } from 'react';
-import { User, RefreshCw, Loader2, Activity, Search } from 'lucide-react';
+import { User, RefreshCw, Loader2, Activity, Search, ExternalLink } from 'lucide-react';
 import { MusicNote01Icon } from 'hugeicons-react';
 import { cn } from '../../lib/utils';
-import type { DiscoveryArtist, DiscoverySetlistResult, DiscoveryScrapeJob } from '../../types';
-
-function getTopStyles(setlists: DiscoverySetlistResult[]): string[] {
-  const counts = new Map<string, number>();
-  for (const s of setlists) {
-    for (const style of s.music_styles ?? []) {
-      const key = style.trim();
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4)
-    .map(([style]) => style);
-}
+import { formatRelativeTime } from '../../lib/utils';
+import type { DiscoveryArtist, DiscoveryArtistDetail, DiscoveryScrapeJob } from '../../types';
 
 interface ArtistHeroProps {
   artist: DiscoveryArtist;
-  setlists: DiscoverySetlistResult[];
+  artistDetail: DiscoveryArtistDetail | null;
+  detailLoading: boolean;
   scrapeJob: DiscoveryScrapeJob | null;
   scrapeStarting: boolean;
   onRefresh: () => void;
   onViewProgress: () => void;
+  hasSetlists: boolean;
 }
 
 export function ArtistHero({
   artist,
-  setlists,
+  artistDetail,
+  detailLoading,
   scrapeJob,
   scrapeStarting,
   onRefresh,
   onViewProgress,
+  hasSetlists,
 }: ArtistHeroProps) {
   const [imgError, setImgError] = useState(false);
-  const topStyles = getTopStyles(setlists);
   const isJobActive = scrapeJob?.status === 'queued' || scrapeJob?.status === 'running';
-  const hasSetlists = setlists.length > 0;
   const initials = artist.name
     .split(' ')
     .map((w) => w[0])
@@ -46,9 +35,15 @@ export function ArtistHero({
     .slice(0, 2)
     .toUpperCase();
 
+  const imageUrl = artistDetail?.profile_image_url ?? artist.profile_image_url;
+  const genres = artistDetail?.genres ?? [];
+  const setlistCount = artistDetail?.stored_setlist_count ?? null;
+  const trackCount = artistDetail?.stored_track_count ?? null;
+  const sourceUrl = artistDetail?.source_artist_url ?? null;
+  const updatedAt = artistDetail?.updated_at ?? null;
+
   return (
     <div className="glass rounded-3xl p-6 md:p-8 border border-[var(--color-border-subtle)] relative overflow-hidden">
-      {/* Background tint */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
 
       {/* Refresh / Find button — top right */}
@@ -94,9 +89,9 @@ export function ArtistHero({
       <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-6">
         {/* Artist image */}
         <div className="shrink-0">
-          {artist.profile_image_url && !imgError ? (
+          {imageUrl && !imgError ? (
             <img
-              src={artist.profile_image_url}
+              src={imageUrl}
               alt={artist.name}
               className="w-24 h-24 md:w-32 md:h-32 rounded-full object-cover ring-4 ring-primary/25 shadow-xl"
               onError={() => setImgError(true)}
@@ -117,17 +112,68 @@ export function ArtistHero({
           <p className="text-[8px] uppercase tracking-[0.25em] text-muted-foreground mb-0.5">Artist</p>
           <h1 className="text-3xl md:text-4xl font-black leading-tight">{artist.name}</h1>
 
-          {topStyles.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-3 justify-center sm:justify-start">
-              {topStyles.map((style) => (
+          {/* Genre badges — canonical from artist_genres, skeleton while loading */}
+          <div className="flex flex-wrap gap-1.5 mt-3 justify-center sm:justify-start min-h-[26px]">
+            {detailLoading ? (
+              <>
+                {[48, 56, 44].map((w) => (
+                  <span
+                    key={w}
+                    className="h-[26px] rounded-full bg-primary/10 animate-pulse"
+                    style={{ width: w }}
+                  />
+                ))}
+              </>
+            ) : genres.length > 0 ? (
+              genres.map((g) => (
                 <span
-                  key={style}
+                  key={g.id}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest bg-primary/10 text-primary border border-primary/15"
                 >
                   <MusicNote01Icon size={9} className="shrink-0" />
-                  {style}
+                  {g.name}
                 </span>
-              ))}
+              ))
+            ) : null}
+          </div>
+
+          {/* Stats row */}
+          {!detailLoading && artistDetail && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 justify-center sm:justify-start text-[10px] text-muted-foreground">
+              {setlistCount !== null && (
+                <span className="font-semibold">
+                  <span className="text-foreground">{setlistCount.toLocaleString()}</span>{' '}
+                  {setlistCount === 1 ? 'Setlist' : 'Setlists'}
+                </span>
+              )}
+              {trackCount !== null && (
+                <>
+                  <span className="opacity-30">·</span>
+                  <span className="font-semibold">
+                    <span className="text-foreground">{trackCount.toLocaleString()}</span> Tracks
+                  </span>
+                </>
+              )}
+              {sourceUrl && (
+                <>
+                  <span className="opacity-30">·</span>
+                  <a
+                    href={sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-0.5 text-primary hover:underline font-semibold"
+                  >
+                    1001Tracklists
+                    <ExternalLink size={9} className="ml-0.5" />
+                  </a>
+                </>
+              )}
+              {updatedAt && (
+                <>
+                  <span className="opacity-30">·</span>
+                  <span>Updated {formatRelativeTime(updatedAt)}</span>
+                </>
+              )}
             </div>
           )}
         </div>
