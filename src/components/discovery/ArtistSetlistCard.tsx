@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion } from 'motion/react';
 import {
   Calendar,
@@ -17,6 +18,25 @@ interface ArtistSetlistCardProps {
   onSelect: (setlist: DiscoverySetlistResult) => void;
 }
 
+function ArtworkImage({ url, title }: { url: string; title: string }) {
+  const [err, setErr] = useState(false);
+  if (!err) {
+    return (
+      <img
+        src={url}
+        alt={title}
+        className="w-full h-full object-cover"
+        onError={() => setErr(true)}
+      />
+    );
+  }
+  return (
+    <div className="w-full h-full flex items-center justify-center">
+      <Music2 size={36} className="text-primary/20" />
+    </div>
+  );
+}
+
 export function ArtistSetlistCard({ setlist, isSelected, onSelect }: ArtistSetlistCardProps) {
   const title = setlist.title ?? 'Untitled Set';
   const completionPct = setlist.completion_pct != null ? Math.round(setlist.completion_pct) : null;
@@ -26,33 +46,38 @@ export function ArtistSetlistCard({ setlist, isSelected, onSelect }: ArtistSetli
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        'flex flex-col rounded-2xl overflow-hidden border transition-all',
+        'flex flex-col rounded-2xl overflow-hidden border transition-all shadow-sm',
         isSelected
-          ? 'border-primary/60 shadow-[0_4px_20px_rgba(207,107,101,0.2)] bg-[var(--color-surface-hover)]'
-          : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] hover:border-primary/20',
+          ? 'border-primary/50 shadow-[0_4px_24px_rgba(207,107,101,0.18)] bg-[var(--color-surface-hover)]'
+          : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:shadow-md hover:border-primary/20 hover:bg-[var(--color-surface-hover)]',
       )}
     >
       {/* Artwork */}
-      <div className="relative aspect-video w-full bg-[var(--color-avatar-bg)] overflow-hidden">
+      <div className="relative aspect-[4/3] w-full bg-[var(--color-avatar-bg)] overflow-hidden">
         {setlist.artwork_url ? (
-          <img src={setlist.artwork_url} alt={title} className="w-full h-full object-cover" />
+          <ArtworkImage url={setlist.artwork_url} title={title} />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Music2 size={32} className="text-primary/20" />
+            <Music2 size={36} className="text-primary/20" />
           </div>
         )}
+
+        {/* Selected badge */}
         {isSelected && (
-          <div className="absolute top-2 right-2 bg-primary rounded-full p-0.5">
-            <CheckCircle2 size={14} className="text-white" />
+          <div className="absolute top-2.5 right-2.5 bg-primary rounded-full p-0.5 shadow">
+            <CheckCircle2 size={16} className="text-white" />
           </div>
         )}
-        <div className="absolute bottom-2 left-2 bg-background/80 backdrop-blur-sm px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest text-muted-foreground border border-[var(--color-border-subtle)]">
+
+        {/* Source badge */}
+        <div className="absolute bottom-2.5 left-2.5 bg-background/80 backdrop-blur-sm px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest text-muted-foreground border border-[var(--color-border-subtle)]">
           1001TL
         </div>
       </div>
 
       {/* Body */}
       <div className="flex flex-col flex-1 p-4 gap-3">
+        {/* Title + creator */}
         <div>
           <h3 className="font-bold text-sm leading-snug line-clamp-2">{title}</h3>
           {setlist.creator_username && (
@@ -62,27 +87,31 @@ export function ArtistSetlistCard({ setlist, isSelected, onSelect }: ArtistSetli
           )}
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          {setlist.set_date && (
-            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-              <Calendar size={10} />
-              {setlist.set_date}
-            </span>
-          )}
-          {setlist.duration_text && (
-            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-              <Clock size={10} />
-              {setlist.duration_text}
-            </span>
-          )}
-        </div>
+        {/* Date + duration */}
+        {(setlist.set_date || setlist.duration_text) && (
+          <div className="flex flex-wrap gap-3">
+            {setlist.set_date && (
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Calendar size={10} />
+                {setlist.set_date}
+              </span>
+            )}
+            {setlist.duration_text && (
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Clock size={10} />
+                {setlist.duration_text}
+              </span>
+            )}
+          </div>
+        )}
 
+        {/* Completion bar */}
         {(setlist.ided_tracks != null || setlist.total_tracks != null) && (
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1 bg-[var(--color-avatar-bg)] rounded-full overflow-hidden">
               {completionPct != null && (
                 <div
-                  className="h-full bg-primary rounded-full"
+                  className="h-full bg-primary rounded-full transition-all"
                   style={{ width: `${Math.min(completionPct, 100)}%` }}
                 />
               )}
@@ -94,6 +123,7 @@ export function ArtistSetlistCard({ setlist, isSelected, onSelect }: ArtistSetli
           </div>
         )}
 
+        {/* Style chips */}
         {setlist.music_styles && setlist.music_styles.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {setlist.music_styles.slice(0, 3).map((style) => (
@@ -112,6 +142,7 @@ export function ArtistSetlistCard({ setlist, isSelected, onSelect }: ArtistSetli
           </div>
         )}
 
+        {/* Views + likes */}
         {(setlist.views != null || setlist.likes != null) && (
           <div className="flex gap-3">
             {setlist.views != null && (

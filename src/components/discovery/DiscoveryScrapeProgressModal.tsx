@@ -43,7 +43,7 @@ export function DiscoveryScrapeProgressModal({
             {/* Header */}
             <div className="flex items-center justify-between gap-3">
               <p className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground">
-                Scrape Progress
+                Search Progress
               </p>
               <button
                 onClick={onClose}
@@ -67,7 +67,7 @@ export function DiscoveryScrapeProgressModal({
                 'flex items-start gap-3 px-4 py-3 rounded-xl',
                 isRunning && 'bg-secondary/10',
                 isQueued && 'bg-[var(--color-surface)]',
-                isCompleted && 'bg-green-500/10',
+                isCompleted && 'bg-emerald-500/10',
                 isFailed && 'bg-red-500/10',
               )}
             >
@@ -81,7 +81,7 @@ export function DiscoveryScrapeProgressModal({
                     )}
                   />
                 )}
-                {isCompleted && <CheckCircle2 size={20} className="text-green-500" />}
+                {isCompleted && <CheckCircle2 size={20} className="text-emerald-700" />}
                 {isFailed && <XCircle size={20} className="text-red-400" />}
               </div>
 
@@ -91,34 +91,15 @@ export function DiscoveryScrapeProgressModal({
                     'text-sm font-bold uppercase tracking-wider',
                     isRunning && 'text-secondary',
                     isQueued && 'text-muted-foreground',
-                    isCompleted && 'text-green-500',
+                    isCompleted && 'text-emerald-700',
                     isFailed && 'text-red-400',
                   )}
                 >
                   {isQueued && 'Queued — waiting to start'}
-                  {isRunning && 'Scraping 1001Tracklists…'}
-                  {isCompleted && 'Scrape complete'}
-                  {isFailed && 'Scrape failed'}
+                  {isRunning && 'Finding Artist Sets…'}
+                  {isCompleted && 'Sets Found'}
+                  {isFailed && 'Search failed'}
                 </p>
-
-                {(isRunning || isCompleted) && (
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
-                    {job.pages_scraped > 0 && (
-                      <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
-                        {job.pages_scraped} page{job.pages_scraped !== 1 ? 's' : ''} scraped
-                      </span>
-                    )}
-                    {job.results_found > 0 && (
-                      <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
-                        {job.results_found}
-                        {job.total_results_reported != null
-                          ? ` / ${job.total_results_reported}`
-                          : ''}{' '}
-                        found
-                      </span>
-                    )}
-                  </div>
-                )}
 
                 {isFailed && job.error_message && (
                   <p className="text-xs text-red-300 mt-1 font-mono break-words">
@@ -136,7 +117,7 @@ export function DiscoveryScrapeProgressModal({
                 isActive
                   ? 'bg-[var(--color-surface)] text-muted-foreground hover:bg-[var(--color-surface-hover)]'
                   : isCompleted
-                  ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                  ? 'bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25'
                   : 'bg-red-500/10 text-red-400 hover:bg-red-500/20',
               )}
             >
