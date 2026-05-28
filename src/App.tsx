@@ -13,7 +13,6 @@ import {
   Info,
   Clock,
   Settings,
-  History,
   TrendingUp,
   FileUp,
   Moon,
@@ -35,13 +34,14 @@ import { useAuthSession } from './hooks/useAuthSession';
 import { useLatestRekordboxImport } from './hooks/useLatestRekordboxImport';
 import { useRekordboxPlaylists } from './hooks/useRekordboxPlaylists';
 import { useRekordboxPlaylistTracks } from './hooks/useRekordboxPlaylistTracks';
-import { useRecentTracks, useRekordboxSearch } from './hooks/useRekordboxTracks';
+import { useRecentTracks } from './hooks/useRekordboxTracks';
 import { useTrackPlaylists } from './hooks/useTrackPlaylists';
 import { useImportList } from './hooks/useImportList';
 import { fetchSimilarTracks, fetchReviewTracks, setActiveImport, deleteImport } from './lib/queries/rekordbox';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { DiscoveryView } from './components/discovery/DiscoveryView';
 import { SearchView } from './components/search/SearchView';
+import { LibraryView } from './components/library/LibraryView';
 import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport } from './types';
 
@@ -150,30 +150,6 @@ const TrackCard = ({ track, onClick, isActive, position }: TrackCardProps) => {
   );
 };
 
-// Shown when the user has no completed Supabase import yet
-const EmptyLibraryState = ({ onImport }: { onImport: () => void }) => (
-  <div className="flex flex-col items-center justify-center py-24 text-center space-y-4">
-    <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mb-2">
-      <Disc3 size={40} className="text-primary/50" />
-    </div>
-    <h2 className="text-xl font-black">No Library Imported Yet</h2>
-    <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
-      Connect your rekordbox USB drive, then import your library to get started.
-    </p>
-    <button
-      onClick={onImport}
-      className="mt-2 flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold transition-all active:scale-95 hover:bg-primary/90"
-    >
-      <FileUp size={16} />
-      Import Library
-    </button>
-    <p className="text-[10px] text-muted-foreground max-w-xs leading-relaxed">
-      Select <code className="font-mono">exportLibrary.db</code> from{' '}
-      <code className="font-mono">PIONEER/rekordbox</code> on your USB drive.
-    </p>
-  </div>
-);
-
 // --- App Root ---
 
 export default function App() {
@@ -181,13 +157,15 @@ export default function App() {
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistWithCount | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem('dropdex-theme') as Theme) || 'dark'
   );
   const [reviewTracks, setReviewTracks] = useState<RekordboxTrack[]>([]);
   const [similarTracks, setSimilarTracks] = useState<RekordboxTrack[]>([]);
   const [previousView, setPreviousView] = useState<View>('home');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem('dropdex-sidebar-collapsed') === 'true'
+  );
 
   const { session } = useAuthSession();
   const userId = session?.user?.id ?? null;
@@ -200,7 +178,6 @@ export default function App() {
   const { playlists, loading: playlistsLoading } = useRekordboxPlaylists(importId);
   const { tracks: playlistTracks, loading: playlistTracksLoading } =
     useRekordboxPlaylistTracks(selectedPlaylist?.id ?? null);
-  const { results: searchResults, loading: searchLoading } = useRekordboxSearch(importId, searchQuery);
   const { tracks: recentTracks, loading: recentTracksLoading } = useRecentTracks(importId);
   const { memberships: trackPlaylists, loading: trackPlaylistsLoading } =
     useTrackPlaylists(importId, selectedTrack?.id ?? null);
@@ -329,6 +306,14 @@ export default function App() {
     else if (currentView === 'search') setCurrentView('home');
   };
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('dropdex-sidebar-collapsed', String(next));
+      return next;
+    });
+  };
+
   const sidebarNavItems: { view: View; icon: React.ElementType; label: string; activeColor: string; activeBg: string }[] = [
     { view: 'home', icon: Music, label: 'Library', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'review', icon: TrendingUp, label: 'Review', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
@@ -345,12 +330,20 @@ export default function App() {
       </div>
 
       {/* ── Desktop sidebar ── */}
-      <aside className="hidden md:flex flex-col w-60 shrink-0 border-r border-[var(--color-border-subtle)] bg-[var(--color-panel)] z-40">
-        <div className="h-16 flex items-center gap-3 px-6 border-b border-[var(--color-border-subtle)] shrink-0">
+      <aside className={cn(
+        'hidden md:flex flex-col shrink-0 border-r border-[var(--color-border-subtle)] bg-[var(--color-panel)] z-40 transition-all duration-200',
+        sidebarCollapsed ? 'w-16' : 'w-60'
+      )}>
+        <div className={cn(
+          'h-16 flex items-center border-b border-[var(--color-border-subtle)] shrink-0',
+          sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-6'
+        )}>
           <img src="/logos/dropdexlogo.png" alt="DropDex" className="w-8 h-8 object-contain shrink-0" />
-          <span className="text-xl font-black tracking-tighter uppercase leading-none">
-            Drop<span className="text-primary">Dex</span>
-          </span>
+          {!sidebarCollapsed && (
+            <span className="text-xl font-black tracking-tighter uppercase leading-none">
+              Drop<span className="text-primary">Dex</span>
+            </span>
+          )}
         </div>
 
         <nav className="flex flex-col gap-1 p-3 flex-1">
@@ -358,15 +351,17 @@ export default function App() {
             <button
               key={label}
               onClick={() => setCurrentView(view)}
+              title={sidebarCollapsed ? label : undefined}
               className={cn(
-                'flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all text-left border',
+                'flex items-center rounded-xl font-bold text-sm transition-all border w-full',
+                sidebarCollapsed ? 'justify-center py-3 px-0' : 'gap-3 px-4 py-3 text-left',
                 currentView === view
                   ? `${activeColor} ${activeBg}`
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent'
               )}
             >
               <Icon size={18} />
-              {label}
+              {!sidebarCollapsed && label}
             </button>
           ))}
         </nav>
@@ -374,14 +369,29 @@ export default function App() {
         <div className="p-3 border-t border-[var(--color-border-subtle)] space-y-1">
           <button
             onClick={() => setCurrentView('settings')}
+            title={sidebarCollapsed ? 'Settings' : undefined}
             className={cn(
-              'w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-bold text-sm transition-all border',
+              'w-full flex items-center rounded-xl font-bold text-sm transition-all border',
+              sidebarCollapsed ? 'justify-center py-2.5 px-0' : 'gap-3 px-4 py-2.5',
               currentView === 'settings'
                 ? 'text-foreground bg-[var(--color-surface)] border-[var(--color-border-subtle)]'
                 : 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent'
             )}
           >
-            <Settings size={18} /> Settings
+            <Settings size={18} />
+            {!sidebarCollapsed && 'Settings'}
+          </button>
+          <button
+            onClick={toggleSidebar}
+            title={sidebarCollapsed ? 'Expand sidebar' : undefined}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] transition-all border border-transparent"
+          >
+            {sidebarCollapsed ? <ChevronRight size={15} /> : (
+              <>
+                <ChevronLeft size={15} />
+                <span className="font-bold">Collapse</span>
+              </>
+            )}
           </button>
         </div>
       </aside>
@@ -389,41 +399,18 @@ export default function App() {
       {/* ── Main content column ── */}
       <div className="flex flex-col flex-1 min-w-0 h-screen">
 
-        {/* Header */}
-        <header className="h-16 border-b border-[var(--color-border-subtle)] flex items-center justify-between px-6 bg-[var(--color-panel)] sticky top-0 z-40 shrink-0">
-          <div className="flex items-center gap-3">
-            {currentView !== 'home' && <IconButton icon={ChevronLeft} onClick={goBack} />}
-            {currentView === 'home' && (
-              <div className="flex items-center gap-3 md:hidden">
-                <img src="/logos/dropdexlogo.png" alt="DropDex" className="w-8 h-8 object-contain shrink-0" />
-                <span className="text-xl font-black tracking-tighter uppercase leading-none">
-                  Drop<span className="text-primary">Dex</span>
-                </span>
-              </div>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setCurrentView('settings')}
-              className={cn(
-                'md:hidden p-2 rounded-lg transition-all active:scale-90',
-                currentView === 'settings'
-                  ? 'text-foreground bg-[var(--color-surface)]'
-                  : 'text-slate-400 hover:text-foreground bg-transparent'
-              )}
-            >
-              <Settings size={20} />
-            </button>
-          </div>
-        </header>
-
         {/* View subheader */}
         {currentView !== 'home' && (
-          <div className="px-6 py-4 bg-gradient-to-b from-primary/5 to-transparent border-b border-[var(--color-border-subtle)] shrink-0">
+          <div className="px-6 py-4 bg-[var(--color-panel)] border-b border-[var(--color-border-subtle)] shrink-0">
             {currentView === 'playlist' && (
               <div>
-                <h2 className="text-2xl font-black italic">{selectedPlaylist?.name}</h2>
-                <div className="flex flex-wrap gap-2 mt-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                    <ChevronLeft size={20} />
+                  </button>
+                  <h2 className="text-2xl font-black italic truncate">{selectedPlaylist?.name}</h2>
+                </div>
+                <div className="flex flex-wrap gap-2">
                   <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
                     {playlistTracksLoading ? 'Loading…' : `${playlistTracks.length} Tracks`}
                   </span>
@@ -447,39 +434,64 @@ export default function App() {
             )}
             {currentView === 'track' && (
               <div>
-                <h2 className="text-2xl font-black italic">Track Intelligence</h2>
-                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em]">Deep Scan Results</p>
+                <div className="flex items-center gap-2">
+                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                    <ChevronLeft size={20} />
+                  </button>
+                  <h2 className="text-2xl font-black italic">Track Intelligence</h2>
+                </div>
+                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Deep Scan Results</p>
               </div>
             )}
             {currentView === 'review' && (
               <div>
-                <h2 className="text-2xl font-black italic">Set Review Mode</h2>
-                <p className="text-[8px] text-secondary uppercase tracking-[0.2em] font-bold">Optimized for low-light</p>
+                <div className="flex items-center gap-2">
+                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                    <ChevronLeft size={20} />
+                  </button>
+                  <h2 className="text-2xl font-black italic">Set Review Mode</h2>
+                </div>
+                <p className="text-[8px] text-secondary uppercase tracking-[0.2em] font-bold pl-7">Optimized for low-light</p>
               </div>
             )}
             {currentView === 'settings' && (
               <div>
-                <h2 className="text-2xl font-black italic">Settings</h2>
-                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em]">App Configuration</p>
+                <div className="flex items-center gap-2">
+                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                    <ChevronLeft size={20} />
+                  </button>
+                  <h2 className="text-2xl font-black italic">Settings</h2>
+                </div>
+                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">App Configuration</p>
               </div>
             )}
             {currentView === 'discovery' && (
               <div>
-                <h2 className="text-2xl font-black italic">Artist Discovery</h2>
-                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em]">Setlists via 1001Tracklists</p>
+                <div className="flex items-center gap-2">
+                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                    <ChevronLeft size={20} />
+                  </button>
+                  <h2 className="text-2xl font-black italic">Artist Discovery</h2>
+                </div>
+                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Setlists via 1001Tracklists</p>
               </div>
             )}
             {currentView === 'search' && (
               <div>
-                <h2 className="text-2xl font-black italic">Artist Search</h2>
-                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em]">Melodic Dubstep &amp; Future Bass</p>
+                <div className="flex items-center gap-2">
+                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                    <ChevronLeft size={20} />
+                  </button>
+                  <h2 className="text-2xl font-black italic">Artist Search</h2>
+                </div>
+                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Melodic Dubstep &amp; Future Bass</p>
               </div>
             )}
           </div>
         )}
 
         {/* Scrollable content */}
-        <main className={cn('flex-1 overflow-y-auto px-4 md:px-8 pb-32 md:pb-8', (currentView === 'home' || currentView === 'discovery' || currentView === 'search') && 'pt-6')}>
+        <main className={cn('flex-1 overflow-y-auto px-4 md:px-8 pb-32 md:pb-8', currentView === 'home' && 'pt-6')}>
           <AnimatePresence mode="wait">
 
             {/* ── Home ── */}
@@ -489,167 +501,20 @@ export default function App() {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
-                className="space-y-8 md:max-w-5xl md:mx-auto"
               >
-                <div className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-                  <input
-                    type="text"
-                    placeholder="Search tracks, artists, genres…"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-medium text-foreground placeholder:text-muted-foreground"
-                  />
-                </div>
-
-                {/* Library loading / error / empty states */}
-                {importLoading && !searchQuery && (
-                  <div className="flex items-center justify-center py-24">
-                    <Loader2 className="animate-spin text-primary" size={32} />
-                  </div>
-                )}
-
-                {!importLoading && importError && !searchQuery && (
-                  <div className="text-center py-24 space-y-2">
-                    <p className="text-red-400 font-bold">Failed to load library</p>
-                    <p className="text-xs text-muted-foreground">{importError}</p>
-                  </div>
-                )}
-
-                {!importLoading && !importError && !latestImport && !searchQuery && (
-                  <EmptyLibraryState onImport={() => setIsImportModalOpen(true)} />
-                )}
-
-                {/* Search results (shown regardless of import state) */}
-                {searchQuery && (
-                  <div className="space-y-4">
-                    <h2 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                      <Search size={14} />
-                      {searchLoading ? 'Searching…' : 'Search Results'}
-                    </h2>
-                    {searchLoading && (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="animate-spin text-primary" size={24} />
-                      </div>
-                    )}
-                    {!searchLoading && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
-                        {searchResults.map((track) => (
-                          <TrackCard key={track.id} track={track} onClick={() => handleTrackClick(track)} />
-                        ))}
-                      </div>
-                    )}
-                    {!searchLoading && searchResults.length === 0 && importId && (
-                      <p className="text-center py-12 text-muted-foreground italic">No tracks found matching your search.</p>
-                    )}
-                    {!searchLoading && !importId && (
-                      <p className="text-center py-12 text-muted-foreground italic">Import a library to search your tracks.</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Main library content */}
-                {!searchQuery && !importLoading && !importError && latestImport && (
-                  <>
-                    {/* Stats row */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="glass p-4 rounded-2xl border-l-4 border-l-primary">
-                        <p className="text-xs uppercase tracking-tighter text-muted-foreground mb-1">Tracks</p>
-                        <p className="text-2xl font-bold font-mono">{latestImport.track_count.toLocaleString()}</p>
-                      </div>
-                      <div className="glass p-4 rounded-2xl border-l-4 border-l-secondary">
-                        <p className="text-xs uppercase tracking-tighter text-muted-foreground mb-1">Playlists</p>
-                        <p className="text-2xl font-bold font-mono">{latestImport.playlist_count}</p>
-                      </div>
-                      <div className="glass p-4 rounded-2xl border-l-4 border-l-primary/40">
-                        <p className="text-xs uppercase tracking-tighter text-muted-foreground mb-1">Source</p>
-                        <p className="text-sm font-mono font-bold truncate" title={latestImport.source_filename}>
-                          {latestImport.source_filename}
-                        </p>
-                      </div>
-                      <div className="glass p-4 rounded-2xl border-l-4 border-l-secondary/40">
-                        <p className="text-xs uppercase tracking-tighter text-muted-foreground mb-1">Imported</p>
-                        <p className="text-sm font-bold">
-                          {new Date(latestImport.imported_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Playlists */}
-                    <section className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h2 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                          <ListMusic size={14} /> Playlists
-                        </h2>
-                        <span className="text-[10px] text-muted-foreground font-mono">
-                          {playlistsLoading ? '…' : `${playlists.length} ITEMS`}
-                        </span>
-                      </div>
-                      {playlistsLoading && (
-                        <div className="flex items-center justify-center py-8">
-                          <Loader2 className="animate-spin text-muted-foreground" size={24} />
-                        </div>
-                      )}
-                      {!playlistsLoading && playlists.length === 0 && (
-                        <div className="text-center py-12 border-2 border-dashed border-[var(--color-border-subtle)] rounded-3xl">
-                          <p className="text-muted-foreground">No playlists in this import.</p>
-                        </div>
-                      )}
-                      <div className="flex flex-col gap-3">
-                        {playlists.map((playlist) => (
-                          <motion.div
-                            key={playlist.id}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => handlePlaylistClick(playlist)}
-                            className="glass p-4 rounded-2xl flex items-center justify-between cursor-pointer group"
-                          >
-                            <div className="flex items-center gap-4">
-                              <div className={cn(
-                                'w-10 h-10 rounded-xl flex items-center justify-center',
-                                playlist.is_folder
-                                  ? 'bg-primary/10 text-primary'
-                                  : 'bg-secondary/10 text-secondary'
-                              )}>
-                                {playlist.is_folder ? <FolderOpen size={20} /> : <TrendingUp size={20} />}
-                              </div>
-                              <div>
-                                <h3 className="font-bold group-hover:text-primary transition-colors">{playlist.name}</h3>
-                                <p className="text-[10px] text-muted-foreground font-mono uppercase">
-                                  {playlist.track_count} Tracks
-                                </p>
-                              </div>
-                            </div>
-                            <ChevronRight className="text-muted-foreground" size={20} />
-                          </motion.div>
-                        ))}
-                      </div>
-                    </section>
-
-                    {/* Recently Added */}
-                    <section className="space-y-4">
-                      <h2 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                        <History size={14} /> Recently Added
-                      </h2>
-                      {recentTracksLoading && (
-                        <div className="flex items-center justify-center py-8">
-                          <Loader2 className="animate-spin text-muted-foreground" size={20} />
-                        </div>
-                      )}
-                      {!recentTracksLoading && recentTracks.length === 0 && (
-                        <p className="text-center py-8 text-muted-foreground text-sm italic">
-                          No recently dated tracks found.
-                        </p>
-                      )}
-                      {!recentTracksLoading && recentTracks.length > 0 && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
-                          {recentTracks.map((track) => (
-                            <TrackCard key={track.id} track={track} onClick={() => handleTrackClick(track)} />
-                          ))}
-                        </div>
-                      )}
-                    </section>
-                  </>
-                )}
+                <LibraryView
+                  latestImport={latestImport}
+                  importLoading={importLoading}
+                  importError={importError}
+                  playlists={playlists}
+                  playlistsLoading={playlistsLoading}
+                  recentTracks={recentTracks}
+                  recentTracksLoading={recentTracksLoading}
+                  importId={importId}
+                  onPlaylistClick={handlePlaylistClick}
+                  onTrackClick={handleTrackClick}
+                  onImport={() => setIsImportModalOpen(true)}
+                />
               </motion.div>
             )}
 
