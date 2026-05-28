@@ -6,7 +6,7 @@ import { LibraryHero } from './LibraryHero';
 import { PlaylistOverviewCard } from './PlaylistOverviewCard';
 import { RecentlyAddedTracksTable } from './RecentlyAddedTracksTable';
 import { LibrarySearchResults } from './LibrarySearchResults';
-import type { RekordboxImport, RekordboxTrack } from '../../types';
+import type { RekordboxImport, RekordboxTrack, UserPlaylistProfile } from '../../types';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 
 interface LibraryViewProps {
@@ -15,10 +15,12 @@ interface LibraryViewProps {
   importError: string | null;
   playlists: PlaylistWithCount[];
   playlistsLoading: boolean;
+  playlistProfilesByRbId: Map<string, UserPlaylistProfile>;
   recentTracks: RekordboxTrack[];
   recentTracksLoading: boolean;
   importId: string | null;
   onPlaylistClick: (p: PlaylistWithCount) => void;
+  onEditPlaylist: (p: PlaylistWithCount) => void;
   onTrackClick: (t: RekordboxTrack) => void;
   onImport: () => void;
 }
@@ -54,10 +56,12 @@ export function LibraryView({
   importError,
   playlists,
   playlistsLoading,
+  playlistProfilesByRbId,
   recentTracks,
   recentTracksLoading,
   importId,
   onPlaylistClick,
+  onEditPlaylist,
   onTrackClick,
   onImport,
 }: LibraryViewProps) {
@@ -158,13 +162,19 @@ export function LibraryView({
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-                      {playlists.map((playlist) => (
-                        <PlaylistOverviewCard
-                          key={playlist.id}
-                          playlist={playlist}
-                          onClick={() => onPlaylistClick(playlist)}
-                        />
-                      ))}
+                      {playlists.map((playlist) => {
+                        const profile = playlistProfilesByRbId.get(playlist.rekordbox_playlist_id);
+                        return (
+                          <PlaylistOverviewCard
+                            key={playlist.id}
+                            playlist={playlist}
+                            artworkUrl={profile?.artwork_url}
+                            displayName={profile?.display_name}
+                            onClick={() => onPlaylistClick(playlist)}
+                            onEdit={() => onEditPlaylist(playlist)}
+                          />
+                        );
+                      })}
                     </div>
                   )}
                 </section>

@@ -5,19 +5,20 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Generates a deterministic decorative bar pattern from a string seed.
+// This is a visual design element — it does NOT represent real audio data.
+// Heights are produced by sin(hash + i) × bell-curve envelope; they look
+// plausible but carry no information about the actual track audio.
 export function getDeterministicBars(seed: string, count: number = 40): number[] {
-  // Simple hash for seed
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {
     hash = seed.charCodeAt(i) + ((hash << 5) - hash);
   }
-
   const bars: number[] = [];
   for (let i = 0; i < count; i++) {
     const pseudoRandom = Math.abs(Math.sin(hash + i)) * 100;
-    // DJ waveform logic: usually higher in the middle (drop/chorus)
     const normalizedPos = i / count;
-    const envelope = Math.sin(normalizedPos * Math.PI); 
+    const envelope = Math.sin(normalizedPos * Math.PI);
     bars.push(Math.max(10, pseudoRandom * envelope));
   }
   return bars;

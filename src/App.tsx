@@ -7,11 +7,8 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Search,
   Music,
-  ListMusic,
   ChevronRight,
   ChevronLeft,
-  Info,
-  Clock,
   Settings,
   TrendingUp,
   FileUp,
@@ -21,18 +18,16 @@ import {
   LogOut,
   User,
   Loader2,
-  FolderOpen,
-  Tag,
-  Disc3,
-  Calendar,
   Radio,
+  Pencil,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn, formatDuration, formatKey, formatPosition, formatPlaylistDuration, getDeterministicBars } from './lib/utils';
+import { cn, formatKey, formatPosition, formatPlaylistDuration } from './lib/utils';
 import { supabase } from './lib/supabase';
 import { useAuthSession } from './hooks/useAuthSession';
 import { useLatestRekordboxImport } from './hooks/useLatestRekordboxImport';
 import { useRekordboxPlaylists } from './hooks/useRekordboxPlaylists';
+import { useUserPlaylistProfiles } from './hooks/useUserPlaylistProfiles';
 import { useRekordboxPlaylistTracks } from './hooks/useRekordboxPlaylistTracks';
 import { useRecentTracks } from './hooks/useRekordboxTracks';
 import { useTrackPlaylists } from './hooks/useTrackPlaylists';
@@ -42,41 +37,17 @@ import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { DiscoveryView } from './components/discovery/DiscoveryView';
 import { SearchView } from './components/search/SearchView';
 import { LibraryView } from './components/library/LibraryView';
+import { PlaylistEditView } from './components/library/PlaylistEditView';
+import { TrackDetailView } from './components/library/TrackDetailView';
+import { WaveformDisplay } from './components/library/WaveformDisplay';
+import { buildPlaylistIdentityKey } from './lib/queries/userPlaylists';
 import type { PlaylistWithCount } from './lib/queries/rekordbox';
-import type { RekordboxTrack, RekordboxImport } from './types';
+import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 
 type Theme = 'dark' | 'light';
-type View = 'home' | 'playlist' | 'track' | 'review' | 'settings' | 'discovery' | 'search';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search';
 
 // --- Components ---
-
-const Waveform = ({
-  seed,
-  className,
-  count = 40,
-  color = 'primary',
-}: {
-  seed: string;
-  className?: string;
-  count?: number;
-  color?: 'primary' | 'secondary';
-}) => {
-  const bars = useMemo(() => getDeterministicBars(seed, count), [seed, count]);
-  return (
-    <div className={cn('flex items-end gap-[2px] h-full w-full', className)}>
-      {bars.map((height, i) => (
-        <div
-          key={i}
-          className={cn(
-            'flex-1 rounded-full transition-all duration-500',
-            color === 'primary' ? 'bg-primary/40' : 'bg-secondary/40'
-          )}
-          style={{ height: `${height}%` }}
-        />
-      ))}
-    </div>
-  );
-};
 
 const IconButton = ({ icon: Icon, onClick, className }: any) => (
   <button
@@ -155,6 +126,7 @@ const TrackCard = ({ track, onClick, isActive, position }: TrackCardProps) => {
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('home');
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistWithCount | null>(null);
+  const [editingPlaylist, setEditingPlaylist] = useState<PlaylistWithCount | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(
@@ -176,6 +148,7 @@ export default function App() {
   const importId = latestImport?.id ?? null;
 
   const { playlists, loading: playlistsLoading } = useRekordboxPlaylists(importId);
+  const { profiles: playlistProfiles, refetch: refetchProfiles } = useUserPlaylistProfiles(userId);
   const { tracks: playlistTracks, loading: playlistTracksLoading } =
     useRekordboxPlaylistTracks(selectedPlaylist?.id ?? null);
   const { tracks: recentTracks, loading: recentTracksLoading } = useRecentTracks(importId);
@@ -235,14 +208,39 @@ export default function App() {
     return entries.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
   }, [playlistTracks]);
 
+  // Map rekordbox_playlist_id → profile for the current device
+  const playlistProfilesByRbId = useMemo(() => {
+    const deviceName = latestImport?.device_name;
+    if (!deviceName) return new Map<string, UserPlaylistProfile>();
+    const prefix = `${deviceName}::`;
+    const map = new Map<string, UserPlaylistProfile>();
+    for (const [key, profile] of playlistProfiles) {
+      if (key.startsWith(prefix)) map.set(key.slice(prefix.length), profile);
+    }
+    return map;
+  }, [playlistProfiles, latestImport?.device_name]);
+
+  // Profile for the currently selected playlist (used in detail header + edit)
+  const currentPlaylistProfile = useMemo(() => {
+    if (!selectedPlaylist) return null;
+    return playlistProfilesByRbId.get(selectedPlaylist.rekordbox_playlist_id) ?? null;
+  }, [selectedPlaylist, playlistProfilesByRbId]);
+
+  // Profile for the playlist being edited
+  const existingProfileForEditing = useMemo(() => {
+    if (!editingPlaylist || !latestImport?.device_name) return null;
+    const key = buildPlaylistIdentityKey(latestImport.device_name, editingPlaylist.rekordbox_playlist_id);
+    return playlistProfiles.get(key) ?? null;
+  }, [editingPlaylist, latestImport?.device_name, playlistProfiles]);
+
   const handleImportSuccess = () => {
-    // Navigate home and reset any stale playlist/track selection before the new
-    // import data arrives via refetchImport().
     setCurrentView('home');
     setSelectedPlaylist(null);
     setSelectedTrack(null);
+    setEditingPlaylist(null);
     refetchImport();
     refetchImportList();
+    void refetchProfiles();
   };
 
   const handleSetActiveImport = async (importId: string) => {
@@ -300,10 +298,17 @@ export default function App() {
   const goBack = () => {
     if (currentView === 'track') setCurrentView(previousView);
     else if (currentView === 'playlist') setCurrentView('home');
+    else if (currentView === 'playlist-edit') { setCurrentView(previousView); setEditingPlaylist(null); }
     else if (currentView === 'review') setCurrentView('home');
     else if (currentView === 'settings') setCurrentView('home');
     else if (currentView === 'discovery') setCurrentView('home');
     else if (currentView === 'search') setCurrentView('home');
+  };
+
+  const handleEditPlaylist = (playlist: PlaylistWithCount) => {
+    setPreviousView(currentView);
+    setEditingPlaylist(playlist);
+    setCurrentView('playlist-edit');
   };
 
   const toggleSidebar = () => {
@@ -409,6 +414,15 @@ export default function App() {
                     <ChevronLeft size={20} />
                   </button>
                   <h2 className="text-2xl font-black italic truncate">{selectedPlaylist?.name}</h2>
+                  {selectedPlaylist && !selectedPlaylist.is_folder && (
+                    <button
+                      onClick={() => selectedPlaylist && handleEditPlaylist(selectedPlaylist)}
+                      className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-xs font-bold text-muted-foreground hover:text-foreground transition-all shrink-0"
+                    >
+                      <Pencil size={12} />
+                      Edit
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
@@ -430,6 +444,17 @@ export default function App() {
                     </span>
                   )}
                 </div>
+              </div>
+            )}
+            {currentView === 'playlist-edit' && editingPlaylist && (
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                    <ChevronLeft size={20} />
+                  </button>
+                  <h2 className="text-2xl font-black italic truncate">{editingPlaylist.name}</h2>
+                </div>
+                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Edit Playlist</p>
               </div>
             )}
             {currentView === 'track' && (
@@ -508,10 +533,12 @@ export default function App() {
                   importError={importError}
                   playlists={playlists}
                   playlistsLoading={playlistsLoading}
+                  playlistProfilesByRbId={playlistProfilesByRbId}
                   recentTracks={recentTracks}
                   recentTracksLoading={recentTracksLoading}
                   importId={importId}
                   onPlaylistClick={handlePlaylistClick}
+                  onEditPlaylist={handleEditPlaylist}
                   onTrackClick={handleTrackClick}
                   onImport={() => setIsImportModalOpen(true)}
                 />
@@ -529,28 +556,49 @@ export default function App() {
               >
                 <div className="glass p-6 rounded-3xl mb-6 relative overflow-hidden">
                   <TrendingUp className="absolute -right-4 -bottom-4 text-primary/10 w-24 h-24" />
-                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">Playlist Details</p>
-                  <p className="text-3xl font-black mb-4 truncate">{selectedPlaylist?.name}</p>
-                  <div className="flex flex-wrap gap-6">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-muted-foreground uppercase">Tracks</span>
-                      <span className="font-bold font-mono">
-                        {playlistTracksLoading ? '…' : playlistTracks.length}
-                      </span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-muted-foreground uppercase">Avg BPM</span>
-                      <span className="font-bold font-mono">{avgBpm ?? '—'}</span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-muted-foreground uppercase">Total Time</span>
-                      <span className="font-bold font-mono">
-                        {totalDuration ? formatPlaylistDuration(totalDuration) : '—'}
-                      </span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-muted-foreground uppercase">Top Key</span>
-                      <span className="font-bold font-mono text-secondary">{topKey ?? '—'}</span>
+                  <div className="flex gap-4 items-start">
+                    {/* Artwork thumbnail */}
+                    {currentPlaylistProfile?.artwork_url && (
+                      <div className="w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden shrink-0 border border-[var(--color-border-subtle)] shadow-sm">
+                        <img
+                          src={currentPlaylistProfile.artwork_url}
+                          alt={selectedPlaylist?.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-1">Playlist Details</p>
+                      <p className="text-3xl font-black mb-3 truncate">
+                        {currentPlaylistProfile?.display_name || selectedPlaylist?.name}
+                      </p>
+                      {currentPlaylistProfile?.description && (
+                        <p className="text-xs text-muted-foreground mb-3 leading-relaxed line-clamp-2">
+                          {currentPlaylistProfile.description}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-6">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-muted-foreground uppercase">Tracks</span>
+                          <span className="font-bold font-mono">
+                            {playlistTracksLoading ? '…' : playlistTracks.length}
+                          </span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-muted-foreground uppercase">Avg BPM</span>
+                          <span className="font-bold font-mono">{avgBpm ?? '—'}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-muted-foreground uppercase">Total Time</span>
+                          <span className="font-bold font-mono">
+                            {totalDuration ? formatPlaylistDuration(totalDuration) : '—'}
+                          </span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-muted-foreground uppercase">Top Key</span>
+                          <span className="font-bold font-mono text-secondary">{topKey ?? '—'}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -582,6 +630,33 @@ export default function App() {
               </motion.div>
             )}
 
+            {/* ── Playlist Edit ── */}
+            {currentView === 'playlist-edit' && editingPlaylist && latestImport && userId && (
+              <motion.div
+                key="playlist-edit"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="pt-2"
+              >
+                <PlaylistEditView
+                  playlist={editingPlaylist}
+                  latestImport={latestImport}
+                  userId={userId}
+                  existingProfile={existingProfileForEditing}
+                  avgBpm={editingPlaylist.id === selectedPlaylist?.id ? avgBpm : null}
+                  totalDuration={editingPlaylist.id === selectedPlaylist?.id ? totalDuration : null}
+                  topKey={editingPlaylist.id === selectedPlaylist?.id ? topKey : null}
+                  onImport={() => setIsImportModalOpen(true)}
+                  onSaved={(_saved) => {
+                    void refetchProfiles();
+                    setCurrentView(previousView);
+                    setEditingPlaylist(null);
+                  }}
+                />
+              </motion.div>
+            )}
+
             {/* ── Track detail ── */}
             {currentView === 'track' && selectedTrack && (
               <motion.div
@@ -591,166 +666,15 @@ export default function App() {
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="md:max-w-5xl md:mx-auto"
               >
-                <div className="flex flex-col gap-6 md:grid md:grid-cols-2 md:gap-8">
-                  {/* Left: artwork + core stats */}
-                  <div className="flex flex-col gap-6">
-                    <div className="relative aspect-video w-full glass rounded-2xl overflow-hidden flex items-center justify-center border border-[var(--color-border-subtle)] group">
-                      <div className="absolute inset-0 brand-gradient opacity-10 group-hover:opacity-20 transition-opacity" />
-                      <Music className="w-16 h-16 text-primary/20" />
-                      <div className="absolute bottom-0 left-0 right-0 h-1/2 opacity-30 px-4 pb-2">
-                        <Waveform seed={selectedTrack.id} count={60} />
-                      </div>
-                      <div className="absolute bottom-4 left-4 right-4 z-10">
-                        <h2 className="text-xl font-black italic uppercase leading-tight line-clamp-2">{selectedTrack.title}</h2>
-                        <p className="text-sm font-bold text-primary uppercase tracking-widest">
-                          {selectedTrack.artist ?? 'Artist Not Stored'}
-                        </p>
-                      </div>
-                      <div className="absolute top-4 right-4 bg-background/80 backdrop-blur-md px-3 py-1 rounded-lg border border-[var(--color-border-subtle)] text-xs font-mono font-black text-secondary neon-text-purple italic">
-                        {formatKey(selectedTrack.musical_key)}
-                      </div>
-                    </div>
-
-                    <div className="flex justify-around items-center bg-[var(--color-surface)] py-6 rounded-2xl border border-[var(--color-border-faint)] shadow-inner">
-                      <div className="text-center">
-                        <p className="text-4xl font-mono font-black tracking-tighter text-foreground">
-                          {selectedTrack.bpm != null ? Math.round(selectedTrack.bpm) : '—'}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">BPM</p>
-                      </div>
-                      <div className="h-12 w-px bg-[var(--color-border-subtle)]" />
-                      <div className="text-center">
-                        <p className="text-4xl font-mono font-black tracking-tighter text-secondary neon-text-purple">
-                          {formatKey(selectedTrack.musical_key)}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">Key</p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-[var(--color-surface)] border border-[var(--color-border-subtle)] p-4 rounded-xl">
-                        <p className="text-[8px] uppercase font-bold text-muted-foreground tracking-widest mb-1">Duration</p>
-                        <p className="text-sm font-mono font-bold text-[var(--color-text-subdued)]">
-                          {formatDuration(selectedTrack.duration_seconds)}
-                        </p>
-                      </div>
-                      <div className="bg-[var(--color-surface)] border border-[var(--color-border-subtle)] p-4 rounded-xl">
-                        <p className="text-[8px] uppercase font-bold text-muted-foreground tracking-widest mb-1">Energy</p>
-                        <div className="flex gap-0.5 mt-1">
-                          {[...Array(5)].map((_, i) => (
-                            <div
-                              key={i}
-                              className={cn('w-3 h-1.5 rounded-[1px]', i < (selectedTrack.rating ?? 0) ? 'bg-primary' : 'bg-muted')}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right: comments, metadata, similar */}
-                  <div className="flex flex-col gap-6 pb-8">
-                    <section className="space-y-3">
-                      <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2 px-2">
-                        <Info size={14} /> DJ Comments
-                      </h3>
-                      <div className="glass p-4 rounded-2xl text-sm leading-relaxed border-l-4 border-l-secondary">
-                        {selectedTrack.comments ||
-                          'No specific DJ notes for this track. Use this space to remember energy level or transition tips.'}
-                      </div>
-                    </section>
-
-                    <section className="space-y-3">
-                      <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2 px-2">
-                        <Tag size={14} /> Library Metadata
-                      </h3>
-                      <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
-                        {[
-                          { icon: Disc3, label: 'Album', value: selectedTrack.album },
-                          { icon: Tag, label: 'Genre', value: selectedTrack.genre },
-                          { icon: Tag, label: 'Label', value: selectedTrack.label },
-                          { icon: Clock, label: 'Format', value: selectedTrack.file_format },
-                          { icon: Calendar, label: 'Added', value: selectedTrack.date_added },
-                        ].map(({ icon: Icon, label, value }) => (
-                          <div key={label} className="px-4 py-2.5 flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-2 text-muted-foreground shrink-0">
-                              <Icon size={12} />
-                              <p className="text-[10px] uppercase font-bold tracking-widest">{label}</p>
-                            </div>
-                            <p className={cn('text-xs font-mono text-right truncate', !value && 'text-muted-foreground italic')}>
-                              {value ?? 'Not stored'}
-                            </p>
-                          </div>
-                        ))}
-                        <div className="px-4 py-2.5">
-                          <div className="flex items-center gap-2 text-muted-foreground mb-1.5">
-                            <FolderOpen size={12} />
-                            <p className="text-[10px] uppercase font-bold tracking-widest">File Path</p>
-                          </div>
-                          <p className={cn(
-                            'text-xs font-mono leading-relaxed break-all select-all',
-                            selectedTrack.file_path ? 'text-primary/80' : 'text-muted-foreground italic'
-                          )}>
-                            {selectedTrack.file_path ?? 'Not stored'}
-                          </p>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section className="space-y-3">
-                      <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2 px-2">
-                        <ListMusic size={14} /> Appears In
-                      </h3>
-                      {trackPlaylistsLoading && (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="animate-spin text-muted-foreground" size={18} />
-                        </div>
-                      )}
-                      {!trackPlaylistsLoading && (
-                        <div className="glass rounded-2xl overflow-hidden divide-y divide-[var(--color-border-faint)]">
-                          {trackPlaylists.length === 0 ? (
-                            <p className="px-4 py-3 text-xs text-muted-foreground italic">
-                              Not found in any playlists.
-                            </p>
-                          ) : (
-                            trackPlaylists.map(({ playlist, position }) => (
-                              <button
-                                key={playlist.id}
-                                onClick={() => handleAppearsInPlaylistClick(playlist.id)}
-                                className="w-full px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-[var(--color-surface-hover)] transition-colors text-left"
-                              >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <ListMusic size={11} className="text-muted-foreground shrink-0" />
-                                  <p className="text-xs font-bold truncate">{playlist.name}</p>
-                                </div>
-                                <span className="text-[10px] font-mono text-primary shrink-0">
-                                  #{formatPosition(position)}
-                                </span>
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      )}
-                    </section>
-
-                    <section className="space-y-3">
-                      <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2 px-2">
-                        <TrendingUp size={14} /> Similar Vibes
-                      </h3>
-                      <div>
-                        {similarTracks.length > 0
-                          ? similarTracks.map((t) => (
-                              <TrackCard key={t.id} track={t} onClick={() => handleTrackClick(t)} />
-                            ))
-                          : (
-                            <p className="text-xs text-muted-foreground italic text-center py-4">
-                              No similar tracks found by key or BPM.
-                            </p>
-                          )}
-                      </div>
-                    </section>
-                  </div>
-                </div>
+                <TrackDetailView
+                  track={selectedTrack}
+                  waveformPeaks={null}
+                  memberships={trackPlaylists}
+                  membershipsLoading={trackPlaylistsLoading}
+                  similarTracks={similarTracks}
+                  onTrackClick={handleTrackClick}
+                  onPlaylistClick={handleAppearsInPlaylistClick}
+                />
               </motion.div>
             )}
 
@@ -783,7 +707,7 @@ export default function App() {
                       className="glass p-6 rounded-3xl active:scale-[0.97] transition-transform overflow-hidden relative group cursor-pointer"
                     >
                       <div className="absolute bottom-0 left-0 right-0 h-8 opacity-10 px-4 group-hover:opacity-30 transition-opacity">
-                        <Waveform seed={t.id} count={30} color="secondary" />
+                        <WaveformDisplay seed={t.id} barCount={30} color="secondary" showFallbackLabel={false} />
                       </div>
                       <div className="flex justify-between items-start mb-2 relative z-10">
                         <h3 className="text-xl font-bold line-clamp-1 flex-1 pr-4">{t.title}</h3>

@@ -51,7 +51,8 @@ export async function uploadPlaylistArtwork(
 
   if (uploadError) throw uploadError;
 
-  const { data } = await supabase.storage.from(ARTWORK_BUCKET).createSignedUrl(path, 3600);
+  // 1-year expiry so the URL survives normal use between re-uploads
+  const { data } = await supabase.storage.from(ARTWORK_BUCKET).createSignedUrl(path, 31_536_000);
   if (!data?.signedUrl) throw new Error('Failed to generate signed URL for playlist artwork');
   return data.signedUrl;
 }
