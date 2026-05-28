@@ -320,14 +320,32 @@ async def scrape_setlist_detail(source_url: str) -> ParsedTracklistDetail:
     validate_setlist_url(source_url)
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=settings.tracklists_scraper_headless)
-        context = await browser.new_context()
+        browser = await pw.chromium.launch(
+            headless=settings.tracklists_scraper_headless,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/130.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 900},
+            locale="en-US",
+        )
+        # Suppress the navigator.webdriver flag so Cloudflare does not classify
+        # this request as a headless bot and serve a challenge page.
+        await context.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
         page = await context.new_page()
         page.set_default_timeout(settings.tracklists_scraper_navigation_timeout_ms)
         try:
             log.info("[1001tl-detail] Navigating to %s", source_url)
-            await page.goto(source_url, wait_until="domcontentloaded")
-            await page.wait_for_load_state("networkidle")
+            # Use "load" so the full page resources are ready, but avoid
+            # "networkidle" — 1001TL keeps persistent ad/analytics connections
+            # open and the network never truly idles, causing a 30 s timeout.
+            await page.goto(source_url, wait_until="load")
 
             # Wait for at least one track row to appear.  If none appear within
             # the timeout, the page may be private, removed, or structure-changed.
