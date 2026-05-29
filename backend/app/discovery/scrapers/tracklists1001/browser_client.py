@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 from urllib.parse import urlparse
@@ -52,6 +53,38 @@ class _RawPage:
     """Minimal container holding rendered page HTML and its URL."""
     html: str
     url: str = ""
+
+
+# ── Pagination transition helper ──────────────────────────────────────────────
+
+async def _poll_for_card_change(
+    get_first_card_id: Callable[[], Awaitable[Optional[str]]],
+    stale_id: str,
+    *,
+    timeout_ms: int,
+    poll_interval_ms: int = 200,
+) -> bool:
+    """
+    Poll ``get_first_card_id`` until it returns an ID that differs from
+    ``stale_id``, confirming the result DOM has transitioned to a new page.
+
+    Returning ``None`` from ``get_first_card_id`` means no cards are visible
+    yet (mid-transition); we keep waiting.
+
+    Returns ``True`` when a new card ID is observed; ``False`` when
+    ``timeout_ms`` expires without the ID changing.
+
+    This function is intentionally free of Playwright imports so it can be
+    tested with plain async callables.
+    """
+    deadline = time.monotonic() + timeout_ms / 1000
+    while True:
+        current_id = await get_first_card_id()
+        if current_id is not None and current_id != stale_id:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(poll_interval_ms / 1000)
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -152,9 +185,19 @@ async def _navigate_next_page(
     Click the enabled Next pagination button and return the refreshed page HTML.
 
     Returns ``None`` when no enabled Next button is present (caller stops).
-    Retries once on ``PWTimeoutError`` via the tenacity decorator; the retry is
-    safe because a timeout here means the DOM did not update — the browser
-    state is unchanged and clicking Next again is correct.
+
+    The 1001Tracklists search page uses a JavaScript ``submitForm()`` call for
+    pagination.  After the click the existing result cards remain in the DOM
+    while the XHR response arrives and the JS re-renders the list.
+    ``wait_for_selector(S.CARD)`` alone is therefore unsafe: it resolves
+    immediately against the *old* cards, causing the scraper to capture stale
+    page-1 content as page 2.
+
+    Fix: capture the first card's ``data-id`` before clicking, then poll via
+    ``_poll_for_card_change`` until that ID is replaced by a new value.  If the
+    DOM does not transition within ``timeout_ms``, a ``PWTimeoutError`` is
+    raised so the tenacity decorator can retry the full click + wait sequence
+    once before giving up.
     """
     await asyncio.sleep(delay_ms / 1000)
 
@@ -166,9 +209,45 @@ async def _navigate_next_page(
     if "disabled" in classes:
         return None
 
+    # Snapshot the first result card's ID before triggering navigation.
+    stale_id: Optional[str] = None
+    first_card = page.locator(S.CARD).first
+    if await first_card.count() > 0:
+        stale_id = await first_card.get_attribute("data-id")
+        log.debug("[1001tl] pre-click first card id=%r", stale_id)
+
     await next_li.click()
     await page.wait_for_load_state("networkidle", timeout=timeout_ms)
-    await page.wait_for_selector(S.CARD, timeout=timeout_ms)
+
+    if stale_id:
+        # Poll until the first visible card has a different data-id, confirming
+        # that page 2's content has replaced page 1's content in the DOM.
+        async def _get_first_id() -> Optional[str]:
+            c = page.locator(S.CARD).first
+            if not await c.count():
+                return None
+            return await c.get_attribute("data-id")
+
+        changed = await _poll_for_card_change(
+            _get_first_id,
+            stale_id,
+            timeout_ms=timeout_ms,
+        )
+        if not changed:
+            log.warning(
+                "[1001tl] DOM transition timed out: first card still %r after "
+                "%d ms — raising PWTimeoutError for tenacity retry.",
+                stale_id,
+                timeout_ms,
+            )
+            raise PWTimeoutError(
+                f"Next-page DOM did not transition away from stale card '{stale_id}'"
+            )
+        log.debug("[1001tl] DOM transitioned away from stale card %r", stale_id)
+    else:
+        # No pre-existing cards (unusual) — fall back to waiting for any card.
+        await page.wait_for_selector(S.CARD, timeout=timeout_ms)
+
     return _RawPage(html=await page.content(), url=page.url)
 
 
@@ -227,9 +306,21 @@ async def _paginate_results(
         if not parsed.has_next_page:
             break
         if not new_results:
+            sample_parsed = [r.source_tracklist_id for r in parsed.results[:5]]
+            sample_seen   = sorted(seen_ids)[:5]
             log.warning(
-                "[1001tl] Page %d yielded no new IDs; stopping to avoid loop",
+                "[1001tl] page=%d zero new IDs — probable stale-page read. "
+                "url=%r page_card_count=%d sample_parsed_ids=%s "
+                "sample_seen_ids=%s has_next=%s reported_total=%s "
+                "collected_so_far=%d. Stopping pagination to avoid loop.",
                 page_num,
+                current_page.url,
+                len(parsed.results),
+                sample_parsed,
+                sample_seen,
+                parsed.has_next_page,
+                reported_total,
+                len(all_results),
             )
             break
         if page_num >= max_pages:

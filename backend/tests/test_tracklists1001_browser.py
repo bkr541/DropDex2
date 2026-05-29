@@ -22,6 +22,7 @@ import pytest
 from app.discovery.scrapers.tracklists1001.browser_client import (
     _RawPage,
     _paginate_results,
+    _poll_for_card_change,
 )
 from app.discovery.scrapers.tracklists1001.models import PageScrapeAudit
 
@@ -327,5 +328,231 @@ class TestPaginationWithRealFixture:
             # All IDs must be unique — dedup must be a no-op on a single page
             ids = [r.source_tracklist_id for r in results]
             assert len(ids) == len(set(ids))
+
+        _run(_inner())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# _poll_for_card_change unit tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestPollForCardChange:
+    """
+    Direct unit tests for the DOM-transition polling helper.
+
+    All tests use tiny timeouts / poll intervals so the suite runs fast.
+    """
+
+    def test_returns_true_when_id_eventually_changes(self):
+        """
+        Simulates Test 3: stale ID returned for first two polls, then new ID.
+        The poller must not accept the stale content and must return True
+        once the new ID appears.
+        """
+        call_count = [0]
+
+        async def _inner():
+            async def get_id() -> Optional[str]:
+                call_count[0] += 1
+                # First two polls still return the old (stale) page-1 card ID.
+                if call_count[0] < 3:
+                    return "stale_001"
+                return "page2_001"   # page-2 content visible on 3rd poll
+
+            result = await _poll_for_card_change(
+                get_id, "stale_001", timeout_ms=5_000, poll_interval_ms=10
+            )
+            assert result is True, "Must return True when ID changes"
+            assert call_count[0] >= 3, "Must have polled at least 3 times"
+
+        _run(_inner())
+
+    def test_returns_false_on_timeout_id_never_changes(self):
+        """
+        Simulates Test 4: page-1 content never replaced before timeout.
+        The poller must return False without looping indefinitely.
+        """
+        async def _inner():
+            async def get_id() -> Optional[str]:
+                return "stale_001"   # always stale — DOM never transitions
+
+            result = await _poll_for_card_change(
+                get_id, "stale_001", timeout_ms=80, poll_interval_ms=10
+            )
+            assert result is False, "Must return False when timeout expires"
+
+        _run(_inner())
+
+    def test_returns_true_immediately_when_already_changed(self):
+        """No polling needed when the first check already shows a new ID."""
+        async def _inner():
+            async def get_id() -> Optional[str]:
+                return "page2_001"   # ID is already different
+
+            result = await _poll_for_card_change(
+                get_id, "stale_001", timeout_ms=1_000, poll_interval_ms=10
+            )
+            assert result is True
+
+        _run(_inner())
+
+    def test_none_does_not_count_as_a_change(self):
+        """
+        None means no cards are in the DOM yet (mid-transition).
+        The poller must keep waiting until a real new ID appears.
+        """
+        call_count = [0]
+
+        async def _inner():
+            async def get_id() -> Optional[str]:
+                call_count[0] += 1
+                if call_count[0] < 3:
+                    return None       # cards temporarily absent
+                return "page2_001"
+
+            result = await _poll_for_card_change(
+                get_id, "stale_001", timeout_ms=5_000, poll_interval_ms=10
+            )
+            assert result is True
+            assert call_count[0] >= 3, "Must keep polling through None responses"
+
+        _run(_inner())
+
+    def test_returns_false_when_always_none_and_timeout(self):
+        """No cards ever appear (e.g., challenge page) → timeout → False."""
+        async def _inner():
+            async def get_id() -> Optional[str]:
+                return None
+
+            result = await _poll_for_card_change(
+                get_id, "stale_001", timeout_ms=80, poll_interval_ms=10
+            )
+            assert result is False
+
+        _run(_inner())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Additional _paginate_results tests for multi-page / stale-fallback scenarios
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestPaginationMultiPageAndStaleFallback:
+
+    def test_two_pages_total_exceeds_30(self):
+        """
+        Test 2: Two pages of unique setlists (30 + 15) → 45 unique results.
+        Confirms pagination does not stop after page 1 when there is a
+        valid page 2 with new IDs.
+        """
+        page1_ids = [f"p1_{i:03d}" for i in range(30)]
+        page2_ids = [f"p2_{i:03d}" for i in range(15)]
+
+        page1 = _raw(page1_ids, has_next=True, total=45)
+        page2 = _raw(page2_ids, has_next=False)
+
+        async def _inner():
+            async def get_next(n: int) -> Optional[_RawPage]:
+                return page2 if n == 2 else None
+
+            results, total, audits = await _paginate_results(page1, get_next, max_pages=10)
+
+            assert len(results) == 45, f"Expected 45 unique results, got {len(results)}"
+            assert total == 45
+            assert len(audits) == 2
+            assert audits[0].cards_parsed == 30
+            assert audits[1].cards_parsed == 15
+            assert not audits[1].has_next_page
+
+        _run(_inner())
+
+    def test_stale_page_fallback_stops_cleanly(self):
+        """
+        Test 3 (fallback layer): If _navigate_next_page's DOM-wait fails and
+        stale HTML still reaches _paginate_results, the dedup guard must stop
+        cleanly without consuming duplicate results.
+
+        This simulates the original bug scenario at the logic level.
+        """
+        page1_ids = [f"id_{i:03d}" for i in range(30)]
+        page1 = _raw(page1_ids, has_next=True, total=90)
+        page2_stale = _raw(page1_ids, has_next=True)   # exact same 30 IDs — stale
+
+        async def _inner():
+            call_log: list[int] = []
+
+            async def get_next(n: int) -> Optional[_RawPage]:
+                call_log.append(n)
+                return page2_stale   # always returns stale content
+
+            results, _, audits = await _paginate_results(page1, get_next, max_pages=10)
+
+            # Dedup guard must fire on page 2 and stop immediately.
+            assert len(results) == 30, "No extra results from stale page"
+            assert call_log == [2], "Must try page 2 then stop"
+            assert len(audits) == 2
+            assert audits[1].cards_parsed == 0, "Stale page contributes 0 new results"
+
+        _run(_inner())
+
+    def test_partial_overlap_page_still_advances(self):
+        """
+        Test 5: Page 2 contains some duplicate IDs plus genuinely new ones.
+        Pagination must NOT stop because of the duplicates — it must keep going
+        and collect the new unique IDs.
+        """
+        page1_ids = ["a", "b", "c"]
+        page2_ids = ["b", "c", "d", "e"]    # b, c are duplicates; d, e are new
+
+        page1 = _raw(page1_ids, has_next=True)
+        page2 = _raw(page2_ids, has_next=False)
+
+        async def _inner():
+            async def get_next(n: int) -> Optional[_RawPage]:
+                return page2 if n == 2 else None
+
+            results, _, audits = await _paginate_results(page1, get_next, max_pages=10)
+
+            ids = [r.source_tracklist_id for r in results]
+            assert ids == ["a", "b", "c", "d", "e"], f"Got {ids}"
+            assert len(results) == 5
+            assert audits[1].cards_parsed == 2  # only d and e are new
+
+        _run(_inner())
+
+    def test_max_pages_stops_before_all_content_collected(self):
+        """
+        Test 6: max_pages ceiling is respected even when more pages exist.
+        Stop condition is logged as limit-reached, not a pagination failure.
+        """
+        pages = [_raw([f"p{pg}_{i}" for i in range(5)], has_next=True) for pg in range(10)]
+
+        async def _inner():
+            async def get_next(n: int) -> Optional[_RawPage]:
+                idx = n - 1
+                return pages[idx] if idx < len(pages) else None
+
+            results, _, audits = await _paginate_results(pages[0], get_next, max_pages=3)
+
+            assert len(audits) == 3, f"Expected 3 pages scraped, got {len(audits)}"
+            assert len(results) == 15  # 5 IDs × 3 pages
+
+        _run(_inner())
+
+    def test_page_never_changes_get_next_returns_none_stops_cleanly(self):
+        """
+        Test 4 at _paginate_results level: if get_next raises (simulating a
+        timed-out DOM transition that exhausted tenacity retries), partial
+        results are preserved and the loop stops without re-raising.
+        """
+        page1 = _raw([f"id_{i}" for i in range(30)], has_next=True, total=90)
+
+        async def _inner():
+            async def get_next(n: int) -> Optional[_RawPage]:
+                raise RuntimeError("DOM transition timed out after all retries")
+
+            results, _, audits = await _paginate_results(page1, get_next, max_pages=10)
+
+            assert len(results) == 30, "Page-1 results must be preserved"
+            assert len(audits) == 1,   "Only page 1 should have an audit entry"
 
         _run(_inner())
