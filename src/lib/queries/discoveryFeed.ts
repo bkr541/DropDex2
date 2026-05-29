@@ -47,16 +47,28 @@ export async function fetchSetlistsForArtistFeed(
   artistId: string,
   limit = 10,
 ): Promise<DiscoverySetlistResult[]> {
+  // Step 1: collect all set_result_ids for this artist via the authoritative junction table.
+  // No limit here — we need all IDs so step 2 can pick the most-recent ones.
+  const { data: junctionRows, error: jErr } = await supabase
+    .from('artist_set_result_artists')
+    .select('set_result_id')
+    .eq('artist_id', artistId);
+
+  if (jErr) throw jErr;
+  if (!junctionRows?.length) return [];
+
+  const ids = junctionRows.map((r) => r.set_result_id as string);
+
+  // Step 2: fetch setlists by those IDs, ordered by most-recent set date.
   const { data, error } = await supabase
     .from('artist_set_results')
     .select(
       `id, source_tracklist_id, source_url, title, artwork_url, set_date,
        ided_tracks, total_tracks, completion_pct, duration_text, duration_seconds,
        music_styles, listen_sources, views, likes, creator_username,
-       creator_profile_url, updated_at,
-       artist_set_result_artists!inner(artist_id)`,
+       creator_profile_url, updated_at`,
     )
-    .eq('artist_set_result_artists.artist_id', artistId)
+    .in('id', ids)
     .order('set_date', { ascending: false, nullsFirst: false })
     .limit(limit);
 

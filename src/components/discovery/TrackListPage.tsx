@@ -93,7 +93,10 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
   // Column headers text
   const leftColLabel = isTimed ? 'Cue' : '#';
 
-  const showSkeleton = loading || (scraping && !hasTracks);
+  // When accessToken hasn't resolved yet (session initialising), treat as loading
+  // so the skeleton shows instead of a blank/empty track area.
+  const waitingForAuth = !accessToken && !detail && !error;
+  const showSkeleton = loading || (scraping && !hasTracks) || waitingForAuth;
 
   return (
     <motion.div
@@ -213,7 +216,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
           <div className="px-5 py-4 border-b border-[var(--color-border-faint)] flex items-center gap-2">
             <Loader2 size={14} className="animate-spin text-primary" />
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-              {loading ? 'Loading tracks…' : 'Extracting tracks from this set…'}
+              {loading || waitingForAuth ? 'Loading tracks…' : 'Extracting tracks from this set…'}
             </span>
           </div>
           <div className="divide-y divide-[var(--color-border-faint)]">
