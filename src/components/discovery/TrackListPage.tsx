@@ -107,14 +107,36 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
     >
       {/* ── Page header card ──────────────────────────────────────────────── */}
       <div className="glass rounded-3xl border border-[var(--color-border-subtle)] overflow-hidden">
-        {/* Back nav */}
-        <div className="px-5 pt-4 pb-3 border-b border-[var(--color-border-faint)]">
+        {/* Back nav + Refresh */}
+        <div className="px-5 pt-4 pb-3 border-b border-[var(--color-border-faint)] flex items-center justify-between gap-4">
           <button
             onClick={onBack}
             className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronLeft size={15} />
             Back to Artist
+          </button>
+          <button
+            onClick={refresh}
+            disabled={scraping || loading}
+            className={cn(
+              'flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 shrink-0',
+              scraping || loading
+                ? 'bg-[var(--color-surface)] text-muted-foreground cursor-not-allowed opacity-50'
+                : 'bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-foreground hover:bg-[var(--color-surface-hover)]',
+            )}
+          >
+            {scraping && hasTracks ? (
+              <>
+                <Loader2 size={10} className="animate-spin" />
+                Refreshing…
+              </>
+            ) : (
+              <>
+                <RefreshCw size={10} />
+                Refresh
+              </>
+            )}
           </button>
         </div>
 
@@ -183,31 +205,6 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
           </div>
         </div>
 
-        {/* Refresh action */}
-        <div className="px-5 pb-4 flex justify-end">
-          <button
-            onClick={refresh}
-            disabled={scraping || loading}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95',
-              scraping || loading
-                ? 'bg-[var(--color-surface)] text-muted-foreground cursor-not-allowed opacity-50'
-                : 'bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-foreground hover:bg-[var(--color-surface-hover)]',
-            )}
-          >
-            {scraping && hasTracks ? (
-              <>
-                <Loader2 size={12} className="animate-spin" />
-                Refreshing…
-              </>
-            ) : (
-              <>
-                <RefreshCw size={12} />
-                Refresh Tracklist
-              </>
-            )}
-          </button>
-        </div>
       </div>
 
       {/* ── Scraping / loading skeleton ──────────────────────────────────── */}
