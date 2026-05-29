@@ -80,7 +80,7 @@ export function ArtistHero({
           ) : (
             <>
               <Search size={11} />
-              Find Setlists
+              Retry Search
             </>
           )}
         </button>

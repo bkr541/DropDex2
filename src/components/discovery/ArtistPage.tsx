@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, ListMusic, ChevronDown } from 'lucide-react';
+import { Loader2, ListMusic, ChevronDown, Search } from 'lucide-react';
 import { ArtistHero } from './ArtistHero';
 import { ArtistStylesSidebar } from './ArtistStylesSidebar';
 import { type ArtistTabId } from './ArtistResultsTabs';
@@ -67,6 +67,9 @@ export function ArtistPage({
   const [sortKey, setSortKey] = useState<SortKey>('date_desc');
   const [filterQuery, setFilterQuery] = useState('');
 
+  const isJobActive = scrapeJob?.status === 'queued' || scrapeJob?.status === 'running';
+  const isScrapeActive = scrapeStarting || isJobActive;
+
   const q = filterQuery.trim().toLowerCase();
   const filtered =
     q.length >= 2
@@ -120,13 +123,22 @@ export function ArtistPage({
             </div>
           ) : displayed.length === 0 ? (
             <div className="text-center py-20 border-2 border-dashed border-[var(--color-border-subtle)] rounded-3xl space-y-3">
-              <ListMusic size={36} className="mx-auto text-muted-foreground opacity-30" />
-              <div>
-                <p className="text-sm font-bold text-muted-foreground">No setlists found yet</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Click &ldquo;Find Setlists&rdquo; to scrape 1001Tracklists for this artist.
-                </p>
-              </div>
+              {isScrapeActive ? (
+                <>
+                  <Search size={36} className="mx-auto text-primary opacity-40" />
+                  <p className="text-sm font-bold text-muted-foreground">Searching for setlists…</p>
+                </>
+              ) : (
+                <>
+                  <ListMusic size={36} className="mx-auto text-muted-foreground opacity-30" />
+                  <div>
+                    <p className="text-sm font-bold text-muted-foreground">No setlists found yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Use &ldquo;Retry Search&rdquo; to scrape 1001Tracklists for this artist.
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <>

@@ -70,7 +70,10 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
     }
   }, [scrapeJob?.status, refetchSetlists]);
 
-  const handleArtistSelect = (artist: DiscoveryArtist) => {
+  const handleArtistSelect = async (artist: DiscoveryArtist) => {
+    // Prevent duplicate scrape if one is already starting (rapid double-click guard)
+    if (scrapeStarting) return;
+
     setSelectedArtist(artist);
     setQuery('');
     setActiveJobId(null);
@@ -78,6 +81,21 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
     setScrapeError(null);
     setSelectedSetlistForDetail(null);
     setShowArtistPage(false);
+
+    if (!accessToken) return;
+
+    // Auto-start scrape immediately on artist selection using the artist
+    // argument directly — selectedArtist state update hasn't propagated yet.
+    setScrapeStarting(true);
+    try {
+      const response = await startArtistSetlistScrape(artist.id, accessToken);
+      setActiveJobId(response.job_id);
+      setShowScrapeModal(true);
+    } catch (err: unknown) {
+      setScrapeError(err instanceof Error ? err.message : 'Failed to start scrape');
+    } finally {
+      setScrapeStarting(false);
+    }
   };
 
   const handleStartScrape = async () => {
