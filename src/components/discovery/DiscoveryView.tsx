@@ -10,6 +10,7 @@ import { ArtistSearchResults } from './ArtistSearchResults';
 import { DiscoveryScrapeProgressModal } from './DiscoveryScrapeProgressModal';
 import { ArtistPage } from './ArtistPage';
 import { TrackListPage } from './TrackListPage';
+import { DiscoveryHomeFeed } from './DiscoveryHomeFeed';
 import type { DiscoveryArtist, DiscoverySetlistResult } from '../../types';
 
 interface DiscoveryViewProps {
@@ -172,14 +173,10 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
               />
             </motion.div>
           ) : !selectedArtist ? (
-            <div className="text-center py-20 space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Search for an artist above to discover their setlists
-              </p>
-              <p className="text-xs text-muted-foreground opacity-60">
-                Only artists in the DropDex catalog can be searched
-              </p>
-            </div>
+            <DiscoveryHomeFeed
+              onSelectArtist={handleArtistSelect}
+              onOpenSetlist={handleOpenSetlist}
+            />
           ) : null}
         </>
       ) : null}

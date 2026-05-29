@@ -202,6 +202,15 @@ export interface DiscoveryArtistDetail {
   updated_at: string | null;
 }
 
+export interface FeedArtist {
+  id: string;
+  name: string;
+  normalized_name: string | null;
+  profile_image_url: string | null;
+  setlist_count: number;
+  genres: DiscoveryArtistGenre[];
+}
+
 // ── User profile ──────────────────────────────────────────────────────────────
 
 export interface UserProfile {
