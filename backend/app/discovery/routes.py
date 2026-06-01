@@ -308,7 +308,9 @@ async def scrape_set_tracks(
         )
     except DetailScrapeError as exc:
         log.error("[routes] Detail scrape failed for set=%s: %s", set_result_id, exc)
-        raise HTTPException(
-            status_code=503,
-            detail="Set detail scrape encountered an error. Please try again.",
+        detail_msg = (
+            str(exc)
+            if settings.environment == "development"
+            else "Set detail scrape encountered an error. Please try again."
         )
+        raise HTTPException(status_code=503, detail=detail_msg)

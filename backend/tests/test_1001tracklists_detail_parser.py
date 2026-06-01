@@ -326,6 +326,173 @@ class TestIlleniumLunaDetail:
             assert t.source_position_id
 
 
+# ── Avello @ EDC Las Vegas 2026 ───────────────────────────────────────────────
+
+@pytest.fixture(scope="module")
+def avello_edc_detail() -> ParsedTracklistDetail:
+    return parse_tracklist_detail(_load("detail_avello_edc_las_vegas.html"))
+
+
+class TestAvelloEdcLasVegasDetail:
+    """
+    Avello @ Hotel EDC, Virgin Hotel Las Vegas, EDC Week 2026-05-17.
+
+    Expected values come from the 1001Tracklists page that reports:
+      id_tracklist = 650604
+      tl_pos_count = 71
+      First identified track: Adventure Club & Avello - Cry
+
+    To populate the fixture: once the detail scraper successfully fetches the
+    page, save the HTML returned by ``page.content()`` to
+    ``backend/tests/fixtures/1001tracklists/detail_avello_edc_las_vegas.html``.
+    All tests in this class are automatically skipped until the file exists.
+    """
+
+    def test_source_numeric_tracklist_id(self, avello_edc_detail: ParsedTracklistDetail):
+        assert avello_edc_detail.source_numeric_tracklist_id == "650604"
+
+    def test_declared_position_count(self, avello_edc_detail: ParsedTracklistDetail):
+        assert avello_edc_detail.declared_position_count == 71
+
+    def test_track_count_nonzero(self, avello_edc_detail: ParsedTracklistDetail):
+        assert len(avello_edc_detail.tracks) > 0
+
+    def test_track_count_close_to_declared(self, avello_edc_detail: ParsedTracklistDetail):
+        # Allow for a few unidentified rows that the parser might skip.
+        assert len(avello_edc_detail.tracks) >= 60
+
+    def test_canonical_url(self, avello_edc_detail: ParsedTracklistDetail):
+        assert avello_edc_detail.canonical_url is not None
+        assert "avello" in avello_edc_detail.canonical_url
+        assert "1001tracklists.com" in avello_edc_detail.canonical_url
+
+    def test_all_rows_have_source_position_id(self, avello_edc_detail: ParsedTracklistDetail):
+        for t in avello_edc_detail.tracks:
+            assert t.source_position_id, f"Track at seq {t.sequence_index} missing source_position_id"
+
+    def test_ordering_preserved(self, avello_edc_detail: ParsedTracklistDetail):
+        indices = [t.sequence_index for t in avello_edc_detail.tracks]
+        assert indices == sorted(indices)
+
+    def test_adventure_club_track_present(self, avello_edc_detail: ParsedTracklistDetail):
+        """The 'Adventure Club & Avello - Cry' track should appear in the set."""
+        titles = [t.title or "" for t in avello_edc_detail.tracks]
+        artists = [t.artist_text or "" for t in avello_edc_detail.tracks]
+        # Either the title or artist field should reference Adventure Club.
+        found = any("Adventure Club" in s for s in titles + artists)
+        assert found, "Expected 'Adventure Club' in at least one title or artist_text"
+
+    def test_raw_metadata_json_present(self, avello_edc_detail: ParsedTracklistDetail):
+        assert avello_edc_detail.raw_metadata_json is not None
+        assert avello_edc_detail.raw_metadata_json["parsed_track_count"] > 0
+
+
+# ── Avello HTML structure inline tests ───────────────────────────────────────
+# These tests verify the parser handles the exact `.tlpItem` DOM pattern seen
+# in the Avello @ EDC Las Vegas page even before the HTML fixture is saved.
+
+class TestAvelloHtmlStructureInline:
+    """
+    Synthetic HTML that mirrors the exact structure of the Avello detail page
+    as observed in the captured 1001Tracklists HTML.  Used to verify the parser
+    correctly handles the trRow<N> class numbering and HTML-entity metadata.
+    """
+
+    _AVELLO_FRAGMENT = """<!DOCTYPE html>
+<html lang="en-US"><head>
+  <title>Avello @ Hotel EDC - 1001Tracklists</title>
+  <link rel="canonical" href="https://www.1001tracklists.com/tracklist/wkgq6h1/avello-hotel-edc-virgin-hotel-las-vegas-edc-week-las-vegas-2026-05-17.html">
+</head><body>
+  <form id="frmEditTracklist">
+    <input name="id_tracklist" value="650604">
+    <input name="tl_pos_count" value="71">
+  </form>
+  <div id="tlp_13933997" class="tlpTog bItm tlpItem trRow35"
+       data-trno="0" data-id="13933997" data-trackid="track_abc">
+    <div class="bPlay">
+      <input id="tlp13933997_cue_seconds" type="hidden" value="0" form="frmEditTracklist">
+      <span id="tlp0_tracknumber_value" class="fontXL">01 </span>
+      <div id="cue_13933997" class="cue noWrap action mt5" data-mode="hours"></div>
+    </div>
+    <div class="bCont tl">
+      <div itemprop="tracks" itemscope>
+        <meta itemprop="name" content="Adventure Club &amp; Avello - Cry">
+        <meta itemprop="byArtist" content="Adventure Club &amp; Avello">
+        <meta itemprop="duration" content="PT3M49S">
+        <meta itemprop="url" content="/track/track_abc/adventure-club-avello-cry/index.html">
+      </div>
+    </div>
+  </div>
+  <div id="tlp_13933998" class="tlpTog bItm tlpItem trRow35 con"
+       data-trno="1" data-id="13933998" data-trackid="track_def">
+    <div class="bPlay">
+      <input id="tlp13933998_cue_seconds" type="hidden" value="0" form="frmEditTracklist">
+      <span id="tlp1_tracknumber_value" class="fontXL" title="played together">w/ </span>
+      <div id="cue_13933998" class="cue noWrap action mt5" data-mode="hours"></div>
+    </div>
+    <div class="bCont tl">
+      <div itemprop="tracks" itemscope>
+        <meta itemprop="name" content="Layered Track B">
+        <meta itemprop="byArtist" content="Some Artist">
+      </div>
+    </div>
+  </div>
+</body></html>"""
+
+    def test_parses_without_error(self):
+        result = parse_tracklist_detail(self._AVELLO_FRAGMENT)
+        assert isinstance(result, ParsedTracklistDetail)
+
+    def test_tracklist_id(self):
+        result = parse_tracklist_detail(self._AVELLO_FRAGMENT)
+        assert result.source_numeric_tracklist_id == "650604"
+
+    def test_pos_count(self):
+        result = parse_tracklist_detail(self._AVELLO_FRAGMENT)
+        assert result.declared_position_count == 71
+
+    def test_track_count(self):
+        result = parse_tracklist_detail(self._AVELLO_FRAGMENT)
+        assert len(result.tracks) == 2
+
+    def test_first_track_metadata(self):
+        result = parse_tracklist_detail(self._AVELLO_FRAGMENT)
+        first = result.tracks[0]
+        assert first.source_position_id == "13933997"
+        assert first.played_with_previous is False
+        assert first.track_number == 1
+        assert first.title == "Adventure Club & Avello - Cry"  # HTML entity decoded
+        assert first.artist_text == "Adventure Club & Avello"
+        assert first.duration_seconds == 229
+        assert first.duration_text == "3:49"
+        assert first.source_track_url == "https://www.1001tracklists.com/track/track_abc/adventure-club-avello-cry/index.html"
+
+    def test_html_entity_decoded(self):
+        """&amp; in content= attribute must decode to & in the parsed title."""
+        result = parse_tracklist_detail(self._AVELLO_FRAGMENT)
+        assert "&amp;" not in (result.tracks[0].title or "")
+        assert "&" in (result.tracks[0].title or "")
+
+    def test_w_row_detected(self):
+        result = parse_tracklist_detail(self._AVELLO_FRAGMENT)
+        con = result.tracks[1]
+        assert con.played_with_previous is True
+        assert con.track_number is None
+        assert con.title == "Layered Track B"
+
+    def test_no_false_cue_assignment(self):
+        """Blank div.cue must produce cue_seconds=None even if hidden input has value=0."""
+        result = parse_tracklist_detail(self._AVELLO_FRAGMENT)
+        for t in result.tracks:
+            assert t.cue_seconds is None
+            assert t.cue_text is None
+
+    def test_ordering(self):
+        result = parse_tracklist_detail(self._AVELLO_FRAGMENT)
+        indices = [t.sequence_index for t in result.tracks]
+        assert indices == sorted(indices)
+
+
 # ── Parser robustness tests ───────────────────────────────────────────────────
 
 class TestDetailParserRobustness:

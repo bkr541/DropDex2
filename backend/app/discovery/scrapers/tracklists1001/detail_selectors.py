@@ -56,6 +56,20 @@ META_DURATION  = 'meta[itemprop="duration"]'
 META_URL       = 'meta[itemprop="url"]'
 META_PUBLISHER = 'meta[itemprop="publisher"]'
 
+# ── Fallback / diagnostic selectors ──────────────────────────────────────────
+
+# Checked when zero TRACK_ROW elements are found, to diagnose whether the page
+# loaded at all and what DOM structure is present.
+DIAGNOSTIC_SELECTORS: list[str] = [
+    TRACK_ROW,                        # ".tlpItem"  — primary row container
+    CUE_SECONDS_INPUT,                # 'input[id$="_cue_seconds"]'
+    "[data-trackid]",                 # rows bearing an identified track ID
+    "[data-trno]",                    # rows bearing a position sequence number
+    TRACKNUMBER_SPAN,                 # '[id$="_tracknumber_value"]'
+    'input[name="tl_pos_count"]',     # page-level declared track count
+    '[id^="tlp_"]',                   # any element whose id starts with "tlp_"
+]
+
 # ── Parsing patterns ──────────────────────────────────────────────────────────
 
 # ISO 8601 duration used in meta[itemprop="duration"]:  PT3M49S, PT1H26M10S

@@ -333,7 +333,7 @@ async def run_setlist_detail_scrape(
 
     # ── 5. Scrape the detail page ─────────────────────────────────────────────
     try:
-        detail = await scrape_setlist_detail(summary.source_url)
+        detail = await scrape_setlist_detail(summary.source_url, debug_id=str(set_result_id))
     except Exception as exc:
         log.exception(
             "[detail] set=%s scrape failed at %s: %s",

@@ -23,9 +23,13 @@ construction.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Awaitable, Callable, Optional
 from urllib.parse import urlparse
 
@@ -35,7 +39,10 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 from app.config import settings
 from app.discovery.scrapers.tracklists1001 import selectors as S
 from app.discovery.scrapers.tracklists1001.detail_parser import ParsedTracklistDetail, parse_tracklist_detail
-from app.discovery.scrapers.tracklists1001.detail_selectors import TRACK_ROW as _DETAIL_TRACK_ROW
+from app.discovery.scrapers.tracklists1001.detail_selectors import (
+    DIAGNOSTIC_SELECTORS as _DIAGNOSTIC_SELECTORS,
+    TRACK_ROW as _DETAIL_TRACK_ROW,
+)
 from app.discovery.scrapers.tracklists1001.models import ArtistSetlistScrapeResult, PageScrapeAudit
 from app.discovery.scrapers.tracklists1001.parser import ParsedSetlistResult, parse_result_page
 
@@ -350,6 +357,175 @@ async def _paginate_results(
 # ── Setlist detail scraper ────────────────────────────────────────────────────
 
 _ALLOWED_HOST   = "www.1001tracklists.com"
+
+# Resource types that serve no purpose for HTML parsing and may stall page load.
+_BLOCKED_RESOURCE_TYPES: frozenset[str] = frozenset({"image", "media", "font"})
+
+# Ad/analytics/tracker host fragments to block.  Matched as substrings of the
+# request URL so partial domain matches work (e.g. "doubleclick" matches
+# "stats.g.doubleclick.net").
+_BLOCKED_AD_HOSTS: tuple[str, ...] = (
+    "pub.network",
+    "btloader",
+    "amazon-adsystem",
+    "googletagmanager",
+    "google-analytics",
+    "doubleclick",
+    "googlesyndication",
+    "confiant",
+    "quantserve",
+    "scorecardresearch",
+    "facebook.com",
+    "twitter.com",
+    "tiktok.com",
+    "adsystem",
+    "adservice",
+    "freestar",
+    "yieldmo",
+    "criteo",
+    "taboola",
+    "outbrain",
+)
+
+
+async def _block_nonessential_resources(route) -> None:
+    """
+    Playwright route handler that aborts ad/analytics/media requests before they
+    are sent.  Called via ``page.route("**/*", _block_nonessential_resources)``
+    before the first navigation so blocked requests never leave the machine.
+
+    Aborted requests cannot stall the page-load pipeline, which is the most
+    common reason detail scrapes time out (one slow ad CDN holds up the whole
+    page-load event for 30+ seconds).
+    """
+    request = route.request
+    url = request.url.lower()
+
+    if request.resource_type in _BLOCKED_RESOURCE_TYPES:
+        await route.abort()
+        return
+
+    if any(host in url for host in _BLOCKED_AD_HOSTS):
+        await route.abort()
+        return
+
+    await route.continue_()
+
+
+# Visible body-text fragments that indicate a bot-challenge or block page.
+# "forwarded to the requested page" is the 1001TL Cloudflare Turnstile
+# interstitial — it shows a form that must be submitted before the real content
+# is served.
+_CHALLENGE_SIGNALS = [
+    "cloudflare",
+    "checking your browser",
+    "captcha",
+    "access denied",
+    "enable javascript",
+    "unusual traffic",
+    "blocked",
+    "forbidden",
+    "rate limit",
+    "robot",
+    "verify you are human",
+    "forwarded to the requested page",
+]
+
+# Debug output directory: <repo>/backend/tmp/debug-setlists/
+_DEBUG_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "tmp" / "debug-setlists"
+
+
+def _emit_debug_files(
+    *,
+    debug_id: Optional[str],
+    source_url: str,
+    final_url: str,
+    page_title: Optional[str],
+    html: str,
+    screenshot_bytes: Optional[bytes],
+    selector_counts: dict[str, int],
+    challenge_detected: bool,
+    challenge_signals: list[str],
+    body_text_preview: str,
+    parsed_track_count: int,
+    response_status: Optional[int],
+    tl_pos_count_value: Optional[str],
+    error: Optional[str],
+) -> None:
+    """
+    Write debug artefacts (HTML, screenshot, JSON metadata) to _DEBUG_DIR so a
+    developer can inspect the exact page state when the scraper finds zero tracks.
+    """
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if debug_id:
+        file_stem = debug_id
+    else:
+        url_hash = hashlib.sha1(source_url.encode()).hexdigest()[:8]
+        file_stem = f"{ts}_{url_hash}"
+
+    try:
+        _DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        log.warning("[1001tl-detail] Could not create debug dir %s: %s", _DEBUG_DIR, exc)
+        return
+
+    html_path = _DEBUG_DIR / f"{file_stem}.html"
+    png_path  = _DEBUG_DIR / f"{file_stem}.png"
+    json_path = _DEBUG_DIR / f"{file_stem}.json"
+
+    try:
+        html_path.write_text(html, encoding="utf-8")
+    except Exception as exc:
+        log.warning("[1001tl-detail] Could not write debug HTML: %s", exc)
+
+    if screenshot_bytes:
+        try:
+            png_path.write_bytes(screenshot_bytes)
+        except Exception as exc:
+            log.warning("[1001tl-detail] Could not write debug screenshot: %s", exc)
+
+    metadata = {
+        "source_url":          source_url,
+        "final_url":           final_url,
+        "page_title":          page_title,
+        "response_status":     response_status,
+        "tl_pos_count":        tl_pos_count_value,
+        "attempted_selectors": selector_counts,
+        "challenge_detected":  challenge_detected,
+        "challenge_signals":   challenge_signals,
+        "body_text_preview":   body_text_preview,
+        "parsed_track_count":  parsed_track_count,
+        "timestamp":           ts,
+        "error":               error,
+    }
+    try:
+        json_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    except Exception as exc:
+        log.warning("[1001tl-detail] Could not write debug JSON: %s", exc)
+
+    log.warning(
+        "[1001tl-detail] zero rows detected\n"
+        "  source_url=%s\n"
+        "  final_url=%s\n"
+        "  page_title=%r\n"
+        "  response_status=%s\n"
+        "  tl_pos_count=%s\n"
+        "  selector_counts=%s\n"
+        "  challenge_detected=%s  challenge_signals=%s\n"
+        "  body_text_preview=%r\n"
+        "  debug_html=%s\n"
+        "  debug_screenshot=%s\n"
+        "  debug_json=%s",
+        source_url, final_url, page_title,
+        response_status,
+        tl_pos_count_value,
+        selector_counts,
+        challenge_detected, challenge_signals,
+        body_text_preview[:500],
+        html_path,
+        png_path if screenshot_bytes else "(none)",
+        json_path,
+    )
 _REQUIRED_SCHEME = "https"
 _REQUIRED_PATH_PREFIX = "/tracklist/"
 
@@ -384,10 +560,31 @@ def validate_setlist_url(url: str) -> None:
         )
 
 
-async def scrape_setlist_detail(source_url: str) -> ParsedTracklistDetail:
+async def scrape_setlist_detail(
+    source_url: str,
+    debug_id: Optional[str] = None,
+) -> ParsedTracklistDetail:
     """
     Navigate to a single 1001Tracklists setlist detail page with Playwright,
     wait for the track rows to render, extract the full HTML and parse it.
+
+    Navigation strategy
+    -------------------
+    1. Block ads/analytics/media before the first request so stalled CDN
+       resources cannot hold up the page-load pipeline.
+    2. Navigate with ``domcontentloaded`` — the track rows are server-rendered
+       HTML and present as soon as the document arrives.  Waiting for ``load``
+       can take 30+ seconds because 1001TL loads many ad/analytics scripts.
+    3. Immediately check for the Cloudflare Turnstile / forwarding-page
+       interstitial (visible text "forwarded to the requested page").  If found,
+       submit the bypass form; the form already contains the ``bChk`` token
+       computed by Cloudflare's own JS, which is often accepted server-side
+       without the Turnstile token.
+    4. Wait briefly for networkidle (3 s grace); ignore timeout.
+    5. Wait for ``.tlpItem`` with a targeted timeout.  If not found, scroll and
+       retry before giving up.
+    6. Collect diagnostics and screenshot inside the Playwright context so debug
+       artefacts can be written to disk after parsing if zero tracks are found.
 
     Parameters
     ----------
@@ -395,6 +592,10 @@ async def scrape_setlist_detail(source_url: str) -> ParsedTracklistDetail:
         The stored ``artist_set_results.source_url`` value.  Must already have
         passed ``validate_setlist_url``; callers should validate before calling
         this function.
+    debug_id:
+        Optional identifier (e.g. set_result_id UUID) used as the filename stem
+        for debug artefacts written to backend/tmp/debug-setlists/ when zero
+        tracks are found.  When omitted a timestamp+URL-hash is used instead.
 
     Returns
     -------
@@ -405,10 +606,23 @@ async def scrape_setlist_detail(source_url: str) -> ParsedTracklistDetail:
     ValueError
         When the URL fails validation (callers should treat this as a 400).
     PWTimeoutError
-        When the page fails to load or track rows never appear within the
-        configured timeout.
+        When initial page navigation fails within the configured timeout.
     """
     validate_setlist_url(source_url)
+
+    # Variables captured inside the Playwright context; used for debug output
+    # after the browser is closed.
+    html = ""
+    screenshot_bytes: Optional[bytes] = None
+    final_url = source_url
+    page_title: Optional[str] = None
+    selector_found = False
+    challenge_detected = False
+    challenge_signals: list[str] = []
+    selector_counts: dict[str, int] = {}
+    body_text_preview = ""
+    response_status: Optional[int] = None
+    tl_pos_count_value: Optional[str] = None
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
@@ -424,33 +638,147 @@ async def scrape_setlist_detail(source_url: str) -> ParsedTracklistDetail:
             viewport={"width": 1280, "height": 900},
             locale="en-US",
         )
-        # Suppress the navigator.webdriver flag so Cloudflare does not classify
-        # this request as a headless bot and serve a challenge page.
+        # Suppress navigator.webdriver so Cloudflare does not classify this
+        # request as a headless bot during its JS-level fingerprinting check.
         await context.add_init_script(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
         page = await context.new_page()
         page.set_default_timeout(settings.tracklists_scraper_navigation_timeout_ms)
+
+        # ── Step 1: Block ads/analytics/media before the first request ─────────
+        # This prevents blocked CDN resources from stalling the page-load event.
+        # Route errors are isolated per-request and do not abort the scrape.
+        await page.route("**/*", _block_nonessential_resources)
+
         try:
             log.info("[1001tl-detail] Navigating to %s", source_url)
-            # Use "load" so the full page resources are ready, but avoid
-            # "networkidle" — 1001TL keeps persistent ad/analytics connections
-            # open and the network never truly idles, causing a 30 s timeout.
-            await page.goto(source_url, wait_until="load")
+            # domcontentloaded resolves as soon as the HTML document is parsed.
+            # Track rows are server-rendered so they are present in the DOM at
+            # this point; we do NOT need to wait for all page resources to load.
+            response = await page.goto(
+                source_url,
+                wait_until="domcontentloaded",
+                timeout=settings.tracklists_detail_nav_timeout_ms,
+            )
+            if response is not None:
+                response_status = response.status
 
-            # Wait for at least one track row to appear.  If none appear within
-            # the timeout, the page may be private, removed, or structure-changed.
+            # ── Step 2: Detect and bypass the Cloudflare forwarding page ───────
+            # 1001Tracklists serves an interstitial when it suspects bot traffic.
+            # The page contains a form with a pre-computed ``bChk`` value (from
+            # Cloudflare's own JS fingerprinting) and a Turnstile widget.  We
+            # attempt to submit the form immediately.  If the server accepts
+            # ``bChk`` without a full Turnstile token the real page loads next.
+            try:
+                bypass_btn = page.locator('input[type="submit"][value="here"]')
+                if await bypass_btn.count() > 0:
+                    log.info(
+                        "[1001tl-detail] Forwarding/challenge interstitial detected "
+                        "at %s; submitting bypass form",
+                        source_url,
+                    )
+                    await bypass_btn.click()
+                    # Wait for the POST response and its domcontentloaded event.
+                    await page.wait_for_load_state(
+                        "domcontentloaded",
+                        timeout=settings.tracklists_detail_nav_timeout_ms,
+                    )
+                    log.info(
+                        "[1001tl-detail] Post-challenge navigation complete; "
+                        "final_url=%s status=%s",
+                        page.url,
+                        response_status,
+                    )
+            except Exception as bypass_exc:
+                log.debug(
+                    "[1001tl-detail] Challenge bypass attempt exception (non-fatal): %s",
+                    bypass_exc,
+                )
+
+            # ── Step 3: Brief networkidle grace ────────────────────────────────
+            # 1001TL's ad/analytics connections keep the network busy; treat
+            # networkidle timeout as normal and proceed to the selector wait.
+            try:
+                await page.wait_for_load_state(
+                    "networkidle",
+                    timeout=settings.tracklists_detail_network_idle_timeout_ms,
+                )
+            except PWTimeoutError:
+                log.debug(
+                    "[1001tl-detail] networkidle timed out after %d ms; "
+                    "proceeding to selector wait",
+                    settings.tracklists_detail_network_idle_timeout_ms,
+                )
+
+            # ── Step 4: Wait for track rows ────────────────────────────────────
             try:
                 await page.wait_for_selector(
                     _DETAIL_TRACK_ROW,
-                    timeout=settings.tracklists_scraper_navigation_timeout_ms,
+                    timeout=settings.tracklists_detail_selector_timeout_ms,
                 )
+                selector_found = True
             except PWTimeoutError:
-                log.warning(
-                    "[1001tl-detail] No track rows found at %s within timeout; "
-                    "parsing anyway (may return empty list)",
-                    source_url,
+                log.debug(
+                    "[1001tl-detail] .tlpItem not found within %d ms; "
+                    "trying scroll fallback",
+                    settings.tracklists_detail_selector_timeout_ms,
                 )
+                # Scroll to trigger any lazy-rendered track rows, then recheck.
+                await page.wait_for_timeout(750)
+                await page.mouse.wheel(0, 1200)
+                await page.wait_for_timeout(750)
+                tlp_count = await page.locator(_DETAIL_TRACK_ROW).count()
+                if tlp_count == 0:
+                    await page.mouse.wheel(0, 2400)
+                    await page.wait_for_timeout(750)
+                    tlp_count = await page.locator(_DETAIL_TRACK_ROW).count()
+                if tlp_count > 0:
+                    selector_found = True
+                else:
+                    log.warning(
+                        "[1001tl-detail] .tlpItem still absent after scroll at %s; "
+                        "capturing debug artefacts",
+                        source_url,
+                    )
+
+            # ── Step 5: Collect diagnostics ────────────────────────────────────
+            final_url = page.url
+            try:
+                page_title = await page.title()
+            except Exception:
+                pass
+
+            # Read tl_pos_count to show declared track count in debug output.
+            try:
+                pos_input = page.locator('input[name="tl_pos_count"]')
+                if await pos_input.count() > 0:
+                    tl_pos_count_value = await pos_input.get_attribute("value")
+            except Exception:
+                pass
+
+            for sel in _DIAGNOSTIC_SELECTORS:
+                try:
+                    selector_counts[sel] = await page.locator(sel).count()
+                except Exception:
+                    selector_counts[sel] = -1
+
+            try:
+                body_text = await page.inner_text("body")
+                body_text_preview = body_text[:1000]
+                lower = body_text.lower()
+                for signal in _CHALLENGE_SIGNALS:
+                    if signal in lower:
+                        challenge_signals.append(signal)
+                challenge_detected = bool(challenge_signals)
+            except Exception:
+                pass
+
+            # Viewport screenshot; written to disk only when zero tracks are found.
+            try:
+                screenshot_bytes = await page.screenshot(full_page=False)
+            except Exception as exc:
+                log.debug("[1001tl-detail] Screenshot failed: %s", exc)
 
             html = await page.content()
         finally:
@@ -458,9 +786,32 @@ async def scrape_setlist_detail(source_url: str) -> ParsedTracklistDetail:
 
     detail = parse_tracklist_detail(html)
     log.info(
-        "[1001tl-detail] Parsed %d tracks from %s (timed_cues=%s)",
+        "[1001tl-detail] Parsed %d tracks from %s "
+        "(timed_cues=%s selector_found=%s status=%s tl_pos_count=%s)",
         len(detail.tracks),
         source_url,
         detail.has_timed_cues,
+        selector_found,
+        response_status,
+        tl_pos_count_value,
     )
+
+    if not detail.tracks:
+        _emit_debug_files(
+            debug_id=debug_id,
+            source_url=source_url,
+            final_url=final_url,
+            page_title=page_title,
+            html=html,
+            screenshot_bytes=screenshot_bytes,
+            selector_counts=selector_counts,
+            challenge_detected=challenge_detected,
+            challenge_signals=challenge_signals,
+            body_text_preview=body_text_preview,
+            parsed_track_count=0,
+            response_status=response_status,
+            tl_pos_count_value=tl_pos_count_value,
+            error=None,
+        )
+
     return detail

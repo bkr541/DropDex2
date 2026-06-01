@@ -1,0 +1,18 @@
+{
+  "source_url": "https://www.1001tracklists.com/tracklist/wkgq6h1/avello-hotel-edc-virgin-hotel-las-vegas-edc-week-las-vegas-2026-05-17.html",
+  "final_url": "https://www.1001tracklists.com/tracklist/wkgq6h1/avello-hotel-edc-virgin-hotel-las-vegas-edc-week-las-vegas-2026-05-17.html",
+  "page_title": "1001Tracklists \u22c5 The World's Leading DJ Tracklist/Playlist Database",
+  "attempted_selectors": {
+    ".tlpItem": 0,
+    "input[id$=\"_cue_seconds\"]": 0,
+    "[data-trackid]": 0,
+    "[data-trno]": 0,
+    "[id$=\"_tracknumber_value\"]": 0
+  },
+  "challenge_detected": false,
+  "challenge_signals": [],
+  "body_text_preview": "Please wait, you will be forwarded to the requested page\nIf the forwarding does not work please click ",
+  "parsed_track_count": 0,
+  "timestamp": "20260601T201321Z",
+  "error": null
+}
