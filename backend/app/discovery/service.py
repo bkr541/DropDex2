@@ -350,6 +350,31 @@ async def run_setlist_detail_scrape(
             f"Detail scrape for set {set_result_id} failed: {type(exc).__name__}"
         ) from exc
 
+    # ── 5b. Reject zero-track results when the setlist metadata says tracks exist ─
+    # A scraper that returns 0 rows while the source reports N tracks is not a
+    # successful scrape — it indicates the page did not fully render, a DOM selector
+    # changed, or a challenge/bot-block page was served.  Marking these as
+    # "completed" with parsed_track_count=0 permanently hides the set from users.
+    expected_track_count = summary.track_count or 0
+    parsed_track_count = len(detail.tracks)
+    if expected_track_count > 0 and parsed_track_count == 0:
+        error_msg = (
+            f"Detail scrape returned 0 parsed tracks, but the setlist metadata "
+            f"expected approximately {expected_track_count} tracks. "
+            "The 1001Tracklists page may not have fully rendered, the DOM selector "
+            "may have changed, or the scraper received a blocked/challenge page. "
+            "Use Refresh to try again."
+        )
+        log.warning(
+            "[detail] set=%s zero-track scrape — expected=%d tracks, parsed=0. "
+            "source_url=%s. Marking as failed.",
+            set_result_id,
+            expected_track_count,
+            summary.source_url,
+        )
+        _safe_set_detail_failed(repo, set_result_id, error_msg)
+        raise DetailScrapeError(error_msg)
+
     # ── 6. Persist tracks ─────────────────────────────────────────────────────
     try:
         if refresh:

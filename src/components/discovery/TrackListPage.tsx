@@ -339,8 +339,9 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
           <div>
             <p className="text-sm font-bold text-muted-foreground">No tracks extracted</p>
             <p className="text-xs text-muted-foreground mt-1 opacity-70">
-              No individual track rows could be parsed from this setlist page.
-              The source page may not list individual tracks.
+              {(detail?.setlist.track_count ?? 0) > 0
+                ? `This setlist says it has ${detail?.setlist.track_count} tracks, but DropDex could not parse the individual track rows. Try clicking Refresh.`
+                : 'No individual track rows could be parsed from this setlist page. The source page may not list individual tracks.'}
             </p>
           </div>
           <button

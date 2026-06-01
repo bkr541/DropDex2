@@ -583,17 +583,20 @@ class TestDetailService:
     def test_marks_running_before_scrape(self):
         repo = _mock_repo(summary=_SUMMARY, tracks=[])
 
+        # Use non-empty tracks so the zero-track guard does not fire; this test
+        # is only about running→upsert ordering, not the failure path.
+        parsed = [_make_parsed_track(0)]
         from app.discovery.scrapers.tracklists1001.detail_parser import ParsedTracklistDetail
         detail = ParsedTracklistDetail(
             source_numeric_tracklist_id="1",
             title="T",
             canonical_url=_VALID_URL,
-            declared_position_count=0,
-            tracks=[],
+            declared_position_count=1,
+            tracks=parsed,
             has_timed_cues=False,
         )
         repo.get_set_result_full.return_value = _SUMMARY_COMPLETED
-        repo.get_set_tracks.return_value = []
+        repo.get_set_tracks.side_effect = [[], [_make_track(0)]]
 
         call_order = []
         repo.set_detail_running.side_effect = lambda *a, **k: call_order.append("running")
@@ -609,6 +612,93 @@ class TestDetailService:
             )
 
         assert call_order.index("running") < call_order.index("upsert")
+
+    def test_marks_failed_when_zero_tracks_but_expected(self):
+        """
+        When the scraper returns 0 parsed tracks but the setlist metadata reports
+        track_count > 0, the service must mark the record failed (not completed)
+        and raise DetailScrapeError.  This is the core fix for the
+        'completed + 0 parsed + expected tracks' stuck state.
+        """
+        # _SUMMARY has track_count=15
+        repo = _mock_repo(summary=_SUMMARY, tracks=[])
+
+        from app.discovery.scrapers.tracklists1001.detail_parser import ParsedTracklistDetail
+        empty_detail = ParsedTracklistDetail(
+            source_numeric_tracklist_id=None,
+            title="T",
+            canonical_url=_VALID_URL,
+            declared_position_count=0,
+            tracks=[],   # zero tracks parsed while track_count=15 expected
+            has_timed_cues=False,
+        )
+
+        with patch(
+            "app.discovery.service.scrape_setlist_detail",
+            new_callable=AsyncMock,
+            return_value=empty_detail,
+        ):
+            with pytest.raises(DetailScrapeError):
+                asyncio.run(
+                    run_setlist_detail_scrape(_SET_RESULT_ID, repo=repo)
+                )
+
+        # Must mark failed, not completed
+        repo.set_detail_failed.assert_called_once()
+        repo.set_detail_completed.assert_not_called()
+        # Must not persist any track rows
+        repo.upsert_set_tracks.assert_not_called()
+
+    def test_marks_completed_when_zero_tracks_none_expected(self):
+        """
+        When track_count is 0 or None and the scraper also returns 0 tracks,
+        the set is genuinely empty.  completed is the correct final status
+        and no DetailScrapeError should be raised.
+        """
+        no_tracks_summary = SetlistDetailSummary(
+            id=_SET_RESULT_ID,
+            title="Empty Set",
+            source_url=_VALID_URL,
+            set_date="2026-01-01",
+            track_count=0,           # explicitly zero expected
+            parsed_track_count=None,
+            detail_scrape_status="not_scraped",
+        )
+        repo = _mock_repo(summary=no_tracks_summary, tracks=[])
+
+        from app.discovery.scrapers.tracklists1001.detail_parser import ParsedTracklistDetail
+        empty_detail = ParsedTracklistDetail(
+            source_numeric_tracklist_id=None,
+            title="Empty Set",
+            canonical_url=_VALID_URL,
+            declared_position_count=0,
+            tracks=[],   # zero tracks — also 0 expected, so this is valid
+            has_timed_cues=False,
+        )
+        # After set_detail_completed the repo returns the updated summary
+        completed_summary = SetlistDetailSummary(
+            id=_SET_RESULT_ID,
+            title="Empty Set",
+            source_url=_VALID_URL,
+            detail_scrape_status="completed",
+            parsed_track_count=0,
+            track_count=0,
+        )
+        repo.get_set_result_full.side_effect = [no_tracks_summary, completed_summary]
+        repo.get_set_tracks.return_value = []
+
+        with patch(
+            "app.discovery.service.scrape_setlist_detail",
+            new_callable=AsyncMock,
+            return_value=empty_detail,
+        ):
+            result = asyncio.run(
+                run_setlist_detail_scrape(_SET_RESULT_ID, repo=repo)
+            )
+
+        repo.set_detail_completed.assert_called_once()
+        repo.set_detail_failed.assert_not_called()
+        assert result.tracks == []
 
     def test_marks_completed_after_successful_save(self):
         repo = _mock_repo(summary=_SUMMARY, tracks=[])

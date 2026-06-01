@@ -729,6 +729,8 @@ class DiscoveryRepository:
             {
                 "detail_scrape_status": "failed",
                 "detail_scrape_error": error_message,
+                "detail_scraped_at": _now_iso(),
+                "parsed_track_count": 0,
             }
         ).eq("id", set_result_id).execute()
 
