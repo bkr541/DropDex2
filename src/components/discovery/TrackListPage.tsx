@@ -11,11 +11,22 @@ import {
   Timer,
   AlertTriangle,
   RotateCcw,
+  LayoutList,
+  GitBranch,
 } from 'lucide-react';
 import { cn, formatPlaylistDuration } from '../../lib/utils';
 import { useSetlistTracks } from '../../hooks/useSetlistTracks';
 import { SetTrackRow } from './SetTrackRow';
+import { SetTrackTimeline } from './SetTrackTimeline';
 import type { DiscoverySetlistResult } from '../../types';
+
+type ViewMode = 'list' | 'timeline';
+
+function getInitialViewMode(): ViewMode {
+  if (typeof window === 'undefined') return 'list';
+  const v = window.localStorage.getItem('dropdex:setlist-view-mode');
+  return v === 'list' || v === 'timeline' ? v : 'list';
+}
 
 interface TrackListPageProps {
   setlist: DiscoverySetlistResult;
@@ -64,6 +75,15 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
     setlist.id,
     accessToken,
   );
+
+  const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode);
+
+  function handleViewMode(mode: ViewMode) {
+    setViewMode(mode);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('dropdex:setlist-view-mode', mode);
+    }
+  }
 
   // Header values — use detail when available, fall back to card data
   const headerTitle = detail?.setlist.title ?? setlist.title ?? 'Untitled Set';
@@ -251,35 +271,64 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
       {/* ── Track list ────────────────────────────────────────────────────── */}
       {hasTracks && !showSkeleton && (
         <div className="glass rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden">
-          {/* Column headers */}
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--color-border-faint)]">
-            <div className="w-14 shrink-0 text-right">
-              <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                {leftColLabel}
-              </span>
-            </div>
-            <div className="flex-1">
-              <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                Track
-              </span>
-            </div>
-            <span className="shrink-0 w-10 text-right text-[8px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-              Dur
+          {/* Section header + view toggle */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border-faint)]">
+            <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+              Tracklist
             </span>
-            <div className="w-5 shrink-0" />
+            <div className="flex items-center bg-[var(--color-avatar-bg)] rounded-lg p-0.5">
+              {(['list', 'timeline'] as ViewMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => handleViewMode(mode)}
+                  className={cn(
+                    'flex items-center gap-1 px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all',
+                    viewMode === mode
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {mode === 'list' ? <LayoutList size={10} /> : <GitBranch size={10} />}
+                  {mode === 'list' ? 'List' : 'Timeline'}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Rows */}
-          <div className="divide-y divide-[var(--color-border-faint)] py-1">
-            {tracks.map((track, i) => (
-              <SetTrackRow
-                key={track.id}
-                track={track}
-                isTimedSet={isTimed}
-                displayNumber={displayNumbers[i]}
-              />
-            ))}
-          </div>
+          {viewMode === 'list' ? (
+            <>
+              {/* Column headers */}
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--color-border-faint)]">
+                <div className="w-14 shrink-0 text-right">
+                  <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                    {leftColLabel}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                    Track
+                  </span>
+                </div>
+                <span className="shrink-0 w-10 text-right text-[8px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                  Dur
+                </span>
+                <div className="w-5 shrink-0" />
+              </div>
+              {/* Rows */}
+              <div className="divide-y divide-[var(--color-border-faint)] py-1">
+                {tracks.map((track, i) => (
+                  <SetTrackRow
+                    key={track.id}
+                    track={track}
+                    isTimedSet={isTimed}
+                    displayNumber={displayNumbers[i]}
+                  />
+                ))}
+              </div>
+            </>
+          ) : (
+            <SetTrackTimeline tracks={tracks} isTimedSet={isTimed} />
+          )}
         </div>
       )}
 
