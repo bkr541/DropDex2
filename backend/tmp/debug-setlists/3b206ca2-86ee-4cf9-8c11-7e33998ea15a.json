@@ -1,0 +1,31 @@
+{
+  "source_url": "https://www.1001tracklists.com/tracklist/1dd48bv9/kill-the-noise-higher-love-red-rocks-amphitheatre-united-states-2026-05-30.html",
+  "final_url": "https://www.1001tracklists.com/tracklist/1dd48bv9/kill-the-noise-higher-love-red-rocks-amphitheatre-united-states-2026-05-30.html",
+  "page_title": "1001Tracklists \u22c5 The World's Leading DJ Tracklist/Playlist Database",
+  "response_status": 206,
+  "tl_pos_count": null,
+  "attempted_selectors": {
+    ".tlpItem": 0,
+    "input[id$=\"_cue_seconds\"]": 0,
+    "[data-trackid]": 0,
+    "[data-trno]": 0,
+    "[id$=\"_tracknumber_value\"]": 0,
+    "input[name=\"tl_pos_count\"]": 0,
+    "[id^=\"tlp_\"]": 0
+  },
+  "challenge_detected": true,
+  "challenge_signals": [
+    "please wait, you will be forwarded to the requested page",
+    "forwarded to the requested page",
+    "cf-turnstile-response",
+    "turnstile-container",
+    "captcha",
+    "cloudflare",
+    "enable javascript",
+    "robot"
+  ],
+  "body_text_preview": "Please wait, you will be forwarded to the requested page\nIf the forwarding does not work please click ",
+  "parsed_track_count": 0,
+  "timestamp": "20260601T212440Z",
+  "error": "Challenge page \u2014 track rows not accessible after bypass attempt"
+}

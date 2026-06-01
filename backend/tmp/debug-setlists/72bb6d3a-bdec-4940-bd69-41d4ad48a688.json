@@ -1,0 +1,22 @@
+{
+  "source_url": "https://www.1001tracklists.com/tracklist/21tlb7f9/tritonal-tritonia-535-2026-05-28.html",
+  "final_url": "https://www.1001tracklists.com/tracklist/21tlb7f9/tritonal-tritonia-535-2026-05-28.html",
+  "page_title": "1001Tracklists \u22c5 The World's Leading DJ Tracklist/Playlist Database",
+  "response_status": 206,
+  "tl_pos_count": null,
+  "attempted_selectors": {
+    ".tlpItem": 0,
+    "input[id$=\"_cue_seconds\"]": 0,
+    "[data-trackid]": 0,
+    "[data-trno]": 0,
+    "[id$=\"_tracknumber_value\"]": 0,
+    "input[name=\"tl_pos_count\"]": 0,
+    "[id^=\"tlp_\"]": 0
+  },
+  "challenge_detected": false,
+  "challenge_signals": [],
+  "body_text_preview": "We need to validate your are real human!\n\n\nSubmit",
+  "parsed_track_count": 0,
+  "timestamp": "20260601T205529Z",
+  "error": null
+}

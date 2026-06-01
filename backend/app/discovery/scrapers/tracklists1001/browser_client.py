@@ -412,14 +412,20 @@ async def _block_nonessential_resources(route) -> None:
     await route.continue_()
 
 
-# Visible body-text fragments that indicate a bot-challenge or block page.
-# "forwarded to the requested page" is the 1001TL Cloudflare Turnstile
-# interstitial — it shows a form that must be submitted before the real content
-# is served.
-_CHALLENGE_SIGNALS = [
-    "cloudflare",
-    "checking your browser",
+# Body-text and HTML fragments that identify a bot-challenge, forwarding, or
+# block page served instead of the real setlist HTML.
+# Checked against BOTH inner_text() and raw HTML source; some signals
+# (e.g. "cf-turnstile-response") only appear in hidden inputs and are never
+# included in visible body text.
+_CHALLENGE_SIGNALS: list[str] = [
+    "please wait, you will be forwarded to the requested page",
+    "forwarded to the requested page",
+    "cf-turnstile-response",
+    "turnstile-container",
     "captcha",
+    "verify you are human",
+    "checking your browser",
+    "cloudflare",
     "access denied",
     "enable javascript",
     "unusual traffic",
@@ -427,9 +433,28 @@ _CHALLENGE_SIGNALS = [
     "forbidden",
     "rate limit",
     "robot",
-    "verify you are human",
-    "forwarded to the requested page",
 ]
+
+
+def _detect_challenge_page(body_text: str, html: str) -> tuple[bool, list[str]]:
+    """
+    Return ``(is_challenge, matched_signals)`` by checking BOTH the visible body
+    text and the raw HTML source.  Checking both is necessary because markers
+    like ``cf-turnstile-response`` and ``turnstile-container`` live in hidden
+    ``<input>`` elements that do not appear in ``inner_text()`` output.
+    """
+    combined = f"{body_text}\n{html}".lower()
+    hits = [signal for signal in _CHALLENGE_SIGNALS if signal in combined]
+    return bool(hits), hits
+
+
+class TracklistChallengeError(Exception):
+    """
+    Raised when 1001Tracklists serves a Cloudflare Turnstile or forwarding
+    interstitial instead of the setlist detail HTML, making track rows
+    inaccessible to the scraper.
+    """
+
 
 # Debug output directory: <repo>/backend/tmp/debug-setlists/
 _DEBUG_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "tmp" / "debug-setlists"
@@ -647,15 +672,10 @@ async def scrape_setlist_detail(
         page.set_default_timeout(settings.tracklists_scraper_navigation_timeout_ms)
 
         # ── Step 1: Block ads/analytics/media before the first request ─────────
-        # This prevents blocked CDN resources from stalling the page-load event.
-        # Route errors are isolated per-request and do not abort the scrape.
         await page.route("**/*", _block_nonessential_resources)
 
         try:
             log.info("[1001tl-detail] Navigating to %s", source_url)
-            # domcontentloaded resolves as soon as the HTML document is parsed.
-            # Track rows are server-rendered so they are present in the DOM at
-            # this point; we do NOT need to wait for all page resources to load.
             response = await page.goto(
                 source_url,
                 wait_until="domcontentloaded",
@@ -664,41 +684,78 @@ async def scrape_setlist_detail(
             if response is not None:
                 response_status = response.status
 
-            # ── Step 2: Detect and bypass the Cloudflare forwarding page ───────
-            # 1001Tracklists serves an interstitial when it suspects bot traffic.
-            # The page contains a form with a pre-computed ``bChk`` value (from
-            # Cloudflare's own JS fingerprinting) and a Turnstile widget.  We
-            # attempt to submit the form immediately.  If the server accepts
-            # ``bChk`` without a full Turnstile token the real page loads next.
+            # ── Step 2: Early challenge detection ──────────────────────────────
+            # Run immediately after domcontentloaded — before waiting 20 s for
+            # .tlpItem.  Checks BOTH visible body text and raw HTML so that
+            # hidden-input markers (cf-turnstile-response, turnstile-container)
+            # are caught even when they are absent from inner_text() output.
             try:
-                bypass_btn = page.locator('input[type="submit"][value="here"]')
-                if await bypass_btn.count() > 0:
-                    log.info(
-                        "[1001tl-detail] Forwarding/challenge interstitial detected "
-                        "at %s; submitting bypass form",
-                        source_url,
-                    )
-                    await bypass_btn.click()
-                    # Wait for the POST response and its domcontentloaded event.
-                    await page.wait_for_load_state(
-                        "domcontentloaded",
-                        timeout=settings.tracklists_detail_nav_timeout_ms,
-                    )
-                    log.info(
-                        "[1001tl-detail] Post-challenge navigation complete; "
-                        "final_url=%s status=%s",
-                        page.url,
-                        response_status,
-                    )
-            except Exception as bypass_exc:
-                log.debug(
-                    "[1001tl-detail] Challenge bypass attempt exception (non-fatal): %s",
-                    bypass_exc,
+                body_text = await page.inner_text("body")
+                body_text_preview = body_text[:1000]
+            except Exception:
+                body_text = ""
+                body_text_preview = ""
+
+            early_html = await page.content()
+            challenge_detected, challenge_signals = _detect_challenge_page(body_text, early_html)
+
+            if challenge_detected:
+                log.warning(
+                    "[1001tl-detail] Challenge/interstitial page detected at %s; "
+                    "signals=%s; failing fast",
+                    source_url,
+                    challenge_signals,
+                )
+                # Collect diagnostics and fail immediately.  Submitting the
+                # Turnstile form without a valid token is unreliable and not
+                # attempted here.  Use the manual HTML import fallback instead.
+                final_url = page.url
+                try:
+                    page_title = await page.title()
+                except Exception:
+                    pass
+                try:
+                    pos_input = page.locator('input[name="tl_pos_count"]')
+                    if await pos_input.count() > 0:
+                        tl_pos_count_value = await pos_input.get_attribute("value")
+                except Exception:
+                    pass
+                for sel in _DIAGNOSTIC_SELECTORS:
+                    try:
+                        selector_counts[sel] = await page.locator(sel).count()
+                    except Exception:
+                        selector_counts[sel] = -1
+                try:
+                    screenshot_bytes = await page.screenshot(full_page=False)
+                except Exception as exc:
+                    log.debug("[1001tl-detail] Screenshot failed: %s", exc)
+                html = await page.content()
+
+                _emit_debug_files(
+                    debug_id=debug_id,
+                    source_url=source_url,
+                    final_url=final_url,
+                    page_title=page_title,
+                    html=html,
+                    screenshot_bytes=screenshot_bytes,
+                    selector_counts=selector_counts,
+                    challenge_detected=True,
+                    challenge_signals=challenge_signals,
+                    body_text_preview=body_text_preview,
+                    parsed_track_count=0,
+                    response_status=response_status,
+                    tl_pos_count_value=tl_pos_count_value,
+                    error="Challenge page — track rows not accessible",
+                )
+                raise TracklistChallengeError(
+                    "1001Tracklists returned a challenge/forwarding page instead of "
+                    "the setlist detail HTML. Track rows were not accessible to the "
+                    "scraper. Try again later or open the source page manually."
                 )
 
-            # ── Step 3: Brief networkidle grace ────────────────────────────────
-            # 1001TL's ad/analytics connections keep the network busy; treat
-            # networkidle timeout as normal and proceed to the selector wait.
+            # ── Step 3: Normal flow (no challenge) ────────────────────────────
+            # Brief networkidle grace — ad/analytics scripts keep the network busy;
+            # treat timeout as normal and proceed to the selector wait.
             try:
                 await page.wait_for_load_state(
                     "networkidle",
@@ -712,35 +769,36 @@ async def scrape_setlist_detail(
                 )
 
             # ── Step 4: Wait for track rows ────────────────────────────────────
-            try:
-                await page.wait_for_selector(
-                    _DETAIL_TRACK_ROW,
-                    timeout=settings.tracklists_detail_selector_timeout_ms,
-                )
-                selector_found = True
-            except PWTimeoutError:
-                log.debug(
-                    "[1001tl-detail] .tlpItem not found within %d ms; "
-                    "trying scroll fallback",
-                    settings.tracklists_detail_selector_timeout_ms,
-                )
-                # Scroll to trigger any lazy-rendered track rows, then recheck.
-                await page.wait_for_timeout(750)
-                await page.mouse.wheel(0, 1200)
-                await page.wait_for_timeout(750)
-                tlp_count = await page.locator(_DETAIL_TRACK_ROW).count()
-                if tlp_count == 0:
-                    await page.mouse.wheel(0, 2400)
+            if not selector_found:
+                try:
+                    await page.wait_for_selector(
+                        _DETAIL_TRACK_ROW,
+                        timeout=settings.tracklists_detail_selector_timeout_ms,
+                    )
+                    selector_found = True
+                except PWTimeoutError:
+                    log.debug(
+                        "[1001tl-detail] .tlpItem not found within %d ms; "
+                        "trying scroll fallback",
+                        settings.tracklists_detail_selector_timeout_ms,
+                    )
+                    # Scroll to trigger any lazy-rendered track rows, then recheck.
+                    await page.wait_for_timeout(750)
+                    await page.mouse.wheel(0, 1200)
                     await page.wait_for_timeout(750)
                     tlp_count = await page.locator(_DETAIL_TRACK_ROW).count()
-                if tlp_count > 0:
-                    selector_found = True
-                else:
-                    log.warning(
-                        "[1001tl-detail] .tlpItem still absent after scroll at %s; "
-                        "capturing debug artefacts",
-                        source_url,
-                    )
+                    if tlp_count == 0:
+                        await page.mouse.wheel(0, 2400)
+                        await page.wait_for_timeout(750)
+                        tlp_count = await page.locator(_DETAIL_TRACK_ROW).count()
+                    if tlp_count > 0:
+                        selector_found = True
+                    else:
+                        log.warning(
+                            "[1001tl-detail] .tlpItem still absent after scroll at %s; "
+                            "capturing debug artefacts",
+                            source_url,
+                        )
 
             # ── Step 5: Collect diagnostics ────────────────────────────────────
             final_url = page.url
@@ -748,39 +806,34 @@ async def scrape_setlist_detail(
                 page_title = await page.title()
             except Exception:
                 pass
-
-            # Read tl_pos_count to show declared track count in debug output.
             try:
                 pos_input = page.locator('input[name="tl_pos_count"]')
                 if await pos_input.count() > 0:
                     tl_pos_count_value = await pos_input.get_attribute("value")
             except Exception:
                 pass
-
             for sel in _DIAGNOSTIC_SELECTORS:
                 try:
                     selector_counts[sel] = await page.locator(sel).count()
                 except Exception:
                     selector_counts[sel] = -1
 
+            # Re-run challenge detection on the final page state so the debug
+            # JSON accurately reflects whether a challenge page is present after
+            # all navigation attempts.  Checks both body text and raw HTML.
             try:
-                body_text = await page.inner_text("body")
-                body_text_preview = body_text[:1000]
-                lower = body_text.lower()
-                for signal in _CHALLENGE_SIGNALS:
-                    if signal in lower:
-                        challenge_signals.append(signal)
-                challenge_detected = bool(challenge_signals)
+                body_text_final = await page.inner_text("body")
+                body_text_preview = body_text_final[:1000]
             except Exception:
-                pass
+                body_text_final = body_text
+            html = await page.content()
+            challenge_detected, challenge_signals = _detect_challenge_page(body_text_final, html)
 
-            # Viewport screenshot; written to disk only when zero tracks are found.
             try:
                 screenshot_bytes = await page.screenshot(full_page=False)
             except Exception as exc:
                 log.debug("[1001tl-detail] Screenshot failed: %s", exc)
 
-            html = await page.content()
         finally:
             await browser.close()
 

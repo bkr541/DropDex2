@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { DiscoverySetTracklistDetail } from '../types';
-import { fetchSetlistTracks, scrapeSetlistTracks } from '../lib/api/discovery';
+import { fetchSetlistTracks, importSetlistTracksHtml, scrapeSetlistTracks } from '../lib/api/discovery';
 
 export function useSetlistTracks(
   setResultId: string | null,
@@ -113,5 +113,20 @@ export function useSetlistTracks(
     }
   }, [setResultId, accessToken, scraping]);
 
-  return { detail, loading, scraping, error, refresh, retry };
+  // importHtml parses user-supplied page HTML as a fallback when the browser
+  // scraper is blocked.  Re-throws on failure so the caller can show the error
+  // inside the import panel without overwriting the existing error state.
+  const importHtml = useCallback(async (html: string) => {
+    if (!setResultId || !accessToken) return;
+    setScraping(true);
+    try {
+      const result = await importSetlistTracksHtml(setResultId, accessToken, html);
+      setDetail(result);
+      setError(null);
+    } finally {
+      setScraping(false);
+    }
+  }, [setResultId, accessToken]);
+
+  return { detail, loading, scraping, error, refresh, retry, importHtml };
 }

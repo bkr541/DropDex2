@@ -15,7 +15,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class JobStatus(str, Enum):
@@ -215,3 +215,10 @@ class InvalidSetlistUrlError(ValueError):
 
 class DetailScrapeError(RuntimeError):
     """Raised when a detail-page scrape or persistence step fails."""
+
+
+# ── HTML import request ───────────────────────────────────────────────────────
+
+class SetlistHtmlImportRequest(BaseModel):
+    """Request body for POST /setlists/{id}/tracks/import-html."""
+    html: str = Field(..., min_length=1_000, max_length=5_000_000)

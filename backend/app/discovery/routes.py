@@ -32,11 +32,16 @@ from app.discovery.models import (
     ScrapeJobResponse,
     ScrapeStartResponse,
     SetlistDetailResponse,
+    SetlistHtmlImportRequest,
     SetlistsPage,
     SetResultNotFoundError,
 )
 from app.discovery.repository import DiscoveryRepository
-from app.discovery.service import get_setlist_tracks_response, run_setlist_detail_scrape
+from app.discovery.service import (
+    get_setlist_tracks_response,
+    import_setlist_html_tracks,
+    run_setlist_detail_scrape,
+)
 
 log = logging.getLogger(__name__)
 
@@ -314,3 +319,35 @@ async def scrape_set_tracks(
             else "Set detail scrape encountered an error. Please try again."
         )
         raise HTTPException(status_code=503, detail=detail_msg)
+
+
+# ── 9. Manual HTML import ─────────────────────────────────────────────────────
+
+@router.post(
+    "/setlists/{set_result_id}/tracks/import-html",
+    response_model=SetlistDetailResponse,
+    summary="Import 1001Tracklists setlist HTML to parse and save tracks",
+)
+async def import_set_tracks_html(
+    set_result_id: str,
+    body: SetlistHtmlImportRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> SetlistDetailResponse:
+    """
+    Accept user-supplied HTML from a 1001Tracklists setlist detail page, parse
+    it with the existing track parser, and save the results.
+
+    This endpoint is the fallback when the Playwright browser scraper is blocked
+    by a Cloudflare Turnstile challenge page.  The user fetches the real page
+    in their own browser, copies the HTML, and submits it here.
+
+    - Returns ``404`` when the set result UUID is unknown.
+    - Returns ``422`` when the HTML fails content-signal validation or the
+      parser finds zero track rows.
+    """
+    try:
+        return import_setlist_html_tracks(set_result_id, body.html)
+    except SetResultNotFoundError:
+        raise HTTPException(status_code=404, detail="Set result not found")
+    except DetailScrapeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))

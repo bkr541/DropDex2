@@ -7,6 +7,8 @@ import {
   Music2,
   Clock,
   Calendar,
+  ExternalLink,
+  FileCode2,
   ListMusic,
   Timer,
   AlertTriangle,
@@ -70,18 +72,41 @@ function SkeletonRow({ wide = false }: { wide?: boolean }) {
   );
 }
 
+function isChallengeMsg(msg: string | null | undefined): boolean {
+  if (!msg) return false;
+  const lower = msg.toLowerCase();
+  return lower.includes('challenge/forwarding page') || lower.includes('track rows were not accessible');
+}
+
 export function TrackListPage({ setlist, accessToken, onBack }: TrackListPageProps) {
-  const { detail, loading, scraping, error, refresh, retry } = useSetlistTracks(
+  const { detail, loading, scraping, error, refresh, retry, importHtml } = useSetlistTracks(
     setlist.id,
     accessToken,
   );
 
   const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode);
+  const [showImportPanel, setShowImportPanel] = useState(false);
+  const [importHtmlText, setImportHtmlText] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
 
   function handleViewMode(mode: ViewMode) {
     setViewMode(mode);
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('dropdex:setlist-view-mode', mode);
+    }
+  }
+
+  const sourceUrl = detail?.setlist.source_url ?? setlist.source_url ?? null;
+
+  async function handleImport() {
+    if (!importHtmlText.trim() || scraping) return;
+    setImportError(null);
+    try {
+      await importHtml(importHtmlText);
+      setShowImportPanel(false);
+      setImportHtmlText('');
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Import failed');
     }
   }
 
@@ -257,14 +282,37 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
               Previously saved tracks are shown below.
             </p>
           )}
-          <button
-            onClick={retry}
-            disabled={scraping}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all active:scale-95 disabled:opacity-50"
-          >
-            <RotateCcw size={12} />
-            Retry Scrape
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={retry}
+              disabled={scraping}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all active:scale-95 disabled:opacity-50"
+            >
+              <RotateCcw size={12} />
+              Retry Scrape
+            </button>
+            {isChallengeMsg(error) && sourceUrl && (
+              <>
+                <a
+                  href={sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-foreground hover:bg-[var(--color-surface-hover)] transition-all active:scale-95"
+                >
+                  <ExternalLink size={12} />
+                  Open Source Page
+                </a>
+                <button
+                  onClick={() => { setShowImportPanel(true); setImportError(null); }}
+                  disabled={scraping}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-foreground hover:bg-[var(--color-surface-hover)] transition-all active:scale-95 disabled:opacity-50"
+                >
+                  <FileCode2 size={12} />
+                  Import HTML
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -332,6 +380,62 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
         </div>
       )}
 
+      {/* ── HTML import panel ────────────────────────────────────────────── */}
+      {showImportPanel && (
+        <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileCode2 size={14} className="text-primary" />
+              <p className="text-sm font-bold">Import Tracklist HTML</p>
+            </div>
+            <button
+              onClick={() => { setShowImportPanel(false); setImportError(null); setImportHtmlText(''); }}
+              className="text-muted-foreground hover:text-foreground transition-colors text-xs"
+            >
+              ✕
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Open the source page in your browser, right-click and choose{' '}
+            <span className="font-mono text-foreground">View Page Source</span>, then paste the
+            full HTML here so DropDex can parse the tracks.
+          </p>
+          <textarea
+            value={importHtmlText}
+            onChange={(e) => setImportHtmlText(e.target.value)}
+            disabled={scraping}
+            placeholder="Paste 1001Tracklists page HTML here…"
+            className="w-full h-40 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50 placeholder:text-muted-foreground/50"
+          />
+          {importError && (
+            <p className="text-xs text-red-400 font-mono leading-relaxed">{importError}</p>
+          )}
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => { setShowImportPanel(false); setImportError(null); setImportHtmlText(''); }}
+              disabled={scraping}
+              className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-[var(--color-surface)] border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-all active:scale-95 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleImport}
+              disabled={!importHtmlText.trim() || scraping}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-primary text-primary-foreground hover:opacity-90 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {scraping ? (
+                <>
+                  <Loader2 size={10} className="animate-spin" />
+                  Importing…
+                </>
+              ) : (
+                'Import Tracklist'
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Empty state (scrape completed, zero tracks returned) ──────────── */}
       {!loading && !scraping && !error && !hasTracks && status === 'completed' && (
         <div className="glass rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] p-12 text-center space-y-3">
@@ -364,14 +468,37 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
               {detail?.setlist.detail_scrape_error ?? 'An error occurred during scraping.'}
             </p>
           </div>
-          <button
-            onClick={retry}
-            disabled={scraping}
-            className="mx-auto flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all"
-          >
-            <RotateCcw size={12} />
-            Retry Scrape
-          </button>
+          <div className="flex flex-wrap gap-2 justify-center">
+            <button
+              onClick={retry}
+              disabled={scraping}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all"
+            >
+              <RotateCcw size={12} />
+              Retry Scrape
+            </button>
+            {isChallengeMsg(detail?.setlist.detail_scrape_error) && sourceUrl && (
+              <>
+                <a
+                  href={sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-foreground hover:bg-[var(--color-surface-hover)] transition-all active:scale-95"
+                >
+                  <ExternalLink size={12} />
+                  Open Source Page
+                </a>
+                <button
+                  onClick={() => { setShowImportPanel(true); setImportError(null); }}
+                  disabled={scraping}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-foreground hover:bg-[var(--color-surface-hover)] transition-all active:scale-95 disabled:opacity-50"
+                >
+                  <FileCode2 size={12} />
+                  Import HTML
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
     </motion.div>

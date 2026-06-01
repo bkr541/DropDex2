@@ -49,10 +49,12 @@ from app.discovery.models import (
 )
 from app.discovery.repository import DiscoveryRepository
 from app.discovery.scrapers.tracklists1001.browser_client import (
+    TracklistChallengeError,
     scrape_artist_setlists,
     scrape_setlist_detail,
     validate_setlist_url,
 )
+from app.discovery.scrapers.tracklists1001.detail_parser import parse_tracklist_detail
 
 log = logging.getLogger(__name__)
 
@@ -334,6 +336,18 @@ async def run_setlist_detail_scrape(
     # ── 5. Scrape the detail page ─────────────────────────────────────────────
     try:
         detail = await scrape_setlist_detail(summary.source_url, debug_id=str(set_result_id))
+    except TracklistChallengeError as exc:
+        # Challenge/forwarding page served instead of the real setlist HTML.
+        # Store the specific message so the UI can explain the failure clearly.
+        challenge_msg = str(exc)
+        log.warning(
+            "[detail] set=%s challenge page returned at %s: %s",
+            set_result_id,
+            summary.source_url,
+            challenge_msg,
+        )
+        _safe_set_detail_failed(repo, set_result_id, challenge_msg)
+        raise DetailScrapeError(challenge_msg) from exc
     except Exception as exc:
         log.exception(
             "[detail] set=%s scrape failed at %s: %s",
@@ -432,3 +446,112 @@ def _safe_set_detail_failed(
             "[detail] Could not mark set %s detail as failed — DB may be unavailable",
             set_result_id,
         )
+
+
+# ── Manual HTML import ────────────────────────────────────────────────────────
+
+# At least one of these substrings must appear in the submitted HTML for it to
+# be accepted as a 1001Tracklists setlist detail page.  Checked case-insensitively
+# against the raw HTML (not just visible text).
+_IMPORT_CONTENT_SIGNALS: tuple[str, ...] = (
+    "1001tracklists",
+    "tlpitem",
+    "tl_pos_count",
+    "/tracklist/",
+    'itemprop="track"',
+    "id_tracklist",
+)
+
+
+def import_setlist_html_tracks(
+    set_result_id: str,
+    html: str,
+    *,
+    repo: Optional[DiscoveryRepository] = None,
+) -> SetlistDetailResponse:
+    """
+    Parse user-supplied 1001Tracklists setlist HTML and persist the resulting
+    tracks, bypassing the Playwright browser scraper.
+
+    Intended as a fallback when the browser scraper receives a Cloudflare
+    challenge page.  The user fetches the real page HTML themselves (e.g. via
+    a normal browser session) and submits it here.
+
+    Parameters
+    ----------
+    set_result_id:
+        UUID of an existing artist_set_results row.
+    html:
+        Raw HTML of the 1001Tracklists setlist detail page.
+
+    Raises
+    ------
+    SetResultNotFoundError
+        When set_result_id is not in artist_set_results.
+    DetailScrapeError
+        When the HTML fails the content-signal check, or when the parser
+        returns zero tracks.
+    """
+    if repo is None:
+        repo = _make_repo()
+
+    summary = repo.get_set_result_full(set_result_id)
+    if summary is None:
+        raise SetResultNotFoundError(
+            f"Set result '{set_result_id}' not found in the DropDex catalog"
+        )
+
+    lower = html.lower()
+    if not any(sig.lower() in lower for sig in _IMPORT_CONTENT_SIGNALS):
+        raise DetailScrapeError(
+            "Imported HTML does not look like a 1001Tracklists setlist detail page."
+        )
+
+    detail = parse_tracklist_detail(html)
+
+    if not detail.tracks:
+        error_msg = (
+            "Imported HTML did not contain parseable 1001Tracklists track rows. "
+            "Make sure you are pasting the full rendered page HTML, not just part of it."
+        )
+        log.warning(
+            "[import-html] set=%s zero tracks from submitted HTML",
+            set_result_id,
+        )
+        _safe_set_detail_failed(repo, set_result_id, error_msg)
+        raise DetailScrapeError(error_msg)
+
+    try:
+        keep_ids = {t.source_position_id for t in detail.tracks}
+        repo.delete_stale_set_tracks(set_result_id, keep_ids)
+        repo.upsert_set_tracks(set_result_id, detail.tracks)
+        repo.set_detail_completed(
+            set_result_id,
+            parsed_track_count=len(detail.tracks),
+            has_timed_cues=detail.has_timed_cues,
+            source_numeric_tracklist_id=detail.source_numeric_tracklist_id,
+            raw_detail_metadata_json=detail.raw_metadata_json,
+        )
+        log.info(
+            "[import-html] set=%s completed — tracks=%d timed_cues=%s",
+            set_result_id,
+            len(detail.tracks),
+            detail.has_timed_cues,
+        )
+    except Exception as exc:
+        log.exception("[import-html] set=%s persistence failed: %s", set_result_id, exc)
+        _safe_set_detail_failed(
+            repo,
+            set_result_id,
+            "Failed to save imported tracks. Please try again.",
+        )
+        raise DetailScrapeError(
+            f"Track persistence for set {set_result_id} failed: {type(exc).__name__}"
+        ) from exc
+
+    fresh_summary = repo.get_set_result_full(set_result_id)
+    saved_tracks = repo.get_set_tracks(set_result_id)
+    return SetlistDetailResponse(
+        setlist=fresh_summary or summary,
+        tracks=saved_tracks,
+    )

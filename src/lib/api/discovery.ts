@@ -107,3 +107,23 @@ export async function scrapeSetlistTracks(
   if (!response.ok) throw new Error(await parseError(response));
   return response.json() as Promise<DiscoverySetTracklistDetail>;
 }
+
+export async function importSetlistTracksHtml(
+  setResultId: string,
+  accessToken: string,
+  html: string,
+): Promise<DiscoverySetTracklistDetail> {
+  const response = await fetch(
+    `${API_BASE}/api/discovery/setlists/${encodeURIComponent(setResultId)}/tracks/import-html`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ html }),
+    },
+  );
+  if (!response.ok) throw new Error(await parseError(response));
+  return response.json() as Promise<DiscoverySetTracklistDetail>;
+}
