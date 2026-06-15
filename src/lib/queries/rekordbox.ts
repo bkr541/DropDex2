@@ -1,5 +1,12 @@
 import { supabase } from '../supabase';
 import type { RekordboxImport, RekordboxTrack, RekordboxPlaylist, RekordboxUserSettings } from '../../types';
+import {
+  BPM_TOLERANCE_DEFAULT,
+  SIMILAR_CANDIDATE_FETCH_LIMIT,
+  hasSimilarVibesSignal,
+  rankSimilarTracks,
+  shouldUseBpm,
+} from '../music/similarVibes';
 
 export interface PlaylistWithCount extends RekordboxPlaylist {
   track_count: number;
@@ -191,25 +198,37 @@ export async function fetchTrackPlaylists(
 
 export async function fetchSimilarTracks(
   importId: string,
-  bpm: number | null,
-  key: string | null,
-  excludeId: string,
+  track: Pick<RekordboxTrack, 'id' | 'musical_key' | 'bpm'>,
+  bpmTolerance = BPM_TOLERANCE_DEFAULT,
 ): Promise<RekordboxTrack[]> {
-  if (!bpm && !key) return [];
+  const { musical_key: key, bpm: rawBpm, id } = track;
+
+  if (!hasSimilarVibesSignal(key, rawBpm)) return [];
 
   let query = supabase
     .from('rekordbox_tracks')
     .select('*')
     .eq('import_id', importId)
-    .neq('id', excludeId);
+    .neq('id', id);
 
   if (key) {
     query = query.eq('musical_key', key);
-  } else if (bpm) {
-    query = query.gte('bpm', bpm - 2).lte('bpm', bpm + 2);
   }
 
-  const { data, error } = await query.limit(3);
+  if (shouldUseBpm(rawBpm)) {
+    query = query
+      .gte('bpm', rawBpm - bpmTolerance)
+      .lte('bpm', rawBpm + bpmTolerance)
+      .not('bpm', 'is', null);
+  }
+
+  const { data, error } = await query.limit(SIMILAR_CANDIDATE_FETCH_LIMIT);
   if (error) throw new Error(error.message);
-  return (data ?? []) as RekordboxTrack[];
+
+  return rankSimilarTracks(
+    (data ?? []) as RekordboxTrack[],
+    id,
+    rawBpm,
+    bpmTolerance,
+  );
 }

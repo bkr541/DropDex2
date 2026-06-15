@@ -30,6 +30,10 @@ export interface RekordboxTrack {
   genre: string | null;
   label: string | null;
   musical_key: string | null;
+  camelot_key: string | null;
+  normalized_key_name: string | null;
+  key_tonic: string | null;
+  key_mode: 'major' | 'minor' | null;
   bpm: number | null;
   duration_seconds: number | null;
   rating: number | null;

@@ -34,7 +34,7 @@ import { useRekordboxPlaylistTracks } from './hooks/useRekordboxPlaylistTracks';
 import { useRecentTracks } from './hooks/useRekordboxTracks';
 import { useTrackPlaylists } from './hooks/useTrackPlaylists';
 import { useImportList } from './hooks/useImportList';
-import { fetchSimilarTracks, fetchReviewTracks, setActiveImport, deleteImport } from './lib/queries/rekordbox';
+import { fetchReviewTracks, setActiveImport, deleteImport } from './lib/queries/rekordbox';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { DiscoveryView } from './components/discovery/DiscoveryView';
 import { SearchView } from './components/search/SearchView';
@@ -136,7 +136,6 @@ export default function App() {
     () => (localStorage.getItem('dropdex-theme') as Theme) || 'dark'
   );
   const [reviewTracks, setReviewTracks] = useState<RekordboxTrack[]>([]);
-  const [similarTracks, setSimilarTracks] = useState<RekordboxTrack[]>([]);
   const [previousView, setPreviousView] = useState<View>('home');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem('dropdex-sidebar-collapsed') === 'true'
@@ -175,16 +174,6 @@ export default function App() {
       .catch(console.error);
   }, [currentView, importId]);
 
-  // Load similar tracks when a track is opened
-  useEffect(() => {
-    if (!selectedTrack || !importId) {
-      setSimilarTracks([]);
-      return;
-    }
-    fetchSimilarTracks(importId, selectedTrack.bpm, selectedTrack.musical_key, selectedTrack.id)
-      .then(setSimilarTracks)
-      .catch(() => setSimilarTracks([]));
-  }, [selectedTrack, importId]);
 
   // Compute playlist statistics from loaded tracks
   const avgBpm = useMemo(() => {
@@ -698,10 +687,10 @@ export default function App() {
               >
                 <TrackDetailView
                   track={selectedTrack}
+                  importId={importId}
                   waveformPeaks={null}
                   memberships={trackPlaylists}
                   membershipsLoading={trackPlaylistsLoading}
-                  similarTracks={similarTracks}
                   onTrackClick={handleTrackClick}
                   onPlaylistClick={handleAppearsInPlaylistClick}
                 />

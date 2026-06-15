@@ -5,23 +5,23 @@ import {
   Disc3,
   FolderOpen,
   ListMusic,
-  TrendingUp,
   Calendar,
 } from 'lucide-react';
 import { cn, formatDuration, formatKey, formatPosition } from '../../lib/utils';
 import { WaveformDisplay } from './WaveformDisplay';
+import { SimilarVibesSection } from './SimilarVibesSection';
 import type { RekordboxTrack } from '../../types';
 import type { TrackPlaylistMembership } from '../../lib/queries/rekordbox';
 
 interface TrackDetailViewProps {
   track: RekordboxTrack;
+  importId: string | null;
   /** waveform_peaks — real audio amplitude data. Currently always null (no audio
    *  access). Passed through so the component is ready for Electron/local-audio
    *  integration without interface changes. */
   waveformPeaks?: number[] | null;
   memberships: TrackPlaylistMembership[];
   membershipsLoading: boolean;
-  similarTracks: RekordboxTrack[];
   onTrackClick: (t: RekordboxTrack) => void;
   onPlaylistClick: (playlistId: string) => void;
 }
@@ -46,10 +46,10 @@ function StatBadge({ label, value, accent }: { label: string; value: string; acc
 
 export function TrackDetailView({
   track,
+  importId,
   waveformPeaks,
   memberships,
   membershipsLoading,
-  similarTracks,
   onTrackClick,
   onPlaylistClick,
 }: TrackDetailViewProps) {
@@ -221,53 +221,13 @@ export function TrackDetailView({
         </section>
 
         {/* Similar Vibes */}
-        <section className="space-y-2">
-          <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2 px-1">
-            <TrendingUp size={14} /> Similar Vibes
-          </h3>
-          {similarTracks.length > 0 ? (
-            <div>
-              {similarTracks.map((t) => (
-                <SimilarTrackRow key={t.id} track={t} onClick={() => onTrackClick(t)} />
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground italic text-center py-4">
-              No similar tracks found by key or BPM range.
-            </p>
-          )}
-        </section>
+        <SimilarVibesSection
+          track={track}
+          importId={importId}
+          onTrackClick={onTrackClick}
+        />
       </div>
     </div>
   );
 }
 
-function SimilarTrackRow({ track, onClick }: { track: RekordboxTrack; onClick: () => void }) {
-  const bpmDisplay = track.bpm != null ? track.bpm.toFixed(1) : '—';
-  const keyDisplay = formatKey(track.musical_key);
-  const initial1 = (track.artist?.[0] ?? track.title?.[0] ?? '?').toUpperCase();
-  const initial2 = (track.title?.[0] ?? '?').toUpperCase();
-
-  return (
-    <div
-      onClick={onClick}
-      className="grid grid-cols-[44px_1fr_60px_60px] gap-3 items-center p-3 rounded-xl transition-all cursor-pointer mb-2 bg-[var(--color-surface)] border border-[var(--color-border-faint)] hover:bg-[var(--color-surface-hover)]"
-    >
-      <div className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm bg-[var(--color-avatar-bg)] text-slate-500 shadow-sm">
-        {initial1}{initial2}
-      </div>
-      <div className="min-w-0 pr-2">
-        <h4 className="text-sm font-bold truncate">{track.title}</h4>
-        <p className="text-[10px] text-muted-foreground uppercase tracking-tighter truncate">
-          {track.artist ?? 'Artist not stored'}
-        </p>
-      </div>
-      <div className="text-center">
-        <p className="text-xs font-mono font-bold text-[var(--color-text-subdued)]">{bpmDisplay}</p>
-      </div>
-      <div className="text-right">
-        <p className="text-xs font-mono font-bold text-[var(--color-text-subdued)]">{keyDisplay}</p>
-      </div>
-    </div>
-  );
-}

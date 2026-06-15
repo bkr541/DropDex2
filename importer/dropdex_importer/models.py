@@ -23,6 +23,11 @@ class NormalizedTrack:
     file_path: Optional[str]
     file_format: Optional[str]
     date_added: Optional[str]
+    # Derived from musical_key via music_keys.parse_key_identity; None when unparseable
+    camelot_key: Optional[str] = None
+    normalized_key_name: Optional[str] = None
+    key_tonic: Optional[str] = None
+    key_mode: Optional[str] = None
 
 
 @dataclass

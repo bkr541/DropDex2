@@ -18,6 +18,7 @@ from .models import (
     NormalizedTrack,
     ParsedLibrary,
 )
+from .music_keys import parse_key_identity
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,7 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
 
         # Key is a separate table; c.key is the ORM relationship object.
         musical_key: Optional[str] = _str_or_none(c.key.name) if c.key else None
+        key_identity = parse_key_identity(musical_key)
 
         # BPM is stored as integer * 100 (e.g. 12350 → 123.50).
         # Treat 0 the same as None — means BPM was never analysed.
@@ -180,6 +182,10 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
                 file_path=file_path,
                 file_format=file_format,
                 date_added=date_added,
+                camelot_key=key_identity.camelot_key,
+                normalized_key_name=key_identity.normalized_key_name,
+                key_tonic=key_identity.key_tonic,
+                key_mode=key_identity.key_mode,
             )
         )
 

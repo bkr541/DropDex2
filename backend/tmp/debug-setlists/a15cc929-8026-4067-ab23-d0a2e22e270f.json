@@ -1,0 +1,25 @@
+{
+  "source_url": "https://www.1001tracklists.com/tracklist/1bjm6rct/tritonal-tritonia-536-2026-06-11.html",
+  "final_url": "https://www.1001tracklists.com/tracklist/1bjm6rct/tritonal-tritonia-536-2026-06-11.html",
+  "page_title": "Tritonal - Tritonia 536 2026-06-11",
+  "response_status": 200,
+  "tl_pos_count": "15",
+  "attempted_selectors": {
+    ".tlpItem": 15,
+    "input[id$=\"_cue_seconds\"]": 15,
+    "[data-trackid]": 30,
+    "[data-trno]": 15,
+    "[id$=\"_tracknumber_value\"]": 15,
+    "input[name=\"tl_pos_count\"]": 1,
+    "[id^=\"tlp_\"]": 15
+  },
+  "challenge_detected": true,
+  "challenge_signals": [
+    "enable javascript",
+    "robot"
+  ],
+  "body_text_preview": "Tracklists\nArtists\nTracks\nSources\nLabels\nStories\nStories\nCharts\nHot\nGenres\nContact\nMore\nTritonal - Tritonia 536 2026-06-11\n Tracklist Media Links\nPodcast Link\nMix with DJ.Studio\n01\nFarves - Mind ENHANCED CHILL\nKilo\n(359.6k)\n02\nJack Willard & Matthew Adam Green - Move With Soul COLORIZE (ENHANCED)\nKilo\n(359.6k)\n03\nOphanim - Sapphire COLORIZE (ENHANCED)\nKilo\n(359.6k)\n04\nPolar Inc. & Anna-Sophia Henry - Sympathy COLORIZE (ENHANCED)\nKilo\n(359.6k)\n05\nPropellar - Youth ENHANCED CHILL\nKilo\n(359.6k)\n06\nLipless & Finley Br\u00fcckner & CALIA - Float On COLORIZE (ENHANCED)\nKilo\n(359.6k)\n07\nMXV & Extra Special - Slave To Desire COLORIZE (ENHANCED)\nKilo\n(359.6k)\n08\nSound Quelle & Braxton - Anlecta COLORIZE (ENHANCED)\nKilo\n(359.6k)\n09\nNathan C & Julien Fade & TW3LVE - When I Fall ENHANCED\nKilo\n(359.6k)\n10\nEstiva - Via Balearia COLORIZE (ENHANCED)\nKilo\n(359.6k)\n11\nTritonal & HARLEE - Walk Away ENHANCED\nKilo\n(359.6k)\nTritonal Throwback:\n12\nTritonal ft. Underdown - Bullet That Saved Me (Ilan Bluestone\u00a0Remi",
+  "parsed_track_count": 0,
+  "timestamp": "20260615T112218Z",
+  "error": "Challenge page \u2014 track rows not accessible"
+}
