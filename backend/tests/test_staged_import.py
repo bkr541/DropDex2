@@ -916,3 +916,342 @@ class TestBundleEndpoint:
         detail = resp.json()["detail"].lower()
         assert "secret-host" not in detail
         assert "connection refused" not in detail
+
+
+# ── Recording fake Supabase for lifecycle / counter assertions ─────────────────
+
+class _RecordingQuery:
+    """FakeQuery variant that records all .update() payloads in a shared list."""
+
+    def __init__(self, data=None, *, record_list=None, _single=False):
+        self._data = data
+        self._record_list = record_list if record_list is not None else []
+        self._single = _single
+        self._pending_update = None
+
+    def select(self, *a, **k): return self
+    def eq(self, *a, **k): return self
+    def maybe_single(self): return _RecordingQuery(self._data, record_list=self._record_list, _single=True)
+
+    def update(self, payload, **k):
+        self._pending_update = payload
+        return self
+
+    def insert(self, *a, **k):
+        return self
+
+    def execute(self):
+        if self._pending_update is not None:
+            self._record_list.append(self._pending_update)
+            self._pending_update = None
+        if self._single:
+            data = self._data[0] if isinstance(self._data, list) and self._data else (
+                self._data if not isinstance(self._data, list) else None
+            )
+        else:
+            data = self._data
+        return SimpleNamespace(data=data)
+
+
+class _RecordingSb:
+    """FakeSb that records table update payloads per table name."""
+
+    def __init__(self, *, import_row=None, tracks=None, assets=None, upload_ok=True, download_data=ANLZ_HEADER):
+        self._import_row = import_row
+        self._tracks = tracks or []
+        self._assets = assets or []
+        self.storage = _FakeStorage(upload_ok=upload_ok, download_data=download_data)
+        self.updates: dict[str, list] = {"rekordbox_imports": [], "rekordbox_analysis_assets": [], "rekordbox_tracks": []}
+
+    def table(self, name: str):
+        record_list = self.updates.get(name, [])
+        if name == "rekordbox_imports":
+            return _RecordingQuery(self._import_row, record_list=record_list)
+        if name == "rekordbox_tracks":
+            return _RecordingQuery(self._tracks, record_list=record_list)
+        if name == "rekordbox_analysis_assets":
+            return _RecordingQuery(self._assets, record_list=record_list)
+        return _RecordingQuery(None, record_list=[])
+
+
+# ── New feature tests ─────────────────────────────────────────────────────────
+
+class TestNewBatchResponseFields:
+    """BatchUploadResponse now includes error_count and received_bytes."""
+
+    def test_response_includes_error_count(self):
+        """error_count appears in a successful batch response."""
+        fake_sb = _fake_sb_for_batch()
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT")],
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "error_count" in body
+        assert body["error_count"] == 0
+
+    def test_response_includes_received_bytes(self):
+        """received_bytes is positive when files are accepted."""
+        content = b"PMAI" + b"\x00" * 60
+        fake_sb = _fake_sb_for_batch()
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT", content=content)],
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "received_bytes" in body
+        assert body["received_bytes"] == len(content)
+
+    def test_storage_failure_increments_error_count(self):
+        fake_sb = _fake_sb_for_batch(upload_ok=False)
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT")],
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["error_count"] == 1
+        assert body["received_bytes"] == 0
+
+
+class TestNewStatusResponseFields:
+    """AnalysisStatusResponse now includes missing_optional_ext and missing_optional_2ex."""
+
+    def test_missing_optional_ext_present_in_status(self):
+        """missing_optional_ext is returned when the EXT file was not uploaded."""
+        fake_sb = _FakeSb(import_row=_IMPORT_ROW, tracks=_TRACKS, assets=[])
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.get(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-status",
+                headers=_auth(USER_ID),
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "missing_optional_ext" in body
+        assert isinstance(body["missing_optional_ext"], list)
+        assert len(body["missing_optional_ext"]) == 1
+        assert body["missing_optional_ext"][0].upper().endswith(".EXT")
+
+    def test_missing_optional_2ex_present_in_status(self):
+        """missing_optional_2ex is returned when the 2EX file was not uploaded."""
+        fake_sb = _FakeSb(import_row=_IMPORT_ROW, tracks=_TRACKS, assets=[])
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.get(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-status",
+                headers=_auth(USER_ID),
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "missing_optional_2ex" in body
+        assert isinstance(body["missing_optional_2ex"], list)
+        assert len(body["missing_optional_2ex"]) == 1
+        assert body["missing_optional_2ex"][0].upper().endswith(".2EX")
+
+    def test_no_missing_optional_when_all_uploaded(self):
+        """When DAT, EXT, and 2EX are all uploaded, optional lists are empty."""
+        all_assets = [
+            {"id": "a1", "track_id": "track-uuid-1111", "asset_type": "DAT",
+             "relative_path": "pioneer/usbanlz/p001/anlz0000.dat", "upload_status": "uploaded"},
+            {"id": "a2", "track_id": "track-uuid-1111", "asset_type": "EXT",
+             "relative_path": "pioneer/usbanlz/p001/anlz0000.ext", "upload_status": "uploaded"},
+            {"id": "a3", "track_id": "track-uuid-1111", "asset_type": "2EX",
+             "relative_path": "pioneer/usbanlz/p001/anlz0000.2ex", "upload_status": "uploaded"},
+        ]
+        fake_sb = _FakeSb(import_row=_IMPORT_ROW, tracks=_TRACKS, assets=all_assets)
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.get(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-status",
+                headers=_auth(USER_ID),
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["missing_optional_ext"] == []
+        assert body["missing_optional_2ex"] == []
+
+
+class TestNewCompleteResponseFields:
+    """CompleteResponse now includes missing_optional_ext_count and missing_optional_2ex_count."""
+
+    def _uploaded_dat(self):
+        return [{
+            "id": "asset-dat-001",
+            "track_id": "track-uuid-1111",
+            "asset_type": "DAT",
+            "relative_path": "pioneer/usbanlz/p001/anlz0000.dat",
+            "storage_path": "u/i/anlz/PIONEER/USBANLZ/P001/ANLZ0000.DAT",
+            "sha256": "aabbcc",
+        }]
+
+    def test_complete_includes_missing_optional_ext_count(self):
+        fake_sb = _FakeSb(import_row=_IMPORT_ROW, tracks=_TRACKS, assets=self._uploaded_dat())
+
+        def fake_bundle(*a, **k):
+            return _FakeBundle(dat_status="completed", overall="completed")
+
+        with (
+            patch("app.analysis_import_service._create_supabase", return_value=fake_sb),
+            patch("app.analysis_import_service._parse_bundle", fake_bundle),
+        ):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/complete",
+                headers=_auth(USER_ID),
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "missing_optional_ext_count" in body
+        assert "missing_optional_2ex_count" in body
+        # EXT and 2EX were not uploaded, so they should be counted as missing
+        assert body["missing_optional_ext_count"] == 1
+        assert body["missing_optional_2ex_count"] == 1
+
+    def test_partial_parse_status_propagated_not_masked(self):
+        """Partial parse status must be returned as-is, not converted to completed."""
+        uploaded = [{
+            "id": "asset-dat-002",
+            "track_id": "track-uuid-1111",
+            "asset_type": "DAT",
+            "relative_path": "pioneer/usbanlz/p001/anlz0000.dat",
+            "storage_path": "u/i/anlz/PIONEER/USBANLZ/P001/ANLZ0000.DAT",
+            "sha256": "aabbcc",
+        }]
+        fake_sb = _FakeSb(import_row=_IMPORT_ROW, tracks=_TRACKS, assets=uploaded)
+
+        def fake_partial(*a, **k):
+            return _FakeBundle(dat_status="partial", overall="partial")
+
+        with (
+            patch("app.analysis_import_service._create_supabase", return_value=fake_sb),
+            patch("app.analysis_import_service._parse_bundle", fake_partial),
+        ):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/complete",
+                headers=_auth(USER_ID),
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        # Status must be 'partial', never 'completed'
+        assert body["analysis_status"] == "partial"
+        assert body["partial_count"] == 1
+        assert body["completed_count"] == 0
+        track = body["tracks"][0]
+        assert track["parse_status"] == "partial"
+
+
+class TestLifecycleTransitions:
+    """Verify import lifecycle state transitions happen in the expected order."""
+
+    def test_batch_sets_analysis_status_to_uploading(self):
+        """process_analysis_batch must transition analysis_status to 'uploading'."""
+        rsb = _RecordingSb(
+            import_row=_IMPORT_ROW,
+            tracks=_TRACKS,
+            assets=[],
+        )
+        with patch("app.analysis_import_service._create_supabase", return_value=rsb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT")],
+            )
+
+        assert resp.status_code == 200
+        import_updates = rsb.updates["rekordbox_imports"]
+        statuses = [u["analysis_status"] for u in import_updates if "analysis_status" in u]
+        assert "uploading" in statuses, f"Expected 'uploading' in status transitions, got: {statuses}"
+
+    def test_complete_sets_analysis_status_to_parsing(self):
+        """complete_analysis_import must transition analysis_status to 'parsing' before completing."""
+        uploaded = [{
+            "id": "asset-dat-004",
+            "track_id": "track-uuid-1111",
+            "asset_type": "DAT",
+            "relative_path": "pioneer/usbanlz/p001/anlz0000.dat",
+            "storage_path": "u/i/anlz/PIONEER/USBANLZ/P001/ANLZ0000.DAT",
+            "sha256": "aabbcc",
+        }]
+        rsb = _RecordingSb(import_row=_IMPORT_ROW, tracks=_TRACKS, assets=uploaded)
+
+        def fake_bundle(*a, **k):
+            return _FakeBundle(dat_status="completed", overall="completed")
+
+        with (
+            patch("app.analysis_import_service._create_supabase", return_value=rsb),
+            patch("app.analysis_import_service._parse_bundle", fake_bundle),
+        ):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/complete",
+                headers=_auth(USER_ID),
+            )
+
+        assert resp.status_code == 200
+        import_updates = rsb.updates["rekordbox_imports"]
+        statuses = [u["analysis_status"] for u in import_updates if "analysis_status" in u]
+        assert "parsing" in statuses, f"Expected 'parsing' in status transitions, got: {statuses}"
+        # Final status must be 'completed' (appears after 'parsing')
+        assert statuses[-1] == "completed"
+
+
+class TestSourceBundleType:
+    """Each workflow must persist the correct source_bundle_type."""
+
+    def test_usb_folder_sets_source_bundle_type(self):
+        """start_analysis_import sets source_bundle_type='usb_folder'."""
+        rsb = _RecordingSb(import_row=_IMPORT_ROW)
+
+        def write_with_import(*_):
+            return _MockWriteResult(import_id=IMPORT_ID)
+
+        with (
+            patch("app.analysis_import_service.parse_library", _mock_parse),
+            patch("app.analysis_import_service.validate", _mock_validate),
+            patch("app.analysis_import_service.write_to_supabase_full", write_with_import),
+            patch("app.analysis_import_service.upsert_active_import"),
+            patch("app.analysis_import_service._create_supabase", return_value=rsb),
+        ):
+            resp = client.post(
+                "/api/rekordbox/import/start",
+                headers=_auth(USER_ID),
+                files=_db_file(),
+            )
+
+        assert resp.status_code == 200
+        import_updates = rsb.updates["rekordbox_imports"]
+        bundle_types = [u.get("source_bundle_type") for u in import_updates if "source_bundle_type" in u]
+        assert "usb_folder" in bundle_types, f"Expected 'usb_folder' to be set, got: {bundle_types}"
+
+    def test_bundle_import_sets_source_bundle_type_zip(self):
+        """import_bundle sets source_bundle_type='zip_bundle'."""
+        rsb = _RecordingSb(import_row=_IMPORT_ROW)
+
+        def write_with_import(*_):
+            return _MockWriteResult(import_id=IMPORT_ID)
+
+        data = _make_zip({"exportLibrary.db": DB_BYTES})
+
+        with (
+            patch("app.bundle_import_service.parse_library", _mock_parse),
+            patch("app.bundle_import_service.validate", _mock_validate),
+            patch("app.bundle_import_service.write_to_supabase_full", write_with_import),
+            patch("app.bundle_import_service.upsert_active_import"),
+            patch("app.bundle_import_service._create_supabase", return_value=rsb),
+        ):
+            resp = client.post(
+                "/api/rekordbox/import/bundle",
+                headers=_auth(USER_ID),
+                files={"file": ("bundle.zip", data, "application/zip")},
+            )
+
+        assert resp.status_code == 200
+        import_updates = rsb.updates["rekordbox_imports"]
+        bundle_types = [u.get("source_bundle_type") for u in import_updates if "source_bundle_type" in u]
+        assert "zip_bundle" in bundle_types, f"Expected 'zip_bundle' to be set, got: {bundle_types}"

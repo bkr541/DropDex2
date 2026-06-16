@@ -517,3 +517,26 @@ export interface UserPlaylistProfile {
   created_at: string;
   updated_at: string;
 }
+
+// ── Similar Vibes scoring types ───────────────────────────────────────────────
+
+export interface RecommendationReason {
+  kind: 'rekordbox_match' | 'reciprocal_match' | 'same_camelot' | 'relative_key'
+      | 'adjacent_camelot' | 'energy_boost' | 'bpm_proximity' | 'same_genre' | 'same_label';
+  label: string;
+  score: number;
+}
+
+export interface RekordboxEvidence {
+  rating: number | null;
+  direction: 'outgoing' | 'incoming' | 'reciprocal';
+  createdAt: string | null;
+  relationshipSource: 'recommended_like';
+}
+
+export interface SimilarTrackResult {
+  track: RekordboxTrack;
+  recommendationScore: number;
+  reasons: RecommendationReason[];
+  rekordboxEvidence?: RekordboxEvidence;
+}

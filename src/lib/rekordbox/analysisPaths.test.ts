@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildBatches,
+  buildMatchedFiles,
   extractManifestPaths,
   findDatabaseFile,
   getCanonicalAnlzPath,
@@ -11,8 +13,8 @@ import {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function mockFile(name: string, webkitRelativePath = ''): File {
-  return { name, webkitRelativePath, size: 100, type: '' } as unknown as File;
+function mockFile(name: string, webkitRelativePath = '', size = 100): File {
+  return { name, webkitRelativePath, size, type: '' } as unknown as File;
 }
 
 // ── normalizeAnlzPath ─────────────────────────────────────────────────────────
@@ -283,5 +285,139 @@ describe('matchFilesToManifest', () => {
 
   it('returns empty map when files array is empty', () => {
     expect(matchFilesToManifest([], ['PIONEER/USBANLZ/P001/ANLZ0000.DAT']).size).toBe(0);
+  });
+});
+
+// ── buildMatchedFiles ─────────────────────────────────────────────────────────
+
+describe('buildMatchedFiles', () => {
+  const manifest = [
+    {
+      track_id: 'track-1',
+      dat_path: 'PIONEER/USBANLZ/P001/ANLZ0000.DAT',
+      ext_path: 'PIONEER/USBANLZ/P001/ANLZ0000.EXT',
+      two_ex_path: 'PIONEER/USBANLZ/P001/ANLZ0000.2EX',
+    },
+    {
+      track_id: 'track-2',
+      dat_path: 'PIONEER/USBANLZ/P002/ANLZ0000.DAT',
+      ext_path: null,
+      two_ex_path: null,
+    },
+  ];
+
+  it('returns matched files with canonical paths and track ids', () => {
+    const f = mockFile('ANLZ0000.DAT', 'MY_USB/PIONEER/USBANLZ/P001/ANLZ0000.DAT');
+    const result = buildMatchedFiles([f], manifest);
+    expect(result).toHaveLength(1);
+    expect(result[0].canonicalPath).toBe('PIONEER/USBANLZ/P001/ANLZ0000.DAT');
+    expect(result[0].trackId).toBe('track-1');
+    expect(result[0].assetType).toBe('DAT');
+    expect(result[0].file).toBe(f);
+  });
+
+  it('two files with same basename in different directories are disambiguated', () => {
+    // ANLZ0000.DAT exists in both P001 and P002 — same filename, different canonical paths
+    const f1 = mockFile('ANLZ0000.DAT', 'USB/PIONEER/USBANLZ/P001/ANLZ0000.DAT');
+    const f2 = mockFile('ANLZ0000.DAT', 'USB/PIONEER/USBANLZ/P002/ANLZ0000.DAT');
+    const result = buildMatchedFiles([f1, f2], manifest);
+    expect(result).toHaveLength(2);
+    expect(result[0].trackId).toBe('track-1');
+    expect(result[1].trackId).toBe('track-2');
+    expect(result[0].canonicalPath).not.toBe(result[1].canonicalPath);
+  });
+
+  it('sets originalBrowserPath from webkitRelativePath', () => {
+    const rel = 'MY_USB/PIONEER/USBANLZ/P001/ANLZ0000.DAT';
+    const f = mockFile('ANLZ0000.DAT', rel);
+    const result = buildMatchedFiles([f], manifest);
+    expect(result[0].originalBrowserPath).toBe(rel);
+  });
+
+  it('excludes files not in manifest', () => {
+    const f = mockFile('ANLZ9999.DAT', 'USB/PIONEER/USBANLZ/P999/ANLZ9999.DAT');
+    expect(buildMatchedFiles([f], manifest)).toHaveLength(0);
+  });
+
+  it('excludes files without PIONEER/USBANLZ anchor', () => {
+    const f = mockFile('ANLZ0000.DAT', 'USB/OTHER/P001/ANLZ0000.DAT');
+    expect(buildMatchedFiles([f], manifest)).toHaveLength(0);
+  });
+
+  it('returns empty array for empty files input', () => {
+    expect(buildMatchedFiles([], manifest)).toHaveLength(0);
+  });
+
+  it('returns empty array for empty manifest', () => {
+    const f = mockFile('ANLZ0000.DAT', 'USB/PIONEER/USBANLZ/P001/ANLZ0000.DAT');
+    expect(buildMatchedFiles([f], [])).toHaveLength(0);
+  });
+});
+
+// ── buildBatches ──────────────────────────────────────────────────────────────
+
+describe('buildBatches', () => {
+  function makeItem(canonicalPath: string, sizeBytes: number) {
+    return {
+      file: mockFile(canonicalPath.split('/').pop() ?? 'file.dat', canonicalPath, sizeBytes),
+      canonicalPath,
+      originalBrowserPath: canonicalPath,
+      assetType: 'DAT',
+      trackId: 'track-1',
+    };
+  }
+
+  it('returns a single batch when all files fit', () => {
+    const items = [makeItem('PIONEER/USBANLZ/P001/ANLZ0000.DAT', 100)];
+    const batches = buildBatches(items, 50, 1_000_000);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(1);
+  });
+
+  it('splits by file count', () => {
+    const items = [
+      makeItem('PIONEER/USBANLZ/P001/ANLZ0000.DAT', 10),
+      makeItem('PIONEER/USBANLZ/P001/ANLZ0000.EXT', 10),
+      makeItem('PIONEER/USBANLZ/P002/ANLZ0000.DAT', 10),
+    ];
+    const batches = buildBatches(items, 2, 1_000_000);
+    expect(batches).toHaveLength(2);
+    expect(batches[0]).toHaveLength(2);
+    expect(batches[1]).toHaveLength(1);
+  });
+
+  it('splits by byte count', () => {
+    const items = [
+      makeItem('PIONEER/USBANLZ/P001/ANLZ0000.DAT', 600),
+      makeItem('PIONEER/USBANLZ/P001/ANLZ0000.EXT', 600),
+      makeItem('PIONEER/USBANLZ/P002/ANLZ0000.DAT', 600),
+    ];
+    // max 1000 bytes per batch
+    const batches = buildBatches(items, 50, 1000);
+    expect(batches).toHaveLength(3);
+    expect(batches[0]).toHaveLength(1);
+    expect(batches[1]).toHaveLength(1);
+    expect(batches[2]).toHaveLength(1);
+  });
+
+  it('a single oversized file starts its own batch', () => {
+    // A file larger than the byte limit still gets uploaded (server enforces its own limit)
+    const items = [makeItem('PIONEER/USBANLZ/P001/ANLZ0000.DAT', 2_000_000)];
+    const batches = buildBatches(items, 50, 1_000_000);
+    expect(batches).toHaveLength(1);
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(buildBatches([], 50, 1_000_000)).toHaveLength(0);
+  });
+
+  it('each item appears exactly once across all batches', () => {
+    const items = Array.from({ length: 7 }, (_, i) =>
+      makeItem(`PIONEER/USBANLZ/P00${i + 1}/ANLZ0000.DAT`, 100),
+    );
+    const batches = buildBatches(items, 3, 1_000_000);
+    const allItems = batches.flat();
+    expect(allItems).toHaveLength(7);
+    expect(new Set(allItems.map(x => x.canonicalPath)).size).toBe(7);
   });
 });

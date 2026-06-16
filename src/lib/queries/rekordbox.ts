@@ -7,6 +7,7 @@ import {
   rankSimilarTracks,
   shouldUseBpm,
 } from '../music/similarVibes';
+import { getCompatibleCamelotKeys } from '../music/camelot';
 
 export interface PlaylistWithCount extends RekordboxPlaylist {
   track_count: number;
@@ -196,14 +197,20 @@ export async function fetchTrackPlaylists(
     .sort((a, b) => a.playlist.name.localeCompare(b.playlist.name));
 }
 
-export async function fetchSimilarTracks(
+/**
+ * Fetch tracks that are Camelot-compatible and/or within BPM tolerance.
+ * Uses camelot_key for harmonic matching (compatible codes via the Camelot wheel).
+ * Returns raw candidate rows — caller is responsible for scoring and ranking.
+ */
+export async function fetchCamelotCompatibleTracks(
   importId: string,
-  track: Pick<RekordboxTrack, 'id' | 'musical_key' | 'bpm'>,
+  track: Pick<RekordboxTrack, 'id' | 'camelot_key' | 'bpm'>,
   bpmTolerance = BPM_TOLERANCE_DEFAULT,
+  limit = SIMILAR_CANDIDATE_FETCH_LIMIT,
 ): Promise<RekordboxTrack[]> {
-  const { musical_key: key, bpm: rawBpm, id } = track;
+  const { camelot_key, bpm: rawBpm, id } = track;
 
-  if (!hasSimilarVibesSignal(key, rawBpm)) return [];
+  if (!hasSimilarVibesSignal(camelot_key, rawBpm)) return [];
 
   let query = supabase
     .from('rekordbox_tracks')
@@ -211,8 +218,11 @@ export async function fetchSimilarTracks(
     .eq('import_id', importId)
     .neq('id', id);
 
-  if (key) {
-    query = query.eq('musical_key', key);
+  if (camelot_key) {
+    const compatible = getCompatibleCamelotKeys(camelot_key).map((k) => k.code);
+    if (compatible.length > 0) {
+      query = query.in('camelot_key', compatible);
+    }
   }
 
   if (shouldUseBpm(rawBpm)) {
@@ -222,13 +232,29 @@ export async function fetchSimilarTracks(
       .not('bpm', 'is', null);
   }
 
-  const { data, error } = await query.limit(SIMILAR_CANDIDATE_FETCH_LIMIT);
+  const { data, error } = await query.limit(limit);
   if (error) throw new Error(error.message);
 
-  return rankSimilarTracks(
-    (data ?? []) as RekordboxTrack[],
-    id,
-    rawBpm,
+  return (data ?? []) as RekordboxTrack[];
+}
+
+/**
+ * Legacy similar tracks query. Delegates to fetchCamelotCompatibleTracks and
+ * applies the legacy BPM-only ranking. Prefer the new hook (useSimilarTracks)
+ * which uses scoreCandidate + mergeCandidates + rankScoredCandidates.
+ *
+ * @deprecated Use fetchCamelotCompatibleTracks + scoreCandidate pipeline instead.
+ */
+export async function fetchSimilarTracks(
+  importId: string,
+  track: Pick<RekordboxTrack, 'id' | 'musical_key' | 'bpm'> & { camelot_key?: string | null },
+  bpmTolerance = BPM_TOLERANCE_DEFAULT,
+): Promise<RekordboxTrack[]> {
+  const candidates = await fetchCamelotCompatibleTracks(
+    importId,
+    { id: track.id, camelot_key: track.camelot_key ?? null, bpm: track.bpm },
     bpmTolerance,
   );
+
+  return rankSimilarTracks(candidates, track.id, track.bpm, bpmTolerance);
 }

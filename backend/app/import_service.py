@@ -116,6 +116,17 @@ async def run_import(file: UploadFile, user_id: str) -> ImportResponse:
                 user_id,
             )
 
+        # Record source bundle type; non-fatal
+        try:
+            import supabase as _sb  # noqa: PLC0415
+            _sb.create_client(
+                settings.supabase_url, settings.supabase_secret_key
+            ).table("rekordbox_imports").update(
+                {"source_bundle_type": "database_only"}
+            ).eq("id", import_id).execute()
+        except Exception:
+            logger.warning("Failed to set source_bundle_type for import %s", import_id)
+
         # Build compact playlist summary from in-memory data (no extra DB query)
         placement_counts: dict[str, int] = defaultdict(int)
         for pc in library.placements:

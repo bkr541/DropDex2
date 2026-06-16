@@ -379,33 +379,48 @@ class TestDeriveAnlzSiblings:
 # ── 5. Storage key construction ───────────────────────────────────────────────
 
 
+_USER_ID = "user-uuid-1111-2222-3333-444444444444"
+_IMPORT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+
 class TestBuildStoragePath:
     def test_deterministic_key(self):
         key = build_storage_path(
-            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            _USER_ID,
+            _IMPORT_ID,
             "PIONEER/USBANLZ/P001/ANLZ0000.DAT",
         )
-        assert key == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/anlz/PIONEER/USBANLZ/P001/ANLZ0000.DAT"
+        assert key == f"{_USER_ID}/{_IMPORT_ID}/anlz/PIONEER/USBANLZ/P001/ANLZ0000.DAT"
+
+    def test_user_id_is_first_segment(self):
+        key = build_storage_path(_USER_ID, _IMPORT_ID, "PIONEER/USBANLZ/P001/ANLZ0000.DAT")
+        assert key.startswith(f"{_USER_ID}/")
 
     def test_leading_slash_in_canonical_stripped(self):
-        key = build_storage_path("import-1", "/PIONEER/USBANLZ/P001/ANLZ0000.DAT")
-        assert not key.startswith("import-1/anlz//")
+        key = build_storage_path(_USER_ID, "import-1", "/PIONEER/USBANLZ/P001/ANLZ0000.DAT")
+        assert "/anlz//" not in key
         assert "PIONEER/USBANLZ" in key
 
     def test_different_imports_produce_different_keys(self):
         canonical = "PIONEER/USBANLZ/P001/ANLZ0000.DAT"
-        k1 = build_storage_path("import-aaa", canonical)
-        k2 = build_storage_path("import-bbb", canonical)
+        k1 = build_storage_path(_USER_ID, "import-aaa", canonical)
+        k2 = build_storage_path(_USER_ID, "import-bbb", canonical)
+        assert k1 != k2
+
+    def test_different_users_produce_different_keys(self):
+        canonical = "PIONEER/USBANLZ/P001/ANLZ0000.DAT"
+        k1 = build_storage_path("user-aaa", _IMPORT_ID, canonical)
+        k2 = build_storage_path("user-bbb", _IMPORT_ID, canonical)
         assert k1 != k2
 
     def test_same_import_different_files_different_keys(self):
-        k1 = build_storage_path("import-aaa", "PIONEER/USBANLZ/P001/ANLZ0000.DAT")
-        k2 = build_storage_path("import-aaa", "PIONEER/USBANLZ/P001/ANLZ0000.EXT")
+        k1 = build_storage_path(_USER_ID, _IMPORT_ID, "PIONEER/USBANLZ/P001/ANLZ0000.DAT")
+        k2 = build_storage_path(_USER_ID, _IMPORT_ID, "PIONEER/USBANLZ/P001/ANLZ0000.EXT")
         assert k1 != k2
 
     def test_empty_canonical_raises(self):
         with pytest.raises(ValueError):
-            build_storage_path("import-aaa", "")
+            build_storage_path(_USER_ID, _IMPORT_ID, "")
 
 
 # ── 6. SHA-256 streaming hash ─────────────────────────────────────────────────
@@ -945,8 +960,8 @@ class TestStorageUpload:
 
     def test_storage_path_is_deterministic(self):
         canonical = "PIONEER/USBANLZ/P001/ANLZ0000.DAT"
-        k1 = build_storage_path("import-aaa", canonical)
-        k2 = build_storage_path("import-aaa", canonical)
+        k1 = build_storage_path(_USER_ID, "import-aaa", canonical)
+        k2 = build_storage_path(_USER_ID, "import-aaa", canonical)
         assert k1 == k2
 
 

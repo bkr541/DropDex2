@@ -28,12 +28,12 @@ import {
   uploadRekordboxDb,
   uploadRekordboxZipBundle,
 } from '../lib/api/rekordboxImport';
-import type { CompleteResponse, ImportResult, ImportStartResponse } from '../lib/api/rekordboxImport';
+import type { CompleteResponse, ImportResult, ImportStartResponse, ReuseStats } from '../lib/api/rekordboxImport';
 import {
-  extractManifestPaths,
+  buildBatches,
+  buildMatchedFiles,
   findDatabaseFile,
   isAnlzFile,
-  matchFilesToManifest,
 } from '../lib/rekordbox/analysisPaths';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -79,6 +79,8 @@ interface Props {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const BATCH_SIZE = 50;
+const MAX_BYTES_PER_BATCH = 50 * 1024 * 1024; // 50 MB
+const MAX_CONCURRENT = 3;
 
 const MODE_LABELS: Record<Mode, { label: string; icon: React.ReactNode; tip: string }> = {
   usb_folder: {
@@ -131,6 +133,8 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
   const [showAbortDialog, setShowAbortDialog] = useState(false);
   const [cancelledAfterDb, setCancelledAfterDb] = useState(false);
   const [importId, setImportId] = useState<string | null>(null);
+  const [rejectedCount, setRejectedCount] = useState(0);
+  const [reuseStats, setReuseStats] = useState<ReuseStats | null>(null);
 
   const folderInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -152,6 +156,8 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     setShowAbortDialog(false);
     setCancelledAfterDb(false);
     setImportId(null);
+    setRejectedCount(0);
+    setReuseStats(null);
     importIdRef.current = null;
     abortControllerRef.current = null;
     if (folderInputRef.current) folderInputRef.current.value = '';
@@ -320,47 +326,96 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     importIdRef.current = startResp.import_id;
     setImportId(startResp.import_id);
 
+    // Capture reuse stats if the backend returned them (incremental rescan)
+    if (
+      (startResp.tracks_reused ?? 0) > 0 ||
+      (startResp.tracks_metadata_only ?? 0) > 0 ||
+      (startResp.tracks_reparse_from_retained ?? 0) > 0
+    ) {
+      setReuseStats({
+        tracksReused: startResp.tracks_reused ?? 0,
+        tracksNeedingUpload: startResp.tracks_needing_upload ?? 0,
+        tracksReparsedFromRetained: startResp.tracks_reparse_from_retained ?? 0,
+        tracksMetadataOnly: startResp.tracks_metadata_only ?? 0,
+      });
+    }
+
     // ── Stage 2: match scanned files against manifest ─────────────────────────
     setPhase('matching_analysis');
-    const manifestPaths = extractManifestPaths(startResp.manifest);
-    const matched = matchFilesToManifest(folderScan.anlzFiles, manifestPaths);
-    const filesToUpload = Array.from(matched.values());
+    const matchedFiles = buildMatchedFiles(folderScan.anlzFiles, startResp.manifest);
+    const batches = buildBatches(matchedFiles, BATCH_SIZE, MAX_BYTES_PER_BATCH);
 
-    const totalBytes = filesToUpload.reduce((sum, f) => sum + f.size, 0);
+    const totalBytes = matchedFiles.reduce((sum, m) => sum + m.file.size, 0);
     setProgress({
       filesUploaded: 0,
-      filesTotal: filesToUpload.length,
+      filesTotal: matchedFiles.length,
       bytesUploaded: 0,
       bytesTotal: totalBytes,
       bundlePct: 0,
     });
 
-    // ── Stage 3: batch upload ANLZ files ──────────────────────────────────────
+    // ── Stage 3: concurrent batch upload ANLZ files ───────────────────────────
     setPhase('uploading_analysis');
+
+    // Mutable counters updated inside concurrent callbacks then flushed to state
     let uploadedFiles = 0;
     let uploadedBytes = 0;
+    let rejected = 0;
+    let uploadAborted = false;
 
-    for (let i = 0; i < filesToUpload.length; i += BATCH_SIZE) {
-      if (controller.signal.aborted) {
-        setCancelledAfterDb(true);
-        setPhase('partial_success');
-        return;
-      }
-      const batch = filesToUpload.slice(i, i + BATCH_SIZE);
-      try {
-        await uploadRekordboxAnalysisBatch(startResp.import_id, batch, token, controller.signal);
-      } catch (err) {
-        if (isAbortError(err)) {
-          setCancelledAfterDb(true);
-          setPhase('partial_success');
-          return;
+    await new Promise<void>((resolve) => {
+      let active = 0;
+      let dispatched = 0;
+      let settled = 0;
+      const total = batches.length;
+
+      if (total === 0) { resolve(); return; }
+
+      const maybeDone = () => {
+        if (settled === total) resolve();
+      };
+
+      const runNext = () => {
+        while (active < MAX_CONCURRENT && dispatched < total) {
+          const batch = batches[dispatched++];
+          const batchBytes = batch.reduce((s, m) => s + m.file.size, 0);
+          active++;
+
+          uploadRekordboxAnalysisBatch(startResp.import_id, batch, token, controller.signal)
+            .then((resp) => {
+              active--;
+              settled++;
+              // Use server-confirmed counts for progress, not local file count
+              uploadedFiles += resp.received_count + resp.already_received_count;
+              uploadedBytes += batchBytes;
+              rejected += resp.rejected_count + (resp.error_count ?? 0);
+              setProgress((p) => ({ ...p, filesUploaded: uploadedFiles, bytesUploaded: uploadedBytes }));
+              setRejectedCount(rejected);
+              runNext();
+              maybeDone();
+            })
+            .catch((err) => {
+              active--;
+              settled++;
+              if (isAbortError(err)) {
+                uploadAborted = true;
+                // Drain remaining dispatches so promise eventually resolves
+              } else {
+                console.warn('[DropDex] Batch upload error:', err);
+              }
+              runNext();
+              maybeDone();
+            });
         }
-        // Non-fatal: log and continue
-        console.warn('[DropDex] Batch upload error:', err);
-      }
-      uploadedFiles += batch.length;
-      uploadedBytes += batch.reduce((sum, f) => sum + f.size, 0);
-      setProgress(p => ({ ...p, filesUploaded: uploadedFiles, bytesUploaded: uploadedBytes }));
+      };
+
+      runNext();
+    });
+
+    if (uploadAborted) {
+      setCancelledAfterDb(true);
+      setPhase('partial_success');
+      return;
     }
 
     // ── Stage 4: trigger server-side parsing ──────────────────────────────────
@@ -697,9 +752,12 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                 {mode !== 'zip_bundle' && progress.filesTotal > 0 && (
                   <p className="text-xs text-muted-foreground">
                     {progress.filesUploaded.toLocaleString()} /{' '}
-                    {progress.filesTotal.toLocaleString()} files
+                    {progress.filesTotal.toLocaleString()} files accepted
                     {progress.bytesTotal > 0 && (
                       <> · {fmtBytes(progress.bytesUploaded)} / {fmtBytes(progress.bytesTotal)}</>
+                    )}
+                    {rejectedCount > 0 && (
+                      <span className="text-amber-400"> · {rejectedCount.toLocaleString()} rejected</span>
                     )}
                   </p>
                 )}
@@ -757,6 +815,29 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                         </p>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* Reuse summary (only shown when incremental reuse occurred) */}
+                {reuseStats && reuseStats.tracksReused > 0 && (
+                  <div className="mb-5 p-3 rounded-xl bg-primary/5 border border-primary/15 text-left">
+                    <p className="text-[9px] uppercase tracking-widest text-primary/70 font-bold mb-2">
+                      Reuse Summary
+                    </p>
+                    <div className="space-y-1">
+                      {reuseStats.tracksReused > 0 && (
+                        <ReuseRow label="Reused unchanged" value={reuseStats.tracksReused} />
+                      )}
+                      {reuseStats.tracksNeedingUpload > 0 && (
+                        <ReuseRow label="Uploaded" value={reuseStats.tracksNeedingUpload} />
+                      )}
+                      {reuseStats.tracksReparsedFromRetained > 0 && (
+                        <ReuseRow label="Reparsed from retained" value={reuseStats.tracksReparsedFromRetained} />
+                      )}
+                      {reuseStats.tracksMetadataOnly > 0 && (
+                        <ReuseRow label="Metadata refreshed" value={reuseStats.tracksMetadataOnly} />
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -889,5 +970,14 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
         </div>
       )}
     </AnimatePresence>
+  );
+}
+
+function ReuseRow({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs font-mono font-bold text-primary/80">{value.toLocaleString()}</span>
+    </div>
   );
 }

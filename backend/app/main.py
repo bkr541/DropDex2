@@ -23,7 +23,10 @@ from .models import (
     CompleteResponse,
     ImportResponse,
     ImportStartResponse,
+    RelatedTracksImportResponse,
+    RelatedTracksPayload,
 )
+from .related_tracks_service import import_related_tracks
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -175,3 +178,22 @@ async def rekordbox_analysis_status(
     not yet been received.
     """
     return await get_analysis_status(import_id, user_id)
+
+
+@app.post(
+    "/api/rekordbox/import/{import_id}/related-tracks",
+    response_model=RelatedTracksImportResponse,
+)
+async def rekordbox_import_related_tracks(
+    import_id: str,
+    payload: RelatedTracksPayload,
+    user_id: str = Depends(get_current_user_id),
+) -> RelatedTracksImportResponse:
+    """
+    Import desktop Rekordbox Related Tracks lists.
+
+    Accepts a versioned JSON payload from the rekordbox-bridge CLI.
+    Matches bridge tracks to rekordbox_tracks by master_content_id.
+    Upserts lists and replaces memberships idempotently.
+    """
+    return await import_related_tracks(import_id, user_id, payload)

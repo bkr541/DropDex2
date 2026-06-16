@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { TrendingUp, Loader2 } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
-import type { RekordboxTrack } from '../../types';
+import type { RekordboxTrack, SimilarTrackResult } from '../../types';
 import { useSimilarTracks } from '../../hooks/useSimilarTracks';
 import {
   useSimilarTrackSettings,
@@ -97,13 +97,17 @@ export function SimilarVibesSection({ track, importId, onTrackClick }: SimilarVi
         </div>
       ) : similarTracks.length > 0 ? (
         <div>
-          {similarTracks.map((t) => (
-            <SimilarTrackRow key={t.id} track={t} onClick={() => onTrackClick(t)} />
+          {similarTracks.map((result) => (
+            <SimilarTrackRow
+              key={result.track.id}
+              result={result}
+              onClick={() => onTrackClick(result.track)}
+            />
           ))}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground italic text-center py-4">
-          No similar tracks found in ±{options.bpmTolerance} BPM range.
+          No similar tracks found. Try widening the BPM range.
         </p>
       )}
     </section>
@@ -134,7 +138,8 @@ function PresetButton({
   );
 }
 
-function SimilarTrackRow({ track, onClick }: { track: RekordboxTrack; onClick: () => void }) {
+function SimilarTrackRow({ result, onClick }: { result: SimilarTrackResult; onClick: () => void }) {
+  const { track, reasons } = result;
   const bpmDisplay = track.bpm != null ? track.bpm.toFixed(1) : '—';
   const keyDisplay = formatKey(track.musical_key);
   const initial1 = (track.artist?.[0] ?? track.title?.[0] ?? '?').toUpperCase();
@@ -153,6 +158,18 @@ function SimilarTrackRow({ track, onClick }: { track: RekordboxTrack; onClick: (
         <p className="text-[10px] text-muted-foreground uppercase tracking-tighter truncate">
           {track.artist ?? 'Artist not stored'}
         </p>
+        {reasons.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-0.5">
+            {reasons.slice(0, 3).map((r, i) => (
+              <span
+                key={i}
+                className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary/80 border border-primary/20"
+              >
+                {r.label}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
       <div className="text-center">
         <p className="text-xs font-mono font-bold text-[var(--color-text-subdued)]">{bpmDisplay}</p>

@@ -1,6 +1,24 @@
 const ANLZ_EXTS = new Set(['.dat', '.ext', '.2ex']);
 const PIONEER_ANCHOR_UPPER = 'PIONEER/USBANLZ';
 
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+/**
+ * An ANLZ file that has been matched against the import manifest.
+ * `canonicalPath` is the PIONEER-anchored path used as the Storage key and
+ * the multipart filename sent to the backend.
+ */
+export interface MatchedAnalysisFile {
+  file: File;
+  canonicalPath: string;
+  /** The raw webkitRelativePath from the browser FileList */
+  originalBrowserPath: string;
+  /** DAT | EXT | 2EX */
+  assetType: string;
+  /** Supabase track row ID from the manifest */
+  trackId: string;
+}
+
 function hasTraversal(path: string): boolean {
   return path.split('/').some(p => p === '..' || p === '.');
 }
@@ -97,4 +115,86 @@ export function matchFilesToManifest(
     if (expected.has(lower)) result.set(lower, f);
   }
   return result;
+}
+
+/**
+ * Build a typed MatchedAnalysisFile array from a folder pick and the import manifest.
+ *
+ * Each file is included only if its canonical PIONEER-anchored path matches one
+ * of the paths listed in the manifest (dat_path, ext_path, two_ex_path).  Two
+ * files with the same basename in different directories are correctly
+ * distinguished via their full canonical path.
+ */
+export function buildMatchedFiles(
+  files: File[],
+  manifest: Array<{
+    track_id: string;
+    dat_path: string | null;
+    ext_path: string | null;
+    two_ex_path: string | null;
+  }>,
+): MatchedAnalysisFile[] {
+  // Build: lower(canonical_path) → { trackId, assetType }
+  const expected = new Map<string, { trackId: string; assetType: string }>();
+  for (const entry of manifest) {
+    if (entry.dat_path)
+      expected.set(entry.dat_path.toLowerCase(), { trackId: entry.track_id, assetType: 'DAT' });
+    if (entry.ext_path)
+      expected.set(entry.ext_path.toLowerCase(), { trackId: entry.track_id, assetType: 'EXT' });
+    if (entry.two_ex_path)
+      expected.set(entry.two_ex_path.toLowerCase(), { trackId: entry.track_id, assetType: '2EX' });
+  }
+
+  const result: MatchedAnalysisFile[] = [];
+  for (const f of files) {
+    const canonical = getCanonicalAnlzPath(f);
+    if (!canonical) continue;
+    const meta = expected.get(canonical.toLowerCase());
+    if (!meta) continue;
+    result.push({
+      file: f,
+      canonicalPath: canonical,
+      originalBrowserPath:
+        (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? f.name,
+      assetType: meta.assetType,
+      trackId: meta.trackId,
+    });
+  }
+  return result;
+}
+
+/**
+ * Split MatchedAnalysisFile[] into upload batches.
+ *
+ * A new batch is started whenever the next file would cause the current batch
+ * to exceed `maxFilesPerBatch` or `maxBytesPerBatch`.
+ *
+ * `maxBytesPerBatch` is compared against `File.size` (unread); no I/O
+ * is performed here.
+ */
+export function buildBatches(
+  files: MatchedAnalysisFile[],
+  maxFilesPerBatch: number,
+  maxBytesPerBatch: number,
+): MatchedAnalysisFile[][] {
+  const batches: MatchedAnalysisFile[][] = [];
+  let current: MatchedAnalysisFile[] = [];
+  let currentBytes = 0;
+
+  for (const item of files) {
+    const willExceedCount = current.length >= maxFilesPerBatch;
+    const willExceedBytes = currentBytes + item.file.size > maxBytesPerBatch && current.length > 0;
+
+    if (willExceedCount || willExceedBytes) {
+      batches.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+
+    current.push(item);
+    currentBytes += item.file.size;
+  }
+
+  if (current.length > 0) batches.push(current);
+  return batches;
 }

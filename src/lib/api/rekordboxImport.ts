@@ -17,6 +17,12 @@ export interface ManifestEntry {
   ext_path: string | null;
   two_ex_path: string | null;
   dat_required: boolean;
+  manifest_status?: string;
+  reused_from_track_id?: string | null;
+  reuse_reason?: string | null;
+  cue_changed?: boolean;
+  analysis_changed?: boolean;
+  information_changed?: boolean;
 }
 
 export interface ImportStartResponse {
@@ -24,6 +30,17 @@ export interface ImportStartResponse {
   analysis_status: string;
   expected_track_count: number;
   manifest: ManifestEntry[];
+  tracks_reused?: number;
+  tracks_needing_upload?: number;
+  tracks_reparse_from_retained?: number;
+  tracks_metadata_only?: number;
+}
+
+export interface ReuseStats {
+  tracksReused: number;
+  tracksNeedingUpload: number;
+  tracksReparsedFromRetained: number;
+  tracksMetadataOnly: number;
 }
 
 export interface BatchFileResult {
@@ -39,6 +56,8 @@ export interface BatchUploadResponse {
   received_count: number;
   already_received_count: number;
   rejected_count: number;
+  error_count: number;
+  received_bytes: number;
   files: BatchFileResult[];
 }
 
@@ -58,6 +77,8 @@ export interface CompleteResponse {
   partial_count: number;
   failed_count: number;
   missing_required_count: number;
+  missing_optional_ext_count: number;
+  missing_optional_2ex_count: number;
   parser_version: string;
   tracks: TrackCompleteStatus[];
 }
@@ -71,8 +92,16 @@ export interface AnalysisStatusResponse {
   failed_track_count: number;
   asset_count: number;
   missing_required_paths: string[];
+  missing_optional_ext: string[];
+  missing_optional_2ex: string[];
   parser_version: string | null;
   warnings: Record<string, unknown>[];
+}
+
+/** One ANLZ file to upload — carries its canonical Storage path. */
+export interface AnalysisFileUpload {
+  file: File;
+  canonicalPath: string;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -131,14 +160,15 @@ export async function startRekordboxImport(
 /** Stage 2: upload a batch of ANLZ analysis files for an existing import. */
 export async function uploadRekordboxAnalysisBatch(
   importId: string,
-  files: File[],
+  files: AnalysisFileUpload[],
   accessToken: string,
   signal?: AbortSignal,
 ): Promise<BatchUploadResponse> {
   const formData = new FormData();
-  for (const f of files) {
-    // Use the file name as the filename so the backend can match by canonical path.
-    formData.append('files', f, f.name);
+  for (const item of files) {
+    // Use the full canonical path (e.g. PIONEER/USBANLZ/P001/ANLZ0000.DAT) as
+    // the multipart filename so the backend can validate and store it correctly.
+    formData.append('files', item.file, item.canonicalPath);
   }
 
   const response = await fetch(

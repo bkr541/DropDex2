@@ -40,6 +40,13 @@ class ManifestEntryResponse(BaseModel):
     ext_path: Optional[str] = None
     two_ex_path: Optional[str] = None
     dat_required: bool = True
+    # Incremental rescan fields (Part D / F)
+    manifest_status: str = "needs_dat"  # reused | needs_dat | metadata_only | reparse_from_retained | needs_ext | needs_2ex | unavailable
+    reused_from_track_id: Optional[str] = None
+    reuse_reason: Optional[str] = None  # human-readable explanation
+    cue_changed: bool = False
+    analysis_changed: bool = False
+    information_changed: bool = False
 
 
 class ImportStartResponse(BaseModel):
@@ -49,6 +56,11 @@ class ImportStartResponse(BaseModel):
     analysis_status: str
     expected_track_count: int
     manifest: List[ManifestEntryResponse]
+    # Reuse summary counts (Part D)
+    tracks_reused: int = 0
+    tracks_needing_upload: int = 0
+    tracks_reparse_from_retained: int = 0
+    tracks_metadata_only: int = 0
 
 
 class BatchFileResult(BaseModel):
@@ -68,6 +80,8 @@ class BatchUploadResponse(BaseModel):
     received_count: int
     already_received_count: int
     rejected_count: int
+    error_count: int = 0
+    received_bytes: int = 0
     files: List[BatchFileResult]
 
 
@@ -91,6 +105,8 @@ class CompleteResponse(BaseModel):
     partial_count: int
     failed_count: int
     missing_required_count: int
+    missing_optional_ext_count: int = 0
+    missing_optional_2ex_count: int = 0
     parser_version: str
     tracks: List[TrackCompleteStatus]
 
@@ -106,5 +122,45 @@ class AnalysisStatusResponse(BaseModel):
     failed_track_count: int
     asset_count: int
     missing_required_paths: List[str]
+    missing_optional_ext: List[str] = []
+    missing_optional_2ex: List[str] = []
     parser_version: Optional[str] = None
     warnings: List[Dict[str, Any]] = []
+
+
+# ── Related Tracks import models ───────────────────────────────────────────────
+
+
+class RelatedTrackMemberInput(BaseModel):
+    master_content_id: str
+    position: int
+    source_payload: Dict[str, Any] = {}
+
+
+class RelatedTrackListInput(BaseModel):
+    source_list_id: str
+    parent_source_list_id: Optional[str] = None
+    name: str
+    sort_order: Optional[int] = None
+    is_folder: bool = False
+    attribute: int = 0
+    criteria_raw: Dict[str, Any] = {}
+    members: List[RelatedTrackMemberInput] = []
+
+
+class RelatedTracksPayload(BaseModel):
+    schema_version: int
+    generated_at: str
+    source: Dict[str, Any] = {}
+    lists: List[RelatedTrackListInput]
+
+
+class RelatedTracksImportResponse(BaseModel):
+    import_id: str
+    lists_imported: int
+    folders_imported: int
+    members_imported: int
+    unmatched_tracks: int
+    ambiguous_tracks: int
+    duplicate_records: int
+    warnings: List[str]

@@ -63,7 +63,8 @@ def _now_iso() -> str:
 
 
 def _build_storage_path(user_id: str, import_id: str, canonical_path: str) -> str:
-    return f"{user_id}/{import_id}/anlz/{canonical_path.lstrip('/')}"
+    from dropdex_importer.analysis_paths import build_storage_path as _bp  # noqa: PLC0415
+    return _bp(user_id, import_id, canonical_path)
 
 
 def _is_zip_slip(entry_name: str) -> bool:
@@ -242,6 +243,8 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
             sb = _create_supabase()
             track_results: List[TrackCompleteStatus] = []
             completed_count = partial_count = failed_count = missing_required_count = 0
+            matched_track_count = total_asset_count = 0
+            missing_optional_ext_count = missing_optional_2ex_count = 0
 
             for manifest_entry in write_result.manifest:
                 rb_cid = manifest_entry.rekordbox_content_id
@@ -253,6 +256,14 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
                 ext_spec = next((f for f in manifest_entry.files if f.asset_type == "EXT"), None)
                 two_ex_spec = next((f for f in manifest_entry.files if f.asset_type == "2EX"), None)
 
+                # Count missing optional siblings regardless of whether DAT is present
+                if ext_spec is None or anlz_entry_map.get((ext_spec.normalized_path if ext_spec else "").lower()) is None:
+                    if dat_spec:  # only count optional misses when DAT is expected
+                        missing_optional_ext_count += 1
+                if two_ex_spec is None or anlz_entry_map.get((two_ex_spec.normalized_path if two_ex_spec else "").lower()) is None:
+                    if dat_spec:
+                        missing_optional_2ex_count += 1
+
                 if not dat_spec:
                     missing_required_count += 1
                     track_results.append(TrackCompleteStatus(
@@ -262,6 +273,8 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
                         assets_parsed=0,
                     ))
                     continue
+
+                matched_track_count += 1
 
                 # Extract ANLZ files from ZIP to temp directory
                 local_paths: Dict[str, Optional[str]] = {"DAT": None, "EXT": None, "2EX": None}
@@ -367,6 +380,7 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
 
                     if asset_obj and asset_obj.parse_status in ("completed", "partial"):
                         parsed_count += 1
+                    total_asset_count += 1
 
                 # Update track parse status
                 overall = bundle.overall_status
@@ -417,8 +431,11 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
             sb.table("rekordbox_imports").update({
                 "analysis_status": final_status,
                 "source_bundle_type": "zip_bundle",
+                "analysis_expected_track_count": total_tracks,
+                "analysis_matched_track_count": matched_track_count,
                 "analysis_parsed_track_count": completed_count + partial_count,
                 "analysis_failed_track_count": failed_count + missing_required_count,
+                "analysis_asset_count": total_asset_count,
                 "analysis_parser_version": DROPDEX_ANLZ_PARSER_VERSION,
                 "analysis_completed_at": _now_iso(),
             }).eq("id", import_id).execute()
@@ -433,6 +450,8 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
             partial_count=partial_count,
             failed_count=failed_count,
             missing_required_count=missing_required_count,
+            missing_optional_ext_count=missing_optional_ext_count,
+            missing_optional_2ex_count=missing_optional_2ex_count,
             parser_version=DROPDEX_ANLZ_PARSER_VERSION,
             tracks=track_results,
         )

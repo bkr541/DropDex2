@@ -263,24 +263,30 @@ def derive_anlz_siblings(canonical_path: str) -> Tuple[str, str, str]:
 # ── Storage key construction ──────────────────────────────────────────────────
 
 
-def build_storage_path(import_id: str, canonical_path: str) -> str:
+def build_storage_path(user_id: str, import_id: str, canonical_path: str) -> str:
     """
     Build a deterministic, private Storage object path for an ANLZ asset.
 
     Format::
 
-        {import_id}/anlz/{canonical_path}
+        {user_id}/{import_id}/anlz/{canonical_path}
 
     where ``canonical_path`` is the PIONEER-rooted relative path, e.g.::
 
-        {import_id}/anlz/PIONEER/USBANLZ/P001/ANLZ0000.DAT
+        {user_id}/{import_id}/anlz/PIONEER/USBANLZ/P001/ANLZ0000.DAT
 
-    The ``import_id`` prefix ensures objects from different imports never
+    The ``user_id`` prefix is the first path segment so that the Storage RLS
+    policy ``(storage.foldername(name))[1] = auth.uid()::text`` can grant
+    authenticated users read access to their own objects only.
+
+    The ``import_id`` segment ensures objects from different imports never
     collide even if the USB content is identical.  Objects live inside the
     private ``rekordbox-analysis-assets`` bucket and are never made public.
 
     Parameters
     ----------
+    user_id:
+        The Supabase Auth UID of the owning user.  Must be the first segment.
     import_id:
         The Supabase UUID of the ``rekordbox_imports`` row.
     canonical_path:
@@ -290,4 +296,4 @@ def build_storage_path(import_id: str, canonical_path: str) -> str:
     clean = canonical_path.lstrip("/")
     if not clean:
         raise ValueError("canonical_path must not be empty")
-    return f"{import_id}/anlz/{clean}"
+    return f"{user_id}/{import_id}/anlz/{clean}"
