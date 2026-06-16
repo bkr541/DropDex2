@@ -9,6 +9,15 @@ from __future__ import annotations
 
 
 def write_to_supabase(library, supabase_url: str, supabase_key: str, owner_user_id: str) -> str:
+    """Backward-compatible wrapper. Returns only the import UUID string."""
+    from dropdex_importer.supabase_writer import write_to_supabase as _write
+
+    result = _write(library, supabase_url, supabase_key, owner_user_id)
+    return result.import_id
+
+
+def write_to_supabase_full(library, supabase_url: str, supabase_key: str, owner_user_id: str):
+    """Full result wrapper. Returns an ImportWriteResult."""
     from dropdex_importer.supabase_writer import write_to_supabase as _write
 
     return _write(library, supabase_url, supabase_key, owner_user_id)

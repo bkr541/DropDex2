@@ -81,10 +81,25 @@ class _FakeLibrary:
     tracks = [_Track()]
     playlists = [_Playlist()]
     placements = [_Placement()]
+    cues = []
+    recommendation_edges = []
+    analysis_manifest = []
+    parse_warnings = []
     source_filename = "exportLibrary.db"
     device_name = "USB Drive"
     database_version = "6.0"
     rekordbox_created_date = "2024-01-01"
+
+
+class _MockWriteResult:
+    """Stand-in for ImportWriteResult so tests don't import dropdex_importer."""
+
+    def __init__(self, import_id: str = "import-uuid-1234"):
+        self.import_id = import_id
+        self.rb_to_sb_track = {}
+        self.manifest = []
+        self.cue_count = 0
+        self.recommendation_edge_count = 0
 
 
 class _FakeValidation:
@@ -102,7 +117,7 @@ def _mock_validate(_library):
 
 
 def _mock_write(_library, _url, _key, user_id):
-    return "import-uuid-1234"
+    return _MockWriteResult("import-uuid-1234")
 
 
 # ── Authentication tests ───────────────────────────────────────────────────────
@@ -191,7 +206,7 @@ class TestFileValidation:
         with (
             patch("app.import_service.parse_library", _mock_parse),
             patch("app.import_service.validate", _mock_validate),
-            patch("app.import_service.write_to_supabase", _mock_write),
+            patch("app.import_service.write_to_supabase_full", _mock_write),
         ):
             resp = client.post(
                 "/api/rekordbox/import",
@@ -249,7 +264,7 @@ class TestTempFileCleanup:
         with (
             patch("app.import_service.parse_library", _mock_parse),
             patch("app.import_service.validate", _mock_validate),
-            patch("app.import_service.write_to_supabase", _mock_write),
+            patch("app.import_service.write_to_supabase_full", _mock_write),
         ):
             resp = client.post(
                 "/api/rekordbox/import",
@@ -276,12 +291,12 @@ class TestOwnership:
 
         def tracking_write(_library, _url, _key, user_id):
             captured.append(user_id)
-            return "import-uuid-ownership-test"
+            return _MockWriteResult("import-uuid-ownership-test")
 
         with (
             patch("app.import_service.parse_library", _mock_parse),
             patch("app.import_service.validate", _mock_validate),
-            patch("app.import_service.write_to_supabase", tracking_write),
+            patch("app.import_service.write_to_supabase_full", tracking_write),
         ):
             resp = client.post(
                 "/api/rekordbox/import",
@@ -304,7 +319,7 @@ class TestSuccessResponse:
         with (
             patch("app.import_service.parse_library", _mock_parse),
             patch("app.import_service.validate", _mock_validate),
-            patch("app.import_service.write_to_supabase", _mock_write),
+            patch("app.import_service.write_to_supabase_full", _mock_write),
         ):
             resp = client.post(
                 "/api/rekordbox/import",
@@ -323,6 +338,9 @@ class TestSuccessResponse:
         assert isinstance(body["playlists"], list)
         assert body["playlists"][0]["name"] == "My Playlist"
         assert body["playlists"][0]["track_count"] == 1
+        # _FakeLibrary has no analysis paths, so status should be not_requested
+        assert body["analysis_status"] == "not_requested"
+        assert body["analysis_expected_track_count"] == 0
 
     def test_no_internal_details_on_write_failure(self):
         """Supabase errors must not leak in the response body."""
@@ -332,7 +350,7 @@ class TestSuccessResponse:
         with (
             patch("app.import_service.parse_library", _mock_parse),
             patch("app.import_service.validate", _mock_validate),
-            patch("app.import_service.write_to_supabase", failing_write),
+            patch("app.import_service.write_to_supabase_full", failing_write),
         ):
             resp = client.post(
                 "/api/rekordbox/import",

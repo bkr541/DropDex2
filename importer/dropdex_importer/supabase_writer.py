@@ -9,22 +9,44 @@ Insert order:
   5. rekordbox_playlist_tracks — batched inserts using resolved UUIDs;
                                   positions are reassigned to gapless 1-based order
                                   per playlist to satisfy the PK constraint
-  6. rekordbox_imports  — update status = completed + final counts
+  6. rekordbox_cues     — batched inserts; skips rows whose content_id is unresolved
+  7. rekordbox_recommendation_edges — batched inserts; skips unresolved pairs
+  8. rekordbox_imports  — update status = completed + final counts + analysis_status
 
 On any exception after step 1, the import row is marked status = failed.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Dict, Iterator, List, Optional
 
-from .models import ParsedLibrary
+from .models import NormalizedAnalysisManifestEntry, ParsedLibrary
 
 logger = logging.getLogger(__name__)
 
 _BATCH_SIZE = 500
+
+
+# ── Public result type ────────────────────────────────────────────────────────
+
+
+@dataclass
+class ImportWriteResult:
+    """Full metadata returned by a successful write_to_supabase call."""
+
+    import_id: str
+    rb_to_sb_track: Dict[str, str]
+    """Maps Rekordbox content_id → Supabase track UUID."""
+    manifest: List[NormalizedAnalysisManifestEntry]
+    """Analysis manifest entries, one per track with an analysis path."""
+    cue_count: int
+    """Number of cue rows successfully inserted."""
+    recommendation_edge_count: int
+    """Number of recommendedLike rows successfully inserted."""
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -35,9 +57,9 @@ def write_to_supabase(
     supabase_url: str,
     supabase_key: str,
     owner_user_id: str,
-) -> str:
+) -> ImportWriteResult:
     """
-    Write library to Supabase. Returns the new import UUID on success.
+    Write library to Supabase. Returns an ImportWriteResult on success.
 
     The service-role key bypasses RLS, so inserts succeed regardless of auth state.
     On failure after the import row is created, the row is marked 'failed' before
@@ -69,6 +91,14 @@ def write_to_supabase(
         placed = _insert_placements(sb, library, rb_to_sb_track, rb_to_sb_playlist)
         logger.info("Inserted %d placements", placed)
 
+        cue_count = _insert_cues(sb, library, import_id, rb_to_sb_track)
+        logger.info("Inserted %d cues", cue_count)
+
+        edge_count = _insert_recommendation_edges(
+            sb, library, import_id, rb_to_sb_track
+        )
+        logger.info("Inserted %d recommendation edges", edge_count)
+
         _finalize_import(sb, import_id, library)
         logger.info("Import finalized: %s", import_id)
 
@@ -77,7 +107,13 @@ def write_to_supabase(
             _mark_failed(sb, import_id, str(exc))
         raise
 
-    return import_id  # type: ignore[return-value]
+    return ImportWriteResult(
+        import_id=import_id,  # type: ignore[arg-type]
+        rb_to_sb_track=rb_to_sb_track,  # type: ignore[possibly-undefined]
+        manifest=library.analysis_manifest,
+        cue_count=cue_count,  # type: ignore[possibly-undefined]
+        recommendation_edge_count=edge_count,  # type: ignore[possibly-undefined]
+    )
 
 
 def remove_latest_failed_import(sb: object, owner_user_id: str) -> Optional[str]:
@@ -146,6 +182,14 @@ def _insert_tracks(
             "file_path": t.file_path,
             "file_format": t.file_format,
             "date_added": t.date_added,
+            # Analysis pipeline columns (null when not extracted)
+            "master_db_id": t.master_db_id,
+            "master_content_id": t.master_content_id,
+            "analysis_data_file_path": t.analysis_data_file_path,
+            "analysed_bits": t.analysed_bits,
+            "cue_update_count": t.cue_update_count,
+            "analysis_data_update_count": t.analysis_data_update_count,
+            "information_update_count": t.information_update_count,
         }
         for t in library.tracks
     ]
@@ -234,7 +278,6 @@ def _insert_placements(
     Positions are reassigned to gapless 1-based integers per playlist
     (sorted by the source sequenceNo) to satisfy the (playlist_id, position) PK.
     """
-    # Group placements by playlist, sorting by source sequenceNo
     grouped: dict[str, list] = defaultdict(list)
     for pc in library.placements:
         grouped[pc.rekordbox_playlist_id].append(pc)
@@ -246,10 +289,13 @@ def _insert_placements(
         playlist_sb_id = rb_to_sb_playlist.get(rb_playlist_id)
         if not playlist_sb_id:
             skipped += len(pcs)
-            logger.debug("Playlist %s not in UUID map — skipping %d placements", rb_playlist_id, len(pcs))
+            logger.debug(
+                "Playlist %s not in UUID map — skipping %d placements",
+                rb_playlist_id,
+                len(pcs),
+            )
             continue
 
-        # Sort by source sequenceNo; break ties by content_id for determinism
         sorted_pcs = sorted(pcs, key=lambda x: (x.position, x.rekordbox_content_id))
 
         for new_pos, pc in enumerate(sorted_pcs, start=1):
@@ -257,7 +303,8 @@ def _insert_placements(
             if not track_sb_id:
                 skipped += 1
                 logger.debug(
-                    "Content %s not in UUID map — skipping placement", pc.rekordbox_content_id
+                    "Content %s not in UUID map — skipping placement",
+                    pc.rekordbox_content_id,
                 )
                 continue
             rows.append(
@@ -277,13 +324,149 @@ def _insert_placements(
     return len(rows)
 
 
+def _insert_cues(
+    sb: object,
+    library: ParsedLibrary,
+    import_id: str,
+    rb_to_sb_track: Dict[str, str],
+) -> int:
+    """Insert cue rows. Returns the count of successfully inserted rows."""
+    rows: List[dict] = []
+    skipped = 0
+
+    for cue in library.cues:
+        track_sb_id = rb_to_sb_track.get(cue.rekordbox_content_id)
+        if not track_sb_id:
+            skipped += 1
+            logger.warning(
+                "Cue %s: content_id %s not resolved — skipping",
+                cue.rekordbox_cue_id,
+                cue.rekordbox_content_id,
+            )
+            continue
+
+        start_ms: Optional[float] = (
+            cue.in_usec / 1000.0 if cue.in_usec is not None else None
+        )
+        end_ms: Optional[float] = (
+            cue.out_usec / 1000.0 if cue.out_usec is not None else None
+        )
+
+        source_payload = {
+            "cue_id": cue.rekordbox_cue_id,
+            "kind": cue.kind,
+            "in_150_frames_per_second": cue.in_150_frames_per_second,
+            "out_150_frames_per_second": cue.out_150_frames_per_second,
+            "in_mpeg_frame_number": cue.in_mpeg_frame_number,
+            "out_mpeg_frame_number": cue.out_mpeg_frame_number,
+            "in_mpeg_abs": cue.in_mpeg_abs,
+            "out_mpeg_abs": cue.out_mpeg_abs,
+            "in_decoding_start_frame_position": cue.in_decoding_start_frame_position,
+            "out_decoding_start_frame_position": cue.out_decoding_start_frame_position,
+            "in_file_offset_in_block": cue.in_file_offset_in_block,
+            "out_file_offset_in_block": cue.out_file_offset_in_block,
+            "in_number_of_sample_in_block": cue.in_number_of_sample_in_block,
+            "out_number_of_sample_in_block": cue.out_number_of_sample_in_block,
+        }
+
+        rows.append(
+            {
+                "import_id": import_id,
+                "track_id": track_sb_id,
+                "rekordbox_cue_id": cue.rekordbox_cue_id,
+                "dedupe_key": cue.dedupe_key,
+                "cue_family": cue.cue_family,
+                "hot_cue_slot": cue.hot_cue_slot,
+                "point_type": cue.point_type,
+                "source_kind": str(cue.kind),
+                "start_usec": cue.in_usec,
+                "end_usec": cue.out_usec,
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                "color_table_index": cue.color_table_index,
+                "color_hex": None,  # Color table has no hex/RGB column
+                "color_name": cue.color_name,
+                "comment": cue.cue_comment,
+                "is_active_loop": cue.is_active_loop,
+                "beat_loop_numerator": cue.beat_loop_numerator,
+                "beat_loop_denominator": cue.beat_loop_denominator,
+                "source_db_present": True,
+                "source_anlz_present": False,
+                "source_conflict": False,
+                "source_payload": source_payload,
+            }
+        )
+
+    if skipped:
+        logger.warning("Skipped %d cue(s) — content_id resolution failed", skipped)
+
+    for batch in _chunks(rows, _BATCH_SIZE):
+        sb.table("rekordbox_cues").insert(batch).execute()  # type: ignore[attr-defined]
+
+    return len(rows)
+
+
+def _insert_recommendation_edges(
+    sb: object,
+    library: ParsedLibrary,
+    import_id: str,
+    rb_to_sb_track: Dict[str, str],
+) -> int:
+    """Insert recommendedLike rows. Returns the count of successfully inserted rows."""
+    rows: List[dict] = []
+    skipped = 0
+
+    for edge in library.recommendation_edges:
+        source_sb_id = rb_to_sb_track.get(edge.source_rekordbox_content_id)
+        target_sb_id = rb_to_sb_track.get(edge.target_rekordbox_content_id)
+
+        if not source_sb_id or not target_sb_id:
+            skipped += 1
+            logger.warning(
+                "Recommendation edge %s → %s: could not resolve UUIDs — skipping",
+                edge.source_rekordbox_content_id,
+                edge.target_rekordbox_content_id,
+            )
+            continue
+
+        rows.append(
+            {
+                "import_id": import_id,
+                "source_track_id": source_sb_id,
+                "target_track_id": target_sb_id,
+                "source_content_id": edge.source_rekordbox_content_id,
+                "target_content_id": edge.target_rekordbox_content_id,
+                "rating": edge.rating,
+                "source_created_at": edge.source_created_at,
+                "relationship_source": "recommended_like",
+                "direction_preserved": edge.direction_preserved,
+                "source_payload": edge.source_payload,
+            }
+        )
+
+    if skipped:
+        logger.warning(
+            "Skipped %d recommendation edge(s) — UUID resolution failed", skipped
+        )
+
+    for batch in _chunks(rows, _BATCH_SIZE):
+        sb.table("rekordbox_recommendation_edges").insert(batch).execute()  # type: ignore[attr-defined]
+
+    return len(rows)
+
+
 def _finalize_import(sb: object, import_id: str, library: ParsedLibrary) -> None:
+    has_analysis = len(library.analysis_manifest) > 0
+    analysis_status = "awaiting_upload" if has_analysis else "not_requested"
+
     sb.table("rekordbox_imports").update(  # type: ignore[attr-defined]
         {
             "status": "completed",
             "track_count": len(library.tracks),
             "playlist_count": len(library.playlists),
             "playlist_track_count": len(library.placements),
+            "analysis_status": analysis_status,
+            "analysis_expected_track_count": len(library.analysis_manifest),
         }
     ).eq("id", import_id).execute()
 

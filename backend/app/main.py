@@ -1,15 +1,29 @@
 import logging
+from typing import List
 
 from fastapi import Depends, FastAPI, File, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from postgrest.exceptions import APIError
 
+from .analysis_import_service import (
+    complete_analysis_import,
+    get_analysis_status,
+    process_analysis_batch,
+    start_analysis_import,
+)
 from .auth import get_current_user_id
+from .bundle_import_service import import_bundle
 from .config import settings
 from .discovery.routes import router as discovery_router
 from .import_service import run_import
-from .models import ImportResponse
+from .models import (
+    AnalysisStatusResponse,
+    BatchUploadResponse,
+    CompleteResponse,
+    ImportResponse,
+    ImportStartResponse,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -75,3 +89,89 @@ async def import_rekordbox(
     - Each upload creates a new independent import snapshot.
     """
     return await run_import(file, user_id)
+
+
+@app.post("/api/rekordbox/import/start", response_model=ImportStartResponse)
+async def import_rekordbox_start(
+    file: UploadFile = File(..., description="rekordbox exportLibrary.db file"),
+    user_id: str = Depends(get_current_user_id),
+) -> ImportStartResponse:
+    """
+    Parse exportLibrary.db, persist it, and return the analysis manifest.
+
+    Use this endpoint instead of POST /api/rekordbox/import when you intend to
+    follow up with ANLZ file uploads via the analysis-batch endpoint.  The
+    response includes the expected ANLZ paths so the client knows which files
+    to upload next.
+    """
+    return await start_analysis_import(file, user_id)
+
+
+@app.post("/api/rekordbox/import/bundle", response_model=CompleteResponse)
+async def import_rekordbox_bundle(
+    file: UploadFile = File(..., description="ZIP archive containing exportLibrary.db and ANLZ files"),
+    user_id: str = Depends(get_current_user_id),
+) -> CompleteResponse:
+    """
+    Accept a ZIP bundle containing exportLibrary.db and ANLZ analysis files.
+
+    Runs the full import pipeline in a single request: library metadata and
+    analysis data are both parsed and persisted.  ANLZ files not present in
+    the ZIP are counted as missing_required in the response.
+    """
+    return await import_bundle(file, user_id)
+
+
+@app.post(
+    "/api/rekordbox/import/{import_id}/analysis-batch",
+    response_model=BatchUploadResponse,
+)
+async def rekordbox_analysis_batch(
+    import_id: str,
+    files: List[UploadFile] = File(..., description="ANLZ analysis files (.DAT, .EXT, .2EX)"),
+    user_id: str = Depends(get_current_user_id),
+) -> BatchUploadResponse:
+    """
+    Upload a batch of ANLZ analysis files for an existing import.
+
+    Each file's name must be the canonical ANLZ path from the manifest returned
+    by the /start endpoint (e.g. PIONEER/USBANLZ/P001/ANLZ0000.DAT).  Paths
+    are validated for traversal attacks and matched against the import manifest.
+    Idempotent: re-uploading a file with the same SHA returns already_received.
+    """
+    return await process_analysis_batch(import_id, user_id, files)
+
+
+@app.post(
+    "/api/rekordbox/import/{import_id}/complete",
+    response_model=CompleteResponse,
+)
+async def rekordbox_analysis_complete(
+    import_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> CompleteResponse:
+    """
+    Parse all uploaded ANLZ assets and persist the analysis results.
+
+    Downloads uploaded ANLZ files from Storage, parses them with the ANLZ parser,
+    and persists the per-track parse status.  Call this after all desired ANLZ
+    files have been uploaded via the analysis-batch endpoint.
+    """
+    return await complete_analysis_import(import_id, user_id)
+
+
+@app.get(
+    "/api/rekordbox/import/{import_id}/analysis-status",
+    response_model=AnalysisStatusResponse,
+)
+async def rekordbox_analysis_status(
+    import_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> AnalysisStatusResponse:
+    """
+    Return the current analysis status for an import.
+
+    Reports upload progress, parse counts, and which required DAT files have
+    not yet been received.
+    """
+    return await get_analysis_status(import_id, user_id)

@@ -3,6 +3,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+export type RekordboxSourceBundleType =
+  | 'database_only'
+  | 'usb_folder'
+  | 'zip_bundle'
+  | 'desktop_bridge';
+
+export type RekordboxAnalysisStatus =
+  | 'not_requested'
+  | 'awaiting_upload'
+  | 'uploading'
+  | 'uploaded'
+  | 'parsing'
+  | 'completed'
+  | 'partial'
+  | 'failed';
+
 export interface RekordboxImport {
   id: string;
   user_id: string;
@@ -17,7 +33,28 @@ export interface RekordboxImport {
   status: 'processing' | 'completed' | 'failed';
   error_message: string | null;
   imported_at: string;
+  // Analysis pipeline fields (null until analysis is initiated)
+  source_bundle_type: RekordboxSourceBundleType | null;
+  analysis_status: RekordboxAnalysisStatus | null;
+  analysis_expected_track_count: number;
+  analysis_matched_track_count: number;
+  analysis_parsed_track_count: number;
+  analysis_failed_track_count: number;
+  analysis_asset_count: number;
+  analysis_parser_version: string | null;
+  analysis_completed_at: string | null;
+  analysis_warnings: unknown[];
 }
+
+export type RekordboxTrackParseStatus =
+  | 'not_requested'
+  | 'queued'
+  | 'parsing'
+  | 'completed'
+  | 'partial'
+  | 'failed'
+  | 'skipped'
+  | 'reused';
 
 export interface RekordboxTrack {
   id: string;
@@ -42,6 +79,17 @@ export interface RekordboxTrack {
   file_format: string | null;
   date_added: string | null;
   created_at: string;
+  // Analysis pipeline fields (null until analysis files are parsed)
+  master_db_id: string | null;
+  master_content_id: string | null;
+  analysis_data_file_path: string | null;
+  analysed_bits: number | null;
+  cue_update_count: number | null;
+  analysis_data_update_count: number | null;
+  information_update_count: number | null;
+  analysis_reused_from_track_id: string | null;
+  analysis_parse_status: RekordboxTrackParseStatus | null;
+  analysis_parse_warnings: unknown[];
 }
 
 export interface RekordboxPlaylist {
@@ -66,6 +114,188 @@ export interface RekordboxUserSettings {
   user_id: string;
   active_import_id: string | null;
   updated_at: string;
+}
+
+// ── Rekordbox analysis tables ─────────────────────────────────────────────────
+
+export type RekordboxAssetType = 'DAT' | 'EXT' | '2EX';
+
+export type RekordboxAssetUploadStatus = 'pending' | 'uploading' | 'uploaded' | 'failed';
+
+export type RekordboxAssetParseStatus =
+  | 'not_requested'
+  | 'queued'
+  | 'parsing'
+  | 'completed'
+  | 'failed'
+  | 'skipped';
+
+export interface RekordboxAnalysisAsset {
+  id: string;
+  import_id: string;
+  track_id: string | null;
+  asset_type: RekordboxAssetType;
+  relative_path: string;
+  original_filename: string;
+  sha256: string;
+  size_bytes: number | null;
+  storage_bucket: string;
+  storage_path: string;
+  upload_status: RekordboxAssetUploadStatus;
+  parse_status: RekordboxAssetParseStatus;
+  parser_version: string | null;
+  parse_warnings: unknown[];
+  uploaded_at: string | null;
+  parsed_at: string | null;
+  created_at: string;
+}
+
+export interface RekordboxBeatEntry {
+  seq: number;
+  srcIdx: number;
+  beatInBar: number;
+  bar: number;
+  ms: number;
+  bpm: number;
+  isDownbeat: boolean;
+}
+
+export interface RekordboxTrackBeatGrid {
+  id: string;
+  import_id: string;
+  track_id: string;
+  source_tag: string | null;
+  beats: RekordboxBeatEntry[];
+  beat_count: number | null;
+  downbeat_count: number | null;
+  bar_count: number | null;
+  first_beat_ms: number | null;
+  first_downbeat_ms: number | null;
+  minimum_bpm: number | null;
+  maximum_bpm: number | null;
+  is_variable_tempo: boolean | null;
+  parser_version: string | null;
+  source_asset_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RekordboxWaveformColumn {
+  height: number;
+  whiteness: number;
+  color?: number;
+}
+
+export interface RekordboxTrackWaveform {
+  id: string;
+  import_id: string;
+  track_id: string;
+  preview_format: string | null;
+  preview_column_count: number | null;
+  preview_columns: RekordboxWaveformColumn[];
+  detail_format: string | null;
+  detail_column_count: number | null;
+  detail_storage_bucket: string | null;
+  detail_storage_path: string | null;
+  source_dat_asset_id: string | null;
+  source_ext_asset_id: string | null;
+  source_2ex_asset_id: string | null;
+  parser_version: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type RekordboxCueFamily = 'hot' | 'memory';
+
+export type RekordboxCuePointType = 'cue' | 'loop';
+
+export interface RekordboxCue {
+  id: string;
+  import_id: string;
+  track_id: string;
+  rekordbox_cue_id: string | null;
+  dedupe_key: string;
+  cue_family: RekordboxCueFamily;
+  hot_cue_slot: number | null;
+  point_type: RekordboxCuePointType;
+  source_kind: string | null;
+  start_usec: number | null;
+  end_usec: number | null;
+  start_ms: number | null;
+  end_ms: number | null;
+  color_table_index: number | null;
+  color_hex: string | null;
+  color_name: string | null;
+  comment: string | null;
+  is_active_loop: boolean | null;
+  beat_loop_numerator: number | null;
+  beat_loop_denominator: number | null;
+  source_db_present: boolean;
+  source_anlz_present: boolean;
+  source_conflict: boolean;
+  source_payload: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RekordboxTrackPhrase {
+  id: string;
+  import_id: string;
+  track_id: string;
+  phrase_index: number;
+  source_mood: string | null;
+  source_kind: string | null;
+  source_bank: string | null;
+  normalized_label: string | null;
+  start_beat: number | null;
+  end_beat: number | null;
+  start_ms: number | null;
+  end_ms: number | null;
+  fill_start_beat: number | null;
+  fill_start_ms: number | null;
+  source_flags: Record<string, unknown>;
+  source_payload: Record<string, unknown>;
+  parser_version: string | null;
+  created_at: string;
+}
+
+export interface RekordboxRecommendationEdge {
+  id: string;
+  import_id: string;
+  source_track_id: string;
+  target_track_id: string;
+  source_content_id: string | null;
+  target_content_id: string | null;
+  rating: number | null;
+  source_created_at: string | null;
+  relationship_source: string;
+  direction_preserved: boolean;
+  source_payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface RekordboxRelatedTrackList {
+  id: string;
+  import_id: string;
+  source_list_id: string;
+  parent_list_id: string | null;
+  name: string;
+  sort_order: number | null;
+  is_folder: boolean;
+  attribute: string | null;
+  criteria_raw: Record<string, unknown>;
+  criteria_normalized: Record<string, unknown>;
+  source_database_id: string | null;
+  created_at: string;
+}
+
+export interface RekordboxRelatedTrackMember {
+  related_list_id: string;
+  track_id: string;
+  position: number;
+  relationship_type: string | null;
+  source_payload: Record<string, unknown>;
+  created_at: string;
 }
 
 // ── Discovery types ───────────────────────────────────────────────────────────

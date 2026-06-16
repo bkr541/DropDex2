@@ -18,7 +18,7 @@ from fastapi import HTTPException, UploadFile
 from .config import settings
 from .models import ImportResponse, PlaylistSummary
 from .rekordbox_parser import parse_library
-from .supabase_writer import write_to_supabase
+from .supabase_writer import write_to_supabase_full
 from .user_settings import upsert_active_import
 from .validation import validate
 
@@ -87,7 +87,7 @@ async def run_import(file: UploadFile, user_id: str) -> ImportResponse:
         # Write to Supabase (service-role key, server-side only)
         # user_id comes exclusively from the validated JWT — never from form data
         try:
-            import_id = write_to_supabase(
+            write_result = write_to_supabase_full(
                 library,
                 settings.supabase_url,
                 settings.supabase_secret_key,
@@ -100,6 +100,7 @@ async def run_import(file: UploadFile, user_id: str) -> ImportResponse:
                 status_code=500,
                 detail="Import encountered a server error. The failure has been recorded. Please try again.",
             )
+        import_id = write_result.import_id
 
         # Mark new import as the user's active import; non-fatal if this fails
         try:
@@ -129,6 +130,7 @@ async def run_import(file: UploadFile, user_id: str) -> ImportResponse:
             if not p.is_folder
         ]
 
+        has_analysis = len(library.analysis_manifest) > 0
         return ImportResponse(
             import_id=import_id,
             status="completed",
@@ -137,6 +139,8 @@ async def run_import(file: UploadFile, user_id: str) -> ImportResponse:
             playlist_count=len(library.playlists),
             playlist_track_count=len(library.placements),
             playlists=playlist_summaries,
+            analysis_status="awaiting_upload" if has_analysis else "not_requested",
+            analysis_expected_track_count=len(library.analysis_manifest),
         )
 
     finally:

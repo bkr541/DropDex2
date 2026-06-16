@@ -43,6 +43,9 @@ def validate(
         folder_count=sum(1 for p in library.playlists if p.is_folder),
     )
 
+    # Forward any parse-time warnings from the library
+    result.warnings.extend(library.parse_warnings)
+
     if result.track_count == 0:
         result.errors.append("No tracks found — is this a valid exportLibrary.db?")
         return result  # nothing more to check
@@ -85,7 +88,7 @@ def validate(
             f"{missing_key} track(s) ({pct}%) have no musical key"
         )
 
-    # ── Referential integrity ─────────────────────────────────────────────────
+    # ── Referential integrity — placements ────────────────────────────────────
     orphan_content = [
         pc for pc in library.placements if pc.rekordbox_content_id not in content_ids
     ]
@@ -103,9 +106,6 @@ def validate(
         )
 
     # ── Position collision check ──────────────────────────────────────────────
-    # Detect duplicate (playlist_id, position) pairs in the source data.
-    # The writer reassigns positions as gapless 1-based integers, so duplicates
-    # in the source are handled gracefully, but we warn so they're visible.
     pos_map: dict[str, set[int]] = defaultdict(set)
     collisions = 0
     for pc in library.placements:
@@ -120,9 +120,6 @@ def validate(
         )
 
     # ── Zero-track playlist retention check ──────────────────────────────────
-    # Playlists with zero placements must still be inserted (they are valid).
-    # We only warn here; the writer handles them as long as they are in the
-    # playlists list.
     playlist_ids_with_placements = {pc.rekordbox_playlist_id for pc in library.placements}
     playable_no_tracks = [
         p
@@ -137,8 +134,6 @@ def validate(
         )
 
     # ── Track deduplication check ─────────────────────────────────────────────
-    # Each content_id must appear at most once in the tracks list (one row per
-    # unique track regardless of how many playlists reference it).
     seen_content_ids: set[str] = set()
     dup_content = 0
     for t in library.tracks:
@@ -162,4 +157,119 @@ def validate(
                 f"{p.parent_rekordbox_playlist_id}"
             )
 
+    # ── Cue validation ────────────────────────────────────────────────────────
+    _validate_cues(library, content_ids, result)
+
+    # ── recommendedLike edge validation ──────────────────────────────────────
+    _validate_recommendation_edges(library, content_ids, result)
+
+    # ── Analysis manifest validation ──────────────────────────────────────────
+    _validate_manifest(library, content_ids, result)
+
     return result
+
+
+# ── Private validation helpers ────────────────────────────────────────────────
+
+
+def _validate_cues(
+    library: ParsedLibrary,
+    content_ids: set[str],
+    result: ValidationResult,
+) -> None:
+    """Validate cue referential integrity and detect duplicate cue IDs."""
+    orphan_cues = [
+        c for c in library.cues if c.rekordbox_content_id not in content_ids
+    ]
+    if orphan_cues:
+        result.warnings.append(
+            f"{len(orphan_cues)} cue(s) reference content IDs not in the track list "
+            f"(e.g. cue_id={orphan_cues[0].rekordbox_cue_id}) — "
+            "these cues will be skipped during write"
+        )
+
+    seen_cue_ids: set[str] = set()
+    dup_cue_ids = 0
+    for c in library.cues:
+        if c.rekordbox_cue_id in seen_cue_ids:
+            dup_cue_ids += 1
+        seen_cue_ids.add(c.rekordbox_cue_id)
+    if dup_cue_ids:
+        result.warnings.append(
+            f"{dup_cue_ids} duplicate cue ID(s) detected — "
+            "later rows will be skipped or overwrite earlier ones"
+        )
+
+
+def _validate_recommendation_edges(
+    library: ParsedLibrary,
+    content_ids: set[str],
+    result: ValidationResult,
+) -> None:
+    """Validate recommendation edges for orphans, duplicates, and self-references."""
+    orphan_edges = [
+        e
+        for e in library.recommendation_edges
+        if e.source_rekordbox_content_id not in content_ids
+        or e.target_rekordbox_content_id not in content_ids
+    ]
+    if orphan_edges:
+        result.warnings.append(
+            f"{len(orphan_edges)} recommendation edge(s) reference content IDs "
+            "not in the track list — these edges will be skipped during write"
+        )
+
+    self_edges = [
+        e
+        for e in library.recommendation_edges
+        if e.source_rekordbox_content_id == e.target_rekordbox_content_id
+    ]
+    if self_edges:
+        result.warnings.append(
+            f"{len(self_edges)} self-referencing recommendation edge(s) detected "
+            f"(e.g. content_id={self_edges[0].source_rekordbox_content_id})"
+        )
+
+    seen_pairs: set[tuple[str, str]] = set()
+    dup_pairs = 0
+    for e in library.recommendation_edges:
+        pair = (e.source_rekordbox_content_id, e.target_rekordbox_content_id)
+        if pair in seen_pairs:
+            dup_pairs += 1
+        seen_pairs.add(pair)
+    if dup_pairs:
+        result.warnings.append(
+            f"{dup_pairs} duplicate recommendation pair(s) detected"
+        )
+
+
+def _validate_manifest(
+    library: ParsedLibrary,
+    content_ids: set[str],
+    result: ValidationResult,
+) -> None:
+    """Validate that manifest entries resolve to known tracks.
+
+    Missing analysis paths are always warnings, not errors — a metadata-only
+    import remains fully valid even if no ANLZ files are present.
+    """
+    orphan_manifest = [
+        e
+        for e in library.analysis_manifest
+        if e.rekordbox_content_id not in content_ids
+    ]
+    if orphan_manifest:
+        result.warnings.append(
+            f"{len(orphan_manifest)} analysis manifest entry/entries reference "
+            "content IDs not in the track list"
+        )
+
+    tracks_without_analysis = sum(
+        1 for t in library.tracks if not t.analysis_data_file_path
+    )
+    if tracks_without_analysis:
+        pct = tracks_without_analysis * 100 // max(len(library.tracks), 1)
+        result.warnings.append(
+            f"{tracks_without_analysis} track(s) ({pct}%) have no analysis data path — "
+            "analysis files cannot be uploaded for these tracks"
+        )

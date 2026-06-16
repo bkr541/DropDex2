@@ -1,19 +1,74 @@
+// Non-standard HTML attribute used for folder selection
+declare module 'react' {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface InputHTMLAttributes<T> {
+    webkitdirectory?: '' | boolean;
+  }
+}
+
 import React, { useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   Database,
   FileUp,
+  FolderOpen,
   Loader2,
+  Package,
   X,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
-import { uploadRekordboxDb } from '../lib/api/rekordboxImport';
-import type { ImportResult } from '../lib/api/rekordboxImport';
+import {
+  completeRekordboxImport,
+  startRekordboxImport,
+  uploadRekordboxAnalysisBatch,
+  uploadRekordboxDb,
+  uploadRekordboxZipBundle,
+} from '../lib/api/rekordboxImport';
+import type { CompleteResponse, ImportResult, ImportStartResponse } from '../lib/api/rekordboxImport';
+import {
+  extractManifestPaths,
+  findDatabaseFile,
+  isAnlzFile,
+  matchFilesToManifest,
+} from '../lib/rekordbox/analysisPaths';
 
-type ModalState = 'idle' | 'selected' | 'uploading' | 'success' | 'error';
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type Mode = 'usb_folder' | 'zip_bundle' | 'database_only';
+
+type Phase =
+  | 'idle'
+  | 'scanning'
+  | 'database_selected'
+  | 'starting_import'
+  | 'matching_analysis'
+  | 'uploading_analysis'
+  | 'parsing_analysis'
+  | 'success'
+  | 'partial_success'
+  | 'error';
+
+interface FolderScan {
+  dbFile: File | null;
+  anlzFiles: File[];
+  folderName: string;
+}
+
+interface UploadProgress {
+  filesUploaded: number;
+  filesTotal: number;
+  bytesUploaded: number;
+  bytesTotal: number;
+  bundlePct: number;
+}
+
+type FinalResult =
+  | { kind: 'with_analysis'; data: CompleteResponse }
+  | { kind: 'library_only'; data: ImportResult };
 
 interface Props {
   isOpen: boolean;
@@ -21,65 +76,110 @@ interface Props {
   onSuccess: () => void;
 }
 
-const EXPECTED_FILENAME = 'exportLibrary.db';
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const BATCH_SIZE = 50;
+
+const MODE_LABELS: Record<Mode, { label: string; icon: React.ReactNode; tip: string }> = {
+  usb_folder: {
+    label: 'USB Folder',
+    icon: <FolderOpen size={14} />,
+    tip: 'Select your USB drive folder. DropDex finds exportLibrary.db and all ANLZ analysis files automatically.',
+  },
+  zip_bundle: {
+    label: 'ZIP Bundle',
+    icon: <Package size={14} />,
+    tip: 'Upload a ZIP archive containing exportLibrary.db and ANLZ files.',
+  },
+  database_only: {
+    label: 'Database Only',
+    icon: <Database size={14} />,
+    tip: 'Upload exportLibrary.db to import playlists and track metadata without analysis data.',
+  },
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function fmtBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isAbortError(err: unknown): boolean {
+  return (
+    err instanceof DOMException && err.name === 'AbortError'
+  );
+}
+
+function extractError(err: unknown): string {
+  return err instanceof Error ? err.message : 'An unexpected error occurred.';
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [state, setState] = useState<ModalState>('idle');
+  const [mode, setMode] = useState<Mode>('usb_folder');
+  const [phase, setPhase] = useState<Phase>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [result, setResult] = useState<ImportResult | null>(null);
+  const [folderScan, setFolderScan] = useState<FolderScan | null>(null);
+  const [progress, setProgress] = useState<UploadProgress>({
+    filesUploaded: 0, filesTotal: 0, bytesUploaded: 0, bytesTotal: 0, bundlePct: 0,
+  });
+  const [finalResult, setFinalResult] = useState<FinalResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showAbortDialog, setShowAbortDialog] = useState(false);
+  const [cancelledAfterDb, setCancelledAfterDb] = useState(false);
+  const [importId, setImportId] = useState<string | null>(null);
+
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const importIdRef = useRef<string | null>(null);
+
+  const isUploading =
+    phase === 'starting_import' ||
+    phase === 'uploading_analysis' ||
+    phase === 'parsing_analysis';
 
   const reset = () => {
-    setState('idle');
+    setPhase('idle');
     setSelectedFile(null);
-    setResult(null);
+    setFolderScan(null);
+    setProgress({ filesUploaded: 0, filesTotal: 0, bytesUploaded: 0, bytesTotal: 0, bundlePct: 0 });
+    setFinalResult(null);
     setErrorMessage('');
+    setShowAbortDialog(false);
+    setCancelledAfterDb(false);
+    setImportId(null);
+    importIdRef.current = null;
+    abortControllerRef.current = null;
+    if (folderInputRef.current) folderInputRef.current.value = '';
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const switchMode = (m: Mode) => {
+    reset();
+    setMode(m);
+  };
+
   const handleClose = () => {
-    if (state === 'uploading') return;
+    if (isUploading) {
+      setShowAbortDialog(true);
+      return;
+    }
     reset();
     onClose();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.db')) {
-      setErrorMessage(
-        'Please select a .db database file. The rekordbox export is named exportLibrary.db.',
-      );
-      setState('error');
-      return;
-    }
-    setSelectedFile(file);
-    setState('selected');
-  };
-
-  const handleImport = async () => {
-    if (!selectedFile) return;
-
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) {
-      setErrorMessage('You must be signed in to import a library.');
-      setState('error');
-      return;
-    }
-
-    setState('uploading');
-    try {
-      const importResult = await uploadRekordboxDb(selectedFile, session.access_token);
-      setResult(importResult);
-      setState('success');
-    } catch (err: unknown) {
-      setErrorMessage(
-        err instanceof Error
-          ? err.message
-          : 'Import failed. Please try again.',
-      );
-      setState('error');
+  const confirmAbort = () => {
+    abortControllerRef.current?.abort();
+    setShowAbortDialog(false);
+    if (importIdRef.current) {
+      setCancelledAfterDb(true);
+      setPhase('partial_success');
+    } else {
+      reset();
     }
   };
 
@@ -89,95 +189,453 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     onClose();
   };
 
-  const unexpectedName = selectedFile && selectedFile.name !== EXPECTED_FILENAME;
+  // ── USB Folder mode ──────────────────────────────────────────────────────────
+
+  const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    setPhase('scanning');
+    const files = Array.from(fileList);
+    const dbFile = findDatabaseFile(files);
+    const anlzFiles = files.filter(isAnlzFile);
+    const folderName =
+      (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath
+        ?.split('/')[0] ?? 'Selected folder';
+
+    setFolderScan({ dbFile, anlzFiles, folderName });
+    setPhase('database_selected');
+  };
+
+  // ── ZIP / DB file mode ───────────────────────────────────────────────────────
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (mode === 'zip_bundle') {
+      if (!file.name.toLowerCase().endsWith('.zip')) {
+        setErrorMessage('Please select a .zip file.');
+        setPhase('error');
+        return;
+      }
+    } else {
+      if (!file.name.toLowerCase().endsWith('.db')) {
+        setErrorMessage(
+          'Please select a .db file. The rekordbox database is named exportLibrary.db.',
+        );
+        setPhase('error');
+        return;
+      }
+    }
+
+    setSelectedFile(file);
+    setPhase('database_selected');
+  };
+
+  // ── Import handler ───────────────────────────────────────────────────────────
+
+  const handleImport = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      setErrorMessage('You must be signed in to import a library.');
+      setPhase('error');
+      return;
+    }
+    const token = session.access_token;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    if (mode === 'database_only') {
+      await runDatabaseOnlyImport(token);
+    } else if (mode === 'zip_bundle') {
+      await runZipBundleImport(token, controller);
+    } else {
+      await runUsbFolderImport(token, controller);
+    }
+  };
+
+  const runDatabaseOnlyImport = async (token: string) => {
+    if (!selectedFile) return;
+    setPhase('starting_import');
+    try {
+      const result = await uploadRekordboxDb(selectedFile, token);
+      setFinalResult({ kind: 'library_only', data: result });
+      setPhase('success');
+    } catch (err) {
+      setErrorMessage(extractError(err));
+      setPhase('error');
+    }
+  };
+
+  const runZipBundleImport = async (token: string, controller: AbortController) => {
+    if (!selectedFile) return;
+    setPhase('uploading_analysis');
+    try {
+      const result = await uploadRekordboxZipBundle(
+        selectedFile,
+        token,
+        (pct) => setProgress(p => ({ ...p, bundlePct: pct })),
+        controller.signal,
+      );
+      setFinalResult({ kind: 'with_analysis', data: result });
+      setPhase(result.analysis_status === 'completed' ? 'success' : 'partial_success');
+    } catch (err) {
+      if (isAbortError(err)) {
+        if (importIdRef.current) {
+          setCancelledAfterDb(true);
+          setPhase('partial_success');
+        } else {
+          reset();
+        }
+        return;
+      }
+      setErrorMessage(extractError(err));
+      setPhase('error');
+    }
+  };
+
+  const runUsbFolderImport = async (token: string, controller: AbortController) => {
+    if (!folderScan?.dbFile) {
+      setErrorMessage('No exportLibrary.db found in the selected folder.');
+      setPhase('error');
+      return;
+    }
+
+    // ── Stage 1: upload DB, get manifest ──────────────────────────────────────
+    setPhase('starting_import');
+    let startResp: ImportStartResponse;
+    try {
+      startResp = await startRekordboxImport(folderScan.dbFile, token, controller.signal);
+    } catch (err) {
+      if (isAbortError(err)) { reset(); return; }
+      setErrorMessage(extractError(err));
+      setPhase('error');
+      return;
+    }
+
+    importIdRef.current = startResp.import_id;
+    setImportId(startResp.import_id);
+
+    // ── Stage 2: match scanned files against manifest ─────────────────────────
+    setPhase('matching_analysis');
+    const manifestPaths = extractManifestPaths(startResp.manifest);
+    const matched = matchFilesToManifest(folderScan.anlzFiles, manifestPaths);
+    const filesToUpload = Array.from(matched.values());
+
+    const totalBytes = filesToUpload.reduce((sum, f) => sum + f.size, 0);
+    setProgress({
+      filesUploaded: 0,
+      filesTotal: filesToUpload.length,
+      bytesUploaded: 0,
+      bytesTotal: totalBytes,
+      bundlePct: 0,
+    });
+
+    // ── Stage 3: batch upload ANLZ files ──────────────────────────────────────
+    setPhase('uploading_analysis');
+    let uploadedFiles = 0;
+    let uploadedBytes = 0;
+
+    for (let i = 0; i < filesToUpload.length; i += BATCH_SIZE) {
+      if (controller.signal.aborted) {
+        setCancelledAfterDb(true);
+        setPhase('partial_success');
+        return;
+      }
+      const batch = filesToUpload.slice(i, i + BATCH_SIZE);
+      try {
+        await uploadRekordboxAnalysisBatch(startResp.import_id, batch, token, controller.signal);
+      } catch (err) {
+        if (isAbortError(err)) {
+          setCancelledAfterDb(true);
+          setPhase('partial_success');
+          return;
+        }
+        // Non-fatal: log and continue
+        console.warn('[DropDex] Batch upload error:', err);
+      }
+      uploadedFiles += batch.length;
+      uploadedBytes += batch.reduce((sum, f) => sum + f.size, 0);
+      setProgress(p => ({ ...p, filesUploaded: uploadedFiles, bytesUploaded: uploadedBytes }));
+    }
+
+    // ── Stage 4: trigger server-side parsing ──────────────────────────────────
+    setPhase('parsing_analysis');
+    let completeResp: CompleteResponse;
+    try {
+      completeResp = await completeRekordboxImport(startResp.import_id, token, controller.signal);
+    } catch (err) {
+      if (isAbortError(err)) {
+        setCancelledAfterDb(true);
+        setPhase('partial_success');
+        return;
+      }
+      setErrorMessage(extractError(err));
+      setPhase('error');
+      return;
+    }
+
+    setFinalResult({ kind: 'with_analysis', data: completeResp });
+    setPhase(completeResp.analysis_status === 'completed' ? 'success' : 'partial_success');
+  };
+
+  // ── Derived display values ────────────────────────────────────────────────────
+
+  const uploadPct =
+    progress.bytesTotal > 0
+      ? Math.round((progress.bytesUploaded / progress.bytesTotal) * 100)
+      : progress.filesTotal > 0
+      ? Math.round((progress.filesUploaded / progress.filesTotal) * 100)
+      : progress.bundlePct;
+
+  const withAnalysis =
+    finalResult?.kind === 'with_analysis' ? finalResult.data : null;
+  const libraryOnly =
+    finalResult?.kind === 'library_only' ? finalResult.data : null;
+
+  const unexpectedDbName =
+    selectedFile &&
+    mode !== 'zip_bundle' &&
+    selectedFile.name.toLowerCase() !== 'exportlibrary.db';
+
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
-            className="w-full max-w-sm bg-[var(--color-panel)] border border-[var(--color-border-subtle)] p-8 rounded-3xl shadow-2xl"
+            className="relative w-full max-w-xl bg-[var(--color-panel)] border border-[var(--color-border-subtle)] p-8 rounded-3xl shadow-2xl"
           >
-
-            {/* ── Idle / Selected ── */}
-            {(state === 'idle' || state === 'selected') && (
-              <>
-                <div className="flex items-start justify-between mb-6">
-                  <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0">
-                    <Database className="text-primary" size={22} />
+            {/* ── Abort confirmation overlay ── */}
+            <AnimatePresence>
+              {showAbortDialog && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 rounded-3xl p-8"
+                >
+                  <div className="bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-2xl p-6 text-center max-w-xs w-full">
+                    <AlertTriangle className="mx-auto mb-3 text-amber-400" size={28} />
+                    <p className="font-bold text-lg mb-2">Cancel import?</p>
+                    {importId ? (
+                      <p className="text-sm text-muted-foreground mb-5">
+                        Your library and playlists have already been saved. Only the analysis
+                        upload will be cancelled.
+                      </p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground mb-5">
+                        The import will be cancelled and no data will be saved.
+                      </p>
+                    )}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={confirmAbort}
+                        className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors"
+                      >
+                        Yes, cancel
+                      </button>
+                      <button
+                        onClick={() => setShowAbortDialog(false)}
+                        className="flex-1 py-3 glass rounded-xl font-bold text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Keep going
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={handleClose}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-1"
-                  >
-                    <X size={18} />
-                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* ── Header ── */}
+            {(phase === 'idle' || phase === 'database_selected' || phase === 'scanning') && (
+              <div className="flex items-start justify-between mb-6">
+                <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0">
+                  <Database className="text-primary" size={22} />
+                </div>
+                <button
+                  onClick={handleClose}
+                  className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            )}
+
+            {/* ── Mode tabs (idle / selected) ── */}
+            {(phase === 'idle' || phase === 'database_selected' || phase === 'scanning') && (
+              <>
+                <h2 className="text-2xl font-bold mb-4">Import Rekordbox Library</h2>
+
+                {/* Mode selector */}
+                <div className="flex gap-1.5 p-1 bg-[var(--color-surface)] rounded-xl mb-5">
+                  {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => switchMode(m)}
+                      className={cn(
+                        'flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-semibold transition-all',
+                        mode === m
+                          ? 'bg-primary text-white shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {MODE_LABELS[m].icon}
+                      {MODE_LABELS[m].label}
+                      {m === 'usb_folder' && (
+                        <span className="text-[9px] bg-white/20 rounded px-1 leading-4">
+                          REC
+                        </span>
+                      )}
+                    </button>
+                  ))}
                 </div>
 
-                <h2 className="text-2xl font-bold mb-2">Import Rekordbox USB Library</h2>
-                <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-                  Select{' '}
-                  <code className="text-primary font-mono text-xs">exportLibrary.db</code> from
-                  your USB drive's{' '}
-                  <code className="font-mono text-xs">PIONEER/rekordbox</code> folder. DropDex
-                  will import your playlists and track metadata to the cloud.
+                <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
+                  {MODE_LABELS[mode].tip}
                 </p>
 
-                {/* Drop zone */}
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className={cn(
-                    'w-full py-5 px-4 rounded-2xl border-2 border-dashed transition-all mb-4 text-center',
-                    selectedFile
-                      ? 'border-primary/50 bg-primary/5'
-                      : 'border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5',
-                  )}
-                >
-                  {selectedFile ? (
-                    <div>
-                      <p className="text-sm font-bold font-mono truncate">{selectedFile.name}</p>
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        {(selectedFile.size / (1024 * 1024)).toFixed(1)} MB · Click to change
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                      <FileUp size={20} />
-                      <p className="text-sm">Click to select file</p>
-                    </div>
-                  )}
-                </button>
+                {/* USB Folder picker */}
+                {mode === 'usb_folder' && (
+                  <>
+                    {phase === 'database_selected' && folderScan ? (
+                      <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4 mb-4">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                          {folderScan.folderName}
+                        </p>
+                        <div className="space-y-2">
+                          {folderScan.dbFile ? (
+                            <div className="flex items-center gap-2 text-sm">
+                              <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+                              <span className="font-mono text-xs truncate">
+                                {folderScan.dbFile.name}
+                              </span>
+                              <span className="text-muted-foreground text-xs shrink-0">
+                                {fmtBytes(folderScan.dbFile.size)}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-sm">
+                              <AlertCircle size={14} className="text-red-400 shrink-0" />
+                              <span className="text-red-400 text-xs">exportLibrary.db not found</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 text-sm">
+                            {folderScan.anlzFiles.length > 0 ? (
+                              <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+                            ) : (
+                              <AlertCircle size={14} className="text-amber-400 shrink-0" />
+                            )}
+                            <span className="text-xs">
+                              {folderScan.anlzFiles.length.toLocaleString()} ANLZ analysis file
+                              {folderScan.anlzFiles.length !== 1 ? 's' : ''} found
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => folderInputRef.current?.click()}
+                          className="mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          ← Choose different folder
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => folderInputRef.current?.click()}
+                        className="w-full py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5 transition-all mb-4 text-center"
+                      >
+                        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                          <FolderOpen size={20} />
+                          <p className="text-sm">Click to select USB drive folder</p>
+                        </div>
+                      </button>
+                    )}
 
-                {/* Unexpected filename warning */}
-                {unexpectedName && (
-                  <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl mb-4">
-                    <AlertCircle size={13} className="text-amber-400 shrink-0 mt-0.5" />
-                    <p className="text-xs text-amber-300 leading-relaxed">
-                      Unexpected filename. The standard rekordbox database is named{' '}
-                      <code className="font-mono">exportLibrary.db</code>. You can still try
-                      importing.
-                    </p>
-                  </div>
+                    <input
+                      ref={folderInputRef}
+                      type="file"
+                      webkitdirectory=""
+                      multiple
+                      className="hidden"
+                      onChange={handleFolderChange}
+                    />
+
+                    <button
+                      onClick={handleImport}
+                      disabled={!folderScan?.dbFile}
+                      className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Import Library + Analysis
+                    </button>
+                  </>
                 )}
 
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  className="hidden"
-                  accept=".db"
-                />
+                {/* ZIP Bundle / Database Only picker */}
+                {(mode === 'zip_bundle' || mode === 'database_only') && (
+                  <>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className={cn(
+                        'w-full py-5 px-4 rounded-2xl border-2 border-dashed transition-all mb-4 text-center',
+                        selectedFile
+                          ? 'border-primary/50 bg-primary/5'
+                          : 'border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5',
+                      )}
+                    >
+                      {selectedFile ? (
+                        <div>
+                          <p className="text-sm font-bold font-mono truncate">{selectedFile.name}</p>
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            {fmtBytes(selectedFile.size)} · Click to change
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                          <FileUp size={20} />
+                          <p className="text-sm">
+                            Click to select {mode === 'zip_bundle' ? '.zip bundle' : 'exportLibrary.db'}
+                          </p>
+                        </div>
+                      )}
+                    </button>
 
-                <button
-                  onClick={handleImport}
-                  disabled={!selectedFile}
-                  className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Import Library
-                </button>
+                    {unexpectedDbName && (
+                      <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl mb-4">
+                        <AlertCircle size={13} className="text-amber-400 shrink-0 mt-0.5" />
+                        <p className="text-xs text-amber-300 leading-relaxed">
+                          Unexpected filename. The standard rekordbox database is named{' '}
+                          <code className="font-mono">exportLibrary.db</code>. You can still try
+                          importing.
+                        </p>
+                      </div>
+                    )}
+
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      className="hidden"
+                      accept={mode === 'zip_bundle' ? '.zip' : '.db'}
+                    />
+
+                    <button
+                      onClick={handleImport}
+                      disabled={!selectedFile}
+                      className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {mode === 'zip_bundle' ? 'Import Bundle' : 'Import Library'}
+                    </button>
+                  </>
+                )}
+
                 <button
                   onClick={handleClose}
                   className="mt-3 w-full text-muted-foreground text-sm hover:text-foreground transition-colors py-2"
@@ -187,61 +645,209 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
               </>
             )}
 
-            {/* ── Uploading ── */}
-            {state === 'uploading' && (
+            {/* ── In-progress states ── */}
+            {(phase === 'starting_import' ||
+              phase === 'matching_analysis' ||
+              phase === 'parsing_analysis') && (
               <div className="text-center py-4">
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
                   <Loader2 className="animate-spin text-primary" size={28} />
                 </div>
-                <h2 className="text-xl font-bold mb-2">Importing Library…</h2>
+                <h2 className="text-xl font-bold mb-2">
+                  {phase === 'starting_import' && 'Uploading Database…'}
+                  {phase === 'matching_analysis' && 'Matching Analysis Files…'}
+                  {phase === 'parsing_analysis' && 'Parsing Analysis Data…'}
+                </h2>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Uploading <span className="font-mono text-xs">{selectedFile?.name}</span>,
-                  parsing tracks, and writing to your cloud library. This may take a moment.
+                  {phase === 'starting_import' &&
+                    'Sending exportLibrary.db to DropDex and retrieving the track manifest.'}
+                  {phase === 'matching_analysis' &&
+                    'Matching local ANLZ files to the import manifest.'}
+                  {phase === 'parsing_analysis' &&
+                    'The server is parsing ANLZ analysis data. This may take a moment.'}
                 </p>
+                <button
+                  onClick={() => setShowAbortDialog(true)}
+                  className="mt-6 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {phase === 'uploading_analysis' && (
+              <div className="text-center py-4">
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Loader2 className="animate-spin text-primary" size={28} />
+                </div>
+                <h2 className="text-xl font-bold mb-5">
+                  {mode === 'zip_bundle' ? 'Uploading Bundle…' : 'Uploading Analysis Files…'}
+                </h2>
+
+                {/* Progress bar */}
+                <div className="w-full h-2 bg-[var(--color-surface)] rounded-full overflow-hidden mb-3">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-300"
+                    style={{ width: `${uploadPct}%` }}
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground mb-1">
+                  {uploadPct}%
+                </p>
+                {mode !== 'zip_bundle' && progress.filesTotal > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {progress.filesUploaded.toLocaleString()} /{' '}
+                    {progress.filesTotal.toLocaleString()} files
+                    {progress.bytesTotal > 0 && (
+                      <> · {fmtBytes(progress.bytesUploaded)} / {fmtBytes(progress.bytesTotal)}</>
+                    )}
+                  </p>
+                )}
+                {mode === 'zip_bundle' && selectedFile && (
+                  <p className="text-xs text-muted-foreground">
+                    {fmtBytes(selectedFile.size)}
+                  </p>
+                )}
+
+                <button
+                  onClick={() => setShowAbortDialog(true)}
+                  className="mt-6 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Cancel upload
+                </button>
               </div>
             )}
 
             {/* ── Success ── */}
-            {state === 'success' && result && (
+            {phase === 'success' && (
               <div className="text-center">
                 <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
                   <CheckCircle2 className="text-emerald-400" size={28} />
                 </div>
-                <h2 className="text-xl font-bold mb-1">Library Imported!</h2>
-                <p className="text-sm text-muted-foreground mb-5">
-                  <code className="font-mono text-xs">{result.source_filename}</code> imported
-                  successfully.
-                </p>
+                <h2 className="text-xl font-bold mb-1">
+                  {withAnalysis ? 'Library Imported with Analysis!' : 'Library Imported!'}
+                </h2>
 
-                <div className="grid grid-cols-3 gap-2 mb-5">
-                  {[
-                    { label: 'Tracks', value: result.track_count.toLocaleString() },
-                    { label: 'Playlists', value: result.playlist_count },
-                    { label: 'Placements', value: result.playlist_track_count.toLocaleString() },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="glass rounded-xl p-3">
-                      <p className="text-lg font-black font-mono">{value}</p>
-                      <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">
-                        {label}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                {withAnalysis && (
+                  <p className="text-sm text-muted-foreground mb-5">
+                    {withAnalysis.completed_count.toLocaleString()} tracks fully analysed.
+                  </p>
+                )}
+                {libraryOnly && (
+                  <p className="text-sm text-muted-foreground mb-5">
+                    <code className="font-mono text-xs">{libraryOnly.source_filename}</code> imported
+                    successfully.
+                  </p>
+                )}
 
-                {result.playlists.length > 0 && (
-                  <div className="text-left mb-5 max-h-40 overflow-y-auto space-y-1 pr-1">
-                    {result.playlists.map((pl) => (
-                      <div
-                        key={pl.name}
-                        className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-[var(--color-surface)]"
-                      >
-                        <span className="text-xs font-medium truncate">{pl.name}</span>
-                        <span className="text-[10px] font-mono text-muted-foreground shrink-0 ml-2">
-                          {pl.track_count}
-                        </span>
+                {/* Stats grid */}
+                {withAnalysis && (
+                  <div className="grid grid-cols-3 gap-2 mb-5">
+                    {[
+                      { label: 'Tracks', value: withAnalysis.total_tracks.toLocaleString() },
+                      { label: 'Analysed', value: withAnalysis.completed_count.toLocaleString() },
+                      { label: 'Parser', value: withAnalysis.parser_version },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="glass rounded-xl p-3">
+                        <p className="text-lg font-black font-mono truncate" title={String(value)}>
+                          {value}
+                        </p>
+                        <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">
+                          {label}
+                        </p>
                       </div>
                     ))}
                   </div>
+                )}
+
+                {libraryOnly && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2 mb-5">
+                      {[
+                        { label: 'Tracks', value: libraryOnly.track_count.toLocaleString() },
+                        { label: 'Playlists', value: libraryOnly.playlist_count },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="glass rounded-xl p-3">
+                          <p className="text-lg font-black font-mono">{value}</p>
+                          <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">
+                            {label}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {libraryOnly.playlists.length > 0 && (
+                      <div className="text-left mb-5 max-h-40 overflow-y-auto space-y-1 pr-1">
+                        {libraryOnly.playlists.map((pl) => (
+                          <div
+                            key={`${pl.name}-${pl.track_count}`}
+                            className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-[var(--color-surface)]"
+                          >
+                            <span className="text-xs font-medium truncate">{pl.name}</span>
+                            <span className="text-[10px] font-mono text-muted-foreground shrink-0 ml-2">
+                              {pl.track_count.toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <button
+                  onClick={handleDone}
+                  className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+
+            {/* ── Partial success ── */}
+            {phase === 'partial_success' && (
+              <div className="text-center">
+                <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <AlertTriangle className="text-amber-400" size={28} />
+                </div>
+                <h2 className="text-xl font-bold mb-2">
+                  {cancelledAfterDb
+                    ? 'Library Saved (Analysis Cancelled)'
+                    : 'Library Imported with Warnings'}
+                </h2>
+                {cancelledAfterDb ? (
+                  <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
+                    Your library and playlists were saved. Analysis upload was cancelled — you
+                    can re-import to add analysis data later.
+                  </p>
+                ) : (
+                  withAnalysis && (
+                    <>
+                      <p className="text-sm text-muted-foreground mb-5">
+                        {withAnalysis.completed_count.toLocaleString()} tracks fully analysed ·{' '}
+                        {(
+                          withAnalysis.partial_count +
+                          withAnalysis.failed_count +
+                          withAnalysis.missing_required_count
+                        ).toLocaleString()}{' '}
+                        with issues
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 mb-5">
+                        {[
+                          { label: 'Completed', value: withAnalysis.completed_count.toLocaleString() },
+                          { label: 'Partial', value: withAnalysis.partial_count.toLocaleString() },
+                          { label: 'Failed', value: withAnalysis.failed_count.toLocaleString() },
+                          { label: 'Missing', value: withAnalysis.missing_required_count.toLocaleString() },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="glass rounded-xl p-3">
+                            <p className="text-lg font-black font-mono">{value}</p>
+                            <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">
+                              {label}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )
                 )}
 
                 <button
@@ -254,7 +860,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
             )}
 
             {/* ── Error ── */}
-            {state === 'error' && (
+            {phase === 'error' && (
               <div className="text-center">
                 <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
                   <AlertCircle className="text-red-400" size={28} />
@@ -271,7 +877,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                     Try Again
                   </button>
                   <button
-                    onClick={handleClose}
+                    onClick={() => { reset(); onClose(); }}
                     className="flex-1 py-3 glass rounded-xl font-bold text-muted-foreground hover:text-foreground transition-colors"
                   >
                     Cancel
@@ -279,7 +885,6 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                 </div>
               </div>
             )}
-
           </motion.div>
         </div>
       )}

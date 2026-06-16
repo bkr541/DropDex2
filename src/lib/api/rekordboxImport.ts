@@ -1,3 +1,5 @@
+// ── Response types ────────────────────────────────────────────────────────────
+
 export interface ImportResult {
   import_id: string;
   status: string;
@@ -8,8 +10,87 @@ export interface ImportResult {
   playlists: Array<{ name: string; track_count: number }>;
 }
 
+export interface ManifestEntry {
+  track_id: string;
+  rekordbox_content_id: string;
+  dat_path: string | null;
+  ext_path: string | null;
+  two_ex_path: string | null;
+  dat_required: boolean;
+}
+
+export interface ImportStartResponse {
+  import_id: string;
+  analysis_status: string;
+  expected_track_count: number;
+  manifest: ManifestEntry[];
+}
+
+export interface BatchFileResult {
+  canonical_path: string;
+  status: string; // received | already_received | rejected | error
+  sha256: string | null;
+  file_size: number | null;
+  reject_reason: string | null;
+}
+
+export interface BatchUploadResponse {
+  import_id: string;
+  received_count: number;
+  already_received_count: number;
+  rejected_count: number;
+  files: BatchFileResult[];
+}
+
+export interface TrackCompleteStatus {
+  track_id: string;
+  rekordbox_content_id: string;
+  parse_status: string; // completed | partial | failed | missing_required
+  assets_parsed: number;
+  warnings: Record<string, unknown>[];
+}
+
+export interface CompleteResponse {
+  import_id: string;
+  analysis_status: string; // completed | partial | failed | not_requested
+  total_tracks: number;
+  completed_count: number;
+  partial_count: number;
+  failed_count: number;
+  missing_required_count: number;
+  parser_version: string;
+  tracks: TrackCompleteStatus[];
+}
+
+export interface AnalysisStatusResponse {
+  import_id: string;
+  analysis_status: string;
+  expected_track_count: number;
+  matched_track_count: number;
+  parsed_track_count: number;
+  failed_track_count: number;
+  asset_count: number;
+  missing_required_paths: string[];
+  parser_version: string | null;
+  warnings: Record<string, unknown>[];
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
 const API_BASE = (import.meta.env.VITE_IMPORT_API_URL ?? 'http://localhost:8000').replace(/\/$/, '');
 
+async function parseResponse<T>(response: Response): Promise<T> {
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = (body as { detail?: string } | null)?.detail ?? `HTTP ${response.status}`;
+    throw new Error(detail);
+  }
+  return body as T;
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+/** Legacy: upload exportLibrary.db and import metadata only (no analysis). */
 export async function uploadRekordboxDb(
   file: File,
   accessToken: string,
@@ -26,14 +107,132 @@ export async function uploadRekordboxDb(
     },
     body: formData,
   });
+  return parseResponse<ImportResult>(response);
+}
 
-  // Parse response body once regardless of status
-  const body = await response.json().catch(() => null);
+/** Stage 1 of USB folder import: upload exportLibrary.db and receive the ANLZ manifest. */
+export async function startRekordboxImport(
+  file: File,
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<ImportStartResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
 
-  if (!response.ok) {
-    const detail = body?.detail ?? `Import failed (HTTP ${response.status})`;
-    throw new Error(detail);
+  const response = await fetch(`${API_BASE}/api/rekordbox/import/start`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: formData,
+    signal,
+  });
+  return parseResponse<ImportStartResponse>(response);
+}
+
+/** Stage 2: upload a batch of ANLZ analysis files for an existing import. */
+export async function uploadRekordboxAnalysisBatch(
+  importId: string,
+  files: File[],
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<BatchUploadResponse> {
+  const formData = new FormData();
+  for (const f of files) {
+    // Use the file name as the filename so the backend can match by canonical path.
+    formData.append('files', f, f.name);
   }
 
-  return body as ImportResult;
+  const response = await fetch(
+    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/analysis-batch`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: formData,
+      signal,
+    },
+  );
+  return parseResponse<BatchUploadResponse>(response);
+}
+
+/** Stage 3: trigger server-side ANLZ parsing and get per-track results. */
+export async function completeRekordboxImport(
+  importId: string,
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<CompleteResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/complete`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal,
+    },
+  );
+  return parseResponse<CompleteResponse>(response);
+}
+
+/** Poll analysis status for an existing import. */
+export async function fetchRekordboxAnalysisStatus(
+  importId: string,
+  accessToken: string,
+): Promise<AnalysisStatusResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/analysis-status`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return parseResponse<AnalysisStatusResponse>(response);
+}
+
+/**
+ * Upload a ZIP bundle containing exportLibrary.db + ANLZ files.
+ * Uses XHR so upload progress can be reported via onProgress(0–100).
+ * Abortable via AbortSignal.
+ */
+export async function uploadRekordboxZipBundle(
+  file: File,
+  accessToken: string,
+  onProgress?: (pct: number) => void,
+  signal?: AbortSignal,
+): Promise<CompleteResponse> {
+  return new Promise<CompleteResponse>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append('file', file);
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      let body: unknown = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        // ignore parse failure
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body as CompleteResponse);
+      } else {
+        const detail =
+          (body as { detail?: string } | null)?.detail ?? `HTTP ${xhr.status}`;
+        reject(new Error(detail));
+      }
+    });
+
+    xhr.addEventListener('error', () => reject(new Error('Network error during bundle upload')));
+    xhr.addEventListener('abort', () => reject(new DOMException('Upload aborted', 'AbortError')));
+
+    if (signal) {
+      if (signal.aborted) {
+        xhr.abort();
+        return;
+      }
+      signal.addEventListener('abort', () => xhr.abort());
+    }
+
+    xhr.open('POST', `${API_BASE}/api/rekordbox/import/bundle`);
+    xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+    xhr.send(formData);
+  });
 }

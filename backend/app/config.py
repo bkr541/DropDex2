@@ -8,7 +8,16 @@ class Settings(BaseSettings):
     supabase_secret_key: str
     supabase_jwt_secret: str | None = None  # HS256 legacy/test only; ES256 uses JWKS
     frontend_origin: str = "http://127.0.0.1:3000"
-    max_upload_bytes: int = 52_428_800  # 50 MB
+    max_upload_bytes: int = 52_428_800  # 50 MB (legacy alias — prefer max_rekordbox_db_upload_bytes)
+
+    # ── Analysis file upload limits ───────────────────────────────────────────
+    max_rekordbox_db_upload_bytes: int = 52_428_800    # 50 MB  — exportLibrary.db
+    max_analysis_file_bytes: int = 10_485_760          # 10 MB  — single DAT/EXT/2EX file
+    max_analysis_batch_bytes: int = 104_857_600        # 100 MB — total per analysis-batch request
+    max_analysis_files_per_batch: int = 100            # max ANLZ files in one batch request
+    max_bundle_upload_bytes: int = 209_715_200         # 200 MB — ZIP bundle upload
+    max_bundle_uncompressed_bytes: int = 524_288_000   # 500 MB — ZIP decompressed total
+    max_bundle_entries: int = 10_000                   # max entries inside ZIP
 
     # Set to "production" via ENVIRONMENT env var to suppress detailed errors.
     environment: str = "development"

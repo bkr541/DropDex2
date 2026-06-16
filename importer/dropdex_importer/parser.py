@@ -9,12 +9,17 @@ is closed via the context manager when parsing completes.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from .models import (
+    AnalysisFileSpec,
+    NormalizedAnalysisManifestEntry,
+    NormalizedCue,
     NormalizedPlacement,
     NormalizedPlaylist,
+    NormalizedRecommendationEdge,
     NormalizedTrack,
     ParsedLibrary,
 )
@@ -34,6 +39,9 @@ _FILE_TYPE_NAMES: dict[int, str] = {
 # Playlist.attribute value that marks a folder (not a playable playlist)
 _FOLDER_ATTRIBUTE = 1
 
+# Cue kind values as documented in pyrekordbox devicelib_plus models
+_CUE_KIND_LOOP = 4
+
 
 def _str_or_none(value: object) -> Optional[str]:
     """Return a stripped, non-empty string or None."""
@@ -41,6 +49,63 @@ def _str_or_none(value: object) -> Optional[str]:
         return None
     s = str(value).strip()
     return s or None
+
+
+# ── Analysis path normalization ───────────────────────────────────────────────
+
+_DRIVE_LETTER_RE = re.compile(r'^/?[A-Za-z]:')
+
+
+def normalize_analysis_path(raw_path: str) -> Optional[str]:
+    """Normalize an ANLZ path for portable, case-insensitive file matching.
+
+    Steps applied in order:
+    1. Convert backslashes to forward slashes.
+    2. Remove optional Windows drive-letter prefix (e.g. ``C:`` or ``/D:``).
+    3. Collapse duplicate forward slashes.
+    4. Ensure the result is rooted (leading ``/``).
+    5. Reject any path that contains ``..`` traversal segments.
+
+    Returns None for empty input or paths that contain traversal segments.
+    Callers should compare paths case-insensitively.
+    """
+    if not raw_path or not raw_path.strip():
+        return None
+
+    normalized = raw_path.replace("\\", "/")
+    normalized = _DRIVE_LETTER_RE.sub("", normalized)
+    normalized = re.sub(r"/+", "/", normalized)
+
+    if not normalized.startswith("/"):
+        normalized = "/" + normalized
+
+    # Reject traversal
+    parts = [p for p in normalized.split("/") if p]
+    if ".." in parts:
+        return None
+
+    return "/" + "/".join(parts)
+
+
+def _derive_anlz_siblings(original_path: str) -> tuple[str, str, str]:
+    """Return (dat_path, ext_path, two_ex_path) from an analysis data file path.
+
+    The path stored by Rekordbox points to the DAT file.  EXT and 2EX siblings
+    share the same directory and stem but have different extensions.
+    """
+    normalized = original_path.replace("\\", "/")
+    upper = normalized.upper()
+    if upper.endswith(".DAT"):
+        stem = normalized[:-4]
+    elif upper.endswith(".EXT") or upper.endswith(".2EX"):
+        stem = normalized[:-4]
+    else:
+        # No recognized extension — treat the whole string as the stem
+        stem = normalized
+    return stem + ".DAT", stem + ".EXT", stem + ".2EX"
+
+
+# ── Public entry point ────────────────────────────────────────────────────────
 
 
 def parse_library(db_path: str) -> ParsedLibrary:
@@ -95,10 +160,27 @@ def parse_library(db_path: str) -> ParsedLibrary:
 
 def _open_and_extract(DeviceLibraryPlus, path: Path, library: ParsedLibrary) -> None:
     with DeviceLibraryPlus(path=str(path)) as db:
+        # 1. Metadata (device name, DB version, creation date)
         _extract_metadata(db, library)
+
+        # 2. Tracks + analysis manifest (must precede cues and edges)
         _extract_tracks(db, library)
+        _extract_analysis_manifest(library)
+
+        # 3. Playlists
         _extract_playlists(db, library)
+
+        # 4. Playlist placements
         _extract_placements(db, library)
+
+        # 5. Color lookup table (needed for step 6)
+        color_map = _extract_colors(db, library)
+
+        # 6. Cues (optional; failure produces a warning)
+        _extract_cues(db, library, color_map)
+
+        # 7. recommendedLike edges (optional; failure produces a warning)
+        _extract_recommendations(db, library)
 
 
 # ── Extraction helpers ────────────────────────────────────────────────────────
@@ -165,6 +247,23 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
             except Exception:
                 date_added = None
 
+        # Analysis pipeline fields
+        master_db_id = (
+            str(int(c.masterDbId)) if c.masterDbId is not None else None
+        )
+        master_content_id = (
+            str(int(c.masterContentId)) if c.masterContentId is not None else None
+        )
+        analysis_data_file_path = _str_or_none(c.analysisDataFilePath)
+        analysed_bits = c.analysedBits if c.analysedBits is not None else None
+        cue_update_count = c.cueUpdateCount if c.cueUpdateCount is not None else None
+        analysis_data_update_count = (
+            c.analysisDataUpdateCount if c.analysisDataUpdateCount is not None else None
+        )
+        information_update_count = (
+            c.informationUpdateCount if c.informationUpdateCount is not None else None
+        )
+
         library.tracks.append(
             NormalizedTrack(
                 rekordbox_content_id=str(c.content_id),
@@ -186,10 +285,74 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
                 normalized_key_name=key_identity.normalized_key_name,
                 key_tonic=key_identity.key_tonic,
                 key_mode=key_identity.key_mode,
+                master_db_id=master_db_id,
+                master_content_id=master_content_id,
+                analysis_data_file_path=analysis_data_file_path,
+                analysed_bits=analysed_bits,
+                cue_update_count=cue_update_count,
+                analysis_data_update_count=analysis_data_update_count,
+                information_update_count=information_update_count,
             )
         )
 
     logger.info("Extracted %d tracks", len(library.tracks))
+
+
+def _extract_analysis_manifest(library: ParsedLibrary) -> None:
+    """Build one manifest entry per track that has an analysisDataFilePath."""
+    for track in library.tracks:
+        raw_path = track.analysis_data_file_path
+        if not raw_path:
+            continue
+
+        normalized = normalize_analysis_path(raw_path)
+        if normalized is None:
+            logger.warning(
+                "Track %s: analysis path %r rejected (traversal or invalid) — skipping manifest entry",
+                track.rekordbox_content_id,
+                raw_path,
+            )
+            library.parse_warnings.append(
+                f"Track {track.rekordbox_content_id}: "
+                f"analysis path {raw_path!r} rejected (traversal or invalid)"
+            )
+            continue
+
+        dat_orig, ext_orig, two_ex_orig = _derive_anlz_siblings(raw_path)
+        dat_norm, ext_norm, two_ex_norm = _derive_anlz_siblings(normalized)
+
+        entry = NormalizedAnalysisManifestEntry(
+            rekordbox_content_id=track.rekordbox_content_id,
+            original_analysis_path=raw_path,
+            normalized_analysis_path=normalized,
+            files=[
+                AnalysisFileSpec(
+                    asset_type="DAT",
+                    original_path=dat_orig,
+                    normalized_path=dat_norm,
+                    is_required=True,
+                ),
+                AnalysisFileSpec(
+                    asset_type="EXT",
+                    original_path=ext_orig,
+                    normalized_path=ext_norm,
+                    is_required=False,
+                ),
+                AnalysisFileSpec(
+                    asset_type="2EX",
+                    original_path=two_ex_orig,
+                    normalized_path=two_ex_norm,
+                    is_required=False,
+                ),
+            ],
+        )
+        library.analysis_manifest.append(entry)
+
+    logger.info(
+        "Built analysis manifest: %d/%d tracks have analysis paths",
+        len(library.analysis_manifest),
+        len(library.tracks),
+    )
 
 
 def _extract_playlists(db: object, library: ParsedLibrary) -> None:
@@ -237,3 +400,141 @@ def _extract_placements(db: object, library: ParsedLibrary) -> None:
         )
 
     logger.info("Extracted %d playlist-track placements", len(library.placements))
+
+
+def _extract_colors(db: object, library: ParsedLibrary) -> Dict[int, str]:
+    """Build a {color_id: name} map from the Color table.
+
+    The Color table stores track label colors.  Cue.colorTableIndex may reference
+    these entries; the lookup is best-effort — if the table is absent or corrupt,
+    an empty map is returned and a warning is recorded.
+
+    Note: the Color table has no RGB/hex column, so color_hex is always None.
+    """
+    color_map: Dict[int, str] = {}
+    try:
+        colors = db.get_color().all()  # type: ignore[attr-defined]
+        for c in colors:
+            if c.color_id is not None and c.name:
+                color_map[int(c.color_id)] = str(c.name)
+        logger.debug("Loaded %d color table entries", len(color_map))
+    except Exception as exc:
+        msg = f"Could not load Color table: {exc}"
+        logger.warning(msg)
+        library.parse_warnings.append(msg)
+    return color_map
+
+
+def _extract_cues(
+    db: object, library: ParsedLibrary, color_map: Dict[int, str]
+) -> None:
+    """Extract all cue rows from the Cue table.
+
+    A failure on this optional table appends a warning and returns without
+    raising so that the overall library import remains usable.
+    """
+    try:
+        cue_rows = db.get_cue().all()  # type: ignore[attr-defined]
+    except Exception as exc:
+        msg = f"Could not load Cue table: {exc}"
+        logger.warning(msg)
+        library.parse_warnings.append(msg)
+        return
+
+    logger.debug("Raw cue rows: %d", len(cue_rows))
+
+    for c in cue_rows:
+        cti = c.colorTableIndex  # may be None, 0, or a positive integer
+        color_name: Optional[str] = None
+        if cti is not None and cti > 0:
+            color_name = color_map.get(int(cti))
+
+        # Provisional family: colorTableIndex > 0 → hot cue, else memory cue.
+        # This will be confirmed against ANLZ data in a later pipeline stage.
+        cue_family = "hot" if (cti is not None and cti > 0) else "memory"
+
+        # Provisional point_type from the raw kind field.
+        point_type = "loop" if c.kind == _CUE_KIND_LOOP else "cue"
+
+        # Stable dedupe key — prefixed to distinguish from future ANLZ-sourced keys.
+        dedupe_key = f"db:{c.cue_id}"
+
+        is_active_loop: Optional[bool] = None
+        if c.isActiveLoop is not None:
+            is_active_loop = bool(c.isActiveLoop)
+
+        library.cues.append(
+            NormalizedCue(
+                rekordbox_cue_id=str(c.cue_id),
+                rekordbox_content_id=str(c.content_id),
+                kind=c.kind if c.kind is not None else 0,
+                color_table_index=int(cti) if cti is not None else None,
+                cue_comment=_str_or_none(c.cueComment),
+                is_active_loop=is_active_loop,
+                beat_loop_numerator=c.beatLoopNumerator,
+                beat_loop_denominator=c.beatLoopDenominator,
+                in_usec=c.inUsec,
+                out_usec=c.outUsec,
+                in_150_frames_per_second=c.in150FramePerSec,
+                out_150_frames_per_second=c.out150FramePerSec,
+                in_mpeg_frame_number=c.inMpegFrameNumber,
+                out_mpeg_frame_number=c.outMpegFrameNumber,
+                in_mpeg_abs=c.inMpegAbs,
+                out_mpeg_abs=c.outMpegAbs,
+                in_decoding_start_frame_position=c.inDecodingStartFramePosition,
+                out_decoding_start_frame_position=c.outDecodingStartFramePosition,
+                in_file_offset_in_block=c.inFileOffsetInBlock,
+                out_file_offset_in_block=c.outFileOffsetInBlock,
+                in_number_of_sample_in_block=c.inNumberOfSampleInBlock,
+                out_number_of_sample_in_block=c.outNumberOfSampleInBlock,
+                color_name=color_name,
+                cue_family=cue_family,
+                point_type=point_type,
+                hot_cue_slot=None,  # not determinable from DB; requires ANLZ
+                dedupe_key=dedupe_key,
+            )
+        )
+
+    logger.info("Extracted %d cues", len(library.cues))
+
+
+def _extract_recommendations(db: object, library: ParsedLibrary) -> None:
+    """Extract recommendedLike rows, preserving content_id_1 → content_id_2 direction.
+
+    A failure on this optional table appends a warning and returns without
+    raising so that the overall library import remains usable.
+    """
+    try:
+        rows = db.get_recommended_like().all()  # type: ignore[attr-defined]
+    except Exception as exc:
+        msg = f"Could not load RecommendedLike table: {exc}"
+        logger.warning(msg)
+        library.parse_warnings.append(msg)
+        return
+
+    logger.debug("Raw recommendedLike rows: %d", len(rows))
+
+    for r in rows:
+        source_created_at: Optional[str] = None
+        if r.createdDate is not None:
+            try:
+                source_created_at = r.createdDate.strftime("%Y-%m-%dT%H:%M:%S")
+            except Exception:
+                source_created_at = None
+
+        library.recommendation_edges.append(
+            NormalizedRecommendationEdge(
+                source_rekordbox_content_id=str(r.content_id_1),
+                target_rekordbox_content_id=str(r.content_id_2),
+                rating=r.rating,
+                source_created_at=source_created_at,
+                direction_preserved=True,
+                source_payload={
+                    "content_id_1": r.content_id_1,
+                    "content_id_2": r.content_id_2,
+                    "rating": r.rating,
+                },
+            )
+        )
+
+    logger.info("Extracted %d recommendation edges", len(library.recommendation_edges))

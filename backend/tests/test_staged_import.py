@@ -1,0 +1,918 @@
+"""
+Tests for the staged Rekordbox USB analysis import API.
+
+All tests that touch Supabase, pyrekordbox, or Storage use mocks so they
+run without real credentials or the pyrekordbox package installed.
+
+To run:
+    cd backend
+    pytest tests/test_staged_import.py -v
+"""
+
+from __future__ import annotations
+
+import io
+import os
+import zipfile
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
+from jose import jwt
+
+from app.config import settings
+from app.main import app
+
+client = TestClient(app, raise_server_exceptions=False)
+
+DB_BYTES = b"SQLite format 3\x00" + b"\x00" * 84
+ANLZ_HEADER = b"PMAI" + b"\x00" * 100   # minimal fake ANLZ bytes
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _make_token(user_id: str = "user-aaaa-bbbb-cccc-dddd-eeeeeeeeeeee") -> str:
+    return jwt.encode(
+        {"sub": user_id, "aud": "authenticated", "role": "authenticated"},
+        settings.supabase_jwt_secret,
+        algorithm="HS256",
+    )
+
+
+def _auth(user_id: str = "user-aaaa-bbbb-cccc-dddd-eeeeeeeeeeee") -> dict:
+    return {"Authorization": f"Bearer {_make_token(user_id)}"}
+
+
+def _db_file(name: str = "exportLibrary.db", content: bytes = DB_BYTES):
+    return {"file": (name, content, "application/octet-stream")}
+
+
+def _anlz_file(path: str, content: bytes = ANLZ_HEADER):
+    return ("files", (path, content, "application/octet-stream"))
+
+
+def _make_zip(
+    entries: dict,  # name → bytes
+    *,
+    symlinks: list[str] | None = None,
+) -> bytes:
+    """Build a ZIP in memory. entries maps zip-entry-name to file bytes."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for name, data in entries.items():
+            if symlinks and name in symlinks:
+                info = zipfile.ZipInfo(name)
+                info.external_attr = 0xA1ED0000  # symlink bit
+                zf.writestr(info, data)
+            else:
+                zf.writestr(name, data)
+    return buf.getvalue()
+
+
+class _FakeLibrary:
+    class _Track:
+        rekordbox_content_id = "100"
+        title = "Test Track"
+        artist = "Test Artist"
+        album = None
+        remixer = None
+        genre = None
+        label = None
+        musical_key = None
+        bpm = 128.0
+        duration_seconds = 240
+        rating = None
+        comments = None
+        file_path = None
+        file_format = None
+        date_added = None
+
+    class _Playlist:
+        rekordbox_playlist_id = "1"
+        name = "My Playlist"
+        sort_order = 1
+        is_folder = False
+        parent_rekordbox_playlist_id = None
+
+    class _Placement:
+        rekordbox_playlist_id = "1"
+        rekordbox_content_id = "100"
+        position = 1
+
+    tracks = [_Track()]
+    playlists = [_Playlist()]
+    placements = [_Placement()]
+    cues = []
+    recommendation_edges = []
+    analysis_manifest = []
+    parse_warnings = []
+    source_filename = "exportLibrary.db"
+    device_name = "USB Drive"
+    database_version = "6.0"
+    rekordbox_created_date = "2024-01-01"
+
+
+class _MockWriteResult:
+    def __init__(
+        self,
+        import_id: str = "import-uuid-start-test",
+        manifest=None,
+        rb_to_sb_track=None,
+    ):
+        self.import_id = import_id
+        self.rb_to_sb_track = rb_to_sb_track or {}
+        self.manifest = manifest or []
+        self.cue_count = 0
+        self.recommendation_edge_count = 0
+
+
+class _FakeValidation:
+    ok = True
+    errors: list = []
+    warnings: list = []
+
+
+def _mock_parse(_path):
+    return _FakeLibrary()
+
+
+def _mock_validate(_library):
+    return _FakeValidation()
+
+
+def _mock_write(_library, _url, _key, _user_id):
+    return _MockWriteResult()
+
+
+# ── Fake Supabase client ──────────────────────────────────────────────────────
+
+class _FakeQuery:
+    """Minimal query builder that chains arbitrarily and returns configured data."""
+
+    def __init__(self, data=None, *, _single: bool = False):
+        self._data = data
+        self._single = _single
+
+    def select(self, *a, **k): return self
+    def eq(self, *a, **k): return self
+    def neq(self, *a, **k): return self
+    def ilike(self, *a, **k): return self
+
+    @property
+    def not_(self): return self
+
+    def is_(self, *a, **k): return self
+
+    def maybe_single(self):
+        # Signal that execute() should return a single item, not a list.
+        return _FakeQuery(self._data, _single=True)
+
+    def update(self, *a, **k): return self
+    def insert(self, *a, **k): return self
+
+    def execute(self):
+        if self._single:
+            # Unwrap list to simulate PostgREST maybe_single behaviour.
+            data = self._data[0] if isinstance(self._data, list) and self._data else (
+                self._data if not isinstance(self._data, list) else None
+            )
+        else:
+            data = self._data
+        return SimpleNamespace(data=data)
+
+
+class _FakeStorage:
+    def __init__(self, *, upload_ok: bool = True, download_data: bytes = ANLZ_HEADER):
+        self._upload_ok = upload_ok
+        self._download_data = download_data
+
+    def from_(self, _bucket):
+        return self
+
+    def upload(self, *, path, file, file_options=None):
+        if not self._upload_ok:
+            raise RuntimeError("Simulated storage failure")
+
+    def download(self, path):
+        return self._download_data
+
+    def list(self, path="", options=None):
+        return []
+
+
+class _FakeSb:
+    """Configurable fake Supabase client."""
+
+    def __init__(
+        self,
+        *,
+        import_row=None,          # data returned for rekordbox_imports queries
+        tracks=None,              # data returned for rekordbox_tracks queries
+        assets=None,              # data returned for rekordbox_analysis_assets queries
+        upload_ok: bool = True,
+        download_data: bytes = ANLZ_HEADER,
+    ):
+        self._import_row = import_row
+        self._tracks = tracks or []
+        self._assets = assets or []
+        self.storage = _FakeStorage(upload_ok=upload_ok, download_data=download_data)
+
+    def table(self, name: str):
+        if name == "rekordbox_imports":
+            return _FakeQuery(self._import_row)
+        if name == "rekordbox_tracks":
+            return _FakeQuery(self._tracks)
+        if name == "rekordbox_analysis_assets":
+            return _FakeQuery(self._assets)
+        return _FakeQuery(None)
+
+
+# ── /start endpoint ────────────────────────────────────────────────────────────
+
+class TestStartEndpoint:
+    def test_missing_auth_rejected(self):
+        resp = client.post("/api/rekordbox/import/start", files=_db_file())
+        assert resp.status_code == 422
+
+    def test_invalid_token_rejected(self):
+        resp = client.post(
+            "/api/rekordbox/import/start",
+            headers={"Authorization": "Bearer not.a.token"},
+            files=_db_file(),
+        )
+        assert resp.status_code == 401
+
+    def test_non_db_file_rejected(self):
+        resp = client.post(
+            "/api/rekordbox/import/start",
+            headers=_auth(),
+            files={"file": ("tracks.xml", b"<xml/>", "text/xml")},
+        )
+        assert resp.status_code == 422
+        assert ".db" in resp.json()["detail"].lower()
+
+    def test_manifest_response_shape(self):
+        """A valid upload returns import_id, analysis_status, and manifest list."""
+        with (
+            patch("app.analysis_import_service.parse_library", _mock_parse),
+            patch("app.analysis_import_service.validate", _mock_validate),
+            patch("app.analysis_import_service.write_to_supabase_full", _mock_write),
+            patch("app.analysis_import_service.upsert_active_import"),
+        ):
+            resp = client.post(
+                "/api/rekordbox/import/start",
+                headers=_auth(),
+                files=_db_file(),
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "import_id" in body
+        assert "analysis_status" in body
+        assert "expected_track_count" in body
+        assert isinstance(body["manifest"], list)
+        assert body["analysis_status"] == "not_requested"  # FakeLibrary has no manifest
+
+    def test_start_temp_file_cleanup(self, monkeypatch):
+        """Temp file is always removed even when parse succeeds."""
+        created: list[str] = []
+        import tempfile as _tmpmod
+
+        _real_ntf = _tmpmod.NamedTemporaryFile
+
+        def capturing_ntf(**kwargs):
+            obj = _real_ntf(**kwargs)
+            created.append(obj.name)
+            return obj
+
+        monkeypatch.setattr("app.analysis_import_service.tempfile.NamedTemporaryFile", capturing_ntf)
+
+        with (
+            patch("app.analysis_import_service.parse_library", _mock_parse),
+            patch("app.analysis_import_service.validate", _mock_validate),
+            patch("app.analysis_import_service.write_to_supabase_full", _mock_write),
+            patch("app.analysis_import_service.upsert_active_import"),
+        ):
+            client.post(
+                "/api/rekordbox/import/start",
+                headers=_auth(),
+                files=_db_file(),
+            )
+
+        assert created, "Expected at least one temp file"
+        for path in created:
+            assert not os.path.exists(path), f"Temp file not cleaned up: {path}"
+
+    def test_oversized_db_rejected(self, monkeypatch):
+        monkeypatch.setattr(settings, "max_rekordbox_db_upload_bytes", 10)
+        resp = client.post(
+            "/api/rekordbox/import/start",
+            headers=_auth(),
+            files=_db_file(content=b"x" * 11),
+        )
+        assert resp.status_code == 413
+        assert "MB" in resp.json()["detail"] or "size" in resp.json()["detail"].lower()
+
+    def test_write_failure_safe_error(self):
+        """Supabase write errors must not leak internal host names or stack traces."""
+        def failing_write(*_):
+            raise RuntimeError("Connection refused to secret-host.internal.supabase.co")
+
+        with (
+            patch("app.analysis_import_service.parse_library", _mock_parse),
+            patch("app.analysis_import_service.validate", _mock_validate),
+            patch("app.analysis_import_service.write_to_supabase_full", failing_write),
+        ):
+            resp = client.post(
+                "/api/rekordbox/import/start",
+                headers=_auth(),
+                files=_db_file(),
+            )
+
+        assert resp.status_code == 500
+        detail = resp.json()["detail"].lower()
+        assert "secret-host" not in detail
+        assert "traceback" not in detail
+        assert "connection refused" not in detail
+
+
+# ── /analysis-batch endpoint ──────────────────────────────────────────────────
+
+IMPORT_ID = "import-aaaa-0000-1111-2222-333333333333"
+USER_ID = "user-aaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+_IMPORT_ROW = {
+    "id": IMPORT_ID,
+    "analysis_status": "awaiting_upload",
+    "analysis_expected_track_count": 1,
+    "analysis_matched_track_count": 0,
+    "analysis_parsed_track_count": 0,
+    "analysis_failed_track_count": 0,
+    "analysis_asset_count": 0,
+    "analysis_parser_version": None,
+    "analysis_warnings": [],
+}
+
+_TRACKS = [{
+    "id": "track-uuid-1111",
+    "rekordbox_content_id": "100",
+    "analysis_data_file_path": "PIONEER/USBANLZ/P001/ANLZ0000.DAT",
+}]
+
+
+def _fake_sb_for_batch(*, import_found: bool = True, existing_asset=None, upload_ok: bool = True):
+    return _FakeSb(
+        import_row=_IMPORT_ROW if import_found else None,
+        tracks=_TRACKS if import_found else [],
+        assets=[existing_asset] if existing_asset else [],
+        upload_ok=upload_ok,
+    )
+
+
+class TestAnalysisBatch:
+    def test_missing_auth_rejected(self):
+        resp = client.post(
+            f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+            files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT")],
+        )
+        assert resp.status_code == 422
+
+    def test_unknown_import_id_returns_404(self):
+        fake_sb = _fake_sb_for_batch(import_found=False)
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT")],
+            )
+        assert resp.status_code == 404
+
+    def test_ownership_rejection_returns_404(self):
+        """A user cannot batch-upload to another user's import."""
+        other_user = "other-user-1111-2222-3333-444444444444"
+        fake_sb = _fake_sb_for_batch(import_found=False)  # DB returns nothing for other user
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(other_user),
+                files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT")],
+            )
+        assert resp.status_code == 404
+
+    def test_traversal_path_rejected(self):
+        """Paths containing '..' must be rejected without touching storage."""
+        fake_sb = _fake_sb_for_batch()
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("../../../etc/passwd")],
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["rejected_count"] == 1
+        result = body["files"][0]
+        assert result["status"] == "rejected"
+        assert "passwd" not in result.get("reject_reason", "").lower()  # no path leak
+
+    def test_path_not_in_manifest_rejected(self):
+        """A file with a path not matching any track in the import is rejected."""
+        fake_sb = _fake_sb_for_batch()
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("PIONEER/USBANLZ/P999/ANLZ9999.DAT")],
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["rejected_count"] == 1
+        assert body["files"][0]["status"] == "rejected"
+
+    def test_non_anlz_extension_rejected(self):
+        fake_sb = _fake_sb_for_batch()
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.mp3")],
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["rejected_count"] == 1
+        assert body["files"][0]["status"] == "rejected"
+
+    def test_oversized_file_rejected(self, monkeypatch):
+        monkeypatch.setattr(settings, "max_analysis_file_bytes", 5)
+        fake_sb = _fake_sb_for_batch()
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT", content=b"x" * 6)],
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["rejected_count"] == 1
+        result = body["files"][0]
+        assert result["status"] == "rejected"
+        assert "MB" in result["reject_reason"] or "size" in result["reject_reason"].lower()
+
+    def test_oversized_batch_rejected(self, monkeypatch):
+        monkeypatch.setattr(settings, "max_analysis_batch_bytes", 50)
+        monkeypatch.setattr(settings, "max_analysis_file_bytes", 1_000_000)
+        fake_sb = _fake_sb_for_batch()
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[
+                    _anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT", content=b"x" * 40),
+                    _anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.EXT", content=b"x" * 40),
+                ],
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        # The second file pushes total over limit
+        second = body["files"][1]
+        assert second["status"] == "rejected"
+        assert "batch" in second["reject_reason"].lower()
+
+    def test_file_count_limit_enforced(self, monkeypatch):
+        monkeypatch.setattr(settings, "max_analysis_files_per_batch", 1)
+        fake_sb = _fake_sb_for_batch()
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[
+                    _anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT"),
+                    _anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.EXT"),
+                ],
+            )
+        assert resp.status_code == 413
+        assert "too many files" in resp.json()["detail"].lower()
+
+    def test_valid_file_received(self):
+        fake_sb = _fake_sb_for_batch()
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT")],
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["import_id"] == IMPORT_ID
+        assert body["received_count"] == 1
+        assert body["rejected_count"] == 0
+        result = body["files"][0]
+        assert result["status"] == "received"
+        assert result["sha256"] is not None
+
+    def test_duplicate_sha_returns_already_received(self):
+        """Re-uploading the same file (same SHA) returns already_received."""
+        content = b"PMAI" + b"\x00" * 50
+        sha256 = __import__("hashlib").sha256(content).hexdigest()
+        existing_asset = {
+            "id": "asset-uuid-0001",
+            "sha256": sha256,
+            "upload_status": "uploaded",
+        }
+        fake_sb = _fake_sb_for_batch(existing_asset=existing_asset)
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT", content=content)],
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["already_received_count"] == 1
+        assert body["files"][0]["status"] == "already_received"
+        assert body["files"][0]["sha256"] == sha256
+
+    def test_storage_failure_returns_error_status(self):
+        fake_sb = _fake_sb_for_batch(upload_ok=False)
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT")],
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["files"][0]["status"] == "error"
+        # Error reason must not expose internal storage details
+        reason = body["files"][0].get("reject_reason", "")
+        assert "simulated" not in reason.lower()
+        assert "storage" not in reason.lower() or "try again" in reason.lower()
+
+
+# ── /complete endpoint ────────────────────────────────────────────────────────
+
+class _FakeParsedAsset:
+    def __init__(self, parse_status="completed"):
+        self.parse_status = parse_status
+        self.sha256 = "abc123"
+        self.warnings = []
+
+
+class _FakeBundle:
+    def __init__(self, dat_status="completed", overall="completed"):
+        self.dat = _FakeParsedAsset(dat_status)
+        self.ext = None
+        self.two_ex = None
+        self.overall_status = overall
+        self.warnings = []
+
+
+class TestCompleteEndpoint:
+    def test_missing_auth_rejected(self):
+        resp = client.post(f"/api/rekordbox/import/{IMPORT_ID}/complete")
+        assert resp.status_code == 422
+
+    def test_unknown_import_returns_404(self):
+        fake_sb = _FakeSb(import_row=None)
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/complete",
+                headers=_auth(USER_ID),
+            )
+        assert resp.status_code == 404
+
+    def test_missing_required_dat_counted(self):
+        """Tracks without an uploaded DAT are counted as missing_required."""
+        dat_asset = {
+            "id": "asset-dat-001",
+            "track_id": "track-uuid-1111",
+            "asset_type": "DAT",
+            "relative_path": "pioneer/usbanlz/p001/anlz0000.dat",
+            "storage_path": "user-id/import-id/anlz/PIONEER/USBANLZ/P001/ANLZ0000.DAT",
+            "sha256": "aabbcc",
+        }
+        # No assets uploaded → DAT is missing
+        fake_sb = _FakeSb(
+            import_row=_IMPORT_ROW,
+            tracks=_TRACKS,
+            assets=[],  # nothing uploaded yet
+        )
+
+        def fake_bundle(*a, **k):
+            return _FakeBundle()
+
+        with (
+            patch("app.analysis_import_service._create_supabase", return_value=fake_sb),
+            patch("app.analysis_import_service._parse_bundle", fake_bundle),
+        ):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/complete",
+                headers=_auth(USER_ID),
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["missing_required_count"] == 1
+        assert body["tracks"][0]["parse_status"] == "missing_required"
+
+    def test_all_assets_present_completed(self):
+        """When DAT is present and parses successfully, status is completed."""
+        uploaded = [{
+            "id": "asset-dat-001",
+            "track_id": "track-uuid-1111",
+            "asset_type": "DAT",
+            "relative_path": "pioneer/usbanlz/p001/anlz0000.dat",
+            "storage_path": "u/i/anlz/PIONEER/USBANLZ/P001/ANLZ0000.DAT",
+            "sha256": "aabbcc",
+        }]
+        fake_sb = _FakeSb(import_row=_IMPORT_ROW, tracks=_TRACKS, assets=uploaded)
+
+        def fake_bundle(*a, **k):
+            return _FakeBundle(dat_status="completed", overall="completed")
+
+        with (
+            patch("app.analysis_import_service._create_supabase", return_value=fake_sb),
+            patch("app.analysis_import_service._parse_bundle", fake_bundle),
+        ):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/complete",
+                headers=_auth(USER_ID),
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["completed_count"] == 1
+        assert body["analysis_status"] == "completed"
+        assert body["tracks"][0]["parse_status"] == "completed"
+        assert "parser_version" in body
+
+    def test_partial_bundle_status_propagated(self):
+        """A partial parse result is reflected in the response."""
+        uploaded = [{
+            "id": "asset-dat-002",
+            "track_id": "track-uuid-1111",
+            "asset_type": "DAT",
+            "relative_path": "pioneer/usbanlz/p001/anlz0000.dat",
+            "storage_path": "u/i/anlz/PIONEER/USBANLZ/P001/ANLZ0000.DAT",
+            "sha256": "aabbcc",
+        }]
+        fake_sb = _FakeSb(import_row=_IMPORT_ROW, tracks=_TRACKS, assets=uploaded)
+
+        def fake_partial_bundle(*a, **k):
+            return _FakeBundle(dat_status="partial", overall="partial")
+
+        with (
+            patch("app.analysis_import_service._create_supabase", return_value=fake_sb),
+            patch("app.analysis_import_service._parse_bundle", fake_partial_bundle),
+        ):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/complete",
+                headers=_auth(USER_ID),
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["partial_count"] == 1
+        assert body["analysis_status"] == "partial"
+
+    def test_temp_dir_cleaned_up(self):
+        """Temp directory is removed after parsing, even on success."""
+        uploaded = [{
+            "id": "asset-dat-003",
+            "track_id": "track-uuid-1111",
+            "asset_type": "DAT",
+            "relative_path": "pioneer/usbanlz/p001/anlz0000.dat",
+            "storage_path": "u/i/anlz/PIONEER/USBANLZ/P001/ANLZ0000.DAT",
+            "sha256": "aabbcc",
+        }]
+        fake_sb = _FakeSb(import_row=_IMPORT_ROW, tracks=_TRACKS, assets=uploaded)
+        created_dirs: list[str] = []
+
+        import tempfile as _tmpmod
+        _real_mkdtemp = _tmpmod.mkdtemp
+
+        def capturing_mkdtemp(*a, **k):
+            path = _real_mkdtemp(*a, **k)
+            created_dirs.append(path)
+            return path
+
+        def fake_bundle(*a, **k):
+            return _FakeBundle()
+
+        with (
+            patch("app.analysis_import_service._create_supabase", return_value=fake_sb),
+            patch("app.analysis_import_service._parse_bundle", fake_bundle),
+            patch("app.analysis_import_service.tempfile.mkdtemp", capturing_mkdtemp),
+        ):
+            client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/complete",
+                headers=_auth(USER_ID),
+            )
+
+        assert created_dirs, "Expected mkdtemp to be called"
+        for d in created_dirs:
+            assert not os.path.exists(d), f"Temp dir not cleaned up: {d}"
+
+
+# ── /analysis-status endpoint ─────────────────────────────────────────────────
+
+class TestAnalysisStatus:
+    def test_missing_auth_rejected(self):
+        resp = client.get(f"/api/rekordbox/import/{IMPORT_ID}/analysis-status")
+        assert resp.status_code == 422
+
+    def test_unknown_import_returns_404(self):
+        fake_sb = _FakeSb(import_row=None)
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.get(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-status",
+                headers=_auth(USER_ID),
+            )
+        assert resp.status_code == 404
+
+    def test_status_response_shape(self):
+        fake_sb = _FakeSb(import_row=_IMPORT_ROW, tracks=[], assets=[])
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.get(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-status",
+                headers=_auth(USER_ID),
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["import_id"] == IMPORT_ID
+        assert "analysis_status" in body
+        assert "expected_track_count" in body
+        assert "missing_required_paths" in body
+        assert isinstance(body["missing_required_paths"], list)
+
+    def test_missing_dat_appears_in_missing_paths(self):
+        fake_sb = _FakeSb(import_row=_IMPORT_ROW, tracks=_TRACKS, assets=[])
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.get(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-status",
+                headers=_auth(USER_ID),
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        missing = body["missing_required_paths"]
+        assert len(missing) == 1
+        assert missing[0].upper().endswith(".DAT")
+
+
+# ── /bundle endpoint ──────────────────────────────────────────────────────────
+
+class TestBundleEndpoint:
+    def test_missing_auth_rejected(self):
+        data = _make_zip({"exportLibrary.db": DB_BYTES})
+        resp = client.post(
+            "/api/rekordbox/import/bundle",
+            files={"file": ("bundle.zip", data, "application/zip")},
+        )
+        assert resp.status_code == 422
+
+    def test_zip_slip_rejected(self):
+        data = _make_zip({
+            "exportLibrary.db": DB_BYTES,
+            "../../../etc/passwd": b"evil",
+        })
+        resp = client.post(
+            "/api/rekordbox/import/bundle",
+            headers=_auth(),
+            files={"file": ("bundle.zip", data, "application/zip")},
+        )
+        assert resp.status_code == 422
+        assert "unsafe" in resp.json()["detail"].lower() or "path" in resp.json()["detail"].lower()
+
+    def test_no_exportlibrary_db_rejected(self):
+        data = _make_zip({
+            "PIONEER/USBANLZ/P001/ANLZ0000.DAT": ANLZ_HEADER,
+        })
+        resp = client.post(
+            "/api/rekordbox/import/bundle",
+            headers=_auth(),
+            files={"file": ("bundle.zip", data, "application/zip")},
+        )
+        assert resp.status_code == 422
+        assert "exportlibrary.db" in resp.json()["detail"].lower()
+
+    def test_not_a_zip_rejected(self):
+        resp = client.post(
+            "/api/rekordbox/import/bundle",
+            headers=_auth(),
+            files={"file": ("bundle.zip", b"this is not a zip", "application/zip")},
+        )
+        assert resp.status_code == 422
+        assert "zip" in resp.json()["detail"].lower()
+
+    def test_symlink_entry_rejected(self):
+        data = _make_zip(
+            {
+                "exportLibrary.db": DB_BYTES,
+                "malicious_link": b"target",
+            },
+            symlinks=["malicious_link"],
+        )
+        resp = client.post(
+            "/api/rekordbox/import/bundle",
+            headers=_auth(),
+            files={"file": ("bundle.zip", data, "application/zip")},
+        )
+        assert resp.status_code == 422
+        assert "symlink" in resp.json()["detail"].lower()
+
+    def test_oversized_bundle_rejected(self, monkeypatch):
+        monkeypatch.setattr(settings, "max_bundle_upload_bytes", 10)
+        data = _make_zip({"exportLibrary.db": DB_BYTES})
+        resp = client.post(
+            "/api/rekordbox/import/bundle",
+            headers=_auth(),
+            files={"file": ("bundle.zip", data, "application/zip")},
+        )
+        assert resp.status_code == 413
+        assert "MB" in resp.json()["detail"] or "size" in resp.json()["detail"].lower()
+
+    def test_audio_files_ignored(self):
+        """ZIP containing audio files succeeds as long as exportLibrary.db is present."""
+        data = _make_zip({
+            "exportLibrary.db": DB_BYTES,
+            "tracks/my_track.mp3": b"\xff\xfb" * 50,   # fake mp3 bytes
+            "tracks/other.flac": b"fLaC" * 20,
+        })
+        with (
+            patch("app.bundle_import_service.parse_library", _mock_parse),
+            patch("app.bundle_import_service.validate", _mock_validate),
+            patch("app.bundle_import_service.write_to_supabase_full", _mock_write),
+            patch("app.bundle_import_service.upsert_active_import"),
+        ):
+            resp = client.post(
+                "/api/rekordbox/import/bundle",
+                headers=_auth(),
+                files={"file": ("bundle.zip", data, "application/zip")},
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "import_id" in body
+
+    def test_bundle_temp_files_cleaned_up_on_parse_error(self):
+        """Temp dir and DB file are removed even when parsing fails."""
+        created_tmps: list[str] = []
+        created_dirs: list[str] = []
+
+        import tempfile as _tmpmod
+        _real_ntf = _tmpmod.NamedTemporaryFile
+        _real_mkdtemp = _tmpmod.mkdtemp
+
+        def cap_ntf(**kwargs):
+            obj = _real_ntf(**kwargs)
+            created_tmps.append(obj.name)
+            return obj
+
+        def cap_mkdtemp(*a, **k):
+            d = _real_mkdtemp(*a, **k)
+            created_dirs.append(d)
+            return d
+
+        def crashing_parse(_path):
+            raise RuntimeError("Simulated parse crash")
+
+        data = _make_zip({"exportLibrary.db": DB_BYTES})
+
+        with (
+            patch("app.bundle_import_service.tempfile.NamedTemporaryFile", cap_ntf),
+            patch("app.bundle_import_service.tempfile.mkdtemp", cap_mkdtemp),
+            patch("app.bundle_import_service.parse_library", crashing_parse),
+        ):
+            resp = client.post(
+                "/api/rekordbox/import/bundle",
+                headers=_auth(),
+                files={"file": ("bundle.zip", data, "application/zip")},
+            )
+
+        assert resp.status_code in (422, 500)
+        for path in created_tmps:
+            assert not os.path.exists(path), f"Temp file not cleaned up: {path}"
+        for d in created_dirs:
+            assert not os.path.exists(d), f"Temp dir not cleaned up: {d}"
+
+    def test_bundle_write_failure_safe_error(self):
+        """Supabase write errors in bundle flow must not expose internals."""
+        def failing_write(*_):
+            raise RuntimeError("Connection refused to secret-host.internal")
+
+        data = _make_zip({"exportLibrary.db": DB_BYTES})
+        with (
+            patch("app.bundle_import_service.parse_library", _mock_parse),
+            patch("app.bundle_import_service.validate", _mock_validate),
+            patch("app.bundle_import_service.write_to_supabase_full", failing_write),
+        ):
+            resp = client.post(
+                "/api/rekordbox/import/bundle",
+                headers=_auth(),
+                files={"file": ("bundle.zip", data, "application/zip")},
+            )
+
+        assert resp.status_code == 500
+        detail = resp.json()["detail"].lower()
+        assert "secret-host" not in detail
+        assert "connection refused" not in detail
