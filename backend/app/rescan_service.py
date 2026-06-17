@@ -140,14 +140,16 @@ def match_tracks_to_prior_import(
     if not prior_import_ids:
         return {}
 
-    # 2. Fetch prior tracks for identity matching
-    prior_tracks_resp = sb.table("rekordbox_tracks").select(
-        "id, import_id, master_db_id, master_content_id, rekordbox_content_id, "
-        "analysis_data_file_path, analysis_data_update_count, cue_update_count, "
-        "information_update_count, analysis_parse_status"
-    ).in_("import_id", prior_import_ids).execute()
-
-    prior_tracks = prior_tracks_resp.data or []
+    # 2. Fetch prior tracks for identity matching — paginated to handle libraries > 1,000 tracks.
+    from .supabase_pagination import fetch_all_rows  # noqa: PLC0415
+    prior_tracks = fetch_all_rows(
+        lambda: sb.table("rekordbox_tracks").select(
+            "id, import_id, master_db_id, master_content_id, rekordbox_content_id, "
+            "analysis_data_file_path, analysis_data_update_count, cue_update_count, "
+            "information_update_count, analysis_parse_status"
+        ).in_("import_id", prior_import_ids),
+        order_column="id",
+    )
 
     # 3. Build lookup indexes
     # Primary: (master_db_id, master_content_id) -> TrackIdentity

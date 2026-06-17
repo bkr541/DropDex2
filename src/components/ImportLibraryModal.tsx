@@ -29,13 +29,16 @@ import {
   uploadRekordboxZipBundle,
   RekordboxImportError,
 } from '../lib/api/rekordboxImport';
-import type { CompleteResponse, ImportResult, ImportStartResponse, ImportWriteError, ReuseStats } from '../lib/api/rekordboxImport';
+import type { BatchUploadResponse, CompleteResponse, ImportResult, ImportStartResponse, ImportWriteError, ReuseStats } from '../lib/api/rekordboxImport';
 import {
   buildBatches,
   buildMatchedFiles,
   findDatabaseFile,
   isAnlzFile,
+  type MatchedAnalysisFile,
 } from '../lib/rekordbox/analysisPaths';
+import { UploadAccumulator } from '../lib/rekordbox/analysisUploadResults';
+import type { UploadSummary } from '../lib/rekordbox/analysisUploadResults';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -51,6 +54,7 @@ type Phase =
   | 'parsing_analysis'
   | 'success'
   | 'partial_success'
+  | 'upload_blocked'
   | 'error';
 
 interface FolderScan {
@@ -123,6 +127,42 @@ function extractError(err: unknown): { message: string; structured: ImportWriteE
   return { message, structured: null };
 }
 
+function isRetryableError(err: unknown): boolean {
+  if (!(err instanceof Error)) return true;
+  const msg = err.message;
+  // Permanent client errors: don't retry
+  if (msg.includes('HTTP 401') || msg.includes('HTTP 403') ||
+      msg.includes('HTTP 404') || msg.includes('HTTP 413') ||
+      msg.includes('HTTP 422')) return false;
+  return true; // retry network errors, 5xx, 429
+}
+
+async function uploadBatchWithRetry(
+  importId: string,
+  batch: MatchedAnalysisFile[],
+  fallbackToken: string,
+  signal: AbortSignal,
+  maxAttempts = 3,
+): Promise<BatchUploadResponse | null> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const tok = session?.access_token ?? fallbackToken;
+      return await uploadRekordboxAnalysisBatch(importId, batch, tok, signal);
+    } catch (err) {
+      if (isAbortError(err)) throw err;
+      if (attempt >= maxAttempts || !isRetryableError(err)) {
+        console.warn('[DropDex] Batch upload failed after', attempt, 'attempt(s):', err);
+        return null;
+      }
+      // Exponential backoff with jitter: 1s, 2s, 4s, …
+      const backoffMs = Math.pow(2, attempt - 1) * 1000 + Math.random() * 500;
+      await new Promise((r) => setTimeout(r, backoffMs));
+    }
+  }
+  return null;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
@@ -141,6 +181,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
   const [importId, setImportId] = useState<string | null>(null);
   const [rejectedCount, setRejectedCount] = useState(0);
   const [reuseStats, setReuseStats] = useState<ReuseStats | null>(null);
+  const [uploadBlockedSummary, setUploadBlockedSummary] = useState<UploadSummary | null>(null);
 
   const folderInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -165,6 +206,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     setImportId(null);
     setRejectedCount(0);
     setReuseStats(null);
+    setUploadBlockedSummary(null);
     importIdRef.current = null;
     abortControllerRef.current = null;
     if (folderInputRef.current) folderInputRef.current.value = '';
@@ -370,10 +412,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     // ── Stage 3: concurrent batch upload ANLZ files ───────────────────────────
     setPhase('uploading_analysis');
 
-    // Mutable counters updated inside concurrent callbacks then flushed to state
-    let uploadedFiles = 0;
-    let uploadedBytes = 0;
-    let rejected = 0;
+    const accumulator = new UploadAccumulator();
     let uploadAborted = false;
 
     await new Promise<void>((resolve) => {
@@ -391,23 +430,24 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
       const runNext = () => {
         while (active < MAX_CONCURRENT && dispatched < total) {
           const batch = batches[dispatched++];
-          const batchBytes = batch.reduce((s, m) => s + m.file.size, 0);
           active++;
 
-          supabase.auth.getSession()
-            .then(({ data: { session: freshSession } }) => {
-              const freshToken = freshSession?.access_token ?? token;
-              return uploadRekordboxAnalysisBatch(startResp.import_id, batch, freshToken, controller.signal);
-            })
+          uploadBatchWithRetry(startResp.import_id, batch, token, controller.signal)
             .then((resp) => {
               active--;
               settled++;
-              // Use server-confirmed counts for progress, not local file count
-              uploadedFiles += resp.received_count + resp.already_received_count;
-              uploadedBytes += batchBytes;
-              rejected += resp.rejected_count + (resp.error_count ?? 0);
-              setProgress((p) => ({ ...p, filesUploaded: uploadedFiles, bytesUploaded: uploadedBytes }));
-              setRejectedCount(rejected);
+              if (resp) {
+                accumulator.addBatchResponse(resp, batch);
+              } else {
+                accumulator.recordFailedBatch(batch);
+              }
+              // Update progress from server-confirmed bytes (not attempted batch bytes)
+              setProgress((p) => ({
+                ...p,
+                filesUploaded: accumulator.confirmedFiles,
+                bytesUploaded: accumulator.confirmedBytes,
+              }));
+              setRejectedCount(accumulator.summary.rejectedFiles + accumulator.summary.errorFiles);
               runNext();
               maybeDone();
             })
@@ -416,9 +456,9 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
               settled++;
               if (isAbortError(err)) {
                 uploadAborted = true;
-                // Drain remaining dispatches so promise eventually resolves
               } else {
-                console.warn('[DropDex] Batch upload error:', err);
+                console.warn('[DropDex] Batch upload error (all retries exhausted):', err);
+                accumulator.recordFailedBatch(batch);
               }
               runNext();
               maybeDone();
@@ -432,6 +472,15 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     if (uploadAborted) {
       setCancelledAfterDb(true);
       setPhase('partial_success');
+      return;
+    }
+
+    // Gate completion: if any required DAT files were rejected or batches failed,
+    // block completion to avoid misleading the user.
+    const uploadSummary = accumulator.summary;
+    if (uploadSummary.completionBlocked) {
+      setUploadBlockedSummary(uploadSummary);
+      setPhase('upload_blocked');
       return;
     }
 
@@ -950,6 +999,46 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                     </>
                   )
                 )}
+
+                <button
+                  onClick={handleDone}
+                  className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+
+            {/* ── Upload blocked ── */}
+            {phase === 'upload_blocked' && uploadBlockedSummary && (
+              <div className="text-center">
+                <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <AlertCircle className="text-red-400" size={28} />
+                </div>
+                <h2 className="text-xl font-bold mb-2">Analysis Upload Incomplete</h2>
+                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                  {uploadBlockedSummary.blockReason}
+                </p>
+                <p className="text-xs text-muted-foreground mb-5">
+                  Your library and playlists were saved. Re-import from the same USB to
+                  retry the analysis upload — already-received files will be skipped.
+                </p>
+
+                <div className="grid grid-cols-2 gap-2 mb-5">
+                  {[
+                    { label: 'Accepted', value: uploadBlockedSummary.receivedFiles.toLocaleString() },
+                    { label: 'Already stored', value: uploadBlockedSummary.alreadyReceivedFiles.toLocaleString() },
+                    { label: 'Rejected', value: (uploadBlockedSummary.rejectedFiles + uploadBlockedSummary.errorFiles).toLocaleString() },
+                    { label: 'Batches failed', value: uploadBlockedSummary.failedBatchCount.toLocaleString() },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="glass rounded-xl p-3">
+                      <p className="text-lg font-black font-mono">{value}</p>
+                      <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">
+                        {label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
 
                 <button
                   onClick={handleDone}

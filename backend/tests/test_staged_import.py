@@ -148,16 +148,31 @@ def _mock_write(_library, _url, _key, _user_id):
 # ── Fake Supabase client ──────────────────────────────────────────────────────
 
 class _FakeQuery:
-    """Minimal query builder that chains arbitrarily and returns configured data."""
+    """Minimal query builder that chains arbitrarily and returns configured data.
+
+    Supports .order() and .range() so that fetch_all_rows() pagination works
+    correctly in tests with large synthetic datasets.
+    """
 
     def __init__(self, data=None, *, _single: bool = False):
         self._data = data
         self._single = _single
+        self._range_start: int | None = None
+        self._range_end: int | None = None
 
     def select(self, *a, **k): return self
     def eq(self, *a, **k): return self
     def neq(self, *a, **k): return self
+    def in_(self, *a, **k): return self
     def ilike(self, *a, **k): return self
+    def order(self, *a, **k): return self  # pagination: ignored, data already in order
+
+    def range(self, start: int, end: int):
+        """Return a new query whose execute() slices data[start:end+1]."""
+        q = _FakeQuery(self._data, _single=self._single)
+        q._range_start = start
+        q._range_end = end
+        return q
 
     @property
     def not_(self): return self
@@ -181,9 +196,12 @@ class _FakeQuery:
             # maybe_single() finds 0 rows.  Reproduce that here so guard code is tested.
             if data is None:
                 return None
+            return SimpleNamespace(data=data)
         else:
             data = self._data
-        return SimpleNamespace(data=data)
+            if isinstance(data, list) and self._range_start is not None:
+                data = data[self._range_start:self._range_end + 1]
+            return SimpleNamespace(data=data if data is not None else [])
 
 
 class _FakeStorage:
@@ -985,7 +1003,11 @@ class TestBundleEndpoint:
 # ── Recording fake Supabase for lifecycle / counter assertions ─────────────────
 
 class _RecordingQuery:
-    """FakeQuery variant that records all .update() payloads in a shared list."""
+    """FakeQuery variant that records all .update() payloads in a shared list.
+
+    .order() and .range() are stubs that return self without slicing — recording
+    tests only use small datasets where one page covers everything.
+    """
 
     def __init__(self, data=None, *, record_list=None, _single=False):
         self._data = data
@@ -995,6 +1017,10 @@ class _RecordingQuery:
 
     def select(self, *a, **k): return self
     def eq(self, *a, **k): return self
+    def neq(self, *a, **k): return self
+    def in_(self, *a, **k): return self
+    def order(self, *a, **k): return self
+    def range(self, *a, **k): return self  # single-page stub; recording tests have tiny datasets
     def maybe_single(self): return _RecordingQuery(self._data, record_list=self._record_list, _single=True)
 
     def update(self, payload, **k):
@@ -1014,7 +1040,7 @@ class _RecordingQuery:
             )
         else:
             data = self._data
-        return SimpleNamespace(data=data)
+        return SimpleNamespace(data=data if data is not None else [])
 
 
 class _RecordingSb:

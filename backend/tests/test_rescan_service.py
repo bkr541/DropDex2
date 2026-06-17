@@ -127,9 +127,9 @@ class TestMatchTracksToPriorImport:
         imports_chain = MagicMock()
         imports_chain.execute.return_value.data = [{"id": iid} for iid in prior_import_ids]
         sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value = imports_chain
-        # Chain mocks for rekordbox_tracks query
+        # Chain mocks for rekordbox_tracks query — fetch_all_rows appends .order().range()
         tracks_chain = MagicMock()
-        tracks_chain.execute.return_value.data = prior_tracks
+        tracks_chain.order.return_value.range.return_value.execute.return_value.data = prior_tracks
         sb.table.return_value.select.return_value.in_.return_value = tracks_chain
         return sb
 
@@ -154,7 +154,7 @@ class TestMatchTracksToPriorImport:
             "analysis_parse_status": "completed",
         }]
         sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
-        sb.table.return_value.select.return_value.in_.return_value.execute.return_value.data = prior_tracks_data
+        sb.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = prior_tracks_data
 
         new_tracks = [{
             "id": "new-t1", "import_id": "new-imp",
@@ -184,7 +184,7 @@ class TestMatchTracksToPriorImport:
             "analysis_parse_status": "completed",
         }]
         sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
-        sb.table.return_value.select.return_value.in_.return_value.execute.return_value.data = prior_tracks_data
+        sb.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = prior_tracks_data
 
         new_tracks = [{
             "id": "new-t2", "import_id": "new-imp",
@@ -229,7 +229,7 @@ class TestMatchTracksToPriorImport:
             "analysis_parse_status": "completed",
         }]
         sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
-        sb.table.return_value.select.return_value.in_.return_value.execute.return_value.data = prior_tracks_data
+        sb.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = prior_tracks_data
 
         # This new track has different identity — should not match
         new_tracks = [{
@@ -249,7 +249,7 @@ class TestMatchTracksToPriorImport:
     def test_empty_new_tracks_returns_empty(self):
         sb = MagicMock()
         sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
-        sb.table.return_value.select.return_value.in_.return_value.execute.return_value.data = []
+        sb.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = []
         result = match_tracks_to_prior_import(sb, "user1", "new-imp", [])
         assert result == {}
 
@@ -267,7 +267,7 @@ class TestMatchTracksToPriorImport:
             "analysis_parse_status": "completed",
         }]
         sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
-        sb.table.return_value.select.return_value.in_.return_value.execute.return_value.data = prior_tracks_data
+        sb.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = prior_tracks_data
 
         new_tracks = [{
             "id": "new-t1",

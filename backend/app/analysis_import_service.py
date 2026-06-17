@@ -132,29 +132,40 @@ def _require_import_for_user(sb, import_id: str, user_id: str) -> dict:
 
 
 def _get_tracks_with_paths(sb, import_id: str) -> List[dict]:
-    """Return all tracks for this import that have an analysis_data_file_path."""
-    resp = (
-        sb.table("rekordbox_tracks")
-        .select("id, rekordbox_content_id, analysis_data_file_path")
-        .eq("import_id", import_id)
-        .execute()
+    """Return ALL tracks for this import that have an analysis_data_file_path.
+
+    Uses pagination so imports larger than 1,000 tracks are fully represented.
+    """
+    from .supabase_pagination import fetch_all_rows  # noqa: PLC0415
+    rows = fetch_all_rows(
+        lambda: (
+            sb.table("rekordbox_tracks")
+            .select("id, rekordbox_content_id, analysis_data_file_path")
+            .eq("import_id", import_id)
+        ),
+        order_column="id",
     )
-    return [t for t in (resp.data or []) if t.get("analysis_data_file_path")]
+    return [t for t in rows if t.get("analysis_data_file_path")]
 
 
 def _get_tracks_for_rescan(sb, import_id: str) -> List[dict]:
-    """Return all tracks for this import with full identity fields for rescan matching."""
-    resp = (
-        sb.table("rekordbox_tracks")
-        .select(
-            "id, rekordbox_content_id, analysis_data_file_path, "
-            "master_db_id, master_content_id, "
-            "analysis_data_update_count, cue_update_count, information_update_count"
-        )
-        .eq("import_id", import_id)
-        .execute()
+    """Return ALL tracks for this import with full identity fields for rescan matching.
+
+    Uses pagination so imports larger than 1,000 tracks are fully represented.
+    """
+    from .supabase_pagination import fetch_all_rows  # noqa: PLC0415
+    return fetch_all_rows(
+        lambda: (
+            sb.table("rekordbox_tracks")
+            .select(
+                "id, rekordbox_content_id, analysis_data_file_path, "
+                "master_db_id, master_content_id, "
+                "analysis_data_update_count, cue_update_count, information_update_count"
+            )
+            .eq("import_id", import_id)
+        ),
+        order_column="id",
     )
-    return resp.data or []
 
 
 def _build_path_map(tracks: List[dict]) -> Dict[str, dict]:
@@ -688,24 +699,9 @@ async def _process_analysis_batch_inner(
     rejected = sum(1 for r in results if r.status == "rejected")
     errors = sum(1 for r in results if r.status == "error")
 
-    # Update asset count on the import row
-    if newly_received_count > 0:
-        try:
-            # Fetch current count, increment
-            imp_resp = (
-                sb.table("rekordbox_imports")
-                .select("analysis_asset_count")
-                .eq("id", import_id)
-                .maybe_single()
-                .execute()
-            )
-            imp_data = imp_resp.data if imp_resp is not None else None
-            current_count = (imp_data or {}).get("analysis_asset_count", 0) or 0
-            sb.table("rekordbox_imports").update({
-                "analysis_asset_count": current_count + newly_received_count,
-            }).eq("id", import_id).execute()
-        except Exception as exc:
-            logger.warning("Failed to update analysis_asset_count for %s: %s", import_id, exc)
+    # analysis_asset_count is set authoritatively by complete_analysis_import using
+    # a paginated query.  A per-batch read-modify-write here would race with
+    # concurrent batch requests and silently lose increments.  Skip it.
 
     return BatchUploadResponse(
         import_id=import_id,
@@ -723,7 +719,7 @@ async def complete_analysis_import(import_id: str, user_id: str) -> CompleteResp
     Download all uploaded ANLZ assets, parse them, and persist analysis results.
     """
     sb = _create_supabase()
-    _require_import_for_user(sb, import_id, user_id)
+    import_row = _require_import_for_user(sb, import_id, user_id)
 
     # Transition to 'parsing' before starting work
     try:
@@ -733,14 +729,16 @@ async def complete_analysis_import(import_id: str, user_id: str) -> CompleteResp
     except Exception as exc:
         logger.warning("Failed to set analysis_status=parsing for %s: %s", import_id, exc)
 
-    assets_resp = (
-        sb.table("rekordbox_analysis_assets")
-        .select("id, track_id, asset_type, relative_path, storage_path, sha256")
-        .eq("import_id", import_id)
-        .eq("upload_status", "uploaded")
-        .execute()
+    from .supabase_pagination import fetch_all_rows  # noqa: PLC0415
+    uploaded_assets: List[dict] = fetch_all_rows(
+        lambda: (
+            sb.table("rekordbox_analysis_assets")
+            .select("id, track_id, asset_type, relative_path, storage_path, sha256")
+            .eq("import_id", import_id)
+            .eq("upload_status", "uploaded")
+        ),
+        order_column="id",
     )
-    uploaded_assets: List[dict] = assets_resp.data or []
 
     assets_by_track: Dict[str, List[dict]] = {}
     for asset in uploaded_assets:
@@ -749,6 +747,24 @@ async def complete_analysis_import(import_id: str, user_id: str) -> CompleteResp
             assets_by_track.setdefault(tid, []).append(asset)
 
     tracks = _get_tracks_with_paths(sb, import_id)
+
+    # Diagnostic invariant: loaded counts must match what was stored.
+    _expected = import_row.get("analysis_expected_track_count") or 0
+    _dat_count = sum(1 for a in uploaded_assets if a.get("asset_type") == "DAT")
+    _ext_count = sum(1 for a in uploaded_assets if a.get("asset_type") == "EXT")
+    _2ex_count = sum(1 for a in uploaded_assets if a.get("asset_type") == "2EX")
+    logger.info(
+        "complete: import=%s expected_tracks=%d loaded_tracks=%d "
+        "uploaded_assets=%d (DAT=%d EXT=%d 2EX=%d)",
+        import_id, _expected, len(tracks), len(uploaded_assets),
+        _dat_count, _ext_count, _2ex_count,
+    )
+    if _expected and len(tracks) != _expected:
+        logger.warning(
+            "complete: track count mismatch import=%s expected=%d loaded=%d — "
+            "pagination issue or write failure",
+            import_id, _expected, len(tracks),
+        )
 
     from dropdex_importer.analysis_paths import derive_anlz_siblings, normalize_anlz_path  # noqa: PLC0415
 
@@ -1007,15 +1023,18 @@ async def get_analysis_status(import_id: str, user_id: str) -> AnalysisStatusRes
 
     tracks = _get_tracks_with_paths(sb, import_id)
 
-    uploaded_resp = (
-        sb.table("rekordbox_analysis_assets")
-        .select("relative_path, asset_type")
-        .eq("import_id", import_id)
-        .eq("upload_status", "uploaded")
-        .execute()
+    from .supabase_pagination import fetch_all_rows  # noqa: PLC0415
+    uploaded_assets_status = fetch_all_rows(
+        lambda: (
+            sb.table("rekordbox_analysis_assets")
+            .select("relative_path, asset_type")
+            .eq("import_id", import_id)
+            .eq("upload_status", "uploaded")
+        ),
+        order_column="id",
     )
     uploaded_by_type: Dict[str, set] = {"DAT": set(), "EXT": set(), "2EX": set()}
-    for r in (uploaded_resp.data or []):
+    for r in uploaded_assets_status:
         atype = r.get("asset_type", "")
         if atype in uploaded_by_type:
             uploaded_by_type[atype].add(r["relative_path"].lower())
