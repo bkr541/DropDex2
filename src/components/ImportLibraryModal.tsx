@@ -394,7 +394,11 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
           const batchBytes = batch.reduce((s, m) => s + m.file.size, 0);
           active++;
 
-          uploadRekordboxAnalysisBatch(startResp.import_id, batch, token, controller.signal)
+          supabase.auth.getSession()
+            .then(({ data: { session: freshSession } }) => {
+              const freshToken = freshSession?.access_token ?? token;
+              return uploadRekordboxAnalysisBatch(startResp.import_id, batch, freshToken, controller.signal);
+            })
             .then((resp) => {
               active--;
               settled++;
@@ -435,7 +439,8 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     setPhase('parsing_analysis');
     let completeResp: CompleteResponse;
     try {
-      completeResp = await completeRekordboxImport(startResp.import_id, token, controller.signal);
+      const { data: { session: completeSession } } = await supabase.auth.getSession();
+      completeResp = await completeRekordboxImport(startResp.import_id, completeSession?.access_token ?? token, controller.signal);
     } catch (err) {
       if (isAbortError(err)) {
         setCancelledAfterDb(true);

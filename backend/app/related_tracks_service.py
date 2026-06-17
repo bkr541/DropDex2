@@ -73,7 +73,7 @@ async def import_related_tracks(
         .maybe_single()
         .execute()
     )
-    if not import_result.data:
+    if import_result is None or not import_result.data:
         raise HTTPException(status_code=404, detail="Import not found")
 
     # ── Step 3: Enforce payload size limits ────────────────────────────────────

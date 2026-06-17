@@ -124,9 +124,11 @@ def _require_import_for_user(sb, import_id: str, user_id: str) -> dict:
         .maybe_single()
         .execute()
     )
-    if resp.data is None:
+    # supabase-py ≥2.x returns None (not APIResponse(data=None)) when 0 rows match
+    data = resp.data if resp is not None else None
+    if data is None:
         raise HTTPException(status_code=404, detail="Import not found.")
-    return resp.data
+    return data
 
 
 def _get_tracks_with_paths(sb, import_id: str) -> List[dict]:
@@ -191,7 +193,7 @@ def _get_existing_asset(sb, import_id: str, relative_path_lower: str) -> Optiona
         .maybe_single()
         .execute()
     )
-    return resp.data
+    return resp.data if resp is not None else None
 
 
 def _upsert_asset(sb, asset_data: dict) -> None:
@@ -204,9 +206,10 @@ def _upsert_asset(sb, asset_data: dict) -> None:
         .maybe_single()
         .execute()
     )
-    if existing.data:
+    existing_data = existing.data if existing is not None else None
+    if existing_data:
         update_payload = {k: v for k, v in asset_data.items() if k != "import_id"}
-        sb.table("rekordbox_analysis_assets").update(update_payload).eq("id", existing.data["id"]).execute()
+        sb.table("rekordbox_analysis_assets").update(update_payload).eq("id", existing_data["id"]).execute()
     else:
         sb.table("rekordbox_analysis_assets").insert(asset_data).execute()
 
@@ -227,21 +230,31 @@ def _upload_content_to_storage(sb, storage_path: str, content: bytes) -> bool:
 
 def _build_manifest_entries(write_result) -> List[ManifestEntryResponse]:
     """Convert ImportWriteResult manifest into response models."""
+    from dropdex_importer.analysis_paths import (  # noqa: PLC0415
+        derive_anlz_siblings,
+        normalize_anlz_path,
+    )
+
     entries: List[ManifestEntryResponse] = []
     rb_to_sb = write_result.rb_to_sb_track
     for m in write_result.manifest:
         track_id = rb_to_sb.get(m.rekordbox_content_id)
         if not track_id:
             continue
-        dat_spec = next((f for f in m.files if f.asset_type == "DAT"), None)
-        ext_spec = next((f for f in m.files if f.asset_type == "EXT"), None)
-        two_ex_spec = next((f for f in m.files if f.asset_type == "2EX"), None)
+        # Re-derive sibling paths via the canonical normalizer (no leading slash)
+        # so the manifest paths match what webkitRelativePath returns in the browser.
+        # parser.normalize_analysis_path adds a leading "/" that causes path-map misses.
+        canonical = normalize_anlz_path(m.original_analysis_path)
+        if canonical:
+            dat_path, ext_path, two_ex_path = derive_anlz_siblings(canonical)
+        else:
+            dat_path, ext_path, two_ex_path = None, None, None
         entries.append(ManifestEntryResponse(
             track_id=track_id,
             rekordbox_content_id=m.rekordbox_content_id,
-            dat_path=dat_spec.normalized_path if dat_spec else None,
-            ext_path=ext_spec.normalized_path if ext_spec else None,
-            two_ex_path=two_ex_spec.normalized_path if two_ex_spec else None,
+            dat_path=dat_path,
+            ext_path=ext_path,
+            two_ex_path=two_ex_path,
             dat_required=True,
         ))
     return entries
@@ -513,10 +526,27 @@ async def process_analysis_batch(
     (e.g. PIONEER/USBANLZ/P001/ANLZ0000.DAT).  Paths are validated for
     traversal attacks before any content is read.
     """
+    try:
+        return await _process_analysis_batch_inner(import_id, user_id, files)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("process_analysis_batch failed for import %s", import_id)
+        raise
+
+
+async def _process_analysis_batch_inner(
+    import_id: str,
+    user_id: str,
+    files: List[UploadFile],
+) -> BatchUploadResponse:
     from dropdex_importer.analysis_paths import is_safe_path, normalize_anlz_path  # noqa: PLC0415
 
+    logger.info("batch: start import=%s file_count=%d", import_id, len(files))
     sb = _create_supabase()
+    logger.info("batch: supabase client created")
     _require_import_for_user(sb, import_id, user_id)
+    logger.info("batch: import verified for user")
 
     if len(files) > settings.max_analysis_files_per_batch:
         raise HTTPException(
@@ -535,8 +565,11 @@ async def process_analysis_batch(
     except Exception as exc:
         logger.warning("Failed to set analysis_status=uploading for %s: %s", import_id, exc)
 
+    logger.info("batch: loading tracks for path map")
     tracks = _get_tracks_with_paths(sb, import_id)
+    logger.info("batch: got %d tracks with paths", len(tracks))
     path_map = _build_path_map(tracks)
+    logger.info("batch: path_map has %d entries", len(path_map))
 
     results: List[BatchFileResult] = []
     total_batch_bytes = 0
@@ -666,7 +699,8 @@ async def process_analysis_batch(
                 .maybe_single()
                 .execute()
             )
-            current_count = (imp_resp.data or {}).get("analysis_asset_count", 0) or 0
+            imp_data = imp_resp.data if imp_resp is not None else None
+            current_count = (imp_data or {}).get("analysis_asset_count", 0) or 0
             sb.table("rekordbox_imports").update({
                 "analysis_asset_count": current_count + newly_received_count,
             }).eq("id", import_id).execute()

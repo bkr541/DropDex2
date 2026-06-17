@@ -177,6 +177,10 @@ class _FakeQuery:
             data = self._data[0] if isinstance(self._data, list) and self._data else (
                 self._data if not isinstance(self._data, list) else None
             )
+            # supabase-py ≥2.x returns None (not APIResponse(data=None)) when
+            # maybe_single() finds 0 rows.  Reproduce that here so guard code is tested.
+            if data is None:
+                return None
         else:
             data = self._data
         return SimpleNamespace(data=data)
@@ -335,6 +339,51 @@ class TestStartEndpoint:
         assert "secret-host" not in body_text
         assert "traceback" not in body_text
         assert "connection refused" not in body_text
+
+    def test_manifest_paths_have_no_leading_slash(self):
+        """Manifest dat_path/ext_path/two_ex_path must not start with '/'.
+
+        Regression: parser.normalize_analysis_path() added a leading slash
+        (e.g. '/PIONEER/USBANLZ/P001/ANLZ0000.DAT') that caused
+        buildMatchedFiles() in the frontend to find zero path-map matches,
+        skipping Stage 2 entirely and reporting all tracks as missing.
+        """
+        class _ManifestEntry:
+            rekordbox_content_id = "100"
+            # Rekordbox stores paths with a leading slash on some devices
+            original_analysis_path = "/PIONEER/USBANLZ/P001/ANLZ0000.DAT"
+
+        write_result = _MockWriteResult(
+            manifest=[_ManifestEntry()],
+            rb_to_sb_track={"100": "track-uuid-manifest-test"},
+        )
+
+        def _write_with_manifest(*_args, **_kwargs):
+            return write_result
+
+        with (
+            patch("app.analysis_import_service.parse_library", _mock_parse),
+            patch("app.analysis_import_service.validate", _mock_validate),
+            patch("app.analysis_import_service.write_to_supabase_full", _write_with_manifest),
+            patch("app.analysis_import_service.upsert_active_import"),
+        ):
+            resp = client.post(
+                "/api/rekordbox/import/start",
+                headers=_auth(),
+                files=_db_file(),
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["manifest"]) == 1
+        entry = body["manifest"][0]
+        for field in ("dat_path", "ext_path", "two_ex_path"):
+            val = entry.get(field)
+            if val is not None:
+                assert not val.startswith("/"), (
+                    f"manifest.{field} must not have a leading slash, got: {val!r}"
+                )
+        assert entry["dat_path"] == "PIONEER/USBANLZ/P001/ANLZ0000.DAT"
 
 
 # ── /analysis-batch endpoint ──────────────────────────────────────────────────
@@ -510,6 +559,21 @@ class TestAnalysisBatch:
         result = body["files"][0]
         assert result["status"] == "received"
         assert result["sha256"] is not None
+
+    def test_first_upload_no_existing_asset_does_not_crash(self):
+        """Regression: supabase-py ≥2.x returns None (not APIResponse(data=None))
+        from maybe_single().execute() when 0 rows match.  _get_existing_asset must
+        not crash with AttributeError when processing the very first file.
+        """
+        fake_sb = _fake_sb_for_batch(existing_asset=None)  # assets table is empty
+        with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-batch",
+                headers=_auth(USER_ID),
+                files=[_anlz_file("PIONEER/USBANLZ/P001/ANLZ0000.DAT")],
+            )
+        assert resp.status_code == 200, f"Got 500 — maybe_single None guard missing: {resp.text}"
+        assert resp.json()["received_count"] == 1
 
     def test_duplicate_sha_returns_already_received(self):
         """Re-uploading the same file (same SHA) returns already_received."""

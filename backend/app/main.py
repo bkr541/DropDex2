@@ -50,6 +50,21 @@ app.add_middleware(
 app.include_router(discovery_router)
 
 
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Log unhandled exceptions with type so the root cause can be identified."""
+    logger.exception(
+        "Unhandled %s on %s %s",
+        type(exc).__name__,
+        request.method,
+        request.url.path,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "exception_type": type(exc).__name__},
+    )
+
+
 @app.exception_handler(APIError)
 async def supabase_api_error_handler(request: Request, exc: APIError) -> JSONResponse:
     """
