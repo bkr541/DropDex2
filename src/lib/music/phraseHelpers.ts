@@ -16,6 +16,9 @@ export interface PhraseRow {
   end_ms: number | null;
   fill_start_beat: number | null;
   fill_start_ms: number | null;
+  source_flags: Record<string, unknown>;
+  source_payload: Record<string, unknown>;
+  parser_version: string | null;
 }
 
 /**

@@ -382,12 +382,89 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
                         parsed_count += 1
                     total_asset_count += 1
 
-                # Update track parse status
+                # ── Feature extraction (each phase is isolated) ────────────
+                feature_statuses: Dict[str, str] = {}
+                # Query asset IDs for this track so feature writers can link to
+                # the correct source asset rows that were just upserted above.
+                try:
+                    _asset_rows = (
+                        sb.table("rekordbox_analysis_assets")
+                        .select("id, asset_type")
+                        .eq("track_id", track_id)
+                        .execute()
+                    )
+                    asset_ids: Dict[str, Optional[str]] = {
+                        a["asset_type"]: a["id"]
+                        for a in (_asset_rows.data or [])
+                    }
+                except Exception as _exc:
+                    logger.warning("Failed to fetch asset IDs for track %s: %s", track_id, _exc)
+                    asset_ids = {}
+
+                bg = None  # BeatGridResult; passed to phrase extraction
+
+                try:
+                    from dropdex_importer.beatgrid_parser import extract_beat_grid  # noqa: PLC0415
+                    from .analysis_feature_writer import write_beat_grid  # noqa: PLC0415
+                    bg = extract_beat_grid(bundle.dat, bundle.ext)
+                    if bg is not None:
+                        src_id = asset_ids.get("DAT") or asset_ids.get("EXT")
+                        ok = write_beat_grid(sb, import_id, track_id, bg, src_id, DROPDEX_ANLZ_PARSER_VERSION)
+                        feature_statuses["beat_grid"] = "completed" if ok else "failed"
+                    else:
+                        feature_statuses["beat_grid"] = "skipped"
+                except Exception as exc:
+                    logger.error("Beat grid extraction failed for track %s: %s", track_id, exc)
+                    feature_statuses["beat_grid"] = "failed"
+
+                try:
+                    from dropdex_importer.waveform_parser import extract_waveforms  # noqa: PLC0415
+                    from .analysis_feature_writer import write_waveform  # noqa: PLC0415
+                    wf = extract_waveforms(bundle.dat, bundle.ext)
+                    ok = write_waveform(sb, import_id, track_id, wf, user_id, asset_ids, DROPDEX_ANLZ_PARSER_VERSION)
+                    has_content = wf.preview is not None or wf.detail is not None
+                    if not ok:
+                        feature_statuses["waveform"] = "failed"
+                    elif not has_content:
+                        feature_statuses["waveform"] = "skipped"
+                    else:
+                        feature_statuses["waveform"] = "completed"
+                except Exception as exc:
+                    logger.error("Waveform extraction failed for track %s: %s", track_id, exc)
+                    feature_statuses["waveform"] = "failed"
+
+                try:
+                    from dropdex_importer.cue_parser import parse_anlz_cues  # noqa: PLC0415
+                    from .analysis_feature_writer import reconcile_and_write_cues  # noqa: PLC0415
+                    cue_entries, cue_warns = parse_anlz_cues(bundle.dat, bundle.ext)
+                    ok = reconcile_and_write_cues(sb, import_id, track_id, cue_entries, cue_warns)
+                    feature_statuses["cues"] = "completed" if ok else "failed"
+                except Exception as exc:
+                    logger.error("Cue extraction failed for track %s: %s", track_id, exc)
+                    feature_statuses["cues"] = "failed"
+
+                try:
+                    from dropdex_importer.phrase_parser import extract_phrases  # noqa: PLC0415
+                    from .analysis_feature_writer import write_phrases  # noqa: PLC0415
+                    phrase_entries, _pw = extract_phrases(bundle.ext, bg)
+                    ok = write_phrases(sb, import_id, track_id, phrase_entries, DROPDEX_ANLZ_PARSER_VERSION)
+                    if not ok:
+                        feature_statuses["phrases"] = "failed"
+                    elif not phrase_entries:
+                        feature_statuses["phrases"] = "skipped"
+                    else:
+                        feature_statuses["phrases"] = "completed"
+                except Exception as exc:
+                    logger.error("Phrase extraction failed for track %s: %s", track_id, exc)
+                    feature_statuses["phrases"] = "failed"
+
+                # Update track parse status (including feature statuses)
                 overall = bundle.overall_status
                 try:
                     sb.table("rekordbox_tracks").update({
                         "analysis_parse_status": overall,
                         "analysis_parse_warnings": [w.as_dict() for w in (bundle.warnings or [])],
+                        "analysis_feature_statuses": feature_statuses,
                     }).eq("id", track_id).execute()
                 except Exception as exc:
                     logger.error("Failed to update track %s: %s", track_id, exc)

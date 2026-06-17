@@ -18,7 +18,7 @@ export async function fetchTopArtistsForFeed(limit = 10): Promise<FeedArtist[]> 
   if (gErr) throw gErr;
 
   const genreMap: Record<string, DiscoveryArtistGenre[]> = {};
-  for (const link of (genreLinks ?? []) as { artist_id: string; genre: { id: number; name: string } | null }[]) {
+  for (const link of (genreLinks ?? [] as unknown[]) as { artist_id: string; genre: { id: number; name: string } | null }[]) {
     if (link.genre) {
       (genreMap[link.artist_id] ??= []).push({
         id: String(link.genre.id),

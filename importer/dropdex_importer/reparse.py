@@ -271,33 +271,80 @@ def _reparse_track(sb, track: dict) -> str:
             ).eq("id", track_id).execute()
             return "failed"
 
-        # Step 4-5: Re-run feature writers and persist results
-        # The supabase_writer module handles writing all feature data to the DB.
-        # We call it with new data before removing old data (write-then-replace).
+        # Step 4-5: Re-run all feature extractors and write to DB
+        feature_statuses: dict = {}
+        asset_ids = _get_asset_ids_for_track(sb, track_id)
+        bg = None
+
+        # Beat grid
         try:
-            from .supabase_writer import write_track_analysis_features  # noqa: PLC0415
-            write_track_analysis_features(sb, track_id, import_id, bundle)
-        except ImportError:
-            # write_track_analysis_features may not exist; fall through
-            logger.debug("write_track_analysis_features not available; skipping feature write")
+            from .beatgrid_parser import extract_beat_grid  # noqa: PLC0415
+            bg = extract_beat_grid(bundle.dat, bundle.ext)
+            if bg is not None:
+                src_id = asset_ids.get("DAT") or asset_ids.get("EXT")
+                _write_beat_grid_row(sb, import_id, track_id, bg, src_id)
+                feature_statuses["beat_grid"] = "completed"
+            else:
+                feature_statuses["beat_grid"] = "skipped"
         except Exception as exc:
-            logger.error("Feature write failed for track %s: %s", track_id, exc)
-            sb.table("rekordbox_tracks").update(
-                {"analysis_parse_status": "failed"}
-            ).eq("id", track_id).execute()
-            return "failed"
+            logger.error("Beat grid write failed for track %s: %s", track_id, exc)
+            feature_statuses["beat_grid"] = "failed"
 
-        # Step 6: Mark track as (re-)completed
+        # Waveform
+        try:
+            from .waveform_parser import extract_waveforms  # noqa: PLC0415
+            wf = extract_waveforms(bundle.dat, bundle.ext)
+            _write_waveform_row(sb, import_id, track_id, wf, asset_ids)
+            has_content = wf.preview is not None or wf.detail is not None
+            feature_statuses["waveform"] = "completed" if has_content else "skipped"
+        except Exception as exc:
+            logger.error("Waveform write failed for track %s: %s", track_id, exc)
+            feature_statuses["waveform"] = "failed"
+
+        # Cues
+        try:
+            from .cue_parser import parse_anlz_cues, CUE_MATCH_TOLERANCE_MS  # noqa: PLC0415
+            cue_entries, _ = parse_anlz_cues(bundle.dat, bundle.ext)
+            _reconcile_cues(sb, import_id, track_id, cue_entries, CUE_MATCH_TOLERANCE_MS)
+            feature_statuses["cues"] = "completed"
+        except Exception as exc:
+            logger.error("Cue write failed for track %s: %s", track_id, exc)
+            feature_statuses["cues"] = "failed"
+
+        # Phrases
+        try:
+            from .phrase_parser import extract_phrases  # noqa: PLC0415
+            phrase_entries, _ = extract_phrases(bundle.ext, bg)
+            _write_phrase_rows(sb, import_id, track_id, phrase_entries)
+            feature_statuses["phrases"] = "completed" if phrase_entries else "skipped"
+        except Exception as exc:
+            logger.error("Phrase write failed for track %s: %s", track_id, exc)
+            feature_statuses["phrases"] = "failed"
+
+        # Step 6: Determine overall status from feature results and mark track
         overall = getattr(bundle, "overall_status", "completed")
-        sb.table("rekordbox_tracks").update(
-            {
-                "analysis_parse_status": overall,
-                "analysis_parser_version": DROPDEX_ANLZ_PARSER_VERSION,
-            }
-        ).eq("id", track_id).execute()
+        failed_features = [k for k, v in feature_statuses.items() if v == "failed"]
+        completed_features = [k for k, v in feature_statuses.items() if v == "completed"]
 
-        logger.info("Reparsed track %s → %s", track_id, overall)
-        return overall if overall in ("completed", "partial") else "failed"
+        if completed_features and not failed_features:
+            final_status = "completed"
+        elif completed_features or (not failed_features):
+            final_status = "partial"
+        else:
+            final_status = "failed"
+
+        # Use the bundle's parse status when it's a failure; otherwise use features
+        if overall == "failed":
+            final_status = "failed"
+
+        sb.table("rekordbox_tracks").update({
+            "analysis_parse_status": final_status,
+            "analysis_parser_version": DROPDEX_ANLZ_PARSER_VERSION,
+            "analysis_feature_statuses": feature_statuses,
+        }).eq("id", track_id).execute()
+
+        logger.info("Reparsed track %s → %s", track_id, final_status)
+        return final_status if final_status in ("completed", "partial") else "failed"
 
     except Exception as exc:
         logger.exception("Unexpected error reparsing track %s: %s", track_id, exc)
@@ -311,3 +358,162 @@ def _reparse_track(sb, track: dict) -> str:
     finally:
         # Step 8: Clean up temp files regardless of outcome
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+# ── Feature writer helpers (direct Supabase writes for reparse context) ────────
+
+
+def _get_asset_ids_for_track(sb, track_id: str) -> dict:
+    """Return a mapping of asset_type → asset_id for all assets of the track."""
+    resp = (
+        sb.table("rekordbox_analysis_assets")
+        .select("id, asset_type")
+        .eq("track_id", track_id)
+        .execute()
+    )
+    return {a["asset_type"]: a["id"] for a in (resp.data or [])}
+
+
+def _write_beat_grid_row(sb, import_id: str, track_id: str, bg, source_asset_id) -> None:
+    """Upsert one rekordbox_track_beat_grids row."""
+    row = {
+        "import_id": import_id,
+        "track_id": track_id,
+        "source_tag": bg.source_tag,
+        "beats": [b.as_dict() for b in bg.beats],
+        "beat_count": bg.beat_count,
+        "downbeat_count": bg.downbeat_count,
+        "bar_count": bg.bar_count,
+        "first_beat_ms": bg.first_beat_ms,
+        "first_downbeat_ms": bg.first_downbeat_ms,
+        "minimum_bpm": bg.minimum_bpm,
+        "maximum_bpm": bg.maximum_bpm,
+        "is_variable_tempo": bg.is_variable_tempo,
+        "parser_version": DROPDEX_ANLZ_PARSER_VERSION,
+        "source_asset_id": source_asset_id,
+    }
+    sb.table("rekordbox_track_beat_grids").upsert(row, on_conflict="track_id").execute()
+
+
+def _write_waveform_row(sb, import_id: str, track_id: str, wf, asset_ids: dict) -> None:
+    """
+    Upsert one rekordbox_track_waveforms row.
+
+    Detail waveform Storage re-upload is intentionally skipped during reparse
+    because the retained asset path in the DB remains valid.  Only the preview
+    inline data and source-asset links are refreshed.
+    """
+    row = {
+        "import_id": import_id,
+        "track_id": track_id,
+        "source_dat_asset_id": asset_ids.get("DAT"),
+        "source_ext_asset_id": asset_ids.get("EXT"),
+        "source_2ex_asset_id": asset_ids.get("2EX"),
+        "parser_version": DROPDEX_ANLZ_PARSER_VERSION,
+    }
+    if wf.preview is not None:
+        p = wf.preview
+        row["preview_format"] = p.format
+        row["preview_column_count"] = p.column_count
+        row["preview_columns"] = p.columns
+    sb.table("rekordbox_track_waveforms").upsert(row, on_conflict="track_id").execute()
+
+
+def _find_best_cue_match(anlz, existing: list, already_matched: set, tolerance_ms: float):
+    """
+    Find the best-matching existing DB cue row for an ANLZ entry.
+
+    - Same cue_family required.
+    - Hot cues: reject only when both db and anlz slots are non-None and differ.
+    - Timing must be within tolerance_ms.
+    """
+    for db_cue in existing:
+        if db_cue["id"] in already_matched:
+            continue
+        if db_cue.get("cue_family") != anlz.cue_family:
+            continue
+        if anlz.cue_family == "hot":
+            db_slot = db_cue.get("hot_cue_slot")
+            anlz_slot = anlz.hot_cue_slot
+            if db_slot is not None and anlz_slot is not None and db_slot != anlz_slot:
+                continue
+        db_ms = db_cue.get("start_ms")
+        if db_ms is None:
+            continue
+        if abs(float(db_ms) - anlz.start_ms) <= tolerance_ms:
+            return db_cue
+    return None
+
+
+def _reconcile_cues(
+    sb, import_id: str, track_id: str, anlz_entries: list, tolerance_ms: float
+) -> None:
+    """
+    Minimal reconciliation for reparse: update matched rows, insert new ones.
+    Does not delete unmatched DB rows (preserves user data).
+    """
+    resp = (
+        sb.table("rekordbox_cues")
+        .select("id, cue_family, hot_cue_slot, start_ms")
+        .eq("track_id", track_id)
+        .execute()
+    )
+    existing = resp.data or []
+    matched: set = set()
+
+    for anlz in anlz_entries:
+        match = _find_best_cue_match(anlz, existing, matched, tolerance_ms)
+        if match:
+            matched.add(match["id"])
+            update: dict = {"source_anlz_present": True}
+            if anlz.hot_cue_slot is not None:
+                update["hot_cue_slot"] = anlz.hot_cue_slot
+            if anlz.color_hex is not None:
+                update["color_hex"] = anlz.color_hex
+            sb.table("rekordbox_cues").update(update).eq("id", match["id"]).execute()
+        else:
+            key = f"anlz:{import_id}:{anlz.source_tag}:{anlz.source_index}"
+            sb.table("rekordbox_cues").upsert({
+                "import_id": import_id,
+                "track_id": track_id,
+                "dedupe_key": key,
+                "cue_family": anlz.cue_family,
+                "hot_cue_slot": anlz.hot_cue_slot,
+                "point_type": anlz.point_type,
+                "start_ms": anlz.start_ms,
+                "end_ms": anlz.end_ms,
+                "color_hex": anlz.color_hex,
+                "source_anlz_present": True,
+                "source_db_present": False,
+                "source_conflict": False,
+            }, on_conflict="dedupe_key").execute()
+
+
+def _write_phrase_rows(sb, import_id: str, track_id: str, entries: list) -> None:
+    """Upsert phrase rows for the track."""
+    if not entries:
+        return
+    rows = [
+        {
+            "import_id": import_id,
+            "track_id": track_id,
+            "phrase_index": e.phrase_index,
+            "source_mood": e.source_mood,
+            "source_kind": e.source_kind,
+            "source_bank": e.source_bank,
+            "normalized_label": e.normalized_label,
+            "start_beat": e.start_beat,
+            "end_beat": e.end_beat,
+            "start_ms": e.start_ms,
+            "end_ms": e.end_ms,
+            "fill_start_beat": e.fill_start_beat,
+            "fill_start_ms": e.fill_start_ms,
+            "source_flags": e.source_flags,
+            "source_payload": e.source_payload,
+            "parser_version": DROPDEX_ANLZ_PARSER_VERSION,
+        }
+        for e in entries
+    ]
+    sb.table("rekordbox_track_phrases").upsert(
+        rows, on_conflict="track_id,phrase_index"
+    ).execute()

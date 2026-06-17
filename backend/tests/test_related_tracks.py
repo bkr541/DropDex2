@@ -594,3 +594,94 @@ class TestInvalidPayloadPreservesExisting:
                 json=_payload(lists=lists),
             )
         assert resp.status_code == 422
+
+
+# ── Bridge payload compatibility tests ────────────────────────────────────────
+
+import sys
+import os as _os
+
+sys.path.insert(0, _os.path.join(_os.path.dirname(__file__), '..', '..', 'bridge'))
+
+from rekordbox_bridge.models import (  # noqa: E402
+    BridgePayload,
+    RelatedTrackList,
+    RelatedTrackMember,
+    SourceInfo,
+    PAYLOAD_SCHEMA_VERSION,
+)
+from app.models import RelatedTracksPayload  # noqa: E402
+
+
+class TestBridgePayloadCompatibility:
+    """Verify that BridgePayload.to_dict() camelCase output is accepted by the backend."""
+
+    def _make_bridge_payload(self) -> BridgePayload:
+        return BridgePayload(
+            schema_version=PAYLOAD_SCHEMA_VERSION,
+            generated_at="2026-06-16T12:00:00Z",
+            source=SourceInfo(
+                rekordbox_database_id="db-001",
+                rekordbox_version="6.7.0",
+                device_name="USB Drive",
+            ),
+            lists=[
+                RelatedTrackList(
+                    source_list_id="1",
+                    parent_source_list_id=None,
+                    name="My List",
+                    sort_order=1,
+                    is_folder=False,
+                    attribute=0,
+                    criteria_raw={},
+                    members=[
+                        RelatedTrackMember(
+                            master_content_id="123",
+                            position=1,
+                            source_payload={},
+                        )
+                    ],
+                )
+            ],
+        )
+
+    def test_bridge_to_dict_parsed_by_pydantic(self):
+        """BridgePayload.to_dict() (camelCase) must be accepted by RelatedTracksPayload."""
+        bridge = self._make_bridge_payload()
+        camel_dict = bridge.to_dict()
+
+        # Confirm the dict actually has camelCase keys
+        assert "schemaVersion" in camel_dict
+        assert "generatedAt" in camel_dict
+        assert "sourceListId" in camel_dict["lists"][0]
+        assert "masterContentId" in camel_dict["lists"][0]["members"][0]
+
+        # Pydantic must accept it without raising
+        parsed = RelatedTracksPayload(**camel_dict)
+        assert parsed.schema_version == PAYLOAD_SCHEMA_VERSION
+        assert parsed.lists[0].source_list_id == "1"
+        assert parsed.lists[0].members[0].master_content_id == "123"
+
+    def test_bridge_payload_accepted_by_endpoint(self):
+        """The endpoint must return HTTP 200 (not 422) for a real BridgePayload.to_dict()."""
+        bridge = self._make_bridge_payload()
+        camel_dict = bridge.to_dict()
+
+        tracks = [
+            {
+                "id": "track-uuid-bridge-001",
+                "rekordbox_content_id": "500",
+                "master_content_id": "123",
+            }
+        ]
+        sb = _fake_sb(tracks=tracks)
+        with patch("app.related_tracks_service._create_supabase", return_value=sb):
+            resp = client.post(
+                f"/api/rekordbox/import/{IMPORT_ID}/related-tracks",
+                headers=_auth(),
+                json=camel_dict,
+            )
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+        body = resp.json()
+        assert body["lists_imported"] == 1
+        assert body["members_imported"] == 1

@@ -335,6 +335,35 @@ describe('rankScoredCandidates ordering', () => {
   });
 });
 
+// ── Edge-only tracks (no BPM, no key) ─────────────────────────────────────────
+
+describe('edge-only tracks (no BPM, no key)', () => {
+  it('scores a candidate with no BPM and no key when explicit edge exists', () => {
+    const selected = makeTrack({ id: 'edge-sel', title: 'Edge Selected', bpm: null, camelot_key: null });
+    const candidate = makeTrack({ id: 'edge-cand', title: 'Edge Candidate', bpm: null, camelot_key: null });
+    const result = scoreCandidate({
+      selected,
+      candidate,
+      bpmTolerance: 2,
+      edge: { direction: 'outgoing', rating: 4, createdAt: null },
+    });
+    expect(result.recommendationScore).toBeGreaterThan(0);
+    expect(result.reasons.some((r) => r.kind === 'rekordbox_match')).toBe(true);
+  });
+
+  it('reciprocal edge with no BPM/key gives SCORE_RECIPROCAL_BONUS or higher', () => {
+    const selected = makeTrack({ id: 'recip-sel', title: 'Recip Selected', bpm: null, camelot_key: null });
+    const candidate = makeTrack({ id: 'recip-cand', title: 'Recip Candidate', bpm: null, camelot_key: null });
+    const result = scoreCandidate({
+      selected,
+      candidate,
+      bpmTolerance: 2,
+      edge: { direction: 'reciprocal', rating: null, createdAt: null },
+    });
+    expect(result.recommendationScore).toBeGreaterThanOrEqual(SCORE_RECIPROCAL_BONUS);
+  });
+});
+
 // ── Edge fetch fallback ────────────────────────────────────────────────────────
 
 describe('edge query failure fallback (unit)', () => {

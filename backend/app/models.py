@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PlaylistSummary(BaseModel):
@@ -132,25 +132,31 @@ class AnalysisStatusResponse(BaseModel):
 
 
 class RelatedTrackMemberInput(BaseModel):
-    master_content_id: str
+    model_config = ConfigDict(populate_by_name=True)
+
+    master_content_id: str = Field(validation_alias="masterContentId")
     position: int
-    source_payload: Dict[str, Any] = {}
+    source_payload: Dict[str, Any] = Field(default_factory=dict, validation_alias="sourcePayload")
 
 
 class RelatedTrackListInput(BaseModel):
-    source_list_id: str
-    parent_source_list_id: Optional[str] = None
+    model_config = ConfigDict(populate_by_name=True)
+
+    source_list_id: str = Field(validation_alias="sourceListId")
+    parent_source_list_id: Optional[str] = Field(default=None, validation_alias="parentSourceListId")
     name: str
-    sort_order: Optional[int] = None
-    is_folder: bool = False
+    sort_order: Optional[int] = Field(default=None, validation_alias="sortOrder")
+    is_folder: bool = Field(default=False, validation_alias="isFolder")
     attribute: int = 0
-    criteria_raw: Dict[str, Any] = {}
+    criteria_raw: Dict[str, Any] = Field(default_factory=dict, validation_alias="criteriaRaw")
     members: List[RelatedTrackMemberInput] = []
 
 
 class RelatedTracksPayload(BaseModel):
-    schema_version: int
-    generated_at: str
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_version: int = Field(validation_alias="schemaVersion")
+    generated_at: str = Field(validation_alias="generatedAt")
     source: Dict[str, Any] = {}
     lists: List[RelatedTrackListInput]
 

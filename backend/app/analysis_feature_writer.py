@@ -168,8 +168,10 @@ def reconcile_and_write_cues(
             matched_db_ids.add(match["id"])
             update: Dict[str, Any] = {
                 "source_anlz_present": True,
-                "hot_cue_slot": anlz.hot_cue_slot,
             }
+            # Enrich with ANLZ slot if DB slot was unknown
+            if anlz.hot_cue_slot is not None:
+                update["hot_cue_slot"] = anlz.hot_cue_slot
             if anlz.color_hex is not None:
                 update["color_hex"] = anlz.color_hex
             if anlz.color_id is not None:
@@ -236,7 +238,10 @@ def _find_db_match(
         if db_cue["cue_family"] != anlz.cue_family:
             continue
         if anlz.cue_family == "hot":
-            if db_cue.get("hot_cue_slot") != anlz.hot_cue_slot:
+            db_slot = db_cue.get("hot_cue_slot")
+            anlz_slot = anlz.hot_cue_slot
+            # Reject only when both slots are known and disagree
+            if db_slot is not None and anlz_slot is not None and db_slot != anlz_slot:
                 continue
         db_ms = db_cue.get("start_ms")
         if db_ms is None:

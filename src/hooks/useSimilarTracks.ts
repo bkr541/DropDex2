@@ -42,34 +42,26 @@ export function useSimilarTracks(
       return;
     }
 
-    if (!hasSimilarVibesSignal(selectedTrack.camelot_key, selectedTrack.bpm)) {
-      setSimilarTracks([]);
-      setLoading(false);
-      return;
-    }
-
     const thisId = ++requestIdRef.current;
     setLoading(true);
 
     const run = async () => {
       const bpmTolerance = options.bpmTolerance;
 
-      // 1. Fetch recommendation edge tracks (may fail — fallback to empty)
+      // 1. Always fetch recommendation edges (valid even without BPM or key)
       const edgeRows = await fetchRekordboxRecommendedTracks(
         importId,
         selectedTrack.id,
         SIMILAR_CANDIDATE_FETCH_LIMIT,
       ).catch((err: unknown) => {
-        console.warn('[useSimilarTracks] edge fetch failed, falling back to DB-only results', err);
+        console.warn('[useSimilarTracks] edge fetch failed', err);
         return [] as Awaited<ReturnType<typeof fetchRekordboxRecommendedTracks>>;
       });
 
-      // 2. Fetch Camelot-compatible tracks from DB
-      const dbCandidates = await fetchCamelotCompatibleTracks(
-        importId,
-        selectedTrack,
-        bpmTolerance,
-      );
+      // 2. Only fetch Camelot/BPM candidates if there's a usable signal
+      const dbCandidates = hasSimilarVibesSignal(selectedTrack.camelot_key, selectedTrack.bpm)
+        ? await fetchCamelotCompatibleTracks(importId, selectedTrack, bpmTolerance)
+        : [];
 
       // 3. Score edge results
       const edgeScored: SimilarTrackResult[] = edgeRows.map(({ track, direction, rating }) =>

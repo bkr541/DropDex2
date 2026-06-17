@@ -114,6 +114,95 @@ export interface PhraseRow {
   parser_version: string | null;
 }
 
+// ── Row mappers ───────────────────────────────────────────────────────────────
+
+function mapBeatGridRow(raw: unknown): BeatGridRow {
+  const row = raw as Record<string, unknown>;
+  return {
+    id: row.id as string,
+    import_id: row.import_id as string,
+    track_id: row.track_id as string,
+    source_tag: (row.source_tag as string | null) ?? null,
+    beats: (row.beats as BeatEntry[]) ?? [],
+    beat_count: (row.beat_count as number | null) ?? null,
+    downbeat_count: (row.downbeat_count as number | null) ?? null,
+    bar_count: (row.bar_count as number | null) ?? null,
+    first_beat_ms: (row.first_beat_ms as number | null) ?? null,
+    first_downbeat_ms: (row.first_downbeat_ms as number | null) ?? null,
+    minimum_bpm: (row.minimum_bpm as number | null) ?? null,
+    maximum_bpm: (row.maximum_bpm as number | null) ?? null,
+    is_variable_tempo: (row.is_variable_tempo as boolean | null) ?? null,
+    parser_version: (row.parser_version as string | null) ?? null,
+  };
+}
+
+function mapWaveformRow(raw: unknown): WaveformRow {
+  const row = raw as Record<string, unknown>;
+  return {
+    id: row.id as string,
+    import_id: row.import_id as string,
+    track_id: row.track_id as string,
+    preview_format: (row.preview_format as string | null) ?? null,
+    preview_column_count: (row.preview_column_count as number | null) ?? null,
+    preview_columns: (row.preview_columns as PreviewColumn[]) ?? [],
+    detail_format: (row.detail_format as string | null) ?? null,
+    detail_column_count: (row.detail_column_count as number | null) ?? null,
+    detail_storage_bucket: (row.detail_storage_bucket as string | null) ?? null,
+    detail_storage_path: (row.detail_storage_path as string | null) ?? null,
+    parser_version: (row.parser_version as string | null) ?? null,
+  };
+}
+
+function mapCueRow(raw: unknown): CueRow {
+  const row = raw as Record<string, unknown>;
+  return {
+    id: row.id as string,
+    import_id: row.import_id as string,
+    track_id: row.track_id as string,
+    rekordbox_cue_id: (row.rekordbox_cue_id as string | null) ?? null,
+    dedupe_key: row.dedupe_key as string,
+    cue_family: row.cue_family as 'hot' | 'memory',
+    hot_cue_slot: (row.hot_cue_slot as number | null) ?? null,
+    point_type: row.point_type as 'cue' | 'loop',
+    source_kind: (row.source_kind as string | null) ?? null,
+    start_ms: (row.start_ms as number | null) ?? null,
+    end_ms: (row.end_ms as number | null) ?? null,
+    color_table_index: (row.color_table_index as number | null) ?? null,
+    color_hex: (row.color_hex as string | null) ?? null,
+    color_name: (row.color_name as string | null) ?? null,
+    comment: (row.comment as string | null) ?? null,
+    is_active_loop: (row.is_active_loop as boolean | null) ?? null,
+    beat_loop_numerator: (row.beat_loop_numerator as number | null) ?? null,
+    beat_loop_denominator: (row.beat_loop_denominator as number | null) ?? null,
+    source_db_present: row.source_db_present as boolean,
+    source_anlz_present: row.source_anlz_present as boolean,
+    source_conflict: row.source_conflict as boolean,
+  };
+}
+
+function mapPhraseRow(raw: unknown): PhraseRow {
+  const row = raw as Record<string, unknown>;
+  return {
+    id: row.id as string,
+    import_id: row.import_id as string,
+    track_id: row.track_id as string,
+    phrase_index: row.phrase_index as number,
+    source_mood: (row.source_mood as string | null) ?? null,
+    source_kind: (row.source_kind as string | null) ?? null,
+    source_bank: (row.source_bank as string | null) ?? null,
+    normalized_label: (row.normalized_label as string | null) ?? null,
+    start_beat: (row.start_beat as number | null) ?? null,
+    end_beat: (row.end_beat as number | null) ?? null,
+    start_ms: (row.start_ms as number | null) ?? null,
+    end_ms: (row.end_ms as number | null) ?? null,
+    fill_start_beat: (row.fill_start_beat as number | null) ?? null,
+    fill_start_ms: (row.fill_start_ms as number | null) ?? null,
+    source_flags: (row.source_flags as Record<string, unknown>) ?? {},
+    source_payload: (row.source_payload as Record<string, unknown>) ?? {},
+    parser_version: (row.parser_version as string | null) ?? null,
+  };
+}
+
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 /** Fetch the beat grid for a single track. Returns null when not yet parsed. */
@@ -129,7 +218,8 @@ export async function fetchTrackBeatGrid(trackId: string): Promise<BeatGridRow |
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  return data as BeatGridRow | null;
+  if (data == null) return null;
+  return mapBeatGridRow(data);
 }
 
 /** Fetch the preview waveform for a single track. Returns null when not yet parsed. */
@@ -144,7 +234,8 @@ export async function fetchTrackPreviewWaveform(trackId: string): Promise<Wavefo
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  return data as WaveformRow | null;
+  if (data == null) return null;
+  return mapWaveformRow(data);
 }
 
 /** Fetch all cue points for a single track, ordered by start time. */
@@ -162,7 +253,7 @@ export async function fetchTrackCues(trackId: string): Promise<CueRow[]> {
     .order('start_ms', { ascending: true });
 
   if (error) throw new Error(error.message);
-  return (data ?? []) as CueRow[];
+  return (data ?? []).map((row) => mapCueRow(row));
 }
 
 /** Fetch all phrase segments for a single track, ordered by phrase index. */
@@ -178,5 +269,5 @@ export async function fetchTrackPhrases(trackId: string): Promise<PhraseRow[]> {
     .order('phrase_index', { ascending: true });
 
   if (error) throw new Error(error.message);
-  return (data ?? []) as PhraseRow[];
+  return (data ?? []).map((row) => mapPhraseRow(row));
 }
