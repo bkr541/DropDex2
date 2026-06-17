@@ -42,6 +42,7 @@ from .models import (
 from .rekordbox_parser import parse_library
 from .rescan_service import copy_normalized_data_for_track, match_tracks_to_prior_import
 from .supabase_writer import write_to_supabase_full
+from dropdex_importer.supabase_writer import RekordboxWriteError
 from .user_settings import upsert_active_import
 from .validation import validate
 
@@ -309,11 +310,52 @@ async def start_analysis_import(file: UploadFile, user_id: str) -> ImportStartRe
                 settings.supabase_secret_key,
                 user_id,
             )
+        except RekordboxWriteError as exc:
+            # Stage-aware diagnostic — safe fields only, no credentials or raw SQL.
+            logger.error(
+                "Supabase write failed for user %s stage=%s table=%s code=%s",
+                user_id, exc.stage, exc.table, exc.db_code,
+            )
+            detail: dict = {
+                "error_code": "REKORDBOX_IMPORT_WRITE_FAILED",
+                "stage": exc.stage,
+                "table": exc.table,
+            }
+            if exc.db_code == "22P02":
+                detail["detail"] = (
+                    "DropDex parsed your Rekordbox library, but a field in the database "
+                    "record has an unexpected format. This is a bug — please report it."
+                )
+                detail["diagnostic"] = "Invalid value syntax for a database column."
+            elif exc.db_code == "PGRST204":
+                detail["detail"] = (
+                    "DropDex parsed your Rekordbox library, but the DropDex database "
+                    "schema is missing a required column. Apply the pending migrations and try again."
+                )
+                detail["diagnostic"] = "Required database column is missing."
+            elif exc.db_code in ("42501", "42P01"):
+                detail["detail"] = (
+                    "DropDex parsed your Rekordbox library, but the server could not "
+                    "save it because the database connection is not authorized."
+                )
+                detail["diagnostic"] = "Database permission or credential problem."
+            else:
+                detail["detail"] = (
+                    "DropDex parsed your Rekordbox library, but could not save the "
+                    f"track records ({exc.stage}). Check the backend log for details."
+                )
+                if exc.db_code:
+                    detail["diagnostic"] = f"Database error code: {exc.db_code}"
+            raise HTTPException(status_code=500, detail=detail)
         except Exception:
             logger.exception("Supabase write failed for user %s", user_id)
             raise HTTPException(
                 status_code=500,
-                detail="Import encountered a server error. Please try again.",
+                detail={
+                    "error_code": "REKORDBOX_IMPORT_WRITE_FAILED",
+                    "stage": "unknown",
+                    "detail": "DropDex parsed your Rekordbox library, but could not save it. Please try again.",
+                },
             )
 
         import_id = write_result.import_id

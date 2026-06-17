@@ -51,6 +51,37 @@ def _str_or_none(value: object) -> Optional[str]:
     return s or None
 
 
+def _int_or_none(value: object) -> Optional[int]:
+    """Convert to int or None; treats empty strings and unconvertible values as None.
+
+    pyrekordbox sometimes returns "" from SQLite integer columns when the cell
+    has no value.  Passing "" to a PostgreSQL bigint column causes error 22P02.
+    """
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _id_str_or_none(value: object) -> Optional[str]:
+    """Convert a numeric Rekordbox ID to its canonical string form, or None.
+
+    Rekordbox stores IDs as integers in SQLite.  pyrekordbox may return them
+    as ints, floats, or empty strings depending on the column type affinity.
+    We normalise to a decimal string (e.g. "12345") or None.
+    """
+    if value is None:
+        return None
+    try:
+        return str(int(value))
+    except (ValueError, TypeError):
+        return None
+
+
 # ── Analysis path normalization ───────────────────────────────────────────────
 
 _DRIVE_LETTER_RE = re.compile(r'^/?[A-Za-z]:')
@@ -248,21 +279,13 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
                 date_added = None
 
         # Analysis pipeline fields
-        master_db_id = (
-            str(int(c.masterDbId)) if c.masterDbId is not None else None
-        )
-        master_content_id = (
-            str(int(c.masterContentId)) if c.masterContentId is not None else None
-        )
+        master_db_id = _id_str_or_none(c.masterDbId)
+        master_content_id = _id_str_or_none(c.masterContentId)
         analysis_data_file_path = _str_or_none(c.analysisDataFilePath)
-        analysed_bits = c.analysedBits if c.analysedBits is not None else None
-        cue_update_count = c.cueUpdateCount if c.cueUpdateCount is not None else None
-        analysis_data_update_count = (
-            c.analysisDataUpdateCount if c.analysisDataUpdateCount is not None else None
-        )
-        information_update_count = (
-            c.informationUpdateCount if c.informationUpdateCount is not None else None
-        )
+        analysed_bits = _int_or_none(c.analysedBits)
+        cue_update_count = _int_or_none(c.cueUpdateCount)
+        analysis_data_update_count = _int_or_none(c.analysisDataUpdateCount)
+        information_update_count = _int_or_none(c.informationUpdateCount)
 
         library.tracks.append(
             NormalizedTrack(

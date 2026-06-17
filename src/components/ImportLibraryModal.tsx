@@ -27,8 +27,9 @@ import {
   uploadRekordboxAnalysisBatch,
   uploadRekordboxDb,
   uploadRekordboxZipBundle,
+  RekordboxImportError,
 } from '../lib/api/rekordboxImport';
-import type { CompleteResponse, ImportResult, ImportStartResponse, ReuseStats } from '../lib/api/rekordboxImport';
+import type { CompleteResponse, ImportResult, ImportStartResponse, ImportWriteError, ReuseStats } from '../lib/api/rekordboxImport';
 import {
   buildBatches,
   buildMatchedFiles,
@@ -86,7 +87,7 @@ const MODE_LABELS: Record<Mode, { label: string; icon: React.ReactNode; tip: str
   usb_folder: {
     label: 'USB Folder',
     icon: <FolderOpen size={14} />,
-    tip: 'Select your USB drive folder. DropDex finds exportLibrary.db and all ANLZ analysis files automatically.',
+    tip: 'Select the PIONEER folder on your Rekordbox USB. DropDex reads exportLibrary.db first, then uploads only the matching Rekordbox analysis files. Your music files are not uploaded.',
   },
   zip_bundle: {
     label: 'ZIP Bundle',
@@ -114,8 +115,12 @@ function isAbortError(err: unknown): boolean {
   );
 }
 
-function extractError(err: unknown): string {
-  return err instanceof Error ? err.message : 'An unexpected error occurred.';
+function extractError(err: unknown): { message: string; structured: ImportWriteError | null } {
+  if (err instanceof RekordboxImportError) {
+    return { message: err.message, structured: err.structured };
+  }
+  const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+  return { message, structured: null };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -130,6 +135,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
   });
   const [finalResult, setFinalResult] = useState<FinalResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [errorStructured, setErrorStructured] = useState<ImportWriteError | null>(null);
   const [showAbortDialog, setShowAbortDialog] = useState(false);
   const [cancelledAfterDb, setCancelledAfterDb] = useState(false);
   const [importId, setImportId] = useState<string | null>(null);
@@ -153,6 +159,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     setProgress({ filesUploaded: 0, filesTotal: 0, bytesUploaded: 0, bytesTotal: 0, bundlePct: 0 });
     setFinalResult(null);
     setErrorMessage('');
+    setErrorStructured(null);
     setShowAbortDialog(false);
     setCancelledAfterDb(false);
     setImportId(null);
@@ -272,7 +279,9 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
       setFinalResult({ kind: 'library_only', data: result });
       setPhase('success');
     } catch (err) {
-      setErrorMessage(extractError(err));
+      const { message, structured } = extractError(err);
+      setErrorMessage(message);
+      setErrorStructured(structured);
       setPhase('error');
     }
   };
@@ -299,7 +308,9 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
         }
         return;
       }
-      setErrorMessage(extractError(err));
+      const { message, structured } = extractError(err);
+      setErrorMessage(message);
+      setErrorStructured(structured);
       setPhase('error');
     }
   };
@@ -318,7 +329,9 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
       startResp = await startRekordboxImport(folderScan.dbFile, token, controller.signal);
     } catch (err) {
       if (isAbortError(err)) { reset(); return; }
-      setErrorMessage(extractError(err));
+      const { message, structured } = extractError(err);
+      setErrorMessage(message);
+      setErrorStructured(structured);
       setPhase('error');
       return;
     }
@@ -429,7 +442,9 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
         setPhase('partial_success');
         return;
       }
-      setErrorMessage(extractError(err));
+      const { message, structured } = extractError(err);
+      setErrorMessage(message);
+      setErrorStructured(structured);
       setPhase('error');
       return;
     }
@@ -946,10 +961,26 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                 <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
                   <AlertCircle className="text-red-400" size={28} />
                 </div>
-                <h2 className="text-xl font-bold mb-2">Import Failed</h2>
+                <h2 className="text-xl font-bold mb-2">
+                  {errorStructured ? 'Library Parsed, Save Failed' : 'Import Failed'}
+                </h2>
                 <p className="text-sm text-muted-foreground leading-relaxed px-2">
                   {errorMessage}
                 </p>
+                {errorStructured?.stage && (
+                  <div className="mt-3 text-left rounded-xl bg-[var(--color-surface)] p-3 text-xs space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Stage:</span>
+                      <code className="font-mono text-amber-300">{errorStructured.stage}</code>
+                    </div>
+                    {errorStructured.diagnostic && (
+                      <div className="flex items-start gap-2">
+                        <span className="text-muted-foreground shrink-0">Hint:</span>
+                        <span className="text-foreground">{errorStructured.diagnostic}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex gap-3 mt-6">
                   <button
                     onClick={reset}

@@ -331,10 +331,10 @@ class TestStartEndpoint:
             )
 
         assert resp.status_code == 500
-        detail = resp.json()["detail"].lower()
-        assert "secret-host" not in detail
-        assert "traceback" not in detail
-        assert "connection refused" not in detail
+        body_text = resp.text.lower()
+        assert "secret-host" not in body_text
+        assert "traceback" not in body_text
+        assert "connection refused" not in body_text
 
 
 # ── /analysis-batch endpoint ──────────────────────────────────────────────────
@@ -1255,3 +1255,150 @@ class TestSourceBundleType:
         import_updates = rsb.updates["rekordbox_imports"]
         bundle_types = [u.get("source_bundle_type") for u in import_updates if "source_bundle_type" in u]
         assert "zip_bundle" in bundle_types, f"Expected 'zip_bundle' to be set, got: {bundle_types}"
+
+
+# ── Structured write errors ───────────────────────────────────────────────────
+
+class TestStructuredWriteErrors:
+    """Verify that write failures return structured diagnostic info — not secrets."""
+
+    def _post_start(self, failing_write):
+        with (
+            patch("app.analysis_import_service.parse_library", _mock_parse),
+            patch("app.analysis_import_service.validate", _mock_validate),
+            patch("app.analysis_import_service.write_to_supabase_full", failing_write),
+        ):
+            return client.post(
+                "/api/rekordbox/import/start",
+                headers=_auth(),
+                files=_db_file(),
+            )
+
+    def test_rekordbox_write_error_returns_500_with_stage(self):
+        """RekordboxWriteError should yield a 500 with error_code and stage."""
+        from dropdex_importer.supabase_writer import RekordboxWriteError
+
+        def failing_write(*_):
+            raise RekordboxWriteError(
+                stage="insert_tracks",
+                table="rekordbox_tracks",
+                operation="batch_insert",
+                original_error=Exception("22P02"),
+                import_id="test-import-id",
+            )
+
+        resp = self._post_start(failing_write)
+        assert resp.status_code == 500
+        detail = resp.json()["detail"]
+        assert isinstance(detail, dict), f"Expected dict detail, got: {detail!r}"
+        assert detail["error_code"] == "REKORDBOX_IMPORT_WRITE_FAILED"
+        assert detail["stage"] == "insert_tracks"
+        assert detail["table"] == "rekordbox_tracks"
+
+    def test_bigint_error_code_22p02_returns_helpful_detail(self):
+        """Error 22P02 (invalid syntax for bigint) yields a user-readable message."""
+        from dropdex_importer.supabase_writer import RekordboxWriteError
+
+        pg_exc = Exception({"code": "22P02", "message": "invalid input syntax for type bigint: \"\"", "hint": None, "details": None})
+
+        def failing_write(*_):
+            raise RekordboxWriteError(
+                stage="insert_tracks",
+                table="rekordbox_tracks",
+                operation="batch_insert",
+                original_error=pg_exc,
+            )
+
+        resp = self._post_start(failing_write)
+        assert resp.status_code == 500
+        detail = resp.json()["detail"]
+        assert detail["error_code"] == "REKORDBOX_IMPORT_WRITE_FAILED"
+        # Must not expose the raw postgres message
+        assert "22P02" not in str(detail)
+        # Must give a human-readable hint
+        assert "detail" in detail
+        assert len(detail["detail"]) > 20
+
+    def test_structured_error_does_not_leak_credentials(self):
+        """No credential-looking strings must appear in error responses."""
+        from dropdex_importer.supabase_writer import RekordboxWriteError
+
+        def failing_write(*_):
+            raise RekordboxWriteError(
+                stage="insert_cues",
+                table="rekordbox_cues",
+                operation="batch_insert",
+                original_error=Exception("Connection refused to secret-db.supabase.co"),
+            )
+
+        resp = self._post_start(failing_write)
+        body_text = resp.text
+        assert "secret-db" not in body_text
+        assert "traceback" not in body_text.lower()
+        assert "Authorization" not in body_text
+        assert "Bearer" not in body_text
+
+    def test_generic_exception_still_returns_safe_error(self):
+        """Non-RekordboxWriteError still returns a safe dict detail."""
+        def failing_write(*_):
+            raise RuntimeError("Unexpected internal error with sensitive:data")
+
+        resp = self._post_start(failing_write)
+        assert resp.status_code == 500
+        detail = resp.json()["detail"]
+        # Should be a dict with error_code
+        assert isinstance(detail, dict)
+        assert detail["error_code"] == "REKORDBOX_IMPORT_WRITE_FAILED"
+        # Must not contain the raw exception message
+        assert "sensitive:data" not in str(detail)
+
+    def test_write_failure_does_not_leak_stage_for_generic_error(self):
+        """Generic errors report stage=unknown to avoid info leak."""
+        def failing_write(*_):
+            raise RuntimeError("boom")
+
+        resp = self._post_start(failing_write)
+        detail = resp.json()["detail"]
+        assert detail.get("stage") == "unknown"
+
+
+# ── Parser coercion helpers ───────────────────────────────────────────────────
+
+class TestParserCoercions:
+    """Verify that empty-string bigint fields are coerced to None."""
+
+    def test_int_or_none_with_empty_string(self):
+        from dropdex_importer.parser import _int_or_none
+        assert _int_or_none("") is None
+
+    def test_int_or_none_with_none(self):
+        from dropdex_importer.parser import _int_or_none
+        assert _int_or_none(None) is None
+
+    def test_int_or_none_with_valid_int(self):
+        from dropdex_importer.parser import _int_or_none
+        assert _int_or_none(7) == 7
+
+    def test_int_or_none_with_numeric_string(self):
+        from dropdex_importer.parser import _int_or_none
+        assert _int_or_none("42") == 42
+
+    def test_int_or_none_with_float(self):
+        from dropdex_importer.parser import _int_or_none
+        assert _int_or_none(3.9) == 3
+
+    def test_id_str_or_none_with_empty_string(self):
+        from dropdex_importer.parser import _id_str_or_none
+        assert _id_str_or_none("") is None
+
+    def test_id_str_or_none_with_none(self):
+        from dropdex_importer.parser import _id_str_or_none
+        assert _id_str_or_none(None) is None
+
+    def test_id_str_or_none_with_integer(self):
+        from dropdex_importer.parser import _id_str_or_none
+        assert _id_str_or_none(12345) == "12345"
+
+    def test_id_str_or_none_with_float_id(self):
+        from dropdex_importer.parser import _id_str_or_none
+        assert _id_str_or_none(12345.0) == "12345"

@@ -104,6 +104,31 @@ export interface AnalysisFileUpload {
   canonicalPath: string;
 }
 
+// ── Structured import error ───────────────────────────────────────────────────
+
+/** Structured diagnostic returned by the backend when a write stage fails. */
+export interface ImportWriteError {
+  error_code: string;
+  /** The specific write stage that failed (e.g. "insert_tracks"). */
+  stage?: string;
+  table?: string;
+  /** Safe user-facing explanation. */
+  detail: string;
+  /** Short technical hint for developers. */
+  diagnostic?: string;
+}
+
+/** An Error subclass that carries structured backend diagnostic info. */
+export class RekordboxImportError extends Error {
+  readonly structured: ImportWriteError | null;
+
+  constructor(message: string, structured: ImportWriteError | null = null) {
+    super(message);
+    this.name = 'RekordboxImportError';
+    this.structured = structured;
+  }
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 const API_BASE = (import.meta.env.VITE_IMPORT_API_URL ?? 'http://localhost:8000').replace(/\/$/, '');
@@ -111,8 +136,16 @@ const API_BASE = (import.meta.env.VITE_IMPORT_API_URL ?? 'http://localhost:8000'
 async function parseResponse<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    const detail = (body as { detail?: string } | null)?.detail ?? `HTTP ${response.status}`;
-    throw new Error(detail);
+    const bodyObj = body as Record<string, unknown> | null;
+    const rawDetail = bodyObj?.['detail'];
+    // Structured error: detail is an object with error_code
+    if (rawDetail && typeof rawDetail === 'object' && 'error_code' in (rawDetail as object)) {
+      const structured = rawDetail as ImportWriteError;
+      throw new RekordboxImportError(structured.detail, structured);
+    }
+    // Legacy flat error: detail is a string
+    const message = typeof rawDetail === 'string' ? rawDetail : `HTTP ${response.status}`;
+    throw new RekordboxImportError(message, null);
   }
   return body as T;
 }

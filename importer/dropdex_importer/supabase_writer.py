@@ -31,6 +31,57 @@ logger = logging.getLogger(__name__)
 _BATCH_SIZE = 500
 
 
+# ── Structured write error ────────────────────────────────────────────────────
+
+
+class RekordboxWriteError(RuntimeError):
+    """Raised when a specific Supabase write stage fails.
+
+    Attributes are safe for logging and for inclusion in API error responses —
+    they never contain credentials, JWTs, or raw database payloads.
+    """
+
+    def __init__(
+        self,
+        *,
+        stage: str,
+        table: str,
+        operation: str,
+        original_error: Exception,
+        import_id: Optional[str] = None,
+    ) -> None:
+        self.stage = stage
+        self.table = table
+        self.operation = operation
+        self.import_id = import_id
+
+        # Extract safe PostgREST fields; never forward credentials or raw SQL.
+        err_dict: dict = {}
+        if hasattr(original_error, "args") and original_error.args:
+            first = original_error.args[0]
+            if isinstance(first, dict):
+                err_dict = first
+        self.db_code: Optional[str] = err_dict.get("code")
+        self.db_message: Optional[str] = err_dict.get("message")
+        self.db_hint: Optional[str] = err_dict.get("hint")
+        self.db_details: Optional[str] = err_dict.get("details")
+
+        super().__init__(
+            f"Rekordbox import write failed stage={stage} table={table} "
+            f"operation={operation} import_id={import_id} "
+            f"error_code={self.db_code} message={self.db_message}"
+        )
+
+    def log(self) -> None:
+        logger.error(
+            "Rekordbox import write failed\n"
+            "  stage=%s\n  table=%s\n  operation=%s\n  import_id=%s\n"
+            "  error_code=%s\n  message=%s\n  hint=%s\n  details=%s",
+            self.stage, self.table, self.operation, self.import_id,
+            self.db_code, self.db_message, self.db_hint, self.db_details,
+        )
+
+
 # ── Public result type ────────────────────────────────────────────────────────
 
 
@@ -76,35 +127,74 @@ def write_to_supabase(
     sb = create_client(supabase_url, supabase_key)
     import_id: Optional[str] = None
 
+    def _wrap(stage: str, table: str, operation: str, fn, *args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except RekordboxWriteError:
+            raise
+        except Exception as exc:
+            raise RekordboxWriteError(
+                stage=stage,
+                table=table,
+                operation=operation,
+                original_error=exc,
+                import_id=import_id,
+            ) from exc
+
     try:
-        import_id = _create_import_row(sb, library, owner_user_id)
+        import_id = _wrap(
+            "create_import", "rekordbox_imports", "insert",
+            _create_import_row, sb, library, owner_user_id,
+        )
         logger.info("Created import row: %s", import_id)
 
-        rb_to_sb_track = _insert_tracks(sb, library, import_id)
+        rb_to_sb_track = _wrap(
+            "insert_tracks", "rekordbox_tracks", "batch_insert",
+            _insert_tracks, sb, library, import_id,
+        )
         logger.info("Inserted %d tracks", len(rb_to_sb_track))
 
-        rb_to_sb_playlist = _insert_playlists(sb, library, import_id)
+        rb_to_sb_playlist = _wrap(
+            "insert_playlists", "rekordbox_playlists", "batch_insert",
+            _insert_playlists, sb, library, import_id,
+        )
         logger.info("Inserted %d playlists", len(rb_to_sb_playlist))
 
-        _update_parent_playlist_ids(sb, library, rb_to_sb_playlist)
+        _wrap(
+            "update_playlist_parents", "rekordbox_playlists", "batch_update",
+            _update_parent_playlist_ids, sb, library, rb_to_sb_playlist,
+        )
 
-        placed = _insert_placements(sb, library, rb_to_sb_track, rb_to_sb_playlist)
+        placed = _wrap(
+            "insert_playlist_tracks", "rekordbox_playlist_tracks", "batch_insert",
+            _insert_placements, sb, library, rb_to_sb_track, rb_to_sb_playlist,
+        )
         logger.info("Inserted %d placements", placed)
 
-        cue_count = _insert_cues(sb, library, import_id, rb_to_sb_track)
+        cue_count = _wrap(
+            "insert_cues", "rekordbox_cues", "batch_insert",
+            _insert_cues, sb, library, import_id, rb_to_sb_track,
+        )
         logger.info("Inserted %d cues", cue_count)
 
-        edge_count = _insert_recommendation_edges(
-            sb, library, import_id, rb_to_sb_track
+        edge_count = _wrap(
+            "insert_recommendation_edges", "rekordbox_recommendation_edges", "batch_insert",
+            _insert_recommendation_edges, sb, library, import_id, rb_to_sb_track,
         )
         logger.info("Inserted %d recommendation edges", edge_count)
 
-        _finalize_import(sb, import_id, library)
+        _wrap(
+            "finalize_import", "rekordbox_imports", "update",
+            _finalize_import, sb, import_id, library,
+        )
         logger.info("Import finalized: %s", import_id)
 
     except Exception as exc:
         if import_id:
-            _mark_failed(sb, import_id, str(exc))
+            safe_msg = str(exc)[:2000]
+            _mark_failed(sb, import_id, safe_msg)
+        if isinstance(exc, RekordboxWriteError):
+            exc.log()
         raise
 
     return ImportWriteResult(
