@@ -14,14 +14,14 @@ import {
 } from 'lucide-react';
 
 const GENRE_BADGE_STYLES = [
-  'bg-primary text-white border-primary',
-  'bg-secondary text-white border-secondary',
-  'bg-emerald-500 text-white border-emerald-600',
-  'bg-amber-500 text-white border-amber-600',
-  'bg-sky-500 text-white border-sky-600',
-  'bg-violet-500 text-white border-violet-600',
-  'bg-rose-500 text-white border-rose-600',
-  'bg-teal-500 text-white border-teal-600',
+  'bg-foreground text-primary border-foreground',
+  'bg-foreground text-secondary border-foreground',
+  'bg-foreground text-emerald-400 border-foreground',
+  'bg-foreground text-amber-400 border-foreground',
+  'bg-foreground text-sky-400 border-foreground',
+  'bg-foreground text-violet-400 border-foreground',
+  'bg-foreground text-rose-400 border-foreground',
+  'bg-foreground text-teal-400 border-foreground',
 ];
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatKey } from '../../lib/utils';
