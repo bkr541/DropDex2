@@ -1,14 +1,23 @@
 import { useState } from 'react';
-import { FileUp, CheckCircle2, Music, ListMusic, Calendar, User } from 'lucide-react';
+import { FileUp, CheckCircle2, Music, ListMusic, Calendar, User, AlertTriangle, RefreshCw } from 'lucide-react';
 import type { RekordboxImport, UserProfile } from '../../types';
 
 interface LibraryHeroProps {
   latestImport: RekordboxImport;
   profile: UserProfile | null;
   onImport: () => void;
+  onResumeAnalysis?: (importId: string) => void;
 }
 
-export function LibraryHero({ latestImport, profile, onImport }: LibraryHeroProps) {
+const ANALYSIS_TITLES: Record<string, string> = {
+  partial: 'Analysis Incomplete',
+  failed: 'Analysis Failed',
+  awaiting_upload: 'Analysis Pending',
+  uploading: 'Analysis Stalled',
+  parsing: 'Analysis Processing…',
+};
+
+export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis }: LibraryHeroProps) {
   const [imgError, setImgError] = useState(false);
 
   const libraryName = profile?.display_name
@@ -20,13 +29,14 @@ export function LibraryHero({ latestImport, profile, onImport }: LibraryHeroProp
     ? profile.display_name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
     : null;
 
-  const importedDate = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
   const shortDate = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric',
   });
-  const isToday = new Date(latestImport.imported_at).toDateString() === new Date().toDateString();
+
+  const analysisStatus = latestImport.analysis_status;
+  const showAnalysis = analysisStatus && analysisStatus !== 'not_requested' && analysisStatus !== 'completed';
+  const isAmber = analysisStatus === 'partial' || analysisStatus === 'awaiting_upload' || analysisStatus === 'uploading';
+  const isActionable = analysisStatus === 'partial' || analysisStatus === 'failed' || analysisStatus === 'awaiting_upload' || analysisStatus === 'uploading';
 
   return (
     <div className="glass rounded-3xl border border-[var(--color-border-subtle)] overflow-hidden">
@@ -58,66 +68,100 @@ export function LibraryHero({ latestImport, profile, onImport }: LibraryHeroProp
 
           {/* Text */}
           <div className="flex-1 min-w-0">
-            <p className="text-[9px] uppercase tracking-[0.25em] text-muted-foreground mb-1">Library</p>
             <h1 className="text-2xl md:text-3xl font-black uppercase leading-tight tracking-tight">
               {libraryName}
             </h1>
             <p className="text-xs font-semibold mt-2">
               {latestImport.track_count.toLocaleString()} tracks across {latestImport.playlist_count} playlists
             </p>
-            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
-              Imported from {latestImport.source_filename} · {importedDate}
-            </p>
-
-            <div className="flex flex-wrap gap-3 mt-5">
-              <button
-                onClick={onImport}
-                className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary/90 transition-all active:scale-95 shadow-md"
-              >
-                <FileUp size={14} />
-                Import New Library
-              </button>
-            </div>
           </div>
         </div>
 
-        {/* ── Right: status + stats ── */}
-        <div className="lg:w-72 shrink-0 border-t lg:border-t-0 lg:border-l border-[var(--color-border-subtle)] bg-[var(--color-surface)]/40 p-6 flex flex-col gap-4">
-          <div>
-            <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">
+        {/* ── Right: status + stats aligned row-by-row ── */}
+        <div className="shrink-0 border-t lg:border-t-0 lg:border-l border-[var(--color-border-subtle)] bg-[var(--color-surface)]/40 px-6 py-5 flex items-start gap-6">
+
+          {/* Status column — rows mirror the stats column rows */}
+          <div className="flex flex-col">
+            {/* Row 1: aligns with stat icons */}
+            <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold leading-none h-3 flex items-center">
               Library Status
             </p>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 size={15} className="text-green-500 shrink-0" />
-              <span className="font-bold text-sm text-green-500">Import Complete</span>
+            {/* Row 2: aligns with stat values */}
+            <div className="flex items-center gap-1.5 mt-1">
+              <CheckCircle2 size={14} className="text-green-500 shrink-0" />
+              <span className="font-black text-lg leading-none text-green-500">Import Complete</span>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1">
-              Last imported {isToday ? 'today' : importedDate}
-            </p>
+            {/* Row 3: spacer aligns with stat labels row */}
+            <div className="mt-0.5 h-3" aria-hidden="true" />
+            {/* Row 4: Import Library button aligns with "Imported from" */}
+            <button
+              onClick={onImport}
+              className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary hover:text-primary/80 text-xs font-bold transition-all active:scale-95 self-start"
+            >
+              <FileUp size={10} />
+              Import Library
+            </button>
           </div>
 
-          <div className="border-t border-[var(--color-border-subtle)]" />
+          <div className="w-px self-stretch bg-[var(--color-border-subtle)]" />
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="flex flex-col gap-1">
-              <Music size={13} className="text-muted-foreground" />
-              <span className="text-xl font-black tabular-nums leading-none">
-                {latestImport.track_count >= 1000
-                  ? `${(latestImport.track_count / 1000).toFixed(1)}k`
-                  : latestImport.track_count}
-              </span>
-              <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold">Tracks</span>
-            </div>
-            <div className="flex flex-col gap-1">
-              <ListMusic size={13} className="text-muted-foreground" />
-              <span className="text-xl font-black tabular-nums leading-none">{latestImport.playlist_count}</span>
-              <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold">Playlists</span>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Calendar size={13} className="text-muted-foreground" />
-              <span className="text-base font-black leading-none mt-0.5">{shortDate}</span>
-              <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">Last Import</span>
-            </div>
+          {/* Analysis Status column — only rendered when non-complete */}
+          {showAnalysis && (
+            <>
+              <div className="flex flex-col">
+                {/* Row 1: aligns with stat icons */}
+                <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold leading-none h-3 flex items-center">
+                  Analysis Status
+                </p>
+                {/* Row 2: aligns with stat values */}
+                <div className="flex items-center gap-1.5 mt-1">
+                  <AlertTriangle size={14} className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'} />
+                  <span className={`font-black text-lg leading-none ${isAmber ? 'text-amber-400' : 'text-red-400'}`}>
+                    {ANALYSIS_TITLES[analysisStatus] ?? 'Analysis Issue'}
+                  </span>
+                </div>
+                {/* Row 3: spacer aligns with stat labels row */}
+                <div className="mt-0.5 h-3" aria-hidden="true" />
+                {/* Row 4: resume button aligns with "Imported from" */}
+                {isActionable && onResumeAnalysis ? (
+                  <button
+                    onClick={() => onResumeAnalysis(latestImport.id)}
+                    className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 text-xs font-bold transition-all active:scale-95 self-start"
+                  >
+                    <RefreshCw size={10} />
+                    Resume Analysis
+                  </button>
+                ) : (
+                  <div className="mt-1.5 h-3" aria-hidden="true" />
+                )}
+              </div>
+
+              <div className="w-px self-stretch bg-[var(--color-border-subtle)]" />
+            </>
+          )}
+
+          {/* Stats — per-row layout so rows align with the status column */}
+          <div className="grid grid-cols-3 gap-x-6">
+            {/* Row 1: icons */}
+            <Music size={12} className="text-muted-foreground" />
+            <ListMusic size={12} className="text-muted-foreground" />
+            <Calendar size={12} className="text-muted-foreground" />
+            {/* Row 2: values */}
+            <span className="text-lg font-black tabular-nums leading-none mt-1">
+              {latestImport.track_count >= 1000
+                ? `${(latestImport.track_count / 1000).toFixed(1)}k`
+                : latestImport.track_count}
+            </span>
+            <span className="text-lg font-black tabular-nums leading-none mt-1">{latestImport.playlist_count}</span>
+            <span className="text-base font-black leading-none mt-1">{shortDate}</span>
+            {/* Row 3: labels */}
+            <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">Tracks</span>
+            <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">Playlists</span>
+            <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">Last Import</span>
+            {/* Row 4: filename */}
+            <p className="col-span-3 text-[10px] text-muted-foreground font-mono mt-1.5">
+              Imported from {latestImport.source_filename}
+            </p>
           </div>
         </div>
       </div>

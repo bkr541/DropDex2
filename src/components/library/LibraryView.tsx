@@ -11,8 +11,6 @@ import {
   Music,
   FolderOpen,
   ArrowUpRight,
-  AlertTriangle,
-  RefreshCw,
   Play,
   Pause,
   Usb,
@@ -382,63 +380,6 @@ function OverviewPlaylistCard({
   );
 }
 
-// ── Analysis status banner ────────────────────────────────────────────────────
-
-function AnalysisBanner({
-  latestImport,
-  onResumeAnalysis,
-}: {
-  latestImport: RekordboxImport | null;
-  onResumeAnalysis?: (importId: string) => void;
-}) {
-  if (!latestImport) return null;
-  const status = latestImport.analysis_status;
-  if (!status || status === 'not_requested' || status === 'completed') return null;
-
-  const isActionable = status === 'partial' || status === 'failed' || status === 'awaiting_upload' || status === 'uploading';
-  const isAmber = status === 'partial' || status === 'awaiting_upload' || status === 'uploading';
-
-  const titles: Record<string, string> = {
-    partial: 'Analysis Incomplete',
-    failed: 'Analysis Failed',
-    awaiting_upload: 'Analysis Pending',
-    uploading: 'Analysis Stalled',
-    parsing: 'Analysis Processing…',
-  };
-  const subtitles: Record<string, string> = {
-    partial: 'Some tracks are missing waveform, cue, or beat data.',
-    failed: 'No analysis data could be parsed — required files may be missing.',
-    awaiting_upload: 'ANLZ analysis files have not been uploaded yet.',
-    uploading: 'Upload appears to have stalled — resume to retry.',
-    parsing: 'Tracks are being processed in the background.',
-  };
-
-  return (
-    <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm ${
-      isAmber
-        ? 'bg-amber-500/8 border-amber-500/20'
-        : 'bg-red-500/8 border-red-500/20'
-    }`}>
-      <AlertTriangle size={15} className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'} />
-      <div className="flex-1 min-w-0">
-        <span className={`font-bold ${isAmber ? 'text-amber-400' : 'text-red-400'}`}>
-          {titles[status] ?? 'Analysis Issue'}
-        </span>
-        <span className="text-muted-foreground ml-2 text-xs">{subtitles[status]}</span>
-      </div>
-      {isActionable && onResumeAnalysis && (
-        <button
-          onClick={() => onResumeAnalysis(latestImport.id)}
-          className="flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 text-xs font-bold transition-all active:scale-95"
-        >
-          <RefreshCw size={11} />
-          Resume Analysis
-        </button>
-      )}
-    </div>
-  );
-}
-
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function LibraryView({
@@ -535,9 +476,26 @@ export function LibraryView({
     [visibleTracks],
   );
 
+  const recentTrackIds = useMemo(
+    () => recentTracks.map((t) => t.id),
+    [recentTracks],
+  );
+
+  const searchResultIds = useMemo(
+    () => (showSearch ? searchResults.map((t) => t.id) : []),
+    [showSearch, searchResults],
+  );
+
+  // Fetch waveforms for whatever is currently visible.
+  const waveformIds = useMemo(() => {
+    if (showSearch) return searchResultIds;
+    if (activeTab === 'tracks') return visibleTrackIds;
+    return recentTrackIds;
+  }, [showSearch, searchResultIds, activeTab, visibleTrackIds, recentTrackIds]);
+
   const { waveforms: trackWaveforms, unavailableIds: waveformUnavailable, loadingBatchCount: waveformsLoading } = useTrackPreviewWaveforms(
     importId,
-    activeTab === 'tracks' ? visibleTrackIds : [],
+    waveformIds,
   );
 
   return (
@@ -572,6 +530,9 @@ export function LibraryView({
               loading={searchLoading}
               importId={importId}
               onTrackClick={onTrackClick}
+              waveforms={trackWaveforms}
+              waveformUnavailable={waveformUnavailable}
+              waveformsLoading={waveformsLoading > 0}
             />
           </motion.div>
         ) : (
@@ -607,11 +568,6 @@ export function LibraryView({
                   latestImport={latestImport}
                   profile={profile}
                   onImport={onImport}
-                />
-
-                {/* Analysis status banner */}
-                <AnalysisBanner
-                  latestImport={latestImport}
                   onResumeAnalysis={onResumeAnalysis}
                 />
 
@@ -761,6 +717,9 @@ export function LibraryView({
                               tracks={recentTracks}
                               loading={recentTracksLoading}
                               onTrackClick={onTrackClick}
+                              waveforms={trackWaveforms}
+                              waveformUnavailable={waveformUnavailable}
+                              waveformsLoading={waveformsLoading > 0}
                               showHeader={false}
                             />
                           </div>
@@ -810,6 +769,9 @@ export function LibraryView({
                         tracks={recentTracks}
                         loading={recentTracksLoading}
                         onTrackClick={onTrackClick}
+                        waveforms={trackWaveforms}
+                        waveformUnavailable={waveformUnavailable}
+                        waveformsLoading={waveformsLoading > 0}
                       />
                     )}
 
