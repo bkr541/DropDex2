@@ -1,7 +1,31 @@
-import { useState } from 'react';
-import { Search, ListMusic, Loader2, Disc3, FileUp } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import {
+  Search,
+  Loader2,
+  Disc3,
+  FileUp,
+  ListMusic,
+  Tag,
+  BarChart2,
+  ChevronRight,
+  Music,
+  FolderOpen,
+  ArrowUpRight,
+} from 'lucide-react';
+
+const GENRE_BADGE_STYLES = [
+  'bg-primary text-white border-primary',
+  'bg-secondary text-white border-secondary',
+  'bg-emerald-500 text-white border-emerald-600',
+  'bg-amber-500 text-white border-amber-600',
+  'bg-sky-500 text-white border-sky-600',
+  'bg-violet-500 text-white border-violet-600',
+  'bg-rose-500 text-white border-rose-600',
+  'bg-teal-500 text-white border-teal-600',
+];
 import { motion, AnimatePresence } from 'motion/react';
-import { useRekordboxSearch } from '../../hooks/useRekordboxTracks';
+import { cn, formatKey } from '../../lib/utils';
+import { useRekordboxSearch, useTrackStats } from '../../hooks/useRekordboxTracks';
 import { LibraryHero } from './LibraryHero';
 import { PlaylistOverviewCard } from './PlaylistOverviewCard';
 import { RecentlyAddedTracksTable } from './RecentlyAddedTracksTable';
@@ -13,7 +37,18 @@ import type {
   UserProfile,
   UserGenrePreference,
 } from '../../types';
-import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
+import type { PlaylistWithCount, TrackStatRow } from '../../lib/queries/rekordbox';
+
+type LibraryTab = 'overview' | 'playlists' | 'recently-added' | 'tracks' | 'genres' | 'artists';
+
+const TABS: { id: LibraryTab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'playlists', label: 'Playlists' },
+  { id: 'recently-added', label: 'Recently Added' },
+  { id: 'tracks', label: 'Tracks' },
+  { id: 'genres', label: 'Genres' },
+  { id: 'artists', label: 'Artists' },
+];
 
 interface LibraryViewProps {
   latestImport: RekordboxImport | null;
@@ -59,6 +94,99 @@ function EmptyLibrary({ onImport }: { onImport: () => void }) {
   );
 }
 
+function statRowToTrack(row: TrackStatRow): RekordboxTrack {
+  return {
+    id: row.id,
+    import_id: row.import_id,
+    rekordbox_content_id: '',
+    title: row.title,
+    artist: row.artist,
+    album: null,
+    remixer: null,
+    genre: row.genre,
+    label: null,
+    musical_key: row.musical_key,
+    camelot_key: row.camelot_key,
+    normalized_key_name: null,
+    key_tonic: null,
+    key_mode: null,
+    bpm: row.bpm,
+    duration_seconds: null,
+    rating: null,
+    comments: null,
+    file_path: null,
+    file_format: null,
+    date_added: row.date_added,
+    created_at: '',
+    master_db_id: null,
+    master_content_id: null,
+    analysis_data_file_path: null,
+    analysed_bits: null,
+    cue_update_count: null,
+    analysis_data_update_count: null,
+    information_update_count: null,
+    analysis_reused_from_track_id: null,
+    analysis_parse_status: null,
+    analysis_parse_warnings: [],
+  };
+}
+
+// ── Sidebar sections ──────────────────────────────────────────────────────────
+
+function SidebarSection({ icon: Icon, title, children }: {
+  icon: React.ElementType;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="glass rounded-2xl p-4 border border-[var(--color-border-subtle)]">
+      <p className="flex items-center gap-1.5 text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-3">
+        <Icon size={11} />
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+// ── Compact playlist card for Overview horizontal scroll ──────────────────────
+
+function OverviewPlaylistCard({
+  playlist,
+  profile,
+  onClick,
+}: {
+  playlist: PlaylistWithCount;
+  profile: UserPlaylistProfile | undefined;
+  onClick: () => void;
+}) {
+  const label = profile?.display_name || playlist.name;
+  return (
+    <button
+      onClick={onClick}
+      className="shrink-0 w-52 text-left rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:border-primary/30 hover:bg-[var(--color-surface-hover)] transition-all p-4 group"
+    >
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div className={cn(
+          'w-9 h-9 rounded-xl flex items-center justify-center shrink-0',
+          playlist.is_folder ? 'bg-primary/15 text-primary' : 'bg-secondary/15 text-secondary',
+        )}>
+          {playlist.is_folder ? <FolderOpen size={16} /> : <ListMusic size={16} />}
+        </div>
+        <ArrowUpRight size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 shrink-0" />
+      </div>
+      <p className="font-bold text-sm leading-snug line-clamp-2 mb-1 group-hover:text-primary transition-colors">
+        {label}
+      </p>
+      <p className="text-[10px] text-muted-foreground font-mono">
+        {playlist.track_count} tracks
+      </p>
+    </button>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export function LibraryView({
   latestImport,
   importLoading,
@@ -70,24 +198,80 @@ export function LibraryView({
   recentTracksLoading,
   importId,
   profile,
-  genres,
   onPlaylistClick,
   onEditPlaylist,
   onTrackClick,
   onImport,
-  onEditProfile,
 }: LibraryViewProps) {
+  const [activeTab, setActiveTab] = useState<LibraryTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
-  const { results: searchResults, loading: searchLoading } = useRekordboxSearch(
-    importId,
-    searchQuery,
-  );
+  const [tracksVisible, setTracksVisible] = useState(200);
+
+  const { results: searchResults, loading: searchLoading } = useRekordboxSearch(importId, searchQuery);
+  const { stats: trackStats, loading: statsLoading } = useTrackStats(importId);
 
   const showSearch = searchQuery.trim().length >= 2;
 
+  // ── Derived stats ──────────────────────────────────────────────────────────
+
+  const genreStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const t of trackStats) {
+      if (t.genre) counts[t.genre] = (counts[t.genre] ?? 0) + 1;
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [trackStats]);
+
+  const artistStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const t of trackStats) {
+      if (t.artist) counts[t.artist] = (counts[t.artist] ?? 0) + 1;
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [trackStats]);
+
+  const mostCommonBpm = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const t of trackStats) {
+      if (t.bpm != null) {
+        const r = Math.round(t.bpm);
+        counts[r] = (counts[r] ?? 0) + 1;
+      }
+    }
+    const entries = Object.entries(counts);
+    if (!entries.length) return null;
+    return parseInt(entries.reduce((a, b) => (b[1] > a[1] ? b : a))[0]);
+  }, [trackStats]);
+
+  const mostCommonKey = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const t of trackStats) {
+      if (t.musical_key) counts[t.musical_key] = (counts[t.musical_key] ?? 0) + 1;
+    }
+    const entries = Object.entries(counts);
+    if (!entries.length) return null;
+    return entries.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
+  }, [trackStats]);
+
+  const largestPlaylist = useMemo(() => {
+    const real = playlists.filter((p) => !p.is_folder);
+    if (!real.length) return null;
+    return real.reduce((a, b) => (b.track_count > a.track_count ? b : a));
+  }, [playlists]);
+
+  const topGenres = genreStats.slice(0, 8);
+  const visibleTracks = trackStats.slice(0, tracksVisible);
+
+  const importedDate = latestImport
+    ? new Date(latestImport.imported_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+  const isToday = latestImport
+    ? new Date(latestImport.imported_at).toDateString() === new Date().toDateString()
+    : false;
+
   return (
-    <div className="space-y-6 md:max-w-7xl md:mx-auto">
-      {/* Search input — material underline style */}
+    <div className="space-y-5 md:max-w-7xl md:mx-auto">
+      {/* Search */}
       <div className="lib-search-wrapper">
         <Search
           className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none z-10"
@@ -126,16 +310,14 @@ export function LibraryView({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="space-y-6"
+            className="space-y-5"
           >
-            {/* Loading */}
             {importLoading && (
               <div className="flex items-center justify-center py-24">
                 <Loader2 className="animate-spin text-primary" size={32} />
               </div>
             )}
 
-            {/* Error */}
             {!importLoading && importError && (
               <div className="text-center py-24 space-y-2">
                 <p className="text-red-400 font-bold">Failed to load library</p>
@@ -143,66 +325,386 @@ export function LibraryView({
               </div>
             )}
 
-            {/* Empty */}
             {!importLoading && !importError && !latestImport && (
               <EmptyLibrary onImport={onImport} />
             )}
 
-            {/* Library */}
             {!importLoading && !importError && latestImport && (
               <>
+                {/* Hero */}
                 <LibraryHero
                   latestImport={latestImport}
                   profile={profile}
-                  genres={genres}
                   onImport={onImport}
-                  onEditProfile={onEditProfile}
                 />
 
-                {/* Playlists */}
-                <section className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                      <ListMusic size={13} /> Playlists
-                    </h2>
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {playlistsLoading ? '…' : `${playlists.length} items`}
-                    </span>
-                  </div>
+                {/* Tab bar */}
+                <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none border-b border-[var(--color-border-subtle)]">
+                  {TABS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={cn(
+                        'shrink-0 px-4 py-2.5 text-sm font-bold transition-all border-b-2 -mb-px',
+                        activeTab === tab.id
+                          ? 'text-primary border-primary'
+                          : 'text-muted-foreground border-transparent hover:text-foreground',
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
 
-                  {playlistsLoading ? (
-                    <div className="flex items-center justify-center py-10">
-                      <Loader2 className="animate-spin text-muted-foreground" size={20} />
-                    </div>
-                  ) : playlists.length === 0 ? (
-                    <div className="text-center py-10 border-2 border-dashed border-[var(--color-border-subtle)] rounded-3xl">
-                      <p className="text-muted-foreground text-sm">No playlists in this import.</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-                      {playlists.map((playlist) => {
-                        const prof = playlistProfilesByRbId.get(playlist.rekordbox_playlist_id);
-                        return (
-                          <PlaylistOverviewCard
-                            key={playlist.id}
-                            playlist={playlist}
-                            artworkUrl={prof?.artwork_url}
-                            displayName={prof?.display_name}
-                            onClick={() => onPlaylistClick(playlist)}
-                            onEdit={() => onEditPlaylist(playlist)}
-                          />
-                        );
-                      })}
-                    </div>
-                  )}
-                </section>
+                {/* Tab content */}
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={activeTab}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
 
-                {/* Recently added */}
-                <RecentlyAddedTracksTable
-                  tracks={recentTracks}
-                  loading={recentTracksLoading}
-                  onTrackClick={onTrackClick}
-                />
+                    {/* ── OVERVIEW ── */}
+                    {activeTab === 'overview' && (
+                      <div className="flex gap-5">
+                        {/* Left sidebar */}
+                        <div className="hidden lg:flex flex-col gap-4 w-56 xl:w-64 shrink-0">
+
+                          {/* Top Genres */}
+                          <SidebarSection icon={Tag} title="Top Genres">
+                            {statsLoading ? (
+                              <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                            ) : topGenres.length === 0 ? (
+                              <p className="text-xs text-muted-foreground italic">No genre data</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {topGenres.map(([genre], i) => (
+                                  <span
+                                    key={genre}
+                                    className={cn(
+                                      'px-2.5 py-1 rounded-full text-[10px] font-bold border',
+                                      GENRE_BADGE_STYLES[i % GENRE_BADGE_STYLES.length],
+                                    )}
+                                  >
+                                    {genre}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </SidebarSection>
+
+                          {/* Library Snapshot */}
+                          <SidebarSection icon={BarChart2} title="Library Snapshot">
+                            {statsLoading ? (
+                              <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                            ) : (
+                              <div className="space-y-2.5">
+                                {[
+                                  {
+                                    icon: BarChart2,
+                                    label: 'Most common BPM',
+                                    value: mostCommonBpm != null ? String(mostCommonBpm) : '—',
+                                  },
+                                  {
+                                    icon: Music,
+                                    label: 'Most common key',
+                                    value: mostCommonKey ? formatKey(mostCommonKey) : '—',
+                                  },
+                                  {
+                                    icon: FolderOpen,
+                                    label: 'Largest playlist',
+                                    value: largestPlaylist?.name ?? '—',
+                                  },
+                                ].map(({ icon: Icon, label, value }) => (
+                                  <div key={label} className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <Icon size={12} className="text-muted-foreground shrink-0" />
+                                      <span className="text-[11px] text-muted-foreground truncate">{label}</span>
+                                    </div>
+                                    <span className="text-[11px] font-bold font-mono shrink-0">{value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </SidebarSection>
+                        </div>
+
+                        {/* Main content */}
+                        <div className="flex-1 min-w-0 space-y-6">
+                          {/* Playlists horizontal scroll */}
+                          <section className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                <ListMusic size={13} /> Playlists
+                              </h2>
+                              <button
+                                onClick={() => setActiveTab('playlists')}
+                                className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                              >
+                                View all <ChevronRight size={12} />
+                              </button>
+                            </div>
+                            {playlistsLoading ? (
+                              <div className="flex items-center justify-center py-6">
+                                <Loader2 className="animate-spin text-muted-foreground" size={20} />
+                              </div>
+                            ) : (
+                              <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-thin">
+                                {playlists
+                                  .filter((p) => !p.is_folder)
+                                  .slice(0, 10)
+                                  .map((playlist) => (
+                                    <OverviewPlaylistCard
+                                      key={playlist.id}
+                                      playlist={playlist}
+                                      profile={playlistProfilesByRbId.get(playlist.rekordbox_playlist_id)}
+                                      onClick={() => onPlaylistClick(playlist)}
+                                    />
+                                  ))}
+                              </div>
+                            )}
+                          </section>
+
+                          {/* Recently added tracks */}
+                          <div>
+                            <div className="flex items-center justify-between mb-3">
+                              <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                <Music size={13} /> Recently Added Tracks
+                              </h2>
+                              <button
+                                onClick={() => setActiveTab('recently-added')}
+                                className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                              >
+                                View all <ChevronRight size={12} />
+                              </button>
+                            </div>
+                            <RecentlyAddedTracksTable
+                              tracks={recentTracks}
+                              loading={recentTracksLoading}
+                              onTrackClick={onTrackClick}
+                              showHeader={false}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── PLAYLISTS ── */}
+                    {activeTab === 'playlists' && (
+                      <section className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {playlistsLoading ? '…' : `${playlists.length} items`}
+                          </p>
+                        </div>
+                        {playlistsLoading ? (
+                          <div className="flex items-center justify-center py-10">
+                            <Loader2 className="animate-spin text-muted-foreground" size={20} />
+                          </div>
+                        ) : playlists.length === 0 ? (
+                          <div className="text-center py-10 border-2 border-dashed border-[var(--color-border-subtle)] rounded-3xl">
+                            <p className="text-muted-foreground text-sm">No playlists in this import.</p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                            {playlists.map((playlist) => {
+                              const prof = playlistProfilesByRbId.get(playlist.rekordbox_playlist_id);
+                              return (
+                                <PlaylistOverviewCard
+                                  key={playlist.id}
+                                  playlist={playlist}
+                                  artworkUrl={prof?.artwork_url}
+                                  displayName={prof?.display_name}
+                                  onClick={() => onPlaylistClick(playlist)}
+                                  onEdit={() => onEditPlaylist(playlist)}
+                                />
+                              );
+                            })}
+                          </div>
+                        )}
+                      </section>
+                    )}
+
+                    {/* ── RECENTLY ADDED ── */}
+                    {activeTab === 'recently-added' && (
+                      <RecentlyAddedTracksTable
+                        tracks={recentTracks}
+                        loading={recentTracksLoading}
+                        onTrackClick={onTrackClick}
+                      />
+                    )}
+
+                    {/* ── TRACKS ── */}
+                    {activeTab === 'tracks' && (
+                      <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {statsLoading
+                            ? 'Loading…'
+                            : `${trackStats.length.toLocaleString()} tracks · showing ${Math.min(tracksVisible, trackStats.length).toLocaleString()}`}
+                        </p>
+                        {statsLoading ? (
+                          <div className="flex items-center justify-center py-16">
+                            <Loader2 className="animate-spin text-primary" size={28} />
+                          </div>
+                        ) : (
+                          <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
+                            <div className="hidden sm:grid grid-cols-[1fr_1fr_64px_64px_100px_96px] px-4 py-2.5 border-b border-[var(--color-border-faint)]">
+                              {['Track', 'Artist', 'BPM', 'Key', 'Genre', 'Added'].map((col, i) => (
+                                <p
+                                  key={col}
+                                  className={cn(
+                                    'text-[9px] uppercase tracking-widest text-muted-foreground font-bold',
+                                    i === 2 || i === 3 ? 'text-center' : '',
+                                    i === 5 ? 'text-right' : '',
+                                  )}
+                                >
+                                  {col}
+                                </p>
+                              ))}
+                            </div>
+                            <div className="divide-y divide-[var(--color-border-faint)]">
+                              {visibleTracks.map((t) => (
+                                <button
+                                  key={t.id}
+                                  onClick={() => onTrackClick(statRowToTrack(t))}
+                                  className="w-full text-left group px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
+                                >
+                                  <div className="hidden sm:grid grid-cols-[1fr_1fr_64px_64px_100px_96px] items-center">
+                                    <p className="text-sm font-semibold truncate pr-3 group-hover:text-primary transition-colors">
+                                      {t.title}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground truncate pr-3">{t.artist ?? '—'}</p>
+                                    <p className="text-xs font-mono text-primary text-center">
+                                      {t.bpm != null ? t.bpm.toFixed(1) : '—'}
+                                    </p>
+                                    <p className="text-xs font-mono text-secondary text-center">
+                                      {formatKey(t.musical_key)}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground truncate pr-2">
+                                      {t.genre ?? '—'}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground text-right tabular-nums">
+                                      {t.date_added?.slice(0, 10) ?? '—'}
+                                    </p>
+                                  </div>
+                                  {/* Mobile */}
+                                  <div className="sm:hidden">
+                                    <p className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
+                                      {t.title}
+                                    </p>
+                                    <div className="flex items-center gap-3 mt-0.5">
+                                      <p className="text-xs text-muted-foreground truncate flex-1">{t.artist ?? '—'}</p>
+                                      {t.bpm != null && (
+                                        <p className="text-[10px] font-mono text-primary shrink-0">{t.bpm.toFixed(1)}</p>
+                                      )}
+                                      <p className="text-[10px] font-mono text-secondary shrink-0">
+                                        {formatKey(t.musical_key)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                            {trackStats.length > tracksVisible && (
+                              <button
+                                onClick={() => setTracksVisible((n) => n + 200)}
+                                className="w-full py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] border-t border-[var(--color-border-faint)] transition-colors"
+                              >
+                                Load {Math.min(200, trackStats.length - tracksVisible).toLocaleString()} more…
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── GENRES ── */}
+                    {activeTab === 'genres' && (
+                      <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {statsLoading ? 'Loading…' : `${genreStats.length} genres`}
+                        </p>
+                        {statsLoading ? (
+                          <div className="flex items-center justify-center py-16">
+                            <Loader2 className="animate-spin text-primary" size={28} />
+                          </div>
+                        ) : genreStats.length === 0 ? (
+                          <p className="text-center py-12 text-muted-foreground italic text-sm">No genre data in this library.</p>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                            {genreStats.map(([genre, count]) => (
+                              <div
+                                key={genre}
+                                className="glass rounded-2xl p-4 border border-[var(--color-border-subtle)] hover:border-primary/25 transition-all"
+                              >
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                  <p className="font-bold text-sm leading-snug">{genre}</p>
+                                  <span className="text-[10px] font-mono text-muted-foreground shrink-0 mt-0.5">
+                                    {count.toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="h-1 rounded-full bg-[var(--color-border-subtle)] overflow-hidden">
+                                  <div
+                                    className="h-full bg-primary rounded-full transition-all"
+                                    style={{ width: `${(count / genreStats[0][1]) * 100}%` }}
+                                  />
+                                </div>
+                                <p className="text-[9px] text-muted-foreground mt-1.5 font-mono">tracks</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── ARTISTS ── */}
+                    {activeTab === 'artists' && (
+                      <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {statsLoading ? 'Loading…' : `${artistStats.length.toLocaleString()} artists`}
+                        </p>
+                        {statsLoading ? (
+                          <div className="flex items-center justify-center py-16">
+                            <Loader2 className="animate-spin text-primary" size={28} />
+                          </div>
+                        ) : artistStats.length === 0 ? (
+                          <p className="text-center py-12 text-muted-foreground italic text-sm">No artist data in this library.</p>
+                        ) : (
+                          <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
+                            <div className="hidden sm:grid grid-cols-[auto_1fr_80px] px-4 py-2.5 border-b border-[var(--color-border-faint)]">
+                              {['', 'Artist', 'Tracks'].map((col, i) => (
+                                <p key={i} className={cn('text-[9px] uppercase tracking-widest text-muted-foreground font-bold', i === 2 && 'text-right')}>
+                                  {col}
+                                </p>
+                              ))}
+                            </div>
+                            <div className="divide-y divide-[var(--color-border-faint)]">
+                              {artistStats.map(([artist, count]) => (
+                                <div
+                                  key={artist}
+                                  className="grid grid-cols-[auto_1fr_80px] items-center px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
+                                >
+                                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center mr-3 shrink-0">
+                                    <span className="text-xs font-black text-primary">
+                                      {artist[0]?.toUpperCase() ?? '?'}
+                                    </span>
+                                  </div>
+                                  <span className="text-sm font-semibold truncate">{artist}</span>
+                                  <span className="text-[10px] font-mono text-muted-foreground text-right">
+                                    {count.toLocaleString()}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                  </motion.div>
+                </AnimatePresence>
               </>
             )}
           </motion.div>

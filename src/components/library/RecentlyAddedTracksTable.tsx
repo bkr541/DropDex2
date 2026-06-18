@@ -6,6 +6,7 @@ interface RecentlyAddedTracksTableProps {
   tracks: RekordboxTrack[];
   loading: boolean;
   onTrackClick: (track: RekordboxTrack) => void;
+  showHeader?: boolean;
 }
 
 const HEADERS = ['Title', 'Artist', 'BPM', 'Key', 'Added'] as const;
@@ -14,12 +15,15 @@ export function RecentlyAddedTracksTable({
   tracks,
   loading,
   onTrackClick,
+  showHeader = true,
 }: RecentlyAddedTracksTableProps) {
   return (
     <section className="space-y-3">
-      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-        <History size={13} /> Recently Added
-      </h2>
+      {showHeader && (
+        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+          <History size={13} /> Recently Added
+        </h2>
+      )}
 
       {loading && (
         <div className="flex items-center justify-center py-10">

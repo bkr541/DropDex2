@@ -344,10 +344,16 @@ export default function App() {
         sidebarCollapsed ? 'w-16' : 'w-60'
       )}>
         <div className={cn(
-          'h-16 flex items-center border-b border-[var(--color-border-subtle)] shrink-0',
+          'h-16 flex items-center shrink-0 border-b border-[var(--color-border-subtle)]',
           sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-6'
         )}>
-          <img src="/logos/dropdexlogo.png" alt="DropDex" className="w-8 h-8 object-contain shrink-0" />
+          <img
+            src="/logos/dropdexlogo.png"
+            alt="DropDex"
+            onClick={toggleSidebar}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="w-8 h-8 object-contain shrink-0 cursor-pointer"
+          />
           {!sidebarCollapsed && (
             <span className="text-xl font-black tracking-tighter uppercase leading-none">
               Drop<span className="text-primary">Dex</span>
@@ -375,7 +381,7 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="p-3 border-t border-[var(--color-border-subtle)] space-y-1">
+        <div className="p-3 border-t border-[var(--color-border-subtle)]">
           <button
             onClick={() => setCurrentView('settings')}
             title={sidebarCollapsed ? 'Settings' : undefined}
@@ -389,18 +395,6 @@ export default function App() {
           >
             <Settings size={18} />
             {!sidebarCollapsed && 'Settings'}
-          </button>
-          <button
-            onClick={toggleSidebar}
-            title={sidebarCollapsed ? 'Expand sidebar' : undefined}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] transition-all border border-transparent"
-          >
-            {sidebarCollapsed ? <ChevronRight size={15} /> : (
-              <>
-                <ChevronLeft size={15} />
-                <span className="font-bold">Collapse</span>
-              </>
-            )}
           </button>
         </div>
       </aside>
@@ -560,6 +554,7 @@ export default function App() {
                   onImport={() => setIsImportModalOpen(true)}
                   onEditProfile={handleEditProfile}
                 />
+
               </motion.div>
             )}
 

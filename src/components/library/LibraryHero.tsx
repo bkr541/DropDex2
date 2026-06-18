@@ -1,155 +1,123 @@
 import { useState } from 'react';
-import { User, FileUp, Pencil } from 'lucide-react';
-import { MusicNote01Icon } from 'hugeicons-react';
-import { cn } from '../../lib/utils';
-import type { RekordboxImport, UserProfile, UserGenrePreference } from '../../types';
+import { FileUp, CheckCircle2, Music, ListMusic, Calendar, User } from 'lucide-react';
+import type { RekordboxImport, UserProfile } from '../../types';
 
 interface LibraryHeroProps {
   latestImport: RekordboxImport;
   profile: UserProfile | null;
-  genres: UserGenrePreference[];
   onImport: () => void;
-  onEditProfile: () => void;
 }
 
-export function LibraryHero({
-  latestImport,
-  profile,
-  genres,
-  onImport,
-  onEditProfile,
-}: LibraryHeroProps) {
+export function LibraryHero({ latestImport, profile, onImport }: LibraryHeroProps) {
   const [imgError, setImgError] = useState(false);
 
-  const displayName = profile?.display_name ?? 'My Artist Profile';
-  const username = profile?.username ?? null;
-  const avatarUrl = profile?.avatar_url ?? null;
+  const libraryName = profile?.display_name
+    ? profile.display_name.toUpperCase()
+    : 'MY LIBRARY';
 
-  const initials = displayName
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+  const avatarUrl = profile?.avatar_url ?? null;
+  const initials = profile?.display_name
+    ? profile.display_name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+    : null;
 
   const importedDate = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+    month: 'short', day: 'numeric', year: 'numeric',
   });
+  const shortDate = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric',
+  });
+  const isToday = new Date(latestImport.imported_at).toDateString() === new Date().toDateString();
 
   return (
-    <div className="glass rounded-3xl p-6 md:p-8 border border-[var(--color-border-subtle)] relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
+    <div className="glass rounded-3xl border border-[var(--color-border-subtle)] overflow-hidden">
+      <div className="flex flex-col lg:flex-row">
 
-      <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-6">
-        {/* Avatar */}
-        <div className="shrink-0">
-          {avatarUrl && !imgError ? (
-            <img
-              src={avatarUrl}
-              alt={displayName}
-              className="w-24 h-24 md:w-32 md:h-32 rounded-full object-cover ring-4 ring-primary/25 shadow-xl"
-              onError={() => setImgError(true)}
-            />
-          ) : (
-            <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-primary/10 ring-4 ring-primary/25 shadow-xl flex items-center justify-center">
-              {initials ? (
-                <span className="text-2xl md:text-3xl font-black text-primary">{initials}</span>
-              ) : (
-                <User size={40} className="text-primary/60" />
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Info + actions */}
-        <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-start gap-4">
-          {/* Text block */}
-          <div className="flex-1 min-w-0 text-center sm:text-left">
-            <p className="text-[8px] uppercase tracking-[0.25em] text-muted-foreground mb-0.5">
-              User Profile
-            </p>
-            <h1 className="text-3xl md:text-4xl font-black leading-tight">{displayName}</h1>
-            {username && (
-              <p className="text-xs text-muted-foreground font-mono mt-0.5">@{username}</p>
+        {/* ── Left: main info ── */}
+        <div className="flex-1 p-6 md:p-8 flex gap-6 items-start">
+          {/* Profile avatar */}
+          <div className="relative shrink-0 hidden sm:block">
+            {avatarUrl && !imgError ? (
+              <img
+                src={avatarUrl}
+                alt={profile?.display_name ?? 'Profile'}
+                onError={() => setImgError(true)}
+                className="w-20 h-20 rounded-full object-cover ring-4 ring-primary/25 shadow-xl"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border-2 border-primary/20 flex items-center justify-center shadow-lg">
+                {initials ? (
+                  <span className="text-2xl font-black text-primary">{initials}</span>
+                ) : (
+                  <User size={32} className="text-primary/70" />
+                )}
+              </div>
             )}
-
-            {/* Genre chips */}
-            <div className="flex flex-wrap gap-1.5 mt-3 justify-center sm:justify-start min-h-[26px]">
-              {genres.length > 0 ? (
-                genres.map((g) => (
-                  <span
-                    key={g.genre_id}
-                    className={cn(
-                      'flex items-center gap-1 px-2.5 py-1 rounded-full',
-                      'text-[9px] font-bold uppercase tracking-widest',
-                      'bg-primary/10 text-primary border border-primary/15',
-                    )}
-                  >
-                    <MusicNote01Icon size={9} className="shrink-0" />
-                    {g.genre?.name}
-                  </span>
-                ))
-              ) : (
-                <button
-                  onClick={onEditProfile}
-                  className="text-[9px] text-muted-foreground hover:text-primary transition-colors font-bold uppercase tracking-widest hover:underline underline-offset-2"
-                >
-                  + Add Genres
-                </button>
-              )}
-            </div>
-
-            {/* Stats row */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 justify-center sm:justify-start text-[10px] text-muted-foreground">
-              <span className="font-semibold">
-                <span className="text-foreground">{latestImport.track_count.toLocaleString()}</span>{' '}
-                Tracks
-              </span>
-              <span className="opacity-30">·</span>
-              <span className="font-semibold">
-                <span className="text-foreground">{latestImport.playlist_count}</span> Playlists
-              </span>
-              <span className="opacity-30">·</span>
-              <span>Last scanned {importedDate}</span>
-              {latestImport.source_filename && (
-                <>
-                  <span className="opacity-30">·</span>
-                  <span className="font-mono opacity-50 text-[9px]">
-                    {latestImport.source_filename}
-                  </span>
-                </>
-              )}
-            </div>
+            <div className="absolute inset-[-6px] rounded-full border border-primary/10 pointer-events-none" />
+            <div className="absolute inset-[-13px] rounded-full border border-primary/5 pointer-events-none" />
           </div>
 
-          {/* Action buttons */}
-          <div className="flex sm:flex-col gap-2 items-center sm:items-end shrink-0">
-            <button
-              onClick={onEditProfile}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg',
-                'text-[10px] font-bold uppercase tracking-widest shadow-sm',
-                'bg-[var(--color-surface)] text-foreground border border-[var(--color-border-subtle)]',
-                'hover:bg-[var(--color-surface-hover)] transition-all active:scale-95',
-              )}
-            >
-              <Pencil size={11} />
-              Edit Profile
-            </button>
-            <button
-              onClick={onImport}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg',
-                'text-[10px] font-bold uppercase tracking-widest shadow-sm',
-                'bg-[var(--color-surface)] text-foreground border border-[var(--color-border-subtle)]',
-                'hover:bg-[var(--color-surface-hover)] transition-all active:scale-95',
-              )}
-            >
-              <FileUp size={11} />
-              Rescan Library
-            </button>
+          {/* Text */}
+          <div className="flex-1 min-w-0">
+            <p className="text-[9px] uppercase tracking-[0.25em] text-muted-foreground mb-1">Library</p>
+            <h1 className="text-2xl md:text-3xl font-black uppercase leading-tight tracking-tight">
+              {libraryName}
+            </h1>
+            <p className="text-xs font-semibold mt-2">
+              {latestImport.track_count.toLocaleString()} tracks across {latestImport.playlist_count} playlists
+            </p>
+            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
+              Imported from {latestImport.source_filename} · {importedDate}
+            </p>
+
+            <div className="flex flex-wrap gap-3 mt-5">
+              <button
+                onClick={onImport}
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary/90 transition-all active:scale-95 shadow-md"
+              >
+                <FileUp size={14} />
+                Import New Library
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Right: status + stats ── */}
+        <div className="lg:w-72 shrink-0 border-t lg:border-t-0 lg:border-l border-[var(--color-border-subtle)] bg-[var(--color-surface)]/40 p-6 flex flex-col gap-4">
+          <div>
+            <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">
+              Library Status
+            </p>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={15} className="text-green-500 shrink-0" />
+              <span className="font-bold text-sm text-green-500">Import Complete</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Last imported {isToday ? 'today' : importedDate}
+            </p>
+          </div>
+
+          <div className="border-t border-[var(--color-border-subtle)]" />
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1">
+              <Music size={13} className="text-muted-foreground" />
+              <span className="text-xl font-black tabular-nums leading-none">
+                {latestImport.track_count >= 1000
+                  ? `${(latestImport.track_count / 1000).toFixed(1)}k`
+                  : latestImport.track_count}
+              </span>
+              <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold">Tracks</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <ListMusic size={13} className="text-muted-foreground" />
+              <span className="text-xl font-black tabular-nums leading-none">{latestImport.playlist_count}</span>
+              <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold">Playlists</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Calendar size={13} className="text-muted-foreground" />
+              <span className="text-base font-black leading-none mt-0.5">{shortDate}</span>
+              <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">Last Import</span>
+            </div>
           </div>
         </div>
       </div>

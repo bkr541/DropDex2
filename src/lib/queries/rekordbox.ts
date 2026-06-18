@@ -92,15 +92,27 @@ export async function fetchPlaylists(importId: string): Promise<PlaylistWithCoun
 
   const playlistIds = playlists.map((p) => p.id as string);
 
-  const { data: ptRows, error: ptErr } = await supabase
-    .from('rekordbox_playlist_tracks')
-    .select('playlist_id')
-    .in('playlist_id', playlistIds);
+  // Paginate to avoid the 1,000-row PostgREST cap — a library with many
+  // tracks across many playlists can easily exceed it.
+  const PAGE_SIZE = 1000;
+  const allPtRows: { playlist_id: string }[] = [];
+  let start = 0;
+  while (true) {
+    const { data: page, error: ptErr } = await supabase
+      .from('rekordbox_playlist_tracks')
+      .select('playlist_id')
+      .in('playlist_id', playlistIds)
+      .order('playlist_id')
+      .range(start, start + PAGE_SIZE - 1);
 
-  if (ptErr) throw new Error(ptErr.message);
+    if (ptErr) throw new Error(ptErr.message);
+    if (page?.length) allPtRows.push(...page);
+    if (!page?.length || page.length < PAGE_SIZE) break;
+    start += PAGE_SIZE;
+  }
 
   const countMap: Record<string, number> = {};
-  for (const row of ptRows ?? []) {
+  for (const row of allPtRows) {
     countMap[row.playlist_id] = (countMap[row.playlist_id] ?? 0) + 1;
   }
 
@@ -167,6 +179,28 @@ export async function fetchReviewTracks(importId: string): Promise<RekordboxTrac
 
   if (error) throw new Error(error.message);
   return (data ?? []) as RekordboxTrack[];
+}
+
+export interface TrackStatRow {
+  id: string;
+  import_id: string;
+  title: string;
+  artist: string | null;
+  genre: string | null;
+  bpm: number | null;
+  musical_key: string | null;
+  camelot_key: string | null;
+  date_added: string | null;
+}
+
+export async function fetchTrackStats(importId: string): Promise<TrackStatRow[]> {
+  const { data, error } = await supabase
+    .from('rekordbox_tracks')
+    .select('id, import_id, title, artist, genre, bpm, musical_key, camelot_key, date_added')
+    .eq('import_id', importId)
+    .order('date_added', { ascending: false, nullsFirst: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as TrackStatRow[];
 }
 
 export interface TrackPlaylistMembership {
