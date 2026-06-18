@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileUp, CheckCircle2, Music, ListMusic, Calendar, User, AlertTriangle, RefreshCw } from 'lucide-react';
+import { FileUp, CheckCircle2, Music, ListMusic, Calendar, User, AlertTriangle, RefreshCw, ChevronRight } from 'lucide-react';
 import type { RekordboxImport, UserProfile } from '../../types';
 
 interface LibraryHeroProps {
@@ -81,10 +81,10 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
         <div className="shrink-0 border-t lg:border-t-0 lg:border-l border-[var(--color-border-subtle)] bg-[var(--color-surface)]/40 px-6 py-5 flex items-start gap-6">
 
           {/* Status column — rows mirror the stats column rows */}
-          <div className="flex flex-col">
+          <div className="flex flex-col rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 px-4 py-3">
             {/* Row 1: aligns with stat icons */}
             <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold leading-none h-3 flex items-center">
-              Library Status
+              USB Import
             </p>
             {/* Row 2: aligns with stat values */}
             <div className="flex items-center gap-1.5 mt-1">
@@ -96,10 +96,11 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
             {/* Row 4: Import Library button aligns with "Imported from" */}
             <button
               onClick={onImport}
-              className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary hover:text-primary/80 text-xs font-bold transition-all active:scale-95 self-start"
+              className="mt-1.5 flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-xs font-semibold"
             >
-              <FileUp size={10} />
-              Import Library
+              <FileUp size={12} className="shrink-0 text-muted-foreground" />
+              <span className="flex-1 text-left">Import New Library</span>
+              <ChevronRight size={12} className="text-muted-foreground shrink-0" />
             </button>
           </div>
 
@@ -108,10 +109,10 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
           {/* Analysis Status column — only rendered when non-complete */}
           {showAnalysis && (
             <>
-              <div className="flex flex-col">
+              <div className="flex flex-col rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 px-4 py-3">
                 {/* Row 1: aligns with stat icons */}
                 <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold leading-none h-3 flex items-center">
-                  Analysis Status
+                  Track Analysis
                 </p>
                 {/* Row 2: aligns with stat values */}
                 <div className="flex items-center gap-1.5 mt-1">
@@ -126,10 +127,11 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
                 {isActionable && onResumeAnalysis ? (
                   <button
                     onClick={() => onResumeAnalysis(latestImport.id)}
-                    className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 text-xs font-bold transition-all active:scale-95 self-start"
+                    className="mt-1.5 flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-xs font-semibold"
                   >
-                    <RefreshCw size={10} />
-                    Resume Analysis
+                    <RefreshCw size={12} className="shrink-0 text-muted-foreground" />
+                    <span className="flex-1 text-left">Resume Analysis</span>
+                    <ChevronRight size={12} className="text-muted-foreground shrink-0" />
                   </button>
                 ) : (
                   <div className="mt-1.5 h-3" aria-hidden="true" />
