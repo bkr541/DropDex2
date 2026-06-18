@@ -34,8 +34,11 @@ import { useRekordboxPlaylistTracks } from './hooks/useRekordboxPlaylistTracks';
 import { useRecentTracks } from './hooks/useRekordboxTracks';
 import { useTrackPlaylists } from './hooks/useTrackPlaylists';
 import { useImportList } from './hooks/useImportList';
+import { getCachedWaveform } from './hooks/useTrackPreviewWaveforms';
+import { fetchTrackPreviewWaveforms } from './lib/queries/analysisData';
 import { fetchReviewTracks, setActiveImport, deleteImport } from './lib/queries/rekordbox';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
+import { ResumeAnalysisModal } from './components/ResumeAnalysisModal';
 import { DiscoveryView } from './components/discovery/DiscoveryView';
 import { SearchView } from './components/search/SearchView';
 import { LibraryView } from './components/library/LibraryView';
@@ -43,12 +46,71 @@ import { PlaylistEditView } from './components/library/PlaylistEditView';
 import { TrackDetailView } from './components/library/TrackDetailView';
 import { WaveformDisplay } from './components/library/WaveformDisplay';
 import { EditProfileView } from './components/profile/EditProfileView';
+import { UsbConnectionProvider } from './contexts/UsbConnectionContext';
+import { UsbConnectionButton } from './components/usb/UsbConnectionButton';
+import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerContext';
+import { NowPlayingBar } from './components/player/NowPlayingBar';
 import { buildPlaylistIdentityKey } from './lib/queries/userPlaylists';
 import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 
 type Theme = 'dark' | 'light';
 type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search' | 'edit-profile';
+
+// ── Player-aware mobile bottom nav ────────────────────────────────────────────
+
+interface MobileNavProps {
+  currentView: View;
+  setCurrentView: (v: View) => void;
+  libraryLabel: string;
+}
+
+function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavProps) {
+  const { status: playerStatus } = useAudioPlayer();
+  const hasPlayer = playerStatus !== 'idle';
+  return (
+    <nav className={cn(
+      'md:hidden fixed left-0 right-0 glass border-t border-[var(--color-border-subtle)] px-4 pt-4 pb-8 flex justify-between items-center z-40 transition-all duration-200',
+      hasPlayer ? 'bottom-16' : 'bottom-0',
+    )}>
+      <button
+        onClick={() => setCurrentView('home')}
+        className={cn('flex flex-col items-center gap-1 transition-all', currentView === 'home' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
+      >
+        <Music size={20} />
+        <span className="text-[8px] font-bold uppercase tracking-widest truncate max-w-[56px]">{libraryLabel}</span>
+      </button>
+      <button
+        onClick={() => setCurrentView('review')}
+        className={cn('flex flex-col items-center gap-1 transition-all', currentView === 'review' ? 'text-secondary neon-text-purple' : 'text-muted-foreground')}
+      >
+        <TrendingUp size={20} />
+        <span className="text-[8px] font-bold uppercase tracking-widest">Review</span>
+      </button>
+      <button
+        onClick={() => setCurrentView('discovery')}
+        className={cn('flex flex-col items-center gap-1 transition-all', currentView === 'discovery' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
+      >
+        <Radio size={20} />
+        <span className="text-[8px] font-bold uppercase tracking-widest">Discover</span>
+      </button>
+      <button
+        onClick={() => setCurrentView('search')}
+        className={cn('flex flex-col items-center gap-1 transition-all', currentView === 'search' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
+      >
+        <Search size={20} />
+        <span className="text-[8px] font-bold uppercase tracking-widest">Search</span>
+      </button>
+      <button
+        onClick={() => setCurrentView('settings')}
+        className={cn('flex flex-col items-center gap-1 transition-all', currentView === 'settings' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
+      >
+        <Settings size={20} />
+        <span className="text-[8px] font-bold uppercase tracking-widest">Setup</span>
+      </button>
+    </nav>
+  );
+}
 
 // --- Components ---
 
@@ -131,7 +193,11 @@ export default function App() {
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistWithCount | null>(null);
   const [editingPlaylist, setEditingPlaylist] = useState<PlaylistWithCount | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
+  const [selectedTrackWaveform, setSelectedTrackWaveform] = useState<import('./lib/queries/waveformValidation').TrackPreviewWaveform | null>(null);
+  const [selectedTrackWaveformLoading, setSelectedTrackWaveformLoading] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
+  const [resumeImportId, setResumeImportId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem('dropdex-theme') as Theme) || 'dark'
   );
@@ -173,6 +239,32 @@ export default function App() {
       .then(setReviewTracks)
       .catch(console.error);
   }, [currentView, importId]);
+
+  // Resolve waveform for the selected track — use cache if warm, fetch if cold.
+  useEffect(() => {
+    const trackId = selectedTrack?.id;
+    if (!trackId || !importId) {
+      setSelectedTrackWaveform(null);
+      setSelectedTrackWaveformLoading(false);
+      return;
+    }
+    const cached = getCachedWaveform(importId, trackId);
+    if (cached !== undefined) {
+      // Cache hit: TrackPreviewWaveform (real data) or null (confirmed unavailable)
+      setSelectedTrackWaveform(cached);
+      setSelectedTrackWaveformLoading(false);
+      return;
+    }
+    // Cache miss — fetch on demand without polluting the LibraryView waveform state.
+    setSelectedTrackWaveform(null);
+    setSelectedTrackWaveformLoading(true);
+    fetchTrackPreviewWaveforms([trackId])
+      .then(({ waveforms }) => {
+        setSelectedTrackWaveform(waveforms.get(trackId) ?? null);
+      })
+      .catch(() => {})
+      .finally(() => setSelectedTrackWaveformLoading(false));
+  }, [selectedTrack?.id, importId]);
 
 
   // Compute playlist statistics from loaded tracks
@@ -331,6 +423,8 @@ export default function App() {
   ];
 
   return (
+    <UsbConnectionProvider>
+    <AudioPlayerProvider>
     <div className="flex h-screen overflow-hidden font-sans relative">
       {/* Background ambience */}
       <div className="fixed inset-0 -z-10 bg-background overflow-hidden">
@@ -381,7 +475,8 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="p-3 border-t border-[var(--color-border-subtle)]">
+        <div className="p-3 border-t border-[var(--color-border-subtle)] flex flex-col gap-2">
+          <UsbConnectionButton collapsed={sidebarCollapsed} />
           <button
             onClick={() => setCurrentView('settings')}
             title={sidebarCollapsed ? 'Settings' : undefined}
@@ -553,6 +648,7 @@ export default function App() {
                   onTrackClick={handleTrackClick}
                   onImport={() => setIsImportModalOpen(true)}
                   onEditProfile={handleEditProfile}
+                  onResumeAnalysis={(id) => { setResumeImportId(id); setIsResumeModalOpen(true); }}
                 />
 
               </motion.div>
@@ -683,7 +779,8 @@ export default function App() {
                 <TrackDetailView
                   track={selectedTrack}
                   importId={importId}
-                  waveformPeaks={null}
+                  waveform={selectedTrackWaveform}
+                  waveformLoading={selectedTrackWaveformLoading}
                   memberships={trackPlaylists}
                   membershipsLoading={trackPlaylistsLoading}
                   onTrackClick={handleTrackClick}
@@ -1004,69 +1101,36 @@ export default function App() {
 
           </AnimatePresence>
         </main>
+        {/* ── Desktop NowPlaying — in-flow at bottom of content column ── */}
+        <NowPlayingBar className="hidden md:flex shrink-0" />
       </div>
 
-      {/* ── Mobile-only: bottom nav ── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 glass border-t border-[var(--color-border-subtle)] px-4 pt-4 pb-8 flex justify-between items-center z-40">
-        <button
-          onClick={() => setCurrentView('home')}
-          className={cn(
-            'flex flex-col items-center gap-1 transition-all',
-            currentView === 'home' ? 'text-primary neon-text-blue' : 'text-muted-foreground'
-          )}
-        >
-          <Music size={20} />
-          <span className="text-[8px] font-bold uppercase tracking-widest truncate max-w-[56px]">
-            {libraryLabel}
-          </span>
-        </button>
-        <button
-          onClick={() => setCurrentView('review')}
-          className={cn(
-            'flex flex-col items-center gap-1 transition-all',
-            currentView === 'review' ? 'text-secondary neon-text-purple' : 'text-muted-foreground'
-          )}
-        >
-          <TrendingUp size={20} />
-          <span className="text-[8px] font-bold uppercase tracking-widest">Review</span>
-        </button>
-        <button
-          onClick={() => setCurrentView('discovery')}
-          className={cn(
-            'flex flex-col items-center gap-1 transition-all',
-            currentView === 'discovery' ? 'text-primary neon-text-blue' : 'text-muted-foreground'
-          )}
-        >
-          <Radio size={20} />
-          <span className="text-[8px] font-bold uppercase tracking-widest">Discover</span>
-        </button>
-        <button
-          onClick={() => setCurrentView('search')}
-          className={cn(
-            'flex flex-col items-center gap-1 transition-all',
-            currentView === 'search' ? 'text-primary neon-text-blue' : 'text-muted-foreground'
-          )}
-        >
-          <Search size={20} />
-          <span className="text-[8px] font-bold uppercase tracking-widest">Search</span>
-        </button>
-        <button
-          onClick={() => setCurrentView('settings')}
-          className={cn(
-            'flex flex-col items-center gap-1 transition-all',
-            currentView === 'settings' ? 'text-primary neon-text-blue' : 'text-muted-foreground'
-          )}
-        >
-          <Settings size={20} />
-          <span className="text-[8px] font-bold uppercase tracking-widest">Setup</span>
-        </button>
-      </nav>
+      {/* ── Mobile NowPlaying — fixed above mobile nav ── */}
+      <NowPlayingBar className="md:hidden fixed bottom-0 left-0 right-0 z-50" />
+
+      {/* ── Mobile-only: bottom nav (shifts up when player is active) ── */}
+      <MobileNavBar
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        libraryLabel={libraryLabel}
+      />
 
       <ImportLibraryModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={handleImportSuccess}
       />
+
+      {resumeImportId && (
+        <ResumeAnalysisModal
+          isOpen={isResumeModalOpen}
+          importId={resumeImportId}
+          onClose={() => setIsResumeModalOpen(false)}
+          onSuccess={handleImportSuccess}
+        />
+      )}
     </div>
+    </AudioPlayerProvider>
+    </UsbConnectionProvider>
   );
 }

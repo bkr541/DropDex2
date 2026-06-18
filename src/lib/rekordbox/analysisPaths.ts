@@ -24,11 +24,26 @@ function hasTraversal(path: string): boolean {
 }
 
 /**
- * Normalize a raw ANLZ path: convert backslashes, strip leading slashes.
- * Returns null on traversal or unsupported extension.
+ * Normalize a raw ANLZ path for storage and comparison.
+ *
+ * Handles: backslashes, Windows drive letters (D:\), duplicate slashes,
+ * URL-encoded characters (%2F etc.), leading slashes.
+ *
+ * Returns null on path traversal (..) or unsupported file extension.
  */
 export function normalizeAnlzPath(rawPath: string): string | null {
-  const p = rawPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  // URL-decode first so %2F etc. resolve before any further processing.
+  let p: string;
+  try {
+    p = decodeURIComponent(rawPath);
+  } catch {
+    p = rawPath;
+  }
+  p = p
+    .replace(/\\/g, '/')            // backslash → forward slash
+    .replace(/^[A-Za-z]:\//, '')    // strip Windows drive letter (D:/ → '')
+    .replace(/^\/+/, '')            // strip leading slashes
+    .replace(/\/+/g, '/');          // collapse duplicate separators
   if (!p || hasTraversal(p)) return null;
   const dotIdx = p.lastIndexOf('.');
   if (dotIdx === -1) return null;
@@ -46,17 +61,30 @@ export function isSafePath(path: string): boolean {
  * Extract the PIONEER-anchored canonical path from a File's webkitRelativePath.
  * e.g. "MY_USB/PIONEER/USBANLZ/P001/ANLZ0000.DAT" → "PIONEER/USBANLZ/P001/ANLZ0000.DAT"
  *
+ * Handles: backslashes, Windows drive letters, macOS /Volumes paths, duplicate
+ * slashes, and URL-encoded characters in the relative path.
+ *
  * Returns null when the anchor is missing, traversal detected, or extension invalid.
  */
 export function getCanonicalAnlzPath(file: File): string | null {
   const relPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
   if (!relPath) return null;
 
-  const slashed = relPath.replace(/\\/g, '/');
-  const anchorIdx = slashed.toUpperCase().indexOf(PIONEER_ANCHOR_UPPER);
+  let normalized: string;
+  try {
+    normalized = decodeURIComponent(relPath);
+  } catch {
+    normalized = relPath;
+  }
+  normalized = normalized
+    .replace(/\\/g, '/')         // backslash → forward slash
+    .replace(/^[A-Za-z]:\//, '') // strip Windows drive letter
+    .replace(/\/+/g, '/');       // collapse duplicate separators
+
+  const anchorIdx = normalized.toUpperCase().indexOf(PIONEER_ANCHOR_UPPER);
   if (anchorIdx === -1) return null;
 
-  const canonical = slashed.slice(anchorIdx);
+  const canonical = normalized.slice(anchorIdx);
   if (hasTraversal(canonical)) return null;
 
   const dotIdx = canonical.lastIndexOf('.');

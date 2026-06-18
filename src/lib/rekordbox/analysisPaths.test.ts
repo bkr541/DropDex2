@@ -421,3 +421,72 @@ describe('buildBatches', () => {
     expect(new Set(allItems.map(x => x.canonicalPath)).size).toBe(7);
   });
 });
+
+// ── normalizeAnlzPath — enhanced edge cases ───────────────────────────────────
+
+describe('normalizeAnlzPath enhanced', () => {
+  it('strips a Windows drive letter (uppercase)', () =>
+    expect(normalizeAnlzPath('D:\\PIONEER\\USBANLZ\\P001\\ANLZ0000.DAT')).toBe(
+      'PIONEER/USBANLZ/P001/ANLZ0000.DAT',
+    ));
+
+  it('strips a Windows drive letter (lowercase)', () =>
+    expect(normalizeAnlzPath('c:\\PIONEER\\USBANLZ\\P001\\ANLZ0000.DAT')).toBe(
+      'PIONEER/USBANLZ/P001/ANLZ0000.DAT',
+    ));
+
+  it('URL-decodes percent-encoded characters', () =>
+    expect(normalizeAnlzPath('PIONEER/USBANLZ/P001/ANLZ%20File.DAT')).toBe(
+      'PIONEER/USBANLZ/P001/ANLZ File.DAT',
+    ));
+
+  it('URL-decodes and then validates extension', () =>
+    expect(normalizeAnlzPath('PIONEER%2FUSBANLZ%2FP001%2FANLZ0000.DAT')).toBe(
+      'PIONEER/USBANLZ/P001/ANLZ0000.DAT',
+    ));
+
+  it('collapses duplicate separators', () =>
+    expect(normalizeAnlzPath('PIONEER//USBANLZ//P001//ANLZ0000.DAT')).toBe(
+      'PIONEER/USBANLZ/P001/ANLZ0000.DAT',
+    ));
+
+  it('handles Windows drive letter + forward slashes', () =>
+    expect(normalizeAnlzPath('E:/PIONEER/USBANLZ/P001/ANLZ0000.EXT')).toBe(
+      'PIONEER/USBANLZ/P001/ANLZ0000.EXT',
+    ));
+
+  it('rejects malformed URL encoding gracefully (no throw)', () =>
+    expect(normalizeAnlzPath('PIONEER/USBANLZ/P001/ANLZ%GG.DAT')).toBe(
+      'PIONEER/USBANLZ/P001/ANLZ%GG.DAT',
+    ));
+
+  it('still rejects traversal after decoding', () =>
+    expect(normalizeAnlzPath('PIONEER/USBANLZ/../secret.DAT')).toBeNull());
+
+  it('rejects traversal introduced by URL decoding', () =>
+    expect(normalizeAnlzPath('PIONEER/USBANLZ/P001/%2E%2E/ANLZ0000.DAT')).toBeNull());
+});
+
+// ── getCanonicalAnlzPath — enhanced edge cases ────────────────────────────────
+
+describe('getCanonicalAnlzPath enhanced', () => {
+  it('strips a Windows drive letter from webkitRelativePath', () => {
+    const f = mockFile('ANLZ0000.DAT', 'D:\\MY_USB\\PIONEER\\USBANLZ\\P001\\ANLZ0000.DAT');
+    expect(getCanonicalAnlzPath(f)).toBe('PIONEER/USBANLZ/P001/ANLZ0000.DAT');
+  });
+
+  it('collapses duplicate slashes in webkitRelativePath', () => {
+    const f = mockFile('ANLZ0000.DAT', 'MY_USB//PIONEER//USBANLZ//P001//ANLZ0000.DAT');
+    expect(getCanonicalAnlzPath(f)).toBe('PIONEER/USBANLZ/P001/ANLZ0000.DAT');
+  });
+
+  it('URL-decodes an encoded webkitRelativePath', () => {
+    const f = mockFile('ANLZ0000.DAT', 'MY_USB/PIONEER/USBANLZ/P001/ANLZ%200000.DAT');
+    expect(getCanonicalAnlzPath(f)).toBe('PIONEER/USBANLZ/P001/ANLZ 0000.DAT');
+  });
+
+  it('rejects traversal after drive-letter strip', () => {
+    const f = mockFile('ANLZ0000.DAT', 'D:\\MY_USB\\PIONEER\\USBANLZ\\..\\secret.DAT');
+    expect(getCanonicalAnlzPath(f)).toBeNull();
+  });
+});

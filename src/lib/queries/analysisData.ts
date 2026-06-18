@@ -6,6 +6,26 @@
  */
 
 import { supabase } from '../supabase';
+import {
+  buildTrackPreviewWaveform,
+  chunkIds,
+} from './waveformValidation';
+import type {
+  PreviewColumn,
+  WaveformRow,
+  TrackPreviewWaveform,
+} from './waveformValidation';
+
+// Re-export column types and waveform types so existing import paths keep working.
+export type {
+  PreviewColumnColor,
+  PreviewColumnMono,
+  PreviewColumn,
+  WaveformRow,
+  WaveformPreviewFormat,
+  WaveformLoadState,
+  TrackPreviewWaveform,
+} from './waveformValidation';
 
 // ── Beat grid types ────────────────────────────────────────────────────────────
 
@@ -33,36 +53,6 @@ export interface BeatGridRow {
   minimum_bpm: number | null;
   maximum_bpm: number | null;
   is_variable_tempo: boolean | null;
-  parser_version: string | null;
-}
-
-// ── Waveform types ─────────────────────────────────────────────────────────────
-
-export interface PreviewColumnColor {
-  h: number;
-  r: number;
-  g: number;
-  b: number;
-}
-
-export interface PreviewColumnMono {
-  h: number;
-  i: number;
-}
-
-export type PreviewColumn = PreviewColumnColor | PreviewColumnMono;
-
-export interface WaveformRow {
-  id: string;
-  import_id: string;
-  track_id: string;
-  preview_format: string | null;
-  preview_column_count: number | null;
-  preview_columns: PreviewColumn[];
-  detail_format: string | null;
-  detail_column_count: number | null;
-  detail_storage_bucket: string | null;
-  detail_storage_path: string | null;
   parser_version: string | null;
 }
 
@@ -254,6 +244,72 @@ export async function fetchTrackCues(trackId: string): Promise<CueRow[]> {
 
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => mapCueRow(row));
+}
+
+// ── Bulk waveform fetch ────────────────────────────────────────────────────────
+
+/** Max track IDs per Supabase .in() call — keeps requests well under limits. */
+export const WAVEFORM_CHUNK_SIZE = 200;
+
+const WAVEFORM_SELECT =
+  'id, import_id, track_id, preview_format, preview_column_count, preview_columns, ' +
+  'detail_format, detail_column_count, detail_storage_bucket, detail_storage_path, parser_version';
+
+export interface WaveformChunkError {
+  chunkIndex: number;
+  error: string;
+}
+
+export interface WaveformFetchResult {
+  /** Waveform data for every track that had a row, keyed by track_id. */
+  waveforms: Map<string, TrackPreviewWaveform>;
+  /** Per-chunk errors; other chunks continue even if one fails. */
+  errors: WaveformChunkError[];
+}
+
+/**
+ * Fetch preview waveform data for multiple tracks in a single query (or a
+ * small number of batched queries when the ID list exceeds WAVEFORM_CHUNK_SIZE).
+ *
+ * - Deduplicates input IDs before querying.
+ * - Tracks with no waveform row are omitted from the result map (not an error).
+ * - A chunk error does not fail the entire call — other chunks still complete.
+ */
+export async function fetchTrackPreviewWaveforms(
+  trackIds: string[],
+): Promise<WaveformFetchResult> {
+  const chunks = chunkIds(trackIds, WAVEFORM_CHUNK_SIZE);
+  const result: WaveformFetchResult = { waveforms: new Map(), errors: [] };
+
+  if (chunks.length === 0) return result;
+
+  await Promise.all(
+    chunks.map(async (chunk, chunkIndex) => {
+      try {
+        const { data, error } = await supabase
+          .from('rekordbox_track_waveforms')
+          .select(WAVEFORM_SELECT)
+          .in('track_id', chunk);
+
+        if (error) {
+          result.errors.push({ chunkIndex, error: error.message });
+          return;
+        }
+
+        for (const raw of data ?? []) {
+          const waveform = buildTrackPreviewWaveform(mapWaveformRow(raw));
+          result.waveforms.set(waveform.trackId, waveform);
+        }
+      } catch (err) {
+        result.errors.push({
+          chunkIndex,
+          error: err instanceof Error ? err.message : 'Unknown error',
+        });
+      }
+    }),
+  );
+
+  return result;
 }
 
 /** Fetch all phrase segments for a single track, ordered by phrase index. */

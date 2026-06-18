@@ -7,19 +7,24 @@ import {
   ListMusic,
   Calendar,
 } from 'lucide-react';
+import { useCallback } from 'react';
 import { cn, formatDuration, formatKey, formatPosition } from '../../lib/utils';
 import { WaveformDisplay } from './WaveformDisplay';
+import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import { SimilarVibesSection } from './SimilarVibesSection';
+import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
+import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import type { RekordboxTrack } from '../../types';
 import type { TrackPlaylistMembership } from '../../lib/queries/rekordbox';
+import type { TrackPreviewWaveform } from '../../lib/queries/waveformValidation';
 
 interface TrackDetailViewProps {
   track: RekordboxTrack;
   importId: string | null;
-  /** waveform_peaks — real audio amplitude data. Currently always null (no audio
-   *  access). Passed through so the component is ready for Electron/local-audio
-   *  integration without interface changes. */
-  waveformPeaks?: number[] | null;
+  /** Authentic Rekordbox preview waveform data. When provided, replaces the decorative fallback. */
+  waveform?: TrackPreviewWaveform | null;
+  /** True while the waveform is being fetched for this track. */
+  waveformLoading?: boolean;
   memberships: TrackPlaylistMembership[];
   membershipsLoading: boolean;
   onTrackClick: (t: RekordboxTrack) => void;
@@ -47,7 +52,8 @@ function StatBadge({ label, value, accent }: { label: string; value: string; acc
 export function TrackDetailView({
   track,
   importId,
-  waveformPeaks,
+  waveform,
+  waveformLoading,
   memberships,
   membershipsLoading,
   onTrackClick,
@@ -56,6 +62,21 @@ export function TrackDetailView({
   const bpmDisplay = track.bpm != null ? track.bpm.toFixed(1) : '—';
   const keyDisplay = formatKey(track.musical_key);
   const artistDisplay = track.artist ?? 'Artist not stored';
+
+  // Live waveform progress — active only when this track is currently playing/paused.
+  const progress = useWaveformProgress(track.id);
+  const { activeTrack, status: playerStatus, seek, getAudioElement } = useAudioPlayer();
+  const isActiveTrack = activeTrack?.id === track.id;
+  const canSeek = isActiveTrack && (playerStatus === 'playing' || playerStatus === 'paused');
+
+  const handleWaveformSeek = useCallback(
+    (fraction: number) => {
+      const audio = getAudioElement();
+      if (!audio || !isFinite(audio.duration) || audio.duration <= 0) return;
+      seek(fraction * audio.duration);
+    },
+    [seek, getAudioElement],
+  );
 
   return (
     <div className="flex flex-col gap-6 md:grid md:grid-cols-[300px_1fr] md:gap-8">
@@ -67,15 +88,25 @@ export function TrackDetailView({
         <div className="relative aspect-video w-full glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)] group">
           <div className="absolute inset-0 brand-gradient opacity-10 group-hover:opacity-20 transition-opacity" />
 
-          {/* WaveformDisplay occupies lower half of the card */}
-          <div className="absolute bottom-0 left-0 right-0 h-1/2 px-4 pb-3">
-            <WaveformDisplay
-              peaks={waveformPeaks}
-              seed={track.id}
-              barCount={60}
-              color="primary"
-              showFallbackLabel={true}
-            />
+          {/* Waveform — authentic Rekordbox data when available, decorative fallback otherwise */}
+          <div className="absolute bottom-0 left-0 right-0 px-3 pb-2" style={{ height: 80 }}>
+            {waveform != null ? (
+              <RekordboxPreviewWaveform
+                waveform={waveform}
+                height={78}
+                activeProgress={progress}
+                onSeek={canSeek ? handleWaveformSeek : undefined}
+                ariaLabel="Track waveform"
+              />
+            ) : (
+              <WaveformDisplay
+                peaks={null}
+                seed={track.id}
+                barCount={60}
+                color="primary"
+                showFallbackLabel={!waveformLoading}
+              />
+            )}
           </div>
 
           {/* Track identity overlay */}

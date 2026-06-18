@@ -24,12 +24,11 @@ import { supabase } from '../lib/supabase';
 import {
   completeRekordboxImport,
   startRekordboxImport,
-  uploadRekordboxAnalysisBatch,
   uploadRekordboxDb,
   uploadRekordboxZipBundle,
   RekordboxImportError,
 } from '../lib/api/rekordboxImport';
-import type { BatchUploadResponse, CompleteResponse, ImportResult, ImportStartResponse, ImportWriteError, ReuseStats } from '../lib/api/rekordboxImport';
+import type { CompleteResponse, ImportResult, ImportStartResponse, ImportWriteError, ReuseStats } from '../lib/api/rekordboxImport';
 import {
   buildBatches,
   buildMatchedFiles,
@@ -37,8 +36,10 @@ import {
   isAnlzFile,
   type MatchedAnalysisFile,
 } from '../lib/rekordbox/analysisPaths';
-import { UploadAccumulator } from '../lib/rekordbox/analysisUploadResults';
-import type { UploadSummary } from '../lib/rekordbox/analysisUploadResults';
+import { UploadAccumulator, isTransientFileFailure } from '../lib/rekordbox/analysisUploadResults';
+import { buildManifestReconciliation } from '../lib/rekordbox/manifestReconciliation';
+import type { ManifestReconciliation } from '../lib/rekordbox/manifestReconciliation';
+import { isAbortError, uploadBatchWithRetry } from '../lib/rekordbox/uploadBatch';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -54,7 +55,6 @@ type Phase =
   | 'parsing_analysis'
   | 'success'
   | 'partial_success'
-  | 'upload_blocked'
   | 'error';
 
 interface FolderScan {
@@ -113,54 +113,12 @@ function fmtBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function isAbortError(err: unknown): boolean {
-  return (
-    err instanceof DOMException && err.name === 'AbortError'
-  );
-}
-
 function extractError(err: unknown): { message: string; structured: ImportWriteError | null } {
   if (err instanceof RekordboxImportError) {
     return { message: err.message, structured: err.structured };
   }
   const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
   return { message, structured: null };
-}
-
-function isRetryableError(err: unknown): boolean {
-  if (!(err instanceof Error)) return true;
-  const msg = err.message;
-  // Permanent client errors: don't retry
-  if (msg.includes('HTTP 401') || msg.includes('HTTP 403') ||
-      msg.includes('HTTP 404') || msg.includes('HTTP 413') ||
-      msg.includes('HTTP 422')) return false;
-  return true; // retry network errors, 5xx, 429
-}
-
-async function uploadBatchWithRetry(
-  importId: string,
-  batch: MatchedAnalysisFile[],
-  fallbackToken: string,
-  signal: AbortSignal,
-  maxAttempts = 3,
-): Promise<BatchUploadResponse | null> {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const tok = session?.access_token ?? fallbackToken;
-      return await uploadRekordboxAnalysisBatch(importId, batch, tok, signal);
-    } catch (err) {
-      if (isAbortError(err)) throw err;
-      if (attempt >= maxAttempts || !isRetryableError(err)) {
-        console.warn('[DropDex] Batch upload failed after', attempt, 'attempt(s):', err);
-        return null;
-      }
-      // Exponential backoff with jitter: 1s, 2s, 4s, …
-      const backoffMs = Math.pow(2, attempt - 1) * 1000 + Math.random() * 500;
-      await new Promise((r) => setTimeout(r, backoffMs));
-    }
-  }
-  return null;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -181,7 +139,8 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
   const [importId, setImportId] = useState<string | null>(null);
   const [rejectedCount, setRejectedCount] = useState(0);
   const [reuseStats, setReuseStats] = useState<ReuseStats | null>(null);
-  const [uploadBlockedSummary, setUploadBlockedSummary] = useState<UploadSummary | null>(null);
+  const [reconciliation, setReconciliation] = useState<ManifestReconciliation | null>(null);
+  const [retryingCount, setRetryingCount] = useState(0);
 
   const folderInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -206,7 +165,8 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     setImportId(null);
     setRejectedCount(0);
     setReuseStats(null);
-    setUploadBlockedSummary(null);
+    setReconciliation(null);
+    setRetryingCount(0);
     importIdRef.current = null;
     abortControllerRef.current = null;
     if (folderInputRef.current) folderInputRef.current.value = '';
@@ -412,6 +372,11 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     // ── Stage 3: concurrent batch upload ANLZ files ───────────────────────────
     setPhase('uploading_analysis');
 
+    // Lookup map for file-level retry: lowercase canonical path → MatchedAnalysisFile.
+    const filesByLowerPath = new Map<string, MatchedAnalysisFile>(
+      matchedFiles.map((mf) => [mf.canonicalPath.toLowerCase(), mf]),
+    );
+
     const accumulator = new UploadAccumulator();
     let uploadAborted = false;
 
@@ -469,22 +434,122 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
       runNext();
     });
 
+    // ── Stage 3a: file-level retry for transient individual-file failures ────────
+    // The initial batch loop handles request-level failures (network, HTTP errors).
+    // This loop handles HTTP 200 responses where individual files inside the batch
+    // failed with a transient status (e.g. status "error", or rejected with
+    // "Upload failed. Please try again."). We retry those files up to 2 more times
+    // (3 total attempts per file), without calling addBatchResponse again so that
+    // _attemptedFiles counts unique files rather than attempts.
+    //
+    // Delays: 500 ms before attempt 2, 1 000 ms before attempt 3.
+    const FILE_RETRY_DELAYS_MS = [500, 1000];
+
+    for (let ri = 0; ri < FILE_RETRY_DELAYS_MS.length && !uploadAborted; ri++) {
+      const retryPaths = accumulator.retryableFilePaths;
+      if (retryPaths.length === 0) break;
+
+      setRetryingCount(retryPaths.length);
+
+      // Abortable delay before each retry attempt.
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, FILE_RETRY_DELAYS_MS[ri]);
+        controller.signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+      });
+
+      if (controller.signal.aborted) { uploadAborted = true; break; }
+
+      const retryBatch = retryPaths
+        .map((p) => filesByLowerPath.get(p))
+        .filter((mf): mf is MatchedAnalysisFile => mf !== undefined);
+
+      if (retryBatch.length === 0) break;
+
+      if (import.meta.env.DEV) {
+        console.debug('[ANLZ retry] File-level retry attempt', ri + 2, {
+          count: retryBatch.length,
+          files: retryBatch.map((f) => ({
+            path: f.canonicalPath,
+            type: f.assetType,
+            attempt: ri + 2,
+          })),
+        });
+      }
+
+      // Use maxAttempts=1 here: request-level retries are handled by
+      // uploadBatchWithRetry only on the initial pass.
+      const { data: { session: retrySession } } = await supabase.auth.getSession();
+      const retryTok = retrySession?.access_token ?? token;
+      const retryResp = await uploadBatchWithRetry(
+        startResp.import_id,
+        retryBatch,
+        retryTok,
+        controller.signal,
+        1,
+      );
+
+      if (retryResp === null) {
+        // Request-level failure during file retry — leave affected files as-is.
+        if (import.meta.env.DEV) {
+          console.debug('[ANLZ retry] Request-level failure on retry attempt', ri + 2, {
+            paths: retryPaths,
+          });
+        }
+        break;
+      }
+
+      for (const fr of retryResp.files) {
+        const succeeded = fr.status === 'received' || fr.status === 'already_received';
+        if (succeeded) {
+          accumulator.correctFileRetrySuccess(
+            fr.canonical_path,
+            fr.status as 'received' | 'already_received',
+            fr.file_size,
+          );
+        }
+        if (import.meta.env.DEV) {
+          console.debug('[ANLZ retry] File result on attempt', ri + 2, {
+            path: fr.canonical_path,
+            status: fr.status,
+            reason: fr.reject_reason,
+            resolved: succeeded,
+            stillRetryable: !succeeded && isTransientFileFailure(fr),
+          });
+        }
+      }
+
+      setProgress((p) => ({
+        ...p,
+        filesUploaded: accumulator.confirmedFiles,
+        bytesUploaded: accumulator.confirmedBytes,
+      }));
+      setRejectedCount(accumulator.summary.rejectedFiles + accumulator.summary.errorFiles);
+    }
+
+    setRetryingCount(0);
+
     if (uploadAborted) {
       setCancelledAfterDb(true);
       setPhase('partial_success');
       return;
     }
 
-    // Gate completion: if any required DAT files were rejected or batches failed,
-    // block completion to avoid misleading the user.
-    const uploadSummary = accumulator.summary;
-    if (uploadSummary.completionBlocked) {
-      setUploadBlockedSummary(uploadSummary);
-      setPhase('upload_blocked');
-      return;
-    }
+    // ── Stage 3b: manifest reconciliation ────────────────────────────────────
+    // Compare what the manifest expected against what was actually uploaded.
+    // This produces structured info about missing / failed files, surfaced in
+    // the completion UI. It does NOT gate calling /complete — the backend
+    // handles missing DAT files by marking individual tracks as missing_required
+    // and returning analysis_status "partial", so all valid tracks still parse.
+    const recon = buildManifestReconciliation(
+      startResp.manifest,
+      matchedFiles,
+      accumulator.successfullyUploadedPaths,
+    );
+    setReconciliation(recon);
 
     // ── Stage 4: trigger server-side parsing ──────────────────────────────────
+    // Always call /complete unless the user explicitly cancelled. The backend
+    // is idempotent (upsert semantics) and handles missing files gracefully.
     setPhase('parsing_analysis');
     let completeResp: CompleteResponse;
     try {
@@ -504,6 +569,8 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     }
 
     setFinalResult({ kind: 'with_analysis', data: completeResp });
+    // "failed" analysis_status (all tracks missing_required) still lands in
+    // partial_success so the user sees a useful summary rather than an error screen.
     setPhase(completeResp.analysis_status === 'completed' ? 'success' : 'partial_success');
   };
 
@@ -830,6 +897,11 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                     )}
                   </p>
                 )}
+                {retryingCount > 0 && (
+                  <p className="text-xs text-amber-400 mt-1">
+                    Retrying {retryingCount} failed file{retryingCount !== 1 ? 's' : ''}…
+                  </p>
+                )}
                 {mode === 'zip_bundle' && selectedFile && (
                   <p className="text-xs text-muted-foreground">
                     {fmtBytes(selectedFile.size)}
@@ -884,6 +956,26 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                         </p>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* Optional missing waveform files (doesn't affect analysis_status = completed) */}
+                {withAnalysis && (withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
+                  <div className="mb-4 p-3 rounded-xl bg-amber-500/8 border border-amber-500/20 text-left">
+                    <p className="text-[9px] uppercase tracking-widest text-amber-400/80 font-bold mb-2">
+                      Optional Waveforms
+                    </p>
+                    <div className="space-y-1">
+                      {withAnalysis.missing_optional_ext_count > 0 && (
+                        <SummaryRow label="Missing color waveform (EXT)" value={withAnalysis.missing_optional_ext_count} />
+                      )}
+                      {withAnalysis.missing_optional_2ex_count > 0 && (
+                        <SummaryRow label="Missing detail waveform (2EX)" value={withAnalysis.missing_optional_2ex_count} />
+                      )}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
+                      These optional files are missing but do not affect playback. Re-import from the same USB to add them.
+                    </p>
                   </div>
                 )}
 
@@ -973,7 +1065,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                   withAnalysis && (
                     <>
                       <p className="text-sm text-muted-foreground mb-5">
-                        {withAnalysis.completed_count.toLocaleString()} tracks fully analysed ·{' '}
+                        {withAnalysis.completed_count.toLocaleString()} tracks fully parsed ·{' '}
                         {(
                           withAnalysis.partial_count +
                           withAnalysis.failed_count +
@@ -981,12 +1073,14 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                         ).toLocaleString()}{' '}
                         with issues
                       </p>
-                      <div className="grid grid-cols-2 gap-2 mb-5">
+
+                      {/* Track-level counts */}
+                      <div className="grid grid-cols-2 gap-2 mb-4">
                         {[
-                          { label: 'Completed', value: withAnalysis.completed_count.toLocaleString() },
-                          { label: 'Partial', value: withAnalysis.partial_count.toLocaleString() },
-                          { label: 'Failed', value: withAnalysis.failed_count.toLocaleString() },
-                          { label: 'Missing', value: withAnalysis.missing_required_count.toLocaleString() },
+                          { label: 'Parsed', value: withAnalysis.completed_count.toLocaleString() },
+                          { label: 'Partial parse', value: withAnalysis.partial_count.toLocaleString() },
+                          { label: 'Parse failed', value: withAnalysis.failed_count.toLocaleString() },
+                          { label: 'Missing DAT', value: withAnalysis.missing_required_count.toLocaleString() },
                         ].map(({ label, value }) => (
                           <div key={label} className="glass rounded-xl p-3">
                             <p className="text-lg font-black font-mono">{value}</p>
@@ -996,49 +1090,38 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                           </div>
                         ))}
                       </div>
+
+                      {/* File-level upload summary from reconciliation */}
+                      {reconciliation && (reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0 || withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
+                        <div className="mb-4 p-3 rounded-xl bg-amber-500/8 border border-amber-500/20 text-left">
+                          <p className="text-[9px] uppercase tracking-widest text-amber-400/80 font-bold mb-2">
+                            File Summary
+                          </p>
+                          <div className="space-y-1">
+                            <SummaryRow label="Uploaded" value={reconciliation.successfullyUploadedFiles} />
+                            {reconciliation.failedFiles > 0 && (
+                              <SummaryRow label="Failed after retries" value={reconciliation.failedFiles} warn />
+                            )}
+                            {reconciliation.missingFiles > 0 && (
+                              <SummaryRow label="Not found on USB" value={reconciliation.missingFiles} warn />
+                            )}
+                            {withAnalysis.missing_optional_ext_count > 0 && (
+                              <SummaryRow label="Missing color waveform (EXT)" value={withAnalysis.missing_optional_ext_count} />
+                            )}
+                            {withAnalysis.missing_optional_2ex_count > 0 && (
+                              <SummaryRow label="Missing detail waveform (2EX)" value={withAnalysis.missing_optional_2ex_count} />
+                            )}
+                          </div>
+                          {(reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0) && (
+                            <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
+                              Re-import from the same USB to retry — already-uploaded files are skipped.
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </>
                   )
                 )}
-
-                <button
-                  onClick={handleDone}
-                  className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
-                >
-                  Done
-                </button>
-              </div>
-            )}
-
-            {/* ── Upload blocked ── */}
-            {phase === 'upload_blocked' && uploadBlockedSummary && (
-              <div className="text-center">
-                <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <AlertCircle className="text-red-400" size={28} />
-                </div>
-                <h2 className="text-xl font-bold mb-2">Analysis Upload Incomplete</h2>
-                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                  {uploadBlockedSummary.blockReason}
-                </p>
-                <p className="text-xs text-muted-foreground mb-5">
-                  Your library and playlists were saved. Re-import from the same USB to
-                  retry the analysis upload — already-received files will be skipped.
-                </p>
-
-                <div className="grid grid-cols-2 gap-2 mb-5">
-                  {[
-                    { label: 'Accepted', value: uploadBlockedSummary.receivedFiles.toLocaleString() },
-                    { label: 'Already stored', value: uploadBlockedSummary.alreadyReceivedFiles.toLocaleString() },
-                    { label: 'Rejected', value: (uploadBlockedSummary.rejectedFiles + uploadBlockedSummary.errorFiles).toLocaleString() },
-                    { label: 'Batches failed', value: uploadBlockedSummary.failedBatchCount.toLocaleString() },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="glass rounded-xl p-3">
-                      <p className="text-lg font-black font-mono">{value}</p>
-                      <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">
-                        {label}
-                      </p>
-                    </div>
-                  ))}
-                </div>
 
                 <button
                   onClick={handleDone}
@@ -1103,6 +1186,17 @@ function ReuseRow({ label, value }: { label: string; value: number }) {
     <div className="flex items-center justify-between">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-xs font-mono font-bold text-primary/80">{value.toLocaleString()}</span>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className={`text-xs font-mono font-bold ${warn ? 'text-amber-400' : 'text-foreground/70'}`}>
+        {value.toLocaleString()}
+      </span>
     </div>
   );
 }

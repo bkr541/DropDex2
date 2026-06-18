@@ -184,6 +184,7 @@ export async function fetchReviewTracks(importId: string): Promise<RekordboxTrac
 export interface TrackStatRow {
   id: string;
   import_id: string;
+  rekordbox_content_id: string;
   title: string;
   artist: string | null;
   genre: string | null;
@@ -191,16 +192,59 @@ export interface TrackStatRow {
   musical_key: string | null;
   camelot_key: string | null;
   date_added: string | null;
+  duration_seconds: number | null;
+  file_path: string | null;
+  file_format: string | null;
 }
 
 export async function fetchTrackStats(importId: string): Promise<TrackStatRow[]> {
   const { data, error } = await supabase
     .from('rekordbox_tracks')
-    .select('id, import_id, title, artist, genre, bpm, musical_key, camelot_key, date_added')
+    .select(
+      'id, import_id, rekordbox_content_id, title, artist, genre, bpm, musical_key, camelot_key, date_added, duration_seconds, file_path, file_format',
+    )
     .eq('import_id', importId)
     .order('date_added', { ascending: false, nullsFirst: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as TrackStatRow[];
+}
+
+/** Map a lightweight TrackStatRow (from fetchTrackStats) to a full RekordboxTrack shape. */
+export function trackStatRowToTrack(row: TrackStatRow): RekordboxTrack {
+  return {
+    id: row.id,
+    import_id: row.import_id,
+    rekordbox_content_id: row.rekordbox_content_id,
+    title: row.title,
+    artist: row.artist,
+    album: null,
+    remixer: null,
+    genre: row.genre,
+    label: null,
+    musical_key: row.musical_key,
+    camelot_key: row.camelot_key,
+    normalized_key_name: null,
+    key_tonic: null,
+    key_mode: null,
+    bpm: row.bpm,
+    duration_seconds: row.duration_seconds,
+    rating: null,
+    comments: null,
+    file_path: row.file_path,
+    file_format: row.file_format,
+    date_added: row.date_added,
+    created_at: '',
+    master_db_id: null,
+    master_content_id: null,
+    analysis_data_file_path: null,
+    analysed_bits: null,
+    cue_update_count: null,
+    analysis_data_update_count: null,
+    information_update_count: null,
+    analysis_reused_from_track_id: null,
+    analysis_parse_status: null,
+    analysis_parse_warnings: [],
+  };
 }
 
 export interface TrackPlaylistMembership {
