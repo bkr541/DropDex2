@@ -540,13 +540,6 @@ export function LibraryView({
     activeTab === 'tracks' ? visibleTrackIds : [],
   );
 
-  const importedDate = latestImport
-    ? new Date(latestImport.imported_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : '';
-  const isToday = latestImport
-    ? new Date(latestImport.imported_at).toDateString() === new Date().toDateString()
-    : false;
-
   return (
     <div className="space-y-5 md:max-w-7xl md:mx-auto">
       {/* Search */}

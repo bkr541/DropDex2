@@ -16,9 +16,9 @@ import {
 } from '../lib/api/rekordboxImport';
 import type { AnalysisStatusResponse, CompleteResponse } from '../lib/api/rekordboxImport';
 import { buildBatches, isAnlzFile } from '../lib/rekordbox/analysisPaths';
-import { buildResumeTargets, buildResumeMatchResult } from '../lib/rekordbox/resumeAnalysis';
-import type { ResumeMatchResult, ResumeTarget } from '../lib/rekordbox/resumeAnalysis';
-import { UploadAccumulator, isTransientFileFailure } from '../lib/rekordbox/analysisUploadResults';
+import { buildResumeTargets, buildResumeMatchResult, buildStatusSummary } from '../lib/rekordbox/resumeAnalysis';
+import type { ResumeMatchResult, ResumeTarget, ResumeStatusSummary } from '../lib/rekordbox/resumeAnalysis';
+import { UploadAccumulator } from '../lib/rekordbox/analysisUploadResults';
 import { isAbortError, uploadBatchWithRetry } from '../lib/rekordbox/uploadBatch';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -71,6 +71,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
   const [phase, setPhase] = useState<ResumePhase>('fetching_status');
   const [status, setStatus] = useState<AnalysisStatusResponse | null>(null);
   const [targets, setTargets] = useState<ResumeTarget[]>([]);
+  const [statusSummary, setStatusSummary] = useState<ResumeStatusSummary | null>(null);
   const [matchResult, setMatchResult] = useState<ResumeMatchResult | null>(null);
   const [progress, setProgress] = useState<ResumeProgress>({ filesUploaded: 0, filesTotal: 0, bytesUploaded: 0, bytesTotal: 0 });
   const [completeResp, setCompleteResp] = useState<CompleteResponse | null>(null);
@@ -87,6 +88,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
     setPhase('fetching_status');
     setStatus(null);
     setTargets([]);
+    setStatusSummary(null);
     setMatchResult(null);
     setCompleteResp(null);
     setErrorMessage('');
@@ -107,6 +109,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
         setStatus(resp);
         const t = buildResumeTargets(resp);
         setTargets(t);
+        setStatusSummary(buildStatusSummary(resp));
 
         if (t.length === 0) {
           // Nothing missing — just re-trigger parsing to clean up any parse failures.
@@ -122,15 +125,17 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
     })();
 
     return () => { ac.abort(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, importId]);
 
-  async function runParsing(impId: string, tok: string, ac: AbortController) {
+  async function runParsing(impId: string, tok: string, ac: AbortController, affectedIds?: string[]) {
     setPhase('parsing');
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const finalTok = session?.access_token ?? tok;
-      const resp = await completeRekordboxImport(impId, finalTok, ac.signal);
+      const resp = await completeRekordboxImport(impId, finalTok, {
+        affectedTrackIds: affectedIds,
+        signal: ac.signal,
+      });
       if (ac.signal.aborted) return;
       setCompleteResp(resp);
       setPhase(resp.analysis_status === 'completed' ? 'done' : 'done_partial');
@@ -231,7 +236,13 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
     if (uploadAborted) return;
 
-    await runParsing(importId, tok, ac);
+    // Selective reprocessing: only reparse tracks that received new files in this session.
+    const uploadedTrackIds = [...new Set(
+      result.matched.map((m) => m.trackId).filter((id): id is string => !!id),
+    )];
+    const affectedIds = uploadedTrackIds.length > 0 ? uploadedTrackIds : undefined;
+
+    await runParsing(importId, tok, ac, affectedIds);
   }, [importId, targets]);
 
   if (!isOpen) return null;
@@ -280,19 +291,44 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   <RefreshCw className="text-amber-400" size={24} />
                 </div>
                 <h2 className="text-xl font-bold mb-2">Resume Analysis</h2>
-                <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
-                  {targets.filter((t) => t.required).length > 0 && (
-                    <span className="text-amber-400 font-semibold">
-                      {targets.filter((t) => t.required).length} required DAT file{targets.filter((t) => t.required).length !== 1 ? 's' : ''} missing
-                    </span>
-                  )}
-                  {targets.filter((t) => t.required).length > 0 && targets.filter((t) => !t.required).length > 0 && ' · '}
-                  {targets.filter((t) => !t.required).length > 0 && (
-                    <span>
-                      {targets.filter((t) => !t.required).length} optional file{targets.filter((t) => !t.required).length !== 1 ? 's' : ''} missing
-                    </span>
-                  )}
-                </p>
+
+                {/* Grouped status summary */}
+                {statusSummary && (
+                  <div className="text-left space-y-1.5 mb-5 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)]">
+                    {statusSummary.missingRequired > 0 && (
+                      <SummaryRow label="Required DAT files missing" value={statusSummary.missingRequired} warn />
+                    )}
+                    {statusSummary.uploadFailed > 0 && (
+                      <SummaryRow label="Upload failures (retryable)" value={statusSummary.uploadFailed} warn />
+                    )}
+                    {statusSummary.parseFailed > 0 && (
+                      <SummaryRow label="Parse failures" value={statusSummary.parseFailed} warn />
+                    )}
+                    {statusSummary.missingOptional > 0 && (
+                      <SummaryRow label="Optional color/detail files" value={statusSummary.missingOptional} />
+                    )}
+                    {statusSummary.affectedTracks > 0 && (
+                      <SummaryRow label="Affected tracks" value={statusSummary.affectedTracks} />
+                    )}
+                  </div>
+                )}
+
+                {/* Legacy fallback for backends without structured targets */}
+                {!statusSummary && (
+                  <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
+                    {targets.filter((t) => t.required).length > 0 && (
+                      <span className="text-amber-400 font-semibold">
+                        {targets.filter((t) => t.required).length} required DAT file{targets.filter((t) => t.required).length !== 1 ? 's' : ''} missing
+                      </span>
+                    )}
+                    {targets.filter((t) => t.required).length > 0 && targets.filter((t) => !t.required).length > 0 && ' · '}
+                    {targets.filter((t) => !t.required).length > 0 && (
+                      <span>
+                        {targets.filter((t) => !t.required).length} optional file{targets.filter((t) => !t.required).length !== 1 ? 's' : ''} missing
+                      </span>
+                    )}
+                  </p>
+                )}
 
                 {wrongDrive && (
                   <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-left">
@@ -490,6 +526,17 @@ function StatusRow({ label, value, warn }: { label: string; value: number; warn?
     <div className="flex items-center justify-between">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className={`text-xs font-mono font-bold ${warn ? 'text-amber-400' : 'text-foreground/70'}`}>
+        {value.toLocaleString()}
+      </span>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className={`text-xs font-mono font-bold tabular-nums ${warn ? 'text-amber-400' : 'text-foreground/60'}`}>
         {value.toLocaleString()}
       </span>
     </div>

@@ -21,10 +21,14 @@ import type { TrackPreviewWaveform } from '../../lib/queries/waveformValidation'
 interface TrackDetailViewProps {
   track: RekordboxTrack;
   importId: string | null;
-  /** Authentic Rekordbox preview waveform data. When provided, replaces the decorative fallback. */
+  /** Authentic Rekordbox preview waveform data. When provided, replaces the unavailable state. */
   waveform?: TrackPreviewWaveform | null;
   /** True while the waveform is being fetched for this track. */
   waveformLoading?: boolean;
+  /** Set when the waveform fetch failed with a transient error (distinct from confirmed absence). */
+  waveformError?: string | null;
+  /** Called to retry a failed waveform fetch. Only relevant when waveformError is set. */
+  onRetryWaveform?: () => void;
   memberships: TrackPlaylistMembership[];
   membershipsLoading: boolean;
   onTrackClick: (t: RekordboxTrack) => void;
@@ -54,6 +58,8 @@ export function TrackDetailView({
   importId,
   waveform,
   waveformLoading,
+  waveformError,
+  onRetryWaveform,
   memberships,
   membershipsLoading,
   onTrackClick,
@@ -88,7 +94,7 @@ export function TrackDetailView({
         <div className="relative aspect-video w-full glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)] group">
           <div className="absolute inset-0 brand-gradient opacity-10 group-hover:opacity-20 transition-opacity" />
 
-          {/* Waveform — authentic Rekordbox data when available, decorative fallback otherwise */}
+          {/* Waveform — idle/loading/available/unavailable/error states */}
           <div className="absolute bottom-0 left-0 right-0 px-3 pb-2" style={{ height: 80 }}>
             {waveform != null ? (
               <RekordboxPreviewWaveform
@@ -96,15 +102,39 @@ export function TrackDetailView({
                 height={78}
                 activeProgress={progress}
                 onSeek={canSeek ? handleWaveformSeek : undefined}
-                ariaLabel="Track waveform"
+                ariaLabel={`Waveform for ${track.title}`}
               />
+            ) : waveformLoading ? (
+              /* Loading skeleton — neutral bars, no label */
+              <div className="w-full h-full flex items-end gap-0.5 opacity-20">
+                {Array.from({ length: 60 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 rounded-sm bg-primary animate-pulse"
+                    style={{ height: `${30 + Math.sin(i * 0.4) * 20}%` }}
+                  />
+                ))}
+              </div>
+            ) : waveformError ? (
+              <div className="flex items-center justify-center h-full gap-2 text-xs text-muted-foreground/60">
+                <span>Waveform unavailable</span>
+                {onRetryWaveform && (
+                  <button
+                    onClick={onRetryWaveform}
+                    className="text-primary/70 hover:text-primary underline text-xs"
+                  >
+                    Retry
+                  </button>
+                )}
+              </div>
             ) : (
+              /* Confirmed absent — waveform not stored for this track */
               <WaveformDisplay
                 peaks={null}
                 seed={track.id}
                 barCount={60}
                 color="primary"
-                showFallbackLabel={!waveformLoading}
+                showFallbackLabel
               />
             )}
           </div>

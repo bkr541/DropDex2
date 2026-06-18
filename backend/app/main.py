@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Optional
 
 from fastapi import Depends, FastAPI, File, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +20,7 @@ from .import_service import run_import
 from .models import (
     AnalysisStatusResponse,
     BatchUploadResponse,
+    CompleteRequest,
     CompleteResponse,
     ImportResponse,
     ImportStartResponse,
@@ -166,16 +167,18 @@ async def rekordbox_analysis_batch(
 )
 async def rekordbox_analysis_complete(
     import_id: str,
+    body: Optional[CompleteRequest] = None,
     user_id: str = Depends(get_current_user_id),
 ) -> CompleteResponse:
     """
     Parse all uploaded ANLZ assets and persist the analysis results.
 
-    Downloads uploaded ANLZ files from Storage, parses them with the ANLZ parser,
-    and persists the per-track parse status.  Call this after all desired ANLZ
-    files have been uploaded via the analysis-batch endpoint.
+    When body.affected_track_ids is provided, only those tracks are reparsed
+    (selective reprocessing for resume-analysis sessions). Omit the body or pass
+    an empty/null list to reparse all tracks.
     """
-    return await complete_analysis_import(import_id, user_id)
+    affected_track_ids = body.affected_track_ids if body else None
+    return await complete_analysis_import(import_id, user_id, affected_track_ids=affected_track_ids)
 
 
 @app.get(

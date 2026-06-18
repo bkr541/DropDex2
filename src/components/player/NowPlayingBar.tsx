@@ -38,15 +38,6 @@ function usePlayerTime(getAudioElement: () => HTMLAudioElement | null, active: b
     }
 
     let running = true;
-    function tick() {
-      if (!running) return;
-      const audio = getAudioElement();
-      if (audio) {
-        setCurrentTime(audio.currentTime);
-        setDuration(isFinite(audio.duration) ? audio.duration : 0);
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    }
     // Throttle to ~4fps for the displayed timestamps — no need for 60fps
     let lastUpdate = 0;
     function tickThrottled() {
@@ -104,8 +95,6 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
   const { currentTime, duration } = usePlayerTime(getAudioElement, isActive && !isError);
 
   if (!isActive) return null;
-
-  const progress = duration > 0 ? currentTime / duration : 0;
 
   function handleSeek(e: React.ChangeEvent<HTMLInputElement>) {
     seek(parseFloat(e.target.value));

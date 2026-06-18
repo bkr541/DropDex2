@@ -168,10 +168,6 @@ function makeColorCols(hs: number[]) {
   return hs.map((h) => ({ h: h / COLOR_HEIGHT_MAX, r: 100, g: 100, b: 100 }));
 }
 
-function makeMonoCols(hs: number[]) {
-  return hs.map((h) => ({ h: h / MONO_HEIGHT_MAX, i: 0 }));
-}
-
 describe('buildDisplayBuckets — empty input', () => {
   it('returns empty array for empty columns', () => {
     expect(buildDisplayBuckets([], 200)).toEqual([]);

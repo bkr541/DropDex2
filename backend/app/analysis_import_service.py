@@ -714,9 +714,17 @@ async def _process_analysis_batch_inner(
     )
 
 
-async def complete_analysis_import(import_id: str, user_id: str) -> CompleteResponse:
+async def complete_analysis_import(
+    import_id: str,
+    user_id: str,
+    affected_track_ids: Optional[List[str]] = None,
+) -> CompleteResponse:
     """
     Download all uploaded ANLZ assets, parse them, and persist analysis results.
+
+    When `affected_track_ids` is provided (non-empty), only those tracks are reparsed.
+    This enables selective reprocessing during resume-analysis sessions — only tracks
+    that received new file uploads in this pass are touched, rather than the full library.
     """
     sb = _create_supabase()
     import_row = _require_import_for_user(sb, import_id, user_id)
@@ -730,15 +738,20 @@ async def complete_analysis_import(import_id: str, user_id: str) -> CompleteResp
         logger.warning("Failed to set analysis_status=parsing for %s: %s", import_id, exc)
 
     from .supabase_pagination import fetch_all_rows  # noqa: PLC0415
-    uploaded_assets: List[dict] = fetch_all_rows(
-        lambda: (
+
+    # Build asset query; filter by affected_track_ids for selective reprocessing.
+    def _asset_query():
+        q = (
             sb.table("rekordbox_analysis_assets")
             .select("id, track_id, asset_type, relative_path, storage_path, sha256")
             .eq("import_id", import_id)
             .eq("upload_status", "uploaded")
-        ),
-        order_column="id",
-    )
+        )
+        if affected_track_ids:
+            q = q.in_("track_id", affected_track_ids)
+        return q
+
+    uploaded_assets: List[dict] = fetch_all_rows(_asset_query, order_column="id")
 
     assets_by_track: Dict[str, List[dict]] = {}
     for asset in uploaded_assets:
@@ -747,6 +760,10 @@ async def complete_analysis_import(import_id: str, user_id: str) -> CompleteResp
             assets_by_track.setdefault(tid, []).append(asset)
 
     tracks = _get_tracks_with_paths(sb, import_id)
+    # Restrict to affected tracks when selective reprocessing
+    if affected_track_ids:
+        affected_set = set(affected_track_ids)
+        tracks = [t for t in tracks if t.get("id") in affected_set]
 
     # Diagnostic invariant: loaded counts must match what was stored.
     _expected = import_row.get("analysis_expected_track_count") or 0
@@ -1012,11 +1029,12 @@ async def complete_analysis_import(import_id: str, user_id: str) -> CompleteResp
 
 
 async def get_analysis_status(import_id: str, user_id: str) -> AnalysisStatusResponse:
-    """Return current analysis status for an import."""
+    """Return current analysis status for an import, including structured unresolved targets."""
     from dropdex_importer.analysis_paths import (  # noqa: PLC0415
         derive_anlz_siblings,
         normalize_anlz_path,
     )
+    from .models import ResumeTargetItem  # noqa: PLC0415
 
     sb = _create_supabase()
     import_row = _require_import_for_user(sb, import_id, user_id)
@@ -1027,34 +1045,98 @@ async def get_analysis_status(import_id: str, user_id: str) -> AnalysisStatusRes
     uploaded_assets_status = fetch_all_rows(
         lambda: (
             sb.table("rekordbox_analysis_assets")
-            .select("relative_path, asset_type")
+            .select("relative_path, asset_type, upload_status")
             .eq("import_id", import_id)
-            .eq("upload_status", "uploaded")
         ),
         order_column="id",
     )
+
+    # Track uploaded (by type) and failed uploads (by relative_path).
     uploaded_by_type: Dict[str, set] = {"DAT": set(), "EXT": set(), "2EX": set()}
+    failed_uploads_by_type: Dict[str, set] = {"DAT": set(), "EXT": set(), "2EX": set()}
     for r in uploaded_assets_status:
         atype = r.get("asset_type", "")
-        if atype in uploaded_by_type:
-            uploaded_by_type[atype].add(r["relative_path"].lower())
+        if atype not in uploaded_by_type:
+            continue
+        path_lower = r["relative_path"].lower()
+        status = r.get("upload_status", "")
+        if status == "uploaded":
+            uploaded_by_type[atype].add(path_lower)
+        elif status in ("failed", "error"):
+            failed_uploads_by_type[atype].add(path_lower)
 
     missing_required: List[str] = []
     missing_optional_ext: List[str] = []
     missing_optional_2ex: List[str] = []
+    unresolved_targets: List[ResumeTargetItem] = []
+    affected_track_ids: set = set()
 
     for track in tracks:
+        track_id = track.get("id", "")
+        rekordbox_content_id = track.get("rekordbox_content_id")
         raw = track.get("analysis_data_file_path") or ""
         canonical = normalize_anlz_path(raw)
         if not canonical:
             continue
         dat_path, ext_path, two_ex_path = derive_anlz_siblings(canonical)
+        track_has_target = False
+
+        # DAT — required
         if dat_path.lower() not in uploaded_by_type["DAT"]:
             missing_required.append(dat_path)
+            upload_failed = dat_path.lower() in failed_uploads_by_type["DAT"]
+            unresolved_targets.append(ResumeTargetItem(
+                track_id=track_id,
+                rekordbox_content_id=rekordbox_content_id,
+                relative_path=dat_path,
+                asset_type="DAT",
+                required=True,
+                status="upload_failed" if upload_failed else "missing",
+                reason="Upload failed — retry" if upload_failed else None,
+                attempt_count=None,
+            ))
+            track_has_target = True
+
+        # EXT — optional color waveform
         if ext_path.lower() not in uploaded_by_type["EXT"]:
             missing_optional_ext.append(ext_path)
+            upload_failed = ext_path.lower() in failed_uploads_by_type["EXT"]
+            unresolved_targets.append(ResumeTargetItem(
+                track_id=track_id,
+                rekordbox_content_id=rekordbox_content_id,
+                relative_path=ext_path,
+                asset_type="EXT",
+                required=False,
+                status="upload_failed" if upload_failed else "optional_missing",
+                reason="Upload failed — retry" if upload_failed else None,
+                attempt_count=None,
+            ))
+            track_has_target = True
+
+        # 2EX — optional detail waveform
         if two_ex_path.lower() not in uploaded_by_type["2EX"]:
             missing_optional_2ex.append(two_ex_path)
+            upload_failed = two_ex_path.lower() in failed_uploads_by_type["2EX"]
+            unresolved_targets.append(ResumeTargetItem(
+                track_id=track_id,
+                rekordbox_content_id=rekordbox_content_id,
+                relative_path=two_ex_path,
+                asset_type="2EX",
+                required=False,
+                status="upload_failed" if upload_failed else "optional_missing",
+                reason="Upload failed — retry" if upload_failed else None,
+                attempt_count=None,
+            ))
+            track_has_target = True
+
+        if track_has_target:
+            affected_track_ids.add(track_id)
+
+    # Summary counts from structured targets
+    missing_required_count = sum(1 for t in unresolved_targets if t.required and t.status in ("missing", "parse_failed"))
+    missing_optional_count = sum(1 for t in unresolved_targets if not t.required and t.status == "optional_missing")
+    failed_upload_count = sum(1 for t in unresolved_targets if t.status == "upload_failed")
+    failed_parse_count = sum(1 for t in unresolved_targets if t.status == "parse_failed")
 
     return AnalysisStatusResponse(
         import_id=import_id,
@@ -1069,4 +1151,10 @@ async def get_analysis_status(import_id: str, user_id: str) -> AnalysisStatusRes
         missing_optional_2ex=missing_optional_2ex,
         parser_version=import_row.get("analysis_parser_version"),
         warnings=import_row.get("analysis_warnings") or [],
+        unresolved_targets=unresolved_targets,
+        missing_required_count=missing_required_count,
+        missing_optional_count=missing_optional_count,
+        failed_upload_count=failed_upload_count,
+        failed_parse_count=failed_parse_count,
+        affected_track_count=len(affected_track_ids),
     )

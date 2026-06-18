@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveUsbFile, checkRekordboxStructure, type UsbFileResult, type UsbFileResolutionError } from './resolveUsbFile';
+import { resolveUsbFile, checkRekordboxStructure, type UsbFileResult, type UsbFileResolutionError, type UsbRootCheck } from './resolveUsbFile';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +30,16 @@ type DirTree = {
 };
 
 function makeDir(name: string, tree: DirTree): FileSystemDirectoryHandle {
+  // Async iterator that yields [name, handle] pairs for dirs and files.
+  async function* makeAsyncIterator(): AsyncIterableIterator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]> {
+    for (const [dirName, subtree] of Object.entries(tree.dirs ?? {})) {
+      yield [dirName, makeDir(dirName, subtree)];
+    }
+    for (const [fileName, file] of Object.entries(tree.files ?? {})) {
+      yield [fileName, makeFileHandle(file)];
+    }
+  }
+
   return {
     kind: 'directory',
     name,
@@ -46,7 +56,7 @@ function makeDir(name: string, tree: DirTree): FileSystemDirectoryHandle {
     }),
     removeEntry: vi.fn(),
     resolve: vi.fn(),
-    [Symbol.asyncIterator]: vi.fn(),
+    [Symbol.asyncIterator]: makeAsyncIterator,
     entries: vi.fn(),
     keys: vi.fn(),
     values: vi.fn(),
@@ -183,30 +193,119 @@ describe('resolveUsbFile — no audio persistence', () => {
   });
 });
 
-// ── checkRekordboxStructure ────────────────────────────────────────────────────
+// ── checkRekordboxStructure (discriminated UsbRootCheck) ──────────────────────
 
-describe('checkRekordboxStructure', () => {
-  it('reports all found when all indicators present', async () => {
+// Helper: build a root that throws a specific DOMException for every getDirectoryHandle call.
+function makeErrorRoot(exceptionName: string): FileSystemDirectoryHandle {
+  return {
+    kind: 'directory',
+    name: 'USB_ROOT',
+    isSameEntry: vi.fn(),
+    queryPermission: vi.fn(),
+    requestPermission: vi.fn(),
+    getDirectoryHandle: vi.fn(async () => {
+      throw new DOMException('error', exceptionName);
+    }),
+    getFileHandle: vi.fn(),
+    removeEntry: vi.fn(),
+    resolve: vi.fn(),
+    [Symbol.asyncIterator]: vi.fn(),
+    entries: vi.fn(),
+    keys: vi.fn(),
+    values: vi.fn(),
+  } as unknown as FileSystemDirectoryHandle;
+}
+
+describe('checkRekordboxStructure — connected root', () => {
+  it('returns available with all folders found', async () => {
     const root = makeDir('USB', {
       dirs: { PIONEER: {}, Contents: {}, Music: {} },
     });
-    const { found, missing } = await checkRekordboxStructure(root);
-    expect(found).toEqual(['PIONEER', 'Contents', 'Music']);
-    expect(missing).toEqual([]);
+    const result = await checkRekordboxStructure(root);
+    expect(result.status).toBe('available');
+    if (result.status === 'available') {
+      expect(result.foundFolders).toEqual(['PIONEER', 'Contents', 'Music']);
+      expect(result.missingFolders).toHaveLength(0);
+    }
   });
 
-  it('reports missing folders when structure is absent', async () => {
-    const root = makeDir('Downloads', {});
-    const { found, missing } = await checkRekordboxStructure(root);
-    expect(found).toEqual([]);
-    expect(missing).toEqual(['PIONEER', 'Contents', 'Music']);
-  });
-
-  it('reports partial match correctly', async () => {
+  it('returns available with missingFolders when only PIONEER exists', async () => {
     const root = makeDir('USB', { dirs: { PIONEER: {} } });
-    const { found, missing } = await checkRekordboxStructure(root);
-    expect(found).toContain('PIONEER');
-    expect(missing).toContain('Contents');
-    expect(missing).toContain('Music');
+    const result = await checkRekordboxStructure(root);
+    expect(result.status).toBe('available');
+    if (result.status === 'available') {
+      expect(result.foundFolders).toContain('PIONEER');
+      expect(result.missingFolders).toContain('Contents');
+      expect(result.missingFolders).toContain('Music');
+    }
+  });
+});
+
+describe('checkRekordboxStructure — wrong root', () => {
+  it('returns wrong_root when all folders are NotFoundError', async () => {
+    const root = makeDir('Downloads', {});
+    const result = await checkRekordboxStructure(root);
+    expect(result.status).toBe('wrong_root');
+    if (result.status === 'wrong_root') {
+      expect(result.foundFolders).toHaveLength(0);
+      expect(result.missingFolders).toHaveLength(3);
+    }
+  });
+});
+
+describe('checkRekordboxStructure — permission required', () => {
+  it('returns permission_required on NotAllowedError', async () => {
+    const root = makeErrorRoot('NotAllowedError');
+    const result = await checkRekordboxStructure(root);
+    expect(result.status).toBe('permission_required');
+  });
+});
+
+describe('checkRekordboxStructure — USB unavailable', () => {
+  it('returns unavailable on SecurityError (not swallowed as missing)', async () => {
+    const root = makeErrorRoot('SecurityError');
+    const result = await checkRekordboxStructure(root);
+    expect(result.status).toBe('unavailable');
+    if (result.status === 'unavailable') {
+      // Implementation uses 'security' for the SecurityError case.
+      expect(result.errorCode).toBe('security');
+    }
+  });
+
+  it('returns unavailable on AbortError — not swallowed as missing folder', async () => {
+    const root = makeErrorRoot('AbortError');
+    const result = await checkRekordboxStructure(root);
+    expect(result.status).toBe('unavailable');
+    // The key regression: previously AbortError would push name to `missing[]`.
+    // Post-fix, this must be 'unavailable', never 'available' or 'wrong_root'.
+    expect(result.status).not.toBe('available');
+    expect(result.status).not.toBe('wrong_root');
+  });
+
+  it('returns unavailable on non-DOMException I/O error', async () => {
+    const root = makeDir('USB', {});
+    (root.getDirectoryHandle as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('I/O error reading USB'),
+    );
+    const result = await checkRekordboxStructure(root);
+    expect(result.status).toBe('unavailable');
+    if (result.status === 'unavailable') {
+      expect(result.errorCode).toBe('io_error');
+    }
+  });
+});
+
+describe('checkRekordboxStructure — UsbRootCheck type narrowing', () => {
+  it('permission_required has no extra fields to accidentally read', () => {
+    const c: UsbRootCheck = { status: 'permission_required' };
+    expect(c.status).toBe('permission_required');
+  });
+
+  it('unavailable always carries errorCode and message', () => {
+    const c: UsbRootCheck = { status: 'unavailable', errorCode: 'AbortError', message: 'gone' };
+    if (c.status === 'unavailable') {
+      expect(c.errorCode).toBe('AbortError');
+      expect(c.message).toBe('gone');
+    }
   });
 });

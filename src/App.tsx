@@ -3,11 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import {
   Search,
   Music,
-  ChevronRight,
   ChevronLeft,
   Settings,
   TrendingUp,
@@ -20,6 +19,7 @@ import {
   Loader2,
   Radio,
   Pencil,
+  Usb,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatKey, formatPosition, formatPlaylistDuration } from './lib/utils';
@@ -34,19 +34,20 @@ import { useRekordboxPlaylistTracks } from './hooks/useRekordboxPlaylistTracks';
 import { useRecentTracks } from './hooks/useRekordboxTracks';
 import { useTrackPlaylists } from './hooks/useTrackPlaylists';
 import { useImportList } from './hooks/useImportList';
-import { getCachedWaveform } from './hooks/useTrackPreviewWaveforms';
+import { getCachedWaveform, setCachedWaveform } from './hooks/useTrackPreviewWaveforms';
 import { fetchTrackPreviewWaveforms } from './lib/queries/analysisData';
 import { fetchReviewTracks, setActiveImport, deleteImport } from './lib/queries/rekordbox';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { ResumeAnalysisModal } from './components/ResumeAnalysisModal';
-import { DiscoveryView } from './components/discovery/DiscoveryView';
-import { SearchView } from './components/search/SearchView';
+const DiscoveryView = lazy(() => import('./components/discovery/DiscoveryView').then(m => ({ default: m.DiscoveryView })));
+const SearchView = lazy(() => import('./components/search/SearchView').then(m => ({ default: m.SearchView })));
+const ReviewView = lazy(() => import('./components/library/ReviewView').then(m => ({ default: m.ReviewView })));
+const ReviewEmptyState = lazy(() => import('./components/library/ReviewView').then(m => ({ default: m.ReviewEmptyState })));
 import { LibraryView } from './components/library/LibraryView';
 import { PlaylistEditView } from './components/library/PlaylistEditView';
 import { TrackDetailView } from './components/library/TrackDetailView';
-import { ReviewView, ReviewEmptyState } from './components/library/ReviewView';
 import { EditProfileView } from './components/profile/EditProfileView';
-import { UsbConnectionProvider } from './contexts/UsbConnectionContext';
+import { UsbConnectionProvider, useUsbConnection } from './contexts/UsbConnectionContext';
 import { UsbConnectionButton } from './components/usb/UsbConnectionButton';
 import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerContext';
 import { NowPlayingBar } from './components/player/NowPlayingBar';
@@ -67,43 +68,77 @@ interface MobileNavProps {
 
 function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavProps) {
   const { status: playerStatus } = useAudioPlayer();
+  const { status: usbStatus, volumeName, connect: connectUsb, reconnect: reconnectUsb, selectNewUsb, ensurePermission } = useUsbConnection();
   const hasPlayer = playerStatus !== 'idle';
+
+  function handleUsbPress() {
+    if (usbStatus === 'connected') return;
+    if (usbStatus === 'permission-required') void ensurePermission();
+    else if (usbStatus === 'unavailable' || usbStatus === 'error') void reconnectUsb();
+    else if (usbStatus === 'wrong_root') void selectNewUsb();
+    else void connectUsb();
+  }
+
+  const usbConnected = usbStatus === 'connected';
+  const usbProblem = usbStatus === 'unavailable' || usbStatus === 'permission-required' || usbStatus === 'wrong_root' || usbStatus === 'error';
+  const usbLabel = usbStatus === 'connecting' ? 'Connecting' : usbConnected ? (volumeName ?? 'USB') : 'Connect';
+
   return (
     <nav className={cn(
-      'md:hidden fixed left-0 right-0 glass border-t border-[var(--color-border-subtle)] px-4 pt-4 pb-8 flex justify-between items-center z-40 transition-all duration-200',
+      'md:hidden fixed left-0 right-0 glass border-t border-[var(--color-border-subtle)] px-2 pt-4 pb-8 flex justify-between items-center z-40 transition-all duration-200',
       hasPlayer ? 'bottom-16' : 'bottom-0',
     )}>
       <button
         onClick={() => setCurrentView('home')}
-        className={cn('flex flex-col items-center gap-1 transition-all', currentView === 'home' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
+        className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'home' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
       >
         <Music size={20} />
-        <span className="text-[8px] font-bold uppercase tracking-widest truncate max-w-[56px]">{libraryLabel}</span>
+        <span className="text-[8px] font-bold uppercase tracking-widest truncate max-w-[48px]">{libraryLabel}</span>
       </button>
       <button
         onClick={() => setCurrentView('review')}
-        className={cn('flex flex-col items-center gap-1 transition-all', currentView === 'review' ? 'text-secondary neon-text-purple' : 'text-muted-foreground')}
+        className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'review' ? 'text-secondary neon-text-purple' : 'text-muted-foreground')}
       >
         <TrendingUp size={20} />
         <span className="text-[8px] font-bold uppercase tracking-widest">Review</span>
       </button>
+
+      {/* USB connection — center of mobile nav */}
       <button
-        onClick={() => setCurrentView('discovery')}
-        className={cn('flex flex-col items-center gap-1 transition-all', currentView === 'discovery' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
+        onClick={handleUsbPress}
+        disabled={usbStatus === 'unsupported' || usbStatus === 'connecting'}
+        aria-label={usbConnected ? `USB connected: ${volumeName ?? 'USB'}` : 'Connect USB drive'}
+        className={cn(
+          'flex flex-col items-center gap-1 transition-all px-2 relative',
+          usbConnected ? 'text-green-400' : usbProblem ? 'text-amber-400' : 'text-muted-foreground',
+          (usbStatus === 'unsupported' || usbStatus === 'connecting') && 'opacity-50 cursor-not-allowed',
+        )}
       >
-        <Radio size={20} />
-        <span className="text-[8px] font-bold uppercase tracking-widest">Discover</span>
+        <div className="relative">
+          <Usb size={20} />
+          {usbConnected && (
+            <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-green-500" />
+          )}
+          {usbProblem && (
+            <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-amber-400" />
+          )}
+          {usbStatus === 'connecting' && (
+            <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+          )}
+        </div>
+        <span className="text-[8px] font-bold uppercase tracking-widest truncate max-w-[48px]">{usbLabel}</span>
       </button>
+
       <button
         onClick={() => setCurrentView('search')}
-        className={cn('flex flex-col items-center gap-1 transition-all', currentView === 'search' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
+        className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'search' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
       >
         <Search size={20} />
         <span className="text-[8px] font-bold uppercase tracking-widest">Search</span>
       </button>
       <button
         onClick={() => setCurrentView('settings')}
-        className={cn('flex flex-col items-center gap-1 transition-all', currentView === 'settings' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
+        className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'settings' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
       >
         <Settings size={20} />
         <span className="text-[8px] font-bold uppercase tracking-widest">Setup</span>
@@ -113,18 +148,6 @@ function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavPr
 }
 
 // --- Components ---
-
-const IconButton = ({ icon: Icon, onClick, className }: any) => (
-  <button
-    onClick={onClick}
-    className={cn(
-      'p-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-slate-400 hover:text-foreground transition-all active:scale-90',
-      className
-    )}
-  >
-    <Icon size={20} />
-  </button>
-);
 
 interface TrackCardProps {
   track: RekordboxTrack;
@@ -195,6 +218,8 @@ export default function App() {
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
   const [selectedTrackWaveform, setSelectedTrackWaveform] = useState<import('./lib/queries/waveformValidation').TrackPreviewWaveform | null>(null);
   const [selectedTrackWaveformLoading, setSelectedTrackWaveformLoading] = useState(false);
+  const [selectedTrackWaveformError, setSelectedTrackWaveformError] = useState<string | null>(null);
+  const [waveformRetryTrigger, setWaveformRetryTrigger] = useState(0);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
   const [resumeImportId, setResumeImportId] = useState<string | null>(null);
@@ -246,6 +271,7 @@ export default function App() {
     if (!trackId || !importId) {
       setSelectedTrackWaveform(null);
       setSelectedTrackWaveformLoading(false);
+      setSelectedTrackWaveformError(null);
       return;
     }
     const cached = getCachedWaveform(importId, trackId);
@@ -253,18 +279,27 @@ export default function App() {
       // Cache hit: TrackPreviewWaveform (real data) or null (confirmed unavailable)
       setSelectedTrackWaveform(cached);
       setSelectedTrackWaveformLoading(false);
+      setSelectedTrackWaveformError(null);
       return;
     }
-    // Cache miss — fetch on demand without polluting the LibraryView waveform state.
+    // Cache miss — fetch on demand and write back to shared cache.
     setSelectedTrackWaveform(null);
     setSelectedTrackWaveformLoading(true);
+    setSelectedTrackWaveformError(null);
     fetchTrackPreviewWaveforms([trackId])
       .then(({ waveforms }) => {
-        setSelectedTrackWaveform(waveforms.get(trackId) ?? null);
+        const result = waveforms.get(trackId) ?? null;
+        setCachedWaveform(importId, trackId, result);
+        setSelectedTrackWaveform(result);
+        setSelectedTrackWaveformError(null);
       })
-      .catch(() => {})
+      .catch((err: unknown) => {
+        setCachedWaveform(importId, trackId, 'error');
+        setSelectedTrackWaveformError(err instanceof Error ? err.message : 'Failed to load waveform.');
+        setSelectedTrackWaveform(null);
+      })
       .finally(() => setSelectedTrackWaveformLoading(false));
-  }, [selectedTrack?.id, importId]);
+  }, [selectedTrack?.id, importId, waveformRetryTrigger]);
 
 
   // Compute playlist statistics from loaded tracks
@@ -781,6 +816,12 @@ export default function App() {
                   importId={importId}
                   waveform={selectedTrackWaveform}
                   waveformLoading={selectedTrackWaveformLoading}
+                  waveformError={selectedTrackWaveformError}
+                  onRetryWaveform={() => {
+                    // getCachedWaveform returns undefined for QUERY_FAILED entries,
+                    // so bumping the trigger causes the effect to re-fetch.
+                    setWaveformRetryTrigger((n) => n + 1);
+                  }}
                   memberships={trackPlaylists}
                   membershipsLoading={trackPlaylistsLoading}
                   onTrackClick={handleTrackClick}
@@ -798,16 +839,18 @@ export default function App() {
                 exit={{ opacity: 0, y: 20 }}
                 className="space-y-6 pb-32 md:pb-8 md:max-w-5xl md:mx-auto"
               >
-                {!importId ? (
-                  <ReviewEmptyState onImport={() => setIsImportModalOpen(true)} />
-                ) : (
-                  <ReviewView
-                    importId={importId}
-                    tracks={reviewTracks}
-                    loading={reviewTracks.length === 0}
-                    onTrackClick={handleTrackClick}
-                  />
-                )}
+                <Suspense fallback={null}>
+                  {!importId ? (
+                    <ReviewEmptyState onImport={() => setIsImportModalOpen(true)} />
+                  ) : (
+                    <ReviewView
+                      importId={importId}
+                      tracks={reviewTracks}
+                      loading={reviewTracks.length === 0}
+                      onTrackClick={handleTrackClick}
+                    />
+                  )}
+                </Suspense>
               </motion.div>
             )}
 
@@ -1020,7 +1063,9 @@ export default function App() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
               >
-                <DiscoveryView accessToken={session?.access_token ?? null} />
+                <Suspense fallback={null}>
+                  <DiscoveryView accessToken={session?.access_token ?? null} />
+                </Suspense>
               </motion.div>
             )}
 
@@ -1032,7 +1077,9 @@ export default function App() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
               >
-                <SearchView />
+                <Suspense fallback={null}>
+                  <SearchView />
+                </Suspense>
               </motion.div>
             )}
 

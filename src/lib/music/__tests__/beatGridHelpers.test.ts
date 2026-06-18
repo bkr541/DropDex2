@@ -34,7 +34,6 @@ describe('nearestBeat', () => {
 
   it('returns beat with smallest absolute distance', () => {
     const beats = makeBeats(4, 120);
-    const msPerBeat = 500;
     // ms at beat[1] = 500; query at 300 is closer to beat[0] (0) vs beat[1] (500)? 300 vs 200
     // Actually 300 from beat[0]=0 is 300; from beat[1]=500 is 200 → beat[1]
     const result = nearestBeat(beats, 300);

@@ -49,6 +49,30 @@ export function getCachedWaveform(
   return v;
 }
 
+/**
+ * Write a single waveform result to the shared module-level cache.
+ *
+ * Used by cold-fetch paths (e.g. TrackDetail cold open) to populate the cache
+ * so subsequent LibraryView renders see the result as a cache hit.
+ *
+ * Pass `null` for `waveform` to mark the track as confirmed absent.
+ * Pass `'error'` to mark as a transient query failure (eligible for retry).
+ */
+export function setCachedWaveform(
+  importId: string,
+  trackId: string,
+  waveform: TrackPreviewWaveform | null | 'error',
+): void {
+  const cache = getImportCache(importId);
+  if (waveform === null) {
+    cache.set(trackId, UNAVAILABLE);
+  } else if (waveform === 'error') {
+    cache.set(trackId, QUERY_FAILED);
+  } else {
+    cache.set(trackId, waveform);
+  }
+}
+
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
 export interface UseTrackPreviewWaveformsResult {

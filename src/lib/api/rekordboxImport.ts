@@ -83,6 +83,18 @@ export interface CompleteResponse {
   tracks: TrackCompleteStatus[];
 }
 
+/** Structured per-track unresolved target (new in v2 API). */
+export interface ResumeTargetResponse {
+  track_id: string;
+  rekordbox_content_id: string | null;
+  relative_path: string;
+  asset_type: 'DAT' | 'EXT' | '2EX';
+  required: boolean;
+  status: 'missing' | 'upload_failed' | 'parse_failed' | 'optional_missing';
+  reason: string | null;
+  attempt_count: number | null;
+}
+
 export interface AnalysisStatusResponse {
   import_id: string;
   analysis_status: string;
@@ -91,11 +103,19 @@ export interface AnalysisStatusResponse {
   parsed_track_count: number;
   failed_track_count: number;
   asset_count: number;
+  // Legacy path arrays — still present for backward compat.
   missing_required_paths: string[];
   missing_optional_ext: string[];
   missing_optional_2ex: string[];
   parser_version: string | null;
   warnings: Record<string, unknown>[];
+  // Structured targets (new) — empty array on older backends.
+  unresolved_targets: ResumeTargetResponse[];
+  missing_required_count: number;
+  missing_optional_count: number;
+  failed_upload_count: number;
+  failed_parse_count: number;
+  affected_track_count: number;
 }
 
 /** One ANLZ file to upload — carries its canonical Storage path. */
@@ -220,14 +240,23 @@ export async function uploadRekordboxAnalysisBatch(
 export async function completeRekordboxImport(
   importId: string,
   accessToken: string,
-  signal?: AbortSignal,
+  options?: { affectedTrackIds?: string[]; signal?: AbortSignal },
 ): Promise<CompleteResponse> {
+  const body =
+    options?.affectedTrackIds && options.affectedTrackIds.length > 0
+      ? JSON.stringify({ affected_track_ids: options.affectedTrackIds })
+      : undefined;
+
   const response = await fetch(
     `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/complete`,
     {
       method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}` },
-      signal,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body,
+      signal: options?.signal,
     },
   );
   return parseResponse<CompleteResponse>(response);

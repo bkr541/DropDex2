@@ -35,7 +35,6 @@ import type { TrackPreviewWaveform } from '../../lib/queries/waveformValidation'
 import {
   buildDisplayBuckets,
   clampProgress,
-  isNormalizedColorCol,
   normalizeWaveform,
   resolveMonoBaseColor,
   type NormalizedCol,

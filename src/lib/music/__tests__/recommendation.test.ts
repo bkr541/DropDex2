@@ -5,7 +5,7 @@
  * BPM proximity, merge/rank, and edge-fetch fallback behavior.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   scoreCandidate,
   mergeCandidates,
@@ -318,12 +318,6 @@ describe('mergeCandidates deduplication', () => {
 
 describe('rankScoredCandidates ordering', () => {
   it('results sorted by score DESC, then title ASC', () => {
-    const candidates = [
-      { ...makeResult('c', 50), track: { ...makeTrack({ id: 'c', title: 'Zebra' }), recommendationScore: 50 } },
-      { ...makeResult('a', 80), track: { ...makeTrack({ id: 'a', title: 'Alpha' }), recommendationScore: 80 } },
-      { ...makeResult('b', 50), track: { ...makeTrack({ id: 'b', title: 'Apple' }), recommendationScore: 50 } },
-    ];
-
     const fixed: SimilarTrackResult[] = [
       { track: makeTrack({ id: 'a', title: 'Alpha' }), recommendationScore: 80, reasons: [] },
       { track: makeTrack({ id: 'b', title: 'Apple' }), recommendationScore: 50, reasons: [] },

@@ -1,20 +1,32 @@
 /**
  * Resume Analysis — match files from a re-selected USB folder against the
  * still-missing ANLZ paths returned by GET /analysis-status.
+ *
+ * The backend now returns structured `unresolved_targets` with per-track IDs,
+ * asset types, status codes, and reasons. When available, these replace the
+ * legacy flat path arrays and enable selective reprocessing (only repair
+ * tracks that received a new file, not the entire library).
  */
 
 import { getCanonicalAnlzPath } from './analysisPaths';
 import type { MatchedAnalysisFile } from './analysisPaths';
-import type { AnalysisStatusResponse } from '../api/rekordboxImport';
+import type { AnalysisStatusResponse, ResumeTargetResponse } from '../api/rekordboxImport';
 
 export type ResumeAssetType = 'DAT' | 'EXT' | '2EX';
+export type ResumeTargetStatus = 'missing' | 'upload_failed' | 'parse_failed' | 'optional_missing';
 
 export interface ResumeTarget {
-  /** Canonical PIONEER-anchored path (from backend, case-preserved). */
+  /** PIONEER-anchored canonical path. */
   path: string;
   assetType: ResumeAssetType;
   /** True only for required DAT files. */
   required: boolean;
+  /** Track ID from the database (populated when backend returns structured targets). */
+  trackId: string | null;
+  rekordboxContentId: string | null;
+  status: ResumeTargetStatus;
+  reason: string | null;
+  attemptCount: number | null;
 }
 
 export interface ResumeMatchResult {
@@ -28,31 +40,106 @@ export interface ResumeMatchResult {
   stillMissingOptional: ResumeTarget[];
 }
 
+/** Grouped counts for the modal display. */
+export interface ResumeStatusSummary {
+  missingRequired: number;
+  missingOptional: number;
+  uploadFailed: number;
+  parseFailed: number;
+  affectedTracks: number;
+}
+
 /**
  * Build a flat list of resume targets from an /analysis-status response.
- * Only paths returned in missing_required_paths / missing_optional_ext /
- * missing_optional_2ex are included — already-uploaded files are excluded.
+ *
+ * Prefers `unresolved_targets` (structured, with track IDs) when available.
+ * Falls back to the legacy path arrays for backward compatibility.
  */
 export function buildResumeTargets(status: AnalysisStatusResponse): ResumeTarget[] {
+  // Use structured targets when the backend provides them.
+  if (status.unresolved_targets.length > 0) {
+    return status.unresolved_targets.map(fromStructuredTarget);
+  }
+
+  // Legacy fallback — path arrays only, no track-level metadata.
   const targets: ResumeTarget[] = [];
   for (const p of status.missing_required_paths) {
-    targets.push({ path: p, assetType: 'DAT', required: true });
+    targets.push(legacyTarget(p, 'DAT', true));
   }
   for (const p of status.missing_optional_ext) {
-    targets.push({ path: p, assetType: 'EXT', required: false });
+    targets.push(legacyTarget(p, 'EXT', false));
   }
   for (const p of status.missing_optional_2ex) {
-    targets.push({ path: p, assetType: '2EX', required: false });
+    targets.push(legacyTarget(p, '2EX', false));
   }
   return targets;
+}
+
+function fromStructuredTarget(t: ResumeTargetResponse): ResumeTarget {
+  return {
+    path: t.relative_path,
+    assetType: t.asset_type,
+    required: t.required,
+    trackId: t.track_id,
+    rekordboxContentId: t.rekordbox_content_id,
+    status: t.status,
+    reason: t.reason,
+    attemptCount: t.attempt_count,
+  };
+}
+
+function legacyTarget(path: string, assetType: ResumeAssetType, required: boolean): ResumeTarget {
+  return {
+    path,
+    assetType,
+    required,
+    trackId: null,
+    rekordboxContentId: null,
+    status: required ? 'missing' : 'optional_missing',
+    reason: null,
+    attemptCount: null,
+  };
+}
+
+/**
+ * Derive top-level summary counts from a status response.
+ * Uses structured counts when available, falls back to path array lengths.
+ */
+export function buildStatusSummary(status: AnalysisStatusResponse): ResumeStatusSummary {
+  if (status.unresolved_targets.length > 0 || status.missing_required_count > 0) {
+    return {
+      missingRequired: status.missing_required_count,
+      missingOptional: status.missing_optional_count,
+      uploadFailed: status.failed_upload_count,
+      parseFailed: status.failed_parse_count,
+      affectedTracks: status.affected_track_count,
+    };
+  }
+  // Legacy: derive from path arrays
+  return {
+    missingRequired: status.missing_required_paths.length,
+    missingOptional: status.missing_optional_ext.length + status.missing_optional_2ex.length,
+    uploadFailed: 0,
+    parseFailed: 0,
+    affectedTracks: 0,
+  };
+}
+
+/**
+ * Extract the set of unique affected track IDs from structured targets.
+ * Returns null when no track IDs are available (legacy mode).
+ */
+export function extractAffectedTrackIds(targets: ResumeTarget[]): string[] | null {
+  const ids = targets.map((t) => t.trackId).filter((id): id is string => id !== null);
+  if (ids.length === 0) return null;
+  return [...new Set(ids)];
 }
 
 /**
  * Match files from a freshly-scanned USB folder against the resume targets.
  *
  * Files are matched by their canonical PIONEER-anchored path (case-insensitive).
- * Files already uploaded (not in targets) are silently excluded — the server
- * returns "already_received" for them anyway, so they are not re-uploaded.
+ * Files already uploaded (not in targets) are silently excluded.
  *
  * Returns a structured summary of matched files and still-missing targets.
  */
@@ -91,7 +178,7 @@ export function buildResumeMatchResult(
       originalBrowserPath:
         (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? f.name,
       assetType: target.assetType,
-      trackId: '', // not needed; backend resolves via canonical path
+      trackId: target.trackId ?? '',
     });
   }
 

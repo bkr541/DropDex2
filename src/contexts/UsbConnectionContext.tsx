@@ -27,13 +27,14 @@ import {
 // ── Status ────────────────────────────────────────────────────────────────────
 
 export type UsbStatus =
-  | 'unsupported'        // File System Access API not available in this browser
-  | 'disconnected'       // No remembered handle, or user has disconnected
+  | 'unsupported'         // File System Access API not available in this browser
+  | 'disconnected'        // No remembered handle, or user has disconnected
   | 'permission-required' // Handle stored but permission needs to be re-granted
-  | 'connecting'         // Picker open or verifying stored handle
-  | 'connected'          // Handle verified readable this session
-  | 'unavailable'        // Handle stored but USB drive is physically absent
-  | 'error';             // Unexpected error
+  | 'connecting'          // Picker open or verifying stored handle
+  | 'connected'           // Handle verified readable this session
+  | 'wrong_root'          // Accessible but no Rekordbox folders — wrong directory selected
+  | 'unavailable'         // Handle stored but USB drive is physically absent
+  | 'error';              // Unexpected error
 
 // ── State + reducer ───────────────────────────────────────────────────────────
 
@@ -60,6 +61,11 @@ type UsbAction =
       handle: FileSystemDirectoryHandle;
       metadata: UsbConnectionMetadata;
       structureWarning: string | null;
+    }
+  | {
+      type: 'SET_WRONG_ROOT';
+      handle: FileSystemDirectoryHandle;
+      metadata: UsbConnectionMetadata;
     }
   | {
       type: 'SET_UNAVAILABLE';
@@ -105,6 +111,16 @@ function reducer(state: UsbState, action: UsbAction): UsbState {
         error: null,
         structureWarning: action.structureWarning,
       };
+    case 'SET_WRONG_ROOT':
+      return {
+        ...state,
+        status: 'wrong_root',
+        handle: action.handle,
+        volumeName: action.metadata.volumeName,
+        connectedAt: action.metadata.connectedAt,
+        error: null,
+        structureWarning: 'No Rekordbox folders found. Select the USB root folder, not PIONEER or a subfolder.',
+      };
     case 'SET_UNAVAILABLE':
       return {
         ...state,
@@ -125,9 +141,17 @@ function reducer(state: UsbState, action: UsbAction): UsbState {
 // ── Context value ─────────────────────────────────────────────────────────────
 
 export interface UsbConnectionContextValue extends UsbState {
+  /** Open the directory picker and remember the chosen handle. */
   connect(): Promise<void>;
+  /** Close the connection and forget the stored handle. */
   disconnect(): Promise<void>;
+  /** Re-verify the stored handle (no picker). Use when drive was reinserted. */
   reconnect(): Promise<void>;
+  /**
+   * Always open the directory picker, replacing the stored handle.
+   * Use when the user selected the wrong directory or wants a different drive.
+   */
+  selectNewUsb(): Promise<void>;
   ensurePermission(): Promise<PermissionState>;
   resolveTrackFile(segments: string[]): Promise<UsbFileResult>;
 }
@@ -159,22 +183,35 @@ async function applyPermissionCheck(
   try {
     const perm = await queryPermission(handle);
     if (perm === 'granted') {
-      const { found, missing } = await checkRekordboxStructure(handle);
-      let structureWarning: string | null = null;
-      if (found.length === 0) {
-        structureWarning = 'No Rekordbox folders found. Verify this is the USB root.';
-      } else if (missing.length > 0) {
-        structureWarning = `Could not find: ${missing.join(', ')}. Verify this is the USB root.`;
+      const rootCheck = await checkRekordboxStructure(handle);
+      switch (rootCheck.status) {
+        case 'available': {
+          const structureWarning =
+            rootCheck.missingFolders.length > 0
+              ? `Could not find: ${rootCheck.missingFolders.join(', ')}. Verify this is the USB root.`
+              : null;
+          dispatch({ type: 'SET_CONNECTED', handle, metadata, structureWarning });
+          break;
+        }
+        case 'wrong_root':
+          dispatch({ type: 'SET_WRONG_ROOT', handle, metadata });
+          break;
+        case 'permission_required':
+          dispatch({ type: 'SET_PERMISSION_REQUIRED', handle, metadata });
+          break;
+        case 'unavailable':
+          dispatch({ type: 'SET_UNAVAILABLE', handle, metadata });
+          break;
       }
-      dispatch({ type: 'SET_CONNECTED', handle, metadata, structureWarning });
     } else if (perm === 'denied') {
-      dispatch({ type: 'SET_UNAVAILABLE', handle, metadata });
+      // Browser-level denial — not easily recoverable without user re-granting.
+      dispatch({ type: 'SET_PERMISSION_REQUIRED', handle, metadata });
     } else {
-      // 'prompt' — permission needs to be re-granted by the user
+      // 'prompt' — permission needs to be re-granted by the user.
       dispatch({ type: 'SET_PERMISSION_REQUIRED', handle, metadata });
     }
   } catch {
-    // Handle.queryPermission threw — USB physically absent or I/O error
+    // queryPermission itself threw — USB physically absent or I/O error.
     dispatch({ type: 'SET_UNAVAILABLE', handle, metadata });
   }
 }
@@ -252,6 +289,30 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
     await restoreFromStore(dispatch);
   }, []);
 
+  const selectNewUsb = useCallback(async () => {
+    // Identical to connect() — always opens picker, replaces stored handle.
+    if (!isFileSystemAccessSupported()) {
+      dispatch({ type: 'SET_UNSUPPORTED' });
+      return;
+    }
+    dispatch({ type: 'SET_CONNECTING' });
+    try {
+      const handle = await showDirectoryPicker({ id: 'dropdex-rekordbox-usb', mode: 'read' });
+      const metadata: UsbConnectionMetadata = {
+        volumeName: handle.name,
+        connectedAt: new Date().toISOString(),
+      };
+      await saveUsbHandle(handle, metadata);
+      await applyPermissionCheck(handle, metadata, dispatch);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        void restoreFromStore(dispatch);
+      } else {
+        dispatch({ type: 'SET_ERROR', error: String(err) });
+      }
+    }
+  }, []);
+
   const ensurePermission = useCallback(async (): Promise<PermissionState> => {
     const handle = handleRef.current;
     const s = stateRef.current;
@@ -263,16 +324,28 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
         connectedAt: s.connectedAt ?? new Date().toISOString(),
       };
       if (perm === 'granted') {
-        const { found, missing } = await checkRekordboxStructure(handle);
-        let structureWarning: string | null = null;
-        if (found.length === 0) {
-          structureWarning = 'No Rekordbox folders found. Verify this is the USB root.';
-        } else if (missing.length > 0) {
-          structureWarning = `Could not find: ${missing.join(', ')}. Verify this is the USB root.`;
+        const rootCheck = await checkRekordboxStructure(handle);
+        switch (rootCheck.status) {
+          case 'available': {
+            const structureWarning =
+              rootCheck.missingFolders.length > 0
+                ? `Could not find: ${rootCheck.missingFolders.join(', ')}. Verify this is the USB root.`
+                : null;
+            dispatch({ type: 'SET_CONNECTED', handle, metadata: meta, structureWarning });
+            break;
+          }
+          case 'wrong_root':
+            dispatch({ type: 'SET_WRONG_ROOT', handle, metadata: meta });
+            break;
+          case 'permission_required':
+            dispatch({ type: 'SET_PERMISSION_REQUIRED', handle, metadata: meta });
+            break;
+          case 'unavailable':
+            dispatch({ type: 'SET_UNAVAILABLE', handle, metadata: meta });
+            break;
         }
-        dispatch({ type: 'SET_CONNECTED', handle, metadata: meta, structureWarning });
       } else {
-        dispatch({ type: 'SET_UNAVAILABLE', handle, metadata: meta });
+        dispatch({ type: 'SET_PERMISSION_REQUIRED', handle, metadata: meta });
       }
       return perm;
     } catch {
@@ -296,6 +369,7 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
     connect,
     disconnect,
     reconnect,
+    selectNewUsb,
     ensurePermission,
     resolveTrackFile,
   };

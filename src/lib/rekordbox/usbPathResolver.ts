@@ -22,19 +22,24 @@ export type UsbPathStatus =
   /** Path resolved cleanly to one or more segments. */
   | 'ok'
   /** Input was null, undefined, or whitespace. */
-  | 'empty'
-  /** Path contains traversal segments ("." or ".."). */
-  | 'unsafe'
+  | 'empty_path'
+  /** Path contains traversal segments ("." or "..") — before or after decoding. */
+  | 'unsafe_path'
   /** Normalised path is empty after stripping prefixes (e.g. input was just "/"). */
   | 'no_filename'
   /** URL scheme other than "file://" was detected (e.g. "https://"). */
   | 'unsupported_scheme'
+  /** A URL-encoded segment could not be decoded (malformed %-sequence). */
+  | 'invalid_encoding'
   /**
    * A /Volumes/{name}/ prefix was found, but its name does not match
    * `options.expectedVolume`.  `segments` and `normalizedRelative` are still
    * populated — the caller decides whether to accept or reject.
    */
-  | 'volume_prefix_mismatch';
+  | 'volume_mismatch';
+
+// Backward-compat alias so callers checking the old string still compile.
+export type { UsbPathStatus as UsbPathStatusLegacy };
 
 export interface UsbPathResolution {
   status: UsbPathStatus;
@@ -42,7 +47,8 @@ export interface UsbPathResolution {
    * Path segments from the USB content root, e.g.
    *   ["Contents", "Artist", "Track Name.mp3"]
    *
-   * Empty when status is 'empty', 'unsafe', or 'no_filename'.
+   * Empty when status is 'empty_path', 'unsafe_path', 'no_filename',
+   * 'invalid_encoding', or 'unsupported_scheme'.
    */
   segments: string[];
   /**
@@ -52,17 +58,18 @@ export interface UsbPathResolution {
   strippedVolume: string | null;
   /**
    * Forward-slash-joined relative path without any drive letter or volume prefix,
-   * e.g. "Contents/Artist/Track Name.mp3".  Null on hard errors ('empty',
-   * 'unsafe', 'no_filename', 'unsupported_scheme').
+   * e.g. "Contents/Artist/Track Name.mp3".  Null on hard errors.
    */
   normalizedRelative: string | null;
+  /** The segment that triggered a decode failure, when status === 'invalid_encoding'. */
+  badSegment?: string;
 }
 
 export interface UsbPathOptions {
   /**
    * Expected USB volume name.  When the resolved path had a /Volumes/{name}/
-   * prefix, its name is compared against this value.  A mismatch sets
-   * status = 'volume_prefix_mismatch' while still populating segments.
+   * prefix, its name is compared against this value (case-sensitive).
+   * A mismatch sets status = 'volume_mismatch' while still populating segments.
    */
   expectedVolume?: string;
 }
@@ -74,7 +81,48 @@ function segmentsHaveTraversal(segments: string[]): boolean {
 }
 
 /**
+ * Decode one URL-encoded path segment.
+ *
+ * Rules:
+ * - Decode is per-segment (not whole-path) so `%2F` (encoded slash) cannot
+ *   be smuggled through as a path separator.
+ * - After decode, reject segments that are "." or ".." (traversal via encoding).
+ * - After decode, reject segments that contain "/" or "\" (separator injection).
+ *
+ * Returns `null` when the segment is malformed (invalid %-sequence).
+ * Returns `{ value: null }` only when the decoded result is unsafe/traversal.
+ * The discriminated return type is:
+ *   { ok: true; segment: string }
+ *   { ok: false; reason: 'invalid_encoding' | 'unsafe_path' }
+ */
+type SegmentDecodeResult =
+  | { ok: true; segment: string }
+  | { ok: false; reason: 'invalid_encoding' | 'unsafe_path' };
+
+function decodeSegmentSafe(raw: string): SegmentDecodeResult {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    return { ok: false, reason: 'invalid_encoding' };
+  }
+  // Post-decode traversal check.
+  if (decoded === '.' || decoded === '..') {
+    return { ok: false, reason: 'unsafe_path' };
+  }
+  // Post-decode separator injection check.
+  if (decoded.includes('/') || decoded.includes('\\')) {
+    return { ok: false, reason: 'unsafe_path' };
+  }
+  return { ok: true, segment: decoded };
+}
+
+/**
  * Normalise a raw Rekordbox `file_path` value into USB-relative path segments.
+ *
+ * Per-segment URL decoding is applied after splitting, so an encoded slash
+ * (%2F) can never act as a path separator.  Encoding errors produce
+ * status='invalid_encoding'; traversal-through-encoding produces 'unsafe_path'.
  *
  * The original `rawPath` string is never mutated; call sites should store both
  * the original and the resolved form separately.
@@ -84,7 +132,7 @@ export function resolveUsbPath(
   options: UsbPathOptions = {},
 ): UsbPathResolution {
   const EMPTY: UsbPathResolution = {
-    status: 'empty',
+    status: 'empty_path',
     segments: [],
     strippedVolume: null,
     normalizedRelative: null,
@@ -108,13 +156,9 @@ export function resolveUsbPath(
       // "/" so the replace finds no non-slash leading chars and is a no-op.
       let rest = p.slice('file://'.length);
       // Remove any non-slash prefix (the authority / hostname).
-      // "localhost/path" → "/path"; "/path" → "/path" (no match).
       rest = rest.replace(/^[^/]+/, '');
-      try {
-        p = decodeURIComponent(rest);
-      } catch {
-        p = rest;
-      }
+      // Do NOT decode here — decoding happens per-segment after splitting.
+      p = rest;
     } else {
       return {
         status: 'unsupported_scheme',
@@ -137,8 +181,6 @@ export function resolveUsbPath(
   const volMatch = p.match(/^\/Volumes\/([^/]+)(\/|$)/);
   if (volMatch) {
     strippedVolume = volMatch[1];
-    // Remove "/Volumes/{name}" from the front; the remainder starts with "/"
-    // or is empty (if the path was exactly "/Volumes/{name}").
     p = p.slice('/Volumes/'.length + strippedVolume.length);
   }
 
@@ -148,20 +190,37 @@ export function resolveUsbPath(
   // 7. Collapse consecutive interior separators.
   p = p.replace(/\/+/g, '/');
 
-  // 8. Split and filter empty strings (handles a trailing slash).
-  const segments = p.split('/').filter((s) => s.length > 0);
+  // 8. Split into raw (still-encoded) segments.
+  const rawSegments = p.split('/').filter((s) => s.length > 0);
 
-  // 9. Traversal check — must happen AFTER splitting so we catch "." and "..".
-  if (segmentsHaveTraversal(segments)) {
+  // 9. Pre-decode traversal check (catches literal ".." before any decoding).
+  if (segmentsHaveTraversal(rawSegments)) {
     return {
-      status: 'unsafe',
+      status: 'unsafe_path',
       segments: [],
       strippedVolume,
       normalizedRelative: null,
     };
   }
 
-  // 10. Nothing left after stripping prefixes.
+  // 10. Per-segment URL decode with safety checks.
+  const segments: string[] = [];
+  for (const raw of rawSegments) {
+    const decodeResult = decodeSegmentSafe(raw);
+    if (!decodeResult.ok) {
+      const failResult = decodeResult as { ok: false; reason: 'invalid_encoding' | 'unsafe_path' };
+      return {
+        status: failResult.reason,
+        segments: [],
+        strippedVolume,
+        normalizedRelative: null,
+        badSegment: raw,
+      };
+    }
+    segments.push(decodeResult.segment);
+  }
+
+  // 11. Nothing left after stripping prefixes.
   if (segments.length === 0) {
     return {
       status: 'no_filename',
@@ -173,11 +232,11 @@ export function resolveUsbPath(
 
   const normalizedRelative = segments.join('/');
 
-  // 11. Volume name mismatch (informational — segments are still returned).
+  // 12. Volume name mismatch (informational — segments are still returned).
   const { expectedVolume } = options;
   if (expectedVolume && strippedVolume && strippedVolume !== expectedVolume) {
     return {
-      status: 'volume_prefix_mismatch',
+      status: 'volume_mismatch',
       segments,
       strippedVolume,
       normalizedRelative,

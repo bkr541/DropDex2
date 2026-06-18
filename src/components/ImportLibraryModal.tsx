@@ -554,7 +554,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     let completeResp: CompleteResponse;
     try {
       const { data: { session: completeSession } } = await supabase.auth.getSession();
-      completeResp = await completeRekordboxImport(startResp.import_id, completeSession?.access_token ?? token, controller.signal);
+      completeResp = await completeRekordboxImport(startResp.import_id, completeSession?.access_token ?? token, { signal: controller.signal });
     } catch (err) {
       if (isAbortError(err)) {
         setCancelledAfterDb(true);

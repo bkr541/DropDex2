@@ -22,6 +22,13 @@ function mockStatus(
     missing_optional_2ex: twoEx,
     parser_version: null,
     warnings: [],
+    // New structured-target fields (empty = legacy mode, use path arrays above)
+    unresolved_targets: [],
+    missing_required_count: 0,
+    missing_optional_count: 0,
+    failed_upload_count: 0,
+    failed_parse_count: 0,
+    affected_track_count: 0,
   };
 }
 

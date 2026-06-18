@@ -14,23 +14,23 @@ function ok(path: string | null | undefined, segments: string[], volume: string 
 // ── Empty / null input ─────────────────────────────────────────────────────────
 
 describe('empty input', () => {
-  it('returns empty for null', () => {
+  it('returns empty_path for null', () => {
     const r = resolveUsbPath(null);
-    expect(r.status).toBe('empty');
+    expect(r.status).toBe('empty_path');
     expect(r.segments).toEqual([]);
     expect(r.normalizedRelative).toBeNull();
   });
 
-  it('returns empty for undefined', () => {
-    expect(resolveUsbPath(undefined).status).toBe('empty');
+  it('returns empty_path for undefined', () => {
+    expect(resolveUsbPath(undefined).status).toBe('empty_path');
   });
 
-  it('returns empty for empty string', () => {
-    expect(resolveUsbPath('').status).toBe('empty');
+  it('returns empty_path for empty string', () => {
+    expect(resolveUsbPath('').status).toBe('empty_path');
   });
 
-  it('returns empty for whitespace only', () => {
-    expect(resolveUsbPath('   ').status).toBe('empty');
+  it('returns empty_path for whitespace only', () => {
+    expect(resolveUsbPath('   ').status).toBe('empty_path');
   });
 });
 
@@ -100,11 +100,11 @@ describe('macOS /Volumes/ paths', () => {
     expect(r.strippedVolume).toBe('MYUSB');
   });
 
-  it('with expectedVolume mismatch — status volume_prefix_mismatch, segments still populated', () => {
+  it('with expectedVolume mismatch — status volume_mismatch, segments still populated', () => {
     const r = resolveUsbPath('/Volumes/OTHERWELL/Contents/Track.mp3', {
       expectedVolume: 'MYUSB',
     });
-    expect(r.status).toBe('volume_prefix_mismatch');
+    expect(r.status).toBe('volume_mismatch');
     expect(r.segments).toEqual(['Contents', 'Track.mp3']);
     expect(r.strippedVolume).toBe('OTHERWELL');
     expect(r.normalizedRelative).toBe('Contents/Track.mp3');
@@ -206,33 +206,79 @@ describe('Unicode and special characters', () => {
 describe('path traversal safety', () => {
   it('rejects bare ../../etc/passwd', () => {
     const r = resolveUsbPath('../../etc/passwd');
-    expect(r.status).toBe('unsafe');
+    expect(r.status).toBe('unsafe_path');
     expect(r.segments).toEqual([]);
     expect(r.normalizedRelative).toBeNull();
   });
 
   it('rejects /Contents/../etc/passwd', () => {
-    expect(resolveUsbPath('/Contents/../etc/passwd').status).toBe('unsafe');
+    expect(resolveUsbPath('/Contents/../etc/passwd').status).toBe('unsafe_path');
   });
 
   it('rejects /Contents/./Track.mp3 (dot segment)', () => {
-    expect(resolveUsbPath('/Contents/./Track.mp3').status).toBe('unsafe');
+    expect(resolveUsbPath('/Contents/./Track.mp3').status).toBe('unsafe_path');
   });
 
   it('rejects traversal inside Windows path', () => {
-    expect(resolveUsbPath('E:\\Contents\\..\\etc\\passwd').status).toBe('unsafe');
+    expect(resolveUsbPath('E:\\Contents\\..\\etc\\passwd').status).toBe('unsafe_path');
   });
 
   it('rejects traversal inside /Volumes/ path', () => {
-    expect(resolveUsbPath('/Volumes/USB/Contents/../../etc/passwd').status).toBe('unsafe');
+    expect(resolveUsbPath('/Volumes/USB/Contents/../../etc/passwd').status).toBe('unsafe_path');
   });
 
   it('populates strippedVolume even when traversal detected', () => {
     const r = resolveUsbPath('/Volumes/USB/../etc/passwd');
-    expect(r.status).toBe('unsafe');
-    // strippedVolume is set before traversal check runs; presence is informational
-    // (implementation may or may not set it — test only that status is unsafe)
+    expect(r.status).toBe('unsafe_path');
     expect(r.segments).toEqual([]);
+  });
+
+  it('rejects traversal-via-encoding: %2E%2E becomes ".."', () => {
+    const r = resolveUsbPath('/Contents/%2E%2E/etc/passwd');
+    expect(r.status).toBe('unsafe_path');
+    expect(r.segments).toEqual([]);
+  });
+
+  it('rejects encoded slash %2F that would cross directory boundary', () => {
+    // A segment that decodes to "foo/bar" must be rejected as a separator injection.
+    const r = resolveUsbPath('/Contents/foo%2Fbar/Track.mp3');
+    expect(r.status).toBe('unsafe_path');
+    expect(r.segments).toEqual([]);
+  });
+});
+
+// ── Per-segment URL decode ────────────────────────────────────────────────────
+
+describe('per-segment URL decode', () => {
+  it('decodes encoded space %20 in a segment', () => {
+    const r = resolveUsbPath('/Contents/My%20Artist/My%20Track.mp3');
+    expect(r.status).toBe('ok');
+    expect(r.segments).toEqual(['Contents', 'My Artist', 'My Track.mp3']);
+  });
+
+  it('decodes encoded Unicode (%E3%82%A2 → ア)', () => {
+    const r = resolveUsbPath('/Contents/%E3%82%A2%E3%83%BC%E3%83%86%E3%82%A3%E3%82%B9%E3%83%88/Track.mp3');
+    expect(r.status).toBe('ok');
+    expect(r.segments).toContain('アーティスト');
+  });
+
+  it('decodes encoded apostrophe %27', () => {
+    const r = resolveUsbPath("/Contents/Artist/Don%27t%20Stop.mp3");
+    expect(r.status).toBe('ok');
+    expect(r.segments).toEqual(["Contents", "Artist", "Don't Stop.mp3"]);
+  });
+
+  it('returns invalid_encoding for malformed %-sequence', () => {
+    const r = resolveUsbPath('/Contents/%ZZ/Track.mp3');
+    expect(r.status).toBe('invalid_encoding');
+    expect(r.segments).toEqual([]);
+    expect(r.badSegment).toBe('%ZZ');
+  });
+
+  it('non-encoded literal dots are not traversal: "foo.." is valid', () => {
+    const r = resolveUsbPath('/Contents/foo../Track.mp3');
+    expect(r.status).toBe('ok');
+    expect(r.segments).toEqual(['Contents', 'foo..', 'Track.mp3']);
   });
 });
 
@@ -269,8 +315,8 @@ describe('edge cases', () => {
 
 // ── trackStatRowToTrack mapping ───────────────────────────────────────────────
 
-import { trackStatRowToTrack } from '../queries/rekordbox';
-import type { TrackStatRow } from '../queries/rekordbox';
+import { trackStatRowToTrack } from './trackMappers';
+import type { TrackStatRow } from './trackMappers';
 
 function makeRow(overrides: Partial<TrackStatRow> = {}): TrackStatRow {
   return {

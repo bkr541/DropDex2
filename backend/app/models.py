@@ -85,6 +85,14 @@ class BatchUploadResponse(BaseModel):
     files: List[BatchFileResult]
 
 
+class CompleteRequest(BaseModel):
+    """Optional body for POST /api/rekordbox/import/{import_id}/complete."""
+
+    # When provided, only reparse these track IDs (selective reprocessing).
+    # Omit or pass null/empty to reparse all tracks.
+    affected_track_ids: Optional[List[str]] = None
+
+
 class TrackCompleteStatus(BaseModel):
     """Per-track outcome from the complete step."""
 
@@ -111,6 +119,19 @@ class CompleteResponse(BaseModel):
     tracks: List[TrackCompleteStatus]
 
 
+class ResumeTargetItem(BaseModel):
+    """One unresolved analysis target returned by /analysis-status."""
+
+    track_id: str
+    rekordbox_content_id: Optional[str] = None
+    relative_path: str
+    asset_type: str  # DAT | EXT | 2EX
+    required: bool
+    status: str  # missing | upload_failed | parse_failed | optional_missing
+    reason: Optional[str] = None
+    attempt_count: Optional[int] = None
+
+
 class AnalysisStatusResponse(BaseModel):
     """Response for GET /api/rekordbox/import/{import_id}/analysis-status."""
 
@@ -121,11 +142,20 @@ class AnalysisStatusResponse(BaseModel):
     parsed_track_count: int
     failed_track_count: int
     asset_count: int
+    # Legacy flat path arrays — preserved for backward compatibility.
     missing_required_paths: List[str]
     missing_optional_ext: List[str] = []
     missing_optional_2ex: List[str] = []
     parser_version: Optional[str] = None
     warnings: List[Dict[str, Any]] = []
+    # Structured per-track targets (richer data for selective reprocessing).
+    unresolved_targets: List[ResumeTargetItem] = []
+    # Top-level summary counts derived from unresolved_targets.
+    missing_required_count: int = 0
+    missing_optional_count: int = 0
+    failed_upload_count: int = 0
+    failed_parse_count: int = 0
+    affected_track_count: int = 0
 
 
 # ── Related Tracks import models ───────────────────────────────────────────────
