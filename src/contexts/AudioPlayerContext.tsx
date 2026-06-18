@@ -89,7 +89,8 @@ function reducer(state: PlayerState, action: PlayerAction): PlayerState {
     case 'SET_MUTED':
       return { ...state, muted: action.muted };
     case 'CLEAR_ERROR':
-      return { ...state, status: 'idle', error: null };
+      // Full reset — do not leave stale activeTrack/objectUrl with status: idle.
+      return { ...initial, volume: state.volume, muted: state.muted };
     default:
       return state;
   }
@@ -108,6 +109,14 @@ function resetAudioElement(audio: HTMLAudioElement, oldUrl: string | null) {
   audio.removeAttribute('src');
   audio.load();
   safeRevokeUrl(oldUrl);
+}
+
+function safeResetAudio(audio: HTMLAudioElement | null, oldUrl: string | null) {
+  if (audio) {
+    resetAudioElement(audio, oldUrl);
+  } else {
+    safeRevokeUrl(oldUrl);
+  }
 }
 
 export function usbFileErrorMessage(error: UsbFileResolutionError): string {
@@ -165,6 +174,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   // Single shared HTMLAudioElement, created once
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Monotonically increasing generation counter for race-safe async playback.
+  // Each new playTrack() call increments this. Any earlier in-flight call
+  // checks the counter after every await and aborts if it no longer matches.
+  const playRequestIdRef = useRef(0);
+
   useEffect(() => {
     if (typeof Audio === 'undefined') return;
     const audio = new Audio();
@@ -195,6 +209,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       audio.load();
       safeRevokeUrl(stateRef.current.objectUrl);
       audioRef.current = null;
+      // Invalidate any pending playTrack calls so they bail after unmount.
+      playRequestIdRef.current = Number.MAX_SAFE_INTEGER;
     };
   }, []);
 
@@ -204,7 +220,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     if (usbStatus !== 'disconnected' && usbStatus !== 'unavailable') return;
     const s = stateRef.current;
     if (s.status === 'idle' || s.status === 'error') return;
-    resetAudioElement(audioRef.current!, s.objectUrl);
+    // Invalidate any in-flight playTrack so it doesn't proceed after disconnect.
+    playRequestIdRef.current++;
+    safeResetAudio(audioRef.current, s.objectUrl);
     dispatch({ type: 'STOP' });
   }, [usbCtx.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -213,7 +231,6 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const playTrack = useCallback(async (track: RekordboxTrack): Promise<void> => {
     const audio = audioRef.current;
     const usb = usbRef.current;
-    const prev = stateRef.current;
 
     if (!track.file_path) {
       dispatch({ type: 'ERROR', error: 'This track has no file path. Re-import with a USB connected.' });
@@ -233,20 +250,26 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Assign this request a unique generation ID. Every await below checks
+    // whether we're still the current request before proceeding.
+    const requestId = ++playRequestIdRef.current;
+
     dispatch({ type: 'RESOLVING', track });
 
     // Re-authorize if the browser lost permission (must be called inside a user gesture)
     if (usb.status === 'permission-required') {
       const perm = await usb.ensurePermission();
+      if (requestId !== playRequestIdRef.current) return; // superseded
       if (perm !== 'granted') {
         dispatch({ type: 'ERROR', error: 'USB access permission denied. Re-authorize the USB drive.' });
         return;
       }
     }
 
-    // Normalize the Rekordbox file path
+    // Normalize the Rekordbox file path (synchronous)
     const resolution = resolveUsbPath(track.file_path);
     if (resolution.status !== 'ok') {
+      if (requestId !== playRequestIdRef.current) return;
       dispatch({
         type: 'ERROR',
         error: `Cannot resolve track path (${resolution.status}): "${track.file_path}"`,
@@ -254,8 +277,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Fetch the File from the USB handle
+    // Fetch the File from the USB handle (async)
     const fileResult = await usb.resolveTrackFile(resolution.segments);
+    if (requestId !== playRequestIdRef.current) return; // superseded
+
     if (!fileResult.ok) {
       const { error } = fileResult as { ok: false; error: UsbFileResolutionError };
       dispatch({ type: 'ERROR', error: usbFileErrorMessage(error) });
@@ -267,11 +292,17 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Reset element and revoke previous object URL
-    resetAudioElement(audio, prev.objectUrl);
-
-    // Create object URL — temporary in-memory only, never stored
+    // Create object URL — temporary in-memory only, never stored.
     const newUrl = URL.createObjectURL(fileResult.file);
+
+    // Check generation one more time before mutating shared audio element state.
+    if (requestId !== playRequestIdRef.current) {
+      safeRevokeUrl(newUrl); // revoke the URL we just created — no longer needed
+      return;
+    }
+
+    // Reset element and revoke previous object URL.
+    resetAudioElement(audio, stateRef.current.objectUrl);
     dispatch({ type: 'LOADED', track, objectUrl: newUrl });
 
     audio.src = newUrl;
@@ -281,12 +312,21 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     try {
       await audio.play();
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      safeRevokeUrl(newUrl);
-      dispatch({
-        type: 'ERROR',
-        error: `Playback failed: ${err instanceof Error ? err.message : String(err)}`,
-      });
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // AbortError means another play() was initiated — not a fatal error.
+        // The new request has already taken ownership; do not dispatch ERROR.
+        // The URL we set is already owned by state (LOADED dispatched above) and
+        // will be revoked by the new request's resetAudioElement call.
+        return;
+      }
+      // Unexpected playback failure — revoke this URL and surface the error.
+      if (requestId === playRequestIdRef.current) {
+        safeRevokeUrl(newUrl);
+        dispatch({
+          type: 'ERROR',
+          error: `Playback failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
     }
   }, []);
 
@@ -328,7 +368,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stop = useCallback(() => {
-    resetAudioElement(audioRef.current!, stateRef.current.objectUrl);
+    // Invalidate any in-flight playTrack call.
+    playRequestIdRef.current++;
+    safeResetAudio(audioRef.current, stateRef.current.objectUrl);
     dispatch({ type: 'STOP' });
   }, []);
 

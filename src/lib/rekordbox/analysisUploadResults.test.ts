@@ -769,3 +769,161 @@ describe('Acceptance criteria scenarios', () => {
     expect(acc.summary.attemptedFiles).toBe(2); // still 2 unique files
   });
 });
+
+// ── recordFailedBatch — per-file retryable registration ───────────────────────
+
+describe('UploadAccumulator.recordFailedBatch (per-file tracking)', () => {
+  it('registers every file in the batch as request_failed and includes them in retryableFilePaths', () => {
+    const acc = new UploadAccumulator();
+    const batch = [
+      makeMatchedFile(100, 'PIONEER/USBANLZ/P001/ANLZ0000.DAT'),
+      makeMatchedFile(200, 'PIONEER/USBANLZ/P001/ANLZ0000.EXT'),
+    ];
+    acc.recordFailedBatch(batch);
+
+    expect(acc.summary.failedBatchCount).toBe(1);
+    expect(acc.summary.attemptedFiles).toBe(2);
+    expect(acc.summary.attemptedBytes).toBe(300);
+    // Both files must appear as retryable — request_failed is always transient.
+    expect(acc.retryableFilePaths).toHaveLength(2);
+    expect(acc.retryableFilePaths).toContain('pioneer/usbanlz/p001/anlz0000.dat');
+    expect(acc.retryableFilePaths).toContain('pioneer/usbanlz/p001/anlz0000.ext');
+  });
+
+  it('request_failed files do not appear in successfullyUploadedPaths', () => {
+    const acc = new UploadAccumulator();
+    const batch = [makeMatchedFile(100, 'A.DAT')];
+    acc.recordFailedBatch(batch);
+    expect(acc.successfullyUploadedPaths.size).toBe(0);
+  });
+
+  it('a file that succeeds after a request-level failure transitions to received', () => {
+    const acc = new UploadAccumulator();
+    const path = 'PIONEER/USBANLZ/P001/ANLZ0000.DAT';
+    acc.recordFailedBatch([makeMatchedFile(100, path)]);
+
+    expect(acc.retryableFilePaths).toHaveLength(1);
+
+    acc.correctFileRetrySuccess(path, 'received', 100);
+
+    expect(acc.retryableFilePaths).toHaveLength(0);
+    expect(acc.successfullyUploadedPaths.has(path.toLowerCase())).toBe(true);
+    expect(acc.summary.receivedFiles).toBe(1);
+    expect(acc.summary.receivedBytes).toBe(100);
+    // Attempted count remains 1 — no double-count from the retry.
+    expect(acc.summary.attemptedFiles).toBe(1);
+  });
+
+  it('calling recordFailedBatch twice for overlapping files does not double-count attemptedFiles', () => {
+    const acc = new UploadAccumulator();
+    const path = 'PIONEER/USBANLZ/P001/ANLZ0000.DAT';
+    const batch = [makeMatchedFile(100, path)];
+
+    acc.recordFailedBatch(batch);
+    acc.recordFailedBatch(batch); // same file in a second failed attempt
+
+    // File is known after first call; second call must not re-increment.
+    expect(acc.summary.attemptedFiles).toBe(1);
+    expect(acc.summary.attemptedBytes).toBe(100);
+    expect(acc.summary.failedBatchCount).toBe(2);
+    expect(acc.retryableFilePaths).toHaveLength(1);
+  });
+
+  it('recordFailedBatch does not downgrade a file that already succeeded', () => {
+    const acc = new UploadAccumulator();
+    const path = 'PIONEER/USBANLZ/P001/ANLZ0000.DAT';
+
+    // File succeeded on first attempt.
+    acc.addBatchResponse(
+      makeResp({
+        received_count: 1,
+        received_bytes: 100,
+        files: [makeFr({ canonical_path: path, status: 'received', file_size: 100 })],
+      }),
+      [makeMatchedFile(100, path)],
+    );
+    expect(acc.summary.receivedFiles).toBe(1);
+
+    // A subsequent HTTP failure for the same file must not overwrite its status.
+    acc.recordFailedBatch([makeMatchedFile(100, path)]);
+
+    expect(acc.successfullyUploadedPaths.has(path.toLowerCase())).toBe(true);
+    expect(acc.retryableFilePaths).toHaveLength(0);
+    expect(acc.summary.receivedFiles).toBe(1);
+  });
+
+  it('isTransientFileFailure returns true for request_failed status', () => {
+    expect(isTransientFileFailure(makeFr({ canonical_path: 'A.DAT', status: 'request_failed' }))).toBe(true);
+  });
+
+  it('mixed DAT, EXT, and 2EX request-failed batch — all three are retryable', () => {
+    const acc = new UploadAccumulator();
+    const batch = [
+      makeMatchedFile(100, 'PIONEER/USBANLZ/P001/ANLZ0000.DAT'),
+      makeMatchedFile(200, 'PIONEER/USBANLZ/P001/ANLZ0000.EXT'),
+      makeMatchedFile(300, 'PIONEER/USBANLZ/P001/ANLZ0000.2EX'),
+    ];
+    acc.recordFailedBatch(batch);
+    expect(acc.retryableFilePaths).toHaveLength(3);
+  });
+});
+
+// ── updateFileRetryFailure ────────────────────────────────────────────────────
+
+describe('UploadAccumulator.updateFileRetryFailure', () => {
+  it('refreshes the status and reason for a known failed file', () => {
+    const acc = new UploadAccumulator();
+    const path = 'A.DAT';
+    acc.addBatchResponse(
+      makeResp({
+        error_count: 1,
+        files: [makeFr({ canonical_path: path, status: 'error', reject_reason: 'storage_failure' })],
+      }),
+      [makeMatchedFile(100, path)],
+    );
+
+    acc.updateFileRetryFailure(path, 'rejected', 'path_mismatch');
+
+    // Now permanently rejected — no longer retryable.
+    expect(acc.retryableFilePaths).toHaveLength(0);
+    // Aggregate error counter is unchanged (updateFileRetryFailure doesn't adjust counters).
+    expect(acc.summary.errorFiles).toBe(1);
+  });
+
+  it('is a no-op for unknown path', () => {
+    const acc = new UploadAccumulator();
+    acc.updateFileRetryFailure('UNKNOWN.DAT', 'rejected', 'path_mismatch');
+    // No crash; nothing changed.
+    expect(acc.summary.errorFiles).toBe(0);
+  });
+
+  it('does not downgrade a succeeded file', () => {
+    const acc = new UploadAccumulator();
+    const path = 'A.DAT';
+    acc.addBatchResponse(
+      makeResp({
+        received_count: 1,
+        files: [makeFr({ canonical_path: path, status: 'received', file_size: 100 })],
+      }),
+      [makeMatchedFile(100, path)],
+    );
+    acc.updateFileRetryFailure(path, 'error', 'storage_failure');
+    // Still in successfullyUploadedPaths.
+    expect(acc.successfullyUploadedPaths.has(path.toLowerCase())).toBe(true);
+    expect(acc.retryableFilePaths).toHaveLength(0);
+  });
+
+  it('latest error replaces stale error after multiple retry failures', () => {
+    const acc = new UploadAccumulator();
+    const path = 'A.DAT';
+    acc.recordFailedBatch([makeMatchedFile(100, path)]);
+
+    // First retry also fails with a transient reason.
+    acc.updateFileRetryFailure(path, 'error', 'storage_timeout');
+    expect(acc.retryableFilePaths).toHaveLength(1);
+
+    // Second retry fails with a permanent reason — now permanently rejected.
+    acc.updateFileRetryFailure(path, 'rejected', 'path_mismatch');
+    expect(acc.retryableFilePaths).toHaveLength(0);
+  });
+});

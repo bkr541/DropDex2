@@ -257,13 +257,25 @@ const WAVEFORM_SELECT =
 
 export interface WaveformChunkError {
   chunkIndex: number;
+  /** IDs that were in this chunk and could not be queried. */
+  trackIds: string[];
   error: string;
 }
 
 export interface WaveformFetchResult {
   /** Waveform data for every track that had a row, keyed by track_id. */
   waveforms: Map<string, TrackPreviewWaveform>;
-  /** Per-chunk errors; other chunks continue even if one fails. */
+  /**
+   * Track IDs that were successfully queried (chunk returned without error).
+   * IDs in this set that are absent from `waveforms` are confirmed to have no
+   * waveform row — safe to cache as permanently unavailable.
+   */
+  successfulTrackIds: Set<string>;
+  /**
+   * Per-chunk errors; other chunks continue even if one fails.
+   * IDs in a failed chunk must NOT be cached as unavailable — the query may
+   * succeed on a later retry.
+   */
   errors: WaveformChunkError[];
 }
 
@@ -274,12 +286,18 @@ export interface WaveformFetchResult {
  * - Deduplicates input IDs before querying.
  * - Tracks with no waveform row are omitted from the result map (not an error).
  * - A chunk error does not fail the entire call — other chunks still complete.
+ * - `successfulTrackIds` identifies which IDs were cleanly queried so the
+ *   caller can distinguish "confirmed absent" from "query failed".
  */
 export async function fetchTrackPreviewWaveforms(
   trackIds: string[],
 ): Promise<WaveformFetchResult> {
   const chunks = chunkIds(trackIds, WAVEFORM_CHUNK_SIZE);
-  const result: WaveformFetchResult = { waveforms: new Map(), errors: [] };
+  const result: WaveformFetchResult = {
+    waveforms: new Map(),
+    successfulTrackIds: new Set(),
+    errors: [],
+  };
 
   if (chunks.length === 0) return result;
 
@@ -292,19 +310,30 @@ export async function fetchTrackPreviewWaveforms(
           .in('track_id', chunk);
 
         if (error) {
-          result.errors.push({ chunkIndex, error: error.message });
+          result.errors.push({ chunkIndex, trackIds: chunk, error: error.message });
+          if (import.meta.env.DEV) {
+            console.warn(
+              `[DropDex] Waveform chunk ${chunkIndex} failed (${chunk.length} IDs, retryable): ${error.message}`,
+            );
+          }
           return;
         }
+
+        // All IDs in this chunk were cleanly queried — missing rows = truly absent.
+        for (const id of chunk) result.successfulTrackIds.add(id);
 
         for (const raw of data ?? []) {
           const waveform = buildTrackPreviewWaveform(mapWaveformRow(raw));
           result.waveforms.set(waveform.trackId, waveform);
         }
       } catch (err) {
-        result.errors.push({
-          chunkIndex,
-          error: err instanceof Error ? err.message : 'Unknown error',
-        });
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        result.errors.push({ chunkIndex, trackIds: chunk, error: message });
+        if (import.meta.env.DEV) {
+          console.warn(
+            `[DropDex] Waveform chunk ${chunkIndex} threw (${chunk.length} IDs, retryable): ${message}`,
+          );
+        }
       }
     }),
   );

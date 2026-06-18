@@ -44,7 +44,7 @@ import { SearchView } from './components/search/SearchView';
 import { LibraryView } from './components/library/LibraryView';
 import { PlaylistEditView } from './components/library/PlaylistEditView';
 import { TrackDetailView } from './components/library/TrackDetailView';
-import { WaveformDisplay } from './components/library/WaveformDisplay';
+import { ReviewView, ReviewEmptyState } from './components/library/ReviewView';
 import { EditProfileView } from './components/profile/EditProfileView';
 import { UsbConnectionProvider } from './contexts/UsbConnectionContext';
 import { UsbConnectionButton } from './components/usb/UsbConnectionButton';
@@ -798,58 +798,16 @@ export default function App() {
                 exit={{ opacity: 0, y: 20 }}
                 className="space-y-6 pb-32 md:pb-8 md:max-w-5xl md:mx-auto"
               >
-                {!importId && (
-                  <div className="glass p-6 rounded-[2rem] border-2 border-secondary/20 text-center">
-                    <Music size={48} className="mx-auto mb-4 text-secondary opacity-50" />
-                    <h2 className="text-2xl font-black mb-2">Review Mode</h2>
-                    <p className="text-muted-foreground text-sm">Import a library to start reviewing your collection.</p>
-                  </div>
+                {!importId ? (
+                  <ReviewEmptyState onImport={() => setIsImportModalOpen(true)} />
+                ) : (
+                  <ReviewView
+                    importId={importId}
+                    tracks={reviewTracks}
+                    loading={reviewTracks.length === 0}
+                    onTrackClick={handleTrackClick}
+                  />
                 )}
-                {importId && reviewTracks.length === 0 && (
-                  <div className="flex items-center justify-center py-16">
-                    <Loader2 className="animate-spin text-primary" size={32} />
-                  </div>
-                )}
-                <div className="flex flex-col gap-4">
-                  {reviewTracks.map((t) => (
-                    <div
-                      key={t.id}
-                      onClick={() => handleTrackClick(t)}
-                      className="glass p-6 rounded-3xl active:scale-[0.97] transition-transform overflow-hidden relative group cursor-pointer"
-                    >
-                      <div className="absolute bottom-0 left-0 right-0 h-8 opacity-10 px-4 group-hover:opacity-30 transition-opacity">
-                        <WaveformDisplay seed={t.id} barCount={30} color="secondary" showFallbackLabel={false} />
-                      </div>
-                      <div className="flex justify-between items-start mb-2 relative z-10">
-                        <h3 className="text-xl font-bold line-clamp-1 flex-1 pr-4">{t.title}</h3>
-                        <span className="font-mono text-secondary neon-text-purple border border-secondary/20 px-2 py-0.5 rounded text-sm">
-                          {formatKey(t.musical_key)}
-                        </span>
-                      </div>
-                      <p className="text-muted-foreground mb-4">{t.artist ?? 'Artist Not Stored'}</p>
-                      <div className="flex gap-6 items-center">
-                        <div className="flex flex-col">
-                          <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">BPM</span>
-                          <span className="text-lg font-black font-mono">
-                            {t.bpm != null ? t.bpm.toFixed(1) : '—'}
-                          </span>
-                        </div>
-                        <div className="h-8 w-px bg-[var(--color-border-subtle)]" />
-                        <div className="flex flex-col">
-                          <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Energy</span>
-                          <div className="flex gap-0.5 mt-1">
-                            {[...Array(5)].map((_, i) => (
-                              <div
-                                key={i}
-                                className={cn('w-3 h-1.5 rounded-sm', i < (t.rating ?? 0) ? 'bg-primary' : 'bg-muted')}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </motion.div>
             )}
 

@@ -29,13 +29,14 @@ const TRANSIENT_REASON_PATTERNS = [
  * should be retried at the file level.
  *
  * - status "error" is always transient (server-side storage/processing failure).
+ * - status "request_failed" is always transient (HTTP-level failure, no server response).
  * - status "rejected" is transient only when reject_reason contains a known
  *   transient pattern (e.g. "Upload failed. Please try again.").
  * - Permanent validation failures (path_mismatch, invalid_extension, etc.) return false.
  */
 export function isTransientFileFailure(fr: BatchFileResult): boolean {
   if (fr.status === 'received' || fr.status === 'already_received') return false;
-  if (fr.status === 'error') return true;
+  if (fr.status === 'error' || fr.status === 'request_failed') return true;
   if (fr.status === 'rejected' || fr.status === 'failed') {
     const reason = (fr.reject_reason ?? '').toLowerCase();
     if (!reason) return false;
@@ -47,6 +48,15 @@ export function isTransientFileFailure(fr: BatchFileResult): boolean {
 
 // Internal per-file record used for retry correction tracking.
 interface FileRecord {
+  /**
+   * Lifecycle statuses:
+   *   'received'         — server accepted the file (new upload)
+   *   'already_received' — server already had this file
+   *   'error'            — server-side storage/processing failure (always transient)
+   *   'rejected'         — server validation failure (may or may not be transient)
+   *   'failed'           — server returned "failed" status
+   *   'request_failed'   — HTTP request itself failed; no per-file response received
+   */
   status: string;
   isDat: boolean;
   /** File size from the client-side File object at upload time. */
@@ -135,10 +145,67 @@ export class UploadAccumulator {
     }
   }
 
+  /**
+   * Record an HTTP-level batch failure where no per-file response was received.
+   *
+   * Every file in the batch is registered in `_knownFiles` as 'request_failed'
+   * (a transient, retryable status). Files already in `_knownFiles` with a
+   * terminal status (received / already_received) are not downgraded.
+   *
+   * `_attemptedFiles` / `_attemptedBytes` are incremented only for files that
+   * are new to `_knownFiles` to avoid double-counting on repeated failures.
+   */
   recordFailedBatch(batch: MatchedAnalysisFile[]): void {
     this._failedBatches++;
-    this._attemptedFiles += batch.length;
-    this._attemptedBytes += batch.reduce((s, f) => s + f.file.size, 0);
+
+    for (const mf of batch) {
+      const key = mf.canonicalPath.toLowerCase();
+      const existing = this._knownFiles.get(key);
+
+      if (existing) {
+        // Already tracked — update to request_failed only if still in a
+        // non-terminal failure state (don't downgrade a successful record).
+        if (existing.status !== 'received' && existing.status !== 'already_received') {
+          existing.status = 'request_failed';
+          existing.rejectReason = 'Request failed';
+        }
+        // Do NOT re-increment _attemptedFiles / _attemptedBytes for known files.
+        continue;
+      }
+
+      // New file — register and count it.
+      const isDat = mf.canonicalPath.toUpperCase().endsWith('.DAT');
+      this._knownFiles.set(key, {
+        status: 'request_failed',
+        isDat,
+        clientSize: mf.file.size,
+        serverFileSize: null,
+        rejectReason: 'Request failed',
+      });
+      this._attemptedFiles++;
+      this._attemptedBytes += mf.file.size;
+    }
+  }
+
+  /**
+   * Update the per-file record after a retry that also failed at the file level.
+   * Call this when a file-level retry attempt receives an error or rejection
+   * response, to keep the record's status and error reason current.
+   *
+   * This does NOT change aggregate counters — the file was already counted as a
+   * failure. It only refreshes the stored reason for observability.
+   */
+  updateFileRetryFailure(
+    canonicalPath: string,
+    newStatus: string,
+    rejectReason: string | null,
+  ): void {
+    const key = canonicalPath.toLowerCase();
+    const record = this._knownFiles.get(key);
+    if (!record) return;
+    if (record.status === 'received' || record.status === 'already_received') return;
+    record.status = newStatus;
+    record.rejectReason = rejectReason;
   }
 
   /**
@@ -163,14 +230,13 @@ export class UploadAccumulator {
     // Undo the old failure counter.
     if (oldStatus === 'error') {
       this._errorFiles = Math.max(0, this._errorFiles - 1);
-    } else {
-      // 'rejected' or 'failed'
+      if (record.isDat) this._rejectedDatFiles = Math.max(0, this._rejectedDatFiles - 1);
+    } else if (oldStatus === 'rejected' || oldStatus === 'failed') {
       this._rejectedFiles = Math.max(0, this._rejectedFiles - 1);
+      if (record.isDat) this._rejectedDatFiles = Math.max(0, this._rejectedDatFiles - 1);
     }
-    // Lift the DAT completion block if applicable.
-    if (record.isDat) {
-      this._rejectedDatFiles = Math.max(0, this._rejectedDatFiles - 1);
-    }
+    // 'request_failed' has no corresponding aggregate counter — it is purely
+    // tracked via _knownFiles; no counter to decrement here.
 
     // Add to success counters.
     const size = serverFileSize ?? record.clientSize;
@@ -197,7 +263,8 @@ export class UploadAccumulator {
       const isFailure =
         record.status === 'error' ||
         record.status === 'rejected' ||
-        record.status === 'failed';
+        record.status === 'failed' ||
+        record.status === 'request_failed';
       if (!isFailure) continue;
       // Re-construct a minimal BatchFileResult to reuse isTransientFileFailure.
       const pseudoFr: BatchFileResult = {
