@@ -373,26 +373,15 @@ function WaveformEmptyState({
     );
   }
 
-  const label = analysisInvalid
-    ? 'Invalid'
-    : unavailable
-    ? 'No waveform'
-    : 'Analysis pending';
-
-  const color = analysisInvalid
-    ? 'text-red-400/25'
-    : 'text-muted-foreground/20';
-
   return (
-    <div className="absolute inset-0 flex items-center justify-center">
-      <span
+    <div className="absolute inset-0 flex items-center justify-center px-1">
+      <div
         className={cn(
-          'text-[7px] font-bold uppercase tracking-widest select-none pointer-events-none',
-          color,
+          'w-full rounded-sm',
+          analysisInvalid ? 'bg-red-400/15' : 'bg-muted-foreground/10',
         )}
-      >
-        {label}
-      </span>
+        style={{ height: 1 }}
+      />
     </div>
   );
 }

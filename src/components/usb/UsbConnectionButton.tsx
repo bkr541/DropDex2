@@ -32,7 +32,7 @@ function StatusIcon({ status, size = 18 }: { status: UsbStatus; size?: number })
 
 function statusLabel(status: UsbStatus, volumeName: string | null): string {
   switch (status) {
-    case 'unsupported':       return 'USB not supported';
+    case 'unsupported':       return 'USB unavailable';
     case 'connecting':        return 'Connecting…';
     case 'connected':         return volumeName ?? 'USB Connected';
     case 'permission-required': return 'Re-authorize USB';
@@ -50,7 +50,7 @@ function statusTitle(status: UsbStatus, volumeName: string | null): string {
     case 'wrong_root':          return 'Wrong folder — select the USB root, not PIONEER or a subfolder';
     case 'unavailable':         return 'USB drive not found — reinsert or select a different drive';
     case 'error':               return 'USB error — click to retry';
-    case 'unsupported':         return 'File System Access API is not supported in this browser';
+    case 'unsupported':         return 'File System Access API unavailable — open over HTTPS or localhost in Chrome/Edge';
     default:                    return 'Connect a Rekordbox USB drive';
   }
 }
@@ -72,10 +72,13 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
   const isConnecting = status === 'connecting';
 
   function handlePrimaryClick() {
-    if (isUnsupported || isConnecting) return;
+    if (isConnecting) return;
     if (status === 'connected') return;
     if (status === 'permission-required') {
       void ensurePermission();
+    } else if (status === 'unsupported') {
+      // Retry — detection may have been wrong (e.g. Brave fingerprinting shields)
+      void connect();
     } else if (status === 'unavailable') {
       // Try re-verifying the stored handle first (drive may have been reinserted).
       void reconnect();
@@ -92,9 +95,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
   const primaryButtonStyle = cn(
     'relative flex items-center rounded-xl font-bold text-sm transition-all border',
     collapsed ? 'justify-center py-2.5 px-0 w-full' : 'gap-3 px-4 py-2.5 flex-1 min-w-0',
-    isUnsupported
-      ? 'text-muted-foreground/40 border-transparent cursor-not-allowed'
-      : status === 'connected'
+    status === 'connected'
       ? 'text-green-400 bg-green-500/10 border-green-500/20 hover:bg-green-500/15'
       : status === 'permission-required'
       ? 'text-amber-400 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/15 cursor-pointer'
@@ -139,7 +140,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
         {/* Main action button */}
         <button
           onClick={handlePrimaryClick}
-          disabled={isUnsupported || isConnecting}
+          disabled={isConnecting}
           title={collapsed ? statusTitle(status, volumeName) : undefined}
           aria-label={statusTitle(status, volumeName)}
           className={primaryButtonStyle}

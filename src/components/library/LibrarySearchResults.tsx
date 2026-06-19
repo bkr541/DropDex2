@@ -1,4 +1,4 @@
-import { Search, Loader2, Play, Pause, Usb } from 'lucide-react';
+import { Search, Loader2, Play, Pause } from 'lucide-react';
 import { useCallback } from 'react';
 import { cn, formatKey } from '../../lib/utils';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
@@ -82,24 +82,19 @@ function TrackRowSearch({
           <button
             onClick={handlePlayClick}
             aria-label={isPlaying ? `Pause ${track.title}` : `Play ${track.title}`}
-            disabled={!usbConnected && !isActiveTrack}
-            title={!usbConnected && !isActiveTrack ? 'Connect a USB drive to play' : undefined}
+            title={!usbConnected ? 'Connect a USB drive to play' : undefined}
             className={cn(
               'w-7 h-7 rounded-full flex items-center justify-center transition-all shrink-0',
               'opacity-0 group-hover:opacity-100 focus:opacity-100',
               isActiveRow && 'opacity-100',
               isLoadingThis && 'opacity-100 cursor-wait',
-              !usbConnected && !isActiveTrack
-                ? 'text-muted-foreground/30 cursor-not-allowed'
-                : isPlaying
+              isPlaying
                 ? 'bg-primary text-white hover:bg-primary/90'
                 : 'bg-[var(--color-surface)] text-foreground hover:bg-primary hover:text-white',
             )}
           >
             {isLoadingThis ? (
               <Loader2 size={13} className="animate-spin" />
-            ) : !usbConnected && !isActiveTrack ? (
-              <Usb size={12} />
             ) : isPlaying ? (
               <Pause size={13} />
             ) : (
@@ -142,12 +137,9 @@ function TrackRowSearch({
           <button
             onClick={handlePlayClick}
             aria-label={isPlaying ? `Pause ${track.title}` : `Play ${track.title}`}
-            disabled={!usbConnected && !isActiveTrack}
             className={cn(
               'mt-0.5 shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-all',
-              !usbConnected && !isActiveTrack
-                ? 'text-muted-foreground/30 cursor-not-allowed'
-                : isPlaying
+              isPlaying
                 ? 'bg-primary text-white'
                 : 'bg-[var(--color-surface)] text-foreground hover:bg-primary hover:text-white',
             )}

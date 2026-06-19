@@ -214,9 +214,37 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Stop playback when USB disconnects
+  // Track pending when user clicked play while USB was disconnected
+  const pendingPlayRef = useRef<RekordboxTrack | null>(null);
+
+  // React to USB status changes: auto-play on connect, stop + cleanup on disconnect
   useEffect(() => {
     const { status: usbStatus } = usbCtx;
+
+    if (usbStatus === 'connected') {
+      const pending = pendingPlayRef.current;
+      if (pending) {
+        pendingPlayRef.current = null;
+        void playTrack(pending);
+      }
+      return;
+    }
+
+    // Still transitioning — don't act yet
+    if (usbStatus === 'connecting') return;
+
+    // Picker was cancelled or failed — clear any pending play
+    const hasPending = !!pendingPlayRef.current;
+    pendingPlayRef.current = null;
+    if (hasPending && stateRef.current.status === 'resolving') {
+      if (usbStatus === 'unsupported') {
+        dispatch({ type: 'ERROR', error: 'File System Access API is not available. Open the app over HTTPS or localhost in Chrome/Edge.' });
+      } else {
+        dispatch({ type: 'STOP' });
+      }
+      return;
+    }
+
     if (usbStatus !== 'disconnected' && usbStatus !== 'unavailable') return;
     const s = stateRef.current;
     if (s.status === 'idle' || s.status === 'error') return;
@@ -242,7 +270,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (usb.status === 'disconnected') {
-      dispatch({ type: 'ERROR', error: 'Connect a USB drive to play tracks.' });
+      // Save the track and open the picker — auto-plays once USB connects
+      pendingPlayRef.current = track;
+      dispatch({ type: 'RESOLVING', track });
+      void usb.connect();
       return;
     }
     if (usb.status === 'unavailable' || usb.status === 'error') {

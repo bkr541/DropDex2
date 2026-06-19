@@ -1,16 +1,14 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, ArrowRight, KeyRound, Loader2 } from 'lucide-react';
+import { Mail, ArrowRight, Loader2, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthSession } from '../hooks/useAuthSession';
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuthSession();
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
-  const [step, setStep] = useState<'email' | 'otp'>('email');
+  const [step, setStep] = useState<'email' | 'sent'>('email');
   const [sending, setSending] = useState(false);
-  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (loading) {
@@ -33,27 +31,16 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signInWithOtp({ email: email.trim() });
     setSending(false);
     if (error) {
-      setError(error.message);
+      if (error.message.toLowerCase().includes('rate limit') || error.status === 429) {
+        // Link was already sent — skip to waiting state
+        setStep('sent');
+        setError('A sign-in link was already sent. Check your inbox.');
+      } else {
+        setError(error.message);
+      }
     } else {
-      setStep('otp');
+      setStep('sent');
     }
-  };
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otp.trim()) return;
-    setVerifying(true);
-    setError(null);
-    const { error } = await supabase.auth.verifyOtp({
-      email: email.trim(),
-      token: otp.trim(),
-      type: 'email',
-    });
-    setVerifying(false);
-    if (error) {
-      setError(error.message);
-    }
-    // On success, onAuthStateChange fires → session is set → renders children
   };
 
   return (
@@ -82,7 +69,35 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         </div>
 
         <AnimatePresence mode="wait">
-          {step === 'email' ? (
+          {step === 'sent' ? (
+            <motion.div
+              key="sent"
+              initial={{ opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -16 }}
+              className="text-center"
+            >
+              <div className="w-16 h-16 brand-gradient rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_24px_rgba(207,107,101,0.4)]">
+                <Mail size={28} className="text-white" />
+              </div>
+              <h1 className="text-2xl font-black mb-2">Check your email</h1>
+              <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
+                We sent a sign-in link to{' '}
+                <span className="text-foreground font-bold">{email}</span>.
+              </p>
+              <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
+                Click the link in the email to continue — this tab will sign you in automatically.
+              </p>
+              {error && <p className="text-amber-400 text-xs mb-4">{error}</p>}
+              <button
+                type="button"
+                onClick={() => { setStep('email'); setError(null); }}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 mx-auto"
+              >
+                <RefreshCw size={13} /> Use a different email
+              </button>
+            </motion.div>
+          ) : (
             <motion.div
               key="email"
               initial={{ opacity: 0, x: -16 }}
@@ -121,63 +136,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                     <ArrowRight size={16} />
                   )}
                   {sending ? 'Sending…' : 'Continue'}
-                </button>
-              </form>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="otp"
-              initial={{ opacity: 0, x: 16 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -16 }}
-            >
-              <h1 className="text-2xl font-black mb-1">Check your email</h1>
-              <p className="text-sm text-muted-foreground mb-8">
-                We sent a code to{' '}
-                <span className="text-foreground font-bold">{email}</span>.
-                Enter it below, or click the magic link in the email.
-              </p>
-              <form onSubmit={handleVerifyOtp} className="space-y-4">
-                <div className="relative">
-                  <KeyRound
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-                    size={16}
-                  />
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="6-digit code"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                    maxLength={6}
-                    required
-                    autoFocus
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-xl py-3.5 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-foreground placeholder:text-muted-foreground text-sm font-mono tracking-widest"
-                  />
-                </div>
-                {error && <p className="text-red-400 text-xs">{error}</p>}
-                <button
-                  type="submit"
-                  disabled={verifying}
-                  className="w-full py-3.5 brand-gradient text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-opacity active:scale-95"
-                >
-                  {verifying ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <KeyRound size={16} />
-                  )}
-                  {verifying ? 'Verifying…' : 'Verify Code'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('email');
-                    setError(null);
-                    setOtp('');
-                  }}
-                  className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
-                >
-                  Use a different email
                 </button>
               </form>
             </motion.div>

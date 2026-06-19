@@ -229,12 +229,10 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
     stateRef.current = state;
   }, [state]);
 
-  // Feature detect + restore on mount
+  // Restore on mount — skip upfront feature-detect so browsers that mask
+  // showDirectoryPicker (e.g. Brave with strict fingerprinting) still get a
+  // chance to connect. Unsupported is only set if the actual API call fails.
   useEffect(() => {
-    if (!isFileSystemAccessSupported()) {
-      dispatch({ type: 'SET_UNSUPPORTED' });
-      return;
-    }
     dispatch({ type: 'SET_CONNECTING' });
     void restoreFromStore(dispatch);
   }, []);
@@ -256,10 +254,6 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const connect = useCallback(async () => {
-    if (!isFileSystemAccessSupported()) {
-      dispatch({ type: 'SET_UNSUPPORTED' });
-      return;
-    }
     dispatch({ type: 'SET_CONNECTING' });
     try {
       const handle = await showDirectoryPicker({ id: 'dropdex-rekordbox-usb', mode: 'read' });
@@ -273,6 +267,9 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         // User cancelled picker — restore previous state from IDB
         void restoreFromStore(dispatch);
+      } else if (err instanceof ReferenceError || (err instanceof TypeError && !('showDirectoryPicker' in window))) {
+        // API not defined at all (non-secure HTTP context, Firefox, Safari, strict shields)
+        dispatch({ type: 'SET_UNSUPPORTED' });
       } else {
         dispatch({ type: 'SET_ERROR', error: String(err) });
       }
@@ -291,10 +288,6 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
 
   const selectNewUsb = useCallback(async () => {
     // Identical to connect() — always opens picker, replaces stored handle.
-    if (!isFileSystemAccessSupported()) {
-      dispatch({ type: 'SET_UNSUPPORTED' });
-      return;
-    }
     dispatch({ type: 'SET_CONNECTING' });
     try {
       const handle = await showDirectoryPicker({ id: 'dropdex-rekordbox-usb', mode: 'read' });
@@ -307,6 +300,8 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         void restoreFromStore(dispatch);
+      } else if (err instanceof TypeError && !('showDirectoryPicker' in window)) {
+        dispatch({ type: 'SET_UNSUPPORTED' });
       } else {
         dispatch({ type: 'SET_ERROR', error: String(err) });
       }
