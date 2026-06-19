@@ -91,7 +91,7 @@ const MODE_LABELS: Record<Mode, { label: string; icon: React.ReactNode; tip: str
   usb_folder: {
     label: 'USB Folder',
     icon: <FolderOpen size={14} />,
-    tip: 'Select the PIONEER folder on your Rekordbox USB. DropDex reads exportLibrary.db first, then uploads only the matching Rekordbox analysis files. Your music files are not uploaded.',
+    tip: 'Select your USB drive root (e.g. "LUMA"), not the PIONEER subfolder. DropDex will find exportLibrary.db automatically, then upload only the matching analysis files. Your music files are not uploaded.',
   },
   zip_bundle: {
     label: 'ZIP Bundle',
@@ -277,7 +277,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     if (!selectedFile) return;
     setPhase('starting_import');
     try {
-      const result = await uploadRekordboxDb(selectedFile, token);
+      const result = await uploadRekordboxDb(selectedFile, token, folderScan?.folderName);
       setFinalResult({ kind: 'library_only', data: result });
       setPhase('success');
     } catch (err) {
@@ -328,7 +328,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     setPhase('starting_import');
     let startResp: ImportStartResponse;
     try {
-      startResp = await startRekordboxImport(folderScan.dbFile, token, controller.signal);
+      startResp = await startRekordboxImport(folderScan.dbFile, token, controller.signal, folderScan.folderName);
     } catch (err) {
       if (isAbortError(err)) { reset(); return; }
       const { message, structured } = extractError(err);

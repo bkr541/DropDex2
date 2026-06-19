@@ -176,9 +176,11 @@ async function parseResponse<T>(response: Response): Promise<T> {
 export async function uploadRekordboxDb(
   file: File,
   accessToken: string,
+  deviceName?: string,
 ): Promise<ImportResult> {
   const formData = new FormData();
   formData.append('file', file);
+  if (deviceName) formData.append('device_name', deviceName);
 
   const response = await fetch(`${API_BASE}/api/rekordbox/import`, {
     method: 'POST',
@@ -197,9 +199,11 @@ export async function startRekordboxImport(
   file: File,
   accessToken: string,
   signal?: AbortSignal,
+  deviceName?: string,
 ): Promise<ImportStartResponse> {
   const formData = new FormData();
   formData.append('file', file);
+  if (deviceName) formData.append('device_name', deviceName);
 
   const response = await fetch(`${API_BASE}/api/rekordbox/import/start`, {
     method: 'POST',

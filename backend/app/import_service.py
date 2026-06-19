@@ -25,7 +25,7 @@ from .validation import validate
 logger = logging.getLogger(__name__)
 
 
-async def run_import(file: UploadFile, user_id: str) -> ImportResponse:
+async def run_import(file: UploadFile, user_id: str, device_name: str | None = None) -> ImportResponse:
     filename = file.filename or "upload"
 
     # Only accept .db files
@@ -67,6 +67,9 @@ async def run_import(file: UploadFile, user_id: str) -> ImportResponse:
                 status_code=422,
                 detail="Could not parse the uploaded file. Please confirm it is a valid rekordbox exportLibrary.db.",
             )
+
+        if device_name and not library.device_name:
+            library.device_name = device_name
 
         # Validate referential integrity
         result = validate(library)

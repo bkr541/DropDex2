@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional
 
-from fastapi import Depends, FastAPI, File, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from postgrest.exceptions import APIError
@@ -96,6 +96,7 @@ async def health() -> dict:
 @app.post("/api/rekordbox/import", response_model=ImportResponse)
 async def import_rekordbox(
     file: UploadFile = File(..., description="rekordbox exportLibrary.db file"),
+    device_name: Optional[str] = Form(None, description="USB drive label (e.g. 'LUMA')"),
     user_id: str = Depends(get_current_user_id),
 ) -> ImportResponse:
     """
@@ -107,12 +108,13 @@ async def import_rekordbox(
     - Temp file is deleted whether the import succeeds or fails.
     - Each upload creates a new independent import snapshot.
     """
-    return await run_import(file, user_id)
+    return await run_import(file, user_id, device_name=device_name)
 
 
 @app.post("/api/rekordbox/import/start", response_model=ImportStartResponse)
 async def import_rekordbox_start(
     file: UploadFile = File(..., description="rekordbox exportLibrary.db file"),
+    device_name: Optional[str] = Form(None, description="USB drive label (e.g. 'LUMA')"),
     user_id: str = Depends(get_current_user_id),
 ) -> ImportStartResponse:
     """
@@ -123,7 +125,7 @@ async def import_rekordbox_start(
     response includes the expected ANLZ paths so the client knows which files
     to upload next.
     """
-    return await start_analysis_import(file, user_id)
+    return await start_analysis_import(file, user_id, device_name=device_name)
 
 
 @app.post("/api/rekordbox/import/bundle", response_model=CompleteResponse)

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { FileUp, CheckCircle2, Music, ListMusic, Calendar, User, AlertTriangle, RefreshCw, ChevronRight } from 'lucide-react';
+import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import type { RekordboxImport, UserProfile } from '../../types';
 
 interface LibraryHeroProps {
@@ -19,6 +20,7 @@ const ANALYSIS_TITLES: Record<string, string> = {
 
 export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis }: LibraryHeroProps) {
   const [imgError, setImgError] = useState(false);
+  const { volumeName } = useUsbConnection();
 
   const libraryName = profile?.display_name
     ? profile.display_name.toUpperCase()
@@ -162,7 +164,7 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
             <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">Last Import</span>
             {/* Row 4: filename */}
             <p className="col-span-3 text-[10px] text-muted-foreground font-mono mt-1.5">
-              Imported from {latestImport.source_filename}
+              Imported from {latestImport.device_name ?? volumeName ?? latestImport.source_filename}
             </p>
           </div>
         </div>

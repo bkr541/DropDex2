@@ -274,7 +274,7 @@ def _build_manifest_entries(write_result) -> List[ManifestEntryResponse]:
 # ── Service functions ──────────────────────────────────────────────────────────
 
 
-async def start_analysis_import(file: UploadFile, user_id: str) -> ImportStartResponse:
+async def start_analysis_import(file: UploadFile, user_id: str, device_name: str | None = None) -> ImportStartResponse:
     """
     Parse exportLibrary.db, persist it to Supabase, and return the analysis manifest.
 
@@ -318,6 +318,9 @@ async def start_analysis_import(file: UploadFile, user_id: str) -> ImportStartRe
                 status_code=422,
                 detail="Could not parse the uploaded file. Please confirm it is a valid rekordbox exportLibrary.db.",
             )
+
+        if device_name and not library.device_name:
+            library.device_name = device_name
 
         result = validate(library)
         if not result.ok:
