@@ -64,8 +64,7 @@ import type {
 } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
-
-type LibraryTab = 'overview' | 'playlists' | 'recently-added' | 'tracks' | 'genres' | 'artists';
+import type { LibraryTab } from '../../navigation/appRoutes';
 
 const TABS: { id: LibraryTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -94,6 +93,10 @@ interface LibraryViewProps {
   onImport: () => void;
   onEditProfile: () => void;
   onResumeAnalysis?: (importId: string) => void;
+  activeTab: LibraryTab;
+  searchQuery: string;
+  onActiveTabChange: (tab: LibraryTab) => void;
+  onSearchQueryChange: (query: string) => void;
 }
 
 function EmptyLibrary({ onImport }: { onImport: () => void }) {
@@ -615,9 +618,11 @@ export function LibraryView({
   onTrackClick,
   onImport,
   onResumeAnalysis,
+  activeTab,
+  searchQuery,
+  onActiveTabChange,
+  onSearchQueryChange,
 }: LibraryViewProps) {
-  const [activeTab, setActiveTab] = useState<LibraryTab>('overview');
-  const [searchQuery, setSearchQuery] = useState('');
 
   const {
     results: searchResults,
@@ -714,7 +719,7 @@ export function LibraryView({
           type="text"
           placeholder="Search tracks, artists, genres…"
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => onSearchQueryChange(e.target.value)}
           className="lib-search-input"
         />
       </div>
@@ -826,7 +831,7 @@ export function LibraryView({
                     {TABS.map((tab) => (
                       <button
                         key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => onActiveTabChange(tab.id)}
                         className={cn(
                           'shrink-0 px-4 py-2.5 text-sm font-bold transition-all border-b-2 -mb-px',
                           activeTab === tab.id
@@ -860,7 +865,7 @@ export function LibraryView({
                                 <ListMusic size={13} /> Playlists
                               </h2>
                               <button
-                                onClick={() => setActiveTab('playlists')}
+                                onClick={() => onActiveTabChange('playlists')}
                                 className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
                               >
                                 View all <ChevronRight size={12} />
@@ -894,7 +899,7 @@ export function LibraryView({
                                 <Music size={13} /> Recently Added Tracks
                               </h2>
                               <button
-                                onClick={() => setActiveTab('recently-added')}
+                                onClick={() => onActiveTabChange('recently-added')}
                                 className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
                               >
                                 View all <ChevronRight size={12} />

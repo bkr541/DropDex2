@@ -20,7 +20,11 @@ interface DropLabViewProps {
   onBack: () => void;
   onTrackDetails: (track: RekordboxTrack) => void;
   preservedActiveCandidateId?: string | null;
+  preservedActiveCandidate?: RekordboxTrack | null;
+  preservedSourceDropId?: string | null;
+  preservedCandidateDropId?: string | null;
   onActiveCandidateChange?: (trackId: string | null) => void;
+  onDropSelectionChange?: (sourceDropId: string | null, candidateDropId: string | null) => void;
 }
 
 function waveformMessageForPanel(
@@ -112,22 +116,32 @@ export function DropLabView({
   onBack,
   onTrackDetails,
   preservedActiveCandidateId,
+  preservedActiveCandidate,
+  preservedSourceDropId,
+  preservedCandidateDropId,
   onActiveCandidateChange,
+  onDropSelectionChange,
 }: DropLabViewProps) {
   const [activeCandidateId, setActiveCandidateId] = useState<string | null>(preservedActiveCandidateId ?? null);
   const [barCount, setBarCount] = useState<DropLabBarCount>(8);
   const [beatOffset, setBeatOffset] = useState<DropLabBeatOffset>(0);
-  const [selectedDropId] = useState<string | null>(null);
-  const [candidateDropId] = useState<string | null>(null);
+  const [selectedDropId, setSelectedDropId] = useState<string | null>(preservedSourceDropId ?? null);
+  const [candidateDropId, setCandidateDropId] = useState<string | null>(preservedCandidateDropId ?? null);
 
-  const { candidates, loading: candidatesLoading } = useDropLabCandidates(sourceTrack, importId);
+  const { candidates, loading: candidatesLoading } = useDropLabCandidates(
+    sourceTrack,
+    importId,
+    preservedActiveCandidate ?? null,
+  );
   const candidateTracks = useMemo(() => candidates.map((candidate) => candidate.track), [candidates]);
   const analysis = useDropLabAnalysis(sourceTrack, candidateTracks);
 
   useEffect(() => {
     setBeatOffset(0);
     setActiveCandidateId(preservedActiveCandidateId ?? null);
-  }, [sourceTrack?.id, preservedActiveCandidateId]);
+    setSelectedDropId(preservedSourceDropId ?? null);
+    setCandidateDropId(preservedCandidateDropId ?? null);
+  }, [sourceTrack?.id, preservedActiveCandidateId, preservedSourceDropId, preservedCandidateDropId]);
 
   useEffect(() => {
     if (activeCandidateId && candidates.some((candidate) => candidate.track.id === activeCandidateId)) return;
@@ -144,6 +158,20 @@ export function DropLabView({
   );
   const sourceAnalysis = sourceTrack ? analysis.byTrackId.get(sourceTrack.id) : undefined;
   const candidateAnalysis = activeCandidate ? analysis.byTrackId.get(activeCandidate.id) : undefined;
+
+  useEffect(() => {
+    if (!selectedDropId || !sourceAnalysis) return;
+    if (sourceAnalysis.dropPoints.some((point) => point.id === selectedDropId)) return;
+    setSelectedDropId(null);
+    onDropSelectionChange?.(null, candidateDropId);
+  }, [candidateDropId, onDropSelectionChange, selectedDropId, sourceAnalysis]);
+
+  useEffect(() => {
+    if (!candidateDropId || !candidateAnalysis) return;
+    if (candidateAnalysis.dropPoints.some((point) => point.id === candidateDropId)) return;
+    setCandidateDropId(null);
+    onDropSelectionChange?.(selectedDropId, null);
+  }, [candidateAnalysis, candidateDropId, onDropSelectionChange, selectedDropId]);
   const sourceDrop = useMemo(
     () => sourceAnalysis ? sourceAnalysis.dropPoints.find((point) => point.id === selectedDropId) ?? chooseBestDrop(sourceAnalysis.dropPoints) : null,
     [selectedDropId, sourceAnalysis],

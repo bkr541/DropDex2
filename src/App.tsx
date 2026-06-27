@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, Suspense, type ReactNode } from 'react';
 import {
   Search,
   Music,
@@ -39,11 +39,19 @@ import { fetchReviewTracks, setActiveImport, deleteImport } from './lib/queries/
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { getImportHistoryPresentation } from './lib/rekordbox/importHistoryPresentation';
 import { ResumeAnalysisModal } from './components/ResumeAnalysisModal';
-const DiscoveryView = lazy(() => import('./components/discovery/DiscoveryView').then(m => ({ default: m.DiscoveryView })));
-const SearchView = lazy(() => import('./components/search/SearchView').then(m => ({ default: m.SearchView })));
-const ReviewView = lazy(() => import('./components/library/ReviewView').then(m => ({ default: m.ReviewView })));
-const ReviewEmptyState = lazy(() => import('./components/library/ReviewView').then(m => ({ default: m.ReviewEmptyState })));
-const DropLabView = lazy(() => import('./components/drop-lab/DropLabView').then(m => ({ default: m.DropLabView })));
+import { ApplicationErrorBoundary } from './components/errors/ApplicationErrorBoundary';
+import { RouteLoadingState, RouteLoadErrorState, RouteNotFoundState } from './components/RouteStates';
+import { lazyWithRecovery } from './navigation/lazyWithRecovery';
+import { routeKey, type AppRoute, type LibraryTab } from './navigation/appRoutes';
+import { useAppRouter } from './navigation/useAppRouter';
+import { useRouteImport, useRoutePlaylist, useRouteTracks } from './hooks/useRouteEntities';
+
+const DiscoveryView = lazyWithRecovery('discovery', () => import('./components/discovery/DiscoveryView').then(m => ({ default: m.DiscoveryView })));
+const SearchView = lazyWithRecovery('search', () => import('./components/search/SearchView').then(m => ({ default: m.SearchView })));
+const ReviewView = lazyWithRecovery('review', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewView })));
+const ReviewEmptyState = lazyWithRecovery('review-empty', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewEmptyState })));
+const DropLabView = lazyWithRecovery('drop-lab', () => import('./components/drop-lab/DropLabView').then(m => ({ default: m.DropLabView })));
+
 import { LibraryView } from './components/library/LibraryView';
 import { PlaylistEditView } from './components/library/PlaylistEditView';
 import { TrackDetailView } from './components/library/TrackDetailView';
@@ -57,7 +65,25 @@ import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 
 type Theme = 'dark' | 'light';
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search' | 'edit-profile' | 'drop-lab';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search' | 'edit-profile' | 'drop-lab' | 'import' | 'not-found';
+
+function viewForRoute(route: AppRoute): View {
+  switch (route.name) {
+    case 'library': return 'home';
+    case 'playlist': return 'playlist';
+    case 'playlist-edit': return 'playlist-edit';
+    case 'track': return 'track';
+    case 'drop-lab': return 'drop-lab';
+    case 'import': return 'import';
+    case 'review': return 'review';
+    case 'discovery': return 'discovery';
+    case 'search': return 'search';
+    case 'profile': return 'edit-profile';
+    case 'settings': return 'settings';
+    case 'not-found': return 'not-found';
+  }
+}
+
 
 // ── Player-aware mobile bottom nav ────────────────────────────────────────────
 
@@ -210,23 +236,101 @@ const TrackCard = ({ track, onClick, isActive, position }: TrackCardProps) => {
   );
 };
 
+function LazyFeature({
+  children,
+  label,
+  boundaryKey,
+  onReturnToLibrary,
+}: {
+  children: ReactNode;
+  label: string;
+  boundaryKey: string;
+  onReturnToLibrary: () => void;
+}) {
+  return (
+    <ApplicationErrorBoundary
+      level="feature"
+      resetKey={boundaryKey}
+      onReturnToLibrary={onReturnToLibrary}
+    >
+      <Suspense fallback={<RouteLoadingState label={label} />}>
+        {children}
+      </Suspense>
+    </ApplicationErrorBoundary>
+  );
+}
+
+function RouteFailureProbe() {
+  if (import.meta.env.MODE === 'e2e' && new URLSearchParams(window.location.search).get('__testRouteError') === '1') {
+    throw new Error('E2E route boundary probe');
+  }
+  return null;
+}
+
+function RootFailureProbe() {
+  if (import.meta.env.MODE === 'e2e' && new URLSearchParams(window.location.search).get('__testRootError') === '1') {
+    throw new Error('E2E root boundary probe');
+  }
+  return null;
+}
+
+function ImportStatusView({
+  item,
+  isActive,
+  onResume,
+  onMakeActive,
+}: {
+  item: RekordboxImport;
+  isActive: boolean;
+  onResume: () => void;
+  onMakeActive: () => void;
+}) {
+  const presentation = getImportHistoryPresentation(item.status, Boolean(item.retryable));
+  return (
+    <section className="mx-auto max-w-2xl space-y-5 pt-4" data-testid="import-status-screen">
+      <div className="glass rounded-3xl border border-[var(--color-border-subtle)] p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Library Import</p>
+            <h2 className="mt-1 truncate text-2xl font-black">{item.source_filename}</h2>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">{item.id}</p>
+          </div>
+          <span className="rounded-full bg-[var(--color-surface)] px-3 py-1 text-[10px] font-bold uppercase tracking-widest">
+            {presentation.label}
+          </span>
+        </div>
+        <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div><dt className="text-[9px] uppercase text-muted-foreground">Tracks</dt><dd className="font-mono font-bold">{item.track_count.toLocaleString()}</dd></div>
+          <div><dt className="text-[9px] uppercase text-muted-foreground">Playlists</dt><dd className="font-mono font-bold">{item.playlist_count.toLocaleString()}</dd></div>
+          <div><dt className="text-[9px] uppercase text-muted-foreground">Imported</dt><dd className="font-mono text-xs font-bold">{new Date(item.imported_at).toLocaleDateString()}</dd></div>
+          <div><dt className="text-[9px] uppercase text-muted-foreground">Library</dt><dd className="font-mono text-xs font-bold">{isActive ? 'Active' : 'Snapshot'}</dd></div>
+        </dl>
+        {item.error_message && (
+          <p className="mt-5 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-300">{item.error_message}</p>
+        )}
+        <div className="mt-6 flex flex-wrap gap-2">
+          {!isActive && presentation.canActivate && (
+            <button type="button" onClick={onMakeActive} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white">Make Active</button>
+          )}
+          {(presentation.canRetry || item.analysis_status !== 'completed') && (
+            <button type="button" onClick={onResume} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Resume Analysis</button>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // --- App Root ---
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<View>('home');
-  const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistWithCount | null>(null);
-  const [editingPlaylist, setEditingPlaylist] = useState<PlaylistWithCount | null>(null);
-  const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
-  const [dropLabSourceTrack, setDropLabSourceTrack] = useState<RekordboxTrack | null>(null);
-  const [dropLabActiveCandidateId, setDropLabActiveCandidateId] = useState<string | null>(null);
+  const { route, navigate, goBack: navigateBack } = useAppRouter();
+  const currentView = viewForRoute(route);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
-  const [resumeImportId, setResumeImportId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem('dropdex-theme') as Theme) || 'dark'
   );
   const [reviewTracks, setReviewTracks] = useState<RekordboxTrack[]>([]);
-  const [previousView, setPreviousView] = useState<View>('home');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem('dropdex-sidebar-collapsed') === 'true'
   );
@@ -238,6 +342,51 @@ export default function App() {
   const { data: latestImport, loading: importLoading, error: importError, refetch: refetchImport } =
     useLatestRekordboxImport(userId);
   const importId = latestImport?.id ?? null;
+  const { playlists, loading: playlistsLoading } = useRekordboxPlaylists(importId);
+  const { profiles: playlistProfiles, refetch: refetchProfiles, upsertLocal: upsertLocalProfile } = useUserPlaylistProfiles(userId);
+  const { profile: userProfile, refetch: refetchUserProfile } = useUserProfile(userId);
+  const { genres: userGenres, refetch: refetchUserGenres } = useUserPreferences(userId);
+  const {
+    imports: allImports, loading: importsListLoading, error: importsListError,
+    refetch: refetchImportList,
+  } = useImportList(userId);
+
+  const routeTrackId = route.name === 'track' ? route.trackId : null;
+  const routeSourceTrackId = route.name === 'drop-lab' ? route.sourceTrackId : null;
+  const routeCandidateTrackId = route.name === 'drop-lab' ? route.candidateTrackId : null;
+  const routeTrackIds = useMemo(() => {
+    if (routeTrackId) return [routeTrackId];
+    if (routeSourceTrackId) return routeCandidateTrackId
+      ? [routeSourceTrackId, routeCandidateTrackId]
+      : [routeSourceTrackId];
+    return [];
+  }, [routeCandidateTrackId, routeSourceTrackId, routeTrackId]);
+  const routeTracks = useRouteTracks(routeTrackIds);
+  const routePlaylistId = route.name === 'playlist' || route.name === 'playlist-edit' ? route.playlistId : null;
+  const routePlaylist = useRoutePlaylist(routePlaylistId);
+  const routeImportId = route.name === 'import' ? route.importId : null;
+  const routeImport = useRouteImport(routeImportId);
+
+  const selectedTrack = route.name === 'track' ? routeTracks.tracksById.get(route.trackId) ?? null : null;
+  const dropLabSourceTrack = route.name === 'drop-lab'
+    ? routeTracks.tracksById.get(route.sourceTrackId) ?? null
+    : null;
+  const dropLabActiveCandidateId = route.name === 'drop-lab' ? route.candidateTrackId : null;
+  const dropLabActiveCandidate = route.name === 'drop-lab' && route.candidateTrackId
+    ? routeTracks.tracksById.get(route.candidateTrackId) ?? null
+    : null;
+  const selectedPlaylist = route.name === 'playlist'
+    ? playlists.find((playlist) => playlist.id === route.playlistId) ?? routePlaylist.data
+    : null;
+  const editingPlaylist = route.name === 'playlist-edit'
+    ? playlists.find((playlist) => playlist.id === route.playlistId) ?? routePlaylist.data
+    : null;
+  const selectedImport = route.name === 'import'
+    ? allImports.find((item) => item.id === route.importId) ?? routeImport.data
+    : null;
+  const resumeImportId = route.name === 'import' && route.resume ? route.importId : null;
+  const selectedTrackImportId = selectedTrack?.import_id ?? importId;
+
   const selectedWaveformTrackIds = useMemo(
     () => (selectedTrack ? [selectedTrack.id] : []),
     [selectedTrack],
@@ -245,13 +394,9 @@ export default function App() {
   const {
     getState: getSelectedTrackWaveformState,
     retry: retrySelectedTrackWaveform,
-  } = useTrackPreviewWaveforms(importId, selectedWaveformTrackIds);
+  } = useTrackPreviewWaveforms(selectedTrackImportId, selectedWaveformTrackIds);
   const selectedTrackWaveformState = getSelectedTrackWaveformState(selectedTrack?.id);
 
-  const { playlists, loading: playlistsLoading } = useRekordboxPlaylists(importId);
-  const { profiles: playlistProfiles, refetch: refetchProfiles, upsertLocal: upsertLocalProfile } = useUserPlaylistProfiles(userId);
-  const { profile: userProfile, refetch: refetchUserProfile } = useUserProfile(userId);
-  const { genres: userGenres, refetch: refetchUserGenres } = useUserPreferences(userId);
   const {
     tracks: playlistTracks,
     total: playlistTrackTotal,
@@ -264,11 +409,7 @@ export default function App() {
   const { stats: editingPlaylistStats } = usePlaylistStats(editingPlaylist?.id ?? null);
   const { tracks: recentTracks, loading: recentTracksLoading } = useRecentTracks(importId);
   const { memberships: trackPlaylists, loading: trackPlaylistsLoading } =
-    useTrackPlaylists(importId, selectedTrack?.id ?? null);
-  const {
-    imports: allImports, loading: importsListLoading, error: importsListError,
-    refetch: refetchImportList,
-  } = useImportList(userId);
+    useTrackPlaylists(selectedTrackImportId, selectedTrack?.id ?? null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -318,19 +459,72 @@ export default function App() {
     return playlistProfiles.get(key) ?? null;
   }, [editingPlaylist, latestImport?.device_name, playlistProfiles]);
 
+  const needsPlaylistResolution = route.name === 'playlist' || route.name === 'playlist-edit';
+  const needsTrackResolution = route.name === 'track' || route.name === 'drop-lab';
+  const needsImportResolution = route.name === 'import';
+  const routeEntityLoading =
+    (needsTrackResolution && routeTracks.loading)
+    || (needsPlaylistResolution && !selectedPlaylist && !editingPlaylist && routePlaylist.loading)
+    || (needsImportResolution && !selectedImport && routeImport.loading);
+  const routeEntityError =
+    (needsTrackResolution ? routeTracks.error : null)
+    ?? (needsPlaylistResolution && !selectedPlaylist && !editingPlaylist ? routePlaylist.error : null)
+    ?? (needsImportResolution && !selectedImport ? routeImport.error : null);
+  const candidateTrackMissing = route.name === 'drop-lab'
+    && Boolean(route.candidateTrackId)
+    && !routeTracks.loading
+    && !routeTracks.tracksById.has(route.candidateTrackId!);
+  const candidateImportMismatch = route.name === 'drop-lab'
+    && Boolean(route.candidateTrackId)
+    && Boolean(dropLabSourceTrack)
+    && Boolean(routeTracks.tracksById.get(route.candidateTrackId!))
+    && routeTracks.tracksById.get(route.candidateTrackId!)?.import_id !== dropLabSourceTrack?.import_id;
+  const routeEntityMissing = !routeEntityLoading && !routeEntityError && (
+    route.name === 'not-found'
+    || (route.name === 'track' && !selectedTrack)
+    || (route.name === 'drop-lab' && (!dropLabSourceTrack || candidateTrackMissing || candidateImportMismatch))
+    || (route.name === 'playlist' && !selectedPlaylist)
+    || (route.name === 'playlist-edit' && !editingPlaylist)
+    || (route.name === 'import' && !selectedImport)
+  );
+  const routeBlocked = routeEntityLoading || Boolean(routeEntityError) || routeEntityMissing;
+
+  const retryRouteEntity = () => {
+    if (needsTrackResolution) routeTracks.retry();
+    if (needsPlaylistResolution) routePlaylist.retry();
+    if (needsImportResolution) routeImport.retry();
+  };
+
+  const libraryRoute = (tab: LibraryTab = 'overview', search = ''): AppRoute => ({
+    name: 'library',
+    tab,
+    search,
+  });
+
+  const setCurrentView = (view: View) => {
+    switch (view) {
+      case 'home': navigate(libraryRoute()); break;
+      case 'review': navigate({ name: 'review' }); break;
+      case 'settings': navigate({ name: 'settings' }); break;
+      case 'discovery': navigate({ name: 'discovery' }); break;
+      case 'search': navigate({ name: 'search' }); break;
+      case 'edit-profile': navigate({ name: 'profile' }); break;
+      default: break;
+    }
+  };
+
+  const returnToLibrary = () => navigate(libraryRoute());
+
   const handleImportSuccess = () => {
-    setCurrentView('home');
-    setSelectedPlaylist(null);
-    setSelectedTrack(null);
-    setEditingPlaylist(null);
+    navigate(libraryRoute(), { replace: true });
     refetchImport();
     refetchImportList();
     void refetchProfiles();
   };
 
-  const handleSetActiveImport = async (importId: string) => {
+  const handleSetActiveImport = async (nextImportId: string) => {
     try {
-      await setActiveImport(importId);
+      await setActiveImport(nextImportId);
       refetchImport();
     } catch (err) {
       console.error('Failed to set active import:', err);
@@ -354,6 +548,9 @@ export default function App() {
 
     try {
       await deleteImport(imp.id);
+      if (route.name === 'import' && route.importId === imp.id) {
+        navigate({ name: 'settings' }, { replace: true });
+      }
       if (isActive) refetchImport();
       refetchImportList();
     } catch (err) {
@@ -361,63 +558,57 @@ export default function App() {
     }
   };
 
-  const handlePlaylistClick = (p: PlaylistWithCount) => {
-    setSelectedPlaylist(p);
-    setCurrentView('playlist');
+  const handlePlaylistClick = (playlist: PlaylistWithCount) => {
+    navigate({ name: 'playlist', playlistId: playlist.id });
   };
 
-  const handleTrackClick = (t: RekordboxTrack) => {
-    if (currentView !== 'track') setPreviousView(currentView);
-    setSelectedTrack(t);
-    setCurrentView('track');
+  const handleTrackClick = (track: RekordboxTrack) => {
+    navigate({ name: 'track', trackId: track.id });
   };
 
   const handleOpenDropLab = (track: RekordboxTrack) => {
-    setDropLabSourceTrack(track);
-    setSelectedTrack(track);
-    setDropLabActiveCandidateId(null);
-    setCurrentView('drop-lab');
+    navigate({
+      name: 'drop-lab',
+      sourceTrackId: track.id,
+      candidateTrackId: null,
+      sourceDropId: null,
+      candidateDropId: null,
+    });
   };
 
   const handleDropLabBack = () => {
-    if (dropLabSourceTrack) setSelectedTrack(dropLabSourceTrack);
-    setCurrentView(dropLabSourceTrack ? 'track' : 'home');
+    navigateBack(route.name === 'drop-lab'
+      ? { name: 'track', trackId: route.sourceTrackId }
+      : libraryRoute());
   };
 
   const handleDropLabCandidateDetails = (track: RekordboxTrack) => {
-    setPreviousView('drop-lab');
-    setSelectedTrack(track);
-    setCurrentView('track');
+    navigate({ name: 'track', trackId: track.id });
+  };
+
+  const handleDropLabCandidateChange = (trackId: string | null) => {
+    if (route.name !== 'drop-lab' || route.candidateTrackId === trackId) return;
+    navigate({ ...route, candidateTrackId: trackId, candidateDropId: null }, { replace: true });
+  };
+
+  const handleDropLabDropSelectionChange = (sourceDropId: string | null, candidateDropId: string | null) => {
+    if (route.name !== 'drop-lab') return;
+    if (route.sourceDropId === sourceDropId && route.candidateDropId === candidateDropId) return;
+    navigate({ ...route, sourceDropId, candidateDropId }, { replace: true });
   };
 
   const handleAppearsInPlaylistClick = (playlistId: string) => {
-    const found = playlists.find((p) => p.id === playlistId);
-    if (found) {
-      setSelectedPlaylist(found);
-      setCurrentView('playlist');
-    }
+    navigate({ name: 'playlist', playlistId });
   };
 
-  const goBack = () => {
-    if (currentView === 'track') setCurrentView(previousView);
-    else if (currentView === 'playlist') setCurrentView('home');
-    else if (currentView === 'playlist-edit') { setCurrentView(previousView); setEditingPlaylist(null); }
-    else if (currentView === 'edit-profile') setCurrentView('home');
-    else if (currentView === 'review') setCurrentView('home');
-    else if (currentView === 'settings') setCurrentView('home');
-    else if (currentView === 'discovery') setCurrentView('home');
-    else if (currentView === 'search') setCurrentView('home');
-    else if (currentView === 'drop-lab') handleDropLabBack();
-  };
+  const goBack = () => navigateBack();
 
   const handleEditProfile = () => {
-    setCurrentView('edit-profile');
+    navigate({ name: 'profile' });
   };
 
   const handleEditPlaylist = (playlist: PlaylistWithCount) => {
-    setPreviousView(currentView);
-    setEditingPlaylist(playlist);
-    setCurrentView('playlist-edit');
+    navigate({ name: 'playlist-edit', playlistId: playlist.id });
   };
 
   const toggleSidebar = () => {
@@ -440,6 +631,7 @@ export default function App() {
   return (
     <UsbConnectionProvider>
     <AudioPlayerProvider>
+    <RootFailureProbe />
     <div className="flex h-screen overflow-hidden font-sans relative">
       {/* Background ambience */}
       <div className="fixed inset-0 -z-10 bg-background overflow-hidden">
@@ -513,9 +705,9 @@ export default function App() {
       <div className="flex flex-col flex-1 min-w-0 h-screen">
 
         {/* View subheader */}
-        {currentView !== 'home' && currentView !== 'drop-lab' && (
+        {currentView !== 'home' && currentView !== 'drop-lab' && currentView !== 'not-found' && (
           <div className="px-6 py-4 shrink-0">
-            {currentView === 'playlist' && (
+            {!routeBlocked && currentView === 'playlist' && (
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
@@ -565,7 +757,7 @@ export default function App() {
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Edit Playlist</p>
               </div>
             )}
-            {currentView === 'track' && (
+            {!routeBlocked && currentView === 'track' && (
               <div>
                 <div className="flex items-center gap-2">
                   <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
@@ -576,7 +768,7 @@ export default function App() {
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Deep Scan Results</p>
               </div>
             )}
-            {currentView === 'review' && (
+            {!routeBlocked && currentView === 'review' && (
               <div>
                 <div className="flex items-center gap-2">
                   <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
@@ -587,7 +779,7 @@ export default function App() {
                 <p className="text-[8px] text-secondary uppercase tracking-[0.2em] font-bold pl-7">Optimized for low-light</p>
               </div>
             )}
-            {currentView === 'settings' && (
+            {!routeBlocked && currentView === 'settings' && (
               <div>
                 <div className="flex items-center gap-2">
                   <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
@@ -598,7 +790,7 @@ export default function App() {
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">App Configuration</p>
               </div>
             )}
-            {currentView === 'discovery' && (
+            {!routeBlocked && currentView === 'discovery' && (
               <div>
                 <div className="flex items-center gap-2">
                   <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
@@ -609,7 +801,7 @@ export default function App() {
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Setlists via 1001Tracklists</p>
               </div>
             )}
-            {currentView === 'search' && (
+            {!routeBlocked && currentView === 'search' && (
               <div>
                 <div className="flex items-center gap-2">
                   <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
@@ -620,7 +812,18 @@ export default function App() {
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Melodic Dubstep &amp; Future Bass</p>
               </div>
             )}
-            {currentView === 'edit-profile' && (
+            {currentView === 'import' && (
+              <div>
+                <div className="flex items-center gap-2">
+                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                    <ChevronLeft size={20} />
+                  </button>
+                  <h2 className="text-2xl font-black italic">Import Status</h2>
+                </div>
+                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Durable import details</p>
+              </div>
+            )}
+            {!routeBlocked && currentView === 'edit-profile' && (
               <div>
                 <div className="flex items-center gap-2">
                   <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
@@ -636,10 +839,29 @@ export default function App() {
 
         {/* Scrollable content */}
         <main className={cn('flex-1 overflow-y-auto px-4 md:px-8 pb-32 md:pb-8', currentView === 'home' && 'pt-6')}>
+          <ApplicationErrorBoundary level="feature" resetKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
+          <RouteFailureProbe />
           <AnimatePresence mode="wait">
+            {routeEntityLoading && <RouteLoadingState key="route-loading" label="Restoring this DropDex screen…" />}
+            {routeEntityError && (
+              <RouteLoadErrorState
+                key="route-error"
+                message={routeEntityError}
+                onRetry={retryRouteEntity}
+                onReturnToLibrary={returnToLibrary}
+              />
+            )}
+            {routeEntityMissing && (
+              <RouteNotFoundState
+                key="route-missing"
+                title="This DropDex item is unavailable"
+                message="It may have been deleted, belong to another account, or no longer be available in this library snapshot."
+                onReturnToLibrary={returnToLibrary}
+              />
+            )}
 
             {/* ── Home ── */}
-            {currentView === 'home' && (
+            {!routeBlocked && currentView === 'home' && (
               <motion.div
                 key="home"
                 initial={{ opacity: 0, x: -20 }}
@@ -663,14 +885,22 @@ export default function App() {
                   onTrackClick={handleTrackClick}
                   onImport={() => setIsImportModalOpen(true)}
                   onEditProfile={handleEditProfile}
-                  onResumeAnalysis={(id) => { setResumeImportId(id); setIsResumeModalOpen(true); }}
+                  onResumeAnalysis={(id) => navigate({ name: 'import', importId: id, resume: true })}
+                  activeTab={route.name === 'library' ? route.tab : 'overview'}
+                  searchQuery={route.name === 'library' ? route.search : ''}
+                  onActiveTabChange={(tab) => {
+                    if (route.name === 'library') navigate({ ...route, tab });
+                  }}
+                  onSearchQueryChange={(search) => {
+                    if (route.name === 'library') navigate({ ...route, search }, { replace: true });
+                  }}
                 />
 
               </motion.div>
             )}
 
             {/* ── Playlist ── */}
-            {currentView === 'playlist' && (
+            {!routeBlocked && currentView === 'playlist' && (
               <motion.div
                 key="playlist"
                 initial={{ opacity: 0, x: 20 }}
@@ -771,7 +1001,7 @@ export default function App() {
             )}
 
             {/* ── Playlist Edit ── */}
-            {currentView === 'playlist-edit' && editingPlaylist && latestImport && userId && (
+            {!routeBlocked && currentView === 'playlist-edit' && editingPlaylist && latestImport && userId && (
               <motion.div
                 key="playlist-edit"
                 initial={{ opacity: 0, x: 20 }}
@@ -791,15 +1021,14 @@ export default function App() {
                   onSaved={(saved) => {
                     upsertLocalProfile(saved);
                     void refetchProfiles();
-                    setCurrentView(previousView);
-                    setEditingPlaylist(null);
+                    navigate({ name: 'playlist', playlistId: editingPlaylist.id }, { replace: true });
                   }}
                 />
               </motion.div>
             )}
 
             {/* ── Track detail ── */}
-            {currentView === 'track' && selectedTrack && (
+            {!routeBlocked && currentView === 'track' && selectedTrack && (
               <motion.div
                 key="track"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -809,7 +1038,7 @@ export default function App() {
               >
                 <TrackDetailView
                   track={selectedTrack}
-                  importId={importId}
+                  importId={selectedTrackImportId}
                   waveformState={selectedTrackWaveformState}
                   onRetryWaveform={() => {
                     if (selectedTrack) retrySelectedTrackWaveform([selectedTrack.id]);
@@ -824,7 +1053,7 @@ export default function App() {
             )}
 
             {/* ── Drop Lab ── */}
-            {currentView === 'drop-lab' && (
+            {!routeBlocked && currentView === 'drop-lab' && (
               <motion.div
                 key="drop-lab"
                 initial={{ opacity: 0, y: 16 }}
@@ -832,21 +1061,42 @@ export default function App() {
                 exit={{ opacity: 0, y: 16 }}
                 className="pt-2"
               >
-                <Suspense fallback={<div className="py-12 text-center text-sm text-muted-foreground">Loading Drop Lab…</div>}>
+                <LazyFeature label="Loading Drop Lab…" boundaryKey={`${routeKey(route)}:drop-lab`} onReturnToLibrary={returnToLibrary}>
                   <DropLabView
                     sourceTrack={dropLabSourceTrack}
-                    importId={importId}
+                    importId={dropLabSourceTrack?.import_id ?? importId}
                     preservedActiveCandidateId={dropLabActiveCandidateId}
-                    onActiveCandidateChange={setDropLabActiveCandidateId}
+                    preservedActiveCandidate={dropLabActiveCandidate}
+                    preservedSourceDropId={route.name === 'drop-lab' ? route.sourceDropId : null}
+                    preservedCandidateDropId={route.name === 'drop-lab' ? route.candidateDropId : null}
+                    onActiveCandidateChange={handleDropLabCandidateChange}
+                    onDropSelectionChange={handleDropLabDropSelectionChange}
                     onBack={handleDropLabBack}
                     onTrackDetails={handleDropLabCandidateDetails}
                   />
-                </Suspense>
+                </LazyFeature>
+              </motion.div>
+            )}
+
+            {/* ── Import status ── */}
+            {!routeBlocked && currentView === 'import' && selectedImport && (
+              <motion.div
+                key="import"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+              >
+                <ImportStatusView
+                  item={selectedImport}
+                  isActive={selectedImport.id === latestImport?.id}
+                  onMakeActive={() => { void handleSetActiveImport(selectedImport.id); }}
+                  onResume={() => navigate({ name: 'import', importId: selectedImport.id, resume: true }, { replace: true })}
+                />
               </motion.div>
             )}
 
             {/* ── Review ── */}
-            {currentView === 'review' && (
+            {!routeBlocked && currentView === 'review' && (
               <motion.div
                 key="review"
                 initial={{ opacity: 0, y: 20 }}
@@ -854,7 +1104,7 @@ export default function App() {
                 exit={{ opacity: 0, y: 20 }}
                 className="space-y-6 pb-32 md:pb-8 md:max-w-5xl md:mx-auto"
               >
-                <Suspense fallback={null}>
+                <LazyFeature label="Loading Review…" boundaryKey={`${routeKey(route)}:review`} onReturnToLibrary={returnToLibrary}>
                   {!importId ? (
                     <ReviewEmptyState onImport={() => setIsImportModalOpen(true)} />
                   ) : (
@@ -865,12 +1115,12 @@ export default function App() {
                       onTrackClick={handleTrackClick}
                     />
                   )}
-                </Suspense>
+                </LazyFeature>
               </motion.div>
             )}
 
             {/* ── Settings ── */}
-            {currentView === 'settings' && (
+            {!routeBlocked && currentView === 'settings' && (
               <motion.div
                 key="settings"
                 initial={{ opacity: 0, y: 16 }}
@@ -1022,7 +1272,14 @@ export default function App() {
                           <div key={imp.id} className="p-4 flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <p className="font-bold text-sm font-mono truncate">{imp.source_filename}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => navigate({ name: 'import', importId: imp.id, resume: false })}
+                                  className="max-w-full truncate text-left font-mono text-sm font-bold hover:text-primary"
+                                  aria-label={`Open import ${imp.source_filename}`}
+                                >
+                                  {imp.source_filename}
+                                </button>
                                 {isActive && (
                                   <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-primary/10 text-primary rounded shrink-0">
                                     Active
@@ -1100,35 +1357,35 @@ export default function App() {
             )}
 
             {/* ── Discovery ── */}
-            {currentView === 'discovery' && (
+            {!routeBlocked && currentView === 'discovery' && (
               <motion.div
                 key="discovery"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
               >
-                <Suspense fallback={null}>
+                <LazyFeature label="Loading Discovery…" boundaryKey={`${routeKey(route)}:discovery`} onReturnToLibrary={returnToLibrary}>
                   <DiscoveryView accessToken={session?.access_token ?? null} />
-                </Suspense>
+                </LazyFeature>
               </motion.div>
             )}
 
             {/* ── Search ── */}
-            {currentView === 'search' && (
+            {!routeBlocked && currentView === 'search' && (
               <motion.div
                 key="search"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
               >
-                <Suspense fallback={null}>
+                <LazyFeature label="Loading Search…" boundaryKey={`${routeKey(route)}:search`} onReturnToLibrary={returnToLibrary}>
                   <SearchView />
-                </Suspense>
+                </LazyFeature>
               </motion.div>
             )}
 
             {/* ── Edit Profile ── */}
-            {currentView === 'edit-profile' && userId && (
+            {!routeBlocked && currentView === 'edit-profile' && userId && (
               <motion.div
                 key="edit-profile"
                 initial={{ opacity: 0, y: 16 }}
@@ -1149,6 +1406,7 @@ export default function App() {
             )}
 
           </AnimatePresence>
+          </ApplicationErrorBoundary>
         </main>
         {/* ── Desktop NowPlaying — in-flow at bottom of content column ── */}
         {currentView !== 'drop-lab' && <NowPlayingBar className="hidden md:flex shrink-0" />}
@@ -1172,9 +1430,11 @@ export default function App() {
 
       {resumeImportId && (
         <ResumeAnalysisModal
-          isOpen={isResumeModalOpen}
+          isOpen
           importId={resumeImportId}
-          onClose={() => setIsResumeModalOpen(false)}
+          onClose={() => {
+            if (route.name === 'import') navigate({ ...route, resume: false }, { replace: true });
+          }}
           onSuccess={handleImportSuccess}
         />
       )}

@@ -21,7 +21,11 @@ function matchLabel(score: number): DropLabCandidate['matchLabel'] {
   return 'Experimental';
 }
 
-export function useDropLabCandidates(sourceTrack: RekordboxTrack | null, importId: string | null) {
+export function useDropLabCandidates(
+  sourceTrack: RekordboxTrack | null,
+  importId: string | null,
+  pinnedCandidate: RekordboxTrack | null = null,
+) {
   const [candidates, setCandidates] = useState<DropLabCandidate[]>([]);
   const [loading, setLoading] = useState(false);
   const requestIdRef = useRef(0);
@@ -66,13 +70,31 @@ export function useDropLabCandidates(sourceTrack: RekordboxTrack | null, importI
         }),
       );
 
-      const ranked = rankScoredCandidates(mergeCandidates(edgeScored, dbScored), 12)
-        .filter((result) => result.track.id !== sourceTrack.id)
-        .map((result) => ({
-          ...result,
-          matchLabel: matchLabel(result.recommendationScore),
-        }));
-      return ranked;
+      const merged = mergeCandidates(edgeScored, dbScored);
+      const pinnedResult = pinnedCandidate && pinnedCandidate.id !== sourceTrack.id
+        ? scoreCandidate({
+            selected: sourceTrack,
+            candidate: pinnedCandidate,
+            bpmTolerance: BPM_TOLERANCE_DEFAULT,
+            edge: null,
+          })
+        : null;
+      const ranked = rankScoredCandidates(
+        pinnedResult ? mergeCandidates(merged, [pinnedResult]) : merged,
+        12,
+      ).filter((result) => result.track.id !== sourceTrack.id);
+
+      // A durable Drop Lab URL is authoritative even when the selected candidate
+      // no longer lands in the current recommendation top 12. Keep it available
+      // so refresh and shared links restore the same comparison.
+      const withPinned = pinnedResult && !ranked.some((result) => result.track.id === pinnedResult.track.id)
+        ? [pinnedResult, ...ranked].slice(0, 12)
+        : ranked;
+
+      return withPinned.map((result) => ({
+        ...result,
+        matchLabel: matchLabel(result.recommendationScore),
+      }));
     })()
       .then((ranked) => {
         if (requestId !== requestIdRef.current) return;
@@ -85,7 +107,7 @@ export function useDropLabCandidates(sourceTrack: RekordboxTrack | null, importI
       .finally(() => {
         if (requestId === requestIdRef.current) setLoading(false);
       });
-  }, [sourceTrack, importId]);
+  }, [sourceTrack, importId, pinnedCandidate]);
 
   return { candidates, loading };
 }

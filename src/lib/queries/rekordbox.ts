@@ -215,6 +215,43 @@ export async function fetchLibraryTracksPage(
   return parsePage<RekordboxTrack>(data);
 }
 
+
+export async function fetchTracksByIds(trackIds: string[]): Promise<RekordboxTrack[]> {
+  const uniqueIds = [...new Set(trackIds.filter(Boolean))];
+  if (uniqueIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('rekordbox_tracks')
+    .select('*')
+    .in('id', uniqueIds);
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as RekordboxTrack[];
+}
+
+export async function fetchPlaylistById(playlistId: string): Promise<PlaylistWithCount | null> {
+  const { data, error } = await supabase
+    .from('rekordbox_playlists')
+    .select('*')
+    .eq('id', playlistId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return { ...(data as RekordboxPlaylist), track_count: 0 };
+}
+
+export async function fetchImportById(importId: string): Promise<RekordboxImport | null> {
+  const { data, error } = await supabase
+    .from('rekordbox_imports')
+    .select('*')
+    .eq('id', importId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data as RekordboxImport | null;
+}
+
 export async function fetchRecentTracks(importId: string): Promise<RekordboxTrack[]> {
   const { data, error } = await supabase
     .from('rekordbox_tracks')

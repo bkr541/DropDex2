@@ -50,16 +50,16 @@ export async function injectAudioMocks(page: Page): Promise<void> {
     // Fake Object URL — synthetic but distinct per blob.
     let urlCounter = 0;
     const revokedUrls = new Set<string>();
-    (window as unknown as Record<string, unknown>).URL = {
-      ...URL,
-      createObjectURL: (blob: Blob) => {
-        const url = `blob:test/${++urlCounter}-${(blob as File).name ?? 'audio'}`;
-        return url;
-      },
-      revokeObjectURL: (url: string) => {
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: (blob: Blob) => `blob:test/${++urlCounter}-${(blob as File).name ?? 'audio'}`,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: (url: string) => {
         revokedUrls.add(url);
       },
-    };
+    });
 
     // Expose revoked URLs so tests can assert revocation.
     (window as unknown as Record<string, unknown>).__revokedObjectUrls = revokedUrls;

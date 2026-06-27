@@ -93,6 +93,21 @@ export const FAKE_PLAYLISTS = [
   },
 ];
 
+function filterRowsById<T extends { id: string }>(route: Route, rows: T[]): T[] {
+  const idFilter = new URL(route.request().url()).searchParams.get('id');
+  if (!idFilter) return rows;
+  if (idFilter.startsWith('eq.')) {
+    const id = decodeURIComponent(idFilter.slice(3));
+    return rows.filter((row) => row.id === id);
+  }
+  const inMatch = idFilter.match(/^in\.\((.*)\)$/);
+  if (inMatch) {
+    const ids = inMatch[1].split(',').map((id) => decodeURIComponent(id.replace(/^"|"$/g, '')));
+    return rows.filter((row) => ids.includes(row.id));
+  }
+  return rows;
+}
+
 // ── Route setup ───────────────────────────────────────────────────────────────
 
 /**
@@ -141,6 +156,16 @@ export async function mockSupabaseRoutes(
   const imports = overrides.imports ?? [FAKE_IMPORT];
   const waveforms = overrides.waveforms ?? [];
 
+  // Register the broad fallback first. Playwright evaluates page routes in
+  // reverse registration order, so the specific handlers below take priority.
+  await page.route('**/fakeproject.supabase.co/**', async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([]),
+    });
+  });
+
   // Auth: getSession — return the fake session token validation
   await page.route('**/auth/v1/token*', async (route) => {
     await route.fulfill({
@@ -164,7 +189,7 @@ export async function mockSupabaseRoutes(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(imports),
+      body: JSON.stringify(filterRowsById(route, imports)),
     });
   });
 
@@ -173,7 +198,7 @@ export async function mockSupabaseRoutes(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(tracks),
+      body: JSON.stringify(filterRowsById(route, tracks)),
     });
   });
 
@@ -182,7 +207,7 @@ export async function mockSupabaseRoutes(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(playlists),
+      body: JSON.stringify(filterRowsById(route, playlists)),
     });
   });
 
@@ -215,19 +240,42 @@ export async function mockSupabaseRoutes(
 
   // RPC calls
   await page.route('**/rest/v1/rpc/**', async (route: Route) => {
+    const functionName = new URL(route.request().url()).pathname.split('/').pop();
+    const requestBody = route.request().postDataJSON?.() as Record<string, unknown> | undefined;
+    let body: unknown = null;
+
+    if (functionName === 'get_rekordbox_playlists_with_counts') {
+      body = playlists.map((playlist) => ({ ...playlist, track_count: tracks.length }));
+    } else if (functionName === 'get_rekordbox_library_track_page') {
+      const offset = Number(requestBody?.p_offset ?? 0);
+      const limit = Number(requestBody?.p_limit ?? 200);
+      body = { items: tracks.slice(offset, offset + limit), total: tracks.length, offset, limit };
+    } else if (functionName === 'get_rekordbox_playlist_track_page') {
+      const offset = Number(requestBody?.p_offset ?? 0);
+      const limit = Number(requestBody?.p_limit ?? 200);
+      const items = tracks.map((track, index) => ({ position: index + 1, track }));
+      body = { items: items.slice(offset, offset + limit), total: items.length, offset, limit };
+    } else if (functionName === 'get_rekordbox_playlist_stats') {
+      body = { track_count: tracks.length, total_duration_seconds: 780, average_bpm: 131, most_common_key: '8A' };
+    } else if (functionName === 'get_rekordbox_library_stats') {
+      body = {
+        total_track_count: tracks.length,
+        total_duration_seconds: 780,
+        average_bpm: 131,
+        most_common_bpm: 138,
+        most_common_key: '8A',
+        genre_totals: [{ name: 'Techno', count: 1 }, { name: 'House', count: 1 }],
+        artist_totals: [{ name: 'Artist One', count: 1 }, { name: 'Artist Two', count: 1 }],
+        bpm_totals: [{ bpm: 138, count: 1 }, { bpm: 124, count: 1 }],
+        key_totals: [{ name: '8A', count: 1 }, { name: '8B', count: 1 }],
+      };
+    }
+
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(null),
+      body: JSON.stringify(body),
     });
   });
 
-  // Catch-all for any remaining Supabase calls
-  await page.route('**/fakeproject.supabase.co/**', async (route: Route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify([]),
-    });
-  });
 }
