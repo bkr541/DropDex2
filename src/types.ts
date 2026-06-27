@@ -30,8 +30,11 @@ export interface RekordboxImport {
   track_count: number;
   playlist_count: number;
   playlist_track_count: number;
-  status: 'processing' | 'completed' | 'failed';
+  status: 'created' | 'uploading' | 'queued' | 'processing' | 'cancel_requested' | 'cancelled' | 'completed' | 'failed';
   error_message: string | null;
+  error_code?: string | null;
+  retryable?: boolean;
+  updated_at?: string;
   imported_at: string;
   // Analysis pipeline fields (null until analysis is initiated)
   source_bundle_type: RekordboxSourceBundleType | null;

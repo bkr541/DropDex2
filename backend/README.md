@@ -106,6 +106,32 @@ durable worker (Celery, ARQ, or a Supabase Edge Function).  The orchestration
 logic is worker-agnostic; only `job_runner.py` changes.  On worker startup,
 poll for jobs stuck in `running` status and reset them to `queued` for retry.
 
+### 4c. Rekordbox import processing durability
+
+Rekordbox uploads are streamed to temporary files in bounded chunks. Parsing,
+filesystem work, Supabase writes, and analysis processing run behind FastAPI's
+thread-pool boundary so health, auth, and unrelated API requests remain responsive.
+
+There is **no separate durable import worker in this repository**. Start the normal
+FastAPI process; it owns the thread pool:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+If that process restarts, imports left in `created`, `uploading`, `queued`, or
+`processing` are marked `failed` with retryable error code `IMPORT_INTERRUPTED`.
+Jobs left in `cancel_requested` are finalized as `cancelled`. Work is not resumed
+automatically. Production deployments that require automatic continuation should
+move the isolated import functions to a durable queue such as Celery or ARQ while
+keeping the same database state machine.
+
+Apply the import-job migration before starting the patched backend:
+
+```bash
+supabase db push
+```
+
 ### 5. Configure environment
 
 ```bash

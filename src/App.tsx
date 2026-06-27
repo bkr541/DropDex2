@@ -37,6 +37,7 @@ import { useImportList } from './hooks/useImportList';
 import { useTrackPreviewWaveforms } from './hooks/useTrackPreviewWaveforms';
 import { fetchReviewTracks, setActiveImport, deleteImport } from './lib/queries/rekordbox';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
+import { getImportHistoryPresentation } from './lib/rekordbox/importHistoryPresentation';
 import { ResumeAnalysisModal } from './components/ResumeAnalysisModal';
 const DiscoveryView = lazy(() => import('./components/discovery/DiscoveryView').then(m => ({ default: m.DiscoveryView })));
 const SearchView = lazy(() => import('./components/search/SearchView').then(m => ({ default: m.SearchView })));
@@ -264,8 +265,10 @@ export default function App() {
   const { tracks: recentTracks, loading: recentTracksLoading } = useRecentTracks(importId);
   const { memberships: trackPlaylists, loading: trackPlaylistsLoading } =
     useTrackPlaylists(importId, selectedTrack?.id ?? null);
-  const { imports: allImports, loading: importsListLoading, refetch: refetchImportList } =
-    useImportList(userId);
+  const {
+    imports: allImports, loading: importsListLoading, error: importsListError,
+    refetch: refetchImportList,
+  } = useImportList(userId);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -999,6 +1002,11 @@ export default function App() {
                     <div className="flex items-center justify-center py-6">
                       <Loader2 className="animate-spin text-muted-foreground" size={20} />
                     </div>
+                  ) : importsListError ? (
+                    <div className="glass rounded-2xl p-4 text-center space-y-2">
+                      <p className="text-sm text-red-400">{importsListError}</p>
+                      <button onClick={refetchImportList} className="text-xs font-bold text-primary">Retry</button>
+                    </div>
                   ) : allImports.length === 0 ? (
                     <div className="glass rounded-2xl p-4 text-center">
                       <p className="text-sm text-muted-foreground italic">No imports yet.</p>
@@ -1007,6 +1015,9 @@ export default function App() {
                     <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
                       {allImports.map((imp) => {
                         const isActive = imp.id === latestImport?.id;
+                        const importPresentation = getImportHistoryPresentation(
+                          imp.status, Boolean(imp.retryable),
+                        );
                         return (
                           <div key={imp.id} className="p-4 flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
@@ -1017,6 +1028,16 @@ export default function App() {
                                     Active
                                   </span>
                                 )}
+                                {imp.status !== 'completed' && (
+                                  <span className={cn(
+                                    "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded shrink-0",
+                                    importPresentation.tone === 'error' ? "bg-red-500/10 text-red-400" :
+                                    importPresentation.tone === 'warning' ? "bg-amber-500/10 text-amber-400" :
+                                    "bg-blue-500/10 text-blue-400",
+                                  )}>
+                                    {importPresentation.label}
+                                  </span>
+                                )}
                               </div>
                               <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
                                 {new Date(imp.imported_at).toLocaleDateString()} · {imp.track_count.toLocaleString()} tracks · {imp.playlist_count} playlists
@@ -1024,14 +1045,25 @@ export default function App() {
                               {imp.device_name && (
                                 <p className="text-[10px] text-muted-foreground font-mono">{imp.device_name}</p>
                               )}
+                              {(imp.status === 'failed' || imp.status === 'cancelled') && imp.error_message && (
+                                <p className="text-[10px] text-red-400 mt-1">{imp.error_message}</p>
+                              )}
                             </div>
                             <div className="flex items-center gap-3 shrink-0 pt-0.5">
-                              {!isActive && (
+                              {!isActive && importPresentation.canActivate && (
                                 <button
                                   onClick={() => handleSetActiveImport(imp.id)}
                                   className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
                                 >
                                   Make Active
+                                </button>
+                              )}
+                              {importPresentation.canRetry && (
+                                <button
+                                  onClick={() => setIsImportModalOpen(true)}
+                                  className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
+                                >
+                                  Retry
                                 </button>
                               )}
                               <button

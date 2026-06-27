@@ -22,7 +22,7 @@ Security constraints
 from __future__ import annotations
 
 import hashlib
-import io
+import inspect
 import logging
 import os
 import shutil
@@ -34,16 +34,25 @@ from pathlib import Path, PurePosixPath
 from typing import Dict, List, Optional
 
 from fastapi import HTTPException, UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from .analysis_import_service import (
     _ANALYSIS_BUCKET,
-    _build_manifest_entries,
     _upsert_asset,
 )
 from .config import settings
+from .import_jobs import (
+    ImportCancelledError,
+    assert_import_not_cancelled,
+    complete_import_job,
+    local_cancellation_requested,
+    mark_import_failed,
+    transition_import_job,
+)
 from .models import CompleteResponse, TrackCompleteStatus
 from .rekordbox_parser import parse_library
 from .supabase_writer import write_to_supabase_full
+from .upload_stream import stream_upload_to_temp
 from .user_settings import upsert_active_import
 from .validation import validate
 
@@ -53,8 +62,32 @@ _DB_FILENAME_LOWER = "exportlibrary.db"
 _VALID_ANLZ_SUFFIXES = frozenset({".dat", ".ext", ".2ex"})
 
 
+def _write_library_for_job(library, user_id: str, import_id: str | None):
+    try:
+        parameters = inspect.signature(write_to_supabase_full).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    supports_job = "import_id" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+    )
+    if import_id and supports_job:
+        return write_to_supabase_full(
+            library,
+            settings.supabase_url,
+            settings.supabase_secret_key,
+            user_id,
+            import_id=import_id,
+            finalize_status=None,
+            should_cancel=lambda: local_cancellation_requested(import_id),
+        )
+    return write_to_supabase_full(
+        library, settings.supabase_url, settings.supabase_secret_key, user_id
+    )
+
+
 def _create_supabase():
     import supabase as _sb  # noqa: PLC0415
+
     return _sb.create_client(settings.supabase_url, settings.supabase_secret_key)
 
 
@@ -62,8 +95,17 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _bundle_error(error_code: str, message: str, *, retryable: bool = False) -> dict:
+    return {
+        "error_code": error_code,
+        "detail": message,
+        "retryable": retryable,
+    }
+
+
 def _build_storage_path(user_id: str, import_id: str, canonical_path: str) -> str:
     from dropdex_importer.analysis_paths import build_storage_path as _bp  # noqa: PLC0415
+
     return _bp(user_id, import_id, canonical_path)
 
 
@@ -84,7 +126,11 @@ def _is_symlink_entry(info: zipfile.ZipInfo) -> bool:
     return stat.S_ISLNK(unix_attrs)
 
 
-async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
+def _import_bundle_sync(
+    bundle_path: str,
+    user_id: str,
+    import_id: str | None = None,
+) -> CompleteResponse:
     """
     Accept a ZIP bundle, run the full library + analysis import pipeline, and
     return a combined analysis result.
@@ -99,19 +145,30 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
         parse_track_analysis_bundle,
     )
 
-    content = await file.read()
-
-    if len(content) > settings.max_bundle_upload_bytes:
-        limit_mb = settings.max_bundle_upload_bytes // (1024 * 1024)
-        raise HTTPException(
-            status_code=413,
-            detail=f"Bundle exceeds the maximum allowed size of {limit_mb} MB.",
-        )
-
-    if not zipfile.is_zipfile(io.BytesIO(content)):
+    precreated_job = import_id is not None
+    if not zipfile.is_zipfile(bundle_path):
         raise HTTPException(
             status_code=422,
-            detail="Uploaded file is not a valid ZIP archive.",
+            detail={
+                "error_code": "INVALID_ZIP_BUNDLE",
+                "detail": "Uploaded file is not a valid ZIP archive.",
+                "retryable": False,
+            },
+        )
+    if import_id:
+        transition_import_job(
+            import_id,
+            user_id,
+            expected_states={"uploading"},
+            new_state="queued",
+            updates={"upload_completed_at": _now_iso()},
+        )
+        transition_import_job(
+            import_id,
+            user_id,
+            expected_states={"queued"},
+            new_state="processing",
+            updates={"processing_started_at": _now_iso()},
         )
 
     tmp_dir: Optional[str] = None
@@ -120,15 +177,16 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
     try:
         tmp_dir = tempfile.mkdtemp()
 
-        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+        with zipfile.ZipFile(bundle_path) as zf:
             entries = zf.infolist()
 
             if len(entries) > settings.max_bundle_entries:
                 raise HTTPException(
                     status_code=413,
-                    detail=(
+                    detail=_bundle_error(
+                        "BUNDLE_ENTRY_LIMIT_EXCEEDED",
                         f"ZIP archive contains too many entries. "
-                        f"Maximum is {settings.max_bundle_entries}."
+                        f"Maximum is {settings.max_bundle_entries}.",
                     ),
                 )
 
@@ -142,20 +200,29 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
                 if _is_zip_slip(name):
                     raise HTTPException(
                         status_code=422,
-                        detail="ZIP archive contains unsafe file paths.",
+                        detail=_bundle_error(
+                            "UNSAFE_ARCHIVE_PATH",
+                            "ZIP archive contains unsafe file paths.",
+                        ),
                     )
 
                 if _is_symlink_entry(entry):
                     raise HTTPException(
                         status_code=422,
-                        detail="ZIP archive contains symlinks, which are not permitted.",
+                        detail=_bundle_error(
+                            "ARCHIVE_SYMLINK_REJECTED",
+                            "ZIP archive contains symlinks, which are not permitted.",
+                        ),
                     )
 
                 total_uncompressed += entry.file_size
                 if total_uncompressed > settings.max_bundle_uncompressed_bytes:
                     raise HTTPException(
                         status_code=413,
-                        detail="ZIP archive uncompressed size exceeds the allowed limit.",
+                        detail=_bundle_error(
+                            "BUNDLE_EXPANDED_SIZE_EXCEEDED",
+                            "ZIP archive uncompressed size exceeds the allowed limit.",
+                        ),
                     )
 
                 basename_lower = Path(name).name.lower()
@@ -172,13 +239,27 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
             if db_entry_name is None:
                 raise HTTPException(
                     status_code=422,
-                    detail="ZIP archive does not contain exportLibrary.db.",
+                    detail=_bundle_error(
+                        "DATABASE_MISSING_FROM_BUNDLE",
+                        "ZIP archive does not contain exportLibrary.db.",
+                    ),
                 )
 
-            # Extract exportLibrary.db to private temp file
+            # Stream exportLibrary.db to a private temp file with its own limit.
+            db_info = zf.getinfo(db_entry_name)
+            if db_info.file_size > settings.max_rekordbox_db_upload_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail=_bundle_error(
+                        "UPLOAD_TOO_LARGE",
+                        "The database inside the bundle exceeds the allowed size.",
+                    ),
+                )
             with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
                 db_tmp_path = tmp.name
-                tmp.write(zf.read(db_entry_name))
+                with zf.open(db_entry_name) as source:
+                    while chunk := source.read(1024 * 1024):
+                        tmp.write(chunk)
 
             # Parse the library
             try:
@@ -187,15 +268,19 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
                 logger.exception("dropdex_importer not available")
                 raise HTTPException(
                     status_code=500,
-                    detail="The server is not configured to parse rekordbox databases.",
+                    detail=_bundle_error(
+                        "IMPORTER_UNAVAILABLE",
+                        "The server is not configured to parse Rekordbox databases.",
+                    ),
                 )
             except Exception:
                 logger.exception("Parser error for user %s", user_id)
                 raise HTTPException(
                     status_code=422,
-                    detail=(
+                    detail=_bundle_error(
+                        "DATABASE_PARSE_FAILED",
                         "Could not parse the database in the bundle. "
-                        "Please confirm it is a valid rekordbox exportLibrary.db."
+                        "Please confirm it is a valid Rekordbox exportLibrary.db.",
                     ),
                 )
 
@@ -203,36 +288,30 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
             if not result.ok:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Library validation failed: {'; '.join(result.errors)}",
+                    detail=_bundle_error(
+                        "LIBRARY_VALIDATION_FAILED",
+                        f"Library validation failed: {'; '.join(result.errors)}",
+                    ),
                 )
 
             # Persist library to Supabase
             try:
-                write_result = write_to_supabase_full(
-                    library,
-                    settings.supabase_url,
-                    settings.supabase_secret_key,
-                    user_id,
-                )
+                write_result = _write_library_for_job(library, user_id, import_id)
             except Exception:
+                if precreated_job:
+                    assert_import_not_cancelled(import_id, user_id)
                 logger.exception("Supabase write failed for user %s", user_id)
                 raise HTTPException(
                     status_code=500,
-                    detail="Import encountered a server error. Please try again.",
+                    detail=_bundle_error(
+                        "REKORDBOX_IMPORT_WRITE_FAILED",
+                        "DropDex could not save the library from this bundle. Please try again.",
+                        retryable=True,
+                    ),
                 )
 
             import_id = write_result.import_id
             rb_to_sb = write_result.rb_to_sb_track
-
-            try:
-                upsert_active_import(
-                    settings.supabase_url,
-                    settings.supabase_secret_key,
-                    user_id,
-                    import_id,
-                )
-            except Exception:
-                logger.warning("Failed to set active import for user %s", user_id)
 
             # Delete the DB temp file now — library is persisted
             if db_tmp_path and os.path.exists(db_tmp_path):
@@ -247,6 +326,8 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
             missing_optional_ext_count = missing_optional_2ex_count = 0
 
             for manifest_entry in write_result.manifest:
+                if precreated_job:
+                    assert_import_not_cancelled(import_id, user_id, sb=sb)
                 rb_cid = manifest_entry.rekordbox_content_id
                 track_id = rb_to_sb.get(rb_cid)
                 if not track_id:
@@ -257,21 +338,33 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
                 two_ex_spec = next((f for f in manifest_entry.files if f.asset_type == "2EX"), None)
 
                 # Count missing optional siblings regardless of whether DAT is present
-                if ext_spec is None or anlz_entry_map.get((ext_spec.normalized_path if ext_spec else "").lower()) is None:
+                if (
+                    ext_spec is None
+                    or anlz_entry_map.get((ext_spec.normalized_path if ext_spec else "").lower())
+                    is None
+                ):
                     if dat_spec:  # only count optional misses when DAT is expected
                         missing_optional_ext_count += 1
-                if two_ex_spec is None or anlz_entry_map.get((two_ex_spec.normalized_path if two_ex_spec else "").lower()) is None:
+                if (
+                    two_ex_spec is None
+                    or anlz_entry_map.get(
+                        (two_ex_spec.normalized_path if two_ex_spec else "").lower()
+                    )
+                    is None
+                ):
                     if dat_spec:
                         missing_optional_2ex_count += 1
 
                 if not dat_spec:
                     missing_required_count += 1
-                    track_results.append(TrackCompleteStatus(
-                        track_id=track_id,
-                        rekordbox_content_id=rb_cid,
-                        parse_status="missing_required",
-                        assets_parsed=0,
-                    ))
+                    track_results.append(
+                        TrackCompleteStatus(
+                            track_id=track_id,
+                            rekordbox_content_id=rb_cid,
+                            parse_status="missing_required",
+                            assets_parsed=0,
+                        )
+                    )
                     continue
 
                 matched_track_count += 1
@@ -289,23 +382,31 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
                     if zip_name is None:
                         continue
                     try:
-                        file_bytes = zf.read(zip_name)
+                        info = zf.getinfo(zip_name)
+                        if info.file_size > settings.max_analysis_file_bytes:
+                            logger.warning("Skipping oversized analysis entry %s", zip_name)
+                            continue
                         ext_suffix = Path(spec.normalized_path).suffix
                         local_path = os.path.join(tmp_dir, f"{track_id}_{key}{ext_suffix}")
-                        with open(local_path, "wb") as fh:
-                            fh.write(file_bytes)
+                        with zf.open(zip_name) as source, open(local_path, "wb") as fh:
+                            while chunk := source.read(1024 * 1024):
+                                if precreated_job:
+                                    assert_import_not_cancelled(import_id, user_id, sb=sb)
+                                fh.write(chunk)
                         local_paths[key] = local_path
                     except Exception as exc:
                         logger.warning("Failed to extract %s from bundle: %s", zip_name, exc)
 
                 if not local_paths["DAT"]:
                     missing_required_count += 1
-                    track_results.append(TrackCompleteStatus(
-                        track_id=track_id,
-                        rekordbox_content_id=rb_cid,
-                        parse_status="missing_required",
-                        assets_parsed=0,
-                    ))
+                    track_results.append(
+                        TrackCompleteStatus(
+                            track_id=track_id,
+                            rekordbox_content_id=rb_cid,
+                            parse_status="missing_required",
+                            assets_parsed=0,
+                        )
+                    )
                     continue
 
                 # Parse the bundle
@@ -318,12 +419,14 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
                 except Exception as exc:
                     logger.error("Bundle parse error for track %s: %s", track_id, exc)
                     failed_count += 1
-                    track_results.append(TrackCompleteStatus(
-                        track_id=track_id,
-                        rekordbox_content_id=rb_cid,
-                        parse_status="failed",
-                        assets_parsed=0,
-                    ))
+                    track_results.append(
+                        TrackCompleteStatus(
+                            track_id=track_id,
+                            rekordbox_content_id=rb_cid,
+                            parse_status="failed",
+                            assets_parsed=0,
+                        )
+                    )
                     continue
 
                 # Upload ANLZ files to Storage and persist asset records
@@ -360,23 +463,26 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
                     asset_warnings = [w.as_dict() for w in asset_obj.warnings] if asset_obj else []
                     now = _now_iso()
 
-                    _upsert_asset(sb, {
-                        "import_id": import_id,
-                        "track_id": track_id,
-                        "asset_type": key,
-                        "relative_path": canonical_lower,
-                        "original_filename": Path(spec.normalized_path).name,
-                        "sha256": sha256,
-                        "size_bytes": len(file_bytes),
-                        "storage_bucket": _ANALYSIS_BUCKET,
-                        "storage_path": storage_path,
-                        "upload_status": "uploaded",
-                        "parse_status": asset_parse_status,
-                        "parser_version": DROPDEX_ANLZ_PARSER_VERSION,
-                        "parse_warnings": asset_warnings,
-                        "uploaded_at": now,
-                        "parsed_at": now,
-                    })
+                    _upsert_asset(
+                        sb,
+                        {
+                            "import_id": import_id,
+                            "track_id": track_id,
+                            "asset_type": key,
+                            "relative_path": canonical_lower,
+                            "original_filename": Path(spec.normalized_path).name,
+                            "sha256": sha256,
+                            "size_bytes": len(file_bytes),
+                            "storage_bucket": _ANALYSIS_BUCKET,
+                            "storage_path": storage_path,
+                            "upload_status": "uploaded",
+                            "parse_status": asset_parse_status,
+                            "parser_version": DROPDEX_ANLZ_PARSER_VERSION,
+                            "parse_warnings": asset_warnings,
+                            "uploaded_at": now,
+                            "parsed_at": now,
+                        },
+                    )
 
                     if asset_obj and asset_obj.parse_status in ("completed", "partial"):
                         parsed_count += 1
@@ -394,8 +500,7 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
                         .execute()
                     )
                     asset_ids: Dict[str, Optional[str]] = {
-                        a["asset_type"]: a["id"]
-                        for a in (_asset_rows.data or [])
+                        a["asset_type"]: a["id"] for a in (_asset_rows.data or [])
                     }
                 except Exception as _exc:
                     logger.warning("Failed to fetch asset IDs for track %s: %s", track_id, _exc)
@@ -405,11 +510,15 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
 
                 try:
                     from dropdex_importer.beatgrid_parser import extract_beat_grid  # noqa: PLC0415
+
                     from .analysis_feature_writer import write_beat_grid  # noqa: PLC0415
+
                     bg = extract_beat_grid(bundle.dat, bundle.ext)
                     if bg is not None:
                         src_id = asset_ids.get("DAT") or asset_ids.get("EXT")
-                        ok = write_beat_grid(sb, import_id, track_id, bg, src_id, DROPDEX_ANLZ_PARSER_VERSION)
+                        ok = write_beat_grid(
+                            sb, import_id, track_id, bg, src_id, DROPDEX_ANLZ_PARSER_VERSION
+                        )
                         feature_statuses["beat_grid"] = "completed" if ok else "failed"
                     else:
                         feature_statuses["beat_grid"] = "skipped"
@@ -419,9 +528,13 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
 
                 try:
                     from dropdex_importer.waveform_parser import extract_waveforms  # noqa: PLC0415
+
                     from .analysis_feature_writer import write_waveform  # noqa: PLC0415
+
                     wf = extract_waveforms(bundle.dat, bundle.ext)
-                    ok = write_waveform(sb, import_id, track_id, wf, user_id, asset_ids, DROPDEX_ANLZ_PARSER_VERSION)
+                    ok = write_waveform(
+                        sb, import_id, track_id, wf, user_id, asset_ids, DROPDEX_ANLZ_PARSER_VERSION
+                    )
                     has_content = wf.preview is not None or wf.detail is not None
                     if not ok:
                         feature_statuses["waveform"] = "failed"
@@ -435,7 +548,9 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
 
                 try:
                     from dropdex_importer.cue_parser import parse_anlz_cues  # noqa: PLC0415
+
                     from .analysis_feature_writer import reconcile_and_write_cues  # noqa: PLC0415
+
                     cue_entries, cue_warns = parse_anlz_cues(bundle.dat, bundle.ext)
                     ok = reconcile_and_write_cues(sb, import_id, track_id, cue_entries, cue_warns)
                     feature_statuses["cues"] = "completed" if ok else "failed"
@@ -445,9 +560,13 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
 
                 try:
                     from dropdex_importer.phrase_parser import extract_phrases  # noqa: PLC0415
+
                     from .analysis_feature_writer import write_phrases  # noqa: PLC0415
+
                     phrase_entries, _pw = extract_phrases(bundle.ext, bg)
-                    ok = write_phrases(sb, import_id, track_id, phrase_entries, DROPDEX_ANLZ_PARSER_VERSION)
+                    ok = write_phrases(
+                        sb, import_id, track_id, phrase_entries, DROPDEX_ANLZ_PARSER_VERSION
+                    )
                     if not ok:
                         feature_statuses["phrases"] = "failed"
                     elif not phrase_entries:
@@ -461,11 +580,15 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
                 # Update track parse status (including feature statuses)
                 overall = bundle.overall_status
                 try:
-                    sb.table("rekordbox_tracks").update({
-                        "analysis_parse_status": overall,
-                        "analysis_parse_warnings": [w.as_dict() for w in (bundle.warnings or [])],
-                        "analysis_feature_statuses": feature_statuses,
-                    }).eq("id", track_id).execute()
+                    sb.table("rekordbox_tracks").update(
+                        {
+                            "analysis_parse_status": overall,
+                            "analysis_parse_warnings": [
+                                w.as_dict() for w in (bundle.warnings or [])
+                            ],
+                            "analysis_feature_statuses": feature_statuses,
+                        }
+                    ).eq("id", track_id).execute()
                 except Exception as exc:
                     logger.error("Failed to update track %s: %s", track_id, exc)
 
@@ -481,43 +604,70 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
                     if asset_obj:
                         all_warnings.extend(w.as_dict() for w in asset_obj.warnings)
 
-                track_results.append(TrackCompleteStatus(
-                    track_id=track_id,
-                    rekordbox_content_id=rb_cid,
-                    parse_status=overall,
-                    assets_parsed=parsed_count,
-                    warnings=all_warnings,
-                ))
+                track_results.append(
+                    TrackCompleteStatus(
+                        track_id=track_id,
+                        rekordbox_content_id=rb_cid,
+                        parse_status=overall,
+                        assets_parsed=parsed_count,
+                        warnings=all_warnings,
+                    )
+                )
 
         total_tracks = len(write_result.manifest)
 
         if total_tracks == 0:
             final_status = "not_requested"
-        elif (
-            missing_required_count == total_tracks
-            and completed_count == 0
-            and partial_count == 0
-        ):
+        elif missing_required_count == total_tracks and completed_count == 0 and partial_count == 0:
             final_status = "failed"
         elif failed_count > 0 or partial_count > 0 or missing_required_count > 0:
             final_status = "partial"
         else:
             final_status = "completed"
 
+        if precreated_job:
+            assert_import_not_cancelled(import_id, user_id, sb=sb)
         try:
-            sb.table("rekordbox_imports").update({
-                "analysis_status": final_status,
-                "source_bundle_type": "zip_bundle",
-                "analysis_expected_track_count": total_tracks,
-                "analysis_matched_track_count": matched_track_count,
-                "analysis_parsed_track_count": completed_count + partial_count,
-                "analysis_failed_track_count": failed_count + missing_required_count,
-                "analysis_asset_count": total_asset_count,
-                "analysis_parser_version": DROPDEX_ANLZ_PARSER_VERSION,
-                "analysis_completed_at": _now_iso(),
-            }).eq("id", import_id).execute()
+            sb.table("rekordbox_imports").update(
+                {
+                    "analysis_status": final_status,
+                    "source_bundle_type": "zip_bundle",
+                    "analysis_expected_track_count": total_tracks,
+                    "analysis_matched_track_count": matched_track_count,
+                    "analysis_parsed_track_count": completed_count + partial_count,
+                    "analysis_failed_track_count": failed_count + missing_required_count,
+                    "analysis_asset_count": total_asset_count,
+                    "analysis_parser_version": DROPDEX_ANLZ_PARSER_VERSION,
+                    "analysis_completed_at": _now_iso(),
+                }
+            ).eq("id", import_id).eq("status", "processing").execute()
+            if precreated_job:
+                complete_import_job(import_id, user_id)
+            upsert_active_import(
+                settings.supabase_url, settings.supabase_secret_key, user_id, import_id
+            )
+        except ImportCancelledError:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "IMPORT_CANCELLED",
+                    "detail": "Import was cancelled.",
+                    "retryable": False,
+                },
+            )
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.error("Failed to update import %s status: %s", import_id, exc)
+            if precreated_job:
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "error_code": "IMPORT_FINALIZE_FAILED",
+                        "detail": "The bundle was processed but could not be finalized. Please retry.",
+                        "retryable": True,
+                    },
+                )
 
         return CompleteResponse(
             import_id=import_id,
@@ -538,3 +688,55 @@ async def import_bundle(file: UploadFile, user_id: str) -> CompleteResponse:
             os.unlink(db_tmp_path)
         if tmp_dir and os.path.exists(tmp_dir):
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+async def import_bundle(
+    file: UploadFile,
+    user_id: str,
+    import_id: str | None = None,
+) -> CompleteResponse:
+    """Stream the archive, then run ZIP parsing and database work off-loop."""
+    path: str | None = None
+    try:
+        if import_id:
+            await run_in_threadpool(
+                transition_import_job,
+                import_id,
+                user_id,
+                expected_states={"created"},
+                new_state="uploading",
+            )
+        path, _ = await stream_upload_to_temp(
+            file,
+            max_bytes=settings.max_bundle_upload_bytes,
+            suffix=".zip",
+            cancellation_requested=lambda: local_cancellation_requested(import_id),
+        )
+        return await run_in_threadpool(_import_bundle_sync, path, user_id, import_id)
+    except ImportCancelledError:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "IMPORT_CANCELLED",
+                "detail": "Import was cancelled.",
+                "retryable": False,
+            },
+        )
+    except HTTPException as exc:
+        if not import_id and isinstance(exc.detail, dict):
+            exc.detail = str(exc.detail.get("detail") or "Bundle import failed.")
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        if import_id and detail.get("error_code") != "IMPORT_CANCELLED":
+            await run_in_threadpool(
+                mark_import_failed,
+                import_id,
+                user_id,
+                error_code=str(detail.get("error_code") or "BUNDLE_IMPORT_FAILED"),
+                message=str(detail.get("detail") or exc.detail),
+                retryable=bool(detail.get("retryable", False)),
+            )
+        raise
+    finally:
+        if path and os.path.exists(path):
+            os.unlink(path)
+        await file.close()

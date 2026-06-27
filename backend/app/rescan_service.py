@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TrackIdentity:
     """Uniqueness fingerprint for a track during rescan matching."""
+
     track_id: str
     import_id: str
     master_db_id: Optional[str]
@@ -43,8 +44,11 @@ class TrackIdentity:
 @dataclass
 class ReuseDecision:
     """Decision for one track in the new import."""
+
     new_track_id: str
-    manifest_status: str  # 'reused', 'needs_dat', 'reparse_from_retained', 'metadata_only', 'needs_ext'
+    manifest_status: (
+        str  # 'reused', 'needs_dat', 'reparse_from_retained', 'metadata_only', 'needs_ext'
+    )
     reused_from_track_id: Optional[str]
     reuse_reason: Optional[str]
     cue_changed: bool
@@ -132,9 +136,14 @@ def match_tracks_to_prior_import(
     NEVER reuses across users.
     """
     # 1. Find all prior completed imports for this user (excluding the new import)
-    prior_resp = sb.table("rekordbox_imports").select(
-        "id"
-    ).eq("user_id", user_id).eq("status", "completed").neq("id", new_import_id).execute()
+    prior_resp = (
+        sb.table("rekordbox_imports")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("status", "completed")
+        .neq("id", new_import_id)
+        .execute()
+    )
 
     prior_import_ids = [r["id"] for r in (prior_resp.data or [])]
     if not prior_import_ids:
@@ -142,12 +151,17 @@ def match_tracks_to_prior_import(
 
     # 2. Fetch prior tracks for identity matching — paginated to handle libraries > 1,000 tracks.
     from .supabase_pagination import fetch_all_rows  # noqa: PLC0415
+
     prior_tracks = fetch_all_rows(
-        lambda: sb.table("rekordbox_tracks").select(
-            "id, import_id, master_db_id, master_content_id, rekordbox_content_id, "
-            "analysis_data_file_path, analysis_data_update_count, cue_update_count, "
-            "information_update_count, analysis_parse_status"
-        ).in_("import_id", prior_import_ids),
+        lambda: (
+            sb.table("rekordbox_tracks")
+            .select(
+                "id, import_id, master_db_id, master_content_id, rekordbox_content_id, "
+                "analysis_data_file_path, analysis_data_update_count, cue_update_count, "
+                "information_update_count, analysis_parse_status"
+            )
+            .in_("import_id", prior_import_ids)
+        ),
         order_column="id",
     )
 
@@ -172,7 +186,9 @@ def match_tracks_to_prior_import(
 
         if identity.master_db_id and identity.master_content_id:
             key = (identity.master_db_id, identity.master_content_id)
-            if key not in primary_idx:  # take the most recent (first seen, prior imports ordered by recency)
+            if (
+                key not in primary_idx
+            ):  # take the most recent (first seen, prior imports ordered by recency)
                 primary_idx[key] = identity
 
         if identity.rekordbox_content_id:
@@ -213,7 +229,7 @@ def match_tracks_to_prior_import(
     return decisions
 
 
-async def copy_normalized_data_for_track(
+def copy_normalized_data_for_track(
     sb,
     source_track_id: str,
     target_track_id: str,
@@ -229,22 +245,24 @@ async def copy_normalized_data_for_track(
     Copy only what the ReuseDecision says to reuse.
     """
     if reuse_decision.reuse_grid:
-        await _copy_beat_grid(sb, source_track_id, target_track_id, target_import_id)
+        _copy_beat_grid(sb, source_track_id, target_track_id, target_import_id)
 
     if reuse_decision.reuse_waveform:
-        await _copy_waveform(sb, source_track_id, target_track_id, target_import_id)
+        _copy_waveform(sb, source_track_id, target_track_id, target_import_id)
 
     if reuse_decision.reuse_phrases:
-        await _copy_phrases(sb, source_track_id, target_track_id, target_import_id)
+        _copy_phrases(sb, source_track_id, target_track_id, target_import_id)
 
     if reuse_decision.reuse_cues:
-        await _copy_cues(sb, source_track_id, target_track_id, target_import_id)
+        _copy_cues(sb, source_track_id, target_track_id, target_import_id)
 
     # Mark the target track as reused
-    sb.table("rekordbox_tracks").update({
-        "analysis_reused_from_track_id": source_track_id,
-        "analysis_parse_status": "reused",
-    }).eq("id", target_track_id).execute()
+    sb.table("rekordbox_tracks").update(
+        {
+            "analysis_reused_from_track_id": source_track_id,
+            "analysis_parse_status": "reused",
+        }
+    ).eq("id", target_track_id).execute()
 
 
 def _counter_changed(new_val: Optional[int], prior_val: Optional[int]) -> bool:
@@ -254,9 +272,15 @@ def _counter_changed(new_val: Optional[int], prior_val: Optional[int]) -> bool:
     return new_val != prior_val
 
 
-async def _copy_beat_grid(sb, source_id: str, target_id: str, target_import_id: str) -> None:
+def _copy_beat_grid(sb, source_id: str, target_id: str, target_import_id: str) -> None:
     """Copy beat grid from source track to target track."""
-    resp = sb.table("rekordbox_track_beat_grids").select("*").eq("track_id", source_id).maybeSingle().execute()
+    resp = (
+        sb.table("rekordbox_track_beat_grids")
+        .select("*")
+        .eq("track_id", source_id)
+        .maybeSingle()
+        .execute()
+    )
     if not resp.data:
         return
     row = dict(resp.data)
@@ -268,8 +292,14 @@ async def _copy_beat_grid(sb, source_id: str, target_id: str, target_import_id: 
     sb.table("rekordbox_track_beat_grids").upsert(row, on_conflict="track_id").execute()
 
 
-async def _copy_waveform(sb, source_id: str, target_id: str, target_import_id: str) -> None:
-    resp = sb.table("rekordbox_track_waveforms").select("*").eq("track_id", source_id).maybeSingle().execute()
+def _copy_waveform(sb, source_id: str, target_id: str, target_import_id: str) -> None:
+    resp = (
+        sb.table("rekordbox_track_waveforms")
+        .select("*")
+        .eq("track_id", source_id)
+        .maybeSingle()
+        .execute()
+    )
     if not resp.data:
         return
     row = dict(resp.data)
@@ -281,7 +311,7 @@ async def _copy_waveform(sb, source_id: str, target_id: str, target_import_id: s
     sb.table("rekordbox_track_waveforms").upsert(row, on_conflict="track_id").execute()
 
 
-async def _copy_phrases(sb, source_id: str, target_id: str, target_import_id: str) -> None:
+def _copy_phrases(sb, source_id: str, target_id: str, target_import_id: str) -> None:
     resp = sb.table("rekordbox_track_phrases").select("*").eq("track_id", source_id).execute()
     rows = resp.data or []
     if not rows:
@@ -294,10 +324,12 @@ async def _copy_phrases(sb, source_id: str, target_id: str, target_import_id: st
         nr["track_id"] = target_id
         nr["import_id"] = target_import_id
         new_rows.append(nr)
-    sb.table("rekordbox_track_phrases").upsert(new_rows, on_conflict="track_id,phrase_index").execute()
+    sb.table("rekordbox_track_phrases").upsert(
+        new_rows, on_conflict="track_id,phrase_index"
+    ).execute()
 
 
-async def _copy_cues(sb, source_id: str, target_id: str, target_import_id: str) -> None:
+def _copy_cues(sb, source_id: str, target_id: str, target_import_id: str) -> None:
     resp = sb.table("rekordbox_cues").select("*").eq("track_id", source_id).execute()
     rows = resp.data or []
     if not rows:

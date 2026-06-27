@@ -156,7 +156,6 @@ export async function fetchAllImports(userId: string): Promise<RekordboxImport[]
     .from('rekordbox_imports')
     .select('*')
     .eq('user_id', userId)
-    .eq('status', 'completed')
     .order('imported_at', { ascending: false });
 
   if (error) throw new Error(error.message);

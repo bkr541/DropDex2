@@ -1,5 +1,19 @@
 // ── Response types ────────────────────────────────────────────────────────────
 
+export type ImportJobState =
+  | 'created' | 'uploading' | 'queued' | 'processing'
+  | 'cancel_requested' | 'cancelled' | 'completed' | 'failed';
+
+export interface ImportJob {
+  import_id: string;
+  status: ImportJobState;
+  source_filename: string;
+  source_bundle_type: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  retryable: boolean;
+}
+
 export interface ImportResult {
   import_id: string;
   status: string;
@@ -136,6 +150,8 @@ export interface ImportWriteError {
   detail: string;
   /** Short technical hint for developers. */
   diagnostic?: string;
+  retryable?: boolean;
+  status?: string;
 }
 
 /** An Error subclass that carries structured backend diagnostic info. */
@@ -172,15 +188,58 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+export async function createRekordboxImportJob(
+  sourceFilename: string,
+  sourceBundleType: 'database_only' | 'usb_folder' | 'zip_bundle',
+  accessToken: string,
+  options?: { deviceName?: string; signal?: AbortSignal },
+): Promise<ImportJob> {
+  const response = await fetch(`${API_BASE}/api/rekordbox/import/jobs`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      source_filename: sourceFilename,
+      source_bundle_type: sourceBundleType,
+      device_name: options?.deviceName,
+    }),
+    signal: options?.signal,
+  });
+  return parseResponse<ImportJob>(response);
+}
+
+export async function cancelRekordboxImport(
+  importId: string, accessToken: string, signal?: AbortSignal,
+): Promise<ImportJob> {
+  const response = await fetch(
+    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/cancel`,
+    { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, signal },
+  );
+  return parseResponse<ImportJob>(response);
+}
+
+export async function fetchRekordboxImportJob(
+  importId: string, accessToken: string, signal?: AbortSignal,
+): Promise<ImportJob> {
+  const response = await fetch(
+    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/job-status`,
+    { headers: { Authorization: `Bearer ${accessToken}` }, signal },
+  );
+  return parseResponse<ImportJob>(response);
+}
+
 /** Legacy: upload exportLibrary.db and import metadata only (no analysis). */
 export async function uploadRekordboxDb(
   file: File,
   accessToken: string,
-  deviceName?: string,
+  options?: { deviceName?: string; signal?: AbortSignal; importId?: string },
 ): Promise<ImportResult> {
   const formData = new FormData();
   formData.append('file', file);
-  if (deviceName) formData.append('device_name', deviceName);
+  if (options?.deviceName) formData.append('device_name', options.deviceName);
+  if (options?.importId) formData.append('import_id', options.importId);
 
   const response = await fetch(`${API_BASE}/api/rekordbox/import`, {
     method: 'POST',
@@ -190,6 +249,7 @@ export async function uploadRekordboxDb(
       Authorization: `Bearer ${accessToken}`,
     },
     body: formData,
+    signal: options?.signal,
   });
   return parseResponse<ImportResult>(response);
 }
@@ -200,10 +260,12 @@ export async function startRekordboxImport(
   accessToken: string,
   signal?: AbortSignal,
   deviceName?: string,
+  importId?: string,
 ): Promise<ImportStartResponse> {
   const formData = new FormData();
   formData.append('file', file);
   if (deviceName) formData.append('device_name', deviceName);
+  if (importId) formData.append('import_id', importId);
 
   const response = await fetch(`${API_BASE}/api/rekordbox/import/start`, {
     method: 'POST',
@@ -270,10 +332,11 @@ export async function completeRekordboxImport(
 export async function fetchRekordboxAnalysisStatus(
   importId: string,
   accessToken: string,
+  signal?: AbortSignal,
 ): Promise<AnalysisStatusResponse> {
   const response = await fetch(
     `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/analysis-status`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
+    { headers: { Authorization: `Bearer ${accessToken}` }, signal },
   );
   return parseResponse<AnalysisStatusResponse>(response);
 }
@@ -288,11 +351,13 @@ export async function uploadRekordboxZipBundle(
   accessToken: string,
   onProgress?: (pct: number) => void,
   signal?: AbortSignal,
+  importId?: string,
 ): Promise<CompleteResponse> {
   return new Promise<CompleteResponse>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
     formData.append('file', file);
+    if (importId) formData.append('import_id', importId);
 
     xhr.upload.addEventListener('progress', (e) => {
       if (e.lengthComputable && onProgress) {
@@ -310,9 +375,12 @@ export async function uploadRekordboxZipBundle(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(body as CompleteResponse);
       } else {
-        const detail =
-          (body as { detail?: string } | null)?.detail ?? `HTTP ${xhr.status}`;
-        reject(new Error(detail));
+        const rawDetail = (body as { detail?: string | ImportWriteError } | null)?.detail;
+        if (rawDetail && typeof rawDetail === 'object') {
+          reject(new RekordboxImportError(rawDetail.detail, rawDetail));
+        } else {
+          reject(new RekordboxImportError(typeof rawDetail === 'string' ? rawDetail : `HTTP ${xhr.status}`));
+        }
       }
     });
 
@@ -324,7 +392,7 @@ export async function uploadRekordboxZipBundle(
         xhr.abort();
         return;
       }
-      signal.addEventListener('abort', () => xhr.abort());
+      signal.addEventListener('abort', () => xhr.abort(), { once: true });
     }
 
     xhr.open('POST', `${API_BASE}/api/rekordbox/import/bundle`);

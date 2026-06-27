@@ -1,10 +1,11 @@
 import logging
 from typing import List, Optional
 
-from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from postgrest.exceptions import APIError
+from starlette.concurrency import run_in_threadpool
 
 from .analysis_import_service import (
     complete_analysis_import,
@@ -16,12 +17,20 @@ from .auth import get_current_user_id
 from .bundle_import_service import import_bundle
 from .config import settings
 from .discovery.routes import router as discovery_router
+from .import_jobs import (
+    cancel_import_job,
+    create_import_job,
+    get_import_job,
+    recover_interrupted_import_jobs,
+)
 from .import_service import run_import
 from .models import (
     AnalysisStatusResponse,
     BatchUploadResponse,
     CompleteRequest,
     CompleteResponse,
+    ImportJobCreateRequest,
+    ImportJobResponse,
     ImportResponse,
     ImportStartResponse,
     RelatedTracksImportResponse,
@@ -88,15 +97,92 @@ async def supabase_api_error_handler(request: Request, exc: APIError) -> JSONRes
     )
 
 
+@app.on_event("startup")
+async def recover_rekordbox_import_jobs() -> None:
+    try:
+        recovered = await run_in_threadpool(recover_interrupted_import_jobs)
+        if recovered:
+            logger.warning("Recovered %d interrupted Rekordbox import job(s)", recovered)
+    except Exception:
+        # Startup must remain available even if Supabase is temporarily offline.
+        logger.exception("Could not recover interrupted Rekordbox imports at startup")
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.post("/api/rekordbox/import/jobs", response_model=ImportJobResponse)
+def create_rekordbox_import_job(
+    body: ImportJobCreateRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> ImportJobResponse:
+    if body.source_bundle_type not in {"database_only", "usb_folder", "zip_bundle"}:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error_code": "INVALID_IMPORT_MODE",
+                "detail": "Unsupported Rekordbox import mode.",
+                "retryable": False,
+            },
+        )
+    row = create_import_job(
+        user_id=user_id,
+        source_filename=body.source_filename,
+        source_bundle_type=body.source_bundle_type,
+        device_name=body.device_name,
+    )
+    return ImportJobResponse(
+        import_id=row["id"],
+        status=row["status"],
+        source_filename=row.get("source_filename") or body.source_filename,
+        source_bundle_type=row.get("source_bundle_type"),
+        error_code=row.get("error_code"),
+        error_message=row.get("error_message"),
+        retryable=bool(row.get("retryable")),
+    )
+
+
+@app.get("/api/rekordbox/import/{import_id}/job-status", response_model=ImportJobResponse)
+def rekordbox_import_job_status(
+    import_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> ImportJobResponse:
+    row = get_import_job(import_id, user_id)
+    return ImportJobResponse(
+        import_id=row["id"],
+        status=row["status"],
+        source_filename=row.get("source_filename") or "upload",
+        source_bundle_type=row.get("source_bundle_type"),
+        error_code=row.get("error_code"),
+        error_message=row.get("error_message"),
+        retryable=bool(row.get("retryable")),
+    )
+
+
+@app.post("/api/rekordbox/import/{import_id}/cancel", response_model=ImportJobResponse)
+def cancel_rekordbox_import(
+    import_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> ImportJobResponse:
+    row = cancel_import_job(import_id, user_id)
+    return ImportJobResponse(
+        import_id=row["id"],
+        status=row["status"],
+        source_filename=row.get("source_filename") or "upload",
+        source_bundle_type=row.get("source_bundle_type"),
+        error_code=row.get("error_code"),
+        error_message=row.get("error_message"),
+        retryable=bool(row.get("retryable")),
+    )
 
 
 @app.post("/api/rekordbox/import", response_model=ImportResponse)
 async def import_rekordbox(
     file: UploadFile = File(..., description="rekordbox exportLibrary.db file"),
     device_name: Optional[str] = Form(None, description="USB drive label (e.g. 'LUMA')"),
+    import_id: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user_id),
 ) -> ImportResponse:
     """
@@ -108,13 +194,14 @@ async def import_rekordbox(
     - Temp file is deleted whether the import succeeds or fails.
     - Each upload creates a new independent import snapshot.
     """
-    return await run_import(file, user_id, device_name=device_name)
+    return await run_import(file, user_id, device_name=device_name, import_id=import_id)
 
 
 @app.post("/api/rekordbox/import/start", response_model=ImportStartResponse)
 async def import_rekordbox_start(
     file: UploadFile = File(..., description="rekordbox exportLibrary.db file"),
     device_name: Optional[str] = Form(None, description="USB drive label (e.g. 'LUMA')"),
+    import_id: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user_id),
 ) -> ImportStartResponse:
     """
@@ -125,12 +212,15 @@ async def import_rekordbox_start(
     response includes the expected ANLZ paths so the client knows which files
     to upload next.
     """
-    return await start_analysis_import(file, user_id, device_name=device_name)
+    return await start_analysis_import(file, user_id, device_name=device_name, import_id=import_id)
 
 
 @app.post("/api/rekordbox/import/bundle", response_model=CompleteResponse)
 async def import_rekordbox_bundle(
-    file: UploadFile = File(..., description="ZIP archive containing exportLibrary.db and ANLZ files"),
+    file: UploadFile = File(
+        ..., description="ZIP archive containing exportLibrary.db and ANLZ files"
+    ),
+    import_id: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user_id),
 ) -> CompleteResponse:
     """
@@ -140,7 +230,7 @@ async def import_rekordbox_bundle(
     analysis data are both parsed and persisted.  ANLZ files not present in
     the ZIP are counted as missing_required in the response.
     """
-    return await import_bundle(file, user_id)
+    return await import_bundle(file, user_id, import_id=import_id)
 
 
 @app.post(

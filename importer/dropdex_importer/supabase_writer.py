@@ -18,9 +18,9 @@ On any exception after step 1, the import row is marked status = failed.
 
 from __future__ import annotations
 
-import json
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Dict, Iterator, List, Optional
 
@@ -77,8 +77,14 @@ class RekordboxWriteError(RuntimeError):
             "Rekordbox import write failed\n"
             "  stage=%s\n  table=%s\n  operation=%s\n  import_id=%s\n"
             "  error_code=%s\n  message=%s\n  hint=%s\n  details=%s",
-            self.stage, self.table, self.operation, self.import_id,
-            self.db_code, self.db_message, self.db_hint, self.db_details,
+            self.stage,
+            self.table,
+            self.operation,
+            self.import_id,
+            self.db_code,
+            self.db_message,
+            self.db_hint,
+            self.db_details,
         )
 
 
@@ -108,6 +114,10 @@ def write_to_supabase(
     supabase_url: str,
     supabase_key: str,
     owner_user_id: str,
+    *,
+    import_id: str | None = None,
+    finalize_status: str | None = "completed",
+    should_cancel: Callable[[], bool] | None = None,
 ) -> ImportWriteResult:
     """
     Write library to Supabase. Returns an ImportWriteResult on success.
@@ -120,12 +130,15 @@ def write_to_supabase(
         from supabase import create_client
     except ImportError as exc:
         raise ImportError(
-            "supabase package is not installed.\n"
-            "Run: pip install -r importer/requirements.txt"
+            "supabase package is not installed.\nRun: pip install -r importer/requirements.txt"
         ) from exc
 
     sb = create_client(supabase_url, supabase_key)
-    import_id: Optional[str] = None
+    created_here = import_id is None
+
+    def _check_cancelled() -> None:
+        if should_cancel and should_cancel():
+            raise RuntimeError("IMPORT_CANCELLED")
 
     def _wrap(stage: str, table: str, operation: str, fn, *args, **kwargs):
         try:
@@ -142,55 +155,124 @@ def write_to_supabase(
             ) from exc
 
     try:
-        import_id = _wrap(
-            "create_import", "rekordbox_imports", "insert",
-            _create_import_row, sb, library, owner_user_id,
-        )
-        logger.info("Created import row: %s", import_id)
+        _check_cancelled()
+        if import_id is None:
+            import_id = _wrap(
+                "create_import",
+                "rekordbox_imports",
+                "insert",
+                _create_import_row,
+                sb,
+                library,
+                owner_user_id,
+            )
+            logger.info("Created import row: %s", import_id)
+        else:
+            response = (
+                sb.table("rekordbox_imports")
+                .update(
+                    {
+                        "database_version": library.database_version,
+                        "device_name": library.device_name,
+                        "rekordbox_created_date": library.rekordbox_created_date,
+                    }
+                )
+                .eq("id", import_id)
+                .eq("user_id", owner_user_id)
+                .eq("status", "processing")
+                .execute()
+            )
+            if not response.data:
+                raise RuntimeError("IMPORT_CANCELLED_OR_STATE_CHANGED")
 
+        _check_cancelled()
         rb_to_sb_track = _wrap(
-            "insert_tracks", "rekordbox_tracks", "batch_insert",
-            _insert_tracks, sb, library, import_id,
+            "insert_tracks",
+            "rekordbox_tracks",
+            "batch_insert",
+            _insert_tracks,
+            sb,
+            library,
+            import_id,
         )
         logger.info("Inserted %d tracks", len(rb_to_sb_track))
+        _check_cancelled()
 
         rb_to_sb_playlist = _wrap(
-            "insert_playlists", "rekordbox_playlists", "batch_insert",
-            _insert_playlists, sb, library, import_id,
+            "insert_playlists",
+            "rekordbox_playlists",
+            "batch_insert",
+            _insert_playlists,
+            sb,
+            library,
+            import_id,
         )
         logger.info("Inserted %d playlists", len(rb_to_sb_playlist))
+        _check_cancelled()
 
         _wrap(
-            "update_playlist_parents", "rekordbox_playlists", "batch_update",
-            _update_parent_playlist_ids, sb, library, rb_to_sb_playlist,
+            "update_playlist_parents",
+            "rekordbox_playlists",
+            "batch_update",
+            _update_parent_playlist_ids,
+            sb,
+            library,
+            rb_to_sb_playlist,
         )
 
         placed = _wrap(
-            "insert_playlist_tracks", "rekordbox_playlist_tracks", "batch_insert",
-            _insert_placements, sb, library, rb_to_sb_track, rb_to_sb_playlist,
+            "insert_playlist_tracks",
+            "rekordbox_playlist_tracks",
+            "batch_insert",
+            _insert_placements,
+            sb,
+            library,
+            rb_to_sb_track,
+            rb_to_sb_playlist,
         )
         logger.info("Inserted %d placements", placed)
+        _check_cancelled()
 
         cue_count = _wrap(
-            "insert_cues", "rekordbox_cues", "batch_insert",
-            _insert_cues, sb, library, import_id, rb_to_sb_track,
+            "insert_cues",
+            "rekordbox_cues",
+            "batch_insert",
+            _insert_cues,
+            sb,
+            library,
+            import_id,
+            rb_to_sb_track,
         )
         logger.info("Inserted %d cues", cue_count)
+        _check_cancelled()
 
         edge_count = _wrap(
-            "insert_recommendation_edges", "rekordbox_recommendation_edges", "batch_insert",
-            _insert_recommendation_edges, sb, library, import_id, rb_to_sb_track,
+            "insert_recommendation_edges",
+            "rekordbox_recommendation_edges",
+            "batch_insert",
+            _insert_recommendation_edges,
+            sb,
+            library,
+            import_id,
+            rb_to_sb_track,
         )
         logger.info("Inserted %d recommendation edges", edge_count)
+        _check_cancelled()
 
         _wrap(
-            "finalize_import", "rekordbox_imports", "update",
-            _finalize_import, sb, import_id, library,
+            "finalize_import",
+            "rekordbox_imports",
+            "update",
+            _finalize_import,
+            sb,
+            import_id,
+            library,
+            finalize_status,
         )
         logger.info("Import finalized: %s", import_id)
 
     except Exception as exc:
-        if import_id:
+        if import_id and created_here:
             safe_msg = str(exc)[:2000]
             _mark_failed(sb, import_id, safe_msg)
         if isinstance(exc, RekordboxWriteError):
@@ -246,9 +328,7 @@ def _create_import_row(sb: object, library: ParsedLibrary, owner_user_id: str) -
     return response.data[0]["id"]
 
 
-def _insert_tracks(
-    sb: object, library: ParsedLibrary, import_id: str
-) -> Dict[str, str]:
+def _insert_tracks(sb: object, library: ParsedLibrary, import_id: str) -> Dict[str, str]:
     """Insert tracks in batches. Returns {rekordbox_content_id: supabase_uuid}."""
     rows = [
         {
@@ -298,9 +378,7 @@ def _insert_tracks(
     return rb_to_sb
 
 
-def _insert_playlists(
-    sb: object, library: ParsedLibrary, import_id: str
-) -> Dict[str, str]:
+def _insert_playlists(sb: object, library: ParsedLibrary, import_id: str) -> Dict[str, str]:
     """
     Insert playlists without parent references (first pass).
     Returns {rekordbox_playlist_id: supabase_uuid}.
@@ -435,12 +513,8 @@ def _insert_cues(
             )
             continue
 
-        start_ms: Optional[float] = (
-            cue.in_usec / 1000.0 if cue.in_usec is not None else None
-        )
-        end_ms: Optional[float] = (
-            cue.out_usec / 1000.0 if cue.out_usec is not None else None
-        )
+        start_ms: Optional[float] = cue.in_usec / 1000.0 if cue.in_usec is not None else None
+        end_ms: Optional[float] = cue.out_usec / 1000.0 if cue.out_usec is not None else None
 
         source_payload = {
             "cue_id": cue.rekordbox_cue_id,
@@ -535,9 +609,7 @@ def _insert_recommendation_edges(
         )
 
     if skipped:
-        logger.warning(
-            "Skipped %d recommendation edge(s) — UUID resolution failed", skipped
-        )
+        logger.warning("Skipped %d recommendation edge(s) — UUID resolution failed", skipped)
 
     for batch in _chunks(rows, _BATCH_SIZE):
         sb.table("rekordbox_recommendation_edges").insert(batch).execute()  # type: ignore[attr-defined]
@@ -545,13 +617,18 @@ def _insert_recommendation_edges(
     return len(rows)
 
 
-def _finalize_import(sb: object, import_id: str, library: ParsedLibrary) -> None:
+def _finalize_import(
+    sb: object,
+    import_id: str,
+    library: ParsedLibrary,
+    finalize_status: str | None = "completed",
+) -> None:
     has_analysis = len(library.analysis_manifest) > 0
     analysis_status = "awaiting_upload" if has_analysis else "not_requested"
 
     sb.table("rekordbox_imports").update(  # type: ignore[attr-defined]
         {
-            "status": "completed",
+            **({"status": finalize_status} if finalize_status else {}),
             "track_count": len(library.tracks),
             "playlist_count": len(library.playlists),
             "playlist_track_count": len(library.placements),

@@ -22,7 +22,9 @@ import {
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import {
+  cancelRekordboxImport,
   completeRekordboxImport,
+  createRekordboxImportJob,
   startRekordboxImport,
   uploadRekordboxDb,
   uploadRekordboxZipBundle,
@@ -55,6 +57,8 @@ type Phase =
   | 'parsing_analysis'
   | 'success'
   | 'partial_success'
+  | 'cancelling'
+  | 'cancelled'
   | 'error';
 
 interface FolderScan {
@@ -135,8 +139,6 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
   const [errorMessage, setErrorMessage] = useState('');
   const [errorStructured, setErrorStructured] = useState<ImportWriteError | null>(null);
   const [showAbortDialog, setShowAbortDialog] = useState(false);
-  const [cancelledAfterDb, setCancelledAfterDb] = useState(false);
-  const [importId, setImportId] = useState<string | null>(null);
   const [rejectedCount, setRejectedCount] = useState(0);
   const [reuseStats, setReuseStats] = useState<ReuseStats | null>(null);
   const [reconciliation, setReconciliation] = useState<ManifestReconciliation | null>(null);
@@ -146,9 +148,12 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const importIdRef = useRef<string | null>(null);
+  const accessTokenRef = useRef<string | null>(null);
+  const operationRef = useRef(0);
 
   const isUploading =
     phase === 'starting_import' ||
+    phase === 'matching_analysis' ||
     phase === 'uploading_analysis' ||
     phase === 'parsing_analysis';
 
@@ -161,13 +166,13 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     setErrorMessage('');
     setErrorStructured(null);
     setShowAbortDialog(false);
-    setCancelledAfterDb(false);
-    setImportId(null);
     setRejectedCount(0);
     setReuseStats(null);
     setReconciliation(null);
     setRetryingCount(0);
+    operationRef.current += 1;
     importIdRef.current = null;
+    accessTokenRef.current = null;
     abortControllerRef.current = null;
     if (folderInputRef.current) folderInputRef.current.value = '';
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -188,14 +193,50 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
   };
 
   const confirmAbort = () => {
+    const id = importIdRef.current;
+    const token = accessTokenRef.current;
+    operationRef.current += 1;
     abortControllerRef.current?.abort();
     setShowAbortDialog(false);
-    if (importIdRef.current) {
-      setCancelledAfterDb(true);
-      setPhase('partial_success');
-    } else {
-      reset();
+    setErrorMessage('');
+    setPhase('cancelling');
+
+    if (!id || !token) {
+      setErrorMessage(
+        'The local request stopped before DropDex received an import ID. Check Import History before retrying.',
+      );
+      setPhase('error');
+      return;
     }
+
+    void cancelRekordboxImport(id, token)
+      .then((job) => {
+        if (job.status === 'cancelled') {
+          setPhase('cancelled');
+          return;
+        }
+        if (job.status === 'completed') {
+          setErrorMessage(
+            'This import finished before the cancellation reached the server. It remains completed in Import History.',
+          );
+          setPhase('error');
+          onSuccess();
+          return;
+        }
+        if (job.status === 'failed') {
+          setErrorMessage(job.error_message ?? 'The import failed while cancellation was being processed.');
+          setPhase('error');
+          return;
+        }
+        setErrorMessage('Cancellation is still pending. Check Import History before starting another import.');
+        setPhase('error');
+      })
+      .catch(() => {
+        setErrorMessage(
+          'The upload stopped locally, but DropDex could not confirm backend cancellation. Check Import History before retrying.',
+        );
+        setPhase('error');
+      });
   };
 
   const handleDone = () => {
@@ -251,36 +292,38 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
   // ── Import handler ───────────────────────────────────────────────────────────
 
   const handleImport = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) {
       setErrorMessage('You must be signed in to import a library.');
       setPhase('error');
       return;
     }
     const token = session.access_token;
-
+    accessTokenRef.current = token;
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    const operation = ++operationRef.current;
+    const sourceFile = mode === 'usb_folder' ? folderScan?.dbFile : selectedFile;
+    if (!sourceFile) return;
 
-    if (mode === 'database_only') {
-      await runDatabaseOnlyImport(token);
-    } else if (mode === 'zip_bundle') {
-      await runZipBundleImport(token, controller);
-    } else {
-      await runUsbFolderImport(token, controller);
-    }
-  };
-
-  const runDatabaseOnlyImport = async (token: string) => {
-    if (!selectedFile) return;
     setPhase('starting_import');
     try {
-      const result = await uploadRekordboxDb(selectedFile, token, folderScan?.folderName);
-      setFinalResult({ kind: 'library_only', data: result });
-      setPhase('success');
+      const job = await createRekordboxImportJob(sourceFile.name, mode, token, {
+        deviceName: folderScan?.folderName,
+        signal: controller.signal,
+      });
+      if (operation !== operationRef.current) return;
+      importIdRef.current = job.import_id;
+
+      if (mode === 'database_only') {
+        await runDatabaseOnlyImport(token, controller, job.import_id, operation);
+      } else if (mode === 'zip_bundle') {
+        await runZipBundleImport(token, controller, job.import_id, operation);
+      } else {
+        await runUsbFolderImport(token, controller, job.import_id, operation);
+      }
     } catch (err) {
+      if (operation !== operationRef.current || isAbortError(err)) return;
       const { message, structured } = extractError(err);
       setErrorMessage(message);
       setErrorStructured(structured);
@@ -288,7 +331,30 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     }
   };
 
-  const runZipBundleImport = async (token: string, controller: AbortController) => {
+  const runDatabaseOnlyImport = async (
+    token: string, controller: AbortController, jobId: string, operation: number,
+  ) => {
+    if (!selectedFile) return;
+    setPhase('starting_import');
+    try {
+      const result = await uploadRekordboxDb(selectedFile, token, {
+        deviceName: folderScan?.folderName, signal: controller.signal, importId: jobId,
+      });
+      if (operation !== operationRef.current) return;
+      setFinalResult({ kind: 'library_only', data: result });
+      setPhase('success');
+    } catch (err) {
+      if (isAbortError(err) || operation !== operationRef.current) return;
+      const { message, structured } = extractError(err);
+      setErrorMessage(message);
+      setErrorStructured(structured);
+      setPhase('error');
+    }
+  };
+
+  const runZipBundleImport = async (
+    token: string, controller: AbortController, jobId: string, operation: number,
+  ) => {
     if (!selectedFile) return;
     setPhase('uploading_analysis');
     try {
@@ -297,19 +363,13 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
         token,
         (pct) => setProgress(p => ({ ...p, bundlePct: pct })),
         controller.signal,
+        jobId,
       );
+      if (operation !== operationRef.current) return;
       setFinalResult({ kind: 'with_analysis', data: result });
       setPhase(result.analysis_status === 'completed' ? 'success' : 'partial_success');
     } catch (err) {
-      if (isAbortError(err)) {
-        if (importIdRef.current) {
-          setCancelledAfterDb(true);
-          setPhase('partial_success');
-        } else {
-          reset();
-        }
-        return;
-      }
+      if (isAbortError(err) || operation !== operationRef.current) return;
       const { message, structured } = extractError(err);
       setErrorMessage(message);
       setErrorStructured(structured);
@@ -317,7 +377,9 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     }
   };
 
-  const runUsbFolderImport = async (token: string, controller: AbortController) => {
+  const runUsbFolderImport = async (
+    token: string, controller: AbortController, jobId: string, operation: number,
+  ) => {
     if (!folderScan?.dbFile) {
       setErrorMessage('No exportLibrary.db found in the selected folder.');
       setPhase('error');
@@ -328,9 +390,12 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     setPhase('starting_import');
     let startResp: ImportStartResponse;
     try {
-      startResp = await startRekordboxImport(folderScan.dbFile, token, controller.signal, folderScan.folderName);
+      startResp = await startRekordboxImport(
+        folderScan.dbFile, token, controller.signal, folderScan.folderName, jobId,
+      );
+      if (operation !== operationRef.current) return;
     } catch (err) {
-      if (isAbortError(err)) { reset(); return; }
+      if (isAbortError(err) || operation !== operationRef.current) return;
       const { message, structured } = extractError(err);
       setErrorMessage(message);
       setErrorStructured(structured);
@@ -339,7 +404,6 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     }
 
     importIdRef.current = startResp.import_id;
-    setImportId(startResp.import_id);
 
     // Capture reuse stats if the backend returned them (incremental rescan)
     if (
@@ -528,11 +592,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
 
     setRetryingCount(0);
 
-    if (uploadAborted) {
-      setCancelledAfterDb(true);
-      setPhase('partial_success');
-      return;
-    }
+    if (uploadAborted || operation !== operationRef.current) return;
 
     // ── Stage 3b: manifest reconciliation ────────────────────────────────────
     // Compare what the manifest expected against what was actually uploaded.
@@ -556,11 +616,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
       const { data: { session: completeSession } } = await supabase.auth.getSession();
       completeResp = await completeRekordboxImport(startResp.import_id, completeSession?.access_token ?? token, { signal: controller.signal });
     } catch (err) {
-      if (isAbortError(err)) {
-        setCancelledAfterDb(true);
-        setPhase('partial_success');
-        return;
-      }
+      if (isAbortError(err) || operation !== operationRef.current) return;
       const { message, structured } = extractError(err);
       setErrorMessage(message);
       setErrorStructured(structured);
@@ -568,6 +624,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
       return;
     }
 
+    if (operation !== operationRef.current) return;
     setFinalResult({ kind: 'with_analysis', data: completeResp });
     // "failed" analysis_status (all tracks missing_required) still lands in
     // partial_success so the user sees a useful summary rather than an error screen.
@@ -617,16 +674,10 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                   <div className="bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-2xl p-6 text-center max-w-xs w-full">
                     <AlertTriangle className="mx-auto mb-3 text-amber-400" size={28} />
                     <p className="font-bold text-lg mb-2">Cancel import?</p>
-                    {importId ? (
-                      <p className="text-sm text-muted-foreground mb-5">
-                        Your library and playlists have already been saved. Only the analysis
-                        upload will be cancelled.
-                      </p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground mb-5">
-                        The import will be cancelled and no data will be saved.
-                      </p>
-                    )}
+                    <p className="text-sm text-muted-foreground mb-5">
+                      DropDex will stop upload or processing, remove partial import records, and
+                      keep the cancelled job visible in Import History.
+                    </p>
                     <div className="flex gap-3">
                       <button
                         onClick={confirmAbort}
@@ -1051,18 +1102,8 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                 <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
                   <AlertTriangle className="text-amber-400" size={28} />
                 </div>
-                <h2 className="text-xl font-bold mb-2">
-                  {cancelledAfterDb
-                    ? 'Library Saved (Analysis Cancelled)'
-                    : 'Library Imported with Warnings'}
-                </h2>
-                {cancelledAfterDb ? (
-                  <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
-                    Your library and playlists were saved. Analysis upload was cancelled — you
-                    can re-import to add analysis data later.
-                  </p>
-                ) : (
-                  withAnalysis && (
+                <h2 className="text-xl font-bold mb-2">Library Imported with Warnings</h2>
+                {withAnalysis && (
                     <>
                       <p className="text-sm text-muted-foreground mb-5">
                         {withAnalysis.completed_count.toLocaleString()} tracks fully parsed ·{' '}
@@ -1120,7 +1161,6 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                         </div>
                       )}
                     </>
-                  )
                 )}
 
                 <button
@@ -1132,7 +1172,35 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
               </div>
             )}
 
-            {/* ── Error ── */}
+            {/* ── Cancellation ── */}
+            {phase === 'cancelling' && (
+              <div className="space-y-4 py-4 text-center">
+                <Loader2 size={34} className="mx-auto animate-spin text-amber-500" />
+                <div>
+                  <h3 className="font-semibold">Cancelling import…</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    DropDex is stopping backend work and cleaning up partial records.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {phase === 'cancelled' && (
+              <div className="space-y-4 py-4 text-center">
+                <AlertCircle size={34} className="mx-auto text-amber-500" />
+                <div>
+                  <h3 className="font-semibold">Import cancelled</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    DropDex stopped this import and will not activate partial results.
+                  </p>
+                  {errorMessage && <p className="mt-2 text-sm text-destructive">{errorMessage}</p>}
+                </div>
+                <button type="button" onClick={reset} className="rounded-md border px-4 py-2 text-sm">
+                  Start another import
+                </button>
+              </div>
+            )}
+
             {phase === 'error' && (
               <div className="text-center">
                 <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">

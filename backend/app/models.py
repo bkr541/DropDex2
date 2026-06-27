@@ -5,6 +5,22 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ImportJobCreateRequest(BaseModel):
+    source_filename: str
+    source_bundle_type: str
+    device_name: str | None = None
+
+
+class ImportJobResponse(BaseModel):
+    import_id: str
+    status: str
+    source_filename: str
+    source_bundle_type: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    retryable: bool = False
+
+
 class PlaylistSummary(BaseModel):
     name: str
     track_count: int
@@ -173,7 +189,9 @@ class RelatedTrackListInput(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     source_list_id: str = Field(validation_alias="sourceListId")
-    parent_source_list_id: Optional[str] = Field(default=None, validation_alias="parentSourceListId")
+    parent_source_list_id: Optional[str] = Field(
+        default=None, validation_alias="parentSourceListId"
+    )
     name: str
     sort_order: Optional[int] = Field(default=None, validation_alias="sortOrder")
     is_folder: bool = Field(default=False, validation_alias="isFolder")

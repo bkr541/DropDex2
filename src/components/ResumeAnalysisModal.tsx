@@ -20,6 +20,7 @@ import { buildResumeTargets, buildResumeMatchResult, buildStatusSummary } from '
 import type { ResumeMatchResult, ResumeTarget, ResumeStatusSummary } from '../lib/rekordbox/resumeAnalysis';
 import { UploadAccumulator } from '../lib/rekordbox/analysisUploadResults';
 import { isAbortError, uploadBatchWithRetry } from '../lib/rekordbox/uploadBatch';
+import { isFreshImportResponse } from '../lib/rekordbox/importRequestFreshness';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -81,10 +82,58 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
   const folderInputRef = useRef<HTMLInputElement>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  const requestGenerationRef = useRef(0);
+  const activeImportIdRef = useRef(importId);
+  activeImportIdRef.current = importId;
+
+  const isCurrentOperation = useCallback((
+    requestedImportId: string,
+    generation: number,
+    controller: AbortController,
+  ): boolean => {
+    return !controller.signal.aborted
+      && requestedImportId === activeImportIdRef.current
+      && generation === requestGenerationRef.current;
+  }, []);
+
+  const runParsing = useCallback(async (
+    impId: string,
+    tok: string,
+    ac: AbortController,
+    generation: number,
+    affectedIds?: string[],
+  ) => {
+    if (!isCurrentOperation(impId, generation, ac)) return;
+    setPhase('parsing');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!isCurrentOperation(impId, generation, ac)) return;
+      const finalTok = session?.access_token ?? tok;
+      const resp = await completeRekordboxImport(impId, finalTok, {
+        affectedTrackIds: affectedIds,
+        signal: ac.signal,
+      });
+      if (!isFreshImportResponse({
+        requestedImportId: impId,
+        currentImportId: activeImportIdRef.current,
+        responseImportId: resp.import_id,
+        requestGeneration: generation,
+        currentGeneration: requestGenerationRef.current,
+        aborted: ac.signal.aborted,
+      })) return;
+      setCompleteResp(resp);
+      setPhase(resp.analysis_status === 'completed' ? 'done' : 'done_partial');
+    } catch (err) {
+      if (isAbortError(err) || !isCurrentOperation(impId, generation, ac)) return;
+      setErrorMessage(err instanceof Error ? err.message : 'Analysis reprocessing failed.');
+      setPhase('error');
+    }
+  }, [isCurrentOperation]);
 
   // Fetch analysis status on open
   useEffect(() => {
     if (!isOpen) return;
+    controllerRef.current?.abort();
     setPhase('fetching_status');
     setStatus(null);
     setTargets([]);
@@ -97,14 +146,24 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
     setProgress({ filesUploaded: 0, filesTotal: 0, bytesUploaded: 0, bytesTotal: 0 });
 
     const ac = new AbortController();
+    const generation = ++requestGenerationRef.current;
     controllerRef.current = ac;
 
     (async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
+        if (!isCurrentOperation(importId, generation, ac)) return;
         const tok = session?.access_token ?? '';
-        const resp = await fetchRekordboxAnalysisStatus(importId, tok);
-        if (ac.signal.aborted) return;
+        const requestedImportId = importId;
+        const resp = await fetchRekordboxAnalysisStatus(importId, tok, ac.signal);
+        if (!isFreshImportResponse({
+          requestedImportId,
+          currentImportId: importId,
+          responseImportId: resp.import_id,
+          requestGeneration: generation,
+          currentGeneration: requestGenerationRef.current,
+          aborted: ac.signal.aborted,
+        })) return;
 
         setStatus(resp);
         const t = buildResumeTargets(resp);
@@ -113,45 +172,31 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
         if (t.length === 0) {
           // Nothing missing — just re-trigger parsing to clean up any parse failures.
-          await runParsing(importId, tok, ac);
+          await runParsing(importId, tok, ac, generation);
         } else {
           setPhase('scan_prompt');
         }
       } catch (err) {
-        if (isAbortError(err)) return;
+        if (isAbortError(err) || !isCurrentOperation(importId, generation, ac)) return;
         setErrorMessage(err instanceof Error ? err.message : 'Failed to fetch analysis status.');
         setPhase('error');
       }
     })();
 
-    return () => { ac.abort(); };
-  }, [isOpen, importId]);
-
-  async function runParsing(impId: string, tok: string, ac: AbortController, affectedIds?: string[]) {
-    setPhase('parsing');
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const finalTok = session?.access_token ?? tok;
-      const resp = await completeRekordboxImport(impId, finalTok, {
-        affectedTrackIds: affectedIds,
-        signal: ac.signal,
-      });
-      if (ac.signal.aborted) return;
-      setCompleteResp(resp);
-      setPhase(resp.analysis_status === 'completed' ? 'done' : 'done_partial');
-    } catch (err) {
-      if (isAbortError(err)) return;
-      setErrorMessage(err instanceof Error ? err.message : 'Analysis reprocessing failed.');
-      setPhase('error');
-    }
-  }
+    return () => {
+      requestGenerationRef.current += 1;
+      controllerRef.current?.abort();
+    };
+  }, [importId, isCurrentOperation, isOpen, runParsing]);
 
   function handleClose() {
+    requestGenerationRef.current += 1;
     controllerRef.current?.abort();
     onClose();
   }
 
   function handleDone() {
+    requestGenerationRef.current += 1;
     controllerRef.current?.abort();
     onSuccess();
     onClose();
@@ -161,7 +206,14 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
     const files = Array.from(e.target.files ?? []).filter(isAnlzFile);
     e.target.value = '';
 
+    const requestedImportId = importId;
+    const generation = ++requestGenerationRef.current;
+    controllerRef.current?.abort();
+    const ac = new AbortController();
+    controllerRef.current = ac;
+
     const result = buildResumeMatchResult(files, targets);
+    if (!isCurrentOperation(requestedImportId, generation, ac)) return;
     setMatchResult(result);
 
     if (result.matched.length === 0) {
@@ -172,78 +224,97 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
     setWrongDrive(false);
 
     // ── Begin upload ──────────────────────────────────────────────────────────
-    const ac = new AbortController();
-    controllerRef.current = ac;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!isCurrentOperation(requestedImportId, generation, ac)) return;
+      const tok = session?.access_token ?? '';
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const tok = session?.access_token ?? '';
+      const batches = buildBatches(result.matched, BATCH_SIZE, MAX_BYTES_PER_BATCH);
+      const totalFiles = result.matched.length;
+      const totalBytes = result.matched.reduce((s, f) => s + f.file.size, 0);
 
-    const batches = buildBatches(result.matched, BATCH_SIZE, MAX_BYTES_PER_BATCH);
-    const totalFiles = result.matched.length;
-    const totalBytes = result.matched.reduce((s, f) => s + f.file.size, 0);
+      setProgress({ filesUploaded: 0, filesTotal: totalFiles, bytesUploaded: 0, bytesTotal: totalBytes });
+      setPhase('uploading');
 
-    setProgress({ filesUploaded: 0, filesTotal: totalFiles, bytesUploaded: 0, bytesTotal: totalBytes });
-    setPhase('uploading');
+      const accumulator = new UploadAccumulator();
 
-    const accumulator = new UploadAccumulator();
-
-    // Upload in concurrent groups
-    let uploadAborted = false;
-    for (let batchStart = 0; batchStart < batches.length && !uploadAborted; batchStart += MAX_CONCURRENT) {
-      const group = batches.slice(batchStart, batchStart + MAX_CONCURRENT);
-      await Promise.all(group.map(async (batch) => {
-        if (ac.signal.aborted) { uploadAborted = true; return; }
-        const resp = await uploadBatchWithRetry(importId, batch, tok, ac.signal);
-        if (resp === null) {
-          accumulator.recordFailedBatch(batch);
-        } else {
-          accumulator.addBatchResponse(resp, batch);
-        }
-        setProgress((p) => ({
-          ...p,
-          filesUploaded: accumulator.confirmedFiles,
-          bytesUploaded: accumulator.confirmedBytes,
-        }));
-      }));
-      if (ac.signal.aborted) uploadAborted = true;
-    }
-
-    // File-level retry for transient failures
-    if (!uploadAborted) {
-      const filesByLowerPath = new Map(result.matched.map((mf) => [mf.canonicalPath.toLowerCase(), mf]));
-      for (let ri = 0; ri < FILE_RETRY_DELAYS_MS.length && !uploadAborted; ri++) {
-        const retryPaths = accumulator.retryableFilePaths;
-        if (retryPaths.length === 0) break;
-        setRetryingCount(retryPaths.length);
-        await new Promise<void>((resolve) => {
-          const t = setTimeout(resolve, FILE_RETRY_DELAYS_MS[ri]);
-          ac.signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
-        });
-        if (ac.signal.aborted) { uploadAborted = true; break; }
-        const retryBatch = retryPaths.map((p) => filesByLowerPath.get(p)).filter((mf): mf is NonNullable<typeof mf> => mf !== undefined);
-        if (retryBatch.length === 0) break;
-        const retryResp = await uploadBatchWithRetry(importId, retryBatch, tok, ac.signal, 1);
-        if (retryResp === null) break;
-        for (const fr of retryResp.files) {
-          if (fr.status === 'received' || fr.status === 'already_received') {
-            accumulator.correctFileRetrySuccess(fr.canonical_path, fr.status as 'received' | 'already_received', fr.file_size);
+      // Upload in concurrent groups
+      let uploadAborted = false;
+      for (let batchStart = 0; batchStart < batches.length && !uploadAborted; batchStart += MAX_CONCURRENT) {
+        const group = batches.slice(batchStart, batchStart + MAX_CONCURRENT);
+        await Promise.all(group.map(async (batch) => {
+          if (!isCurrentOperation(requestedImportId, generation, ac)) {
+            uploadAborted = true;
+            return;
           }
-        }
-        setProgress((p) => ({ ...p, filesUploaded: accumulator.confirmedFiles, bytesUploaded: accumulator.confirmedBytes }));
+          const resp = await uploadBatchWithRetry(requestedImportId, batch, tok, ac.signal);
+          if (!isCurrentOperation(requestedImportId, generation, ac)) {
+            uploadAborted = true;
+            return;
+          }
+          if (resp === null) {
+            accumulator.recordFailedBatch(batch);
+          } else {
+            accumulator.addBatchResponse(resp, batch);
+          }
+          setProgress((p) => ({
+            ...p,
+            filesUploaded: accumulator.confirmedFiles,
+            bytesUploaded: accumulator.confirmedBytes,
+          }));
+        }));
+        if (!isCurrentOperation(requestedImportId, generation, ac)) uploadAborted = true;
       }
+
+      // File-level retry for transient failures
+      if (!uploadAborted) {
+        const filesByLowerPath = new Map(result.matched.map((mf) => [mf.canonicalPath.toLowerCase(), mf]));
+        for (let ri = 0; ri < FILE_RETRY_DELAYS_MS.length && !uploadAborted; ri++) {
+          const retryPaths = accumulator.retryableFilePaths;
+          if (retryPaths.length === 0) break;
+          setRetryingCount(retryPaths.length);
+          await new Promise<void>((resolve) => {
+            const t = setTimeout(resolve, FILE_RETRY_DELAYS_MS[ri]);
+            ac.signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+          });
+          if (!isCurrentOperation(requestedImportId, generation, ac)) {
+            uploadAborted = true;
+            break;
+          }
+          const retryBatch = retryPaths.map((p) => filesByLowerPath.get(p)).filter((mf): mf is NonNullable<typeof mf> => mf !== undefined);
+          if (retryBatch.length === 0) break;
+          const retryResp = await uploadBatchWithRetry(requestedImportId, retryBatch, tok, ac.signal, 1);
+          if (!isCurrentOperation(requestedImportId, generation, ac)) {
+            uploadAborted = true;
+            break;
+          }
+          if (retryResp === null) break;
+          for (const fr of retryResp.files) {
+            if (fr.status === 'received' || fr.status === 'already_received') {
+              accumulator.correctFileRetrySuccess(fr.canonical_path, fr.status as 'received' | 'already_received', fr.file_size);
+            }
+          }
+          setProgress((p) => ({ ...p, filesUploaded: accumulator.confirmedFiles, bytesUploaded: accumulator.confirmedBytes }));
+        }
+        if (isCurrentOperation(requestedImportId, generation, ac)) setRetryingCount(0);
+      }
+
+      if (uploadAborted || !isCurrentOperation(requestedImportId, generation, ac)) return;
+
+      // Selective reprocessing: only reparse tracks that received new files in this session.
+      const uploadedTrackIds = [...new Set(
+        result.matched.map((m) => m.trackId).filter((id): id is string => !!id),
+      )];
+      const affectedIds = uploadedTrackIds.length > 0 ? uploadedTrackIds : undefined;
+
+      await runParsing(requestedImportId, tok, ac, generation, affectedIds);
+    } catch (err) {
+      if (isAbortError(err) || !isCurrentOperation(requestedImportId, generation, ac)) return;
       setRetryingCount(0);
+      setErrorMessage(err instanceof Error ? err.message : 'Analysis upload failed.');
+      setPhase('error');
     }
-
-    if (uploadAborted) return;
-
-    // Selective reprocessing: only reparse tracks that received new files in this session.
-    const uploadedTrackIds = [...new Set(
-      result.matched.map((m) => m.trackId).filter((id): id is string => !!id),
-    )];
-    const affectedIds = uploadedTrackIds.length > 0 ? uploadedTrackIds : undefined;
-
-    await runParsing(importId, tok, ac, affectedIds);
-  }, [importId, targets]);
+  }, [importId, isCurrentOperation, runParsing, targets]);
 
   if (!isOpen) return null;
 

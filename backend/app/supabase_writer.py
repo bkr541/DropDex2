@@ -16,8 +16,25 @@ def write_to_supabase(library, supabase_url: str, supabase_key: str, owner_user_
     return result.import_id
 
 
-def write_to_supabase_full(library, supabase_url: str, supabase_key: str, owner_user_id: str):
+def write_to_supabase_full(
+    library,
+    supabase_url: str,
+    supabase_key: str,
+    owner_user_id: str,
+    *,
+    import_id: str | None = None,
+    finalize_status: str | None = "completed",
+    should_cancel=None,
+):
     """Full result wrapper. Returns an ImportWriteResult."""
     from dropdex_importer.supabase_writer import write_to_supabase as _write
 
-    return _write(library, supabase_url, supabase_key, owner_user_id)
+    return _write(
+        library,
+        supabase_url,
+        supabase_key,
+        owner_user_id,
+        import_id=import_id,
+        finalize_status=finalize_status,
+        should_cancel=should_cancel,
+    )
