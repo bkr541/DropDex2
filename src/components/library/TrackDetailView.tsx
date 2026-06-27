@@ -10,25 +10,19 @@ import {
 } from 'lucide-react';
 import { useCallback } from 'react';
 import { cn, formatDuration, formatKey, formatPosition } from '../../lib/utils';
-import { WaveformDisplay } from './WaveformDisplay';
 import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import { SimilarVibesSection } from './SimilarVibesSection';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import type { RekordboxTrack } from '../../types';
 import type { TrackPlaylistMembership } from '../../lib/queries/rekordbox';
-import type { TrackPreviewWaveform } from '../../lib/queries/waveformValidation';
+import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 
 interface TrackDetailViewProps {
   track: RekordboxTrack;
   importId: string | null;
-  /** Authentic Rekordbox preview waveform data. When provided, replaces the unavailable state. */
-  waveform?: TrackPreviewWaveform | null;
-  /** True while the waveform is being fetched for this track. */
-  waveformLoading?: boolean;
-  /** Set when the waveform fetch failed with a transient error (distinct from confirmed absence). */
-  waveformError?: string | null;
-  /** Called to retry a failed waveform fetch. Only relevant when waveformError is set. */
+  waveformState: WaveformLoadState;
+  /** Called to retry a retryable waveform request failure. */
   onRetryWaveform?: () => void;
   memberships: TrackPlaylistMembership[];
   membershipsLoading: boolean;
@@ -58,9 +52,7 @@ function StatBadge({ label, value, accent }: { label: string; value: string; acc
 export function TrackDetailView({
   track,
   importId,
-  waveform,
-  waveformLoading,
-  waveformError,
+  waveformState,
   onRetryWaveform,
   memberships,
   membershipsLoading,
@@ -97,49 +89,22 @@ export function TrackDetailView({
         <div className="relative aspect-video w-full glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)] group">
           <div className="absolute inset-0 brand-gradient opacity-10 group-hover:opacity-20 transition-opacity" />
 
-          {/* Waveform — idle/loading/available/unavailable/error states */}
-          <div className="absolute bottom-0 left-0 right-0 px-3 pb-2" style={{ height: 80 }}>
-            {waveform != null ? (
-              <RekordboxPreviewWaveform
-                waveform={waveform}
-                height={78}
-                activeProgress={progress}
-                onSeek={canSeek ? handleWaveformSeek : undefined}
-                ariaLabel={`Waveform for ${track.title}`}
-              />
-            ) : waveformLoading ? (
-              /* Loading skeleton — neutral bars, no label */
-              <div className="w-full h-full flex items-end gap-0.5 opacity-20">
-                {Array.from({ length: 60 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="flex-1 rounded-sm bg-primary animate-pulse"
-                    style={{ height: `${30 + Math.sin(i * 0.4) * 20}%` }}
-                  />
-                ))}
-              </div>
-            ) : waveformError ? (
-              <div className="flex items-center justify-center h-full gap-2 text-xs text-muted-foreground/60">
-                <span>Waveform unavailable</span>
-                {onRetryWaveform && (
-                  <button
-                    onClick={onRetryWaveform}
-                    className="text-primary/70 hover:text-primary underline text-xs"
-                  >
-                    Retry
-                  </button>
-                )}
-              </div>
-            ) : (
-              /* Confirmed absent — waveform not stored for this track */
-              <WaveformDisplay
-                peaks={null}
-                seed={track.id}
-                barCount={60}
-                color="primary"
-                showFallbackLabel
-              />
+          {/* Waveform — idle/loading/loaded/unavailable/error/invalid states */}
+          <div
+            className={cn(
+              'absolute bottom-0 left-0 right-0 px-3 pb-2',
+              waveformState.status !== 'loaded' && 'z-20',
             )}
+            style={{ height: 80 }}
+          >
+            <RekordboxPreviewWaveform
+              state={waveformState}
+              height={78}
+              activeProgress={progress}
+              onSeek={canSeek ? handleWaveformSeek : undefined}
+              onRetry={onRetryWaveform}
+              ariaLabel={`Waveform for ${track.title}`}
+            />
           </div>
 
           {/* Track identity overlay */}

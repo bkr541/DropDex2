@@ -20,7 +20,7 @@ export function DropAnalysisStatus({ kind, children }: DropAnalysisStatusProps) 
       )}
     >
       <Icon size={14} className="shrink-0" />
-      <span>{children}</span>
+      <div className="flex-1 min-w-0">{children}</div>
     </div>
   );
 }

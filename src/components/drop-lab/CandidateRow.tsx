@@ -16,7 +16,8 @@ export function CandidateRow({ candidate, analysis, active, onSelect }: Candidat
   const key = formatKey(track.musical_key);
   const initials = `${track.artist?.[0] ?? track.title[0] ?? '?'}${track.title[0] ?? '?'}`.toUpperCase();
   const hasDrop = Boolean(analysis?.dropPoints.length);
-  const hasWaveform = Boolean(analysis?.waveform);
+  const waveformStatus = analysis?.waveformState.status ?? 'idle';
+  const hasWaveform = waveformStatus === 'loaded';
   const ready = hasDrop && hasWaveform;
   const reasons = candidate.reasons.slice(0, 2).map((reason) => reason.label);
 
@@ -53,7 +54,15 @@ export function CandidateRow({ candidate, analysis, active, onSelect }: Candidat
           {!ready && (
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400 flex items-center gap-1">
               <AlertTriangle size={10} />
-              {!hasWaveform ? 'Missing waveform' : 'Missing drop'}
+              {!hasWaveform
+                ? waveformStatus === 'error'
+                  ? 'Waveform failed'
+                  : waveformStatus === 'invalid'
+                    ? 'Invalid waveform'
+                    : waveformStatus === 'loading'
+                      ? 'Loading waveform'
+                      : 'Missing waveform'
+                : 'Missing drop'}
             </span>
           )}
         </div>

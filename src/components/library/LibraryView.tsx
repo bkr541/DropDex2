@@ -62,7 +62,7 @@ import type {
   UserProfile,
   UserGenrePreference,
 } from '../../types';
-import type { TrackPreviewWaveform } from '../../lib/queries/waveformValidation';
+import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 
 type LibraryTab = 'overview' | 'playlists' | 'recently-added' | 'tracks' | 'genres' | 'artists';
@@ -340,9 +340,8 @@ function DesktopLibraryInfoCard({
 
 interface TrackRowProps {
   track: RekordboxTrack;
-  waveform: TrackPreviewWaveform | null;
-  waveformUnavailable: boolean;
-  waveformLoading: boolean;
+  waveformState: WaveformLoadState;
+  onRetryWaveform: () => void;
   isActiveTrack: boolean;
   playerStatus: string;
   usbConnected: boolean;
@@ -352,9 +351,8 @@ interface TrackRowProps {
 
 const TrackRow = memo(function TrackRow({
   track: t,
-  waveform,
-  waveformUnavailable,
-  waveformLoading,
+  waveformState,
+  onRetryWaveform,
   isActiveTrack,
   playerStatus,
   usbConnected,
@@ -460,10 +458,9 @@ const TrackRow = memo(function TrackRow({
           </p>
           <div className="mt-1.5">
             <RekordboxPreviewWaveform
-              waveform={waveform}
+              state={waveformState}
               height={22}
-              loading={waveformLoading}
-              unavailable={waveformUnavailable}
+              onRetry={onRetryWaveform}
               activeProgress={progress}
               onSeek={canSeek ? handleWaveformSeek : undefined}
               ariaLabel=""
@@ -533,10 +530,9 @@ const TrackRow = memo(function TrackRow({
         </div>
         <div className="mt-1.5">
           <RekordboxPreviewWaveform
-            waveform={waveform}
+            state={waveformState}
             height={20}
-            loading={waveformLoading}
-            unavailable={waveformUnavailable}
+            onRetry={onRetryWaveform}
             activeProgress={progress}
             onSeek={canSeek ? handleWaveformSeek : undefined}
             ariaLabel=""
@@ -700,10 +696,11 @@ export function LibraryView({
     return recentTrackIds;
   }, [showSearch, searchResultIds, activeTab, visibleTrackIds, recentTrackIds]);
 
-  const { waveforms: trackWaveforms, unavailableIds: waveformUnavailable, loadingBatchCount: waveformsLoading } = useTrackPreviewWaveforms(
-    importId,
-    waveformIds,
-  );
+  const {
+    states: waveformStates,
+    retry: retryWaveform,
+    getState: getWaveformState,
+  } = useTrackPreviewWaveforms(importId, waveformIds);
 
   return (
     <div className="space-y-5 md:max-w-7xl md:mx-auto">
@@ -741,9 +738,8 @@ export function LibraryView({
               importId={importId}
               onTrackClick={onTrackClick}
               onLoadMore={() => { void loadMoreSearchResults(); }}
-              waveforms={trackWaveforms}
-              waveformUnavailable={waveformUnavailable}
-              waveformsLoading={waveformsLoading > 0}
+              waveformStates={waveformStates}
+              onRetryWaveform={(trackId) => retryWaveform([trackId])}
             />
           </motion.div>
         ) : (
@@ -908,9 +904,8 @@ export function LibraryView({
                               tracks={recentTracks}
                               loading={recentTracksLoading}
                               onTrackClick={onTrackClick}
-                              waveforms={trackWaveforms}
-                              waveformUnavailable={waveformUnavailable}
-                              waveformsLoading={waveformsLoading > 0}
+                              waveformStates={waveformStates}
+                              onRetryWaveform={(trackId) => retryWaveform([trackId])}
                               showHeader={false}
                             />
                           </div>
@@ -959,9 +954,8 @@ export function LibraryView({
                           tracks={recentTracks}
                           loading={recentTracksLoading}
                           onTrackClick={onTrackClick}
-                          waveforms={trackWaveforms}
-                          waveformUnavailable={waveformUnavailable}
-                          waveformsLoading={waveformsLoading > 0}
+                          waveformStates={waveformStates}
+                          onRetryWaveform={(trackId) => retryWaveform([trackId])}
                         />
                       )}
 
@@ -998,13 +992,8 @@ export function LibraryView({
                                   <TrackRow
                                     key={t.id}
                                     track={t}
-                                    waveform={trackWaveforms.get(t.id) ?? null}
-                                    waveformUnavailable={waveformUnavailable.has(t.id)}
-                                    waveformLoading={
-                                      !trackWaveforms.has(t.id) &&
-                                      !waveformUnavailable.has(t.id) &&
-                                      waveformsLoading > 0
-                                    }
+                                    waveformState={getWaveformState(t.id)}
+                                    onRetryWaveform={() => retryWaveform([t.id])}
                                     isActiveTrack={activeTrack?.id === t.id}
                                     playerStatus={playerStatus}
                                     usbConnected={usbConnected}

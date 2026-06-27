@@ -1,257 +1,246 @@
 /**
- * Hook for bulk-fetching preview waveform data for tracks shown in the Tracks tab.
+ * Track-scoped waveform loading with a shared per-import cache.
  *
- * Caching strategy:
- * - Module-level cache keyed by importId → (trackId → CacheValue)
- * - Cache survives tab switches, sorts, and filter changes within the same session
- * - Cache is invalidated when importId changes (different import = different dataset)
- * - Only IDs not already in the cache (and not in-flight) are queried
- * - Tracks confirmed absent from a successful chunk receive 'unavailable'
- * - Tracks in a FAILED chunk receive 'query_failed' (retryable, not shown as unavailable)
+ * The hook never infers absence from a failed query. Every track has a typed
+ * state, and request results are gated by import, track ID, and request token.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchTrackPreviewWaveforms } from '../lib/queries/analysisData';
-import type { TrackPreviewWaveform } from '../lib/queries/analysisData';
-import { chunkIds } from '../lib/queries/waveformValidation';
-import { WAVEFORM_CHUNK_SIZE } from '../lib/queries/analysisData';
+import { fetchTrackPreviewWaveforms, WAVEFORM_CHUNK_SIZE } from '../lib/queries/analysisData';
+import {
+  chunkIds,
+  loadingWaveformState,
+  waveformStateForTrack,
+  type ResolvedWaveformLoadState,
+  type WaveformLoadState,
+} from '../lib/queries/waveformValidation';
+import {
+  shouldAcceptWaveformResult,
+  shouldExposeWaveformResult,
+} from '../lib/queries/waveformRequestGuard';
 
-// ── Module-level cache ─────────────────────────────────────────────────────────
+/** importId → (trackId → terminal state) */
+const waveformCache = new Map<string, Map<string, ResolvedWaveformLoadState>>();
 
-const UNAVAILABLE = 'unavailable' as const;
-/** Transient query failure — safe to retry; must NOT be treated as confirmed absent. */
-const QUERY_FAILED = 'query_failed' as const;
-
-type CacheValue = TrackPreviewWaveform | typeof UNAVAILABLE | typeof QUERY_FAILED;
-
-/** importId → (trackId → CacheValue) */
-const waveformCache = new Map<string, Map<string, CacheValue>>();
-
-function getImportCache(importId: string): Map<string, CacheValue> {
-  if (!waveformCache.has(importId)) waveformCache.set(importId, new Map());
-  return waveformCache.get(importId)!;
-}
-
-/**
- * Read a single entry from the module-level cache without triggering a fetch.
- * Returns undefined when the track has not been queried yet (cache miss).
- * Returns null when the track is confirmed to have no waveform row.
- * Returns a TrackPreviewWaveform when data is available.
- */
-export function getCachedWaveform(
-  importId: string,
-  trackId: string,
-): TrackPreviewWaveform | null | undefined {
-  const v = waveformCache.get(importId)?.get(trackId);
-  if (v === undefined) return undefined;
-  if (v === UNAVAILABLE) return null;
-  if (v === QUERY_FAILED) return undefined; // treat as cache miss for callers
-  return v;
-}
-
-/**
- * Write a single waveform result to the shared module-level cache.
- *
- * Used by cold-fetch paths (e.g. TrackDetail cold open) to populate the cache
- * so subsequent LibraryView renders see the result as a cache hit.
- *
- * Pass `null` for `waveform` to mark the track as confirmed absent.
- * Pass `'error'` to mark as a transient query failure (eligible for retry).
- */
-export function setCachedWaveform(
-  importId: string,
-  trackId: string,
-  waveform: TrackPreviewWaveform | null | 'error',
-): void {
-  const cache = getImportCache(importId);
-  if (waveform === null) {
-    cache.set(trackId, UNAVAILABLE);
-  } else if (waveform === 'error') {
-    cache.set(trackId, QUERY_FAILED);
-  } else {
-    cache.set(trackId, waveform);
+function getImportCache(importId: string): Map<string, ResolvedWaveformLoadState> {
+  let cache = waveformCache.get(importId);
+  if (!cache) {
+    cache = new Map();
+    waveformCache.set(importId, cache);
   }
+  return cache;
 }
 
-// ── Hook ───────────────────────────────────────────────────────────────────────
+export function getCachedWaveformState(
+  importId: string,
+  trackId: string,
+): ResolvedWaveformLoadState | undefined {
+  return waveformCache.get(importId)?.get(trackId);
+}
+
+export function setCachedWaveformState(
+  importId: string,
+  state: ResolvedWaveformLoadState,
+): void {
+  getImportCache(importId).set(state.trackId, state);
+}
 
 export interface UseTrackPreviewWaveformsResult {
-  /** Waveforms keyed by track ID for all tracks that have data. */
-  waveforms: Map<string, TrackPreviewWaveform>;
-  /** Track IDs confirmed to have no waveform row in the database. */
-  unavailableIds: Set<string>;
-  /**
-   * Track IDs whose waveform query failed transiently (network/Supabase error).
-   * These are NOT the same as unavailable — their waveforms may load on retry.
-   */
-  failedQueryIds: Set<string>;
-  /** Number of in-flight chunk requests. */
+  /** Current state keyed by track ID. */
+  states: Map<string, WaveformLoadState>;
+  /** Number of in-flight query chunks started by this hook instance. */
   loadingBatchCount: number;
-  /** Non-fatal batch errors — one chunk failure does not block others. */
-  errors: string[];
-  /**
-   * Clear the query_failed cache entries for the given IDs (or all failed IDs
-   * if none specified) so the next render triggers a fresh fetch.
-   */
-  retryFailedChunks: (ids?: string[]) => void;
+  /** Retry one or more retryable failures. */
+  retry: (trackIds?: string[]) => void;
+  /** Stable helper that returns an idle state for an unseen track. */
+  getState: (trackId: string | null | undefined) => WaveformLoadState;
 }
 
-/**
- * Fetch and cache preview waveforms for all currently visible track IDs.
- *
- * @param importId - The active import ID. Cache is scoped per import.
- * @param trackIds - IDs of tracks currently visible in the UI.
- */
 export function useTrackPreviewWaveforms(
   importId: string | null,
   trackIds: string[],
 ): UseTrackPreviewWaveformsResult {
-  const [waveforms, setWaveforms] = useState<Map<string, TrackPreviewWaveform>>(new Map());
-  const [unavailableIds, setUnavailableIds] = useState<Set<string>>(new Set());
-  const [failedQueryIds, setFailedQueryIds] = useState<Set<string>>(new Set());
+  const [states, setStates] = useState<Map<string, WaveformLoadState>>(new Map());
   const [loadingBatchCount, setLoadingBatchCount] = useState(0);
-  const [errors, setErrors] = useState<string[]>([]);
-  // Incremented by retryFailedChunks to re-trigger the fetch effect.
   const [retryTrigger, setRetryTrigger] = useState(0);
 
-  // Set of IDs currently being fetched to prevent duplicate requests.
-  const inflightRef = useRef<Set<string>>(new Set());
+  const activeImportRef = useRef<string | null>(importId);
+  const activeTrackIdsRef = useRef<Set<string>>(new Set(trackIds));
+  const inFlightRef = useRef<Map<string, number>>(new Map());
+  const requestTokensRef = useRef<Map<string, number>>(new Map());
+  const nextRequestTokenRef = useRef(0);
 
-  // Stable key representing the de-duped, sorted set of visible IDs.
-  // The effect re-runs only when the actual set of IDs changes.
+  activeImportRef.current = importId;
+  activeTrackIdsRef.current = new Set(trackIds);
+
   const trackIdsKey = useMemo(
-    () => [...new Set(trackIds)].sort().join(','),
+    () => [...new Set(trackIds.filter(Boolean))].sort().join(','),
     [trackIds],
   );
 
-  // Reset state when the import changes.
+  // Import changes invalidate all in-flight UI commits from the previous import.
   useEffect(() => {
+    inFlightRef.current = new Map();
+    requestTokensRef.current = new Map();
+    setLoadingBatchCount(0);
+
     if (!importId) {
-      setWaveforms(new Map());
-      setUnavailableIds(new Set());
-      setFailedQueryIds(new Set());
-      setErrors([]);
-      setLoadingBatchCount(0);
-      inflightRef.current = new Set();
+      setStates(new Map());
       return;
     }
 
-    // Hydrate state from the module-level cache (fast path when returning to tab).
     const cache = getImportCache(importId);
-    const newWaveforms = new Map<string, TrackPreviewWaveform>();
-    const newUnavailable = new Set<string>();
-    const newFailed = new Set<string>();
-    for (const [id, val] of cache) {
-      if (val === UNAVAILABLE) newUnavailable.add(id);
-      else if (val === QUERY_FAILED) newFailed.add(id);
-      else newWaveforms.set(id, val);
-    }
-    setWaveforms(newWaveforms);
-    setUnavailableIds(newUnavailable);
-    setFailedQueryIds(newFailed);
-    setErrors([]);
-    setLoadingBatchCount(0);
-    inflightRef.current = new Set();
+    const hydrated = new Map<string, WaveformLoadState>();
+    for (const [trackId, state] of cache) hydrated.set(trackId, state);
+    setStates(hydrated);
   }, [importId]);
 
-  // Fetch waveforms for newly visible IDs.
   useEffect(() => {
     if (!importId || !trackIdsKey) return;
 
+    const requestedIds = [...new Set(trackIds.filter(Boolean))];
     const cache = getImportCache(importId);
 
-    // Fetch IDs not yet cached (or previously query_failed will be re-fetched
-    // only after retryFailedChunks clears them from the cache).
-    const idsToFetch = [...new Set(trackIds)].filter(
-      (id) => !cache.has(id) && !inflightRef.current.has(id),
+    // Another mounted consumer may have warmed the shared cache. Mirror those
+    // entries before deciding what still needs a request.
+    const cachedForActiveIds = requestedIds
+      .map((trackId) => cache.get(trackId))
+      .filter((state): state is ResolvedWaveformLoadState => state !== undefined);
+    if (cachedForActiveIds.length > 0) {
+      setStates((previous) => {
+        const next = new Map(previous);
+        for (const state of cachedForActiveIds) next.set(state.trackId, state);
+        return next;
+      });
+    }
+
+    const idsToFetch = requestedIds.filter(
+      (trackId) => !cache.has(trackId) && !inFlightRef.current.has(trackId),
     );
     if (idsToFetch.length === 0) return;
 
-    // Mark as in-flight.
-    for (const id of idsToFetch) inflightRef.current.add(id);
+    const requestToken = ++nextRequestTokenRef.current;
+    for (const trackId of idsToFetch) {
+      inFlightRef.current.set(trackId, requestToken);
+      requestTokensRef.current.set(trackId, requestToken);
+    }
 
-    const chunks = chunkIds(idsToFetch, WAVEFORM_CHUNK_SIZE);
-    setLoadingBatchCount((n) => n + chunks.length);
+    setStates((previous) => {
+      const next = new Map(previous);
+      for (const trackId of idsToFetch) next.set(trackId, loadingWaveformState(trackId));
+      return next;
+    });
 
-    (async () => {
-      const { waveforms: fetched, successfulTrackIds, errors: fetchErrors } =
-        await fetchTrackPreviewWaveforms(idsToFetch);
+    const chunkCount = chunkIds(idsToFetch, WAVEFORM_CHUNK_SIZE).length;
+    setLoadingBatchCount((count) => count + chunkCount);
 
-      // Remove from in-flight set.
-      for (const id of idsToFetch) inflightRef.current.delete(id);
+    void fetchTrackPreviewWaveforms(idsToFetch)
+      .then((result) => {
+        const visibleUpdates: ResolvedWaveformLoadState[] = [];
 
-      // ── Cache update ────────────────────────────────────────────────────────
-      // Successful rows: cache the waveform data.
-      for (const [id, wf] of fetched) cache.set(id, wf);
+        for (const trackId of idsToFetch) {
+          if (!shouldAcceptWaveformResult(requestTokensRef.current.get(trackId), requestToken)) {
+            continue;
+          }
 
-      // Confirmed-absent: in a successful chunk but no DB row returned.
-      // Only mark unavailable for IDs in successful chunks — not failed ones.
-      for (const id of successfulTrackIds) {
-        if (!fetched.has(id)) cache.set(id, UNAVAILABLE);
-      }
+          const state = result.states.get(trackId) ?? {
+            status: 'error' as const,
+            trackId,
+            error: 'Waveform request completed without a track-scoped result.',
+            retryable: true as const,
+          };
 
-      // Failed-chunk IDs: transient error — cache as QUERY_FAILED so they
-      // don't re-fetch on every render, but are NOT marked as unavailable.
-      const failedIds = new Set<string>();
-      for (const e of fetchErrors) {
-        for (const id of e.trackIds) {
-          cache.set(id, QUERY_FAILED);
-          failedIds.add(id);
+          cache.set(trackId, state);
+          inFlightRef.current.delete(trackId);
+
+          if (
+            shouldExposeWaveformResult(
+              activeImportRef.current,
+              importId,
+              activeTrackIdsRef.current,
+              trackId,
+            )
+          ) {
+            visibleUpdates.push(state);
+          }
         }
-      }
 
-      // ── React state update ──────────────────────────────────────────────────
-      setWaveforms((prev) => {
-        const next = new Map(prev);
-        for (const [id, wf] of fetched) next.set(id, wf);
-        return next;
-      });
-      setUnavailableIds((prev) => {
-        const next = new Set(prev);
-        for (const id of successfulTrackIds) {
-          if (!fetched.has(id)) next.add(id);
+        if (visibleUpdates.length > 0) {
+          setStates((previous) => {
+            const next = new Map(previous);
+            for (const state of visibleUpdates) next.set(state.trackId, state);
+            return next;
+          });
         }
-        return next;
-      });
-      setFailedQueryIds((prev) => {
-        if (failedIds.size === 0) return prev;
-        const next = new Set(prev);
-        for (const id of failedIds) next.add(id);
-        return next;
-      });
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : 'Failed to load waveform.';
+        const visibleUpdates: ResolvedWaveformLoadState[] = [];
 
-      if (fetchErrors.length > 0) {
-        setErrors((prev) => [
-          ...prev,
-          ...fetchErrors.map(
-            (e) => `Chunk ${e.chunkIndex} (${e.trackIds.length} IDs): ${e.error}`,
-          ),
-        ]);
-      }
-      setLoadingBatchCount((n) => Math.max(0, n - chunks.length));
-    })();
-  // trackIdsKey is derived from trackIds — using it instead avoids array-reference churn.
-  // retryTrigger re-activates the effect after retryFailedChunks clears cache entries.
+        for (const trackId of idsToFetch) {
+          if (!shouldAcceptWaveformResult(requestTokensRef.current.get(trackId), requestToken)) {
+            continue;
+          }
+          const state: ResolvedWaveformLoadState = {
+            status: 'error',
+            trackId,
+            error: message,
+            retryable: true,
+          };
+          cache.set(trackId, state);
+          inFlightRef.current.delete(trackId);
+          if (
+            shouldExposeWaveformResult(
+              activeImportRef.current,
+              importId,
+              activeTrackIdsRef.current,
+              trackId,
+            )
+          ) {
+            visibleUpdates.push(state);
+          }
+        }
+
+        if (visibleUpdates.length > 0) {
+          setStates((previous) => {
+            const next = new Map(previous);
+            for (const state of visibleUpdates) next.set(state.trackId, state);
+            return next;
+          });
+        }
+      })
+      .finally(() => {
+        setLoadingBatchCount((count) => Math.max(0, count - chunkCount));
+      });
+  // `trackIdsKey` intentionally replaces the array reference in the dependency list.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [importId, trackIdsKey, retryTrigger]);
 
-  const retryFailedChunks = useCallback((ids?: string[]) => {
+  const retry = useCallback((ids?: string[]) => {
     if (!importId) return;
     const cache = getImportCache(importId);
-    const toRetry = ids ?? [...cache.keys()].filter((id) => cache.get(id) === QUERY_FAILED);
-    if (toRetry.length === 0) return;
-    for (const id of toRetry) cache.delete(id);
-    setFailedQueryIds((prev) => {
-      if (prev.size === 0) return prev;
-      const next = new Set(prev);
-      for (const id of toRetry) next.delete(id);
+    const candidates = ids ?? [...cache.keys()];
+    const retryIds = candidates.filter((trackId) => cache.get(trackId)?.status === 'error');
+    if (retryIds.length === 0) return;
+
+    for (const trackId of retryIds) {
+      cache.delete(trackId);
+      inFlightRef.current.delete(trackId);
+      requestTokensRef.current.set(trackId, ++nextRequestTokenRef.current);
+    }
+
+    setStates((previous) => {
+      const next = new Map(previous);
+      for (const trackId of retryIds) next.set(trackId, loadingWaveformState(trackId));
       return next;
     });
-    setErrors([]);
-    // Increment trigger so the fetch effect re-runs even though trackIdsKey
-    // and importId are unchanged — the cleared IDs are now cache misses again.
-    setRetryTrigger((n) => n + 1);
+    setRetryTrigger((value) => value + 1);
   }, [importId]);
 
-  return { waveforms, unavailableIds, failedQueryIds, loadingBatchCount, errors, retryFailedChunks };
+  const getState = useCallback(
+    (trackId: string | null | undefined) => waveformStateForTrack(states, trackId),
+    [states],
+  );
+
+  return { states, loadingBatchCount, retry, getState };
 }

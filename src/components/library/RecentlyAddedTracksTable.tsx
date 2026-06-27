@@ -6,15 +6,14 @@ import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import type { RekordboxTrack } from '../../types';
-import type { TrackPreviewWaveform } from '../../lib/queries/waveformValidation';
+import { waveformStateForTrack, type WaveformLoadState } from '../../lib/queries/waveformValidation';
 
 interface RecentlyAddedTracksTableProps {
   tracks: RekordboxTrack[];
   loading: boolean;
   onTrackClick: (track: RekordboxTrack) => void;
-  waveforms: Map<string, TrackPreviewWaveform>;
-  waveformUnavailable: Set<string>;
-  waveformsLoading: boolean;
+  waveformStates: Map<string, WaveformLoadState>;
+  onRetryWaveform: (trackId: string) => void;
   showHeader?: boolean;
 }
 
@@ -22,15 +21,13 @@ const HEADERS = ['', 'Title', 'Artist', 'BPM', 'Key', 'Added'] as const;
 
 function TrackRowRecent({
   track,
-  waveform,
-  waveformUnavailable,
-  waveformLoading,
+  waveformState,
+  onRetryWaveform,
   onOpen,
 }: {
   track: RekordboxTrack;
-  waveform: TrackPreviewWaveform | null;
-  waveformUnavailable: boolean;
-  waveformLoading: boolean;
+  waveformState: WaveformLoadState;
+  onRetryWaveform: () => void;
   onOpen: (track: RekordboxTrack) => void;
 }) {
   const { activeTrack, status: playerStatus, toggleTrack, seek, getAudioElement } = useAudioPlayer();
@@ -112,10 +109,9 @@ function TrackRowRecent({
           </p>
           <div className="mt-1.5">
             <RekordboxPreviewWaveform
-              waveform={waveform}
+              state={waveformState}
               height={22}
-              loading={waveformLoading}
-              unavailable={waveformUnavailable}
+              onRetry={onRetryWaveform}
               activeProgress={progress}
               onSeek={canSeek ? handleWaveformSeek : undefined}
               ariaLabel=""
@@ -166,10 +162,9 @@ function TrackRowRecent({
         </div>
         <div className="mt-1.5">
           <RekordboxPreviewWaveform
-            waveform={waveform}
+            state={waveformState}
             height={20}
-            loading={waveformLoading}
-            unavailable={waveformUnavailable}
+            onRetry={onRetryWaveform}
             activeProgress={progress}
             onSeek={canSeek ? handleWaveformSeek : undefined}
             ariaLabel=""
@@ -184,9 +179,8 @@ export function RecentlyAddedTracksTable({
   tracks,
   loading,
   onTrackClick,
-  waveforms,
-  waveformUnavailable,
-  waveformsLoading,
+  waveformStates,
+  onRetryWaveform,
   showHeader = true,
 }: RecentlyAddedTracksTableProps) {
   return (
@@ -231,13 +225,8 @@ export function RecentlyAddedTracksTable({
               <TrackRowRecent
                 key={track.id}
                 track={track}
-                waveform={waveforms.get(track.id) ?? null}
-                waveformUnavailable={waveformUnavailable.has(track.id)}
-                waveformLoading={
-                  !waveforms.has(track.id) &&
-                  !waveformUnavailable.has(track.id) &&
-                  waveformsLoading
-                }
+                waveformState={waveformStateForTrack(waveformStates, track.id)}
+                onRetryWaveform={() => onRetryWaveform(track.id)}
                 onOpen={onTrackClick}
               />
             ))}

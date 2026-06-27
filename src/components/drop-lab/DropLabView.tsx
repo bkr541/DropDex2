@@ -12,6 +12,7 @@ import { useDropLabPreview } from '../../hooks/useDropLabPreview';
 import { buildDropLabSegments, resolveTrackDurationMs, type DropLabBarCount, type DropLabBeatOffset } from '../../lib/music/dropLabSegments';
 import { sliceWaveformSegment } from '../../lib/music/waveformSegments';
 import type { RekordboxTrack } from '../../types';
+import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 
 interface DropLabViewProps {
   sourceTrack: RekordboxTrack | null;
@@ -20,6 +21,89 @@ interface DropLabViewProps {
   onTrackDetails: (track: RekordboxTrack) => void;
   preservedActiveCandidateId?: string | null;
   onActiveCandidateChange?: (trackId: string | null) => void;
+}
+
+function waveformMessageForPanel(
+  sourceState: WaveformLoadState | undefined,
+  candidateState: WaveformLoadState | undefined,
+): string | undefined {
+  const states: Array<[string, WaveformLoadState | undefined]> = [
+    ['Selected track', sourceState],
+    ['Active candidate', candidateState],
+  ];
+  for (const [label, state] of states) {
+    if (state?.status === 'error') return `${label} waveform failed to load.`;
+    if (state?.status === 'invalid') return `${label} waveform data is invalid or unsupported.`;
+    if (state?.status === 'unavailable') return `${label} has no waveform analysis.`;
+  }
+  return undefined;
+}
+
+function RetryButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="ml-2 shrink-0 rounded-lg border border-current/30 px-2 py-1 text-[10px] font-bold uppercase tracking-wider hover:bg-current/10"
+      aria-label={label}
+    >
+      Retry
+    </button>
+  );
+}
+
+function TrackWaveformStatus({
+  label,
+  state,
+  onRetry,
+}: {
+  label: string;
+  state: WaveformLoadState | undefined;
+  onRetry: () => void;
+}) {
+  if (!state || state.status === 'idle' || state.status === 'loading' || state.status === 'loaded') return null;
+  if (state.status === 'unavailable') {
+    return <DropAnalysisStatus kind="info">{label} has no waveform analysis.</DropAnalysisStatus>;
+  }
+  if (state.status === 'invalid') {
+    return <DropAnalysisStatus kind="warning">{label} waveform is invalid or unsupported: {state.error}</DropAnalysisStatus>;
+  }
+  return (
+    <DropAnalysisStatus kind="warning">
+      <div className="flex items-center justify-between gap-2">
+        <span>{label} waveform failed to load: {state.error}</span>
+        <RetryButton onClick={onRetry} label={`Retry ${label.toLowerCase()} waveform`} />
+      </div>
+    </DropAnalysisStatus>
+  );
+}
+
+function DetailWaveformStatus({
+  label,
+  state,
+  usedFallback,
+  onRetry,
+}: {
+  label: string;
+  state: WaveformLoadState;
+  usedFallback: boolean;
+  onRetry: () => void;
+}) {
+  if (!usedFallback || state.status === 'idle' || state.status === 'loading' || state.status === 'loaded') return null;
+  if (state.status === 'unavailable') {
+    return <DropAnalysisStatus kind="info">{label} detailed waveform is unavailable. Using its preview waveform.</DropAnalysisStatus>;
+  }
+  if (state.status === 'invalid') {
+    return <DropAnalysisStatus kind="warning">{label} detailed waveform is invalid or unsupported. Using its preview waveform. {state.error}</DropAnalysisStatus>;
+  }
+  return (
+    <DropAnalysisStatus kind="warning">
+      <div className="flex items-center justify-between gap-2">
+        <span>{label} detailed waveform failed to load. Using its preview waveform. {state.error}</span>
+        <RetryButton onClick={onRetry} label={`Retry ${label.toLowerCase()} detailed waveform`} />
+      </div>
+    </DropAnalysisStatus>
+  );
 }
 
 export function DropLabView({
@@ -83,18 +167,25 @@ export function DropLabView({
     });
   }, [activeCandidate, barCount, beatOffset, candidateAnalysis, candidateDrop, sourceAnalysis, sourceDrop, sourceTrack]);
 
-  const sourceDetail = useDropLabDetailWaveform(importId, sourceTrack?.id ?? null, sourceAnalysis?.waveform);
-  const candidateDetail = useDropLabDetailWaveform(importId, activeCandidate?.id ?? null, candidateAnalysis?.waveform);
+  const sourceDetail = useDropLabDetailWaveform(importId, sourceTrack?.id ?? null, sourceAnalysis?.waveformState);
+  const candidateDetail = useDropLabDetailWaveform(importId, activeCandidate?.id ?? null, candidateAnalysis?.waveformState);
   const sourceDuration = sourceTrack ? resolveTrackDurationMs(sourceTrack, sourceAnalysis?.beatGrid?.beats ?? []).durationMs : null;
   const candidateDuration = activeCandidate ? resolveTrackDurationMs(activeCandidate, candidateAnalysis?.beatGrid?.beats ?? []).durationMs : null;
+  const sourceDisplayWaveform = sourceDetail.displayState.status === 'loaded' ? sourceDetail.displayState.waveform : null;
+  const candidateDisplayWaveform = candidateDetail.displayState.status === 'loaded' ? candidateDetail.displayState.waveform : null;
 
   const sourceWaveformSegment = useMemo(
-    () => segments.source ? sliceWaveformSegment(sourceDetail.waveform, segments.source.startMs, segments.source.endMs, sourceDuration) : null,
-    [segments.source, sourceDetail.waveform, sourceDuration],
+    () => segments.source ? sliceWaveformSegment(sourceDisplayWaveform, segments.source.startMs, segments.source.endMs, sourceDuration) : null,
+    [segments.source, sourceDisplayWaveform, sourceDuration],
   );
   const candidateWaveformSegment = useMemo(
-    () => segments.candidate ? sliceWaveformSegment(candidateDetail.waveform, segments.candidate.startMs, segments.candidate.endMs, candidateDuration) : null,
-    [candidateDetail.waveform, candidateDuration, segments.candidate],
+    () => segments.candidate ? sliceWaveformSegment(candidateDisplayWaveform, segments.candidate.startMs, segments.candidate.endMs, candidateDuration) : null,
+    [candidateDisplayWaveform, candidateDuration, segments.candidate],
+  );
+
+  const waveformPanelMessage = waveformMessageForPanel(
+    sourceAnalysis?.waveformState,
+    candidateAnalysis?.waveformState,
   );
 
   const preview = useDropLabPreview({
@@ -148,7 +239,12 @@ export function DropLabView({
         <DropLabWaveform
           sourceSegment={sourceWaveformSegment}
           candidateSegment={candidateWaveformSegment}
-          loading={analysis.loading || sourceDetail.loading || candidateDetail.loading}
+          loading={
+            analysis.loading ||
+            sourceDetail.detailState.status === 'loading' ||
+            candidateDetail.detailState.status === 'loading'
+          }
+          unavailableMessage={waveformPanelMessage}
         />
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.72fr)]">
@@ -156,9 +252,28 @@ export function DropLabView({
             {!sourceDrop && (
               <DropAnalysisStatus kind="warning">A drop point could not be identified from this track&apos;s cues or phrase analysis.</DropAnalysisStatus>
             )}
-            {(sourceDetail.usedFallback || candidateDetail.usedFallback) && (
-              <DropAnalysisStatus kind="info">Detailed waveform unavailable. Using preview waveform.</DropAnalysisStatus>
-            )}
+            <TrackWaveformStatus
+              label="Selected track"
+              state={sourceAnalysis?.waveformState}
+              onRetry={() => sourceTrack && analysis.retryWaveform(sourceTrack.id)}
+            />
+            <TrackWaveformStatus
+              label="Active candidate"
+              state={candidateAnalysis?.waveformState}
+              onRetry={() => activeCandidate && analysis.retryWaveform(activeCandidate.id)}
+            />
+            <DetailWaveformStatus
+              label="Selected track"
+              state={sourceDetail.detailState}
+              usedFallback={sourceDetail.usedFallback}
+              onRetry={sourceDetail.retry}
+            />
+            <DetailWaveformStatus
+              label="Active candidate"
+              state={candidateDetail.detailState}
+              usedFallback={candidateDetail.usedFallback}
+              onRetry={candidateDetail.retry}
+            />
             {segments.source?.timingSource === 'bpm' || segments.candidate?.timingSource === 'bpm' ? (
               <DropAnalysisStatus kind="info">Beat-grid timing is incomplete, so BPM timing is being used for this window.</DropAnalysisStatus>
             ) : null}

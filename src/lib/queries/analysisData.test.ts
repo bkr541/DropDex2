@@ -1,30 +1,17 @@
-/**
- * Tests for fetchTrackPreviewWaveforms — focusing on the bulk-fetch result shape
- * and the distinction between confirmed-absent IDs and failed-chunk IDs.
- */
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('../supabase', () => ({
+  supabase: { from: vi.fn() },
+}));
 
-// ── Supabase mock ─────────────────────────────────────────────────────────────
-
-vi.mock('../supabase', () => {
-  const mockChain = { select: vi.fn(), in: vi.fn() };
-  const mockFrom = vi.fn().mockReturnValue(mockChain);
-  return { supabase: { from: mockFrom } };
-});
-
-// ── Import after mock setup ───────────────────────────────────────────────────
-
-import { fetchTrackPreviewWaveforms } from './analysisData';
 import { supabase } from '../supabase';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
+import { fetchTrackPreviewWaveforms } from './analysisData';
 
 function colorCol(h = 100, r = 50, g = 60, b = 70) {
   return { h, r, g, b };
 }
 
-function makeWaveformRow(trackId: string) {
+function makeWaveformRow(trackId: string, overrides: Record<string, unknown> = {}) {
   return {
     id: `wf-${trackId}`,
     import_id: 'imp-1',
@@ -37,83 +24,161 @@ function makeWaveformRow(trackId: string) {
     detail_storage_bucket: null,
     detail_storage_path: null,
     parser_version: '1.0',
+    ...overrides,
   };
 }
 
-// Build a chainable query stub and wire it into the mock.
 function setupChain(result: { data: unknown[] | null; error: { message: string } | null }) {
   const chain = { select: vi.fn(), in: vi.fn() };
   chain.select.mockReturnValue(chain);
   chain.in.mockResolvedValue(result);
-  (supabase.from as ReturnType<typeof vi.fn>).mockReturnValue(chain);
+  vi.mocked(supabase.from).mockReturnValue(chain as never);
   return chain;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Reset the default chain to prevent stale mock return values.
-  const defaultChain = { select: vi.fn(), in: vi.fn() };
-  defaultChain.select.mockReturnValue(defaultChain);
-  defaultChain.in.mockResolvedValue({ data: [], error: null });
-  (supabase.from as ReturnType<typeof vi.fn>).mockReturnValue(defaultChain);
+  setupChain({ data: [], error: null });
 });
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 describe('fetchTrackPreviewWaveforms', () => {
-  it('returns empty result for empty input', async () => {
+  it('returns an empty state map for empty input', async () => {
     const result = await fetchTrackPreviewWaveforms([]);
-    expect(result.waveforms.size).toBe(0);
-    expect(result.successfulTrackIds.size).toBe(0);
-    expect(result.errors).toHaveLength(0);
+    expect(result.states.size).toBe(0);
+    expect(result.errors).toEqual([]);
   });
 
-  it('all chunks successful — waveforms returned, successfulTrackIds populated', async () => {
-    setupChain({
-      data: [makeWaveformRow('track-a'), makeWaveformRow('track-b')],
-      error: null,
+  it('returns loaded state for a valid waveform record', async () => {
+    setupChain({ data: [makeWaveformRow('track-a')], error: null });
+
+    const result = await fetchTrackPreviewWaveforms(['track-a']);
+    const state = result.states.get('track-a');
+
+    expect(state?.status).toBe('loaded');
+    if (state?.status === 'loaded') {
+      expect(state.trackId).toBe('track-a');
+      expect(state.waveform.previewColumns).toEqual([colorCol()]);
+      expect(state.waveform.previewColumnsValid).toBe(true);
+    }
+    expect(result.errors).toEqual([]);
+  });
+
+  it('returns unavailable only after a successful query confirms no record', async () => {
+    setupChain({ data: [], error: null });
+
+    const result = await fetchTrackPreviewWaveforms(['track-missing']);
+
+    expect(result.states.get('track-missing')).toEqual({
+      status: 'unavailable',
+      trackId: 'track-missing',
     });
-
-    const result = await fetchTrackPreviewWaveforms(['track-a', 'track-b']);
-
-    expect(result.errors).toHaveLength(0);
-    expect(result.waveforms.size).toBe(2);
-    expect(result.waveforms.has('track-a')).toBe(true);
-    expect(result.waveforms.has('track-b')).toBe(true);
-    expect(result.successfulTrackIds.has('track-a')).toBe(true);
-    expect(result.successfulTrackIds.has('track-b')).toBe(true);
+    expect(result.errors).toEqual([]);
   });
 
-  it('successful chunk with one track having no waveform row — ID in successfulTrackIds but not waveforms', async () => {
-    setupChain({
-      data: [makeWaveformRow('track-a')],
-      error: null,
-    });
-
-    const result = await fetchTrackPreviewWaveforms(['track-a', 'track-b']);
-
-    expect(result.errors).toHaveLength(0);
-    expect(result.waveforms.has('track-a')).toBe(true);
-    expect(result.waveforms.has('track-b')).toBe(false);
-    // Both IDs were in a successful chunk, so both are in successfulTrackIds.
-    expect(result.successfulTrackIds.has('track-a')).toBe(true);
-    expect(result.successfulTrackIds.has('track-b')).toBe(true);
-  });
-
-  it('failed chunk — IDs NOT in successfulTrackIds, error reported with trackIds', async () => {
+  it('returns retryable error state for a Supabase request failure', async () => {
     setupChain({ data: null, error: { message: 'connection refused' } });
 
     const result = await fetchTrackPreviewWaveforms(['track-a', 'track-b']);
 
-    expect(result.waveforms.size).toBe(0);
-    expect(result.successfulTrackIds.size).toBe(0);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].error).toBe('connection refused');
-    expect(result.errors[0].trackIds).toEqual(expect.arrayContaining(['track-a', 'track-b']));
-    expect(result.errors[0].chunkIndex).toBe(0);
+    expect(result.states.get('track-a')).toEqual({
+      status: 'error',
+      trackId: 'track-a',
+      error: 'connection refused',
+      retryable: true,
+    });
+    expect(result.states.get('track-b')?.status).toBe('error');
+    expect(result.errors).toEqual([
+      {
+        chunkIndex: 0,
+        trackIds: ['track-a', 'track-b'],
+        error: 'connection refused',
+      },
+    ]);
   });
 
-  it('one chunk succeeds, another fails — successfulTrackIds only contains successful chunk IDs', async () => {
+  it('returns retryable error state when the query promise rejects', async () => {
+    const chain = { select: vi.fn(), in: vi.fn() };
+    chain.select.mockReturnValue(chain);
+    chain.in.mockRejectedValue(new Error('network offline'));
+    vi.mocked(supabase.from).mockReturnValue(chain as never);
+
+    const result = await fetchTrackPreviewWaveforms(['track-a']);
+
+    expect(result.states.get('track-a')).toMatchObject({
+      status: 'error',
+      trackId: 'track-a',
+      error: 'network offline',
+      retryable: true,
+    });
+  });
+
+
+  it('returns invalid state when a successful response has null data', async () => {
+    setupChain({ data: null, error: null });
+
+    const result = await fetchTrackPreviewWaveforms(['track-a']);
+
+    expect(result.states.get('track-a')).toMatchObject({
+      status: 'invalid',
+      trackId: 'track-a',
+      reason: 'invalid',
+      retryable: false,
+    });
+  });
+
+  it('returns invalid state when the response itself is not an array', async () => {
+    const chain = { select: vi.fn(), in: vi.fn() };
+    chain.select.mockReturnValue(chain);
+    chain.in.mockResolvedValue({ data: { unexpected: true }, error: null });
+    vi.mocked(supabase.from).mockReturnValue(chain as never);
+
+    const result = await fetchTrackPreviewWaveforms(['track-a']);
+
+    expect(result.states.get('track-a')).toMatchObject({
+      status: 'invalid',
+      trackId: 'track-a',
+      reason: 'invalid',
+      retryable: false,
+    });
+  });
+
+  it('returns invalid state for malformed waveform schema instead of unavailable', async () => {
+    setupChain({
+      data: [makeWaveformRow('track-bad', { preview_columns: [{ nope: true }] })],
+      error: null,
+    });
+
+    const result = await fetchTrackPreviewWaveforms(['track-bad']);
+    const state = result.states.get('track-bad');
+
+    expect(state?.status).toBe('invalid');
+    if (state?.status === 'invalid') {
+      expect(state.reason).toBe('invalid');
+      expect(state.retryable).toBe(false);
+      expect(state.error).toMatch(/invalid|mixed/i);
+    }
+  });
+
+  it('returns unsupported state for an empty waveform record instead of absence', async () => {
+    setupChain({
+      data: [makeWaveformRow('track-empty', {
+        preview_column_count: 0,
+        preview_columns: [],
+      })],
+      error: null,
+    });
+
+    const result = await fetchTrackPreviewWaveforms(['track-empty']);
+
+    expect(result.states.get('track-empty')).toMatchObject({
+      status: 'invalid',
+      trackId: 'track-empty',
+      reason: 'unsupported',
+      retryable: false,
+    });
+  });
+
+  it('keeps successful and failed chunks independently track-scoped', async () => {
     const successChain = { select: vi.fn(), in: vi.fn() };
     successChain.select.mockReturnValue(successChain);
     successChain.in.mockResolvedValue({ data: [makeWaveformRow('track-good')], error: null });
@@ -122,39 +187,17 @@ describe('fetchTrackPreviewWaveforms', () => {
     failChain.select.mockReturnValue(failChain);
     failChain.in.mockResolvedValue({ data: null, error: { message: 'timeout' } });
 
-    (supabase.from as ReturnType<typeof vi.fn>)
-      .mockReturnValueOnce(successChain)
-      .mockReturnValueOnce(failChain);
+    vi.mocked(supabase.from)
+      .mockReturnValueOnce(successChain as never)
+      .mockReturnValueOnce(failChain as never);
 
-    // First chunk: 200 IDs (all in successChain). Second chunk: 1 ID (in failChain).
-    // 'track-good' is in the first chunk. 'track-fail' is the sole second-chunk ID.
-    const firstChunk = ['track-good', ...Array.from({ length: 199 }, (_, i) => `track-filler-${i}`)];
-    const ids = [...firstChunk, 'track-fail'];
-    const result = await fetchTrackPreviewWaveforms(ids);
+    const firstChunk = ['track-good', ...Array.from({ length: 199 }, (_, i) => `filler-${i}`)];
+    const result = await fetchTrackPreviewWaveforms([...firstChunk, 'track-fail']);
 
-    expect(result.waveforms.has('track-good')).toBe(true);
-    expect(result.successfulTrackIds.has('track-good')).toBe(true);
-    expect(result.successfulTrackIds.has('track-filler-0')).toBe(true); // first chunk succeeded
-    expect(result.successfulTrackIds.has('track-fail')).toBe(false);    // second chunk failed
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].error).toBe('timeout');
+    expect(result.states.get('track-good')?.status).toBe('loaded');
+    expect(result.states.get('filler-0')?.status).toBe('unavailable');
+    expect(result.states.get('track-fail')?.status).toBe('error');
     expect(result.errors[0].trackIds).toEqual(['track-fail']);
-  });
-
-  it('malformed waveform data in a successful chunk does not affect the successfulTrackIds set', async () => {
-    const badRow = {
-      ...makeWaveformRow('track-bad'),
-      preview_columns: [{ not: 'a column' }],
-    };
-    setupChain({ data: [badRow], error: null });
-
-    const result = await fetchTrackPreviewWaveforms(['track-bad']);
-
-    // Chunk succeeded (no error), so track-bad is in successfulTrackIds.
-    expect(result.successfulTrackIds.has('track-bad')).toBe(true);
-    // A waveform row was returned (even with invalid columns), so it IS in waveforms.
-    expect(result.waveforms.has('track-bad')).toBe(true);
-    expect(result.errors).toHaveLength(0);
   });
 
   it('deduplicates input IDs before querying', async () => {
@@ -163,52 +206,26 @@ describe('fetchTrackPreviewWaveforms', () => {
     await fetchTrackPreviewWaveforms(['track-a', 'track-a', 'track-a']);
 
     expect(chain.in).toHaveBeenCalledTimes(1);
-    const calledWith = chain.in.mock.calls[0][1];
-    expect(calledWith).toEqual(['track-a']);
+    expect(chain.in.mock.calls[0][1]).toEqual(['track-a']);
   });
 
-  it('multiple chunks all fail — all IDs in error.trackIds, none in successfulTrackIds', async () => {
-    (supabase.from as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      const c = { select: vi.fn(), in: vi.fn() };
-      c.select.mockReturnValue(c);
-      c.in.mockResolvedValue({ data: null, error: { message: 'db down' } });
-      return c;
-    });
-
-    const ids = Array.from({ length: 201 }, (_, i) => `track-${i}`);
-    const result = await fetchTrackPreviewWaveforms(ids);
-
-    expect(result.waveforms.size).toBe(0);
-    expect(result.successfulTrackIds.size).toBe(0);
-    expect(result.errors).toHaveLength(2);
-    const allFailedIds = result.errors.flatMap((e) => e.trackIds);
-    expect(allFailedIds).toHaveLength(201);
-  });
-
-  it('failed chunk retried successfully — second call succeeds and IDs enter successfulTrackIds', async () => {
-    // First call fails.
+  it('supports retry after failure without caching absence', async () => {
     const failChain = { select: vi.fn(), in: vi.fn() };
     failChain.select.mockReturnValue(failChain);
     failChain.in.mockResolvedValue({ data: null, error: { message: 'transient' } });
 
-    // Second call succeeds.
     const successChain = { select: vi.fn(), in: vi.fn() };
     successChain.select.mockReturnValue(successChain);
     successChain.in.mockResolvedValue({ data: [makeWaveformRow('track-retry')], error: null });
 
-    (supabase.from as ReturnType<typeof vi.fn>)
-      .mockReturnValueOnce(failChain)
-      .mockReturnValueOnce(successChain);
+    vi.mocked(supabase.from)
+      .mockReturnValueOnce(failChain as never)
+      .mockReturnValueOnce(successChain as never);
 
-    // First call — fails.
     const first = await fetchTrackPreviewWaveforms(['track-retry']);
-    expect(first.errors).toHaveLength(1);
-    expect(first.successfulTrackIds.size).toBe(0);
-
-    // Second call (retry) — succeeds.
     const second = await fetchTrackPreviewWaveforms(['track-retry']);
-    expect(second.errors).toHaveLength(0);
-    expect(second.waveforms.has('track-retry')).toBe(true);
-    expect(second.successfulTrackIds.has('track-retry')).toBe(true);
+
+    expect(first.states.get('track-retry')?.status).toBe('error');
+    expect(second.states.get('track-retry')?.status).toBe('loaded');
   });
 });

@@ -7,13 +7,12 @@
 
 import { supabase } from '../supabase';
 import {
-  buildTrackPreviewWaveform,
+  buildResolvedWaveformState,
   chunkIds,
 } from './waveformValidation';
 import type {
-  PreviewColumn,
+  ResolvedWaveformLoadState,
   WaveformRow,
-  TrackPreviewWaveform,
 } from './waveformValidation';
 
 // Re-export column types and waveform types so existing import paths keep working.
@@ -24,6 +23,7 @@ export type {
   WaveformRow,
   WaveformPreviewFormat,
   WaveformLoadState,
+  ResolvedWaveformLoadState,
   TrackPreviewWaveform,
 } from './waveformValidation';
 
@@ -134,7 +134,7 @@ function mapWaveformRow(raw: unknown): WaveformRow {
     track_id: row.track_id as string,
     preview_format: (row.preview_format as string | null) ?? null,
     preview_column_count: (row.preview_column_count as number | null) ?? null,
-    preview_columns: (row.preview_columns as PreviewColumn[]) ?? [],
+    preview_columns: row.preview_columns,
     detail_format: (row.detail_format as string | null) ?? null,
     detail_column_count: (row.detail_column_count as number | null) ?? null,
     detail_storage_bucket: (row.detail_storage_bucket as string | null) ?? null,
@@ -238,20 +238,17 @@ export async function fetchTrackBeatGrids(trackIds: string[]): Promise<Map<strin
   return result;
 }
 
-/** Fetch the preview waveform for a single track. Returns null when not yet parsed. */
-export async function fetchTrackPreviewWaveform(trackId: string): Promise<WaveformRow | null> {
-  const { data, error } = await supabase
-    .from('rekordbox_track_waveforms')
-    .select(
-      'id, import_id, track_id, preview_format, preview_column_count, preview_columns, ' +
-      'detail_format, detail_column_count, detail_storage_bucket, detail_storage_path, parser_version'
-    )
-    .eq('track_id', trackId)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  if (data == null) return null;
-  return mapWaveformRow(data);
+/** Fetch the preview waveform state for a single track. */
+export async function fetchTrackPreviewWaveform(
+  trackId: string,
+): Promise<ResolvedWaveformLoadState> {
+  const result = await fetchTrackPreviewWaveforms([trackId]);
+  return result.states.get(trackId) ?? {
+    status: 'error',
+    trackId,
+    error: 'Waveform request completed without a track-scoped result.',
+    retryable: true,
+  };
 }
 
 /** Fetch all cue points for a single track, ordered by start time. */
@@ -315,45 +312,30 @@ const WAVEFORM_SELECT =
 
 export interface WaveformChunkError {
   chunkIndex: number;
-  /** IDs that were in this chunk and could not be queried. */
   trackIds: string[];
   error: string;
 }
 
 export interface WaveformFetchResult {
-  /** Waveform data for every track that had a row, keyed by track_id. */
-  waveforms: Map<string, TrackPreviewWaveform>;
-  /**
-   * Track IDs that were successfully queried (chunk returned without error).
-   * IDs in this set that are absent from `waveforms` are confirmed to have no
-   * waveform row — safe to cache as permanently unavailable.
-   */
-  successfulTrackIds: Set<string>;
-  /**
-   * Per-chunk errors; other chunks continue even if one fails.
-   * IDs in a failed chunk must NOT be cached as unavailable — the query may
-   * succeed on a later retry.
-   */
+  /** One terminal, track-scoped result for every requested track ID. */
+  states: Map<string, ResolvedWaveformLoadState>;
+  /** Chunk diagnostics retained for logging and tests. */
   errors: WaveformChunkError[];
 }
 
 /**
- * Fetch preview waveform data for multiple tracks in a single query (or a
- * small number of batched queries when the ID list exceeds WAVEFORM_CHUNK_SIZE).
+ * Fetch preview waveform states for multiple tracks.
  *
- * - Deduplicates input IDs before querying.
- * - Tracks with no waveform row are omitted from the result map (not an error).
- * - A chunk error does not fail the entire call — other chunks still complete.
- * - `successfulTrackIds` identifies which IDs were cleanly queried so the
- *   caller can distinguish "confirmed absent" from "query failed".
+ * A successful query with no row produces `unavailable`. Request failures
+ * produce retryable `error` states. Returned rows with malformed or unsupported
+ * columns produce `invalid` states and are never collapsed into absence.
  */
 export async function fetchTrackPreviewWaveforms(
   trackIds: string[],
 ): Promise<WaveformFetchResult> {
   const chunks = chunkIds(trackIds, WAVEFORM_CHUNK_SIZE);
   const result: WaveformFetchResult = {
-    waveforms: new Map(),
-    successfulTrackIds: new Set(),
+    states: new Map(),
     errors: [],
   };
 
@@ -369,28 +351,69 @@ export async function fetchTrackPreviewWaveforms(
 
         if (error) {
           result.errors.push({ chunkIndex, trackIds: chunk, error: error.message });
-          if (import.meta.env.DEV) {
-            console.warn(
-              `[DropDex] Waveform chunk ${chunkIndex} failed (${chunk.length} IDs, retryable): ${error.message}`,
-            );
+          for (const trackId of chunk) {
+            result.states.set(trackId, {
+              status: 'error',
+              trackId,
+              error: error.message || 'Failed to load waveform.',
+              retryable: true,
+            });
           }
           return;
         }
 
-        // All IDs in this chunk were cleanly queried — missing rows = truly absent.
-        for (const id of chunk) result.successfulTrackIds.add(id);
+        if (!Array.isArray(data)) {
+          for (const trackId of chunk) {
+            result.states.set(trackId, {
+              status: 'invalid',
+              trackId,
+              error: 'Waveform response schema is invalid: expected an array of rows.',
+              reason: 'invalid',
+              retryable: false,
+            });
+          }
+          return;
+        }
 
+        // A clean query proves that omitted IDs genuinely have no waveform row.
+        for (const trackId of chunk) {
+          result.states.set(trackId, { status: 'unavailable', trackId });
+        }
+
+        let unscopedInvalidRow = false;
         for (const raw of data ?? []) {
-          const waveform = buildTrackPreviewWaveform(mapWaveformRow(raw));
-          result.waveforms.set(waveform.trackId, waveform);
+          const row = mapWaveformRow(raw);
+          if (!row.track_id || !chunk.includes(row.track_id)) {
+            unscopedInvalidRow = true;
+            continue;
+          }
+          result.states.set(row.track_id, buildResolvedWaveformState(row));
+        }
+
+        // A malformed response row must not make a requested track appear absent.
+        if (unscopedInvalidRow) {
+          for (const trackId of chunk) {
+            const current = result.states.get(trackId);
+            if (current?.status !== 'unavailable') continue;
+            result.states.set(trackId, {
+              status: 'invalid',
+              trackId,
+              error: 'Waveform response contained data that could not be associated with this track.',
+              reason: 'invalid',
+              retryable: false,
+            });
+          }
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
+        const message = err instanceof Error ? err.message : 'Unknown waveform request error.';
         result.errors.push({ chunkIndex, trackIds: chunk, error: message });
-        if (import.meta.env.DEV) {
-          console.warn(
-            `[DropDex] Waveform chunk ${chunkIndex} threw (${chunk.length} IDs, retryable): ${message}`,
-          );
+        for (const trackId of chunk) {
+          result.states.set(trackId, {
+            status: 'error',
+            trackId,
+            error: message,
+            retryable: true,
+          });
         }
       }
     }),

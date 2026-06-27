@@ -31,7 +31,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/utils';
-import type { TrackPreviewWaveform } from '../../lib/queries/waveformValidation';
+import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import {
   buildDisplayBuckets,
   clampProgress,
@@ -45,43 +45,21 @@ import {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface RekordboxPreviewWaveformProps {
-  /**
-   * Validated waveform data from the database.
-   * Pass `null` when data is not yet loaded or when the track has no waveform row.
-   */
-  waveform: TrackPreviewWaveform | null;
-  /**
-   * CSS height of the waveform container in pixels.
-   * @default 40
-   */
+  /** Track-scoped waveform state. */
+  state: WaveformLoadState;
+  /** CSS height of the waveform container in pixels. */
   height?: number;
   /** Additional class names applied to the outer container div. */
   className?: string;
-  /**
-   * Playback progress, clamped to [0, 1].
-   * The played (left) region is dimmed via a CSS overlay; a 1-px playhead is
-   * drawn at this position. Omit or pass `undefined` to disable.
-   */
+  /** Playback progress, clamped to [0, 1]. */
   activeProgress?: number;
-  /**
-   * Called when the user clicks the waveform to seek.
-   * Receives a fraction in [0, 1] corresponding to the click position.
-   * When omitted, click events bubble to the parent (e.g. opens track detail).
-   */
+  /** Called with a fraction in [0, 1] when a loaded waveform is clicked. */
   onSeek?: (fraction: number) => void;
-  /** Render the entire waveform at reduced opacity (35%). */
+  /** Retry callback shown only for retryable request failures. */
+  onRetry?: () => void;
+  /** Render the waveform at reduced opacity. */
   dimmed?: boolean;
-  /**
-   * True while waveform data is being fetched.
-   * Shows a skeleton pulse instead of the waveform.
-   */
-  loading?: boolean;
-  /**
-   * True when the track is confirmed to have no waveform row in the database.
-   * Shows a "No waveform" placeholder; does not display the fake visualiser.
-   */
-  unavailable?: boolean;
-  /** Accessible label for the canvas / container. */
+  /** Accessible label for loaded waveform data. */
   ariaLabel?: string;
 }
 
@@ -198,14 +176,13 @@ function drawWaveform(
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function RekordboxPreviewWaveform({
-  waveform,
+  state,
   height = 40,
   className,
   activeProgress,
   onSeek,
+  onRetry,
   dimmed = false,
-  loading = false,
-  unavailable = false,
   ariaLabel,
 }: RekordboxPreviewWaveformProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -214,14 +191,13 @@ export function RekordboxPreviewWaveform({
   const containerWidth = useContainerWidth(containerRef);
   const dpr = useDevicePixelRatio();
   const theme = useDocumentTheme();
+  const waveform = state.status === 'loaded' ? state.waveform : null;
 
-  // Normalise waveform data once — re-runs only when waveform identity changes.
   const normalized = useMemo(() => {
     if (!waveform || !waveform.previewColumnsValid) return null;
     return normalizeWaveform(waveform);
   }, [waveform]);
 
-  // Build display-width buckets — re-runs when normalized data or width changes.
   const displayWidth = Math.max(1, Math.floor(containerWidth));
   const buckets = useMemo(
     () => (normalized ? buildDisplayBuckets(normalized.cols, displayWidth) : null),
@@ -230,17 +206,12 @@ export function RekordboxPreviewWaveform({
 
   const monoColor = resolveMonoBaseColor(theme);
 
-  // Paint canvas whenever waveform data, layout, theme, or DPR changes.
-  // Progress is intentionally excluded — it is shown via CSS overlay,
-  // so the canvas never redraws during playback.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || containerWidth <= 0 || !buckets || !normalized) return;
 
     const cssW = containerWidth;
     const cssH = height;
-
-    // Size the backing store to physical pixels.
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
     canvas.style.width = `${cssW}px`;
@@ -250,57 +221,54 @@ export function RekordboxPreviewWaveform({
     if (!ctx) return;
 
     ctx.save();
-    // All subsequent coordinates are in CSS logical pixels.
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, cssW, cssH);
-
     drawWaveform(ctx, buckets, normalized.kind, cssW, cssH, {
       monoColor,
       dimmed,
-      progressX: null, // canvas always draws at full opacity; overlay is CSS
+      progressX: null,
     });
-
     ctx.restore();
   }, [buckets, normalized, containerWidth, height, dpr, monoColor, dimmed]);
 
-  // ── Click-to-seek ─────────────────────────────────────────────────────────────
-
   function handleContainerClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (!onSeek) return;
+    if (!onSeek || state.status !== 'loaded') return;
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
     const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     onSeek(fraction);
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  const fallbackInvalidState: WaveformLoadState | null =
+    state.status === 'loaded' && !normalized
+      ? {
+          status: 'invalid',
+          trackId: state.trackId,
+          error: 'Waveform data could not be normalized for rendering.',
+          reason: 'invalid',
+          retryable: false,
+        }
+      : null;
+  const displayState = fallbackInvalidState ?? state;
 
-  const label = ariaLabel ??
-    (loading ? 'Loading waveform' :
-     unavailable ? 'No waveform available' :
-     'Track waveform');
-
-  const showEmptyState = loading || unavailable || !normalized;
-
-  // CSS progress overlay values — only computed when activeProgress is present.
+  const label = ariaLabel || waveformStateLabel(displayState);
   const progress = activeProgress != null ? clampProgress(activeProgress) : null;
+  const canSeek = Boolean(onSeek && displayState.status === 'loaded');
 
   return (
     <div
       ref={containerRef}
-      className={cn('relative overflow-hidden', onSeek && 'cursor-pointer', className)}
+      className={cn('relative overflow-hidden', canSeek && 'cursor-pointer', className)}
       style={{ height }}
-      role="img"
+      role={displayState.status === 'loaded' ? 'img' : 'group'}
       aria-label={label}
-      onClick={onSeek ? handleContainerClick : undefined}
+      aria-live={displayState.status === 'error' || displayState.status === 'invalid' ? 'polite' : undefined}
+      onClick={canSeek ? handleContainerClick : undefined}
+      data-waveform-status={displayState.status}
+      data-waveform-track-id={displayState.trackId ?? undefined}
     >
-      {showEmptyState ? (
-        <WaveformEmptyState
-          loading={loading}
-          unavailable={unavailable}
-          analysisInvalid={!loading && !unavailable && waveform != null && !normalized}
-          height={height}
-        />
+      {displayState.status !== 'loaded' ? (
+        <WaveformEmptyState state={displayState} height={height} onRetry={onRetry} />
       ) : (
         <>
           <canvas
@@ -309,9 +277,6 @@ export function RekordboxPreviewWaveform({
             className="block"
             style={{ display: 'block', imageRendering: 'pixelated' }}
           />
-          {/* CSS progress overlay — no canvas redraws during playback.
-              Played (left) region is dimmed with a background-color overlay so
-              RGB waveform colors are preserved underneath. */}
           {progress !== null && progress > 0 && (
             <div
               aria-hidden="true"
@@ -325,7 +290,6 @@ export function RekordboxPreviewWaveform({
               }}
             />
           )}
-          {/* Playhead — 1 logical pixel, uses foreground color for theme contrast */}
           {progress !== null && (
             <div
               aria-hidden="true"
@@ -347,40 +311,81 @@ export function RekordboxPreviewWaveform({
   );
 }
 
+function waveformStateLabel(state: WaveformLoadState): string {
+  switch (state.status) {
+    case 'idle': return 'Waveform not requested';
+    case 'loading': return 'Loading waveform';
+    case 'loaded': return 'Track waveform';
+    case 'unavailable': return 'No waveform available for this track';
+    case 'error': return `Waveform failed to load: ${state.error}`;
+    case 'invalid': return `${state.reason === 'unsupported' ? 'Unsupported' : 'Invalid'} waveform data: ${state.error}`;
+  }
+}
+
 // ── Empty state sub-component ─────────────────────────────────────────────────
 
 interface WaveformEmptyStateProps {
-  loading: boolean;
-  unavailable: boolean;
-  analysisInvalid: boolean;
+  state: Exclude<WaveformLoadState, { status: 'loaded' }>;
   height: number;
+  onRetry?: () => void;
 }
 
-function WaveformEmptyState({
-  loading,
-  analysisInvalid,
-  height,
-}: WaveformEmptyStateProps) {
-  if (loading) {
+function WaveformEmptyState({ state, height, onRetry }: WaveformEmptyStateProps) {
+  if (state.status === 'loading') {
     return (
       <div className="absolute inset-0 flex items-center justify-center px-1">
         <div
-          className="w-full rounded-sm animate-pulse bg-muted-foreground/10"
-          style={{ height: Math.round(height * 0.35) }}
+          className="w-full rounded-sm animate-pulse bg-muted-foreground/15"
+          style={{ height: Math.max(2, Math.round(height * 0.35)) }}
         />
       </div>
     );
   }
 
+  if (state.status === 'idle') {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center px-1" aria-hidden="true">
+        <div className="w-full h-px rounded-sm bg-muted-foreground/10" />
+      </div>
+    );
+  }
+
+  const compact = height < 32;
+  const message = state.status === 'unavailable'
+    ? (compact ? 'No waveform' : 'No waveform available')
+    : state.status === 'error'
+      ? (compact ? 'Load failed' : `Waveform failed: ${state.error}`)
+      : state.reason === 'unsupported'
+        ? (compact ? 'Unsupported data' : `Unsupported waveform: ${state.error}`)
+        : (compact ? 'Invalid data' : `Invalid waveform: ${state.error}`);
+
+  const tone = state.status === 'error'
+    ? 'text-red-300 bg-red-500/10 border-red-400/20'
+    : state.status === 'invalid'
+      ? 'text-amber-300 bg-amber-500/10 border-amber-400/20'
+      : 'text-muted-foreground bg-muted-foreground/5 border-[var(--color-border-faint)]';
+
   return (
-    <div className="absolute inset-0 flex items-center justify-center px-1">
-      <div
-        className={cn(
-          'w-full rounded-sm',
-          analysisInvalid ? 'bg-red-400/15' : 'bg-muted-foreground/10',
-        )}
-        style={{ height: 1 }}
-      />
+    <div className={cn('absolute inset-0 flex items-center justify-center gap-2 px-2 border', tone)}>
+      <span className={cn('truncate text-center', compact ? 'text-[9px]' : 'text-xs')} title={message}>
+        {message}
+      </span>
+      {state.status === 'error' && onRetry && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onRetry();
+          }}
+          className={cn(
+            'shrink-0 font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm',
+            compact ? 'text-[9px]' : 'text-xs',
+          )}
+          aria-label="Retry waveform"
+        >
+          Retry
+        </button>
+      )}
     </div>
   );
 }

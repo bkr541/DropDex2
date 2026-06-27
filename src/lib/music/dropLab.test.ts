@@ -104,6 +104,8 @@ function waveform(count = 100): TrackPreviewWaveform {
     previewColumns: Array.from({ length: count }, (_, i) => ({ h: 64 + (i % 8), r: 200, g: 100, b: 100 })),
     previewColumnsValid: true,
     inferredFormat: 'color',
+    validationError: null,
+    invalidReason: null,
     detailFormat: null,
     detailColumnCount: null,
     detailStorageBucket: null,

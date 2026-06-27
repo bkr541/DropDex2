@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchTrackBeatGrids,
   fetchTracksCues,
@@ -7,7 +7,7 @@ import {
   type BeatGridRow,
   type CueRow,
   type PhraseRow,
-  type TrackPreviewWaveform,
+  type WaveformLoadState,
 } from '../lib/queries/analysisData';
 import { resolveDropPoints, type DropPoint } from '../lib/music/dropPointResolver';
 import { resolveTrackDurationMs } from '../lib/music/dropLabSegments';
@@ -18,8 +18,7 @@ export interface DropLabTrackAnalysis {
   beatGrid: BeatGridRow | null;
   cues: CueRow[];
   phrases: PhraseRow[];
-  waveform: TrackPreviewWaveform | null;
-  waveformUnavailable: boolean;
+  waveformState: WaveformLoadState;
   durationMs: number | null;
   durationSource: 'track' | 'beat-grid' | 'none';
   dropPoints: DropPoint[];
@@ -36,7 +35,7 @@ export function chooseBestDrop(dropPoints: DropPoint[]): DropPoint | null {
 }
 
 export function hasUsableDropLabAnalysis(analysis: DropLabTrackAnalysis | undefined): boolean {
-  return Boolean(analysis?.waveform && chooseBestDrop(analysis.dropPoints));
+  return Boolean(analysis?.waveformState.status === 'loaded' && chooseBestDrop(analysis.dropPoints));
 }
 
 export function useDropLabAnalysis(sourceTrack: RekordboxTrack | null, candidateTracks: RekordboxTrack[]) {
@@ -46,6 +45,7 @@ export function useDropLabAnalysis(sourceTrack: RekordboxTrack | null, candidate
     error: null,
   });
   const requestIdRef = useRef(0);
+  const [waveformRetryTrigger, setWaveformRetryTrigger] = useState(0);
 
   const tracksById = useMemo(() => {
     const map = new Map<string, RekordboxTrack>();
@@ -57,13 +57,13 @@ export function useDropLabAnalysis(sourceTrack: RekordboxTrack | null, candidate
   const idsKey = useMemo(() => [...tracksById.keys()].sort().join(','), [tracksById]);
 
   useEffect(() => {
+    const requestId = ++requestIdRef.current;
     const trackIds = [...tracksById.keys()];
     if (!sourceTrack || trackIds.length === 0) {
       setState({ byTrackId: new Map(), loading: false, error: null });
       return;
     }
 
-    const requestId = ++requestIdRef.current;
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     (async () => {
@@ -81,7 +81,12 @@ export function useDropLabAnalysis(sourceTrack: RekordboxTrack | null, candidate
         const beatGrid = beatGrids.get(trackId) ?? null;
         const trackCues = cues.get(trackId) ?? [];
         const trackPhrases = phrases.get(trackId) ?? [];
-        const waveform = waveformResult.waveforms.get(trackId) ?? null;
+        const waveformState = waveformResult.states.get(trackId) ?? {
+          status: 'error' as const,
+          trackId,
+          error: 'Waveform request completed without a track-scoped result.',
+          retryable: true as const,
+        };
         const timing = resolveTrackDurationMs(track, beatGrid?.beats ?? []);
         const dropPoints = resolveDropPoints({
           cues: trackCues,
@@ -95,8 +100,7 @@ export function useDropLabAnalysis(sourceTrack: RekordboxTrack | null, candidate
           beatGrid,
           cues: trackCues,
           phrases: trackPhrases,
-          waveform,
-          waveformUnavailable: waveformResult.successfulTrackIds.has(trackId) && !waveform,
+          waveformState,
           durationMs: timing.durationMs,
           durationSource: timing.usedDurationSource,
           dropPoints,
@@ -112,8 +116,12 @@ export function useDropLabAnalysis(sourceTrack: RekordboxTrack | null, candidate
         if (requestId !== requestIdRef.current) return;
         setState({ byTrackId: new Map(), loading: false, error: err instanceof Error ? err.message : 'Could not load Drop Lab analysis.' });
       });
-  }, [sourceTrack, idsKey, tracksById]);
+  }, [sourceTrack, idsKey, tracksById, waveformRetryTrigger]);
 
-  return state;
+  const retryWaveform = useCallback((_trackId?: string) => {
+    setWaveformRetryTrigger((value) => value + 1);
+  }, []);
+
+  return { ...state, retryWaveform };
 }
 

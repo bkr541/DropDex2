@@ -34,8 +34,7 @@ import { usePlaylistStats, useRekordboxPlaylistTracks } from './hooks/useRekordb
 import { useRecentTracks } from './hooks/useRekordboxTracks';
 import { useTrackPlaylists } from './hooks/useTrackPlaylists';
 import { useImportList } from './hooks/useImportList';
-import { getCachedWaveform, setCachedWaveform } from './hooks/useTrackPreviewWaveforms';
-import { fetchTrackPreviewWaveforms } from './lib/queries/analysisData';
+import { useTrackPreviewWaveforms } from './hooks/useTrackPreviewWaveforms';
 import { fetchReviewTracks, setActiveImport, deleteImport } from './lib/queries/rekordbox';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { ResumeAnalysisModal } from './components/ResumeAnalysisModal';
@@ -219,10 +218,6 @@ export default function App() {
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
   const [dropLabSourceTrack, setDropLabSourceTrack] = useState<RekordboxTrack | null>(null);
   const [dropLabActiveCandidateId, setDropLabActiveCandidateId] = useState<string | null>(null);
-  const [selectedTrackWaveform, setSelectedTrackWaveform] = useState<import('./lib/queries/waveformValidation').TrackPreviewWaveform | null>(null);
-  const [selectedTrackWaveformLoading, setSelectedTrackWaveformLoading] = useState(false);
-  const [selectedTrackWaveformError, setSelectedTrackWaveformError] = useState<string | null>(null);
-  const [waveformRetryTrigger, setWaveformRetryTrigger] = useState(0);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
   const [resumeImportId, setResumeImportId] = useState<string | null>(null);
@@ -242,6 +237,15 @@ export default function App() {
   const { data: latestImport, loading: importLoading, error: importError, refetch: refetchImport } =
     useLatestRekordboxImport(userId);
   const importId = latestImport?.id ?? null;
+  const selectedWaveformTrackIds = useMemo(
+    () => (selectedTrack ? [selectedTrack.id] : []),
+    [selectedTrack],
+  );
+  const {
+    getState: getSelectedTrackWaveformState,
+    retry: retrySelectedTrackWaveform,
+  } = useTrackPreviewWaveforms(importId, selectedWaveformTrackIds);
+  const selectedTrackWaveformState = getSelectedTrackWaveformState(selectedTrack?.id);
 
   const { playlists, loading: playlistsLoading } = useRekordboxPlaylists(importId);
   const { profiles: playlistProfiles, refetch: refetchProfiles, upsertLocal: upsertLocalProfile } = useUserPlaylistProfiles(userId);
@@ -276,41 +280,6 @@ export default function App() {
       .catch(console.error);
   }, [currentView, importId]);
 
-  // Resolve waveform for the selected track — use cache if warm, fetch if cold.
-  useEffect(() => {
-    const trackId = selectedTrack?.id;
-    if (!trackId || !importId) {
-      setSelectedTrackWaveform(null);
-      setSelectedTrackWaveformLoading(false);
-      setSelectedTrackWaveformError(null);
-      return;
-    }
-    const cached = getCachedWaveform(importId, trackId);
-    if (cached !== undefined) {
-      // Cache hit: TrackPreviewWaveform (real data) or null (confirmed unavailable)
-      setSelectedTrackWaveform(cached);
-      setSelectedTrackWaveformLoading(false);
-      setSelectedTrackWaveformError(null);
-      return;
-    }
-    // Cache miss — fetch on demand and write back to shared cache.
-    setSelectedTrackWaveform(null);
-    setSelectedTrackWaveformLoading(true);
-    setSelectedTrackWaveformError(null);
-    fetchTrackPreviewWaveforms([trackId])
-      .then(({ waveforms }) => {
-        const result = waveforms.get(trackId) ?? null;
-        setCachedWaveform(importId, trackId, result);
-        setSelectedTrackWaveform(result);
-        setSelectedTrackWaveformError(null);
-      })
-      .catch((err: unknown) => {
-        setCachedWaveform(importId, trackId, 'error');
-        setSelectedTrackWaveformError(err instanceof Error ? err.message : 'Failed to load waveform.');
-        setSelectedTrackWaveform(null);
-      })
-      .finally(() => setSelectedTrackWaveformLoading(false));
-  }, [selectedTrack?.id, importId, waveformRetryTrigger]);
 
   const avgBpm = selectedPlaylistStats?.averageBpm != null
     ? selectedPlaylistStats.averageBpm.toFixed(1)
@@ -838,13 +807,9 @@ export default function App() {
                 <TrackDetailView
                   track={selectedTrack}
                   importId={importId}
-                  waveform={selectedTrackWaveform}
-                  waveformLoading={selectedTrackWaveformLoading}
-                  waveformError={selectedTrackWaveformError}
+                  waveformState={selectedTrackWaveformState}
                   onRetryWaveform={() => {
-                    // getCachedWaveform returns undefined for QUERY_FAILED entries,
-                    // so bumping the trigger causes the effect to re-fetch.
-                    setWaveformRetryTrigger((n) => n + 1);
+                    if (selectedTrack) retrySelectedTrackWaveform([selectedTrack.id]);
                   }}
                   memberships={trackPlaylists}
                   membershipsLoading={trackPlaylistsLoading}

@@ -6,6 +6,7 @@ interface DropLabWaveformProps {
   sourceSegment: WaveformSegment | null;
   candidateSegment: WaveformSegment | null;
   loading?: boolean;
+  unavailableMessage?: string;
 }
 
 function useWidth(ref: React.RefObject<HTMLDivElement | null>) {
@@ -36,7 +37,7 @@ function parseRgb(css: string): [number, number, number] {
   return [match?.[0] ?? 255, match?.[1] ?? 255, match?.[2] ?? 255];
 }
 
-export function DropLabWaveform({ sourceSegment, candidateSegment, loading }: DropLabWaveformProps) {
+export function DropLabWaveform({ sourceSegment, candidateSegment, loading, unavailableMessage }: DropLabWaveformProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const width = useWidth(wrapperRef);
@@ -102,7 +103,7 @@ export function DropLabWaveform({ sourceSegment, candidateSegment, loading }: Dr
           </div>
         ) : unavailable ? (
           <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-muted-foreground">
-            {sourceSegment?.unavailableReason || candidateSegment?.unavailableReason || 'Waveform segment unavailable'}
+            {unavailableMessage || sourceSegment?.unavailableReason || candidateSegment?.unavailableReason || 'Waveform segment unavailable'}
           </div>
         ) : (
           <canvas ref={canvasRef} className="block" style={{ imageRendering: 'pixelated' }} />

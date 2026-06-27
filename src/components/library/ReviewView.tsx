@@ -19,24 +19,22 @@ import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
-import type { TrackPreviewWaveform } from '../../lib/queries/waveformValidation';
+import { waveformStateForTrack, type WaveformLoadState } from '../../lib/queries/waveformValidation';
 import type { RekordboxTrack } from '../../types';
 
 // ── ReviewCard ────────────────────────────────────────────────────────────────
 
 interface ReviewCardProps {
   track: RekordboxTrack;
-  waveform: TrackPreviewWaveform | null;
-  waveformLoading: boolean;
-  waveformUnavailable: boolean;
+  waveformState: WaveformLoadState;
+  onRetryWaveform: () => void;
   onClick: () => void;
 }
 
 const ReviewCard = memo(function ReviewCard({
   track,
-  waveform,
-  waveformLoading,
-  waveformUnavailable,
+  waveformState,
+  onRetryWaveform,
   onClick,
 }: ReviewCardProps) {
   const { activeTrack, status: playerStatus, seek, getAudioElement } = useAudioPlayer();
@@ -66,12 +64,16 @@ const ReviewCard = memo(function ReviewCard({
       )}
     >
       {/* Authentic Rekordbox waveform overlaid at the bottom of the card */}
-      <div className="absolute bottom-0 left-0 right-0 h-8 opacity-10 group-hover:opacity-25 transition-opacity">
+      <div
+        className={cn(
+          'absolute bottom-0 left-0 right-0 h-8 transition-opacity',
+          waveformState.status === 'loaded' ? 'opacity-10 group-hover:opacity-25' : 'opacity-100 z-20',
+        )}
+      >
         <RekordboxPreviewWaveform
-          waveform={waveform}
+          state={waveformState}
           height={32}
-          loading={waveformLoading}
-          unavailable={waveformUnavailable}
+          onRetry={onRetryWaveform}
           activeProgress={isActive ? progress : undefined}
           onSeek={canSeek ? handleWaveformSeek : undefined}
           dimmed={false}
@@ -122,7 +124,7 @@ export function ReviewView({ importId, tracks, loading, onTrackClick }: ReviewVi
 
   // Bulk-load waveforms for all review tracks. Uses the shared module-level
   // cache — tracks already viewed in the Tracks tab are served instantly.
-  const { waveforms, unavailableIds, loadingBatchCount } = useTrackPreviewWaveforms(importId, trackIds);
+  const { states: waveformStates, retry: retryWaveform } = useTrackPreviewWaveforms(importId, trackIds);
 
   if (loading || (tracks.length === 0 && importId)) {
     return (
@@ -135,16 +137,13 @@ export function ReviewView({ importId, tracks, loading, onTrackClick }: ReviewVi
   return (
     <div className="flex flex-col gap-4">
       {tracks.map((t) => {
-        const wf = waveforms.get(t.id) ?? null;
-        const isLoading = loadingBatchCount > 0 && !wf && !unavailableIds.has(t.id);
-        const isUnavailable = unavailableIds.has(t.id);
+        const waveformState = waveformStateForTrack(waveformStates, t.id);
         return (
           <ReviewCard
             key={t.id}
             track={t}
-            waveform={wf}
-            waveformLoading={isLoading}
-            waveformUnavailable={isUnavailable}
+            waveformState={waveformState}
+            onRetryWaveform={() => retryWaveform([t.id])}
             onClick={() => onTrackClick(t)}
           />
         );
