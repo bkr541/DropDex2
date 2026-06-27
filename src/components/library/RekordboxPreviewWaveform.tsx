@@ -358,7 +358,6 @@ interface WaveformEmptyStateProps {
 
 function WaveformEmptyState({
   loading,
-  unavailable,
   analysisInvalid,
   height,
 }: WaveformEmptyStateProps) {

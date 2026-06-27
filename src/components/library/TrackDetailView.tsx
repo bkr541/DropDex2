@@ -6,6 +6,7 @@ import {
   FolderOpen,
   ListMusic,
   Calendar,
+  FlaskConical,
 } from 'lucide-react';
 import { useCallback } from 'react';
 import { cn, formatDuration, formatKey, formatPosition } from '../../lib/utils';
@@ -33,6 +34,7 @@ interface TrackDetailViewProps {
   membershipsLoading: boolean;
   onTrackClick: (t: RekordboxTrack) => void;
   onPlaylistClick: (playlistId: string) => void;
+  onOpenDropLab: (track: RekordboxTrack) => void;
 }
 
 function StatBadge({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
@@ -64,6 +66,7 @@ export function TrackDetailView({
   membershipsLoading,
   onTrackClick,
   onPlaylistClick,
+  onOpenDropLab,
 }: TrackDetailViewProps) {
   const bpmDisplay = track.bpm != null ? track.bpm.toFixed(1) : '—';
   const keyDisplay = formatKey(track.musical_key);
@@ -189,6 +192,16 @@ export function TrackDetailView({
             </div>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => onOpenDropLab(track)}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/15 px-4 py-3 text-sm font-black uppercase tracking-widest text-primary transition-all hover:bg-primary/20 hover:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label={`Open ${track.title} in Drop Lab`}
+        >
+          <FlaskConical size={16} />
+          Open in Drop Lab
+        </button>
       </div>
 
       {/* ── Right column: metadata ── */}
@@ -291,4 +304,3 @@ export function TrackDetailView({
     </div>
   );
 }
-

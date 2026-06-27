@@ -212,6 +212,32 @@ export async function fetchTrackBeatGrid(trackId: string): Promise<BeatGridRow |
   return mapBeatGridRow(data);
 }
 
+/** Fetch beat grids for multiple tracks, keyed by track ID. */
+export async function fetchTrackBeatGrids(trackIds: string[]): Promise<Map<string, BeatGridRow>> {
+  const uniqueIds = [...new Set(trackIds)].filter(Boolean);
+  const result = new Map<string, BeatGridRow>();
+  if (uniqueIds.length === 0) return result;
+
+  const chunks = chunkIds(uniqueIds, WAVEFORM_CHUNK_SIZE);
+  await Promise.all(chunks.map(async (chunk) => {
+    const { data, error } = await supabase
+      .from('rekordbox_track_beat_grids')
+      .select(
+        'id, import_id, track_id, source_tag, beats, beat_count, downbeat_count, ' +
+        'bar_count, first_beat_ms, first_downbeat_ms, minimum_bpm, maximum_bpm, ' +
+        'is_variable_tempo, parser_version'
+      )
+      .in('track_id', chunk);
+
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      const mapped = mapBeatGridRow(row);
+      result.set(mapped.track_id, mapped);
+    }
+  }));
+  return result;
+}
+
 /** Fetch the preview waveform for a single track. Returns null when not yet parsed. */
 export async function fetchTrackPreviewWaveform(trackId: string): Promise<WaveformRow | null> {
   const { data, error } = await supabase
@@ -244,6 +270,38 @@ export async function fetchTrackCues(trackId: string): Promise<CueRow[]> {
 
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => mapCueRow(row));
+}
+
+/** Fetch cue points for multiple tracks, keyed by track ID. */
+export async function fetchTracksCues(trackIds: string[]): Promise<Map<string, CueRow[]>> {
+  const uniqueIds = [...new Set(trackIds)].filter(Boolean);
+  const result = new Map<string, CueRow[]>();
+  for (const id of uniqueIds) result.set(id, []);
+  if (uniqueIds.length === 0) return result;
+
+  const chunks = chunkIds(uniqueIds, WAVEFORM_CHUNK_SIZE);
+  await Promise.all(chunks.map(async (chunk) => {
+    const { data, error } = await supabase
+      .from('rekordbox_cues')
+      .select(
+        'id, import_id, track_id, rekordbox_cue_id, dedupe_key, cue_family, ' +
+        'hot_cue_slot, point_type, source_kind, start_ms, end_ms, ' +
+        'color_table_index, color_hex, color_name, comment, is_active_loop, ' +
+        'beat_loop_numerator, beat_loop_denominator, ' +
+        'source_db_present, source_anlz_present, source_conflict'
+      )
+      .in('track_id', chunk)
+      .order('start_ms', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      const mapped = mapCueRow(row);
+      const rows = result.get(mapped.track_id) ?? [];
+      rows.push(mapped);
+      result.set(mapped.track_id, rows);
+    }
+  }));
+  return result;
 }
 
 // ── Bulk waveform fetch ────────────────────────────────────────────────────────
@@ -355,4 +413,34 @@ export async function fetchTrackPhrases(trackId: string): Promise<PhraseRow[]> {
 
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => mapPhraseRow(row));
+}
+
+/** Fetch phrase segments for multiple tracks, keyed by track ID. */
+export async function fetchTracksPhrases(trackIds: string[]): Promise<Map<string, PhraseRow[]>> {
+  const uniqueIds = [...new Set(trackIds)].filter(Boolean);
+  const result = new Map<string, PhraseRow[]>();
+  for (const id of uniqueIds) result.set(id, []);
+  if (uniqueIds.length === 0) return result;
+
+  const chunks = chunkIds(uniqueIds, WAVEFORM_CHUNK_SIZE);
+  await Promise.all(chunks.map(async (chunk) => {
+    const { data, error } = await supabase
+      .from('rekordbox_track_phrases')
+      .select(
+        'id, import_id, track_id, phrase_index, source_mood, source_kind, source_bank, ' +
+        'normalized_label, start_beat, end_beat, start_ms, end_ms, ' +
+        'fill_start_beat, fill_start_ms, source_flags, source_payload, parser_version'
+      )
+      .in('track_id', chunk)
+      .order('phrase_index', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      const mapped = mapPhraseRow(row);
+      const rows = result.get(mapped.track_id) ?? [];
+      rows.push(mapped);
+      result.set(mapped.track_id, rows);
+    }
+  }));
+  return result;
 }

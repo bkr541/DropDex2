@@ -43,6 +43,7 @@ const DiscoveryView = lazy(() => import('./components/discovery/DiscoveryView').
 const SearchView = lazy(() => import('./components/search/SearchView').then(m => ({ default: m.SearchView })));
 const ReviewView = lazy(() => import('./components/library/ReviewView').then(m => ({ default: m.ReviewView })));
 const ReviewEmptyState = lazy(() => import('./components/library/ReviewView').then(m => ({ default: m.ReviewEmptyState })));
+const DropLabView = lazy(() => import('./components/drop-lab/DropLabView').then(m => ({ default: m.DropLabView })));
 import { LibraryView } from './components/library/LibraryView';
 import { PlaylistEditView } from './components/library/PlaylistEditView';
 import { TrackDetailView } from './components/library/TrackDetailView';
@@ -56,7 +57,7 @@ import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 
 type Theme = 'dark' | 'light';
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search' | 'edit-profile';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search' | 'edit-profile' | 'drop-lab';
 
 // ── Player-aware mobile bottom nav ────────────────────────────────────────────
 
@@ -216,6 +217,8 @@ export default function App() {
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistWithCount | null>(null);
   const [editingPlaylist, setEditingPlaylist] = useState<PlaylistWithCount | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
+  const [dropLabSourceTrack, setDropLabSourceTrack] = useState<RekordboxTrack | null>(null);
+  const [dropLabActiveCandidateId, setDropLabActiveCandidateId] = useState<string | null>(null);
   const [selectedTrackWaveform, setSelectedTrackWaveform] = useState<import('./lib/queries/waveformValidation').TrackPreviewWaveform | null>(null);
   const [selectedTrackWaveformLoading, setSelectedTrackWaveformLoading] = useState(false);
   const [selectedTrackWaveformError, setSelectedTrackWaveformError] = useState<string | null>(null);
@@ -411,6 +414,24 @@ export default function App() {
     setCurrentView('track');
   };
 
+  const handleOpenDropLab = (track: RekordboxTrack) => {
+    setDropLabSourceTrack(track);
+    setSelectedTrack(track);
+    setDropLabActiveCandidateId(null);
+    setCurrentView('drop-lab');
+  };
+
+  const handleDropLabBack = () => {
+    if (dropLabSourceTrack) setSelectedTrack(dropLabSourceTrack);
+    setCurrentView(dropLabSourceTrack ? 'track' : 'home');
+  };
+
+  const handleDropLabCandidateDetails = (track: RekordboxTrack) => {
+    setPreviousView('drop-lab');
+    setSelectedTrack(track);
+    setCurrentView('track');
+  };
+
   const handleAppearsInPlaylistClick = (playlistId: string) => {
     const found = playlists.find((p) => p.id === playlistId);
     if (found) {
@@ -428,6 +449,7 @@ export default function App() {
     else if (currentView === 'settings') setCurrentView('home');
     else if (currentView === 'discovery') setCurrentView('home');
     else if (currentView === 'search') setCurrentView('home');
+    else if (currentView === 'drop-lab') handleDropLabBack();
   };
 
   const handleEditProfile = () => {
@@ -533,7 +555,7 @@ export default function App() {
       <div className="flex flex-col flex-1 min-w-0 h-screen">
 
         {/* View subheader */}
-        {currentView !== 'home' && (
+        {currentView !== 'home' && currentView !== 'drop-lab' && (
           <div className="px-6 py-4 shrink-0">
             {currentView === 'playlist' && (
               <div>
@@ -826,7 +848,30 @@ export default function App() {
                   membershipsLoading={trackPlaylistsLoading}
                   onTrackClick={handleTrackClick}
                   onPlaylistClick={handleAppearsInPlaylistClick}
+                  onOpenDropLab={handleOpenDropLab}
                 />
+              </motion.div>
+            )}
+
+            {/* ── Drop Lab ── */}
+            {currentView === 'drop-lab' && (
+              <motion.div
+                key="drop-lab"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                className="pt-2"
+              >
+                <Suspense fallback={<div className="py-12 text-center text-sm text-muted-foreground">Loading Drop Lab…</div>}>
+                  <DropLabView
+                    sourceTrack={dropLabSourceTrack}
+                    importId={importId}
+                    preservedActiveCandidateId={dropLabActiveCandidateId}
+                    onActiveCandidateChange={setDropLabActiveCandidateId}
+                    onBack={handleDropLabBack}
+                    onTrackDetails={handleDropLabCandidateDetails}
+                  />
+                </Suspense>
               </motion.div>
             )}
 
@@ -1107,11 +1152,11 @@ export default function App() {
           </AnimatePresence>
         </main>
         {/* ── Desktop NowPlaying — in-flow at bottom of content column ── */}
-        <NowPlayingBar className="hidden md:flex shrink-0" />
+        {currentView !== 'drop-lab' && <NowPlayingBar className="hidden md:flex shrink-0" />}
       </div>
 
       {/* ── Mobile NowPlaying — fixed above mobile nav ── */}
-      <NowPlayingBar className="md:hidden fixed bottom-0 left-0 right-0 z-50" />
+      {currentView !== 'drop-lab' && <NowPlayingBar className="md:hidden fixed bottom-0 left-0 right-0 z-50" />}
 
       {/* ── Mobile-only: bottom nav (shifts up when player is active) ── */}
       <MobileNavBar

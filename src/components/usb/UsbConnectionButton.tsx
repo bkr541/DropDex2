@@ -68,7 +68,6 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
     ensurePermission,
   } = useUsbConnection();
 
-  const isUnsupported = status === 'unsupported';
   const isConnecting = status === 'connecting';
 
   function handlePrimaryClick() {

@@ -14,7 +14,6 @@ import {
   type UsbConnectionMetadata,
 } from '../lib/usb/usbHandleStore';
 import {
-  isFileSystemAccessSupported,
   ensureReadPermission,
   queryPermission,
 } from '../lib/usb/usbPermissions';
