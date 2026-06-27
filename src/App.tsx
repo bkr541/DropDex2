@@ -30,7 +30,7 @@ import { useRekordboxPlaylists } from './hooks/useRekordboxPlaylists';
 import { useUserPlaylistProfiles } from './hooks/useUserPlaylistProfiles';
 import { useUserProfile } from './hooks/useUserProfile';
 import { useUserPreferences } from './hooks/useUserPreferences';
-import { useRekordboxPlaylistTracks } from './hooks/useRekordboxPlaylistTracks';
+import { usePlaylistStats, useRekordboxPlaylistTracks } from './hooks/useRekordboxPlaylistTracks';
 import { useRecentTracks } from './hooks/useRekordboxTracks';
 import { useTrackPlaylists } from './hooks/useTrackPlaylists';
 import { useImportList } from './hooks/useImportList';
@@ -247,8 +247,16 @@ export default function App() {
   const { profiles: playlistProfiles, refetch: refetchProfiles, upsertLocal: upsertLocalProfile } = useUserPlaylistProfiles(userId);
   const { profile: userProfile, refetch: refetchUserProfile } = useUserProfile(userId);
   const { genres: userGenres, refetch: refetchUserGenres } = useUserPreferences(userId);
-  const { tracks: playlistTracks, loading: playlistTracksLoading } =
-    useRekordboxPlaylistTracks(selectedPlaylist?.id ?? null);
+  const {
+    tracks: playlistTracks,
+    total: playlistTrackTotal,
+    stats: selectedPlaylistStats,
+    loading: playlistTracksLoading,
+    loadingMore: playlistTracksLoadingMore,
+    hasMore: playlistTracksHaveMore,
+    loadMore: loadMorePlaylistTracks,
+  } = useRekordboxPlaylistTracks(selectedPlaylist?.id ?? null);
+  const { stats: editingPlaylistStats } = usePlaylistStats(editingPlaylist?.id ?? null);
   const { tracks: recentTracks, loading: recentTracksLoading } = useRecentTracks(importId);
   const { memberships: trackPlaylists, loading: trackPlaylistsLoading } =
     useTrackPlaylists(importId, selectedTrack?.id ?? null);
@@ -304,33 +312,11 @@ export default function App() {
       .finally(() => setSelectedTrackWaveformLoading(false));
   }, [selectedTrack?.id, importId, waveformRetryTrigger]);
 
-
-  // Compute playlist statistics from loaded tracks
-  const avgBpm = useMemo(() => {
-    const bpms = playlistTracks
-      .map((pt) => pt.track.bpm)
-      .filter((b): b is number => b != null && b > 0);
-    if (!bpms.length) return null;
-    return (bpms.reduce((a, b) => a + b, 0) / bpms.length).toFixed(1);
-  }, [playlistTracks]);
-
-  const totalDuration = useMemo(() => {
-    const secs = playlistTracks.reduce(
-      (sum, pt) => sum + (pt.track.duration_seconds ?? 0), 0
-    );
-    return secs > 0 ? secs : null;
-  }, [playlistTracks]);
-
-  const topKey = useMemo(() => {
-    const keyCounts: Record<string, number> = {};
-    for (const pt of playlistTracks) {
-      const k = pt.track.musical_key;
-      if (k) keyCounts[k] = (keyCounts[k] ?? 0) + 1;
-    }
-    const entries = Object.entries(keyCounts);
-    if (!entries.length) return null;
-    return entries.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
-  }, [playlistTracks]);
+  const avgBpm = selectedPlaylistStats?.averageBpm != null
+    ? selectedPlaylistStats.averageBpm.toFixed(1)
+    : null;
+  const totalDuration = selectedPlaylistStats?.totalDurationSeconds || null;
+  const topKey = selectedPlaylistStats?.mostCommonKey ?? null;
 
   // Map rekordbox_playlist_id → profile for the current device
   const playlistProfilesByRbId = useMemo(() => {
@@ -747,7 +733,7 @@ export default function App() {
                         <div className="flex flex-col">
                           <span className="text-[10px] text-muted-foreground uppercase">Tracks</span>
                           <span className="font-bold font-mono">
-                            {playlistTracksLoading ? '…' : playlistTracks.length}
+                            {playlistTracksLoading ? '…' : playlistTrackTotal.toLocaleString()}
                           </span>
                         </div>
                         <div className="flex flex-col">
@@ -779,7 +765,7 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
                     {playlistTracks.map((pt) => (
                       <TrackCard
-                        key={pt.track.id}
+                        key={`${selectedPlaylist?.id ?? 'playlist'}:${pt.position}`}
                         track={pt.track}
                         position={pt.position}
                         onClick={() => handleTrackClick(pt.track)}
@@ -792,6 +778,22 @@ export default function App() {
                       </p>
                     )}
                   </div>
+                )}
+
+                {!playlistTracksLoading && playlistTracksHaveMore && (
+                  <button
+                    onClick={() => { void loadMorePlaylistTracks(); }}
+                    disabled={playlistTracksLoadingMore}
+                    className="w-full py-3 rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] border border-[var(--color-border-faint)] transition-colors disabled:opacity-60"
+                  >
+                    {playlistTracksLoadingMore ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Loader2 size={13} className="animate-spin" /> Loading more…
+                      </span>
+                    ) : (
+                      `Load ${Math.min(200, playlistTrackTotal - playlistTracks.length).toLocaleString()} more…`
+                    )}
+                  </button>
                 )}
               </motion.div>
             )}
@@ -810,9 +812,9 @@ export default function App() {
                   latestImport={latestImport}
                   userId={userId}
                   existingProfile={existingProfileForEditing}
-                  avgBpm={editingPlaylist.id === selectedPlaylist?.id ? avgBpm : null}
-                  totalDuration={editingPlaylist.id === selectedPlaylist?.id ? totalDuration : null}
-                  topKey={editingPlaylist.id === selectedPlaylist?.id ? topKey : null}
+                  avgBpm={editingPlaylistStats?.averageBpm != null ? editingPlaylistStats.averageBpm.toFixed(1) : null}
+                  totalDuration={editingPlaylistStats?.totalDurationSeconds || null}
+                  topKey={editingPlaylistStats?.mostCommonKey ?? null}
                   onImport={() => setIsImportModalOpen(true)}
                   onSaved={(saved) => {
                     upsertLocalProfile(saved);

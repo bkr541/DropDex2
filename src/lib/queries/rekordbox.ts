@@ -1,6 +1,5 @@
 import { supabase } from '../supabase';
 import type { RekordboxImport, RekordboxTrack, RekordboxPlaylist, RekordboxUserSettings } from '../../types';
-import type { TrackStatRow as _TrackStatRow } from '../rekordbox/trackMappers';
 
 // Re-export so existing callers don't need to change import paths.
 export type { TrackStatRow } from '../rekordbox/trackMappers';
@@ -21,6 +20,98 @@ export interface PlaylistWithCount extends RekordboxPlaylist {
 export interface PlaylistTrackItem {
   position: number;
   track: RekordboxTrack;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+export interface LibraryTrackFilters {
+  search?: string | null;
+  genre?: string | null;
+  artist?: string | null;
+}
+
+export interface NamedStatTotal {
+  name: string;
+  count: number;
+}
+
+export interface BpmStatTotal {
+  bpm: number;
+  count: number;
+}
+
+export interface LibraryStats {
+  totalTrackCount: number;
+  totalDurationSeconds: number;
+  averageBpm: number | null;
+  mostCommonBpm: number | null;
+  mostCommonKey: string | null;
+  genreTotals: NamedStatTotal[];
+  artistTotals: NamedStatTotal[];
+  bpmTotals: BpmStatTotal[];
+  keyTotals: NamedStatTotal[];
+}
+
+export interface PlaylistStats {
+  trackCount: number;
+  totalDurationSeconds: number;
+  averageBpm: number | null;
+  mostCommonKey: string | null;
+}
+
+export const LIBRARY_TRACK_PAGE_SIZE = 200;
+export const PLAYLIST_TRACK_PAGE_SIZE = 200;
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asFiniteNumber(value: unknown, fallback = 0): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseNamedTotals(value: unknown): NamedStatTotal[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const row = asRecord(entry);
+    const name = typeof row.name === 'string' ? row.name : '';
+    if (!name) return [];
+    return [{ name, count: asFiniteNumber(row.count) }];
+  });
+}
+
+function parseBpmTotals(value: unknown): BpmStatTotal[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const row = asRecord(entry);
+    const bpm = asFiniteNumber(row.bpm, Number.NaN);
+    if (!Number.isFinite(bpm)) return [];
+    return [{ bpm, count: asFiniteNumber(row.count) }];
+  });
+}
+
+function parsePage<T>(value: unknown): PaginatedResult<T> {
+  const row = asRecord(value);
+  const items = Array.isArray(row.items) ? (row.items as T[]) : [];
+  const total = Math.max(0, asFiniteNumber(row.total));
+  const offset = Math.max(0, asFiniteNumber(row.offset));
+  const limit = Math.max(1, asFiniteNumber(row.limit, items.length || 1));
+  return {
+    items,
+    total,
+    offset,
+    limit,
+    hasMore: offset + items.length < total,
+  };
 }
 
 export async function fetchLatestImport(userId: string): Promise<RekordboxImport | null> {
@@ -86,80 +177,43 @@ export async function deleteImport(importId: string): Promise<void> {
 }
 
 export async function fetchPlaylists(importId: string): Promise<PlaylistWithCount[]> {
-  const { data: playlists, error: pErr } = await supabase
-    .from('rekordbox_playlists')
-    .select('*')
-    .eq('import_id', importId)
-    .order('sort_order', { ascending: true, nullsFirst: false });
-
-  if (pErr) throw new Error(pErr.message);
-  if (!playlists?.length) return [];
-
-  const playlistIds = playlists.map((p) => p.id as string);
-
-  // Paginate to avoid the 1,000-row PostgREST cap — a library with many
-  // tracks across many playlists can easily exceed it.
-  const PAGE_SIZE = 1000;
-  const allPtRows: { playlist_id: string }[] = [];
-  let start = 0;
-  while (true) {
-    const { data: page, error: ptErr } = await supabase
-      .from('rekordbox_playlist_tracks')
-      .select('playlist_id')
-      .in('playlist_id', playlistIds)
-      .order('playlist_id')
-      .range(start, start + PAGE_SIZE - 1);
-
-    if (ptErr) throw new Error(ptErr.message);
-    if (page?.length) allPtRows.push(...page);
-    if (!page?.length || page.length < PAGE_SIZE) break;
-    start += PAGE_SIZE;
-  }
-
-  const countMap: Record<string, number> = {};
-  for (const row of allPtRows) {
-    countMap[row.playlist_id] = (countMap[row.playlist_id] ?? 0) + 1;
-  }
-
-  return (playlists as unknown as RekordboxPlaylist[]).map((p) => ({
-    ...p,
-    track_count: countMap[p.id] ?? 0,
-  }));
-}
-
-export async function fetchPlaylistTracks(playlistId: string): Promise<PlaylistTrackItem[]> {
-  const { data, error } = await supabase
-    .from('rekordbox_playlist_tracks')
-    .select('position, track:rekordbox_tracks!track_id(*)')
-    .eq('playlist_id', playlistId)
-    .order('position', { ascending: true });
-
+  const { data, error } = await supabase.rpc('get_rekordbox_playlists_with_counts', {
+    p_import_id: importId,
+  });
   if (error) throw new Error(error.message);
-
-  return ((data ?? []) as Array<{ position: number; track: unknown }>)
-    .filter((row) => row.track != null)
-    .map((row) => ({
-      position: row.position,
-      track: row.track as RekordboxTrack,
-    }));
+  return (Array.isArray(data) ? data : []) as PlaylistWithCount[];
 }
 
-export async function searchTracks(
+export async function fetchPlaylistTracksPage(
+  playlistId: string,
+  offset = 0,
+  limit = PLAYLIST_TRACK_PAGE_SIZE,
+): Promise<PaginatedResult<PlaylistTrackItem>> {
+  const { data, error } = await supabase.rpc('get_rekordbox_playlist_track_page', {
+    p_playlist_id: playlistId,
+    p_offset: offset,
+    p_limit: limit,
+  });
+  if (error) throw new Error(error.message);
+  return parsePage<PlaylistTrackItem>(data);
+}
+
+export async function fetchLibraryTracksPage(
   importId: string,
-  query: string,
-): Promise<RekordboxTrack[]> {
-  const q = query.trim();
-  if (!q) return [];
-
-  const { data, error } = await supabase
-    .from('rekordbox_tracks')
-    .select('*')
-    .eq('import_id', importId)
-    .or(`title.ilike.%${q}%,artist.ilike.%${q}%,genre.ilike.%${q}%`)
-    .limit(50);
-
+  offset = 0,
+  limit = LIBRARY_TRACK_PAGE_SIZE,
+  filters: LibraryTrackFilters = {},
+): Promise<PaginatedResult<RekordboxTrack>> {
+  const { data, error } = await supabase.rpc('get_rekordbox_library_track_page', {
+    p_import_id: importId,
+    p_offset: offset,
+    p_limit: limit,
+    p_search: filters.search?.trim() || null,
+    p_genre: filters.genre?.trim() || null,
+    p_artist: filters.artist?.trim() || null,
+  });
   if (error) throw new Error(error.message);
-  return (data ?? []) as RekordboxTrack[];
+  return parsePage<RekordboxTrack>(data);
 }
 
 export async function fetchRecentTracks(importId: string): Promise<RekordboxTrack[]> {
@@ -186,16 +240,44 @@ export async function fetchReviewTracks(importId: string): Promise<RekordboxTrac
   return (data ?? []) as RekordboxTrack[];
 }
 
-export async function fetchTrackStats(importId: string): Promise<_TrackStatRow[]> {
-  const { data, error } = await supabase
-    .from('rekordbox_tracks')
-    .select(
-      'id, import_id, rekordbox_content_id, title, artist, genre, bpm, musical_key, camelot_key, date_added, duration_seconds, file_path, file_format',
-    )
-    .eq('import_id', importId)
-    .order('date_added', { ascending: false, nullsFirst: false });
+export async function fetchLibraryStats(importId: string): Promise<LibraryStats> {
+  const { data, error } = await supabase.rpc('get_rekordbox_library_stats', {
+    p_import_id: importId,
+  });
   if (error) throw new Error(error.message);
-  return (data ?? []) as _TrackStatRow[];
+  const row = asRecord(data);
+  const averageBpm = row.average_bpm == null ? null : asFiniteNumber(row.average_bpm, Number.NaN);
+  const mostCommonBpm = row.most_common_bpm == null
+    ? null
+    : asFiniteNumber(row.most_common_bpm, Number.NaN);
+
+  return {
+    totalTrackCount: asFiniteNumber(row.total_track_count),
+    totalDurationSeconds: asFiniteNumber(row.total_duration_seconds),
+    averageBpm: averageBpm != null && Number.isFinite(averageBpm) ? averageBpm : null,
+    mostCommonBpm: mostCommonBpm != null && Number.isFinite(mostCommonBpm) ? mostCommonBpm : null,
+    mostCommonKey: typeof row.most_common_key === 'string' ? row.most_common_key : null,
+    genreTotals: parseNamedTotals(row.genre_totals),
+    artistTotals: parseNamedTotals(row.artist_totals),
+    bpmTotals: parseBpmTotals(row.bpm_totals),
+    keyTotals: parseNamedTotals(row.key_totals),
+  };
+}
+
+export async function fetchPlaylistStats(playlistId: string): Promise<PlaylistStats> {
+  const { data, error } = await supabase.rpc('get_rekordbox_playlist_stats', {
+    p_playlist_id: playlistId,
+  });
+  if (error) throw new Error(error.message);
+  const row = asRecord(data);
+  const averageBpm = row.average_bpm == null ? null : asFiniteNumber(row.average_bpm, Number.NaN);
+
+  return {
+    trackCount: asFiniteNumber(row.track_count),
+    totalDurationSeconds: asFiniteNumber(row.total_duration_seconds),
+    averageBpm: averageBpm != null && Number.isFinite(averageBpm) ? averageBpm : null,
+    mostCommonKey: typeof row.most_common_key === 'string' ? row.most_common_key : null,
+  };
 }
 
 export interface TrackPlaylistMembership {

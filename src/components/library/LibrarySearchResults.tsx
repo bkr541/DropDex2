@@ -11,9 +11,13 @@ import type { TrackPreviewWaveform } from '../../lib/queries/waveformValidation'
 interface LibrarySearchResultsProps {
   query: string;
   results: RekordboxTrack[];
+  total: number;
   loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
   importId: string | null;
   onTrackClick: (track: RekordboxTrack) => void;
+  onLoadMore: () => void;
   waveforms: Map<string, TrackPreviewWaveform>;
   waveformUnavailable: Set<string>;
   waveformsLoading: boolean;
@@ -181,9 +185,13 @@ function TrackRowSearch({
 export function LibrarySearchResults({
   query,
   results,
+  total,
   loading,
+  loadingMore,
+  hasMore,
   importId,
   onTrackClick,
+  onLoadMore,
   waveforms,
   waveformUnavailable,
   waveformsLoading,
@@ -191,7 +199,7 @@ export function LibrarySearchResults({
   const label = loading
     ? 'Searching…'
     : results.length > 0
-    ? `${results.length} result${results.length !== 1 ? 's' : ''} for "${query}"`
+    ? `${total.toLocaleString()} result${total !== 1 ? 's' : ''} for "${query}" · showing ${results.length.toLocaleString()}`
     : `No results for "${query}"`;
 
   return (
@@ -252,6 +260,21 @@ export function LibrarySearchResults({
               />
             ))}
           </div>
+          {hasMore && (
+            <button
+              onClick={onLoadMore}
+              disabled={loadingMore}
+              className="w-full py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] border-t border-[var(--color-border-faint)] transition-colors disabled:opacity-60"
+            >
+              {loadingMore ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 size={13} className="animate-spin" /> Loading more…
+                </span>
+              ) : (
+                `Load ${Math.min(200, total - results.length).toLocaleString()} more…`
+              )}
+            </button>
+          )}
         </div>
       )}
     </div>

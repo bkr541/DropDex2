@@ -44,7 +44,11 @@ const ANALYSIS_TITLES: Record<string, string> = {
 
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatKey } from '../../lib/utils';
-import { useRekordboxSearch, useTrackStats } from '../../hooks/useRekordboxTracks';
+import {
+  useLibraryStats,
+  useLibraryTracks,
+  useRekordboxSearch,
+} from '../../hooks/useRekordboxTracks';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import { LibraryHero } from './LibraryHero';
@@ -59,8 +63,7 @@ import type {
   UserGenrePreference,
 } from '../../types';
 import type { TrackPreviewWaveform } from '../../lib/queries/waveformValidation';
-import { trackStatRowToTrack } from '../../lib/queries/rekordbox';
-import type { PlaylistWithCount, TrackStatRow } from '../../lib/queries/rekordbox';
+import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 
 type LibraryTab = 'overview' | 'playlists' | 'recently-added' | 'tracks' | 'genres' | 'artists';
 
@@ -336,7 +339,7 @@ function DesktopLibraryInfoCard({
 // ── Memoized track row ────────────────────────────────────────────────────────
 
 interface TrackRowProps {
-  track: TrackStatRow;
+  track: RekordboxTrack;
   waveform: TrackPreviewWaveform | null;
   waveformUnavailable: boolean;
   waveformLoading: boolean;
@@ -344,7 +347,7 @@ interface TrackRowProps {
   playerStatus: string;
   usbConnected: boolean;
   onOpen: (t: RekordboxTrack) => void;
-  onPlay: (t: TrackStatRow, e: React.MouseEvent | React.KeyboardEvent) => void;
+  onPlay: (t: RekordboxTrack, e: React.MouseEvent | React.KeyboardEvent) => void;
 }
 
 const TrackRow = memo(function TrackRow({
@@ -358,12 +361,12 @@ const TrackRow = memo(function TrackRow({
   onOpen,
   onPlay,
 }: TrackRowProps) {
-  const handleRowClick = useCallback(() => onOpen(trackStatRowToTrack(t)), [onOpen, t]);
+  const handleRowClick = useCallback(() => onOpen(t), [onOpen, t]);
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        onOpen(trackStatRowToTrack(t));
+        onOpen(t);
       }
     },
     [onOpen, t],
@@ -619,10 +622,24 @@ export function LibraryView({
 }: LibraryViewProps) {
   const [activeTab, setActiveTab] = useState<LibraryTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
-  const [tracksVisible, setTracksVisible] = useState(200);
 
-  const { results: searchResults, loading: searchLoading } = useRekordboxSearch(importId, searchQuery);
-  const { stats: trackStats, loading: statsLoading } = useTrackStats(importId);
+  const {
+    results: searchResults,
+    total: searchTotal,
+    loading: searchLoading,
+    loadingMore: searchLoadingMore,
+    hasMore: searchHasMore,
+    loadMore: loadMoreSearchResults,
+  } = useRekordboxSearch(importId, searchQuery);
+  const {
+    tracks: libraryTracks,
+    total: libraryTrackTotal,
+    loading: tracksLoading,
+    loadingMore: tracksLoadingMore,
+    hasMore: tracksHaveMore,
+    loadMore: loadMoreLibraryTracks,
+  } = useLibraryTracks(importId);
+  const { stats: libraryStats, loading: statsLoading } = useLibraryStats(importId);
 
   // ── Audio player ───────────────────────────────────────────────────────────
   const { activeTrack, status: playerStatus, toggleTrack } = useAudioPlayer();
@@ -630,8 +647,8 @@ export function LibraryView({
   const usbConnected = usbStatus === 'connected';
 
   const handlePlay = useCallback(
-    (t: TrackStatRow, _e: React.MouseEvent | React.KeyboardEvent) => {
-      void toggleTrack(trackStatRowToTrack(t));
+    (t: RekordboxTrack, _e: React.MouseEvent | React.KeyboardEvent) => {
+      void toggleTrack(t);
     },
     [toggleTrack],
   );
@@ -640,44 +657,18 @@ export function LibraryView({
 
   // ── Derived stats ──────────────────────────────────────────────────────────
 
-  const genreStats = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const t of trackStats) {
-      if (t.genre) counts[t.genre] = (counts[t.genre] ?? 0) + 1;
-    }
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  }, [trackStats]);
+  const genreStats = useMemo(
+    () => (libraryStats?.genreTotals ?? []).map(({ name, count }) => [name, count] as const),
+    [libraryStats?.genreTotals],
+  );
 
-  const artistStats = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const t of trackStats) {
-      if (t.artist) counts[t.artist] = (counts[t.artist] ?? 0) + 1;
-    }
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  }, [trackStats]);
+  const artistStats = useMemo(
+    () => (libraryStats?.artistTotals ?? []).map(({ name, count }) => [name, count] as const),
+    [libraryStats?.artistTotals],
+  );
 
-  const mostCommonBpm = useMemo(() => {
-    const counts: Record<number, number> = {};
-    for (const t of trackStats) {
-      if (t.bpm != null) {
-        const r = Math.round(t.bpm);
-        counts[r] = (counts[r] ?? 0) + 1;
-      }
-    }
-    const entries = Object.entries(counts);
-    if (!entries.length) return null;
-    return parseInt(entries.reduce((a, b) => (b[1] > a[1] ? b : a))[0]);
-  }, [trackStats]);
-
-  const mostCommonKey = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const t of trackStats) {
-      if (t.musical_key) counts[t.musical_key] = (counts[t.musical_key] ?? 0) + 1;
-    }
-    const entries = Object.entries(counts);
-    if (!entries.length) return null;
-    return entries.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
-  }, [trackStats]);
+  const mostCommonBpm = libraryStats?.mostCommonBpm ?? null;
+  const mostCommonKey = libraryStats?.mostCommonKey ?? null;
 
   const largestPlaylist = useMemo(() => {
     const real = playlists.filter((p) => !p.is_folder);
@@ -686,7 +677,7 @@ export function LibraryView({
   }, [playlists]);
 
   const topGenres = genreStats.slice(0, 8);
-  const visibleTracks = trackStats.slice(0, tracksVisible);
+  const visibleTracks = libraryTracks;
 
   const visibleTrackIds = useMemo(
     () => visibleTracks.map((t) => t.id),
@@ -743,9 +734,13 @@ export function LibraryView({
             <LibrarySearchResults
               query={searchQuery.trim()}
               results={searchResults}
+              total={searchTotal}
               loading={searchLoading}
+              loadingMore={searchLoadingMore}
+              hasMore={searchHasMore}
               importId={importId}
               onTrackClick={onTrackClick}
+              onLoadMore={() => { void loadMoreSearchResults(); }}
               waveforms={trackWaveforms}
               waveformUnavailable={waveformUnavailable}
               waveformsLoading={waveformsLoading > 0}
@@ -974,11 +969,11 @@ export function LibraryView({
                       {activeTab === 'tracks' && (
                         <div className="space-y-3">
                           <p className="text-xs text-muted-foreground font-mono">
-                            {statsLoading
+                            {tracksLoading
                               ? 'Loading…'
-                              : `${trackStats.length.toLocaleString()} tracks · showing ${Math.min(tracksVisible, trackStats.length).toLocaleString()}`}
+                              : `${libraryTrackTotal.toLocaleString()} tracks · showing ${visibleTracks.length.toLocaleString()}`}
                           </p>
-                          {statsLoading ? (
+                          {tracksLoading ? (
                             <div className="flex items-center justify-center py-16">
                               <Loader2 className="animate-spin text-primary" size={28} />
                             </div>
@@ -1018,12 +1013,19 @@ export function LibraryView({
                                   />
                                 ))}
                               </div>
-                              {trackStats.length > tracksVisible && (
+                              {tracksHaveMore && (
                                 <button
-                                  onClick={() => setTracksVisible((n) => n + 200)}
-                                  className="w-full py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] border-t border-[var(--color-border-faint)] transition-colors"
+                                  onClick={() => { void loadMoreLibraryTracks(); }}
+                                  disabled={tracksLoadingMore}
+                                  className="w-full py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] border-t border-[var(--color-border-faint)] transition-colors disabled:opacity-60"
                                 >
-                                  Load {Math.min(200, trackStats.length - tracksVisible).toLocaleString()} more…
+                                  {tracksLoadingMore ? (
+                                    <span className="inline-flex items-center gap-2">
+                                      <Loader2 size={13} className="animate-spin" /> Loading more…
+                                    </span>
+                                  ) : (
+                                    `Load ${Math.min(200, libraryTrackTotal - visibleTracks.length).toLocaleString()} more…`
+                                  )}
                                 </button>
                               )}
                             </div>
