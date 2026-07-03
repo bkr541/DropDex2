@@ -123,6 +123,11 @@ export interface AnalysisStatusResponse {
   missing_optional_2ex: string[];
   parser_version: string | null;
   warnings: Record<string, unknown>[];
+  current_track_id?: string | null;
+  current_track_title?: string | null;
+  current_track_artist?: string | null;
+  current_track_label?: string | null;
+  progress_percent?: number;
   // Structured targets (new) — empty array on older backends.
   unresolved_targets: ResumeTargetResponse[];
   missing_required_count: number;

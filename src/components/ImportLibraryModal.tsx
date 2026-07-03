@@ -25,6 +25,7 @@ import {
   cancelRekordboxImport,
   completeRekordboxImport,
   createRekordboxImportJob,
+  fetchRekordboxAnalysisStatus,
   startRekordboxImport,
   uploadRekordboxDb,
   uploadRekordboxZipBundle,
@@ -75,6 +76,13 @@ interface UploadProgress {
   bundlePct: number;
 }
 
+interface ParseProgress {
+  currentTrackLabel: string | null;
+  parsedTracks: number;
+  totalTracks: number;
+  percent: number;
+}
+
 type FinalResult =
   | { kind: 'with_analysis'; data: CompleteResponse }
   | { kind: 'library_only'; data: ImportResult };
@@ -90,6 +98,7 @@ interface Props {
 const BATCH_SIZE = 50;
 const MAX_BYTES_PER_BATCH = 50 * 1024 * 1024; // 50 MB
 const MAX_CONCURRENT = 3;
+const PARSE_STATUS_POLL_MS = 2500;
 
 const MODE_LABELS: Record<Mode, { label: string; icon: React.ReactNode; tip: string }> = {
   usb_folder: {
@@ -125,6 +134,11 @@ function extractError(err: unknown): { message: string; structured: ImportWriteE
   return { message, structured: null };
 }
 
+function clampPct(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
@@ -134,6 +148,9 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
   const [folderScan, setFolderScan] = useState<FolderScan | null>(null);
   const [progress, setProgress] = useState<UploadProgress>({
     filesUploaded: 0, filesTotal: 0, bytesUploaded: 0, bytesTotal: 0, bundlePct: 0,
+  });
+  const [parseProgress, setParseProgress] = useState<ParseProgress>({
+    currentTrackLabel: null, parsedTracks: 0, totalTracks: 0, percent: 0,
   });
   const [finalResult, setFinalResult] = useState<FinalResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -162,6 +179,7 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     setSelectedFile(null);
     setFolderScan(null);
     setProgress({ filesUploaded: 0, filesTotal: 0, bytesUploaded: 0, bytesTotal: 0, bundlePct: 0 });
+    setParseProgress({ currentTrackLabel: null, parsedTracks: 0, totalTracks: 0, percent: 0 });
     setFinalResult(null);
     setErrorMessage('');
     setErrorStructured(null);
@@ -610,21 +628,85 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     // ── Stage 4: trigger server-side parsing ──────────────────────────────────
     // Always call /complete unless the user explicitly cancelled. The backend
     // is idempotent (upsert semantics) and handles missing files gracefully.
+    const initialTotalTracks = startResp.expected_track_count || startResp.manifest.length || 0;
+    setParseProgress({
+      currentTrackLabel: null,
+      parsedTracks: 0,
+      totalTracks: initialTotalTracks,
+      percent: 0,
+    });
     setPhase('parsing_analysis');
+
     let completeResp: CompleteResponse;
+    let stopParsePolling = false;
+    let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const pollParsingStatus = async () => {
+      if (stopParsePolling || controller.signal.aborted || operation !== operationRef.current) {
+        return;
+      }
+
+      try {
+        const status = await fetchRekordboxAnalysisStatus(
+          startResp.import_id,
+          accessTokenRef.current ?? token,
+          controller.signal,
+        );
+        if (stopParsePolling || operation !== operationRef.current) return;
+
+        const totalTracks = status.expected_track_count || initialTotalTracks || 0;
+        const parsedTracks = Math.max(0, status.parsed_track_count || 0);
+        const percent = typeof status.progress_percent === 'number'
+          ? clampPct(status.progress_percent)
+          : clampPct(totalTracks > 0 ? (parsedTracks / totalTracks) * 100 : 0);
+
+        setParseProgress({
+          currentTrackLabel: status.current_track_label || null,
+          parsedTracks,
+          totalTracks,
+          percent,
+        });
+      } catch (err) {
+        if (!isAbortError(err) && import.meta.env.DEV) {
+          console.debug('[DropDex] Analysis status polling failed:', err);
+        }
+      } finally {
+        if (!stopParsePolling && !controller.signal.aborted && operation === operationRef.current) {
+          pollTimeout = setTimeout(pollParsingStatus, PARSE_STATUS_POLL_MS);
+        }
+      }
+    };
+
+    void pollParsingStatus();
+
     try {
       const { data: { session: completeSession } } = await supabase.auth.getSession();
-      completeResp = await completeRekordboxImport(startResp.import_id, completeSession?.access_token ?? token, { signal: controller.signal });
+      completeResp = await completeRekordboxImport(
+        startResp.import_id,
+        completeSession?.access_token ?? token,
+        { signal: controller.signal },
+      );
     } catch (err) {
+      stopParsePolling = true;
+      if (pollTimeout) clearTimeout(pollTimeout);
       if (isAbortError(err) || operation !== operationRef.current) return;
       const { message, structured } = extractError(err);
       setErrorMessage(message);
       setErrorStructured(structured);
       setPhase('error');
       return;
+    } finally {
+      stopParsePolling = true;
+      if (pollTimeout) clearTimeout(pollTimeout);
     }
 
     if (operation !== operationRef.current) return;
+    setParseProgress((p) => ({
+      ...p,
+      parsedTracks: completeResp.total_tracks,
+      totalTracks: completeResp.total_tracks,
+      percent: 100,
+    }));
     setFinalResult({ kind: 'with_analysis', data: completeResp });
     // "failed" analysis_status (all tracks missing_required) still lands in
     // partial_success so the user sees a useful summary rather than an error screen.
@@ -905,9 +987,38 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
                     'Sending exportLibrary.db to DropDex and retrieving the track manifest.'}
                   {phase === 'matching_analysis' &&
                     'Matching local ANLZ files to the import manifest.'}
-                  {phase === 'parsing_analysis' &&
-                    'The server is parsing ANLZ analysis data. This may take a moment.'}
+                  {phase === 'parsing_analysis' && (
+                    <>
+                      Parsing{' '}
+                      <span className="font-semibold text-foreground">
+                        {parseProgress.currentTrackLabel || 'current track…'}
+                      </span>
+                    </>
+                  )}
                 </p>
+                {phase === 'parsing_analysis' && (
+                  <div className="mt-5">
+                    <div className="w-full h-2 bg-[var(--color-surface)] rounded-full overflow-hidden mb-3">
+                      <div
+                        className="h-full bg-primary rounded-full transition-all duration-500"
+                        style={{ width: `${parseProgress.percent}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {parseProgress.percent}%
+                      {parseProgress.totalTracks > 0 && (
+                        <>
+                          {' '}·{' '}
+                          {Math.min(
+                            parseProgress.parsedTracks,
+                            parseProgress.totalTracks,
+                          ).toLocaleString()}
+                          {' '} / {parseProgress.totalTracks.toLocaleString()} tracks
+                        </>
+                      )}
+                    </p>
+                  </div>
+                )}
                 <button
                   onClick={() => setShowAbortDialog(true)}
                   className="mt-6 text-sm text-muted-foreground hover:text-foreground transition-colors"

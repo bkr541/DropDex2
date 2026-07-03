@@ -164,6 +164,13 @@ class AnalysisStatusResponse(BaseModel):
     missing_optional_2ex: List[str] = []
     parser_version: Optional[str] = None
     warnings: List[Dict[str, Any]] = []
+    # Live parsing progress. These fields are best-effort and may be null/zero
+    # when no synchronous parse is currently running in this backend process.
+    current_track_id: Optional[str] = None
+    current_track_title: Optional[str] = None
+    current_track_artist: Optional[str] = None
+    current_track_label: Optional[str] = None
+    progress_percent: int = 0
     # Structured per-track targets (richer data for selective reprocessing).
     unresolved_targets: List[ResumeTargetItem] = []
     # Top-level summary counts derived from unresolved_targets.

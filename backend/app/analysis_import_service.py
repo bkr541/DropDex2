@@ -26,6 +26,7 @@ import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
 from typing import Any, Dict, List, Optional
 
 from dropdex_importer.supabase_writer import RekordboxWriteError
@@ -69,6 +70,69 @@ try:
     from dropdex_importer.anlz_parser import DROPDEX_ANLZ_PARSER_VERSION as _PARSER_VERSION
 except ImportError:  # pragma: no cover
     _PARSER_VERSION = "unknown"
+
+
+_ANALYSIS_PROGRESS_LOCK = Lock()
+_ANALYSIS_PROGRESS: Dict[str, Dict[str, Any]] = {}
+
+
+def _format_current_track_label(track: Optional[dict]) -> Optional[str]:
+    """Return a compact Artist - Title label for live import progress."""
+    if not track:
+        return None
+
+    title = str(track.get("title") or "").strip()
+    artist = str(track.get("artist") or "").strip()
+    content_id = str(track.get("rekordbox_content_id") or "").strip()
+
+    if artist and title:
+        return f"{artist} - {title}"
+    if title:
+        return title
+    if artist:
+        return artist
+    if content_id:
+        return f"Track {content_id}"
+    return "current track"
+
+
+def _set_analysis_progress(
+    import_id: str,
+    *,
+    track: Optional[dict],
+    processed_track_count: int,
+    total_track_count: int,
+) -> None:
+    """Record best-effort in-process progress for /analysis-status polling."""
+    label = _format_current_track_label(track)
+    safe_total = max(0, int(total_track_count or 0))
+    safe_processed = max(0, min(int(processed_track_count or 0), safe_total or 0))
+    current_track_id = str(track.get("id")) if track and track.get("id") else None
+
+    with _ANALYSIS_PROGRESS_LOCK:
+        _ANALYSIS_PROGRESS[import_id] = {
+            "processed_track_count": safe_processed,
+            "total_track_count": safe_total,
+            "current_track_id": current_track_id,
+            "current_track_title": (
+                str(track.get("title")).strip()
+                if track and track.get("title")
+                else None
+            ),
+            "current_track_artist": (
+                str(track.get("artist")).strip()
+                if track and track.get("artist")
+                else None
+            ),
+            "current_track_label": label,
+            "updated_at": _now_iso(),
+        }
+
+
+def _get_live_analysis_progress(import_id: str) -> Dict[str, Any]:
+    """Return a copy of the live in-memory progress entry, when present."""
+    with _ANALYSIS_PROGRESS_LOCK:
+        return dict(_ANALYSIS_PROGRESS.get(import_id) or {})
 
 
 def _parse_bundle(
@@ -173,7 +237,10 @@ def _get_tracks_with_paths(sb, import_id: str) -> List[dict]:
     rows = fetch_all_rows(
         lambda: (
             sb.table("rekordbox_tracks")
-            .select("id, rekordbox_content_id, analysis_data_file_path")
+            .select(
+                "id, rekordbox_content_id, title, artist, "
+                "analysis_data_file_path, analysis_parse_status"
+            )
             .eq("import_id", import_id)
         ),
         order_column="id",
@@ -1101,9 +1168,22 @@ def _complete_analysis_import_sync(
     tmp_dir: Optional[str] = None
     try:
         tmp_dir = tempfile.mkdtemp()
+        total_track_count = len(tracks)
+        _set_analysis_progress(
+            import_id,
+            track=None,
+            processed_track_count=0,
+            total_track_count=total_track_count,
+        )
 
         for track in tracks:
             assert_import_not_cancelled(import_id, user_id, sb=sb)
+            _set_analysis_progress(
+                import_id,
+                track=track,
+                processed_track_count=len(track_results),
+                total_track_count=total_track_count,
+            )
             track_id = track["id"]
             rb_cid = str(track.get("rekordbox_content_id", ""))
             track_assets = assets_by_track.get(track_id, [])
@@ -1139,6 +1219,12 @@ def _complete_analysis_import_sync(
                             }
                         ],
                     )
+                )
+                _set_analysis_progress(
+                    import_id,
+                    track=track,
+                    processed_track_count=len(track_results),
+                    total_track_count=total_track_count,
                 )
                 continue
 
@@ -1180,6 +1266,12 @@ def _complete_analysis_import_sync(
                             }
                         ],
                     )
+                )
+                _set_analysis_progress(
+                    import_id,
+                    track=track,
+                    processed_track_count=len(track_results),
+                    total_track_count=total_track_count,
                 )
                 continue
 
@@ -1314,6 +1406,12 @@ def _complete_analysis_import_sync(
                     assets_parsed=parsed_count,
                     warnings=all_warnings,
                 )
+            )
+            _set_analysis_progress(
+                import_id,
+                track=track,
+                processed_track_count=len(track_results),
+                total_track_count=total_track_count,
             )
 
     finally:
@@ -1529,12 +1627,60 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
     failed_upload_count = sum(1 for t in unresolved_targets if t.status == "upload_failed")
     failed_parse_count = sum(1 for t in unresolved_targets if t.status == "parse_failed")
 
+    analysis_status = import_row.get("analysis_status") or "unknown"
+    expected_track_count = int(import_row.get("analysis_expected_track_count") or len(tracks) or 0)
+    final_track_statuses = {"completed", "partial", "failed", "skipped", "reused"}
+    derived_parsed_track_count = sum(
+        1 for t in tracks if (t.get("analysis_parse_status") or "") in final_track_statuses
+    )
+    live_progress = (
+        _get_live_analysis_progress(import_id)
+        if analysis_status == "parsing"
+        else {}
+    )
+    live_processed_track_count = int(live_progress.get("processed_track_count") or 0)
+    live_total_track_count = int(live_progress.get("total_track_count") or 0)
+    if live_total_track_count > expected_track_count:
+        expected_track_count = live_total_track_count
+
+    parsed_track_count = max(
+        int(import_row.get("analysis_parsed_track_count") or 0),
+        derived_parsed_track_count,
+        live_processed_track_count,
+    )
+    if expected_track_count > 0:
+        parsed_track_count = min(parsed_track_count, expected_track_count)
+        progress_percent = round((parsed_track_count / expected_track_count) * 100)
+    else:
+        progress_percent = 0
+    progress_percent = max(0, min(progress_percent, 100))
+
+    current_track: Optional[dict] = None
+    current_track_id = live_progress.get("current_track_id")
+    if current_track_id:
+        current_track = next((t for t in tracks if str(t.get("id")) == str(current_track_id)), None)
+    if current_track is None and analysis_status == "parsing":
+        current_track = next(
+            (
+                t
+                for t in tracks
+                if (t.get("analysis_parse_status") or "") not in final_track_statuses
+            ),
+            None,
+        )
+
+    current_track_label = (
+        str(live_progress.get("current_track_label"))
+        if live_progress.get("current_track_label")
+        else _format_current_track_label(current_track)
+    )
+
     return AnalysisStatusResponse(
         import_id=import_id,
-        analysis_status=import_row.get("analysis_status") or "unknown",
-        expected_track_count=import_row.get("analysis_expected_track_count", 0),
+        analysis_status=analysis_status,
+        expected_track_count=expected_track_count,
         matched_track_count=import_row.get("analysis_matched_track_count", 0),
-        parsed_track_count=import_row.get("analysis_parsed_track_count", 0),
+        parsed_track_count=parsed_track_count,
         failed_track_count=import_row.get("analysis_failed_track_count", 0),
         asset_count=import_row.get("analysis_asset_count", 0),
         missing_required_paths=missing_required,
@@ -1542,6 +1688,23 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
         missing_optional_2ex=missing_optional_2ex,
         parser_version=import_row.get("analysis_parser_version"),
         warnings=import_row.get("analysis_warnings") or [],
+        current_track_id=(
+            str(current_track.get("id"))
+            if current_track and current_track.get("id")
+            else (str(current_track_id) if current_track_id else None)
+        ),
+        current_track_title=(
+            str(current_track.get("title")).strip()
+            if current_track and current_track.get("title")
+            else live_progress.get("current_track_title")
+        ),
+        current_track_artist=(
+            str(current_track.get("artist")).strip()
+            if current_track and current_track.get("artist")
+            else live_progress.get("current_track_artist")
+        ),
+        current_track_label=current_track_label,
+        progress_percent=progress_percent,
         unresolved_targets=unresolved_targets,
         missing_required_count=missing_required_count,
         missing_optional_count=missing_optional_count,
