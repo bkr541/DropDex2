@@ -201,25 +201,20 @@ class TestPwavExtraction:
 
 class TestPwv5Extraction:
     def _val(self, r: int, g: int, b: int, h: int) -> int:
-        # Pack into 16-bit: r in [15:13]→store as /2 since >>12, g in [12:10], b in [9:7], h in [6:2]
-        # We encode using the masks from the decoder:
-        # r: result=(val & 0xE000)>>12 → val[13:15] = r/2 → store (r//2) << 13
-        # g: result=(val & 0x1C00)>>10 → val[10:12] = g → store g << 10
-        # b: result=(val & 0x0380)>> 7 → val[ 7: 9] = b → store b << 7
-        # h: result=(val & 0x007C)>> 2 → val[ 2: 6] = h → store h << 2
-        return ((r // 2) << 13) | (g << 10) | (b << 7) | (h << 2)
+        # Pack 3-bit RGB channels and a 5-bit raw height into one 16-bit value.
+        return (r << 13) | (g << 10) | (b << 7) | (h << 2)
 
     def _columns(self, result) -> list:
         payload = json.loads(gzip.decompress(result.compressed_bytes))
         return payload["columns"]
 
-    def test_height_normalized(self):
-        val = self._val(0, 0, 0, 31)  # max height → 31/31 = 1.0
+    def test_height_preserved_as_raw_5_bit_value(self):
+        val = self._val(0, 0, 0, 31)
         tag = _pwv5_tag([val])
         result, _ = _extract_pwv5(tag, _make_asset("EXT"))
 
         assert result is not None
-        assert self._columns(result)[0]["h"] == pytest.approx(1.0)
+        assert self._columns(result)[0]["h"] == 31
 
     def test_height_zero(self):
         val = self._val(0, 0, 0, 0)
@@ -227,7 +222,7 @@ class TestPwv5Extraction:
         result, _ = _extract_pwv5(tag, _make_asset("EXT"))
 
         assert result is not None
-        assert self._columns(result)[0]["h"] == pytest.approx(0.0)
+        assert self._columns(result)[0]["h"] == 0
 
     def test_column_count(self):
         vals = [self._val(0, 0, 0, 0)] * 5
@@ -252,7 +247,7 @@ class TestPwv5Extraction:
         decompressed = gzip.decompress(result.compressed_bytes)
         payload = json.loads(decompressed)
         assert payload["format"] == "PWV5"
-        assert payload["version"] == 1
+        assert payload["version"] == 2
         assert len(payload["columns"]) == 3
 
     def test_column_dict_keys(self):
@@ -262,6 +257,26 @@ class TestPwv5Extraction:
         assert result is not None
         cols = self._columns(result)
         assert set(cols[0].keys()) == {"h", "r", "g", "b"}
+
+
+    def test_rgb_channels_expand_to_full_byte_range(self):
+        tag = _pwv5_tag([self._val(7, 7, 7, 1)])
+        result, _ = _extract_pwv5(tag, _make_asset("EXT"))
+
+        assert result is not None
+        col = self._columns(result)[0]
+        assert col["r"] == 255
+        assert col["g"] == 255
+        assert col["b"] == 255
+
+    def test_declared_count_mismatch_warns_and_clamps(self):
+        tag = _pwv5_tag([0, 0, 0])
+        tag.content.len_entries = 2
+        result, warnings = _extract_pwv5(tag, _make_asset("EXT"))
+
+        assert result is not None
+        assert result.column_count == 2
+        assert "WAVEFORM_COUNT_MISMATCH" in [warning.code for warning in warnings]
 
     def test_missing_fields_emits_error(self):
         tag = MagicMock()

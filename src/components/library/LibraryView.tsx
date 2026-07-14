@@ -347,6 +347,7 @@ interface TrackRowProps {
   onRetryWaveform: () => void;
   isActiveTrack: boolean;
   playerStatus: string;
+  playIntent: boolean;
   usbConnected: boolean;
   onOpen: (t: RekordboxTrack) => void;
   onPlay: (t: RekordboxTrack, e: React.MouseEvent | React.KeyboardEvent) => void;
@@ -358,6 +359,7 @@ const TrackRow = memo(function TrackRow({
   onRetryWaveform,
   isActiveTrack,
   playerStatus,
+  playIntent,
   usbConnected,
   onOpen,
   onPlay,
@@ -390,14 +392,14 @@ const TrackRow = memo(function TrackRow({
     [onPlay, t],
   );
 
-  const isPlaying = isActiveTrack && playerStatus === 'playing';
+  const isPlaying = isActiveTrack && playIntent;
   const isLoadingThis = isActiveTrack && (playerStatus === 'resolving' || playerStatus === 'loading');
-  const isActiveRow = isActiveTrack && (playerStatus === 'playing' || playerStatus === 'paused' || playerStatus === 'ended');
+  const isActiveRow = isActiveTrack && !['idle', 'resolving', 'loading', 'error'].includes(playerStatus);
 
   const progress = useWaveformProgress(t.id);
   const { seek, getAudioElement } = useAudioPlayer();
 
-  const canSeek = isActiveTrack && (playerStatus === 'playing' || playerStatus === 'paused');
+  const canSeek = isActiveTrack && !['idle', 'resolving', 'loading', 'error'].includes(playerStatus);
   const handleWaveformSeek = useCallback(
     (fraction: number) => {
       const audio = getAudioElement();
@@ -643,7 +645,7 @@ export function LibraryView({
   const { stats: libraryStats, loading: statsLoading } = useLibraryStats(importId);
 
   // ── Audio player ───────────────────────────────────────────────────────────
-  const { activeTrack, status: playerStatus, toggleTrack } = useAudioPlayer();
+  const { activeTrack, status: playerStatus, playIntent, toggleTrack } = useAudioPlayer();
   const { status: usbStatus } = useUsbConnection();
   const usbConnected = usbStatus === 'connected';
 
@@ -1001,6 +1003,7 @@ export function LibraryView({
                                     onRetryWaveform={() => retryWaveform([t.id])}
                                     isActiveTrack={activeTrack?.id === t.id}
                                     playerStatus={playerStatus}
+                                    playIntent={playIntent}
                                     usbConnected={usbConnected}
                                     onOpen={onTrackClick}
                                     onPlay={handlePlay}

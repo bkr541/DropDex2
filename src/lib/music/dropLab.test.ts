@@ -280,4 +280,30 @@ describe('waveformSegments', () => {
     expect(left.at(-1)?.height).toBeGreaterThan(0);
     expect(right[0].height).toBeGreaterThan(0);
   });
+
+  it('uses the explicit PWV3 height scale for mono detail segments', () => {
+    const mono: TrackPreviewWaveform = {
+      ...waveform(1),
+      previewFormat: 'PWV3',
+      previewColumns: [{ h: 31, i: 7 }],
+      inferredFormat: 'mono',
+      heightScale: 31,
+      dataVersion: 2,
+    };
+    const segment = sliceWaveformSegment(mono, 0, 1_000, 1_000);
+    expect(toRenderableColumns(segment)[0].height).toBe(1);
+  });
+
+  it('does not re-normalize legacy PWV5 height values', () => {
+    const color: TrackPreviewWaveform = {
+      ...waveform(1),
+      previewFormat: 'PWV5',
+      previewColumns: [{ h: 1, r: 255, g: 128, b: 0 }],
+      inferredFormat: 'color',
+      heightScale: 1,
+      dataVersion: 1,
+    };
+    const segment = sliceWaveformSegment(color, 0, 1_000, 1_000);
+    expect(toRenderableColumns(segment)[0].height).toBe(1);
+  });
 });

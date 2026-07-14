@@ -12,6 +12,19 @@ export type UsbFileResult =
   | { ok: true; file: File }
   | { ok: false; error: UsbFileResolutionError };
 
+export interface ResolveUsbFileOptions {
+  /** Cooperative cancellation checked between every async traversal step. */
+  isCancelled?: () => boolean;
+}
+
+function cancelledError(): UsbFileResolutionError {
+  return { kind: 'abort', message: 'USB file access was superseded by another playback request.' };
+}
+
+function cancelledResult(): UsbFileResult {
+  return { ok: false, error: cancelledError() };
+}
+
 function mapDomException(err: unknown, path: string, lastSegment: string): UsbFileResolutionError {
   if (!(err instanceof DOMException)) {
     return { kind: 'unexpected', message: String(err) };
@@ -52,9 +65,12 @@ async function getDirectoryHandleCaseInsensitive(
   dir: FileSystemDirectoryHandle,
   name: string,
   fullPath: string,
+  isCancelled?: () => boolean,
 ): Promise<{ handle: FileSystemDirectoryHandle } | { error: UsbFileResolutionError }> {
+  if (isCancelled?.()) return { error: cancelledError() };
   try {
     const handle = await dir.getDirectoryHandle(name);
+    if (isCancelled?.()) return { error: cancelledError() };
     return { handle };
   } catch (exact) {
     if (!(exact instanceof DOMException) || exact.name !== 'NotFoundError') {
@@ -66,6 +82,7 @@ async function getDirectoryHandleCaseInsensitive(
     try {
       const iterable = dir as unknown as AsyncIterable<[string, { kind: 'file' | 'directory' }]>;
       for await (const [entryName, entry] of iterable) {
+        if (isCancelled?.()) return { error: cancelledError() };
         if (entry.kind === 'directory' && entryName.toLowerCase() === name.toLowerCase()) {
           candidates.push(entryName);
         }
@@ -91,6 +108,7 @@ async function getDirectoryHandleCaseInsensitive(
 
     try {
       const handle = await dir.getDirectoryHandle(candidates[0]);
+      if (isCancelled?.()) return { error: cancelledError() };
       return { handle };
     } catch (err) {
       return { error: mapDomException(err, fullPath, candidates[0]) };
@@ -106,9 +124,12 @@ async function getFileHandleCaseInsensitive(
   dir: FileSystemDirectoryHandle,
   name: string,
   fullPath: string,
+  isCancelled?: () => boolean,
 ): Promise<{ handle: FileSystemFileHandle } | { error: UsbFileResolutionError }> {
+  if (isCancelled?.()) return { error: cancelledError() };
   try {
     const handle = await dir.getFileHandle(name);
+    if (isCancelled?.()) return { error: cancelledError() };
     return { handle };
   } catch (exact) {
     if (!(exact instanceof DOMException) || exact.name !== 'NotFoundError') {
@@ -119,6 +140,7 @@ async function getFileHandleCaseInsensitive(
     try {
       const iterable = dir as unknown as AsyncIterable<[string, { kind: 'file' | 'directory' }]>;
       for await (const [entryName, entry] of iterable) {
+        if (isCancelled?.()) return { error: cancelledError() };
         if (entry.kind === 'file' && entryName.toLowerCase() === name.toLowerCase()) {
           candidates.push(entryName);
         }
@@ -144,6 +166,7 @@ async function getFileHandleCaseInsensitive(
 
     try {
       const handle = await dir.getFileHandle(candidates[0]);
+      if (isCancelled?.()) return { error: cancelledError() };
       return { handle };
     } catch (err) {
       return { error: mapDomException(err, fullPath, candidates[0]) };
@@ -166,7 +189,10 @@ async function getFileHandleCaseInsensitive(
 export async function resolveUsbFile(
   root: FileSystemDirectoryHandle,
   segments: string[],
+  options: ResolveUsbFileOptions = {},
 ): Promise<UsbFileResult> {
+  const { isCancelled } = options;
+  if (isCancelled?.()) return cancelledResult();
   if (segments.length === 0) {
     return {
       ok: false,
@@ -183,16 +209,18 @@ export async function resolveUsbFile(
   for (let i = 0; i < dirSegments.length; i++) {
     const seg = dirSegments[i];
     const partialPath = segments.slice(0, i + 1).join('/');
-    const result = await getDirectoryHandleCaseInsensitive(currentDir, seg, partialPath);
+    const result = await getDirectoryHandleCaseInsensitive(currentDir, seg, partialPath, isCancelled);
     if ('error' in result) return { ok: false, error: result.error };
     currentDir = result.handle;
   }
 
-  const fileResult = await getFileHandleCaseInsensitive(currentDir, fileName, fullPath);
+  if (isCancelled?.()) return cancelledResult();
+  const fileResult = await getFileHandleCaseInsensitive(currentDir, fileName, fullPath, isCancelled);
   if ('error' in fileResult) return { ok: false, error: fileResult.error };
 
   try {
     const file = await fileResult.handle.getFile();
+    if (isCancelled?.()) return cancelledResult();
     return { ok: true, file };
   } catch (err) {
     return { ok: false, error: mapDomException(err, fullPath, fileName) };

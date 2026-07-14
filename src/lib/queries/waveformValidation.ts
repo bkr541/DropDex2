@@ -59,6 +59,10 @@ export interface TrackPreviewWaveform {
   detailColumnCount: number | null;
   detailStorageBucket: string | null;
   detailStoragePath: string | null;
+  /** Divisor used to normalize raw column heights exactly once. */
+  heightScale?: number | null;
+  /** Serialized detail payload version; null for inline preview rows. */
+  dataVersion?: number | null;
 }
 
 /**
@@ -229,6 +233,18 @@ function validateDeclaredFormat(
   };
 }
 
+
+export function heightScaleForFormat(
+  format: string | null | undefined,
+  dataVersion: number | null = null,
+): number {
+  const normalized = format?.trim().toUpperCase();
+  if (normalized === 'PWV4' || normalized === 'COLOR') return 127;
+  if (normalized === 'PWV5') return dataVersion === 1 ? 1 : 31;
+  if (normalized === 'PWAV' || normalized === 'PWV2' || normalized === 'PWV3' || normalized === 'MONO') return 31;
+  return 1;
+}
+
 // ── Row transformer ────────────────────────────────────────────────────────────
 
 /** Map a raw DB waveform row to the ergonomic `TrackPreviewWaveform` shape. */
@@ -251,6 +267,8 @@ export function buildTrackPreviewWaveform(row: WaveformRow): TrackPreviewWavefor
     detailColumnCount: row.detail_column_count,
     detailStorageBucket: row.detail_storage_bucket,
     detailStoragePath: row.detail_storage_path,
+    heightScale: heightScaleForFormat(row.preview_format),
+    dataVersion: null,
   };
 }
 
@@ -283,30 +301,63 @@ export function buildDetailWaveformState(
   previewWaveform: TrackPreviewWaveform,
   raw: unknown,
 ): ResolvedWaveformLoadState {
+  const invalid = (error: string, reason: WaveformInvalidReason = 'invalid'): ResolvedWaveformLoadState => ({
+    status: 'invalid',
+    trackId,
+    error,
+    reason,
+    retryable: false,
+  });
+
   if (!raw || typeof raw !== 'object') {
-    return {
-      status: 'invalid',
-      trackId,
-      error: 'Detailed waveform payload is not an object.',
-      reason: 'invalid',
-      retryable: false,
-    };
+    return invalid('Detailed waveform payload is not an object.');
   }
 
   const payload = raw as Partial<DetailWaveformPayload>;
-  const expectedCount = typeof payload.column_count === 'number' ? payload.column_count : null;
+  if (!Number.isInteger(payload.version) || (payload.version !== 1 && payload.version !== 2)) {
+    return invalid(`Detailed waveform payload version ${String(payload.version)} is unsupported.`, 'unsupported');
+  }
+  if (typeof payload.format !== 'string' || !payload.format.trim()) {
+    return invalid('Detailed waveform payload is missing its format.');
+  }
+  if (!Number.isInteger(payload.column_count) || Number(payload.column_count) < 0) {
+    return invalid('Detailed waveform payload has an invalid column_count.');
+  }
+
+  const payloadFormat = payload.format.trim().toUpperCase();
+  const dbFormat = previewWaveform.detailFormat?.trim().toUpperCase() ?? null;
+  if (dbFormat && payloadFormat !== dbFormat) {
+    return invalid(`Detailed waveform format mismatch: database=${dbFormat}, payload=${payloadFormat}.`);
+  }
+  if (
+    previewWaveform.detailColumnCount != null &&
+    payload.column_count !== previewWaveform.detailColumnCount
+  ) {
+    return invalid(
+      `Detailed waveform column count mismatch: database=${previewWaveform.detailColumnCount}, payload=${payload.column_count}.`,
+    );
+  }
+
   const validation = validateDeclaredFormat(
-    typeof payload.format === 'string' ? payload.format : previewWaveform.detailFormat,
-    validatePreviewColumns(payload.columns, expectedCount),
+    payloadFormat,
+    validatePreviewColumns(payload.columns, payload.column_count),
   );
   if (!validation.valid) {
-    return {
-      status: 'invalid',
-      trackId,
-      error: validation.error ?? 'Detailed waveform data is invalid or unsupported.',
-      reason: validation.reason ?? 'invalid',
-      retryable: false,
-    };
+    return invalid(
+      validation.error ?? 'Detailed waveform data is invalid or unsupported.',
+      validation.reason ?? 'invalid',
+    );
+  }
+
+  const heightScale = heightScaleForFormat(payloadFormat, payload.version);
+  const maxHeight = validation.columns.reduce(
+    (maximum, column) => Math.max(maximum, column.h),
+    0,
+  );
+  if (maxHeight > heightScale) {
+    return invalid(
+      `Detailed waveform height exceeds the ${payloadFormat} maximum of ${heightScale}.`,
+    );
   }
 
   return {
@@ -314,13 +365,15 @@ export function buildDetailWaveformState(
     trackId,
     waveform: {
       ...previewWaveform,
-      previewFormat: typeof payload.format === 'string' ? payload.format : previewWaveform.detailFormat,
+      previewFormat: payloadFormat,
       previewColumnCount: validation.columns.length,
       previewColumns: validation.columns,
       previewColumnsValid: true,
       inferredFormat: validation.inferredFormat,
       validationError: null,
       invalidReason: null,
+      heightScale,
+      dataVersion: payload.version,
     },
   };
 }

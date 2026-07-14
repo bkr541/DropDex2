@@ -215,15 +215,15 @@ def _extract_pwv5(
     """
     Decode PWV5 color detail waveform (1 Int16ub per column).
 
-    bits [15:13] red    — (val & 0xE000) >> 12
-    bits [12:10] green  — (val & 0x1C00) >> 10
-    bits  [9: 7] blue   — (val & 0x0380) >>  7
-    bits  [6: 2] height — (val & 0x007C) >>  2, then / 31 (normalized to [0,1])
+    bits [15:13] red    — 3-bit channel, expanded to [0,255]
+    bits [12:10] green  — 3-bit channel, expanded to [0,255]
+    bits  [9: 7] blue   — 3-bit channel, expanded to [0,255]
+    bits  [6: 2] height — raw [0,31], normalized exactly once by the renderer
     """
     warnings: List[AnalysisParseWarning] = []
     try:
-        n = int(tag.content.len_entries)
-        entries = tag.content.entries
+        declared_count = int(tag.content.len_entries)
+        entries = list(tag.content.entries)
     except AttributeError as exc:
         warnings.append(AnalysisParseWarning(
             code="WAVEFORM_PARSE_ERROR",
@@ -232,22 +232,34 @@ def _extract_pwv5(
         ))
         return None, warnings
 
+    actual_count = len(entries)
+    if actual_count != declared_count:
+        warnings.append(AnalysisParseWarning(
+            code="WAVEFORM_COUNT_MISMATCH",
+            asset_type=asset.asset_type,
+            message=(
+                f"PWV5 declared {declared_count} entries but contained {actual_count}; "
+                f"using {min(declared_count, actual_count)}"
+            ),
+        ))
+    entries = entries[:max(0, min(declared_count, actual_count))]
+
     columns: List[Dict[str, Any]] = []
     for val in entries:
         v = int(val)
-        r = (v & 0xE000) >> 12
-        g = (v & 0x1C00) >> 10
-        b = (v & 0x0380) >> 7
+        r3 = (v & 0xE000) >> 13
+        g3 = (v & 0x1C00) >> 10
+        b3 = (v & 0x0380) >> 7
         h_raw = (v & 0x007C) >> 2
         columns.append({
-            "h": round(h_raw / 31.0, 4),
-            "r": r,
-            "g": g,
-            "b": b,
+            "h": h_raw,
+            "r": _clamp_u8(r3 * 255.0 / 7.0),
+            "g": _clamp_u8(g3 * 255.0 / 7.0),
+            "b": _clamp_u8(b3 * 255.0 / 7.0),
         })
 
     payload = {
-        "version": 1,
+        "version": 2,
         "format": "PWV5",
         "column_count": len(columns),
         "columns": columns,

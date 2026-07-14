@@ -3,6 +3,7 @@ import {
   usbFileErrorMessage,
   audioMediaErrorMessage,
   safeRevokeUrl,
+  usbStatusPlaybackMessage,
 } from './AudioPlayerContext';
 import type { UsbFileResolutionError } from '../lib/usb/resolveUsbFile';
 
@@ -112,6 +113,14 @@ describe('USB status guard messages', () => {
   it('permission denied error includes re-authorize guidance', () => {
     const err: UsbFileResolutionError = { kind: 'permission_denied', message: 'denied' };
     expect(usbFileErrorMessage(err)).toContain('Re-authorize');
+  });
+
+  it('only connected has no blocking playback message', () => {
+    expect(usbStatusPlaybackMessage('connected')).toBe('');
+    expect(usbStatusPlaybackMessage('connecting')).toMatch(/verified/i);
+    expect(usbStatusPlaybackMessage('wrong_root')).toMatch(/USB root/i);
+    expect(usbStatusPlaybackMessage('permission-required')).toMatch(/re-authorized/i);
+    expect(usbStatusPlaybackMessage('unavailable')).toMatch(/unavailable/i);
   });
 });
 

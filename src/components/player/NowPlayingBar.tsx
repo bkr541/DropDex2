@@ -73,6 +73,7 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
   const {
     activeTrack,
     status,
+    playIntent,
     volume,
     muted,
     error,
@@ -88,8 +89,9 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
   const { status: usbStatus, connect: connectUsb } = useUsbConnection();
 
   const isActive = status !== 'idle';
-  const isPlaying = status === 'playing';
+  const isPlaying = playIntent;
   const isLoading = status === 'resolving' || status === 'loading';
+  const isBuffering = status === 'buffering' || status === 'seeking';
   const isError = status === 'error';
 
   const { currentTime, duration } = usePlayerTime(getAudioElement, isActive && !isError);
@@ -162,7 +164,7 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
             aria-label={isPlaying ? 'Pause' : 'Play'}
             className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-white hover:bg-primary/90 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait"
           >
-            {isLoading ? (
+            {isLoading || isBuffering ? (
               <Loader2 size={14} className="animate-spin" />
             ) : isPlaying ? (
               <Pause size={14} />

@@ -193,6 +193,34 @@ describe('resolveUsbFile — no audio persistence', () => {
   });
 });
 
+
+
+describe('resolveUsbFile — cooperative cancellation', () => {
+  it('returns abort before touching the directory tree when superseded', async () => {
+    const root = makeDir('USB', { files: { 'Track.mp3': makeFile('Track.mp3') } });
+    const result = await resolveUsbFile(root, ['Track.mp3'], { isCancelled: () => true });
+    expect(result.ok).toBe(false);
+    if (isErrorResult(result)) expect(result.error.kind).toBe('abort');
+    expect(root.getFileHandle).not.toHaveBeenCalled();
+  });
+
+  it('aborts after async file resolution when a newer request takes ownership', async () => {
+    let cancelled = false;
+    const file = makeFile('Track.mp3');
+    const fileHandle = makeFileHandle(file);
+    (fileHandle.getFile as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      cancelled = true;
+      return file;
+    });
+    const root = makeDir('USB', {});
+    (root.getFileHandle as ReturnType<typeof vi.fn>).mockResolvedValue(fileHandle);
+
+    const result = await resolveUsbFile(root, ['Track.mp3'], { isCancelled: () => cancelled });
+    expect(result.ok).toBe(false);
+    if (isErrorResult(result)) expect(result.error.kind).toBe('abort');
+  });
+});
+
 // ── checkRekordboxStructure (discriminated UsbRootCheck) ──────────────────────
 
 // Helper: build a root that throws a specific DOMException for every getDirectoryHandle call.

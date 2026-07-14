@@ -68,7 +68,7 @@ export function TrackDetailView({
   const progress = useWaveformProgress(track.id);
   const { activeTrack, status: playerStatus, seek, getAudioElement } = useAudioPlayer();
   const isActiveTrack = activeTrack?.id === track.id;
-  const canSeek = isActiveTrack && (playerStatus === 'playing' || playerStatus === 'paused');
+  const canSeek = isActiveTrack && !['idle', 'resolving', 'loading', 'error'].includes(playerStatus);
 
   const handleWaveformSeek = useCallback(
     (fraction: number) => {

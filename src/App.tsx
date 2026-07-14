@@ -630,7 +630,7 @@ export default function App() {
 
   return (
     <UsbConnectionProvider>
-    <AudioPlayerProvider>
+    <AudioPlayerProvider imports={allImports}>
     <RootFailureProbe />
     <div className="flex h-screen overflow-hidden font-sans relative">
       {/* Background ambience */}

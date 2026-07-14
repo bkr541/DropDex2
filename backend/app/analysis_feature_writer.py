@@ -96,7 +96,10 @@ def write_waveform(
 
         if result.detail is not None:
             d = result.detail
-            storage_path = f"{user_id}/{import_id}/waveform/{track_id}/detail.json.gz"
+            storage_path = (
+                f"{user_id}/{import_id}/waveform/{track_id}/"
+                f"detail.v{parser_version}.json.gz"
+            )
             try:
                 sb.storage.from_(_ANALYSIS_BUCKET).upload(
                     path=storage_path,

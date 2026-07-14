@@ -30,15 +30,15 @@ function TrackRowRecent({
   onRetryWaveform: () => void;
   onOpen: (track: RekordboxTrack) => void;
 }) {
-  const { activeTrack, status: playerStatus, toggleTrack, seek, getAudioElement } = useAudioPlayer();
+  const { activeTrack, status: playerStatus, playIntent, toggleTrack, seek, getAudioElement } = useAudioPlayer();
   const { status: usbStatus } = useUsbConnection();
   const usbConnected = usbStatus === 'connected';
 
   const isActiveTrack = activeTrack?.id === track.id;
-  const isPlaying = isActiveTrack && playerStatus === 'playing';
+  const isPlaying = isActiveTrack && playIntent;
   const isLoadingThis = isActiveTrack && (playerStatus === 'resolving' || playerStatus === 'loading');
-  const isActiveRow = isActiveTrack && (playerStatus === 'playing' || playerStatus === 'paused' || playerStatus === 'ended');
-  const canSeek = isActiveTrack && (playerStatus === 'playing' || playerStatus === 'paused');
+  const isActiveRow = isActiveTrack && !['idle', 'resolving', 'loading', 'error'].includes(playerStatus);
+  const canSeek = isActiveTrack && !['idle', 'resolving', 'loading', 'error'].includes(playerStatus);
 
   const progress = useWaveformProgress(track.id);
 

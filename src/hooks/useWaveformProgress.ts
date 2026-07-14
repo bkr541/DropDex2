@@ -15,11 +15,11 @@ import { computeProgress } from '../lib/rekordbox/waveformRenderer';
  * components and sibling rows are not affected.
  */
 export function useWaveformProgress(trackId: string | undefined): number | undefined {
-  const { activeTrack, status, getAudioElement } = useAudioPlayer();
+  const { activeTrack, playIntent, getAudioElement } = useAudioPlayer();
   const [progress, setProgress] = useState<number | undefined>(undefined);
 
   const isActive = Boolean(trackId && activeTrack?.id === trackId);
-  const isPlaying = isActive && status === 'playing';
+  const isPlaying = isActive && playIntent;
 
   useEffect(() => {
     if (!isActive) {

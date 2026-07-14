@@ -23,7 +23,7 @@ import os
 import shutil
 import sys
 import tempfile
-from typing import List, Optional
+from typing import Any, Callable, List, Optional
 
 from .anlz_parser import DROPDEX_ANLZ_PARSER_VERSION
 
@@ -94,6 +94,8 @@ def run_reparse(
     track_id: Optional[str] = None,
     older_than_version: Optional[str] = None,
     dry_run: bool = False,
+    client: Any = None,
+    client_factory: Optional[Callable[[str, str], Any]] = None,
 ) -> dict:
     """
     Core reparse logic. Returns dict with completed/partial/failed/skipped counts.
@@ -110,11 +112,18 @@ def run_reparse(
     7. On failure: preserve old data, mark as 'failed', continue to next track
     8. Delete temp files
     """
-    try:
-        import supabase as _sb  # noqa: PLC0415
-        sb = _sb.create_client(supabase_url, service_key)
-    except ImportError:
-        raise ImportError("supabase package not installed")
+    if client is not None:
+        sb = client
+    else:
+        if client_factory is None:
+            try:
+                from supabase import create_client  # type: ignore  # noqa: PLC0415
+            except (ImportError, AttributeError) as exc:
+                raise ImportError(
+                    "supabase package is unavailable; install it or inject client/client_factory"
+                ) from exc
+            client_factory = create_client
+        sb = client_factory(supabase_url, service_key)
 
     tracks = _query_target_tracks(sb, import_id, track_id, older_than_version)
 
@@ -142,7 +151,7 @@ def _query_target_tracks(
       id, import_id, analysis_parse_status
     """
     query = sb.table("rekordbox_tracks").select(
-        "id, import_id, analysis_parse_status, analysis_feature_statuses"
+        "id, import_id, analysis_parse_status, analysis_feature_statuses, analysis_parser_version"
     )
 
     if import_id:
@@ -294,7 +303,8 @@ def _reparse_track(sb, track: dict) -> str:
         try:
             from .waveform_parser import extract_waveforms  # noqa: PLC0415
             wf = extract_waveforms(bundle.dat, bundle.ext)
-            _write_waveform_row(sb, import_id, track_id, wf, asset_ids)
+            user_id = _infer_user_id_from_assets(assets, import_id)
+            _write_waveform_row(sb, import_id, track_id, wf, asset_ids, user_id)
             has_content = wf.preview is not None or wf.detail is not None
             feature_statuses["waveform"] = "completed" if has_content else "skipped"
         except Exception as exc:
@@ -395,13 +405,38 @@ def _write_beat_grid_row(sb, import_id: str, track_id: str, bg, source_asset_id)
     sb.table("rekordbox_track_beat_grids").upsert(row, on_conflict="track_id").execute()
 
 
-def _write_waveform_row(sb, import_id: str, track_id: str, wf, asset_ids: dict) -> None:
-    """
-    Upsert one rekordbox_track_waveforms row.
+def _infer_user_id_from_assets(assets: List[dict], import_id: str) -> str:
+    """Infer the owner from retained asset paths: ``<user>/<import>/anlz/...``."""
+    for asset in assets:
+        storage_path = str(asset.get("storage_path") or "").strip("/")
+        parts = storage_path.split("/")
+        if len(parts) >= 2 and parts[0] and parts[1] == import_id:
+            return parts[0]
+    raise ValueError(
+        f"Cannot determine user id for import {import_id!r} from retained analysis paths"
+    )
 
-    Detail waveform Storage re-upload is intentionally skipped during reparse
-    because the retained asset path in the DB remains valid.  Only the preview
-    inline data and source-asset links are refreshed.
+
+def _detail_storage_path(user_id: str, import_id: str, track_id: str) -> str:
+    """Return a parser-versioned path so corrected payloads invalidate stale caches."""
+    return (
+        f"{user_id}/{import_id}/waveform/{track_id}/"
+        f"detail.v{DROPDEX_ANLZ_PARSER_VERSION}.json.gz"
+    )
+
+
+def _write_waveform_row(
+    sb,
+    import_id: str,
+    track_id: str,
+    wf,
+    asset_ids: dict,
+    user_id: str,
+) -> None:
+    """
+    Upload a regenerated detail payload first, then atomically point the database
+    row at it.  If upload fails, the existing row and its valid detail object are
+    left untouched rather than being relabelled with a newer parser version.
     """
     row = {
         "import_id": import_id,
@@ -416,6 +451,23 @@ def _write_waveform_row(sb, import_id: str, track_id: str, wf, asset_ids: dict) 
         row["preview_format"] = p.format
         row["preview_column_count"] = p.column_count
         row["preview_columns"] = p.columns
+
+    if wf.detail is not None:
+        d = wf.detail
+        storage_path = _detail_storage_path(user_id, import_id, track_id)
+        sb.storage.from_("rekordbox-analysis-assets").upload(
+            path=storage_path,
+            file=d.compressed_bytes,
+            file_options={
+                "upsert": "true",
+                "content-type": "application/gzip",
+            },
+        )
+        row["detail_format"] = d.format
+        row["detail_column_count"] = d.column_count
+        row["detail_storage_bucket"] = "rekordbox-analysis-assets"
+        row["detail_storage_path"] = storage_path
+
     sb.table("rekordbox_track_waveforms").upsert(row, on_conflict="track_id").execute()
 
 

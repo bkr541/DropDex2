@@ -49,24 +49,26 @@ export function sliceWaveformSegment(
   };
 }
 
-function columnHeight(column: PreviewColumn): number {
+function columnHeight(column: PreviewColumn, heightScale: number): number {
   const raw = 'h' in column ? column.h : 0;
-  return Math.max(0, Math.min(1, raw > 1 ? raw / 127 : raw));
+  const scale = heightScale > 0 ? heightScale : 1;
+  return Math.max(0, Math.min(1, raw / scale));
 }
 
 export function toRenderableColumns(segment: WaveformSegment | null): RenderableWaveformColumn[] {
   if (!segment || segment.unavailableReason) return [];
+  const heightScale = segment.waveform.heightScale ?? (segment.waveform.inferredFormat === 'mono' ? 31 : 127);
   return segment.columns.map((column) => {
     if ('r' in column) {
       return {
-        height: columnHeight(column),
+        height: columnHeight(column, heightScale),
         r: column.r,
         g: column.g,
         b: column.b,
       };
     }
     return {
-      height: columnHeight(column),
+      height: columnHeight(column, heightScale),
       intensity: 'i' in column ? Math.max(0, Math.min(1, column.i / 7)) : 0.75,
     };
   });

@@ -44,7 +44,7 @@ except ImportError:  # pragma: no cover
 
 # ── Parser version ────────────────────────────────────────────────────────────
 
-DROPDEX_ANLZ_PARSER_VERSION = "2.0.0"
+DROPDEX_ANLZ_PARSER_VERSION = "2.1.0"
 
 # Set of tag type codes the installed pyrekordbox can parse.
 # Maintained in sync with pyrekordbox.anlz.tags.TAGS.  Listed here so we can

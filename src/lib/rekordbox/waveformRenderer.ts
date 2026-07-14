@@ -85,9 +85,13 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 /** Normalize one PWV4 color column. Heights map to [0,1]; RGB passes through. */
-export function normalizeColorColumn(col: PreviewColumnColor): NormalizedColorCol {
+export function normalizeColorColumn(
+  col: PreviewColumnColor,
+  heightScale = COLOR_HEIGHT_MAX,
+): NormalizedColorCol {
+  const scale = heightScale > 0 ? heightScale : COLOR_HEIGHT_MAX;
   return {
-    h: clamp(col.h, 0, COLOR_HEIGHT_MAX) / COLOR_HEIGHT_MAX,
+    h: clamp(col.h, 0, scale) / scale,
     r: Math.round(clamp(col.r, 0, 255)),
     g: Math.round(clamp(col.g, 0, 255)),
     b: Math.round(clamp(col.b, 0, 255)),
@@ -95,9 +99,13 @@ export function normalizeColorColumn(col: PreviewColumnColor): NormalizedColorCo
 }
 
 /** Normalize one PWAV / PWV2 monochrome column. Both fields map to [0,1]. */
-export function normalizeMonoColumn(col: PreviewColumnMono): NormalizedMonoCol {
+export function normalizeMonoColumn(
+  col: PreviewColumnMono,
+  heightScale = MONO_HEIGHT_MAX,
+): NormalizedMonoCol {
+  const scale = heightScale > 0 ? heightScale : MONO_HEIGHT_MAX;
   return {
-    h: clamp(col.h, 0, MONO_HEIGHT_MAX) / MONO_HEIGHT_MAX,
+    h: clamp(col.h, 0, scale) / scale,
     i: clamp(col.i, 0, MONO_INTENSITY_MAX) / MONO_INTENSITY_MAX,
   };
 }
@@ -118,7 +126,7 @@ export function normalizeWaveform(wf: TrackPreviewWaveform): NormalizedWaveform 
     const cols = wf.previewColumns as PreviewColumnColor[];
     return {
       kind: 'color',
-      cols: cols.map(normalizeColorColumn),
+      cols: cols.map((column) => normalizeColorColumn(column, wf.heightScale ?? COLOR_HEIGHT_MAX)),
     };
   }
 
@@ -126,7 +134,7 @@ export function normalizeWaveform(wf: TrackPreviewWaveform): NormalizedWaveform 
   const cols = wf.previewColumns as PreviewColumnMono[];
   return {
     kind: 'mono',
-    cols: cols.map(normalizeMonoColumn),
+    cols: cols.map((column) => normalizeMonoColumn(column, wf.heightScale ?? MONO_HEIGHT_MAX)),
   };
 }
 

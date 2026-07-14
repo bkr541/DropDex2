@@ -39,7 +39,7 @@ const ReviewCard = memo(function ReviewCard({
 }: ReviewCardProps) {
   const { activeTrack, status: playerStatus, seek, getAudioElement } = useAudioPlayer();
   const isActive = activeTrack?.id === track.id;
-  const canSeek = isActive && (playerStatus === 'playing' || playerStatus === 'paused');
+  const canSeek = isActive && !['idle', 'resolving', 'loading', 'error'].includes(playerStatus);
 
   const progress = useWaveformProgress(track.id);
 

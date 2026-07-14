@@ -164,6 +164,32 @@ describe('normalizeWaveform', () => {
       expect(col.b).toBe(101);
     }
   });
+
+
+  it('normalizes raw PWV5 detail heights with the 31-step scale exactly once', () => {
+    const waveform = colorWf([{ h: 31, r: 255, g: 128, b: 0 }]);
+    waveform.previewFormat = 'PWV5';
+    waveform.heightScale = 31;
+    waveform.dataVersion = 2;
+    const result = normalizeWaveform(waveform);
+    expect(result!.cols[0].h).toBeCloseTo(1, 5);
+  });
+
+  it('supports legacy normalized PWV5 payloads without shrinking them again', () => {
+    const waveform = colorWf([{ h: 1, r: 255, g: 128, b: 0 }]);
+    waveform.previewFormat = 'PWV5';
+    waveform.heightScale = 1;
+    waveform.dataVersion = 1;
+    const result = normalizeWaveform(waveform);
+    expect(result!.cols[0].h).toBeCloseTo(1, 5);
+  });
+
+  it('normalizes PWV3 mono detail heights with the 31-step scale', () => {
+    const waveform = monoWf([{ h: 31, i: 7 }], true, 'PWV3');
+    waveform.heightScale = 31;
+    const result = normalizeWaveform(waveform);
+    expect(result!.cols[0].h).toBeCloseTo(1, 5);
+  });
 });
 
 // ── buildDisplayBuckets ───────────────────────────────────────────────────────

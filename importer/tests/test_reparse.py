@@ -19,8 +19,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from dropdex_importer.reparse import (
+    _detail_storage_path,
     _query_target_tracks,
     _version_is_older,
+    _write_waveform_row,
     run_reparse,
 )
 
@@ -62,7 +64,9 @@ class TestReparseArgParsing:
             patch("dropdex_importer.reparse._query_target_tracks", return_value=tracks_data) as mock_q,
             patch("dropdex_importer.reparse._reparse_track") as mock_rt,
         ):
-            result = run_reparse("https://example.supabase.co", "key", import_id="imp1", dry_run=True)
+            result = run_reparse(
+                "https://example.supabase.co", "key", import_id="imp1", dry_run=True, client=MagicMock()
+            )
 
         assert result["skipped"] == 2
         assert result["completed"] == 0
@@ -89,7 +93,9 @@ class TestReparseArgParsing:
             patch("dropdex_importer.reparse._query_target_tracks", return_value=tracks_data),
             patch("dropdex_importer.reparse._reparse_track", side_effect=mock_reparse),
         ):
-            result = run_reparse("https://example.supabase.co", "key", import_id="imp1")
+            result = run_reparse(
+                "https://example.supabase.co", "key", import_id="imp1", client=MagicMock()
+            )
 
         assert call_order == ["t1", "t2", "t3"], "All three tracks must be attempted"
         assert result["completed"] == 2
@@ -129,8 +135,10 @@ class TestReparseArgParsing:
         from dropdex_importer.reparse import main as reparse_main
 
         with (
-            patch("dropdex_importer.reparse._query_target_tracks", return_value=[{"id": "t1", "import_id": "i1"}]),
-            patch("dropdex_importer.reparse._reparse_track", return_value="failed"),
+            patch(
+                "dropdex_importer.reparse.run_reparse",
+                return_value={"completed": 0, "partial": 0, "failed": 1, "skipped": 0},
+            ),
             patch.dict(os.environ, {"SUPABASE_URL": "https://x.supabase.co", "SUPABASE_SECRET_KEY": "k"}),
         ):
             exit_code = reparse_main(["--import-id", "i1"])
@@ -142,8 +150,10 @@ class TestReparseArgParsing:
         from dropdex_importer.reparse import main as reparse_main
 
         with (
-            patch("dropdex_importer.reparse._query_target_tracks", return_value=[{"id": "t1", "import_id": "i1"}]),
-            patch("dropdex_importer.reparse._reparse_track", return_value="completed"),
+            patch(
+                "dropdex_importer.reparse.run_reparse",
+                return_value={"completed": 1, "partial": 0, "failed": 0, "skipped": 0},
+            ),
             patch.dict(os.environ, {"SUPABASE_URL": "https://x.supabase.co", "SUPABASE_SECRET_KEY": "k"}),
         ):
             exit_code = reparse_main(["--import-id", "i1"])
@@ -196,6 +206,7 @@ class TestQueryTargetTracks:
 
         tracks = _query_target_tracks(sb, import_id=None, track_id=None, older_than_version="2.0.0")
 
+        assert "analysis_parser_version" in q.select.call_args.args[0]
         ids = [t["id"] for t in tracks]
         # t1 (1.0.0 < 2.0.0) and t3 (None → 0.0.0 < 2.0.0) should be included
         assert "t1" in ids
@@ -301,3 +312,73 @@ class TestReparseTrackBehavior:
         # (no assets → early return). This verifies the early-return path is clean.
         for path in created:
             assert not os.path.exists(path), f"Temp dir not cleaned up: {path}"
+
+
+# ── TestWaveformReparseWriter ─────────────────────────────────────────────────
+
+class TestWaveformReparseWriter:
+    def test_detail_path_is_parser_versioned(self):
+        path = _detail_storage_path("user-1", "import-1", "track-1")
+        assert path.endswith("/detail.v2.1.0.json.gz")
+
+    def test_uploads_regenerated_detail_before_database_update(self):
+        events: list[str] = []
+        sb = MagicMock()
+        storage = MagicMock()
+        sb.storage.from_.return_value = storage
+        storage.upload.side_effect = lambda **kwargs: events.append("upload")
+
+        query = MagicMock()
+        query.upsert.side_effect = lambda *args, **kwargs: events.append("upsert") or query
+        query.execute.return_value = SimpleNamespace(data=None)
+        sb.table.return_value = query
+
+        preview = SimpleNamespace(
+            format="PWV4",
+            column_count=1,
+            columns=[{"h": 127, "r": 255, "g": 0, "b": 0}],
+        )
+        detail = SimpleNamespace(
+            format="PWV5",
+            column_count=1,
+            compressed_bytes=b"gzip-detail",
+        )
+        waveform = SimpleNamespace(preview=preview, detail=detail)
+
+        _write_waveform_row(
+            sb,
+            "import-1",
+            "track-1",
+            waveform,
+            {"DAT": "dat-id", "EXT": "ext-id", "2EX": None},
+            "user-1",
+        )
+
+        assert events == ["upload", "upsert"]
+        storage.upload.assert_called_once()
+        upload_kwargs = storage.upload.call_args.kwargs
+        assert upload_kwargs["path"].endswith("/detail.v2.1.0.json.gz")
+        assert upload_kwargs["file"] == b"gzip-detail"
+
+        row = query.upsert.call_args.args[0]
+        assert row["detail_format"] == "PWV5"
+        assert row["detail_column_count"] == 1
+        assert row["detail_storage_path"].endswith("/detail.v2.1.0.json.gz")
+
+    def test_upload_failure_preserves_existing_waveform_row(self):
+        sb = MagicMock()
+        storage = MagicMock()
+        storage.upload.side_effect = RuntimeError("storage unavailable")
+        sb.storage.from_.return_value = storage
+
+        waveform = SimpleNamespace(
+            preview=SimpleNamespace(format="PWV4", column_count=1, columns=[{"h": 1, "r": 1, "g": 1, "b": 1}]),
+            detail=SimpleNamespace(format="PWV5", column_count=1, compressed_bytes=b"detail"),
+        )
+
+        with pytest.raises(RuntimeError, match="storage unavailable"):
+            _write_waveform_row(
+                sb, "import-1", "track-1", waveform, {}, "user-1"
+            )
+
+        sb.table.assert_not_called()
