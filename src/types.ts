@@ -4,10 +4,7 @@
  */
 
 export type RekordboxSourceBundleType =
-  | 'database_only'
-  | 'usb_folder'
-  | 'zip_bundle'
-  | 'desktop_bridge';
+  'database_only' | 'usb_folder' | 'zip_bundle' | 'desktop_bridge';
 
 export type RekordboxAnalysisStatus =
   | 'not_requested'
@@ -30,7 +27,15 @@ export interface RekordboxImport {
   track_count: number;
   playlist_count: number;
   playlist_track_count: number;
-  status: 'created' | 'uploading' | 'queued' | 'processing' | 'cancel_requested' | 'cancelled' | 'completed' | 'failed';
+  status:
+    | 'created'
+    | 'uploading'
+    | 'queued'
+    | 'processing'
+    | 'cancel_requested'
+    | 'cancelled'
+    | 'completed'
+    | 'failed';
   error_message: string | null;
   error_code?: string | null;
   retryable?: boolean;
@@ -76,11 +81,36 @@ export interface RekordboxTrack {
   key_mode: 'major' | 'minor' | null;
   bpm: number | null;
   duration_seconds: number | null;
+  duration_ms?: number | null;
   rating: number | null;
   comments: string | null;
   file_path: string | null;
+  file_path_normalized?: string | null;
+  file_path_volume?: string | null;
+  file_path_casefold?: string | null;
+  file_name?: string | null;
   file_format: string | null;
+  file_type_code?: number | null;
+  file_extension?: string | null;
+  file_size_bytes?: number | null;
+  bitrate_kbps?: number | null;
+  bit_depth?: number | null;
+  sample_rate_hz?: number | null;
   date_added: string | null;
+  source_title?: string | null;
+  subtitle?: string | null;
+  original_artist?: string | null;
+  composer?: string | null;
+  lyricist?: string | null;
+  track_number?: number | null;
+  disc_number?: number | null;
+  release_year?: number | null;
+  release_date?: string | null;
+  color_name?: string | null;
+  artwork_path?: string | null;
+  isrc?: string | null;
+  hot_cue_auto_load?: boolean | null;
+  source_metadata?: Record<string, unknown>;
   created_at: string;
   // Analysis pipeline fields (null until analysis files are parsed)
   master_db_id: string | null;
@@ -123,15 +153,11 @@ export interface RekordboxUserSettings {
 
 export type RekordboxAssetType = 'DAT' | 'EXT' | '2EX';
 
-export type RekordboxAssetUploadStatus = 'pending' | 'uploading' | 'uploaded' | 'failed';
+export type RekordboxAssetUploadStatus =
+  'pending' | 'uploading' | 'uploaded' | 'failed';
 
 export type RekordboxAssetParseStatus =
-  | 'not_requested'
-  | 'queued'
-  | 'parsing'
-  | 'completed'
-  | 'failed'
-  | 'skipped';
+  'not_requested' | 'queued' | 'parsing' | 'completed' | 'failed' | 'skipped';
 
 export interface RekordboxAnalysisAsset {
   id: string;
@@ -228,7 +254,7 @@ export interface RekordboxCue {
   end_ms: number | null;
   color_table_index: number | null;
   color_hex: string | null;
-  color_name: string | null;
+  color_name?: string | null;
   comment: string | null;
   is_active_loop: boolean | null;
   beat_loop_numerator: number | null;
@@ -337,7 +363,8 @@ export interface DiscoverySetlistResult {
   updated_at: string | null;
 }
 
-export type DiscoveryScrapeStatus = 'queued' | 'running' | 'completed' | 'failed';
+export type DiscoveryScrapeStatus =
+  'queued' | 'running' | 'completed' | 'failed';
 
 export interface DiscoveryScrapeJob {
   job_id: string;
@@ -386,7 +413,7 @@ export interface DiscoverySetTrack {
   source_position_id: string;
   source_track_id: string | null;
   sequence_index: number;
-  track_number: number | null;
+  track_number?: number | null;
   played_with_previous: boolean;
   cue_seconds: number | null;
   cue_text: string | null;
@@ -408,7 +435,8 @@ export interface DiscoverySetlistDetailSummary {
   duration_seconds: number | null;
   track_count: number | null;
   parsed_track_count: number | null;
-  detail_scrape_status: 'not_scraped' | 'queued' | 'running' | 'completed' | 'failed';
+  detail_scrape_status:
+    'not_scraped' | 'queued' | 'running' | 'completed' | 'failed';
   detail_scraped_at: string | null;
   detail_scrape_error: string | null;
   has_timed_cues: boolean | null;
@@ -524,8 +552,16 @@ export interface UserPlaylistProfile {
 // ── Similar Vibes scoring types ───────────────────────────────────────────────
 
 export interface RecommendationReason {
-  kind: 'rekordbox_match' | 'reciprocal_match' | 'same_camelot' | 'relative_key'
-      | 'adjacent_camelot' | 'energy_boost' | 'bpm_proximity' | 'same_genre' | 'same_label';
+  kind:
+    | 'rekordbox_match'
+    | 'reciprocal_match'
+    | 'same_camelot'
+    | 'relative_key'
+    | 'adjacent_camelot'
+    | 'energy_boost'
+    | 'bpm_proximity'
+    | 'same_genre'
+    | 'same_label';
   label: string;
   score: number;
 }

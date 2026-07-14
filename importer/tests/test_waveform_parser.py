@@ -385,6 +385,19 @@ class TestWaveformPriority:
         assert bundle.preview is None
         assert bundle.detail is None
 
+    def test_reports_retained_modern_2ex_waveform_tags_as_unsupported(self):
+        two_ex = _make_asset("2EX")
+        two_ex.tag_types = ["PWV6", "PWVC"]
+        with patch("dropdex_importer.waveform_parser.get_first_tag", return_value=None):
+            bundle = extract_waveforms(None, None, two_ex)
+
+        assert bundle.preview is None
+        assert bundle.detail is None
+        warning = next(w for w in bundle.warnings if w.code == "WAVEFORM_FORMAT_UNSUPPORTED")
+        assert warning.asset_type == "2EX"
+        assert "PWV6" in warning.message
+        assert "PWVC" in warning.message
+
     def test_clamp_u8_boundary(self):
         assert _clamp_u8(-1.0) == 0
         assert _clamp_u8(256.0) == 255

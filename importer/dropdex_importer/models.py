@@ -38,6 +38,33 @@ class NormalizedTrack:
     cue_update_count: Optional[int] = None
     analysis_data_update_count: Optional[int] = None
     information_update_count: Optional[int] = None
+    # Fidelity fields retained from Device Library Plus. Existing presentation
+    # fields remain for compatibility while these preserve exact source values.
+    source_title: Optional[str] = None
+    subtitle: Optional[str] = None
+    original_artist: Optional[str] = None
+    composer: Optional[str] = None
+    lyricist: Optional[str] = None
+    duration_ms: Optional[int] = None
+    track_number: Optional[int] = None
+    disc_number: Optional[int] = None
+    release_year: Optional[int] = None
+    release_date: Optional[str] = None
+    color_name: Optional[str] = None
+    artwork_path: Optional[str] = None
+    file_name: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+    file_type_code: Optional[int] = None
+    file_extension: Optional[str] = None
+    bitrate_kbps: Optional[int] = None
+    bit_depth: Optional[int] = None
+    sample_rate_hz: Optional[int] = None
+    isrc: Optional[str] = None
+    hot_cue_auto_load: Optional[bool] = None
+    file_path_normalized: Optional[str] = None
+    file_path_volume: Optional[str] = None
+    file_path_casefold: Optional[str] = None
+    source_metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

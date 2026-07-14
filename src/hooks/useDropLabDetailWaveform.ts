@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BoundedTtlCache } from '../lib/cache/boundedTtlCache';
 import { supabase } from '../lib/supabase';
 import {
   buildDetailWaveformState,
@@ -8,7 +9,32 @@ import {
   type WaveformLoadState,
 } from '../lib/queries/waveformValidation';
 
-const detailCache = new Map<string, ResolvedWaveformLoadState>();
+const DETAIL_CACHE_MAX_ENTRIES = 250;
+const DETAIL_CACHE_TTL_LOADED_MS = 10 * 60_000;
+const DETAIL_CACHE_TTL_INVALID_MS = 5 * 60_000;
+
+const detailCache = new BoundedTtlCache<string, ResolvedWaveformLoadState>({
+  maxEntries: DETAIL_CACHE_MAX_ENTRIES,
+  ttlMs: DETAIL_CACHE_TTL_LOADED_MS,
+});
+
+export function invalidateDetailWaveformCache(
+  importId?: string,
+  trackIds?: string[],
+): void {
+  if (!importId) {
+    detailCache.clear();
+    return;
+  }
+  const selected = trackIds ? new Set(trackIds) : null;
+  const prefix = `${importId}\u0000`;
+  detailCache.deleteWhere((key) => {
+    if (!key.startsWith(prefix)) return false;
+    if (!selected) return true;
+    const trackId = key.slice(prefix.length).split('\u0000', 1)[0];
+    return selected.has(trackId);
+  });
+}
 
 async function parseDetailBlob(blob: Blob): Promise<unknown> {
   let decompressionError: unknown = null;
@@ -27,11 +53,12 @@ async function parseDetailBlob(blob: Blob): Promise<unknown> {
   try {
     return JSON.parse(await blob.text()) as unknown;
   } catch (plainJsonError) {
-    const detail = decompressionError instanceof Error
-      ? decompressionError.message
-      : plainJsonError instanceof Error
-        ? plainJsonError.message
-        : 'Unknown decode error';
+    const detail =
+      decompressionError instanceof Error
+        ? decompressionError.message
+        : plainJsonError instanceof Error
+          ? plainJsonError.message
+          : 'Unknown decode error';
     throw new Error(`Detailed waveform could not be decoded: ${detail}`);
   }
 }
@@ -51,8 +78,11 @@ export function useDropLabDetailWaveform(
   previewState: WaveformLoadState | undefined,
 ): DropLabDetailWaveformResult {
   const initialPreview = previewState ?? idleWaveformState(trackId);
-  const [displayState, setDisplayState] = useState<WaveformLoadState>(initialPreview);
-  const [detailState, setDetailState] = useState<WaveformLoadState>(idleWaveformState(trackId));
+  const [displayState, setDisplayState] =
+    useState<WaveformLoadState>(initialPreview);
+  const [detailState, setDetailState] = useState<WaveformLoadState>(
+    idleWaveformState(trackId),
+  );
   const [usedFallback, setUsedFallback] = useState(false);
   const [retryTrigger, setRetryTrigger] = useState(0);
   const requestIdRef = useRef(0);
@@ -76,7 +106,12 @@ export function useDropLabDetailWaveform(
     }
 
     const previewWaveform = currentPreview.waveform;
-    if (!previewWaveform.detailStorageBucket || !previewWaveform.detailStoragePath) {
+    if (
+      !previewWaveform.detailStorageBucket ||
+      !previewWaveform.detailStoragePath
+    ) {
+      // Do not cache absence. Analysis may still be finishing and a later
+      // preview-row refresh can expose a newly generated detail object.
       setDetailState({ status: 'unavailable', trackId });
       setUsedFallback(true);
       return;
@@ -85,9 +120,10 @@ export function useDropLabDetailWaveform(
     const cacheKey = [
       importId,
       trackId,
+      previewWaveform.parserVersion ?? 'unknown-parser',
       previewWaveform.detailStorageBucket,
       previewWaveform.detailStoragePath,
-    ].join(':');
+    ].join('\u0000');
     const cached = detailCache.get(cacheKey);
     if (cached) {
       setDetailState(cached);
@@ -108,7 +144,9 @@ export function useDropLabDetailWaveform(
         .from(previewWaveform.detailStorageBucket!)
         .download(previewWaveform.detailStoragePath!);
       if (error || !data) {
-        throw new Error(error?.message ?? 'Detailed waveform download returned no data.');
+        throw new Error(
+          error?.message ?? 'Detailed waveform download returned no data.',
+        );
       }
 
       try {
@@ -118,26 +156,29 @@ export function useDropLabDetailWaveform(
         return {
           status: 'invalid' as const,
           trackId,
-          error: decodeError instanceof Error
-            ? decodeError.message
-            : 'Detailed waveform could not be decoded.',
+          error:
+            decodeError instanceof Error
+              ? decodeError.message
+              : 'Detailed waveform could not be decoded.',
           reason: 'invalid' as const,
           retryable: false as const,
         };
       }
     })()
       .then((resolved) => {
-        if (requestId !== requestIdRef.current || resolved.trackId !== trackId) return;
+        if (requestId !== requestIdRef.current || resolved.trackId !== trackId)
+          return;
         setDetailState(resolved);
         if (resolved.status === 'loaded') {
-          detailCache.set(cacheKey, resolved);
+          detailCache.set(cacheKey, resolved, DETAIL_CACHE_TTL_LOADED_MS);
           setDisplayState(resolved);
           setUsedFallback(false);
         } else {
-          // Invalid detail data is deterministic for this storage object. Cache
-          // that terminal state so unrelated rerenders or revisits do not keep
-          // downloading and decoding the same malformed payload.
-          detailCache.set(cacheKey, resolved);
+          // Invalid detail is deterministic for a specific parser-versioned
+          // object, but it is bounded and expires so a repaired object can win.
+          if (resolved.status === 'invalid') {
+            detailCache.set(cacheKey, resolved, DETAIL_CACHE_TTL_INVALID_MS);
+          }
           setDisplayState(currentPreview);
           setUsedFallback(true);
         }
@@ -147,9 +188,14 @@ export function useDropLabDetailWaveform(
         const failure: ResolvedWaveformLoadState = {
           status: 'error',
           trackId,
-          error: error instanceof Error ? error.message : 'Detailed waveform failed to load.',
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Detailed waveform failed to load.',
           retryable: true,
         };
+        // Transport failures are intentionally not cached. A retry should make
+        // a real network request rather than rediscovering a cached failure.
         setDetailState(failure);
         setDisplayState(currentPreview);
         setUsedFallback(true);
@@ -157,9 +203,14 @@ export function useDropLabDetailWaveform(
   }, [importId, trackId, previewState, retryTrigger]);
 
   const retry = useCallback(() => {
-    if (!trackId || detailState.status !== 'error') return;
+    if (
+      !trackId ||
+      (detailState.status !== 'error' && detailState.status !== 'unavailable')
+    )
+      return;
+    if (importId) invalidateDetailWaveformCache(importId, [trackId]);
     setRetryTrigger((value) => value + 1);
-  }, [detailState.status, trackId]);
+  }, [detailState.status, importId, trackId]);
 
   return { displayState, detailState, usedFallback, retry };
 }

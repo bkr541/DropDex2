@@ -21,6 +21,7 @@ import pytest
 from dropdex_importer.reparse import (
     _detail_storage_path,
     _query_target_tracks,
+    _reconcile_cues,
     _version_is_older,
     _write_waveform_row,
     run_reparse,
@@ -382,3 +383,89 @@ class TestWaveformReparseWriter:
             )
 
         sb.table.assert_not_called()
+
+
+class _CueQuery:
+    def __init__(self, existing, operations):
+        self.existing = existing
+        self.operations = operations
+        self.operation = "select"
+        self.payload = None
+        self.filters = []
+
+    def select(self, *_args, **_kwargs):
+        self.operation = "select"
+        return self
+
+    def eq(self, field, value):
+        self.filters.append((field, value))
+        return self
+
+    def update(self, payload):
+        self.operation = "update"
+        self.payload = payload
+        return self
+
+    def delete(self):
+        self.operation = "delete"
+        return self
+
+    def upsert(self, payload, **kwargs):
+        self.operation = "upsert"
+        self.payload = payload
+        self.upsert_kwargs = kwargs
+        return self
+
+    def execute(self):
+        if self.operation == "select":
+            return SimpleNamespace(data=self.existing)
+        self.operations.append((self.operation, self.payload, list(self.filters)))
+        return SimpleNamespace(data=None)
+
+
+class _CueSb:
+    def __init__(self, existing):
+        self.existing = existing
+        self.operations = []
+
+    def table(self, name):
+        assert name == "rekordbox_cues"
+        return _CueQuery(self.existing, self.operations)
+
+
+class TestCueReparseOwnership:
+    def test_deletes_parser_only_cue_that_disappeared(self):
+        sb = _CueSb([{
+            "id": "stale-anlz",
+            "dedupe_key": "anlz:i1:PCO2:0",
+            "cue_family": "hot",
+            "hot_cue_slot": 1,
+            "start_ms": 1000,
+            "source_kind": "PCO2",
+            "source_db_present": False,
+            "source_anlz_present": True,
+        }])
+
+        _reconcile_cues(sb, "i1", "t1", [], 5.0)
+
+        assert sb.operations == [("delete", None, [("id", "stale-anlz")])]
+
+    def test_retains_db_owned_cue_and_clears_stale_anlz_ownership(self):
+        sb = _CueSb([{
+            "id": "merged",
+            "dedupe_key": "db:i1:cue-1",
+            "cue_family": "memory",
+            "hot_cue_slot": None,
+            "start_ms": 1000,
+            "source_kind": "PCOB",
+            "source_db_present": True,
+            "source_anlz_present": True,
+        }])
+
+        _reconcile_cues(sb, "i1", "t1", [], 5.0)
+
+        assert sb.operations == [(
+            "update",
+            {"source_anlz_present": False, "source_conflict": False},
+            [("id", "merged")],
+        )]

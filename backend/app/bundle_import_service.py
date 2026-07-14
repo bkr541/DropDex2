@@ -531,7 +531,7 @@ def _import_bundle_sync(
 
                     from .analysis_feature_writer import write_waveform  # noqa: PLC0415
 
-                    wf = extract_waveforms(bundle.dat, bundle.ext)
+                    wf = extract_waveforms(bundle.dat, bundle.ext, bundle.two_ex)
                     ok = write_waveform(
                         sb, import_id, track_id, wf, user_id, asset_ids, DROPDEX_ANLZ_PARSER_VERSION
                     )

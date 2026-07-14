@@ -41,6 +41,7 @@ import {
   type NormalizedColorCol,
   type NormalizedMonoCol,
 } from '../../lib/rekordbox/waveformRenderer';
+import { nextWaveformSeekFraction } from '../../lib/rekordbox/waveformKeyboard';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,8 @@ export interface RekordboxPreviewWaveformProps {
   dimmed?: boolean;
   /** Accessible label for loaded waveform data. */
   ariaLabel?: string;
+  /** Fraction moved by arrow keys when seeking. Defaults to 1%. */
+  seekStep?: number;
 }
 
 // ── Hook: observe container size ──────────────────────────────────────────────
@@ -101,15 +104,22 @@ function useDevicePixelRatio(): number {
 
 function useDocumentTheme(): 'dark' | 'light' {
   const [theme, setTheme] = useState<'dark' | 'light'>(() =>
-    document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark',
+    document.documentElement.getAttribute('data-theme') === 'light'
+      ? 'light'
+      : 'dark',
   );
   useEffect(() => {
     const mo = new MutationObserver(() => {
       setTheme(
-        document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark',
+        document.documentElement.getAttribute('data-theme') === 'light'
+          ? 'light'
+          : 'dark',
       );
     });
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    mo.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
     return () => mo.disconnect();
   }, []);
   return theme;
@@ -184,6 +194,7 @@ export function RekordboxPreviewWaveform({
   onRetry,
   dimmed = false,
   ariaLabel,
+  seekStep = 0.01,
 }: RekordboxPreviewWaveformProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -200,7 +211,8 @@ export function RekordboxPreviewWaveform({
 
   const displayWidth = Math.max(1, Math.floor(containerWidth));
   const buckets = useMemo(
-    () => (normalized ? buildDisplayBuckets(normalized.cols, displayWidth) : null),
+    () =>
+      normalized ? buildDisplayBuckets(normalized.cols, displayWidth) : null,
     [normalized, displayWidth],
   );
 
@@ -235,8 +247,25 @@ export function RekordboxPreviewWaveform({
     if (!onSeek || state.status !== 'loaded') return;
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const fraction = Math.max(
+      0,
+      Math.min(1, (e.clientX - rect.left) / rect.width),
+    );
     onSeek(fraction);
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (!onSeek || state.status !== 'loaded') return;
+    const next = nextWaveformSeekFraction(
+      event.key,
+      activeProgress ?? 0,
+      seekStep,
+    );
+    if (next == null) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    onSeek(next);
   }
 
   const fallbackInvalidState: WaveformLoadState | null =
@@ -252,23 +281,49 @@ export function RekordboxPreviewWaveform({
   const displayState = fallbackInvalidState ?? state;
 
   const label = ariaLabel || waveformStateLabel(displayState);
-  const progress = activeProgress != null ? clampProgress(activeProgress) : null;
+  const progress =
+    activeProgress != null ? clampProgress(activeProgress) : null;
   const canSeek = Boolean(onSeek && displayState.status === 'loaded');
 
   return (
     <div
       ref={containerRef}
-      className={cn('relative overflow-hidden', canSeek && 'cursor-pointer', className)}
+      className={cn(
+        'relative overflow-hidden',
+        canSeek &&
+          'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+        className,
+      )}
       style={{ height }}
-      role={displayState.status === 'loaded' ? 'img' : 'group'}
+      role={
+        canSeek ? 'slider' : displayState.status === 'loaded' ? 'img' : 'group'
+      }
       aria-label={label}
-      aria-live={displayState.status === 'error' || displayState.status === 'invalid' ? 'polite' : undefined}
+      aria-valuemin={canSeek ? 0 : undefined}
+      aria-valuemax={canSeek ? 100 : undefined}
+      aria-valuenow={canSeek ? Math.round((progress ?? 0) * 100) : undefined}
+      aria-valuetext={
+        canSeek
+          ? `${Math.round((progress ?? 0) * 100)}% through track`
+          : undefined
+      }
+      tabIndex={canSeek ? 0 : undefined}
+      aria-live={
+        displayState.status === 'error' || displayState.status === 'invalid'
+          ? 'polite'
+          : undefined
+      }
       onClick={canSeek ? handleContainerClick : undefined}
+      onKeyDown={canSeek ? handleKeyDown : undefined}
       data-waveform-status={displayState.status}
       data-waveform-track-id={displayState.trackId ?? undefined}
     >
       {displayState.status !== 'loaded' ? (
-        <WaveformEmptyState state={displayState} height={height} onRetry={onRetry} />
+        <WaveformEmptyState
+          state={displayState}
+          height={height}
+          onRetry={onRetry}
+        />
       ) : (
         <>
           <canvas
@@ -313,12 +368,18 @@ export function RekordboxPreviewWaveform({
 
 function waveformStateLabel(state: WaveformLoadState): string {
   switch (state.status) {
-    case 'idle': return 'Waveform not requested';
-    case 'loading': return 'Loading waveform';
-    case 'loaded': return 'Track waveform';
-    case 'unavailable': return 'No waveform available for this track';
-    case 'error': return `Waveform failed to load: ${state.error}`;
-    case 'invalid': return `${state.reason === 'unsupported' ? 'Unsupported' : 'Invalid'} waveform data: ${state.error}`;
+    case 'idle':
+      return 'Waveform not requested';
+    case 'loading':
+      return 'Loading waveform';
+    case 'loaded':
+      return 'Track waveform';
+    case 'unavailable':
+      return 'No waveform available for this track';
+    case 'error':
+      return `Waveform failed to load: ${state.error}`;
+    case 'invalid':
+      return `${state.reason === 'unsupported' ? 'Unsupported' : 'Invalid'} waveform data: ${state.error}`;
   }
 }
 
@@ -330,7 +391,11 @@ interface WaveformEmptyStateProps {
   onRetry?: () => void;
 }
 
-function WaveformEmptyState({ state, height, onRetry }: WaveformEmptyStateProps) {
+function WaveformEmptyState({
+  state,
+  height,
+  onRetry,
+}: WaveformEmptyStateProps) {
   if (state.status === 'loading') {
     return (
       <div className="absolute inset-0 flex items-center justify-center px-1">
@@ -344,30 +409,54 @@ function WaveformEmptyState({ state, height, onRetry }: WaveformEmptyStateProps)
 
   if (state.status === 'idle') {
     return (
-      <div className="absolute inset-0 flex items-center justify-center px-1" aria-hidden="true">
+      <div
+        className="absolute inset-0 flex items-center justify-center px-1"
+        aria-hidden="true"
+      >
         <div className="w-full h-px rounded-sm bg-muted-foreground/10" />
       </div>
     );
   }
 
   const compact = height < 32;
-  const message = state.status === 'unavailable'
-    ? (compact ? 'No waveform' : 'No waveform available')
-    : state.status === 'error'
-      ? (compact ? 'Load failed' : `Waveform failed: ${state.error}`)
-      : state.reason === 'unsupported'
-        ? (compact ? 'Unsupported data' : `Unsupported waveform: ${state.error}`)
-        : (compact ? 'Invalid data' : `Invalid waveform: ${state.error}`);
+  const message =
+    state.status === 'unavailable'
+      ? compact
+        ? 'No waveform'
+        : 'No waveform available'
+      : state.status === 'error'
+        ? compact
+          ? 'Load failed'
+          : `Waveform failed: ${state.error}`
+        : state.reason === 'unsupported'
+          ? compact
+            ? 'Unsupported data'
+            : `Unsupported waveform: ${state.error}`
+          : compact
+            ? 'Invalid data'
+            : `Invalid waveform: ${state.error}`;
 
-  const tone = state.status === 'error'
-    ? 'text-red-300 bg-red-500/10 border-red-400/20'
-    : state.status === 'invalid'
-      ? 'text-amber-300 bg-amber-500/10 border-amber-400/20'
-      : 'text-muted-foreground bg-muted-foreground/5 border-[var(--color-border-faint)]';
+  const tone =
+    state.status === 'error'
+      ? 'text-red-300 bg-red-500/10 border-red-400/20'
+      : state.status === 'invalid'
+        ? 'text-amber-300 bg-amber-500/10 border-amber-400/20'
+        : 'text-muted-foreground bg-muted-foreground/5 border-[var(--color-border-faint)]';
 
   return (
-    <div className={cn('absolute inset-0 flex items-center justify-center gap-2 px-2 border', tone)}>
-      <span className={cn('truncate text-center', compact ? 'text-[9px]' : 'text-xs')} title={message}>
+    <div
+      className={cn(
+        'absolute inset-0 flex items-center justify-center gap-2 px-2 border',
+        tone,
+      )}
+    >
+      <span
+        className={cn(
+          'truncate text-center',
+          compact ? 'text-[9px]' : 'text-xs',
+        )}
+        title={message}
+      >
         {message}
       </span>
       {state.status === 'error' && onRetry && (

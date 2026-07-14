@@ -26,6 +26,8 @@ from dropdex_importer.parser import (
     _extract_recommendations,
     _extract_analysis_manifest,
     normalize_analysis_path,
+    normalize_audio_path,
+    _extract_tracks,
 )
 from dropdex_importer.supabase_writer import (
     ImportWriteResult,
@@ -79,6 +81,106 @@ class TestNormalizeAnalysisPath:
     def test_lowercase_drive_letter_stripped(self):
         result = normalize_analysis_path("c:/PIONEER/USBANLZ/abc.DAT")
         assert result == "/PIONEER/USBANLZ/abc.DAT"
+
+class TestNormalizeAudioPath:
+    def test_windows_path_preserves_volume_and_relative_identity(self):
+        normalized, volume = normalize_audio_path(r"E:\\Contents\\Artist\\Track.FLAC")
+        assert normalized == "/Contents/Artist/Track.FLAC"
+        assert volume == "E:"
+
+    def test_macos_volume_path_preserves_volume(self):
+        normalized, volume = normalize_audio_path("/Volumes/DJ USB/Contents/Track.mp3")
+        assert normalized == "/Contents/Track.mp3"
+        assert volume == "DJ USB"
+
+    def test_linux_media_path_preserves_volume(self):
+        normalized, volume = normalize_audio_path("/media/kody/DROPDEX/Contents/Track.wav")
+        assert normalized == "/Contents/Track.wav"
+        assert volume == "DROPDEX"
+
+    def test_traversal_is_rejected(self):
+        assert normalize_audio_path("/Volumes/DJ USB/Contents/../secret.mp3")[0] is None
+
+
+class TestTrackMetadataFidelity:
+    def test_extracts_exact_duration_paths_and_raw_file_metadata(self):
+        from datetime import datetime, timezone
+        from types import SimpleNamespace
+
+        content = SimpleNamespace(
+            content_id=42,
+            title=None,
+            titleForSearch=None,
+            subtitle="Extended Mix",
+            artist_name="Artist",
+            remixer_name="Remixer",
+            original_artist_name="Original Artist",
+            composer_name="Composer",
+            lyricist_name="Lyricist",
+            album_name="Album",
+            genre_name="Genre",
+            label_name="Label",
+            color=SimpleNamespace(name="Purple"),
+            image_path="/PIONEER/ART/cover.jpg",
+            key=SimpleNamespace(name="8A"),
+            bpmx100=14225,
+            length=183456,
+            djComment="Comment",
+            path=r"E:\\Contents\\Artist\\Track.flac",
+            fileName="Track.flac",
+            fileType=99,
+            fileSize=12345678,
+            bitrate=1411,
+            bitDepth=24,
+            samplingRate=48000,
+            isrc="USABC1234567",
+            isHotCueAutoLoadOn=1,
+            dateAdded=datetime(2026, 7, 14, tzinfo=timezone.utc),
+            releaseDate=datetime(2026, 6, 1, tzinfo=timezone.utc),
+            releaseYear=2026,
+            trackNo=3,
+            discNo=2,
+            rating=5,
+            masterDbId=10,
+            masterContentId=20,
+            analysisDataFilePath="/PIONEER/USBANLZ/P001/ANLZ0000.DAT",
+            analysedBits=16,
+            cueUpdateCount=2,
+            analysisDataUpdateCount=3,
+            informationUpdateCount=4,
+            to_dict=lambda: {
+                "content_id": 42,
+                "title": None,
+                "length": 183456,
+                "releaseDate": datetime(2026, 6, 1, tzinfo=timezone.utc),
+                "fileType": 99,
+            },
+        )
+        db = MagicMock()
+        db.get_content.return_value.all.return_value = [content]
+        library = ParsedLibrary()
+
+        _extract_tracks(db, library)
+
+        track = library.tracks[0]
+        assert track.title == "(untitled)"
+        assert track.source_title is None
+        assert track.duration_ms == 183456
+        assert track.duration_seconds == 183
+        assert track.file_path_normalized == "/Contents/Artist/Track.flac"
+        assert track.file_path_volume == "E:"
+        assert track.file_path_casefold == "/contents/artist/track.flac"
+        assert track.file_type_code == 99
+        assert track.file_format is None
+        assert track.file_extension == "FLAC"
+        assert track.file_size_bytes == 12345678
+        assert track.bitrate_kbps == 1411
+        assert track.bit_depth == 24
+        assert track.sample_rate_hz == 48000
+        assert track.original_artist == "Original Artist"
+        assert track.composer == "Composer"
+        assert track.lyricist == "Lyricist"
+        assert track.source_metadata["releaseDate"] == "2026-06-01T00:00:00+00:00"
 
 
 class TestDeriveAnlzSiblings:

@@ -65,12 +65,16 @@ class WaveformBundle:
 def extract_waveforms(
     dat_asset: Optional[ParsedAnalysisAsset],
     ext_asset: Optional[ParsedAnalysisAsset],
+    two_ex_asset: Optional[ParsedAnalysisAsset] = None,
 ) -> WaveformBundle:
     """
     Extract preview and detail waveforms from a track's ANLZ files.
 
     Preview: PWV4 (EXT) > PWAV (DAT) > PWV2 (DAT).
     Detail:  PWV5 (EXT) > PWV3 (EXT).
+
+    PWV6/PWV7/PWVC in 2EX are retained but explicitly reported as unsupported
+    so callers can distinguish a modern format from genuinely missing data.
     """
     all_warnings: List[AnalysisParseWarning] = []
     preview: Optional[PreviewWaveformResult] = None
@@ -104,6 +108,20 @@ def extract_waveforms(
         if tag is not None:
             detail, warns = _extract_pwv3(tag, ext_asset)
             all_warnings.extend(warns)
+
+    if two_ex_asset is not None:
+        modern_tags = sorted(
+            {tag for tag in two_ex_asset.tag_types if tag in {"PWV6", "PWV7", "PWVC"}}
+        )
+        if modern_tags:
+            all_warnings.append(AnalysisParseWarning(
+                code="WAVEFORM_FORMAT_UNSUPPORTED",
+                asset_type=two_ex_asset.asset_type,
+                message=(
+                    "Modern Rekordbox waveform tags were retained but are not yet decoded: "
+                    + ", ".join(modern_tags)
+                ),
+            ))
 
     return WaveformBundle(preview=preview, detail=detail, warnings=all_warnings)
 

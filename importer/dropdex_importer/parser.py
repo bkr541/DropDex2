@@ -67,6 +67,34 @@ def _int_or_none(value: object) -> Optional[int]:
         return None
 
 
+def _bool_or_none(value: object) -> Optional[bool]:
+    """Normalize Rekordbox integer flags without inventing False for null."""
+    parsed = _int_or_none(value)
+    return None if parsed is None else bool(parsed)
+
+
+def _date_or_none(value: object) -> Optional[str]:
+    if value is None:
+        return None
+    try:
+        return value.isoformat()  # type: ignore[union-attr]
+    except Exception:
+        return _str_or_none(value)
+
+
+def _json_scalar(value: object) -> object:
+    """Convert ORM scalar values to JSON-safe primitives for diagnostics."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        try:
+            return isoformat()
+        except Exception:
+            pass
+    return str(value)
+
+
 def _id_str_or_none(value: object) -> Optional[str]:
     """Convert a numeric Rekordbox ID to its canonical string form, or None.
 
@@ -85,6 +113,39 @@ def _id_str_or_none(value: object) -> Optional[str]:
 # ── Analysis path normalization ───────────────────────────────────────────────
 
 _DRIVE_LETTER_RE = re.compile(r'^/?[A-Za-z]:')
+
+_WINDOWS_AUDIO_PATH_RE = re.compile(r"^/?([A-Za-z]:)(?:/|$)")
+_VOLUMES_AUDIO_PATH_RE = re.compile(r"^/Volumes/([^/]+)(?:/(.*))?$", re.IGNORECASE)
+_MEDIA_AUDIO_PATH_RE = re.compile(r"^/(?:run/)?media/[^/]+/([^/]+)(?:/(.*))?$", re.IGNORECASE)
+
+
+def normalize_audio_path(raw_path: str) -> tuple[Optional[str], Optional[str]]:
+    """Return a portable USB-relative path and any explicit source volume hint."""
+    if not raw_path or not raw_path.strip():
+        return None, None
+
+    normalized = raw_path.strip().replace("\\", "/")
+    volume: Optional[str] = None
+
+    windows = _WINDOWS_AUDIO_PATH_RE.match(normalized)
+    if windows:
+        volume = windows.group(1)
+        normalized = "/" + normalized[windows.end() :].lstrip("/")
+    else:
+        volumes = _VOLUMES_AUDIO_PATH_RE.match(normalized)
+        media = _MEDIA_AUDIO_PATH_RE.match(normalized)
+        match = volumes or media
+        if match:
+            volume = match.group(1)
+            normalized = "/" + (match.group(2) or "")
+
+    normalized = re.sub(r"/+", "/", normalized)
+    if not normalized.startswith("/"):
+        normalized = "/" + normalized
+    parts = [part for part in normalized.split("/") if part]
+    if ".." in parts:
+        return None, volume
+    return "/" + "/".join(parts), volume
 
 
 def normalize_analysis_path(raw_path: str) -> Optional[str]:
@@ -243,14 +304,21 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
     logger.debug("Raw content rows: %d", len(contents))
 
     for c in contents:
-        title = _str_or_none(c.title) or "(untitled)"
+        source_title = _str_or_none(c.title)
+        title = source_title or "(untitled)"
 
         # Relationships resolve via association_proxy; return None when FK is null.
         artist = _str_or_none(c.artist_name)
         remixer = _str_or_none(c.remixer_name)
+        original_artist = _str_or_none(getattr(c, "original_artist_name", None))
+        composer = _str_or_none(getattr(c, "composer_name", None))
+        lyricist = _str_or_none(getattr(c, "lyricist_name", None))
         album = _str_or_none(c.album_name)
         genre = _str_or_none(c.genre_name)
         label = _str_or_none(c.label_name)
+        color = getattr(c, "color", None)
+        color_name = _str_or_none(getattr(color, "name", None))
+        artwork_path = _str_or_none(getattr(c, "image_path", None))
 
         # Key is a separate table; c.key is the ORM relationship object.
         musical_key: Optional[str] = _str_or_none(c.key.name) if c.key else None
@@ -263,13 +331,16 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
             bpm = round(c.bpmx100 / 100.0, 2)
 
         # Duration is stored in milliseconds.
-        duration_seconds: Optional[int] = None
-        if c.length:
-            duration_seconds = int(c.length // 1000)
+        duration_ms = _int_or_none(c.length)
+        duration_seconds = duration_ms // 1000 if duration_ms is not None else None
 
         comments = _str_or_none(c.djComment)
         file_path = _str_or_none(c.path)
-        file_format = _FILE_TYPE_NAMES.get(c.fileType) if c.fileType is not None else None
+        file_path_normalized, file_path_volume = normalize_audio_path(file_path or "")
+        file_type_code = _int_or_none(c.fileType)
+        file_format = _FILE_TYPE_NAMES.get(file_type_code) if file_type_code is not None else None
+        file_name = _str_or_none(getattr(c, "fileName", None)) or (Path(file_path_normalized).name if file_path_normalized else None)
+        file_extension = Path(file_name).suffix.lstrip(".").upper() if file_name and Path(file_name).suffix else None
 
         date_added: Optional[str] = None
         if c.dateAdded is not None:
@@ -277,6 +348,16 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
                 date_added = c.dateAdded.strftime("%Y-%m-%d")
             except Exception:
                 date_added = None
+        release_date = _date_or_none(getattr(c, "releaseDate", None))
+
+        try:
+            source_metadata = {
+                key: _json_scalar(value)
+                for key, value in c.to_dict().items()
+                if value is not None
+            }
+        except Exception:
+            source_metadata = {}
 
         # Analysis pipeline fields
         master_db_id = _id_str_or_none(c.masterDbId)
@@ -304,6 +385,31 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
                 file_path=file_path,
                 file_format=file_format,
                 date_added=date_added,
+                source_title=source_title,
+                subtitle=_str_or_none(getattr(c, "subtitle", None)),
+                original_artist=original_artist,
+                composer=composer,
+                lyricist=lyricist,
+                duration_ms=duration_ms,
+                track_number=_int_or_none(getattr(c, "trackNo", None)),
+                disc_number=_int_or_none(getattr(c, "discNo", None)),
+                release_year=_int_or_none(getattr(c, "releaseYear", None)),
+                release_date=release_date,
+                color_name=color_name,
+                artwork_path=artwork_path,
+                file_name=file_name,
+                file_size_bytes=_int_or_none(getattr(c, "fileSize", None)),
+                file_type_code=file_type_code,
+                file_extension=file_extension,
+                bitrate_kbps=_int_or_none(getattr(c, "bitrate", None)),
+                bit_depth=_int_or_none(getattr(c, "bitDepth", None)),
+                sample_rate_hz=_int_or_none(getattr(c, "samplingRate", None)),
+                isrc=_str_or_none(getattr(c, "isrc", None)),
+                hot_cue_auto_load=_bool_or_none(getattr(c, "isHotCueAutoLoadOn", None)),
+                file_path_normalized=file_path_normalized,
+                file_path_volume=file_path_volume,
+                file_path_casefold=file_path_normalized.casefold() if file_path_normalized else None,
+                source_metadata=source_metadata,
                 camelot_key=key_identity.camelot_key,
                 normalized_key_name=key_identity.normalized_key_name,
                 key_tonic=key_identity.key_tonic,
