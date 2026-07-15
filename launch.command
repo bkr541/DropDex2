@@ -89,16 +89,38 @@ echo "Cleaning up ports 3000 and 8000..."
 lsof -ti :3000 | xargs kill -9 2>/dev/null || true
 lsof -ti :8000 | xargs kill -9 2>/dev/null || true
 
-# ── Install frontend deps if needed ──────────────────────────────
+# ── Install and verify frontend/Electron dependencies ───────────
 
-if [[ ! -d "$DIR/node_modules" ]]; then
-  echo "Installing frontend dependencies..."
-  npm install
+install_frontend_dependencies() {
+  echo "Installing frontend and Electron development dependencies..."
+  # Electron is a devDependency. --include=dev overrides npm configs such as
+  # NODE_ENV=production or omit=dev that would otherwise silently skip it.
+  npm install --include=dev
+}
+
+# node_modules may predate the Electron conversion, so checking only whether
+# the directory exists is not enough. Repair the dependency set when the
+# Electron CLI is absent.
+if [[ ! -d "$DIR/node_modules" || ! -x "$ELECTRON_BIN" ]]; then
+  install_frontend_dependencies
 fi
 
-if [[ ! -x "$ELECTRON_BIN" ]]; then
-  echo "ERROR: Electron executable not found at $ELECTRON_BIN."
-  echo "Run npm install from the DropDex repo root, then launch again."
+# A cancelled Electron download can leave the npm package and .bin shim in
+# place without a usable native runtime. Ask Electron for its version and
+# rebuild it once when that smoke test fails.
+if [[ -x "$ELECTRON_BIN" ]] && ! "$ELECTRON_BIN" --version >/dev/null 2>&1; then
+  echo "Electron is present but incomplete; repairing its native runtime..."
+  npm rebuild electron
+fi
+
+if [[ ! -x "$ELECTRON_BIN" ]] || ! "$ELECTRON_BIN" --version >/dev/null 2>&1; then
+  echo "ERROR: Electron could not be installed or started from $ELECTRON_BIN."
+  echo "Try the following from the DropDex repo root:"
+  echo "  rm -rf node_modules/electron node_modules/.bin/electron"
+  echo "  npm install --include=dev"
+  echo ""
+  echo "Node version: $(node --version 2>/dev/null || echo unavailable)"
+  echo "npm omit setting: $(npm config get omit 2>/dev/null || echo unavailable)"
   exit 1
 fi
 
