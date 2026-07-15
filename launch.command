@@ -15,6 +15,7 @@ LOG_DIR="$DIR/logs"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
 ELECTRON_LOG="$LOG_DIR/electron.log"
 BACKEND_LOG="$LOG_DIR/backend.log"
+ELECTRON_BIN="$DIR/node_modules/.bin/electron"
 
 FRONTEND_PID=""
 ELECTRON_PID=""
@@ -95,6 +96,12 @@ if [[ ! -d "$DIR/node_modules" ]]; then
   npm install
 fi
 
+if [[ ! -x "$ELECTRON_BIN" ]]; then
+  echo "ERROR: Electron executable not found at $ELECTRON_BIN."
+  echo "Run npm install from the DropDex repo root, then launch again."
+  exit 1
+fi
+
 # ── Start backend ─────────────────────────────────────────────────
 
 echo "--- Starting backend (uvicorn 127.0.0.1:8000) ---"
@@ -156,9 +163,9 @@ fi
 
 # ── Start Electron shell ───────────────────────────────────────────
 
-echo "--- Starting DropDex desktop shell ---"
+echo "--- Starting Electron desktop app ---"
 : > "$ELECTRON_LOG"
-npm run dev:electron > "$ELECTRON_LOG" 2>&1 &
+ELECTRON_RENDERER_URL="$APP_URL" "$ELECTRON_BIN" "$DIR" > "$ELECTRON_LOG" 2>&1 &
 ELECTRON_PID=$!
 
 sleep 2
