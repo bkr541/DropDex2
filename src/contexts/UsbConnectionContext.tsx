@@ -20,23 +20,30 @@ import {
 import {
   resolveUsbFile,
   checkRekordboxStructure,
-  type UsbFileResult,
   type ResolveUsbFileOptions,
+  type UsbFileResolutionError,
 } from '../lib/usb/resolveUsbFile';
-
-// ── Status ────────────────────────────────────────────────────────────────────
+import type { DesktopUsbState } from '../types/dropdex-desktop';
 
 export type UsbStatus =
-  | 'unsupported'         // File System Access API not available in this browser
-  | 'disconnected'        // No remembered handle, or user has disconnected
-  | 'permission-required' // Handle stored but permission needs to be re-granted
-  | 'connecting'          // Picker open or verifying stored handle
-  | 'connected'           // Handle verified readable this session
-  | 'wrong_root'          // Accessible but no Rekordbox folders — wrong directory selected
-  | 'unavailable'         // Handle stored but USB drive is physically absent
-  | 'error';              // Unexpected error
+  | 'unsupported'
+  | 'disconnected'
+  | 'permission-required'
+  | 'connecting'
+  | 'connected'
+  | 'wrong_root'
+  | 'unavailable'
+  | 'error';
 
-// ── State + reducer ───────────────────────────────────────────────────────────
+export type UsbRuntime = 'electron' | 'browser';
+
+export type UsbTrackSource =
+  | { kind: 'file'; file: File }
+  | { kind: 'url'; url: string; size?: number };
+
+export type UsbTrackSourceResult =
+  | { ok: true; source: UsbTrackSource }
+  | { ok: false; error: UsbFileResolutionError };
 
 interface UsbState {
   status: UsbStatus;
@@ -51,6 +58,7 @@ type UsbAction =
   | { type: 'SET_UNSUPPORTED' }
   | { type: 'SET_DISCONNECTED' }
   | { type: 'SET_CONNECTING' }
+  | { type: 'SET_DESKTOP_STATE'; state: DesktopUsbState }
   | {
       type: 'SET_PERMISSION_REQUIRED';
       handle: FileSystemDirectoryHandle;
@@ -83,14 +91,49 @@ const initial: UsbState = {
   structureWarning: null,
 };
 
+function desktopStateToUsbState(state: DesktopUsbState): UsbState {
+  switch (state.status) {
+    case 'connected':
+      return {
+        ...initial,
+        status: 'connected',
+        volumeName: state.volumeName,
+        connectedAt: state.connectedAt,
+        structureWarning: state.structureWarning,
+      };
+    case 'wrong_root':
+      return {
+        ...initial,
+        status: 'wrong_root',
+        volumeName: state.volumeName,
+        connectedAt: state.connectedAt,
+        structureWarning: state.structureWarning,
+      };
+    case 'unavailable':
+      return {
+        ...initial,
+        status: 'unavailable',
+        volumeName: state.volumeName,
+        connectedAt: state.connectedAt,
+        error: state.error,
+      };
+    case 'error':
+      return { ...initial, status: 'error', error: state.error ?? 'Desktop USB access failed.' };
+    case 'disconnected':
+      return initial;
+  }
+}
+
 function reducer(state: UsbState, action: UsbAction): UsbState {
   switch (action.type) {
     case 'SET_UNSUPPORTED':
       return { ...initial, status: 'unsupported' };
     case 'SET_DISCONNECTED':
-      return { ...initial, status: 'disconnected' };
+      return initial;
     case 'SET_CONNECTING':
       return { ...state, status: 'connecting', error: null };
+    case 'SET_DESKTOP_STATE':
+      return desktopStateToUsbState(action.state);
     case 'SET_PERMISSION_REQUIRED':
       return {
         ...state,
@@ -138,32 +181,25 @@ function reducer(state: UsbState, action: UsbAction): UsbState {
   }
 }
 
-// ── Context value ─────────────────────────────────────────────────────────────
-
 export interface UsbConnectionContextValue extends UsbState {
-  /** Open the directory picker and remember the chosen handle. */
+  runtime: UsbRuntime;
   connect(): Promise<void>;
-  /** Close the connection and forget the stored handle. */
   disconnect(): Promise<void>;
-  /** Re-verify the stored handle (no picker). Use when drive was reinserted. */
   reconnect(): Promise<void>;
-  /**
-   * Always open the directory picker, replacing the stored handle.
-   * Use when the user selected the wrong directory or wants a different drive.
-   */
   selectNewUsb(): Promise<void>;
-  /** Re-authorize and verify the stored handle; only 'connected' is playable. */
   ensurePermission(): Promise<UsbStatus>;
-  resolveTrackFile(segments: string[], options?: ResolveUsbFileOptions): Promise<UsbFileResult>;
+  resolveTrackSource(segments: string[], options?: ResolveUsbFileOptions): Promise<UsbTrackSourceResult>;
 }
 
 const UsbConnectionContext = createContext<UsbConnectionContextValue | null>(null);
 
-// ── Stable restore helper (uses dispatch, no component state) ─────────────────
+function getBrowserDirectoryPicker(): typeof window.showDirectoryPicker | null {
+  if (typeof window === 'undefined') return null;
+  const picker = window.showDirectoryPicker;
+  return typeof picker === 'function' ? picker.bind(window) : null;
+}
 
-async function restoreFromStore(
-  dispatch: React.Dispatch<UsbAction>,
-): Promise<void> {
+async function restoreFromStore(dispatch: React.Dispatch<UsbAction>): Promise<void> {
   try {
     const stored = await getStoredUsbHandle();
     if (!stored) {
@@ -187,10 +223,9 @@ async function applyPermissionCheck(
       const rootCheck = await checkRekordboxStructure(handle);
       switch (rootCheck.status) {
         case 'available': {
-          const structureWarning =
-            rootCheck.missingFolders.length > 0
-              ? `Could not find: ${rootCheck.missingFolders.join(', ')}. Verify this is the USB root.`
-              : null;
+          const structureWarning = rootCheck.missingFolders.length > 0
+            ? `Could not find: ${rootCheck.missingFolders.join(', ')}. Verify this is the USB root.`
+            : null;
           dispatch({ type: 'SET_CONNECTED', handle, metadata, structureWarning });
           break;
         }
@@ -204,25 +239,19 @@ async function applyPermissionCheck(
           dispatch({ type: 'SET_UNAVAILABLE', handle, metadata });
           break;
       }
-    } else if (perm === 'denied') {
-      // Browser-level denial — not easily recoverable without user re-granting.
-      dispatch({ type: 'SET_PERMISSION_REQUIRED', handle, metadata });
     } else {
-      // 'prompt' — permission needs to be re-granted by the user.
       dispatch({ type: 'SET_PERMISSION_REQUIRED', handle, metadata });
     }
   } catch {
-    // queryPermission itself threw — USB physically absent or I/O error.
     dispatch({ type: 'SET_UNAVAILABLE', handle, metadata });
   }
 }
 
-// ── Provider ──────────────────────────────────────────────────────────────────
-
 export function UsbConnectionProvider({ children }: { children: ReactNode }) {
+  const runtime: UsbRuntime = window.dropdexDesktop?.isElectron ? 'electron' : 'browser';
+  const desktop = window.dropdexDesktop;
   const [state, dispatch] = useReducer(reducer, initial);
 
-  // Stable ref so callbacks never go stale
   const handleRef = useRef<FileSystemDirectoryHandle | null>(null);
   const playableRef = useRef(false);
   const stateRef = useRef<UsbState>(state);
@@ -232,8 +261,6 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
     stateRef.current = state;
   }, [state]);
 
-  // Keep imperative consumers in sync in the same tick as a transition. This
-  // avoids a connected render racing the passive effect that updates refs.
   const dispatchState = useCallback((action: UsbAction) => {
     const next = reducer(stateRef.current, action);
     stateRef.current = next;
@@ -242,138 +269,150 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
     dispatch(action);
   }, []);
 
-  // Restore on mount — skip upfront feature-detect so browsers that mask
-  // showDirectoryPicker (e.g. Brave with strict fingerprinting) still get a
-  // chance to connect. Unsupported is only set if the actual API call fails.
+  const refreshDesktopState = useCallback(async (): Promise<UsbStatus> => {
+    if (!desktop) return 'unsupported';
+    try {
+      const next = await desktop.getUsbState();
+      dispatchState({ type: 'SET_DESKTOP_STATE', state: next });
+      return next.status;
+    } catch (error) {
+      dispatchState({ type: 'SET_ERROR', error: error instanceof Error ? error.message : String(error) });
+      return 'error';
+    }
+  }, [desktop, dispatchState]);
+
   useEffect(() => {
     dispatchState({ type: 'SET_CONNECTING' });
+    if (runtime === 'electron') {
+      void refreshDesktopState();
+      return;
+    }
     void restoreFromStore(dispatchState);
-  }, [dispatchState]);
+  }, [dispatchState, refreshDesktopState, runtime]);
 
-  // Silently recheck permission when window regains focus
   useEffect(() => {
     const onFocus = () => {
-      const h = handleRef.current;
-      const s = stateRef.current;
-      if (!h || s.status === 'connecting' || s.status === 'unsupported') return;
-      const meta: UsbConnectionMetadata = {
-        volumeName: s.volumeName ?? h.name,
-        connectedAt: s.connectedAt ?? new Date().toISOString(),
+      if (runtime === 'electron') {
+        void refreshDesktopState();
+        return;
+      }
+      const handle = handleRef.current;
+      const current = stateRef.current;
+      if (!handle || current.status === 'connecting' || current.status === 'unsupported') return;
+      const metadata: UsbConnectionMetadata = {
+        volumeName: current.volumeName ?? handle.name,
+        connectedAt: current.connectedAt ?? new Date().toISOString(),
       };
-      void applyPermissionCheck(h, meta, dispatchState);
+      void applyPermissionCheck(handle, metadata, dispatchState);
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
+  }, [dispatchState, refreshDesktopState, runtime]);
+
+  const chooseBrowserUsb = useCallback(async () => {
+    const picker = getBrowserDirectoryPicker();
+    if (!picker) {
+      dispatchState({ type: 'SET_UNSUPPORTED' });
+      return;
+    }
+    const handle = await picker({ id: 'dropdex-rekordbox-usb', mode: 'read' });
+    const metadata: UsbConnectionMetadata = {
+      volumeName: handle.name,
+      connectedAt: new Date().toISOString(),
+    };
+    await saveUsbHandle(handle, metadata);
+    await applyPermissionCheck(handle, metadata, dispatchState);
   }, [dispatchState]);
 
   const connect = useCallback(async () => {
     dispatchState({ type: 'SET_CONNECTING' });
     try {
-      const handle = await showDirectoryPicker({ id: 'dropdex-rekordbox-usb', mode: 'read' });
-      const metadata: UsbConnectionMetadata = {
-        volumeName: handle.name,
-        connectedAt: new Date().toISOString(),
-      };
-      await saveUsbHandle(handle, metadata);
-      await applyPermissionCheck(handle, metadata, dispatchState);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        // User cancelled picker — restore previous state from IDB
+      if (runtime === 'electron' && desktop) {
+        const result = await desktop.selectUsbRoot();
+        dispatchState({ type: 'SET_DESKTOP_STATE', state: result.state });
+        return;
+      }
+      await chooseBrowserUsb();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
         void restoreFromStore(dispatchState);
-      } else if (err instanceof ReferenceError || (err instanceof TypeError && !('showDirectoryPicker' in window))) {
-        // API not defined at all (non-secure HTTP context, Firefox, Safari, strict shields)
-        dispatchState({ type: 'SET_UNSUPPORTED' });
       } else {
-        dispatchState({ type: 'SET_ERROR', error: String(err) });
+        dispatchState({ type: 'SET_ERROR', error: error instanceof Error ? error.message : String(error) });
       }
     }
-  }, [dispatchState]);
+  }, [chooseBrowserUsb, desktop, dispatchState, runtime]);
 
   const disconnect = useCallback(async () => {
+    if (runtime === 'electron' && desktop) {
+      const next = await desktop.disconnectUsb();
+      dispatchState({ type: 'SET_DESKTOP_STATE', state: next });
+      return;
+    }
     await removeUsbHandle();
     dispatchState({ type: 'SET_DISCONNECTED' });
-  }, [dispatchState]);
+  }, [desktop, dispatchState, runtime]);
 
   const reconnect = useCallback(async () => {
     dispatchState({ type: 'SET_CONNECTING' });
+    if (runtime === 'electron') {
+      await refreshDesktopState();
+      return;
+    }
     await restoreFromStore(dispatchState);
-  }, [dispatchState]);
+  }, [dispatchState, refreshDesktopState, runtime]);
 
   const selectNewUsb = useCallback(async () => {
-    // Identical to connect() — always opens picker, replaces stored handle.
-    dispatchState({ type: 'SET_CONNECTING' });
-    try {
-      const handle = await showDirectoryPicker({ id: 'dropdex-rekordbox-usb', mode: 'read' });
-      const metadata: UsbConnectionMetadata = {
-        volumeName: handle.name,
-        connectedAt: new Date().toISOString(),
-      };
-      await saveUsbHandle(handle, metadata);
-      await applyPermissionCheck(handle, metadata, dispatchState);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        void restoreFromStore(dispatchState);
-      } else if (err instanceof TypeError && !('showDirectoryPicker' in window)) {
-        dispatchState({ type: 'SET_UNSUPPORTED' });
-      } else {
-        dispatchState({ type: 'SET_ERROR', error: String(err) });
-      }
-    }
-  }, [dispatchState]);
+    await connect();
+  }, [connect]);
 
   const ensurePermission = useCallback(async (): Promise<UsbStatus> => {
+    if (runtime === 'electron') return refreshDesktopState();
+
     const handle = handleRef.current;
-    const s = stateRef.current;
+    const current = stateRef.current;
     if (!handle) return 'disconnected';
-    const meta: UsbConnectionMetadata = {
-      volumeName: s.volumeName ?? handle.name,
-      connectedAt: s.connectedAt ?? new Date().toISOString(),
+    const metadata: UsbConnectionMetadata = {
+      volumeName: current.volumeName ?? handle.name,
+      connectedAt: current.connectedAt ?? new Date().toISOString(),
     };
 
     try {
-      const perm = await ensureReadPermission(handle);
-      if (perm !== 'granted') {
-        dispatchState({ type: 'SET_PERMISSION_REQUIRED', handle, metadata: meta });
+      const permission = await ensureReadPermission(handle);
+      if (permission !== 'granted') {
+        dispatchState({ type: 'SET_PERMISSION_REQUIRED', handle, metadata });
         return 'permission-required';
       }
-
       const rootCheck = await checkRekordboxStructure(handle);
       switch (rootCheck.status) {
         case 'available': {
-          const structureWarning =
-            rootCheck.missingFolders.length > 0
-              ? `Could not find: ${rootCheck.missingFolders.join(', ')}. Verify this is the USB root.`
-              : null;
-          dispatchState({ type: 'SET_CONNECTED', handle, metadata: meta, structureWarning });
+          const structureWarning = rootCheck.missingFolders.length > 0
+            ? `Could not find: ${rootCheck.missingFolders.join(', ')}. Verify this is the USB root.`
+            : null;
+          dispatchState({ type: 'SET_CONNECTED', handle, metadata, structureWarning });
           return 'connected';
         }
         case 'wrong_root':
-          dispatchState({ type: 'SET_WRONG_ROOT', handle, metadata: meta });
+          dispatchState({ type: 'SET_WRONG_ROOT', handle, metadata });
           return 'wrong_root';
         case 'permission_required':
-          dispatchState({ type: 'SET_PERMISSION_REQUIRED', handle, metadata: meta });
+          dispatchState({ type: 'SET_PERMISSION_REQUIRED', handle, metadata });
           return 'permission-required';
         case 'unavailable':
-          dispatchState({ type: 'SET_UNAVAILABLE', handle, metadata: meta });
+          dispatchState({ type: 'SET_UNAVAILABLE', handle, metadata });
           return 'unavailable';
       }
     } catch {
-      playableRef.current = false;
-      dispatchState({ type: 'SET_UNAVAILABLE', handle, metadata: meta });
+      dispatchState({ type: 'SET_UNAVAILABLE', handle, metadata });
       return 'unavailable';
     }
-  }, [dispatchState]);
+  }, [dispatchState, refreshDesktopState, runtime]);
 
-  const resolveTrackFile = useCallback(async (
+  const resolveTrackSource = useCallback(async (
     segments: string[],
     options: ResolveUsbFileOptions = {},
-  ): Promise<UsbFileResult> => {
-    const handle = handleRef.current;
-    if (!handle) {
-      return {
-        ok: false,
-        error: { kind: 'permission_denied', message: 'No USB drive is connected.' },
-      };
+  ): Promise<UsbTrackSourceResult> => {
+    if (options.isCancelled?.()) {
+      return { ok: false, error: { kind: 'abort', message: 'USB file access was superseded by another request.' } };
     }
     if (!playableRef.current) {
       return {
@@ -381,17 +420,36 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
         error: { kind: 'permission_denied', message: `USB is not ready (${stateRef.current.status}).` },
       };
     }
-    return resolveUsbFile(handle, segments, options);
-  }, []);
+
+    if (runtime === 'electron' && desktop) {
+      const result = await desktop.resolveTrackSource(segments);
+      if (options.isCancelled?.()) {
+        return { ok: false, error: { kind: 'abort', message: 'USB file access was superseded by another request.' } };
+      }
+      return result;
+    }
+
+    const handle = handleRef.current;
+    if (!handle) {
+      return { ok: false, error: { kind: 'permission_denied', message: 'No USB drive is connected.' } };
+    }
+    const result = await resolveUsbFile(handle, segments, options);
+    if (!result.ok) {
+      const failure = result as { ok: false; error: UsbFileResolutionError };
+      return failure;
+    }
+    return { ok: true, source: { kind: 'file', file: result.file } };
+  }, [desktop, runtime]);
 
   const value: UsbConnectionContextValue = {
     ...state,
+    runtime,
     connect,
     disconnect,
     reconnect,
     selectNewUsb,
     ensurePermission,
-    resolveTrackFile,
+    resolveTrackSource,
   };
 
   return (
@@ -401,10 +459,8 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-
 export function useUsbConnection(): UsbConnectionContextValue {
-  const ctx = useContext(UsbConnectionContext);
-  if (!ctx) throw new Error('useUsbConnection must be used within UsbConnectionProvider');
-  return ctx;
+  const context = useContext(UsbConnectionContext);
+  if (!context) throw new Error('useUsbConnection must be used within UsbConnectionProvider');
+  return context;
 }

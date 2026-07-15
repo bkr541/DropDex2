@@ -148,16 +148,24 @@ export function safeRevokeUrl(url: string | null | undefined) {
   }
 }
 
-function resetAudioElement(audio: HTMLAudioElement, oldUrl: string | null) {
+function resetAudioElement(
+  audio: HTMLAudioElement,
+  oldUrl: string | null,
+  revokeUrl: boolean,
+) {
   audio.pause();
   audio.removeAttribute('src');
   audio.load();
-  safeRevokeUrl(oldUrl);
+  if (revokeUrl) safeRevokeUrl(oldUrl);
 }
 
-function safeResetAudio(audio: HTMLAudioElement | null, oldUrl: string | null) {
-  if (audio) resetAudioElement(audio, oldUrl);
-  else safeRevokeUrl(oldUrl);
+function safeResetAudio(
+  audio: HTMLAudioElement | null,
+  oldUrl: string | null,
+  revokeUrl: boolean,
+) {
+  if (audio) resetAudioElement(audio, oldUrl, revokeUrl);
+  else if (revokeUrl) safeRevokeUrl(oldUrl);
 }
 
 export function usbFileErrorMessage(error: UsbFileResolutionError): string {
@@ -207,7 +215,7 @@ export function usbStatusPlaybackMessage(status: UsbStatus): string {
     case 'unavailable':
       return 'USB is unavailable. Reconnect the drive and try again.';
     case 'unsupported':
-      return 'File System Access API is not supported in this browser.';
+      return 'Folder access is unavailable in this browser. Use the DropDex desktop app, or open the browser build in Chrome or Edge over HTTPS or localhost.';
     case 'error':
       return 'USB access failed. Reconnect the drive and try again.';
     case 'connecting':
@@ -238,15 +246,18 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ownedUrlRef = useRef<string | null>(null);
+  const ownedUrlIsRevocableRef = useRef(false);
   const ignoreMediaEventsRef = useRef(false);
   const playRequestIdRef = useRef(0);
   const pendingPlayRef = useRef<RekordboxTrack | null>(null);
 
   const releaseCurrentSource = useCallback(() => {
     const oldUrl = ownedUrlRef.current;
+    const revokeUrl = ownedUrlIsRevocableRef.current;
     ownedUrlRef.current = null;
+    ownedUrlIsRevocableRef.current = false;
     ignoreMediaEventsRef.current = true;
-    safeResetAudio(audioRef.current, oldUrl);
+    safeResetAudio(audioRef.current, oldUrl, revokeUrl);
     ignoreMediaEventsRef.current = false;
   }, []);
 
@@ -328,8 +339,9 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
       ignoreMediaEventsRef.current = true;
-      safeResetAudio(audio, ownedUrlRef.current);
+      safeResetAudio(audio, ownedUrlRef.current, ownedUrlIsRevocableRef.current);
       ownedUrlRef.current = null;
+      ownedUrlIsRevocableRef.current = false;
       audioRef.current = null;
       playRequestIdRef.current = Number.MAX_SAFE_INTEGER;
     };
@@ -392,13 +404,13 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
       return;
     }
 
-    const fileResult = await usb.resolveTrackFile(resolution.segments, {
+    const sourceResult = await usb.resolveTrackSource(resolution.segments, {
       isCancelled: () => requestId !== playRequestIdRef.current,
     });
     if (requestId !== playRequestIdRef.current) return;
 
-    if (!fileResult.ok) {
-      const failure = fileResult as { ok: false; error: UsbFileResolutionError };
+    if (!sourceResult.ok) {
+      const failure = sourceResult as { ok: false; error: UsbFileResolutionError };
       if (failure.error.kind === 'abort') return;
       failCurrent(usbFileErrorMessage(failure.error));
       return;
@@ -410,13 +422,17 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
       return;
     }
 
-    const newUrl = URL.createObjectURL(fileResult.file);
+    const newUrl = sourceResult.source.kind === 'file'
+      ? URL.createObjectURL(sourceResult.source.file)
+      : sourceResult.source.url;
+    const revokeNewUrl = sourceResult.source.kind === 'file';
     if (requestId !== playRequestIdRef.current) {
-      safeRevokeUrl(newUrl);
+      if (revokeNewUrl) safeRevokeUrl(newUrl);
       return;
     }
 
     ownedUrlRef.current = newUrl;
+    ownedUrlIsRevocableRef.current = revokeNewUrl;
     audio.src = newUrl;
     audio.volume = stateRef.current.volume;
     audio.muted = stateRef.current.muted;

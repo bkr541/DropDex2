@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
   const analyze = env.ANALYZE === 'true';
 
   return {
+    base: './',
     plugins: [
       react(),
       tailwindcss(),

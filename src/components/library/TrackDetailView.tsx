@@ -100,6 +100,7 @@ export function TrackDetailView({
             <RekordboxPreviewWaveform
               state={waveformState}
               height={78}
+              variant="detail"
               activeProgress={progress}
               onSeek={canSeek ? handleWaveformSeek : undefined}
               onRetry={onRetryWaveform}

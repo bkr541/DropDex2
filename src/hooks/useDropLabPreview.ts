@@ -108,9 +108,14 @@ export function useDropLabPreview(input: {
       const cacheKey = track.id;
       const cached = decodedCache.get(cacheKey);
       if (cached) return cached;
-      const result = await usb.resolveTrackFile(segments);
+      const result = await usb.resolveTrackSource(segments);
       if (!result.ok) throw new Error('Connect the Rekordbox USB drive to preview this transition.');
-      const arrayBuffer = await result.file.arrayBuffer();
+      const arrayBuffer = result.source.kind === 'file'
+        ? await result.source.file.arrayBuffer()
+        : await fetch(result.source.url, { cache: 'no-store' }).then((response) => {
+            if (!response.ok) throw new Error(`Could not stream audio (${response.status}).`);
+            return response.arrayBuffer();
+          });
       const ctx = audioCtxRef.current ?? getAudioContext();
       audioCtxRef.current = ctx;
       const decodedBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));

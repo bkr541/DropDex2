@@ -44,6 +44,7 @@ placeholder — full track scraping is the next planned phase.
 
 | Layer | Technology |
 |-------|------------|
+| Desktop shell | Electron 43 with context isolation and a narrow preload bridge |
 | Frontend | React 19 + TypeScript 5.8 + Vite 6 + Tailwind CSS v4 |
 | Auth & DB | Supabase (Auth, Postgres, Row Level Security) |
 | Import backend | Python 3.11+ / FastAPI / uvicorn |
@@ -74,11 +75,33 @@ Supabase Postgres (per-user, RLS enforced)
   └─ rekordbox_user_settings    — active import pointer
 ```
 
+## Desktop playback and USB access
+
+DropDex now treats Electron as the primary runtime for local media. The renderer
+never receives Node.js or raw filesystem access. A context-isolated preload
+bridge lets the main process:
+
+- remember the selected Rekordbox USB root using an app-private settings file,
+- validate and resolve track paths beneath that approved root,
+- reject traversal and ambiguous case-insensitive matches,
+- stream audio through `dropdex-media://` with byte-range support for seeking,
+- keep the browser File System Access implementation as a fallback web mode.
+
+This removes the Brave-specific `showDirectoryPicker` failure from the desktop
+workflow. The browser build still requires Chrome/Edge-compatible folder access
+and a secure origin (`https://` or localhost).
+
+The shared DropDex waveform now uses one canvas renderer across library rows,
+track detail, and the bottom transport. The transport waveform replaces the old
+seek range input and provides a red played/unplayed treatment, center line,
+hover seek marker, and precision playhead while retaining Rekordbox waveform
+data as the source.
+
 ## Local development
 
 ### Prerequisites
 
-- Node.js ≥ 20
+- Node.js ≥ 22.12 and < 23
 - Python ≥ 3.11
 - A Supabase project with the schema migrations applied
 - SQLCipher native library (required by `sqlcipher3`)
@@ -88,13 +111,27 @@ On macOS:
 brew install sqlcipher
 ```
 
-### 1. Frontend
+### 1. Desktop frontend
 
 ```bash
 npm install
 cp .env.example .env        # fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
-npm run dev                 # http://127.0.0.1:3000
+npm run dev                 # starts Vite and the Electron desktop shell
 ```
+
+Useful alternatives:
+
+```bash
+npm run dev:browser         # browser-only fallback at http://127.0.0.1:3000
+npm run build               # production renderer build
+npm run dist:mac            # macOS DMG + ZIP in release/
+npm run dist:win            # Windows NSIS + portable builds in release/
+```
+
+Packaged desktop builds include the Electron renderer and USB playback bridge.
+The existing FastAPI import/discovery service remains a separate backend; set
+`VITE_IMPORT_API_URL` to its deployed URL before building, or run the local
+backend alongside the desktop app during development.
 
 ### 2. Parser package
 

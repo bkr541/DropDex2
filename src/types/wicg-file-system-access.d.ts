@@ -28,3 +28,7 @@ interface ShowDirectoryPickerOptions {
 declare function showDirectoryPicker(
   options?: ShowDirectoryPickerOptions,
 ): Promise<FileSystemDirectoryHandle>;
+
+interface Window {
+  showDirectoryPicker?: typeof showDirectoryPicker;
+}

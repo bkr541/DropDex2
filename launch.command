@@ -13,14 +13,17 @@ cd "$DIR"
 APP_URL="http://127.0.0.1:3000"
 LOG_DIR="$DIR/logs"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
+ELECTRON_LOG="$LOG_DIR/electron.log"
 BACKEND_LOG="$LOG_DIR/backend.log"
 
 FRONTEND_PID=""
+ELECTRON_PID=""
 BACKEND_PID=""
 
 cleanup() {
   echo ""
   echo "Shutting down DropDex..."
+  [[ -n "${ELECTRON_PID:-}" ]] && kill "$ELECTRON_PID" 2>/dev/null || true
   [[ -n "${FRONTEND_PID:-}" ]] && kill "$FRONTEND_PID" 2>/dev/null || true
   [[ -n "${BACKEND_PID:-}" ]]  && kill "$BACKEND_PID"  2>/dev/null || true
 }
@@ -129,7 +132,7 @@ fi
 echo "--- Starting frontend (Vite 127.0.0.1:3000) ---"
 : > "$FRONTEND_LOG"
 
-npm run dev > "$FRONTEND_LOG" 2>&1 &
+npm run dev:web > "$FRONTEND_LOG" 2>&1 &
 FRONTEND_PID=$!
 
 echo "Waiting for frontend..."
@@ -151,18 +154,29 @@ if ! curl -sf "$APP_URL" >/dev/null 2>&1; then
   exit 1
 fi
 
-# ── Open browser ──────────────────────────────────────────────────
+# ── Start Electron shell ───────────────────────────────────────────
+
+echo "--- Starting DropDex desktop shell ---"
+: > "$ELECTRON_LOG"
+npm run dev:electron > "$ELECTRON_LOG" 2>&1 &
+ELECTRON_PID=$!
+
+sleep 2
+if ! kill -0 "$ELECTRON_PID" 2>/dev/null; then
+  echo "Electron exited unexpectedly. Last 40 lines of $ELECTRON_LOG:"
+  tail -n 40 "$ELECTRON_LOG" || true
+  exit 1
+fi
 
 echo ""
-echo "DropDex is running:"
-echo "   Frontend  $APP_URL"
+echo "DropDex desktop is running:"
+echo "   Renderer  $APP_URL"
 echo "   Backend   http://127.0.0.1:8000"
 echo ""
 echo "   Frontend log: $FRONTEND_LOG"
+echo "   Electron log: $ELECTRON_LOG"
 echo "   Backend log:  $BACKEND_LOG"
 echo ""
-
-open "$APP_URL" >/dev/null 2>&1 || true
 
 echo "Running. Leave this window open. Press Ctrl+C to stop."
 while true; do sleep 1; done

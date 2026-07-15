@@ -7,8 +7,36 @@ type NavigationOptions = {
   replace?: boolean;
 };
 
+function isDesktopRuntime(): boolean {
+  return Boolean(window.dropdexDesktop?.isElectron);
+}
+
+function desktopLocationParts(): { pathname: string; search: string } {
+  const rawHash = window.location.hash.replace(/^#/, '');
+  if (!rawHash) return { pathname: '/', search: '' };
+  const queryIndex = rawHash.indexOf('?');
+  if (queryIndex < 0) return { pathname: rawHash, search: '' };
+  return {
+    pathname: rawHash.slice(0, queryIndex) || '/',
+    search: rawHash.slice(queryIndex),
+  };
+}
+
 function currentRoute(): AppRoute {
+  if (isDesktopRuntime()) {
+    const location = desktopLocationParts();
+    return parseAppRoute(location.pathname, location.search);
+  }
   return parseAppRoute(window.location.pathname, window.location.search);
+}
+
+function currentPathname(): string {
+  return isDesktopRuntime() ? desktopLocationParts().pathname : window.location.pathname;
+}
+
+function historyUrl(route: AppRoute): string {
+  const routeUrl = routeToUrl(route);
+  return isDesktopRuntime() ? `#${routeUrl}` : routeUrl;
 }
 
 function currentIndex(): number {
@@ -30,13 +58,14 @@ export function useAppRouter() {
       setHistoryIndex(0);
     }
 
-    if (window.location.pathname === '/') {
+    if (currentPathname() === '/') {
+      const libraryRoute: AppRoute = { name: 'library', tab: 'overview', search: '' };
       window.history.replaceState(
         { ...window.history.state, [HISTORY_INDEX_KEY]: currentIndex() },
         '',
-        '/library',
+        historyUrl(libraryRoute),
       );
-      setRoute({ name: 'library', tab: 'overview', search: '' });
+      setRoute(libraryRoute);
     }
 
     const onPopState = () => {
@@ -48,7 +77,7 @@ export function useAppRouter() {
   }, []);
 
   const navigate = useCallback((nextRoute: AppRoute, options: NavigationOptions = {}) => {
-    const url = routeToUrl(nextRoute);
+    const url = historyUrl(nextRoute);
     if (options.replace) {
       window.history.replaceState(
         { ...window.history.state, [HISTORY_INDEX_KEY]: currentIndex() },

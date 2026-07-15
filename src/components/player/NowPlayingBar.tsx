@@ -13,6 +13,9 @@ import {
 import { cn } from '../../lib/utils';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
+import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
+import { computeProgress } from '../../lib/rekordbox/waveformRenderer';
+import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
 
 // ── Time formatting ───────────────────────────────────────────────────────────
 
@@ -38,12 +41,12 @@ function usePlayerTime(getAudioElement: () => HTMLAudioElement | null, active: b
     }
 
     let running = true;
-    // Throttle to ~4fps for the displayed timestamps — no need for 60fps
+    // Keep the shared transport playhead fluid without repainting the whole app at 60fps.
     let lastUpdate = 0;
     function tickThrottled() {
       if (!running) return;
       const now = performance.now();
-      if (now - lastUpdate >= 250) {
+      if (now - lastUpdate >= 50) {
         lastUpdate = now;
         const audio = getAudioElement();
         if (audio) {
@@ -95,11 +98,18 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
   const isError = status === 'error';
 
   const { currentTime, duration } = usePlayerTime(getAudioElement, isActive && !isError);
+  const activeWaveforms = useTrackPreviewWaveforms(
+    activeTrack?.import_id ?? null,
+    activeTrack ? [activeTrack.id] : [],
+  );
+  const waveformState = activeWaveforms.getState(activeTrack?.id);
+  const progress = computeProgress(currentTime, duration);
 
   if (!isActive) return null;
 
-  function handleSeek(e: React.ChangeEvent<HTMLInputElement>) {
-    seek(parseFloat(e.target.value));
+  function handleWaveformSeek(fraction: number) {
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    seek(fraction * duration);
   }
 
   function handlePlayPause() {
@@ -183,16 +193,19 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
             <span className="text-[10px] font-mono text-muted-foreground shrink-0 tabular-nums w-8 text-right">
               {fmtTime(currentTime)}
             </span>
-            <input
-              type="range"
-              min={0}
-              max={duration || 100}
-              step={0.5}
-              value={currentTime}
-              onChange={handleSeek}
-              disabled={isLoading || duration === 0}
-              aria-label="Seek"
-              className="flex-1 h-1 accent-primary cursor-pointer disabled:cursor-default disabled:opacity-40"
+            <RekordboxPreviewWaveform
+              state={waveformState}
+              height={34}
+              variant="transport"
+              className={cn(
+                'flex-1 min-w-0 transition-opacity',
+                (isLoading || duration === 0) && 'opacity-50 pointer-events-none',
+              )}
+              activeProgress={progress}
+              onSeek={duration > 0 && !isLoading ? handleWaveformSeek : undefined}
+              onRetry={activeTrack ? () => activeWaveforms.retry([activeTrack.id]) : undefined}
+              allowTimelineSeek
+              ariaLabel={activeTrack ? `Seek ${activeTrack.title}` : 'Playback timeline'}
             />
             <span className="text-[10px] font-mono text-muted-foreground shrink-0 tabular-nums w-8">
               {fmtTime(duration)}

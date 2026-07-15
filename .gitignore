@@ -26,3 +26,6 @@ backend/app/__pycache__/
 backend/tests/__pycache__/
 backend/*.egg-info/
 # backend/.env is covered by the root .env* pattern above
+
+# Electron packaging output
+release/

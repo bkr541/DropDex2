@@ -50,7 +50,7 @@ function statusTitle(status: UsbStatus, volumeName: string | null): string {
     case 'wrong_root':          return 'Wrong folder — select the USB root, not PIONEER or a subfolder';
     case 'unavailable':         return 'USB drive not found — reinsert or select a different drive';
     case 'error':               return 'USB error — click to retry';
-    case 'unsupported':         return 'File System Access API unavailable — open over HTTPS or localhost in Chrome/Edge';
+    case 'unsupported':         return 'Folder access unavailable. Install the DropDex desktop app, or use Chrome/Edge over HTTPS or localhost.';
     default:                    return 'Connect a Rekordbox USB drive';
   }
 }
