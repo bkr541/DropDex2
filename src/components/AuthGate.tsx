@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
+  CheckCircle2,
   Loader2,
   Mail,
   RefreshCw,
@@ -10,7 +12,12 @@ import {
 } from 'lucide-react';
 import { getSupabaseClient } from '../lib/supabase';
 import { useAuthSession } from '../hooks/useAuthSession';
-import { submitMagicLink } from '../auth/magicLink';
+import {
+  EMAIL_OTP_LENGTH,
+  normalizeEmailOtp,
+  submitEmailOtp,
+  verifyEmailOtp,
+} from '../auth/emailOtp';
 
 function AuthenticationFailure({
   error,
@@ -79,9 +86,23 @@ function AuthenticationFailure({
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const auth = useAuthSession();
   const [email, setEmail] = useState('');
-  const [step, setStep] = useState<'email' | 'sent'>('email');
+  const [step, setStep] = useState<'email' | 'verify'>('email');
+  const [otp, setOtp] = useState('');
   const [sending, setSending] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [resendSeconds, setResendSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (step !== 'verify' || resendSeconds <= 0) return undefined;
+
+    const timer = window.setTimeout(() => {
+      setResendSeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1_000);
+
+    return () => window.clearTimeout(timer);
+  }, [step, resendSeconds]);
 
   if (auth.status === 'loading') {
     return (
@@ -109,8 +130,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     event.preventDefault();
     if (!email.trim()) return;
     setError(null);
+    setNotice(null);
 
-    const result = await submitMagicLink(
+    const result = await submitEmailOtp(
       getSupabaseClient().auth,
       email,
       setSending,
@@ -121,8 +143,59 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    setStep('sent');
-    setError(result.notice);
+    setStep('verify');
+    setOtp('');
+    setResendSeconds(60);
+    setNotice(result.notice);
+  };
+
+  const handleVerifyOtp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setNotice(null);
+
+    const result = await verifyEmailOtp(
+      getSupabaseClient().auth,
+      email,
+      otp,
+      setVerifying,
+    );
+
+    if (result.status === 'error') {
+      setError(result.message);
+      return;
+    }
+
+    setNotice('Code accepted. Signing you in…');
+  };
+
+  const handleResendOtp = async () => {
+    if (sending || resendSeconds > 0) return;
+    setError(null);
+    setNotice(null);
+
+    const result = await submitEmailOtp(
+      getSupabaseClient().auth,
+      email,
+      setSending,
+    );
+
+    if (result.status === 'error') {
+      setError(result.message);
+      return;
+    }
+
+    setOtp('');
+    setResendSeconds(60);
+    setNotice(result.notice ?? 'A new verification code was sent.');
+  };
+
+  const handleChangeEmail = () => {
+    setStep('email');
+    setOtp('');
+    setResendSeconds(0);
+    setError(null);
+    setNotice(null);
   };
 
   return (
@@ -149,9 +222,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         </div>
 
         <AnimatePresence mode="wait">
-          {step === 'sent' ? (
+          {step === 'verify' ? (
             <motion.div
-              key="sent"
+              key="verify"
               initial={{ opacity: 0, x: 16 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -16 }}
@@ -160,22 +233,72 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               <div className="w-16 h-16 brand-gradient rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_24px_rgba(207,107,101,0.4)]">
                 <Mail size={28} className="text-white" />
               </div>
-              <h1 className="text-2xl font-black mb-2">Check your email</h1>
-              <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
-                We sent a sign-in link to{' '}
+              <h1 className="text-2xl font-black mb-2">Enter your sign-in code</h1>
+              <p className="text-sm text-muted-foreground mb-7 leading-relaxed">
+                We sent an {EMAIL_OTP_LENGTH}-digit verification code to{' '}
                 <span className="text-foreground font-bold">{email}</span>.
               </p>
-              <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
-                Click the link in the email to continue. This tab will sign you in automatically.
-              </p>
-              {error && <p className="text-amber-400 text-xs mb-4" role="status">{error}</p>}
-              <button
-                type="button"
-                onClick={() => { setStep('email'); setError(null); }}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 mx-auto"
-              >
-                <RefreshCw size={13} /> Use a different email
-              </button>
+
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  aria-label={`${EMAIL_OTP_LENGTH}-digit verification code`}
+                  placeholder="00000000"
+                  value={otp}
+                  onChange={(event) => setOtp(normalizeEmailOtp(event.target.value))}
+                  autoFocus
+                  className="w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-4 text-center text-2xl font-black tracking-[0.35em] text-foreground placeholder:text-muted-foreground/35 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+
+                {error && (
+                  <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300" role="alert">
+                    {error}
+                  </p>
+                )}
+                {notice && (
+                  <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300" role="status">
+                    {notice}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={verifying || otp.length !== EMAIL_OTP_LENGTH}
+                  className="w-full py-3.5 brand-gradient text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-opacity active:scale-95"
+                >
+                  {verifying ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <CheckCircle2 size={16} />
+                  )}
+                  {verifying ? 'Verifying…' : 'Verify and sign in'}
+                </button>
+              </form>
+
+              <div className="mt-6 flex flex-col items-center gap-3 text-sm">
+                <button
+                  type="button"
+                  disabled={sending || resendSeconds > 0}
+                  onClick={() => void handleResendOtp()}
+                  className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {sending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                  {sending
+                    ? 'Sending…'
+                    : resendSeconds > 0
+                      ? `Resend code in ${resendSeconds}s`
+                      : 'Resend code'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleChangeEmail}
+                  className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <ArrowLeft size={13} /> Use a different email
+                </button>
+              </div>
             </motion.div>
           ) : (
             <motion.div
@@ -186,7 +309,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             >
               <h1 className="text-2xl font-black mb-1">Sign In</h1>
               <p className="text-sm text-muted-foreground mb-8">
-                Enter your email to receive a one-time sign-in link.
+                Enter your email to receive a one-time verification code.
               </p>
               <form onSubmit={handleSendOtp} className="space-y-4">
                 <div className="relative">
