@@ -20,6 +20,7 @@ import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from postgrest.exceptions import APIError
+from starlette.concurrency import run_in_threadpool
 
 from app.auth import get_current_user_id
 from app.config import settings
@@ -83,7 +84,7 @@ async def search_artists(
         return []
 
     repo = _make_repo()
-    return repo.search_artists(q, limit=_SEARCH_LIMIT)
+    return await run_in_threadpool(repo.search_artists, q, limit=_SEARCH_LIMIT)
 
 
 # ── 2. Artist detail ─────────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ async def get_artist_detail(
     - Returns ``404`` when the artist UUID is unknown.
     """
     repo = _make_repo()
-    detail = repo.get_artist_detail(artist_id)
+    detail = await run_in_threadpool(repo.get_artist_detail, artist_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="Artist not found")
     return detail
@@ -140,12 +141,12 @@ async def start_scrape(
     """
     repo = _make_repo()
 
-    artist = repo.get_artist(artist_id)
+    artist = await run_in_threadpool(repo.get_artist, artist_id)
     if artist is None:
         raise HTTPException(status_code=404, detail="Artist not found")
 
     try:
-        job_id = repo.create_scrape_job(user_id, artist_id)
+        job_id = await run_in_threadpool(repo.create_scrape_job, user_id, artist_id)
     except APIError as exc:
         log.error(
             "[routes] Failed to create scrape job — artist=%s code=%s message=%s",
@@ -197,7 +198,7 @@ async def get_scrape_job(
     users return ``404`` (rather than ``403``) to avoid leaking job existence.
     """
     repo = _make_repo()
-    job = repo.get_job_summary_for_user(job_id, user_id)
+    job = await run_in_threadpool(repo.get_job_summary_for_user, job_id, user_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
@@ -225,10 +226,15 @@ async def get_setlists(
     """
     repo = _make_repo()
 
-    if repo.get_artist(artist_id) is None:
+    if await run_in_threadpool(repo.get_artist, artist_id) is None:
         raise HTTPException(status_code=404, detail="Artist not found")
 
-    results, total = repo.get_set_results_paginated(artist_id, limit=limit, offset=offset)
+    results, total = await run_in_threadpool(
+        repo.get_set_results_paginated,
+        artist_id,
+        limit=limit,
+        offset=offset,
+    )
 
     return SetlistsPage(
         artist_id=artist_id,
@@ -260,7 +266,7 @@ async def get_set_tracks(
     - Returns ``404`` if the set result UUID is not in the DropDex catalog.
     """
     try:
-        return get_setlist_tracks_response(set_result_id)
+        return await run_in_threadpool(get_setlist_tracks_response, set_result_id)
     except SetResultNotFoundError:
         raise HTTPException(status_code=404, detail="Set result not found")
 
@@ -346,7 +352,7 @@ async def import_set_tracks_html(
       parser finds zero track rows.
     """
     try:
-        return import_setlist_html_tracks(set_result_id, body.html)
+        return await run_in_threadpool(import_setlist_html_tracks, set_result_id, body.html)
     except SetResultNotFoundError:
         raise HTTPException(status_code=404, detail="Set result not found")
     except DetailScrapeError as exc:

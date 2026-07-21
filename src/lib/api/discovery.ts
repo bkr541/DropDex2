@@ -1,3 +1,4 @@
+import { IMPORT_API_BASE } from './baseUrl';
 import type {
   DiscoveryArtist,
   DiscoveryArtistDetail,
@@ -7,7 +8,7 @@ import type {
   ScrapeStartResponse,
 } from '../../types';
 
-const API_BASE = (import.meta.env.VITE_IMPORT_API_URL ?? 'http://localhost:8000').replace(/\/$/, '');
+const API_BASE = IMPORT_API_BASE;
 
 async function parseError(response: Response): Promise<string> {
   const body = await response.json().catch(() => null) as { detail?: string } | null;

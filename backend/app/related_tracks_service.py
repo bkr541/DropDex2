@@ -15,6 +15,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
+from starlette.concurrency import run_in_threadpool
 
 from .config import settings
 from .models import (
@@ -36,6 +37,20 @@ def _create_supabase():
 
 
 async def import_related_tracks(
+    import_id: str,
+    user_id: str,
+    payload: RelatedTracksPayload,
+) -> RelatedTracksImportResponse:
+    """Run the synchronous Supabase import outside FastAPI's event loop."""
+    return await run_in_threadpool(
+        _import_related_tracks_sync,
+        import_id,
+        user_id,
+        payload,
+    )
+
+
+def _import_related_tracks_sync(
     import_id: str,
     user_id: str,
     payload: RelatedTracksPayload,

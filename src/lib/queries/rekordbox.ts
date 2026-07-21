@@ -345,13 +345,15 @@ export async function fetchTrackPlaylists(
 }
 
 /**
- * Fetch tracks that are Camelot-compatible and/or within BPM tolerance.
- * Uses camelot_key for harmonic matching (compatible codes via the Camelot wheel).
- * Returns raw candidate rows — caller is responsible for scoring and ranking.
+ * Fetch the best database candidates that are Camelot-compatible and/or within
+ * BPM tolerance. Candidate unioning and deterministic pre-ranking happen in
+ * Postgres before the limit is applied, so an arbitrary table slice cannot hide
+ * a stronger match from the TypeScript scoring pipeline.
  */
 export async function fetchCamelotCompatibleTracks(
   importId: string,
-  track: Pick<RekordboxTrack, 'id' | 'camelot_key' | 'bpm'>,
+  track: Pick<RekordboxTrack, 'id' | 'camelot_key' | 'bpm'>
+    & Partial<Pick<RekordboxTrack, 'genre' | 'label'>>,
   bpmTolerance = BPM_TOLERANCE_DEFAULT,
   limit = SIMILAR_CANDIDATE_FETCH_LIMIT,
 ): Promise<RekordboxTrack[]> {
@@ -359,30 +361,20 @@ export async function fetchCamelotCompatibleTracks(
 
   if (!hasSimilarVibesSignal(camelot_key, rawBpm)) return [];
 
-  let query = supabase
-    .from('rekordbox_tracks')
-    .select('*')
-    .eq('import_id', importId)
-    .neq('id', id);
+  const compatibleCamelotKeys = getCompatibleCamelotKeys(camelot_key).map((key) => key.code);
+  const { data, error } = await supabase.rpc('get_rekordbox_similar_vibe_candidates', {
+    p_import_id: importId,
+    p_selected_track_id: id,
+    p_compatible_camelot_keys: compatibleCamelotKeys,
+    p_selected_bpm: shouldUseBpm(rawBpm) ? rawBpm : null,
+    p_bpm_tolerance: Math.max(0, bpmTolerance),
+    p_selected_genre: track.genre?.trim() || null,
+    p_selected_label: track.label?.trim() || null,
+    p_limit: Math.max(1, limit),
+  });
 
-  if (camelot_key) {
-    const compatible = getCompatibleCamelotKeys(camelot_key).map((k) => k.code);
-    if (compatible.length > 0) {
-      query = query.in('camelot_key', compatible);
-    }
-  }
-
-  if (shouldUseBpm(rawBpm)) {
-    query = query
-      .gte('bpm', rawBpm - bpmTolerance)
-      .lte('bpm', rawBpm + bpmTolerance)
-      .not('bpm', 'is', null);
-  }
-
-  const { data, error } = await query.limit(limit);
   if (error) throw new Error(error.message);
-
-  return (data ?? []) as RekordboxTrack[];
+  return (Array.isArray(data) ? data : []) as RekordboxTrack[];
 }
 
 /**

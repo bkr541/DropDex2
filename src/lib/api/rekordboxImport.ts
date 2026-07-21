@@ -1,3 +1,5 @@
+import { IMPORT_API_BASE } from './baseUrl';
+
 // ── Response types ────────────────────────────────────────────────────────────
 
 export type ImportJobState =
@@ -172,7 +174,7 @@ export class RekordboxImportError extends Error {
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-const API_BASE = (import.meta.env.VITE_IMPORT_API_URL ?? 'http://localhost:8000').replace(/\/$/, '');
+const API_BASE = IMPORT_API_BASE;
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => null);
@@ -358,15 +360,36 @@ export async function uploadRekordboxZipBundle(
   signal?: AbortSignal,
   importId?: string,
 ): Promise<CompleteResponse> {
+  if (signal?.aborted) {
+    throw new DOMException('Upload aborted', 'AbortError');
+  }
+
   return new Promise<CompleteResponse>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
     formData.append('file', file);
     if (importId) formData.append('import_id', importId);
 
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable && onProgress) {
-        onProgress(Math.round((e.loaded / e.total) * 100));
+    let settled = false;
+
+    const handleSignalAbort = () => xhr.abort();
+    const cleanup = () => signal?.removeEventListener('abort', handleSignalAbort);
+    const resolveOnce = (value: CompleteResponse) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const rejectOnce = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
       }
     });
 
@@ -375,33 +398,43 @@ export async function uploadRekordboxZipBundle(
       try {
         body = JSON.parse(xhr.responseText);
       } catch {
-        // ignore parse failure
+        // Handled below: successful imports must still return a valid response body.
       }
+
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(body as CompleteResponse);
-      } else {
-        const rawDetail = (body as { detail?: string | ImportWriteError } | null)?.detail;
-        if (rawDetail && typeof rawDetail === 'object') {
-          reject(new RekordboxImportError(rawDetail.detail, rawDetail));
-        } else {
-          reject(new RekordboxImportError(typeof rawDetail === 'string' ? rawDetail : `HTTP ${xhr.status}`));
+        if (!body || typeof body !== 'object') {
+          rejectOnce(new RekordboxImportError('The import server returned an invalid response.'));
+          return;
         }
+        resolveOnce(body as CompleteResponse);
+        return;
+      }
+
+      const rawDetail = (body as { detail?: string | ImportWriteError } | null)?.detail;
+      if (rawDetail && typeof rawDetail === 'object') {
+        rejectOnce(new RekordboxImportError(rawDetail.detail, rawDetail));
+      } else {
+        rejectOnce(new RekordboxImportError(
+          typeof rawDetail === 'string' ? rawDetail : `HTTP ${xhr.status}`,
+        ));
       }
     });
 
-    xhr.addEventListener('error', () => reject(new Error('Network error during bundle upload')));
-    xhr.addEventListener('abort', () => reject(new DOMException('Upload aborted', 'AbortError')));
+    xhr.addEventListener('error', () => {
+      rejectOnce(new Error('Network error during bundle upload'));
+    });
+    xhr.addEventListener('abort', () => {
+      rejectOnce(new DOMException('Upload aborted', 'AbortError'));
+    });
 
-    if (signal) {
-      if (signal.aborted) {
-        xhr.abort();
-        return;
-      }
-      signal.addEventListener('abort', () => xhr.abort(), { once: true });
+    signal?.addEventListener('abort', handleSignalAbort, { once: true });
+
+    try {
+      xhr.open('POST', `${API_BASE}/api/rekordbox/import/bundle`);
+      xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+      xhr.send(formData);
+    } catch (error) {
+      rejectOnce(error);
     }
-
-    xhr.open('POST', `${API_BASE}/api/rekordbox/import/bundle`);
-    xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
-    xhr.send(formData);
   });
 }

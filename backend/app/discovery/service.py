@@ -34,6 +34,7 @@ import logging
 from typing import Optional
 
 from postgrest.exceptions import APIError
+from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.discovery.models import (
@@ -115,7 +116,7 @@ async def run_discovery_for_artist(
         repo = _make_repo()
 
     # ── 1. Resolve artist — fail fast before touching the DB ──────────────────
-    artist: Optional[ArtistRecord] = repo.get_artist(artist_id)
+    artist: Optional[ArtistRecord] = await run_in_threadpool(repo.get_artist, artist_id)
     if artist is None:
         raise ArtistNotFoundError(
             f"Artist '{artist_id}' not found in the DropDex catalog"
@@ -123,7 +124,7 @@ async def run_discovery_for_artist(
 
     # ── 2. Create job (queued) — skip if caller pre-created it ───────────────
     if job_id is None:
-        job_id = repo.create_scrape_job(user_id, artist_id)
+        job_id = await run_in_threadpool(repo.create_scrape_job, user_id, artist_id)
     log.info(
         "[discovery] Job %s created (queued) — artist=%s (%s) user=%s",
         job_id, artist.name, artist_id, user_id,
@@ -131,10 +132,12 @@ async def run_discovery_for_artist(
 
     try:
         # ── 3. Mark running ───────────────────────────────────────────────────
-        repo.set_job_running(job_id)
+        await run_in_threadpool(repo.set_job_running, job_id)
 
         # ── 4. Create search run ──────────────────────────────────────────────
-        search_run_id = repo.create_search_run(job_id, artist_id, artist.name)
+        search_run_id = await run_in_threadpool(
+            repo.create_search_run, job_id, artist_id, artist.name
+        )
         log.info(
             "[discovery] Job %s running; search_run=%s; artist=%s",
             job_id, search_run_id, artist.name,
@@ -154,15 +157,20 @@ async def run_discovery_for_artist(
 
         # ── 6. Persist per-page audit records ────────────────────────────────
         for audit in scrape_result.page_audit:
-            repo.insert_search_page(search_run_id, audit)
+            await run_in_threadpool(repo.insert_search_page, search_run_id, audit)
 
         # ── 7. Upsert results and link to the searched-for artist ─────────────
         for result in scrape_result.results:
-            set_result_id = repo.upsert_set_result(search_run_id, artist_id, result)
-            repo.link_result_to_artist(set_result_id, artist_id, artist.name)
+            set_result_id = await run_in_threadpool(
+                repo.upsert_set_result, search_run_id, artist_id, result
+            )
+            await run_in_threadpool(
+                repo.link_result_to_artist, set_result_id, artist_id, artist.name
+            )
 
         # ── 8. Mark completed ─────────────────────────────────────────────────
-        repo.set_job_completed(
+        await run_in_threadpool(
+            repo.set_job_completed,
             job_id,
             pages_scraped=scrape_result.pages_scraped,
             results_found=len(scrape_result.results),
@@ -194,7 +202,8 @@ async def run_discovery_for_artist(
                 job_id,
             )
         log.exception("[discovery] Job %s failed: %s", job_id, exc)
-        _safe_set_failed(
+        await run_in_threadpool(
+            _safe_set_failed,
             repo,
             job_id,
             "Discovery scrape encountered an error. Please try again.",
@@ -203,7 +212,7 @@ async def run_discovery_for_artist(
             f"Job {job_id} failed: {type(exc).__name__}"
         ) from exc
 
-    summary = repo.get_job_summary(job_id)
+    summary = await run_in_threadpool(repo.get_job_summary, job_id)
     if summary is None:
         # Extremely unlikely — job was just written.
         return ScrapeJobSummary(
@@ -303,14 +312,14 @@ async def run_setlist_detail_scrape(
         repo = _make_repo()
 
     # ── 1. Load the set result ────────────────────────────────────────────────
-    summary = repo.get_set_result_full(set_result_id)
+    summary = await run_in_threadpool(repo.get_set_result_full, set_result_id)
     if summary is None:
         raise SetResultNotFoundError(
             f"Set result '{set_result_id}' not found in the DropDex catalog"
         )
 
     # ── 2. Return cached tracks when refresh is not requested ─────────────────
-    existing_tracks = repo.get_set_tracks(set_result_id)
+    existing_tracks = await run_in_threadpool(repo.get_set_tracks, set_result_id)
     if existing_tracks and not refresh:
         log.info(
             "[detail] set=%s has %d cached tracks; returning without scraping",
@@ -331,7 +340,7 @@ async def run_setlist_detail_scrape(
         raise InvalidSetlistUrlError(str(exc)) from exc
 
     # ── 4. Mark running ───────────────────────────────────────────────────────
-    repo.set_detail_running(set_result_id)
+    await run_in_threadpool(repo.set_detail_running, set_result_id)
 
     # ── 5. Scrape the detail page ─────────────────────────────────────────────
     try:
@@ -346,7 +355,9 @@ async def run_setlist_detail_scrape(
             summary.source_url,
             challenge_msg,
         )
-        _safe_set_detail_failed(repo, set_result_id, challenge_msg)
+        await run_in_threadpool(
+            _safe_set_detail_failed, repo, set_result_id, challenge_msg
+        )
         raise DetailScrapeError(challenge_msg) from exc
     except Exception as exc:
         log.exception(
@@ -355,7 +366,8 @@ async def run_setlist_detail_scrape(
             summary.source_url,
             exc,
         )
-        _safe_set_detail_failed(
+        await run_in_threadpool(
+            _safe_set_detail_failed,
             repo,
             set_result_id,
             "Set detail scrape failed. Please try again.",
@@ -386,17 +398,22 @@ async def run_setlist_detail_scrape(
             expected_track_count,
             summary.source_url,
         )
-        _safe_set_detail_failed(repo, set_result_id, error_msg)
+        await run_in_threadpool(
+            _safe_set_detail_failed, repo, set_result_id, error_msg
+        )
         raise DetailScrapeError(error_msg)
 
     # ── 6. Persist tracks ─────────────────────────────────────────────────────
     try:
         if refresh:
             keep_ids = {t.source_position_id for t in detail.tracks}
-            repo.delete_stale_set_tracks(set_result_id, keep_ids)
+            await run_in_threadpool(
+                repo.delete_stale_set_tracks, set_result_id, keep_ids
+            )
 
-        repo.upsert_set_tracks(set_result_id, detail.tracks)
-        repo.set_detail_completed(
+        await run_in_threadpool(repo.upsert_set_tracks, set_result_id, detail.tracks)
+        await run_in_threadpool(
+            repo.set_detail_completed,
             set_result_id,
             parsed_track_count=len(detail.tracks),
             has_timed_cues=detail.has_timed_cues,
@@ -415,7 +432,8 @@ async def run_setlist_detail_scrape(
             set_result_id,
             exc,
         )
-        _safe_set_detail_failed(
+        await run_in_threadpool(
+            _safe_set_detail_failed,
             repo,
             set_result_id,
             "Failed to save set tracks. Please try again.",
@@ -425,8 +443,8 @@ async def run_setlist_detail_scrape(
         ) from exc
 
     # ── 7. Build and return the fresh response ────────────────────────────────
-    fresh_summary = repo.get_set_result_full(set_result_id)
-    saved_tracks = repo.get_set_tracks(set_result_id)
+    fresh_summary = await run_in_threadpool(repo.get_set_result_full, set_result_id)
+    saved_tracks = await run_in_threadpool(repo.get_set_tracks, set_result_id)
     return SetlistDetailResponse(
         setlist=fresh_summary or summary,
         tracks=saved_tracks,

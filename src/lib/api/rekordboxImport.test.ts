@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { uploadRekordboxDb } from './rekordboxImport';
+import { uploadRekordboxDb, uploadRekordboxZipBundle } from './rekordboxImport';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -33,5 +33,93 @@ describe('Rekordbox import upload requests', () => {
     );
 
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+});
+
+
+class MockEventTarget {
+  private listeners = new Map<string, Set<(event: Event) => void>>();
+
+  addEventListener(type: string, listener: (event: Event) => void): void {
+    const callbacks = this.listeners.get(type) ?? new Set<(event: Event) => void>();
+    callbacks.add(listener);
+    this.listeners.set(type, callbacks);
+  }
+
+  dispatch(type: string, event = new Event(type)): void {
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
+}
+
+class MockXMLHttpRequest extends MockEventTarget {
+  static instances: MockXMLHttpRequest[] = [];
+
+  readonly upload = new MockEventTarget();
+  status = 0;
+  responseText = '';
+  open = vi.fn();
+  setRequestHeader = vi.fn();
+  send = vi.fn();
+  abort = vi.fn(() => this.dispatch('abort'));
+
+  constructor() {
+    super();
+    MockXMLHttpRequest.instances.push(this);
+  }
+}
+
+describe('Rekordbox bundle upload cancellation', () => {
+  afterEach(() => {
+    MockXMLHttpRequest.instances = [];
+  });
+
+  it('rejects immediately when the supplied signal is already aborted', async () => {
+    vi.stubGlobal('XMLHttpRequest', MockXMLHttpRequest);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(uploadRekordboxZipBundle(
+      new File(['bundle'], 'rekordbox.zip'),
+      'token',
+      undefined,
+      controller.signal,
+    )).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(MockXMLHttpRequest.instances).toHaveLength(0);
+  });
+
+  it('aborts an active XHR and settles the Promise exactly once', async () => {
+    vi.stubGlobal('XMLHttpRequest', MockXMLHttpRequest);
+    const controller = new AbortController();
+
+    const upload = uploadRekordboxZipBundle(
+      new File(['bundle'], 'rekordbox.zip'),
+      'token',
+      undefined,
+      controller.signal,
+      'job-123',
+    );
+    const xhr = MockXMLHttpRequest.instances[0];
+
+    expect(xhr.send).toHaveBeenCalledOnce();
+    controller.abort();
+
+    await expect(upload).rejects.toMatchObject({ name: 'AbortError' });
+    expect(xhr.abort).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a successful HTTP response with invalid JSON', async () => {
+    vi.stubGlobal('XMLHttpRequest', MockXMLHttpRequest);
+
+    const upload = uploadRekordboxZipBundle(
+      new File(['bundle'], 'rekordbox.zip'),
+      'token',
+    );
+    const xhr = MockXMLHttpRequest.instances[0];
+    xhr.status = 200;
+    xhr.responseText = '';
+    xhr.dispatch('load');
+
+    await expect(upload).rejects.toThrow('invalid response');
   });
 });

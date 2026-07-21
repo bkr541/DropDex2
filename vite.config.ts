@@ -4,9 +4,17 @@ import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import { visualizer } from 'rollup-plugin-visualizer';
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, '.', '');
   const analyze = env.ANALYZE === 'true';
+  const importApiUrl = env.VITE_IMPORT_API_URL?.trim();
+
+  if (command === 'build' && !importApiUrl) {
+    throw new Error(
+      '[DropDex] VITE_IMPORT_API_URL is required for production builds. '
+      + 'Set it to the public FastAPI backend URL before running vite build.',
+    );
+  }
 
   return {
     base: './',

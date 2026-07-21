@@ -26,15 +26,16 @@ logger = logging.getLogger(__name__)
 _jwks_cache: dict | None = None
 
 
-def _get_jwks() -> dict:
-    """Fetch the project JWKS once and cache it for the lifetime of the process."""
+async def _get_jwks() -> dict:
+    """Fetch and cache JWKS without blocking FastAPI's event loop."""
     global _jwks_cache
     if _jwks_cache is None:
         url = f"{settings.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
         try:
-            resp = httpx.get(url, timeout=10.0)
-            resp.raise_for_status()
-            _jwks_cache = resp.json()
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                _jwks_cache = resp.json()
             logger.info(
                 "Loaded JWKS (%d keys) from %s",
                 len(_jwks_cache.get("keys", [])),
@@ -49,9 +50,9 @@ def _get_jwks() -> dict:
     return _jwks_cache
 
 
-def _find_jwk(kid: str | None) -> dict:
+async def _find_jwk(kid: str | None) -> dict:
     """Return the JWK whose kid matches, or the first key if kid is absent."""
-    for key in _get_jwks().get("keys", []):
+    for key in (await _get_jwks()).get("keys", []):
         if kid is None or key.get("kid") == kid:
             return key
     raise HTTPException(status_code=401, detail="No matching signing key found")
@@ -85,7 +86,7 @@ async def get_current_user_id(authorization: str = Header(...)) -> str:
             )
         else:
             # ES256 and other asymmetric algorithms: use JWKS
-            jwk_key = _find_jwk(header.get("kid"))
+            jwk_key = await _find_jwk(header.get("kid"))
             payload = jwt.decode(
                 token,
                 jwk_key,
