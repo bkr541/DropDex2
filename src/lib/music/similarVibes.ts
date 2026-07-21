@@ -8,7 +8,7 @@ import type { EdgeDirection } from '../queries/recommendations'
 export const BPM_TOLERANCE_DEFAULT = 2
 
 /** Maximum candidates to request from the database before in-TypeScript ranking. */
-export const SIMILAR_CANDIDATE_FETCH_LIMIT = 20
+export const SIMILAR_CANDIDATE_FETCH_LIMIT = 100
 
 /** Maximum ranked results to return to the caller. */
 export const SIMILAR_TRACKS_LIMIT = 5
@@ -24,6 +24,7 @@ export const SCORE_CAMELOT_RELATIVE = 25
 export const SCORE_CAMELOT_ADJACENT = 20
 export const SCORE_CAMELOT_ENERGY_BOOST = 12
 export const SCORE_BPM_MAX = 10
+export const SCORE_HALF_DOUBLE_TEMPO_MULTIPLIER = 0.8
 export const SCORE_SAME_GENRE = 5
 export const SCORE_SAME_LABEL = 3
 
@@ -38,6 +39,52 @@ export interface RankableTrack {
 /** Returns true when `bpm` is a usable positive number (0 = unanalyzed in Rekordbox). */
 export function shouldUseBpm(bpm: number | null | undefined): bpm is number {
   return bpm != null && bpm > 0
+}
+
+export type TempoRelationship = 'direct' | 'half_time' | 'double_time' | 'none';
+
+export interface TempoMatch {
+  relationship: TempoRelationship;
+  difference: number;
+  scoreMultiplier: number;
+}
+
+/** Resolve direct and DJ-equivalent half/double-time tempo relationships. */
+export function classifyTempoRelationship(
+  selectedBpm: number | null | undefined,
+  candidateBpm: number | null | undefined,
+  tolerance = BPM_TOLERANCE_DEFAULT,
+): TempoMatch {
+  if (!shouldUseBpm(selectedBpm) || !shouldUseBpm(candidateBpm)) {
+    return { relationship: 'none', difference: Number.POSITIVE_INFINITY, scoreMultiplier: 0 };
+  }
+
+  const safeTolerance = Math.max(0, tolerance);
+  const matches: Array<TempoMatch> = [
+    {
+      relationship: 'direct',
+      difference: Math.abs(candidateBpm - selectedBpm),
+      scoreMultiplier: 1,
+    },
+    {
+      relationship: 'half_time',
+      difference: Math.abs((candidateBpm * 2) - selectedBpm),
+      scoreMultiplier: SCORE_HALF_DOUBLE_TEMPO_MULTIPLIER,
+    },
+    {
+      relationship: 'double_time',
+      difference: Math.abs((candidateBpm / 2) - selectedBpm),
+      scoreMultiplier: SCORE_HALF_DOUBLE_TEMPO_MULTIPLIER,
+    },
+  ];
+  const best = matches.sort((a, b) => {
+    if (a.difference !== b.difference) return a.difference - b.difference;
+    return b.scoreMultiplier - a.scoreMultiplier;
+  })[0];
+
+  return best.difference <= safeTolerance
+    ? best
+    : { relationship: 'none', difference: best.difference, scoreMultiplier: 0 };
 }
 
 /**
@@ -134,18 +181,26 @@ export function scoreCandidate(input: ScoreInput): SimilarTrackResult {
       break
   }
 
-  // ── BPM proximity ────────────────────────────────────────────────────────────
-  if (shouldUseBpm(selected.bpm) && shouldUseBpm(candidate.bpm)) {
-    const diff = Math.abs(candidate.bpm - selected.bpm)
-    if (diff <= bpmTolerance) {
-      const bpmScore = SCORE_BPM_MAX * (1 - diff / bpmTolerance)
-      score += bpmScore
-      reasons.push({
-        kind: 'bpm_proximity',
-        label: diff === 0 ? 'Same BPM' : `±${diff.toFixed(1)} BPM`,
-        score: bpmScore,
-      })
+  // ── BPM proximity, including DJ-equivalent half/double time ────────────────
+  const tempoMatch = classifyTempoRelationship(selected.bpm, candidate.bpm, bpmTolerance)
+  if (tempoMatch.relationship !== 'none') {
+    const proximity = bpmTolerance > 0
+      ? Math.max(0, 1 - tempoMatch.difference / bpmTolerance)
+      : (tempoMatch.difference === 0 ? 1 : 0)
+    const bpmScore = SCORE_BPM_MAX * tempoMatch.scoreMultiplier * proximity
+    score += bpmScore
+
+    let label: string
+    if (tempoMatch.relationship === 'half_time') {
+      label = `Half-time · ${candidate.bpm?.toFixed(1)} → ${selected.bpm?.toFixed(1)} BPM`
+    } else if (tempoMatch.relationship === 'double_time') {
+      label = `Double-time · ${candidate.bpm?.toFixed(1)} → ${selected.bpm?.toFixed(1)} BPM`
+    } else {
+      label = tempoMatch.difference === 0
+        ? 'Same BPM'
+        : `±${tempoMatch.difference.toFixed(1)} BPM`
     }
+    reasons.push({ kind: 'bpm_proximity', label, score: bpmScore })
   }
 
   // ── Same genre ───────────────────────────────────────────────────────────────
@@ -235,16 +290,18 @@ export function rankSimilarTracks<T extends RankableTrack>(
     .filter((c) => {
       if (c.id === selectedId) return false
       if (shouldUseBpm(selectedBpm)) {
-        if (c.bpm == null) return false
-        return c.bpm >= selectedBpm - bpmTolerance && c.bpm <= selectedBpm + bpmTolerance
+        return classifyTempoRelationship(selectedBpm, c.bpm, bpmTolerance).relationship !== 'none'
       }
       return true
     })
     .sort((a, b) => {
       if (shouldUseBpm(selectedBpm)) {
-        const aDiff = Math.abs((a.bpm ?? Infinity) - selectedBpm)
-        const bDiff = Math.abs((b.bpm ?? Infinity) - selectedBpm)
-        if (aDiff !== bDiff) return aDiff - bDiff
+        const aMatch = classifyTempoRelationship(selectedBpm, a.bpm, bpmTolerance)
+        const bMatch = classifyTempoRelationship(selectedBpm, b.bpm, bpmTolerance)
+        if (aMatch.difference !== bMatch.difference) return aMatch.difference - bMatch.difference
+        if (aMatch.scoreMultiplier !== bMatch.scoreMultiplier) {
+          return bMatch.scoreMultiplier - aMatch.scoreMultiplier
+        }
       }
       return a.title.localeCompare(b.title)
     })

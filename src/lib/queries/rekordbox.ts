@@ -152,14 +152,25 @@ export async function fetchActiveImport(userId: string): Promise<RekordboxImport
 }
 
 export async function fetchAllImports(userId: string): Promise<RekordboxImport[]> {
-  const { data, error } = await supabase
-    .from('rekordbox_imports')
-    .select('*')
-    .eq('user_id', userId)
-    .order('imported_at', { ascending: false });
+  const pageSize = 500;
+  const imports: RekordboxImport[] = [];
 
-  if (error) throw new Error(error.message);
-  return (data ?? []) as RekordboxImport[];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from('rekordbox_imports')
+      .select('*')
+      .eq('user_id', userId)
+      .order('imported_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) throw new Error(error.message);
+    const page = (data ?? []) as RekordboxImport[];
+    imports.push(...page);
+    if (page.length < pageSize) break;
+  }
+
+  return imports;
 }
 
 export async function setActiveImport(importId: string): Promise<void> {
@@ -220,13 +231,25 @@ export async function fetchTracksByIds(trackIds: string[]): Promise<RekordboxTra
   const uniqueIds = [...new Set(trackIds.filter(Boolean))];
   if (uniqueIds.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from('rekordbox_tracks')
-    .select('*')
-    .in('id', uniqueIds);
+  const chunkSize = 200;
+  const byId = new Map<string, RekordboxTrack>();
+  for (let start = 0; start < uniqueIds.length; start += chunkSize) {
+    const chunk = uniqueIds.slice(start, start + chunkSize);
+    const { data, error } = await supabase
+      .from('rekordbox_tracks')
+      .select('*')
+      .in('id', chunk);
 
-  if (error) throw new Error(error.message);
-  return (data ?? []) as RekordboxTrack[];
+    if (error) throw new Error(error.message);
+    for (const track of (data ?? []) as RekordboxTrack[]) {
+      byId.set(track.id, track);
+    }
+  }
+
+  return uniqueIds.flatMap((id) => {
+    const track = byId.get(id);
+    return track ? [track] : [];
+  });
 }
 
 export async function fetchPlaylistById(playlistId: string): Promise<PlaylistWithCount | null> {
@@ -325,23 +348,23 @@ export async function fetchTrackPlaylists(
   importId: string,
   trackId: string,
 ): Promise<TrackPlaylistMembership[]> {
-  const { data, error } = await supabase
-    .from('rekordbox_playlist_tracks')
-    .select('position, playlist:rekordbox_playlists!playlist_id(*)')
-    .eq('track_id', trackId);
+  const { data, error } = await supabase.rpc('get_rekordbox_track_playlists', {
+    p_import_id: importId,
+    p_track_id: trackId,
+  });
 
   if (error) throw new Error(error.message);
+  if (!Array.isArray(data)) return [];
 
-  return ((data ?? []) as Array<{ position: number; playlist: unknown }>)
-    .filter((row) => {
-      if (row.playlist == null) return false;
-      return (row.playlist as RekordboxPlaylist).import_id === importId;
-    })
-    .map((row) => ({
-      position: row.position,
-      playlist: row.playlist as RekordboxPlaylist,
-    }))
-    .sort((a, b) => a.playlist.name.localeCompare(b.playlist.name));
+  return data.flatMap((entry) => {
+    const row = asRecord(entry);
+    const playlist = asRecord(row.playlist);
+    if (typeof playlist.id !== 'string' || typeof playlist.name !== 'string') return [];
+    return [{
+      position: asFiniteNumber(row.position),
+      playlist: playlist as unknown as RekordboxPlaylist,
+    }];
+  });
 }
 
 /**

@@ -1,4 +1,7 @@
+import asyncio
 import logging
+from contextlib import suppress
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -16,6 +19,7 @@ from .analysis_import_service import (
 from .auth import get_current_user_id
 from .bundle_import_service import import_bundle
 from .config import settings
+from .discovery.repository import DiscoveryRepository
 from .discovery.routes import router as discovery_router
 from .import_jobs import (
     cancel_import_job,
@@ -106,6 +110,57 @@ async def recover_rekordbox_import_jobs() -> None:
     except Exception:
         # Startup must remain available even if Supabase is temporarily offline.
         logger.exception("Could not recover interrupted Rekordbox imports at startup")
+
+
+_discovery_reaper_task: asyncio.Task[None] | None = None
+
+
+async def _recover_stale_discovery_jobs() -> None:
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        minutes=max(1, settings.discovery_job_stale_minutes)
+    )
+    repo = DiscoveryRepository(settings.supabase_url, settings.supabase_secret_key)
+    recovered = await run_in_threadpool(
+        repo.recover_stale_scrape_jobs,
+        cutoff.isoformat(),
+    )
+    if recovered:
+        logger.warning("Recovered %d stale discovery scrape job(s)", recovered)
+
+
+async def _run_discovery_job_reaper() -> None:
+    interval = max(15, int(settings.discovery_job_reaper_seconds))
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await _recover_stale_discovery_jobs()
+        except Exception:
+            logger.exception("Could not recover stale discovery jobs")
+
+
+@app.on_event("startup")
+async def recover_discovery_jobs() -> None:
+    """Fail stale jobs now and keep checking after a recent restart."""
+    global _discovery_reaper_task
+    try:
+        await _recover_stale_discovery_jobs()
+    except Exception:
+        logger.exception("Could not recover stale discovery jobs at startup")
+    _discovery_reaper_task = asyncio.create_task(
+        _run_discovery_job_reaper(),
+        name="dropdex-discovery-job-reaper",
+    )
+
+
+@app.on_event("shutdown")
+async def stop_discovery_job_reaper() -> None:
+    global _discovery_reaper_task
+    if _discovery_reaper_task is None:
+        return
+    _discovery_reaper_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await _discovery_reaper_task
+    _discovery_reaper_task = None
 
 
 @app.get("/health")

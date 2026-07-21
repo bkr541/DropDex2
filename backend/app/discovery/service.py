@@ -30,7 +30,9 @@ the execution logic can later move to a durable worker without changes here.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import suppress
 from typing import Optional
 
 from postgrest.exceptions import APIError
@@ -62,6 +64,23 @@ log = logging.getLogger(__name__)
 
 def _make_repo() -> DiscoveryRepository:
     return DiscoveryRepository(settings.supabase_url, settings.supabase_secret_key)
+
+
+async def _keep_discovery_job_alive(
+    repo: DiscoveryRepository,
+    job_id: str,
+) -> None:
+    """Persist a heartbeat while an in-process browser scrape is alive."""
+    interval = max(5, int(settings.discovery_job_heartbeat_seconds))
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await run_in_threadpool(repo.touch_job, job_id)
+        except Exception:
+            # A transient heartbeat failure must not terminate a scrape that may
+            # still complete successfully. The stale-job reaper requires several
+            # missed heartbeats before it marks the job failed.
+            log.exception("[discovery] Could not heartbeat job %s", job_id)
 
 
 async def run_discovery_for_artist(
@@ -130,9 +149,14 @@ async def run_discovery_for_artist(
         job_id, artist.name, artist_id, user_id,
     )
 
+    heartbeat_task: asyncio.Task[None] | None = None
     try:
         # ── 3. Mark running ───────────────────────────────────────────────────
         await run_in_threadpool(repo.set_job_running, job_id)
+        heartbeat_task = asyncio.create_task(
+            _keep_discovery_job_alive(repo, job_id),
+            name=f"dropdex-discovery-heartbeat-{job_id}",
+        )
 
         # ── 4. Create search run ──────────────────────────────────────────────
         search_run_id = await run_in_threadpool(
@@ -146,10 +170,12 @@ async def run_discovery_for_artist(
         # ── 5. Run the Playwright scraper ─────────────────────────────────────
         #    Only the canonical artists.name is passed; the caller cannot inject
         #    an arbitrary search string via this code path.
+        await run_in_threadpool(repo.touch_job, job_id)
         scrape_result = await scrape_artist_setlists(
             artist.name,
             max_pages=max_pages,
         )
+        await run_in_threadpool(repo.touch_job, job_id)
         log.info(
             "[discovery] Job %s scrape returned — artist=%s results=%d pages=%d",
             job_id, artist.name, len(scrape_result.results), scrape_result.pages_scraped,
@@ -158,15 +184,18 @@ async def run_discovery_for_artist(
         # ── 6. Persist per-page audit records ────────────────────────────────
         for audit in scrape_result.page_audit:
             await run_in_threadpool(repo.insert_search_page, search_run_id, audit)
+            await run_in_threadpool(repo.touch_job, job_id)
 
         # ── 7. Upsert results and link to the searched-for artist ─────────────
-        for result in scrape_result.results:
+        for result_index, result in enumerate(scrape_result.results):
             set_result_id = await run_in_threadpool(
                 repo.upsert_set_result, search_run_id, artist_id, result
             )
             await run_in_threadpool(
                 repo.link_result_to_artist, set_result_id, artist_id, artist.name
             )
+            if result_index % 25 == 0:
+                await run_in_threadpool(repo.touch_job, job_id)
 
         # ── 8. Mark completed ─────────────────────────────────────────────────
         await run_in_threadpool(
@@ -211,6 +240,11 @@ async def run_discovery_for_artist(
         raise DiscoveryJobError(
             f"Job {job_id} failed: {type(exc).__name__}"
         ) from exc
+    finally:
+        if heartbeat_task is not None:
+            heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat_task
 
     summary = await run_in_threadpool(repo.get_job_summary, job_id)
     if summary is None:

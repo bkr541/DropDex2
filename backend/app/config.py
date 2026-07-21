@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     tracklists_scraper_navigation_timeout_ms: int = 30_000
     tracklists_scraper_delay_ms: int = 1_000
     tracklists_scraper_max_pages: int = 50
+    discovery_job_heartbeat_seconds: int = 15
+    discovery_job_reaper_seconds: int = 30
+    discovery_job_stale_minutes: int = 3
 
     # ── 1001Tracklists detail page scraper ────────────────────────────────────
     # Separate, shorter timeouts so a stalled ad resource does not cause a 30 s

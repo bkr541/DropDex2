@@ -47,51 +47,39 @@ export async function fetchSetlistsForArtistFeed(
   artistId: string,
   limit = 10,
 ): Promise<DiscoverySetlistResult[]> {
-  // Step 1: collect all set_result_ids for this artist via the authoritative junction table.
-  // No limit here — we need all IDs so step 2 can pick the most-recent ones.
-  const { data: junctionRows, error: jErr } = await supabase
-    .from('artist_set_result_artists')
-    .select('set_result_id')
-    .eq('artist_id', artistId);
-
-  if (jErr) throw jErr;
-  if (!junctionRows?.length) return [];
-
-  const ids = junctionRows.map((r) => r.set_result_id as string);
-
-  // Step 2: fetch setlists by those IDs, ordered by most-recent set date.
-  const { data, error } = await supabase
-    .from('artist_set_results')
-    .select(
-      `id, source_tracklist_id, source_url, title, artwork_url, set_date,
-       ided_tracks, total_tracks, completion_pct, duration_text, duration_seconds,
-       music_styles, listen_sources, views, likes, creator_username,
-       creator_profile_url, updated_at`,
-    )
-    .in('id', ids)
-    .order('set_date', { ascending: false, nullsFirst: false })
-    .limit(limit);
-
+  const { data, error } = await supabase.rpc('get_discovery_artist_setlists_page', {
+    p_artist_id: artistId,
+    p_offset: 0,
+    p_limit: Math.max(1, limit),
+  });
   if (error) throw error;
 
-  return (data ?? []).map((row) => ({
-    id: row.id as string,
-    source_tracklist_id: row.source_tracklist_id as string | null,
-    source_url: row.source_url as string | null,
-    title: row.title as string | null,
-    artwork_url: row.artwork_url as string | null,
-    set_date: row.set_date as string | null,
-    ided_tracks: row.ided_tracks as number | null,
-    total_tracks: row.total_tracks as number | null,
-    completion_pct: row.completion_pct as number | null,
-    duration_text: row.duration_text as string | null,
-    duration_seconds: row.duration_seconds as number | null,
-    music_styles: row.music_styles as string[] | null,
-    listen_sources: row.listen_sources as { name: string; url: string }[] | null,
-    views: row.views as number | null,
-    likes: row.likes as number | null,
-    creator_username: row.creator_username as string | null,
-    creator_profile_url: row.creator_profile_url as string | null,
-    updated_at: row.updated_at as string | null,
-  }));
+  const payload = data && typeof data === 'object' && !Array.isArray(data)
+    ? data as Record<string, unknown>
+    : {};
+  const rows = Array.isArray(payload.items) ? payload.items : [];
+
+  return rows.map((value) => {
+    const row = value as Record<string, unknown>;
+    return {
+      id: String(row.id),
+      source_tracklist_id: row.source_tracklist_id as string | null,
+      source_url: row.source_url as string | null,
+      title: row.title as string | null,
+      artwork_url: row.artwork_url as string | null,
+      set_date: row.set_date as string | null,
+      ided_tracks: row.ided_tracks as number | null,
+      total_tracks: row.total_tracks as number | null,
+      completion_pct: row.completion_pct as number | null,
+      duration_text: row.duration_text as string | null,
+      duration_seconds: row.duration_seconds as number | null,
+      music_styles: row.music_styles as string[] | null,
+      listen_sources: row.listen_sources as { name: string; url: string }[] | null,
+      views: row.views as number | null,
+      likes: row.likes as number | null,
+      creator_username: row.creator_username as string | null,
+      creator_profile_url: row.creator_profile_url as string | null,
+      updated_at: row.updated_at as string | null,
+    };
+  });
 }

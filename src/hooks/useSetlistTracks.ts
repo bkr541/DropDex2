@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DiscoverySetTracklistDetail } from '../types';
 import { fetchSetlistTracks, importSetlistTracksHtml, scrapeSetlistTracks } from '../lib/api/discovery';
+import { isAbortError } from '../lib/api/responseValidation';
 
 export function useSetlistTracks(
   setResultId: string | null,
@@ -10,123 +11,135 @@ export function useSetlistTracks(
   const [loading, setLoading] = useState(false);
   const [scraping, setScraping] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Tracks which setResultId has already had an auto-scrape attempted this
-  // session so we never loop: auto-scrape fires at most once per setlist load.
   const autoScrapedRef = useRef<string | null>(null);
+  const generationRef = useRef(0);
+  const controllerRef = useRef<AbortController | null>(null);
+
+  const beginOperation = useCallback(() => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    const generation = ++generationRef.current;
+    return { controller, generation };
+  }, []);
+
+  const isCurrent = useCallback(
+    (controller: AbortController, generation: number) =>
+      controllerRef.current === controller && generationRef.current === generation,
+    [],
+  );
 
   const load = useCallback(async () => {
     if (!setResultId || !accessToken) return;
+    const { controller, generation } = beginOperation();
     setLoading(true);
+    setScraping(false);
     setError(null);
 
-    let result: DiscoverySetTracklistDetail;
     try {
-      result = await fetchSetlistTracks(setResultId, accessToken);
+      const result = await fetchSetlistTracks(setResultId, accessToken, controller.signal);
+      if (!isCurrent(controller, generation)) return;
       setDetail(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load tracks');
       setLoading(false);
-      return;
-    }
-    setLoading(false);
 
-    const status = result.setlist.detail_scrape_status;
-    const expectedTrackCount = result.setlist.track_count ?? 0;
-    const parsedTrackCount = result.setlist.parsed_track_count ?? 0;
-    const hasTracks = result.tracks.length > 0;
+      const status = result.setlist.detail_scrape_status;
+      const expectedTrackCount = result.setlist.track_count ?? 0;
+      const parsedTrackCount = result.setlist.parsed_track_count ?? 0;
+      const hasTracks = result.tracks.length > 0;
+      const completedButEmpty =
+        status === 'completed'
+        && !hasTracks
+        && expectedTrackCount > 0
+        && parsedTrackCount === 0;
+      const shouldAutoScrape =
+        !hasTracks
+        && status !== 'failed'
+        && (status !== 'completed' || completedButEmpty)
+        && autoScrapedRef.current !== setResultId;
 
-    // A record stuck as "completed" with zero parsed tracks while the source
-    // reports track_count > 0 is an invalid state — the previous scrape silently
-    // failed (bot-block, stale DOM, selector change). Force a fresh scrape with
-    // refresh=true to overwrite the bad status.
-    const completedButEmpty =
-      status === 'completed' &&
-      !hasTracks &&
-      expectedTrackCount > 0 &&
-      parsedTrackCount === 0;
+      if (!shouldAutoScrape) return;
 
-    const shouldAutoScrape =
-      !hasTracks &&
-      status !== 'failed' &&
-      (status !== 'completed' || completedButEmpty) &&
-      autoScrapedRef.current !== setResultId;
-
-    if (shouldAutoScrape) {
       autoScrapedRef.current = setResultId;
       setScraping(true);
-      try {
-        // Pass refresh=true for stuck completed-but-empty records so the
-        // backend re-scrapes unconditionally instead of returning cached state.
-        const scraped = await scrapeSetlistTracks(
-          setResultId,
-          accessToken,
-          completedButEmpty,
-        );
-        setDetail(scraped);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Scrape failed');
-      } finally {
+      const scraped = await scrapeSetlistTracks(
+        setResultId,
+        accessToken,
+        completedButEmpty,
+        controller.signal,
+      );
+      if (!isCurrent(controller, generation)) return;
+      setDetail(scraped);
+    } catch (err: unknown) {
+      if (!isCurrent(controller, generation) || isAbortError(err)) return;
+      setError(err instanceof Error ? err.message : 'Failed to load tracks');
+    } finally {
+      if (isCurrent(controller, generation)) {
+        setLoading(false);
         setScraping(false);
       }
     }
-  }, [setResultId, accessToken]);
+  }, [accessToken, beginOperation, isCurrent, setResultId]);
 
   useEffect(() => {
+    controllerRef.current?.abort();
+    generationRef.current += 1;
     setDetail(null);
     setError(null);
     setLoading(false);
     setScraping(false);
-    // Reset per-setlist auto-scrape guard when setResultId changes so a newly
-    // selected setlist can auto-scrape even if the previous one already did.
     autoScrapedRef.current = null;
-    load();
+    void load();
+    return () => controllerRef.current?.abort();
   }, [load]);
 
-  const refresh = useCallback(async () => {
-    if (!setResultId || !accessToken || scraping) return;
+  const runScrape = useCallback(async (failureMessage: string) => {
+    if (!setResultId || !accessToken) return;
+    const { controller, generation } = beginOperation();
     setScraping(true);
+    setLoading(false);
     setError(null);
     try {
-      const result = await scrapeSetlistTracks(setResultId, accessToken, true);
+      const result = await scrapeSetlistTracks(
+        setResultId,
+        accessToken,
+        true,
+        controller.signal,
+      );
+      if (!isCurrent(controller, generation)) return;
       setDetail(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Refresh failed');
+    } catch (err: unknown) {
+      if (!isCurrent(controller, generation) || isAbortError(err)) return;
+      setError(err instanceof Error ? err.message : failureMessage);
     } finally {
-      setScraping(false);
+      if (isCurrent(controller, generation)) setScraping(false);
     }
-  }, [setResultId, accessToken, scraping]);
+  }, [accessToken, beginOperation, isCurrent, setResultId]);
 
-  // retry always forces a fresh scrape (refresh=true) so stuck or failed
-  // records are re-attempted unconditionally rather than returning cached state.
-  const retry = useCallback(async () => {
-    if (!setResultId || !accessToken || scraping) return;
-    setScraping(true);
-    setError(null);
-    try {
-      const result = await scrapeSetlistTracks(setResultId, accessToken, true);
-      setDetail(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Retry failed');
-    } finally {
-      setScraping(false);
-    }
-  }, [setResultId, accessToken, scraping]);
+  const refresh = useCallback(() => runScrape('Refresh failed'), [runScrape]);
+  const retry = useCallback(() => runScrape('Retry failed'), [runScrape]);
 
-  // importHtml parses user-supplied page HTML as a fallback when the browser
-  // scraper is blocked.  Re-throws on failure so the caller can show the error
-  // inside the import panel without overwriting the existing error state.
   const importHtml = useCallback(async (html: string) => {
     if (!setResultId || !accessToken) return;
+    const { controller, generation } = beginOperation();
     setScraping(true);
+    setLoading(false);
     try {
-      const result = await importSetlistTracksHtml(setResultId, accessToken, html);
+      const result = await importSetlistTracksHtml(
+        setResultId,
+        accessToken,
+        html,
+        controller.signal,
+      );
+      if (!isCurrent(controller, generation)) return;
       setDetail(result);
       setError(null);
+    } catch (err: unknown) {
+      if (!isCurrent(controller, generation) || isAbortError(err)) return;
+      throw err;
     } finally {
-      setScraping(false);
+      if (isCurrent(controller, generation)) setScraping(false);
     }
-  }, [setResultId, accessToken]);
+  }, [accessToken, beginOperation, isCurrent, setResultId]);
 
   return { detail, loading, scraping, error, refresh, retry, importHtml };
 }

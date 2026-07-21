@@ -28,13 +28,13 @@ Usage in a future API route
 ─────────────────────────────────────
 FastAPI in-process background tasks are sufficient for local / single-instance
 development but are NOT durable across process restarts.  A job marked
-"running" when the process exits will be orphaned in public.scrape_jobs with no
-automatic recovery.
+"running" when the process exits cannot resume in place. DropDex now persists
+heartbeats and a recurring reaper marks abandoned jobs failed so the UI can
+offer a retry instead of polling forever.
 
-When moving to production:
+For stronger production durability:
   - Run this in a durable worker (Celery, ARQ, or a Supabase Edge Function).
-  - On worker startup, poll for jobs stuck in "running" status and reset them
-    to "queued" so they can be retried.
+  - Requeue leased jobs after worker failure rather than failing them.
   - The service.run_discovery_for_artist function is worker-agnostic; only
     this file changes when adopting a durable queue.
 """

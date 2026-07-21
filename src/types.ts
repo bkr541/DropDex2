@@ -394,6 +394,7 @@ export interface ScrapeStartResponse {
   artist_id: string;
   artist_name: string;
   status: string;
+  reused?: boolean;
 }
 
 export interface SearchArtist {

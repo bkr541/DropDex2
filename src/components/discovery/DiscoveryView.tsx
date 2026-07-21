@@ -5,6 +5,7 @@ import { useArtistDetail } from '../../hooks/useArtistDetail';
 import { useArtistSetlists } from '../../hooks/useArtistSetlists';
 import { useDiscoveryScrapeJob } from '../../hooks/useDiscoveryScrapeJob';
 import { startArtistSetlistScrape } from '../../lib/api/discovery';
+import { isAbortError } from '../../lib/api/responseValidation';
 import { ArtistSearchInput } from './ArtistSearchInput';
 import { ArtistSearchResults } from './ArtistSearchResults';
 import { DiscoveryScrapeProgressModal } from './DiscoveryScrapeProgressModal';
@@ -27,8 +28,14 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
   const [scrapeError, setScrapeError] = useState<string | null>(null);
   const [scrapeStarting, setScrapeStarting] = useState(false);
   const [showArtistPage, setShowArtistPage] = useState(false);
+  const scrapeStartControllerRef = useRef<AbortController | null>(null);
+  const scrapeStartGenerationRef = useRef(0);
 
-  const { results: searchResults, loading: searchLoading } = useArtistDiscoverySearch(
+  const {
+    results: searchResults,
+    loading: searchLoading,
+    error: searchError,
+  } = useArtistDiscoverySearch(
     query,
     accessToken,
   );
@@ -38,15 +45,30 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
     loading: setlistsLoading,
     loadingMore,
     error: setlistsError,
+    loadMoreError,
     refetch: refetchSetlists,
     loadMore,
     hasMore,
   } = useArtistSetlists(selectedArtist?.id ?? null, accessToken);
-  const { job: scrapeJob } = useDiscoveryScrapeJob(activeJobId, accessToken);
+  const { job: scrapeJob, error: scrapePollingError } = useDiscoveryScrapeJob(
+    activeJobId,
+    accessToken,
+  );
   const { detail: artistDetail, loading: detailLoading } = useArtistDetail(
     selectedArtist?.id ?? null,
     accessToken,
   );
+
+
+  useEffect(() => () => scrapeStartControllerRef.current?.abort(), []);
+
+  const beginScrapeStart = () => {
+    scrapeStartControllerRef.current?.abort();
+    const controller = new AbortController();
+    scrapeStartControllerRef.current = controller;
+    const generation = ++scrapeStartGenerationRef.current;
+    return { controller, generation };
+  };
 
   // Transition to artist page once the initial setlist load finishes (even if empty)
   const prevSetlistsLoadingRef = useRef(false);
@@ -71,9 +93,6 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
   }, [scrapeJob?.status, refetchSetlists]);
 
   const handleArtistSelect = async (artist: DiscoveryArtist) => {
-    // Prevent duplicate scrape if one is already starting (rapid double-click guard)
-    if (scrapeStarting) return;
-
     setSelectedArtist(artist);
     setQuery('');
     setActiveJobId(null);
@@ -86,30 +105,37 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
 
     // Auto-start scrape immediately on artist selection using the artist
     // argument directly — selectedArtist state update hasn't propagated yet.
+    const { controller, generation } = beginScrapeStart();
     setScrapeStarting(true);
     try {
-      const response = await startArtistSetlistScrape(artist.id, accessToken);
+      const response = await startArtistSetlistScrape(artist.id, accessToken, controller.signal);
+      if (generation !== scrapeStartGenerationRef.current) return;
       setActiveJobId(response.job_id);
       setShowScrapeModal(true);
     } catch (err: unknown) {
+      if (generation !== scrapeStartGenerationRef.current || isAbortError(err)) return;
       setScrapeError(err instanceof Error ? err.message : 'Failed to start scrape');
     } finally {
-      setScrapeStarting(false);
+      if (generation === scrapeStartGenerationRef.current) setScrapeStarting(false);
     }
   };
 
   const handleStartScrape = async () => {
     if (!selectedArtist || !accessToken) return;
+    const artistId = selectedArtist.id;
+    const { controller, generation } = beginScrapeStart();
     setScrapeStarting(true);
     setScrapeError(null);
     try {
-      const response = await startArtistSetlistScrape(selectedArtist.id, accessToken);
+      const response = await startArtistSetlistScrape(artistId, accessToken, controller.signal);
+      if (generation !== scrapeStartGenerationRef.current) return;
       setActiveJobId(response.job_id);
       setShowScrapeModal(true);
     } catch (err: unknown) {
+      if (generation !== scrapeStartGenerationRef.current || isAbortError(err)) return;
       setScrapeError(err instanceof Error ? err.message : 'Failed to start scrape');
     } finally {
-      setScrapeStarting(false);
+      if (generation === scrapeStartGenerationRef.current) setScrapeStarting(false);
     }
   };
 
@@ -130,6 +156,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
         isOpen={showScrapeModal}
         onClose={() => setShowScrapeModal(false)}
         job={scrapeJob}
+        pollingError={scrapePollingError}
       />
 
       {/* Search input — hidden while viewing a set's track list */}
@@ -146,6 +173,9 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
                 : 'Search DropDex artists…'
             }
           />
+          {searchError && showSearchResults && (
+            <p className="text-xs text-red-400 font-mono px-1">{searchError}</p>
+          )}
           {showSearchResults && (
             <ArtistSearchResults
               results={searchResults}
@@ -180,6 +210,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
                 loading={setlistsLoading}
                 loadingMore={loadingMore}
                 error={setlistsError}
+                loadMoreError={loadMoreError}
                 hasMore={hasMore}
                 scrapeJob={scrapeJob}
                 scrapeStarting={scrapeStarting}

@@ -89,11 +89,12 @@ class ArtistSearchCandidate(BaseModel):
 
 
 class ScrapeStartResponse(BaseModel):
-    """Immediate 202 response when a scrape job is queued."""
+    """Immediate 202 response when a scrape job is queued or reused."""
     job_id: str
     artist_id: str
     artist_name: str
     status: str = "queued"
+    reused: bool = False
 
 
 class ScrapeJobResponse(BaseModel):

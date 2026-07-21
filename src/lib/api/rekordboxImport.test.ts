@@ -34,6 +34,20 @@ describe('Rekordbox import upload requests', () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
   });
+
+  it('rejects malformed successful import responses', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      import_id: 'job-123',
+      status: 'completed',
+      source_filename: 'exportLibrary.db',
+      playlists: [],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+
+    await expect(uploadRekordboxDb(
+      new File(['database'], 'exportLibrary.db'),
+      'token',
+    )).rejects.toThrow('unexpected import result response');
+  });
 });
 
 

@@ -7,6 +7,7 @@ interface DiscoveryScrapeProgressModalProps {
   isOpen: boolean;
   onClose: () => void;
   job: DiscoveryScrapeJob | null;
+  pollingError?: string | null;
 }
 
 function DotSpinner() {
@@ -44,13 +45,14 @@ export function DiscoveryScrapeProgressModal({
   isOpen,
   onClose,
   job,
+  pollingError,
 }: DiscoveryScrapeProgressModalProps) {
-  if (!job) return null;
+  if (!job && !pollingError) return null;
 
-  const isQueued = job.status === 'queued';
-  const isRunning = job.status === 'running';
-  const isCompleted = job.status === 'completed';
-  const isFailed = job.status === 'failed';
+  const isQueued = job?.status === 'queued';
+  const isRunning = job?.status === 'running';
+  const isCompleted = job?.status === 'completed';
+  const isFailed = job?.status === 'failed';
   const isActive = isQueued || isRunning;
 
   return (
@@ -82,7 +84,7 @@ export function DiscoveryScrapeProgressModal({
 
             {/* Header */}
             <div className="mb-5 pr-8">
-              {job.artist_name && (
+              {job?.artist_name && (
                 <h2 className="text-[2rem] font-black leading-none truncate">
                   {job.artist_name}
                 </h2>
@@ -93,6 +95,12 @@ export function DiscoveryScrapeProgressModal({
             </div>
 
             {/* Status container — min-h keeps consistent modal size across states */}
+            {pollingError && (
+              <p className="mb-3 text-[10px] text-red-400 font-mono break-words">
+                Status refresh failed. Retrying automatically: {pollingError}
+              </p>
+            )}
+
             <div
               className={cn(
                 'flex flex-col items-center justify-center min-h-[176px] rounded-2xl border-2 border-dashed gap-3 px-6 py-6',
@@ -101,6 +109,18 @@ export function DiscoveryScrapeProgressModal({
                 isFailed && 'border-red-400/30',
               )}
             >
+              {!job && pollingError && (
+                <>
+                  <XCircle size={32} className="text-red-400" />
+                  <div className="text-center space-y-1 px-2">
+                    <p className="text-sm font-bold text-red-400">Status temporarily unavailable</p>
+                    <p className="text-[10px] font-mono opacity-55 break-words leading-relaxed">
+                      DropDex is retrying automatically.
+                    </p>
+                  </div>
+                </>
+              )}
+
               {isActive && (
                 <>
                   <DotSpinner />
@@ -120,10 +140,10 @@ export function DiscoveryScrapeProgressModal({
                     <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
                       Sets Found!
                     </p>
-                    {job.results_found > 0 && (
+                    {(job?.results_found ?? 0) > 0 && (
                       <p className="text-xs opacity-45">
-                        {job.results_found}
-                        {job.total_results_reported ? ` of ${job.total_results_reported}` : ''} sets collected
+                        {job?.results_found ?? 0}
+                        {job?.total_results_reported ? ` of ${job.total_results_reported}` : ''} sets collected
                       </p>
                     )}
                   </div>
@@ -135,9 +155,9 @@ export function DiscoveryScrapeProgressModal({
                   <XCircle size={32} className="text-red-400" />
                   <div className="text-center space-y-1 px-2">
                     <p className="text-sm font-bold text-red-400">Search failed</p>
-                    {job.error_message && (
+                    {job?.error_message && (
                       <p className="text-[10px] font-mono opacity-55 break-words leading-relaxed">
-                        {job.error_message}
+                        {job?.error_message}
                       </p>
                     )}
                   </div>

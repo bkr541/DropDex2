@@ -24,6 +24,7 @@ import logging
 import os
 import shutil
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
@@ -74,6 +75,8 @@ except ImportError:  # pragma: no cover
 
 _ANALYSIS_PROGRESS_LOCK = Lock()
 _ANALYSIS_PROGRESS: Dict[str, Dict[str, Any]] = {}
+_ANALYSIS_PROGRESS_LAST_PERSISTED: Dict[str, float] = {}
+_ANALYSIS_PROGRESS_PERSIST_INTERVAL_SECONDS = 0.5
 
 
 def _format_current_track_label(track: Optional[dict]) -> Optional[str]:
@@ -102,31 +105,61 @@ def _set_analysis_progress(
     track: Optional[dict],
     processed_track_count: int,
     total_track_count: int,
+    sb=None,
+    force_persist: bool = False,
 ) -> None:
-    """Record best-effort in-process progress for /analysis-status polling."""
+    """Record progress in memory and persist it for cross-worker polling."""
     label = _format_current_track_label(track)
     safe_total = max(0, int(total_track_count or 0))
     safe_processed = max(0, min(int(processed_track_count or 0), safe_total or 0))
     current_track_id = str(track.get("id")) if track and track.get("id") else None
+    updated_at = _now_iso()
+    payload = {
+        "processed_track_count": safe_processed,
+        "total_track_count": safe_total,
+        "current_track_id": current_track_id,
+        "current_track_title": (
+            str(track.get("title")).strip()
+            if track and track.get("title")
+            else None
+        ),
+        "current_track_artist": (
+            str(track.get("artist")).strip()
+            if track and track.get("artist")
+            else None
+        ),
+        "current_track_label": label,
+        "updated_at": updated_at,
+    }
 
+    now_monotonic = time.monotonic()
     with _ANALYSIS_PROGRESS_LOCK:
-        _ANALYSIS_PROGRESS[import_id] = {
-            "processed_track_count": safe_processed,
-            "total_track_count": safe_total,
-            "current_track_id": current_track_id,
-            "current_track_title": (
-                str(track.get("title")).strip()
-                if track and track.get("title")
-                else None
-            ),
-            "current_track_artist": (
-                str(track.get("artist")).strip()
-                if track and track.get("artist")
-                else None
-            ),
-            "current_track_label": label,
-            "updated_at": _now_iso(),
-        }
+        _ANALYSIS_PROGRESS[import_id] = payload
+        last_persisted = _ANALYSIS_PROGRESS_LAST_PERSISTED.get(import_id, 0.0)
+        should_persist = force_persist or (
+            sb is not None
+            and now_monotonic - last_persisted >= _ANALYSIS_PROGRESS_PERSIST_INTERVAL_SECONDS
+        )
+        if should_persist:
+            _ANALYSIS_PROGRESS_LAST_PERSISTED[import_id] = now_monotonic
+
+    if sb is None or not should_persist:
+        return
+
+    try:
+        sb.table("rekordbox_imports").update({
+            "analysis_progress_processed_track_count": safe_processed,
+            "analysis_progress_total_track_count": safe_total,
+            "analysis_current_track_id": current_track_id,
+            "analysis_current_track_title": payload["current_track_title"],
+            "analysis_current_track_artist": payload["current_track_artist"],
+            "analysis_current_track_label": label,
+            "analysis_progress_updated_at": updated_at,
+        }).eq("id", import_id).execute()
+    except Exception as exc:
+        # Parsing must continue if a transient progress write fails. The final
+        # status write is still authoritative and will force-persist progress.
+        logger.warning("Could not persist analysis progress for %s: %s", import_id, exc)
 
 
 def _get_live_analysis_progress(import_id: str) -> Dict[str, Any]:
@@ -213,7 +246,11 @@ def _require_import_for_user(sb, import_id: str, user_id: str) -> dict:
             "id, status, error_code, error_message, retryable, analysis_status, analysis_expected_track_count, "
             "analysis_matched_track_count, analysis_parsed_track_count, "
             "analysis_failed_track_count, analysis_asset_count, "
-            "analysis_parser_version, analysis_warnings"
+            "analysis_parser_version, analysis_warnings, "
+            "analysis_progress_processed_track_count, analysis_progress_total_track_count, "
+            "analysis_current_track_id, analysis_current_track_title, "
+            "analysis_current_track_artist, analysis_current_track_label, "
+            "analysis_progress_updated_at"
         )
         .eq("id", import_id)
         .eq("user_id", user_id)
@@ -1097,6 +1134,13 @@ def _complete_analysis_import_sync(
         sb.table("rekordbox_imports").update(
             {
                 "analysis_status": "parsing",
+                "analysis_progress_processed_track_count": 0,
+                "analysis_progress_total_track_count": 0,
+                "analysis_current_track_id": None,
+                "analysis_current_track_title": None,
+                "analysis_current_track_artist": None,
+                "analysis_current_track_label": None,
+                "analysis_progress_updated_at": _now_iso(),
             }
         ).eq("id", import_id).execute()
     except Exception as exc:
@@ -1174,6 +1218,8 @@ def _complete_analysis_import_sync(
             track=None,
             processed_track_count=0,
             total_track_count=total_track_count,
+            sb=sb,
+            force_persist=True,
         )
 
         for track in tracks:
@@ -1183,6 +1229,7 @@ def _complete_analysis_import_sync(
                 track=track,
                 processed_track_count=len(track_results),
                 total_track_count=total_track_count,
+                sb=sb,
             )
             track_id = track["id"]
             rb_cid = str(track.get("rekordbox_content_id", ""))
@@ -1225,6 +1272,7 @@ def _complete_analysis_import_sync(
                     track=track,
                     processed_track_count=len(track_results),
                     total_track_count=total_track_count,
+                    sb=sb,
                 )
                 continue
 
@@ -1272,6 +1320,7 @@ def _complete_analysis_import_sync(
                     track=track,
                     processed_track_count=len(track_results),
                     total_track_count=total_track_count,
+                    sb=sb,
                 )
                 continue
 
@@ -1412,6 +1461,7 @@ def _complete_analysis_import_sync(
                 track=track,
                 processed_track_count=len(track_results),
                 total_track_count=total_track_count,
+                sb=sb,
             )
 
     finally:
@@ -1444,6 +1494,13 @@ def _complete_analysis_import_sync(
                     "analysis_asset_count": total_asset_count,
                     "analysis_parser_version": _PARSER_VERSION,
                     "analysis_completed_at": _now_iso(),
+                    "analysis_progress_processed_track_count": total_tracks,
+                    "analysis_progress_total_track_count": total_tracks,
+                    "analysis_current_track_id": None,
+                    "analysis_current_track_title": None,
+                    "analysis_current_track_artist": None,
+                    "analysis_current_track_label": None,
+                    "analysis_progress_updated_at": _now_iso(),
                 }
             )
             .eq("id", import_id)
@@ -1633,11 +1690,22 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
     derived_parsed_track_count = sum(
         1 for t in tracks if (t.get("analysis_parse_status") or "") in final_track_statuses
     )
-    live_progress = (
-        _get_live_analysis_progress(import_id)
-        if analysis_status == "parsing"
-        else {}
-    )
+    persisted_progress = {
+        "processed_track_count": import_row.get("analysis_progress_processed_track_count"),
+        "total_track_count": import_row.get("analysis_progress_total_track_count"),
+        "current_track_id": import_row.get("analysis_current_track_id"),
+        "current_track_title": import_row.get("analysis_current_track_title"),
+        "current_track_artist": import_row.get("analysis_current_track_artist"),
+        "current_track_label": import_row.get("analysis_current_track_label"),
+        "updated_at": import_row.get("analysis_progress_updated_at"),
+    }
+    live_progress = persisted_progress if analysis_status == "parsing" else {}
+    if analysis_status == "parsing":
+        # Same-process memory can be slightly fresher than the throttled DB
+        # heartbeat, while persisted data remains correct across workers.
+        memory_progress = _get_live_analysis_progress(import_id)
+        if memory_progress:
+            live_progress = {**persisted_progress, **memory_progress}
     live_processed_track_count = int(live_progress.get("processed_track_count") or 0)
     live_total_track_count = int(live_progress.get("total_track_count") or 0)
     if live_total_track_count > expected_track_count:

@@ -145,38 +145,61 @@ async def start_scrape(
     if artist is None:
         raise HTTPException(status_code=404, detail="Artist not found")
 
-    try:
-        job_id = await run_in_threadpool(repo.create_scrape_job, user_id, artist_id)
-    except APIError as exc:
-        log.error(
-            "[routes] Failed to create scrape job — artist=%s code=%s message=%s",
-            artist_id,
-            getattr(exc, "code", "unknown"),
-            getattr(exc, "message", str(exc)),
+    reused = False
+    active_job = await run_in_threadpool(repo.get_active_scrape_job, artist_id)
+    job_id = active_job if isinstance(active_job, str) and active_job else None
+    if job_id is not None:
+        reused = True
+    else:
+        try:
+            job_id = await run_in_threadpool(repo.create_scrape_job, user_id, artist_id)
+        except APIError as exc:
+            # The partial unique index is the final race-safe guard when two
+            # requests for the same artist arrive simultaneously.
+            if str(getattr(exc, "code", "")) == "23505":
+                active_job = await run_in_threadpool(repo.get_active_scrape_job, artist_id)
+                job_id = active_job if isinstance(active_job, str) and active_job else None
+                reused = job_id is not None
+            if job_id is None:
+                log.error(
+                    "[routes] Failed to create scrape job — artist=%s code=%s message=%s",
+                    artist_id,
+                    getattr(exc, "code", "unknown"),
+                    getattr(exc, "message", str(exc)),
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Could not queue scrape job. The database may be unavailable or "
+                        "missing required columns. Check that all migrations have been applied."
+                    ),
+                ) from exc
+
+    await run_in_threadpool(repo.subscribe_user_to_job, job_id, user_id)
+
+    if reused:
+        log.info(
+            "[routes] Reusing active scrape — job=%s artist=%s (%s) user=%s",
+            job_id, artist.name, artist_id, user_id,
         )
-        raise HTTPException(
-            status_code=503,
-            detail="Could not queue scrape job. The database may be unavailable or missing required columns. "
-                   "Check that all migrations have been applied.",
-        ) from exc
-
-    log.info(
-        "[routes] Scrape queued — job=%s artist=%s (%s) user=%s",
-        job_id, artist.name, artist_id, user_id,
-    )
-
-    background_tasks.add_task(
-        run_discovery_background,
-        artist_id,
-        user_id,
-        job_id=job_id,
-    )
+    else:
+        log.info(
+            "[routes] Scrape queued — job=%s artist=%s (%s) user=%s",
+            job_id, artist.name, artist_id, user_id,
+        )
+        background_tasks.add_task(
+            run_discovery_background,
+            artist_id,
+            user_id,
+            job_id=job_id,
+        )
 
     return ScrapeStartResponse(
         job_id=job_id,
         artist_id=artist_id,
         artist_name=artist.name,
         status="queued",
+        reused=reused,
     )
 
 

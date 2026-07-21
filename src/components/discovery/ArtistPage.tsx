@@ -35,6 +35,7 @@ interface ArtistPageProps {
   loading: boolean;
   loadingMore: boolean;
   error: string | null;
+  loadMoreError: string | null;
   hasMore: boolean;
   scrapeJob: DiscoveryScrapeJob | null;
   scrapeStarting: boolean;
@@ -54,6 +55,7 @@ export function ArtistPage({
   loading,
   loadingMore,
   error,
+  loadMoreError,
   hasMore,
   scrapeJob,
   scrapeStarting,
@@ -164,7 +166,12 @@ export function ArtistPage({
               </div>
 
               {hasMore && (
-                <div className="flex justify-center pt-2">
+                <div className="flex flex-col items-center gap-2 pt-2">
+                  {loadMoreError && (
+                    <p className="max-w-xl text-center text-xs text-red-400 font-mono">
+                      Could not load more setlists: {loadMoreError}
+                    </p>
+                  )}
                   <button
                     onClick={onLoadMore}
                     disabled={loadingMore}
@@ -178,7 +185,7 @@ export function ArtistPage({
                     ) : (
                       <>
                         <ChevronDown size={14} />
-                        Load More
+                        {loadMoreError ? 'Retry Load More' : 'Load More'}
                       </>
                     )}
                   </button>

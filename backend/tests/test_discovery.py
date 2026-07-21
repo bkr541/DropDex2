@@ -601,67 +601,60 @@ class TestDiscoveryRepository:
 
     # ── get_set_results_paginated: junction query ─────────────────────────────
 
-    def test_get_set_results_paginated_queries_through_junction_table(self):
-        """Retrieval must go via artist_set_result_artists, not filter on artist_set_results.artist_id."""
-        mock_client, mock_table = _make_supabase_mock()
-
-        # Step 1: junction query response (.select().eq().execute())
-        mock_table.select.return_value.eq.return_value.execute.return_value.data = [
-            {"set_result_id": _RESULT_ID1},
-        ]
-
-        # Step 2: results query response (.select().in_().order().range().execute())
-        results_resp = MagicMock()
-        results_resp.data = [{
-            "id": _RESULT_ID1,
-            "source_tracklist_id": "tl001",
-            "source_url": "https://example.com/tl001",
-            "title": "ILLENIUM @ EDC 2026",
-            "set_date": "2026-05-18",
-            "ided_tracks": 20,
-            "total_tracks": 20,
-            "completion_pct": 100.0,
-            "views": 500,
-            "likes": None,
-            "music_styles": [],
-            "listen_sources": None,
-            "artwork_url": None,
-            "creator_username": None,
-            "creator_profile_url": None,
-            "duration_text": None,
-            "duration_seconds": None,
-            "updated_at": None,
-        }]
-        results_resp.count = 1
-        mock_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value = results_resp
+    def test_get_set_results_paginated_uses_server_side_junction_rpc(self):
+        """Pagination happens in Postgres so junction sets are never truncated."""
+        mock_client, _ = _make_supabase_mock()
+        rpc_response = MagicMock()
+        rpc_response.data = {
+            "items": [{
+                "id": _RESULT_ID1,
+                "source_tracklist_id": "tl001",
+                "source_url": "https://example.com/tl001",
+                "title": "ILLENIUM @ EDC 2026",
+                "set_date": "2026-05-18",
+                "ided_tracks": 20,
+                "total_tracks": 20,
+                "completion_pct": 100.0,
+                "views": 500,
+                "likes": None,
+                "music_styles": [],
+                "listen_sources": None,
+                "artwork_url": None,
+                "creator_username": None,
+                "creator_profile_url": None,
+                "duration_text": None,
+                "duration_seconds": None,
+                "updated_at": None,
+            }],
+            "total": 1,
+            "offset": 0,
+            "limit": 20,
+        }
+        mock_client.rpc.return_value.execute.return_value = rpc_response
 
         repo = self._repo(mock_client)
         results, total = repo.get_set_results_paginated(_ARTIST_ID, limit=20, offset=0)
 
-        # Verify junction table was queried
-        table_calls = [c.args[0] for c in mock_client.table.call_args_list]
-        assert "artist_set_result_artists" in table_calls, (
-            "retrieval must query the junction table artist_set_result_artists"
+        mock_client.rpc.assert_called_once_with(
+            "get_discovery_artist_setlists_page",
+            {"p_artist_id": _ARTIST_ID, "p_limit": 20, "p_offset": 0},
         )
         assert total == 1
         assert len(results) == 1
         assert results[0].title == "ILLENIUM @ EDC 2026"
 
-    def test_get_set_results_paginated_returns_empty_when_no_junction_rows(self):
-        """If the junction table has no rows for the artist, return ([], 0) immediately."""
-        mock_client, mock_table = _make_supabase_mock()
-        mock_table.select.return_value.eq.return_value.execute.return_value.data = []
+    def test_get_set_results_paginated_returns_empty_rpc_page(self):
+        mock_client, _ = _make_supabase_mock()
+        rpc_response = MagicMock()
+        rpc_response.data = {"items": [], "total": 0, "offset": 0, "limit": 20}
+        mock_client.rpc.return_value.execute.return_value = rpc_response
 
         repo = self._repo(mock_client)
         results, total = repo.get_set_results_paginated(_ARTIST_ID, limit=20, offset=0)
 
         assert results == []
         assert total == 0
-        # artist_set_results should NOT be queried at all
-        table_calls = [c.args[0] for c in mock_client.table.call_args_list]
-        assert "artist_set_results" not in table_calls, (
-            "artist_set_results must not be queried when junction returns no rows"
-        )
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -801,35 +794,32 @@ class TestCollaborativeSetlistRelationships:
 
     # ── Repository-level retrieval tests ─────────────────────────────────────
 
-    def test_illenium_retrieval_uses_junction_not_direct_artist_id_filter(self):
-        """get_set_results_paginated must query the junction table for ILLENIUM's results."""
-        mock_client, mock_table = _make_supabase_mock()
-
-        mock_table.select.return_value.eq.return_value.execute.return_value.data = [
-            {"set_result_id": _RESULT_ID1},
-        ]
-        results_resp = MagicMock()
-        results_resp.data = [{
-            "id": _RESULT_ID1,
-            "source_tracklist_id": _COLLAB_TRACKLIST_ID,
-            "source_url": "https://example.com",
-            "title": "Crankdat & ILLENIUM @ Get Cranked",
-            "set_date": "2026-03-10",
-            "ided_tracks": None, "total_tracks": None, "completion_pct": None,
-            "views": None, "likes": None, "music_styles": [], "listen_sources": None,
-            "artwork_url": None, "creator_username": None, "creator_profile_url": None,
-            "duration_text": None, "duration_seconds": None, "updated_at": None,
-        }]
-        results_resp.count = 1
-        mock_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value = results_resp
+    def test_illenium_retrieval_uses_server_side_junction_rpc(self):
+        """Collaborative sets remain linked through the RPC's junction join."""
+        mock_client, _ = _make_supabase_mock()
+        rpc_response = MagicMock()
+        rpc_response.data = {
+            "items": [{
+                "id": _RESULT_ID1,
+                "source_tracklist_id": _COLLAB_TRACKLIST_ID,
+                "source_url": "https://example.com",
+                "title": "Crankdat & ILLENIUM @ Get Cranked",
+                "set_date": "2026-03-10",
+                "ided_tracks": None, "total_tracks": None, "completion_pct": None,
+                "views": None, "likes": None, "music_styles": [], "listen_sources": None,
+                "artwork_url": None, "creator_username": None, "creator_profile_url": None,
+                "duration_text": None, "duration_seconds": None, "updated_at": None,
+            }],
+            "total": 1,
+        }
+        mock_client.rpc.return_value.execute.return_value = rpc_response
 
         repo = TestDiscoveryRepository()._repo(mock_client)
         results, total = repo.get_set_results_paginated(_ARTIST_ID, limit=20, offset=0)
 
-        table_calls = [c.args[0] for c in mock_client.table.call_args_list]
-        assert "artist_set_result_artists" in table_calls
+        assert mock_client.rpc.call_args.args[0] == "get_discovery_artist_setlists_page"
         assert total == 1
-        assert results[0].title == "Crankdat & ILLENIUM @ Get Cranked"
+        assert results[0].source_tracklist_id == _COLLAB_TRACKLIST_ID
 
     def test_scrape_jobs_rls_is_enabled_and_backend_uses_service_role(self):
         """

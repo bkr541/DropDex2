@@ -437,3 +437,30 @@ describe('rankScoredCandidates', () => {
   });
 });
 
+
+describe('half-time and double-time tempo relationships', () => {
+  it('includes a 70 BPM candidate for a 140 BPM selection', () => {
+    const result = rankSimilarTracks([track('half', 'Half Time', 70)], SELECTED_ID, 140);
+    expect(result.map((candidate) => candidate.id)).toEqual(['half']);
+  });
+
+  it('labels and slightly discounts half-time matches', () => {
+    const selected = makeTrack({ id: 'selected-140', title: 'Selected', bpm: 140 });
+    const candidate = makeTrack({ id: 'candidate-70', title: 'Candidate', bpm: 70 });
+    const result = scoreCandidate({ selected, candidate, bpmTolerance: 2 });
+    const reason = result.reasons.find((entry) => entry.kind === 'bpm_proximity');
+
+    expect(reason?.label).toContain('Half-time');
+    expect(reason?.score).toBeGreaterThan(0);
+    expect(reason?.score).toBeLessThan(SCORE_BPM_MAX);
+  });
+
+  it('labels a 140 BPM candidate as double-time for a 70 BPM selection', () => {
+    const selected = makeTrack({ id: 'selected-70', title: 'Selected', bpm: 70 });
+    const candidate = makeTrack({ id: 'candidate-140', title: 'Candidate', bpm: 140 });
+    const result = scoreCandidate({ selected, candidate, bpmTolerance: 2 });
+
+    expect(result.reasons.find((entry) => entry.kind === 'bpm_proximity')?.label)
+      .toContain('Double-time');
+  });
+});

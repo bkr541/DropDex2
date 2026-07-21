@@ -185,27 +185,16 @@ class DiscoveryRepository:
             if isinstance(g, dict) and g.get("id"):
                 genres.append(ArtistGenre(id=str(g["id"]), name=g["name"]))
 
-        # ── 3. Stored setlist count (via authoritative junction) ──────────────
-        junction_resp = (
-            self._client.table("artist_set_result_artists")
-            .select("set_result_id", count="exact")
-            .eq("artist_id", artist_id)
-            .execute()
-        )
-        setlist_count = junction_resp.count or 0
-
-        # ── 4. Stored track count (skipped when no setlists) ──────────────────
-        track_count = 0
-        if setlist_count > 0:
-            set_result_ids = [r["set_result_id"] for r in junction_resp.data]
-            if set_result_ids:
-                track_resp = (
-                    self._client.table("artist_set_tracks")
-                    .select("id", count="exact")
-                    .in_("set_result_id", set_result_ids)
-                    .execute()
-                )
-                track_count = track_resp.count or 0
+        # ── 3–4. Stored setlist and track counts ─────────────────────────────
+        # Compute both counts inside Postgres so artists with more than 1,000
+        # linked setlists are not silently truncated by PostgREST's row cap.
+        counts_resp = self._client.rpc(
+            "get_discovery_artist_counts",
+            {"p_artist_id": artist_id},
+        ).execute()
+        counts = counts_resp.data or {}
+        setlist_count = int(counts.get("setlist_count") or 0)
+        track_count = int(counts.get("track_count") or 0)
 
         return ArtistDetailResponse(
             id=str(row["id"]),
@@ -224,6 +213,49 @@ class DiscoveryRepository:
 
     # ── Scrape jobs ───────────────────────────────────────────────────────────
 
+    def get_active_scrape_job(self, artist_id: str) -> Optional[str]:
+        """Return the active discovery job for an artist, if one exists."""
+        resp = (
+            self._client.table("scrape_jobs")
+            .select("id")
+            .eq("artist_id", artist_id)
+            .eq("job_type", "artist_setlist_discovery")
+            .eq("source", _SOURCE)
+            .in_("status", [JobStatus.QUEUED.value, JobStatus.RUNNING.value])
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not resp.data:
+            return None
+        return str(resp.data[0]["id"])
+
+    def subscribe_user_to_job(self, job_id: str, user_id: str) -> None:
+        """Allow a user who requested the same artist scrape to poll its status."""
+        self._client.table("scrape_job_subscribers").upsert(
+            {"job_id": job_id, "user_id": user_id},
+            on_conflict="job_id,user_id",
+            ignore_duplicates=True,
+        ).execute()
+
+    def recover_stale_scrape_jobs(self, stale_before_iso: str) -> int:
+        """Fail active jobs whose heartbeat predates the supplied cutoff."""
+        resp = self._client.rpc(
+            "recover_stale_discovery_jobs",
+            {"p_stale_before": stale_before_iso},
+        ).execute()
+        return int(resp.data or 0)
+
+    def touch_job(self, job_id: str) -> None:
+        """Refresh an active job heartbeat while work is progressing."""
+        now = _now_iso()
+        self._client.table("scrape_jobs").update({
+            "heartbeat_at": now,
+            "updated_at": now,
+        }).eq("id", job_id).in_(
+            "status", [JobStatus.QUEUED.value, JobStatus.RUNNING.value]
+        ).execute()
+
     def create_scrape_job(self, user_id: str, artist_id: str) -> str:
         """Insert a new scrape_jobs row with status=queued. Returns the new job UUID."""
         resp = (
@@ -234,6 +266,8 @@ class DiscoveryRepository:
                 "job_type": "artist_setlist_discovery",
                 "source": _SOURCE,
                 "status": JobStatus.QUEUED.value,
+                "heartbeat_at": _now_iso(),
+                "updated_at": _now_iso(),
             })
             .execute()
         )
@@ -241,9 +275,12 @@ class DiscoveryRepository:
 
     def set_job_running(self, job_id: str) -> None:
         """Transition job to running and record the start timestamp."""
+        now = _now_iso()
         self._client.table("scrape_jobs").update({
             "status": JobStatus.RUNNING.value,
-            "started_at": _now_iso(),
+            "started_at": now,
+            "heartbeat_at": now,
+            "updated_at": now,
         }).eq("id", job_id).execute()
 
     def set_job_completed(
@@ -260,6 +297,8 @@ class DiscoveryRepository:
             "results_found": results_found,
             "total_results_reported": total_results_reported,
             "completed_at": _now_iso(),
+            "heartbeat_at": _now_iso(),
+            "updated_at": _now_iso(),
         }).eq("id", job_id).execute()
 
     def set_job_failed(self, job_id: str, error_message: str) -> None:
@@ -268,6 +307,8 @@ class DiscoveryRepository:
             "status": JobStatus.FAILED.value,
             "error_message": error_message,
             "completed_at": _now_iso(),
+            "heartbeat_at": _now_iso(),
+            "updated_at": _now_iso(),
         }).eq("id", job_id).execute()
 
     def get_job_summary(self, job_id: str) -> Optional[ScrapeJobSummary]:
@@ -473,14 +514,16 @@ class DiscoveryRepository:
         job_id: str,
         user_id: str,
     ) -> Optional[ScrapeJobResponse]:
-        """
-        Fetch a scrape job visible to the requesting user.
-
-        Filters on both job id and requested_by_user_id so unauthorised callers
-        receive the same None result as an absent job (no existence leak).
-        Joins artists(name) to populate artist_name without a second round-trip.
-        """
-        resp = (
+        """Fetch a job created by or shared with the requesting user."""
+        subscriber = (
+            self._client.table("scrape_job_subscribers")
+            .select("job_id")
+            .eq("job_id", job_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        query = (
             self._client.table("scrape_jobs")
             .select(
                 "id, artist_id, source, status, pages_scraped, results_found, "
@@ -488,9 +531,11 @@ class DiscoveryRepository:
                 "started_at, completed_at, artists(name)"
             )
             .eq("id", job_id)
-            .eq("requested_by_user_id", user_id)
-            .execute()
         )
+        if not subscriber.data:
+            query = query.eq("requested_by_user_id", user_id)
+
+        resp = query.execute()
         if not resp.data:
             return None
         row = resp.data[0]
@@ -552,45 +597,19 @@ class DiscoveryRepository:
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[SavedSetlistResult], int]:
-        """
-        Fetch a page of setlist results for an artist, newest set first.
-
-        Returns (results, total_count) where total_count is the full junction
-        row count for the artist regardless of the requested page window.
-
-        Step 1: resolve all set_result_ids for this artist via the junction.
-        Step 2: paginate the actual result rows ordered by set_date DESC.
-
-        This two-query approach guarantees that collaborative sets — discovered
-        originally under a different artist — still appear for this artist once
-        link_result_to_artist has been called for them.
-        """
-        junction_resp = (
-            self._client.table("artist_set_result_artists")
-            .select("set_result_id")
-            .eq("artist_id", artist_id)
-            .execute()
-        )
-        set_result_ids = [r["set_result_id"] for r in junction_resp.data]
-        if not set_result_ids:
-            return [], 0
-
-        resp = (
-            self._client.table("artist_set_results")
-            .select(
-                "id, source_tracklist_id, source_url, title, set_date, "
-                "ided_tracks, total_tracks, completion_pct, views, likes, "
-                "music_styles, listen_sources, artwork_url, creator_username, "
-                "creator_profile_url, duration_text, duration_seconds, updated_at",
-                count="exact",
-            )
-            .in_("id", set_result_ids)
-            .order("set_date", desc=True, nullsfirst=False)
-            .range(offset, offset + limit - 1)
-            .execute()
-        )
-        total = resp.count or 0
-        return self._rows_to_setlist_results(resp.data), total
+        """Fetch a deterministic page without materialising every junction id."""
+        resp = self._client.rpc(
+            "get_discovery_artist_setlists_page",
+            {
+                "p_artist_id": artist_id,
+                "p_limit": limit,
+                "p_offset": offset,
+            },
+        ).execute()
+        payload = resp.data or {}
+        rows = payload.get("items") or []
+        total = int(payload.get("total") or 0)
+        return self._rows_to_setlist_results(rows), total
 
     @staticmethod
     def _rows_to_setlist_results(rows: list[dict]) -> list[SavedSetlistResult]:

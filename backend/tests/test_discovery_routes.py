@@ -100,7 +100,9 @@ def _mock_repo(
     mock = MagicMock(spec=DiscoveryRepository)
     mock.get_artist.return_value = artist
     mock.search_artists.return_value = search_results or []
+    mock.get_active_scrape_job.return_value = None
     mock.create_scrape_job.return_value = job_id
+    mock.subscribe_user_to_job.return_value = None
     mock.get_job_summary_for_user.return_value = job_response
     mock.get_set_results_paginated.return_value = (setlists or [_SETLIST], setlists_total)
     return mock
@@ -278,6 +280,24 @@ class TestStartScrape:
         mock_bg.assert_called_once()
         bg_kwargs = mock_bg.call_args.kwargs
         assert bg_kwargs.get("job_id") == _JOB_ID
+
+    def test_reuses_active_artist_job_without_launching_duplicate(self):
+        mock = _mock_repo()
+        mock.get_active_scrape_job.return_value = _JOB_ID
+        with (
+            patch("app.discovery.routes.DiscoveryRepository", return_value=mock),
+            patch("app.discovery.routes.run_discovery_background", new_callable=AsyncMock) as mock_bg,
+        ):
+            resp = client.post(
+                f"/api/discovery/artists/{_ARTIST_ID}/setlists/scrape",
+                headers=_auth(),
+            )
+
+        assert resp.status_code == 202
+        assert resp.json()["reused"] is True
+        mock.create_scrape_job.assert_not_called()
+        mock.subscribe_user_to_job.assert_called_once_with(_JOB_ID, _USER_ID)
+        mock_bg.assert_not_called()
 
     def test_response_never_contains_arbitrary_artist_string(self):
         """

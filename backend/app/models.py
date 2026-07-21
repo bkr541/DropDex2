@@ -164,8 +164,8 @@ class AnalysisStatusResponse(BaseModel):
     missing_optional_2ex: List[str] = []
     parser_version: Optional[str] = None
     warnings: List[Dict[str, Any]] = []
-    # Live parsing progress. These fields are best-effort and may be null/zero
-    # when no synchronous parse is currently running in this backend process.
+    # Live parsing progress persisted on the import row so every worker and a
+    # restarted backend reports the same state.
     current_track_id: Optional[str] = None
     current_track_title: Optional[str] = None
     current_track_artist: Optional[str] = None
