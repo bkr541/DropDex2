@@ -1424,6 +1424,7 @@ export default function App() {
 
       <ImportLibraryModal
         isOpen={isImportModalOpen}
+        accessToken={session?.access_token ?? null}
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={handleImportSuccess}
       />

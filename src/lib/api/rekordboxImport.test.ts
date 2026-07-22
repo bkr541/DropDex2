@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { uploadRekordboxDb, uploadRekordboxZipBundle } from './rekordboxImport';
+import {
+  fetchRekordboxAnalysisStatus,
+  isUnauthorizedRekordboxImportError,
+  uploadRekordboxDb,
+  uploadRekordboxZipBundle,
+} from './rekordboxImport';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -33,6 +38,23 @@ describe('Rekordbox import upload requests', () => {
     );
 
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+
+  it('preserves HTTP 401 status so callers can refresh and retry once', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      detail: 'Invalid or expired token',
+    }), { status: 401, headers: { 'Content-Type': 'application/json' } })));
+
+    let caught: unknown;
+    try {
+      await fetchRekordboxAnalysisStatus('job-123', 'expired-token');
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toMatchObject({ status: 401 });
+    expect(isUnauthorizedRekordboxImportError(caught)).toBe(true);
   });
 
   it('rejects malformed successful import responses', async () => {

@@ -178,12 +178,22 @@ export interface ImportWriteError {
 /** An Error subclass that carries structured backend diagnostic info. */
 export class RekordboxImportError extends Error {
   readonly structured: ImportWriteError | null;
+  readonly status: number | null;
 
-  constructor(message: string, structured: ImportWriteError | null = null) {
+  constructor(
+    message: string,
+    structured: ImportWriteError | null = null,
+    status: number | null = null,
+  ) {
     super(message);
     this.name = 'RekordboxImportError';
     this.structured = structured;
+    this.status = status;
   }
+}
+
+export function isUnauthorizedRekordboxImportError(error: unknown): boolean {
+  return error instanceof RekordboxImportError && error.status === 401;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -342,10 +352,10 @@ async function parseResponse<T>(
     const rawDetail = bodyObj?.['detail'];
     if (rawDetail && typeof rawDetail === 'object' && 'error_code' in (rawDetail as object)) {
       const structured = rawDetail as ImportWriteError;
-      throw new RekordboxImportError(structured.detail, structured);
+      throw new RekordboxImportError(structured.detail, structured, response.status);
     }
     const message = typeof rawDetail === 'string' ? rawDetail : `HTTP ${response.status}`;
-    throw new RekordboxImportError(message, null);
+    throw new RekordboxImportError(message, null, response.status);
   }
   if (body === null) {
     throw new ApiResponseValidationError('import API', '$', 'valid JSON');
@@ -576,10 +586,12 @@ export async function uploadRekordboxZipBundle(
 
       const rawDetail = (body as { detail?: string | ImportWriteError } | null)?.detail;
       if (rawDetail && typeof rawDetail === 'object') {
-        rejectOnce(new RekordboxImportError(rawDetail.detail, rawDetail));
+        rejectOnce(new RekordboxImportError(rawDetail.detail, rawDetail, xhr.status));
       } else {
         rejectOnce(new RekordboxImportError(
           typeof rawDetail === 'string' ? rawDetail : `HTTP ${xhr.status}`,
+          null,
+          xhr.status,
         ));
       }
     });

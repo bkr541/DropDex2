@@ -6,7 +6,7 @@ declare module 'react' {
   }
 }
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   AlertCircle,
@@ -30,6 +30,7 @@ import {
   uploadRekordboxDb,
   uploadRekordboxZipBundle,
   RekordboxImportError,
+  isUnauthorizedRekordboxImportError,
 } from '../lib/api/rekordboxImport';
 import type { CompleteResponse, ImportResult, ImportStartResponse, ImportWriteError, ReuseStats } from '../lib/api/rekordboxImport';
 import {
@@ -89,6 +90,7 @@ type FinalResult =
 
 interface Props {
   isOpen: boolean;
+  accessToken: string | null;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -141,7 +143,7 @@ function clampPct(value: number): number {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
+export function ImportLibraryModal({ isOpen, accessToken, onClose, onSuccess }: Props) {
   const [mode, setMode] = useState<Mode>('usb_folder');
   const [phase, setPhase] = useState<Phase>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -167,6 +169,59 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
   const importIdRef = useRef<string | null>(null);
   const accessTokenRef = useRef<string | null>(null);
   const operationRef = useRef(0);
+
+  // AuthProvider receives Supabase TOKEN_REFRESHED events and updates this prop.
+  // Keep the latest token in a ref so long-running upload/parsing closures never
+  // continue polling with the token that existed when the import began.
+  useEffect(() => {
+    accessTokenRef.current = accessToken;
+  }, [accessToken]);
+
+  const currentAccessToken = async (fallbackToken?: string): Promise<string> => {
+    const cached = accessTokenRef.current ?? fallbackToken;
+    if (cached) return cached;
+
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    const token = data.session?.access_token;
+    if (!token) {
+      throw new RekordboxImportError(
+        'Your DropDex session is no longer available. Sign in again and resume the import.',
+        null,
+        401,
+      );
+    }
+    accessTokenRef.current = token;
+    return token;
+  };
+
+  const refreshedAccessToken = async (): Promise<string> => {
+    const { data, error } = await supabase.auth.refreshSession();
+    const token = data.session?.access_token;
+    if (error || !token) {
+      throw new RekordboxImportError(
+        'Your DropDex session expired while the import was running. Sign in again and resume the import.',
+        null,
+        401,
+      );
+    }
+    accessTokenRef.current = token;
+    return token;
+  };
+
+  const requestWithAuthRetry = async <T,>(
+    request: (token: string) => Promise<T>,
+    fallbackToken?: string,
+  ): Promise<T> => {
+    const token = await currentAccessToken(fallbackToken);
+    try {
+      return await request(token);
+    } catch (error) {
+      if (!isUnauthorizedRekordboxImportError(error)) throw error;
+      const refreshedToken = await refreshedAccessToken();
+      return request(refreshedToken);
+    }
+  };
 
   const isUploading =
     phase === 'starting_import' ||
@@ -479,7 +534,12 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
           const batch = batches[dispatched++];
           active++;
 
-          uploadBatchWithRetry(startResp.import_id, batch, token, controller.signal)
+          uploadBatchWithRetry(
+            startResp.import_id,
+            batch,
+            accessTokenRef.current ?? token,
+            controller.signal,
+          )
             .then((resp) => {
               active--;
               settled++;
@@ -561,7 +621,8 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
       // Use maxAttempts=1 here: request-level retries are handled by
       // uploadBatchWithRetry only on the initial pass.
       const { data: { session: retrySession } } = await supabase.auth.getSession();
-      const retryTok = retrySession?.access_token ?? token;
+      const retryTok = retrySession?.access_token ?? accessTokenRef.current ?? token;
+      accessTokenRef.current = retryTok;
       const retryResp = await uploadBatchWithRetry(
         startResp.import_id,
         retryBatch,
@@ -647,10 +708,13 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
       }
 
       try {
-        const status = await fetchRekordboxAnalysisStatus(
-          startResp.import_id,
-          accessTokenRef.current ?? token,
-          controller.signal,
+        const status = await requestWithAuthRetry(
+          (activeToken) => fetchRekordboxAnalysisStatus(
+            startResp.import_id,
+            activeToken,
+            controller.signal,
+          ),
+          token,
         );
         if (stopParsePolling || operation !== operationRef.current) return;
 
@@ -667,6 +731,13 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
           percent,
         });
       } catch (err) {
+        if (isUnauthorizedRekordboxImportError(err)) {
+          stopParsePolling = true;
+          setParseProgress((current) => ({
+            ...current,
+            currentTrackLabel: 'Progress connection paused; server-side parsing is still running.',
+          }));
+        }
         if (!isAbortError(err) && import.meta.env.DEV) {
           console.debug('[DropDex] Analysis status polling failed:', err);
         }
@@ -680,11 +751,13 @@ export function ImportLibraryModal({ isOpen, onClose, onSuccess }: Props) {
     void pollParsingStatus();
 
     try {
-      const { data: { session: completeSession } } = await supabase.auth.getSession();
-      completeResp = await completeRekordboxImport(
-        startResp.import_id,
-        completeSession?.access_token ?? token,
-        { signal: controller.signal },
+      completeResp = await requestWithAuthRetry(
+        (activeToken) => completeRekordboxImport(
+          startResp.import_id,
+          activeToken,
+          { signal: controller.signal },
+        ),
+        token,
       );
     } catch (err) {
       stopParsePolling = true;
