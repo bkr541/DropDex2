@@ -2,13 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RekordboxTrack } from '../../types';
 
 vi.mock('../supabase', () => ({
-  supabase: { rpc: vi.fn() },
+  supabase: { rpc: vi.fn(), from: vi.fn() },
 }));
 
 import { supabase } from '../supabase';
 import { fetchCamelotCompatibleTracks } from './rekordbox';
 
 const rpcMock = supabase.rpc as ReturnType<typeof vi.fn>;
+const fromMock = supabase.from as ReturnType<typeof vi.fn>;
 
 function makeTrack(overrides: Partial<RekordboxTrack> = {}): RekordboxTrack {
   return {
@@ -82,10 +83,37 @@ describe('fetchCamelotCompatibleTracks', () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it('surfaces RPC failures instead of returning a partial candidate set', async () => {
-    rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'RPC unavailable' } });
+  it('surfaces non-schema RPC failures instead of returning a partial candidate set', async () => {
+    rpcMock.mockResolvedValueOnce({ data: null, error: { code: '42501', message: 'RPC unavailable' } });
 
     await expect(fetchCamelotCompatibleTracks('import-1', makeTrack()))
       .rejects.toThrow('RPC unavailable');
+  });
+
+  it('falls back to a direct harmonic and tempo query when the RPC migration is missing', async () => {
+    const candidate = makeTrack({ id: 'candidate', title: 'Candidate', bpm: 129 });
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'PGRST202', message: 'Could not find the function in the schema cache' },
+    });
+    const builder = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      neq: vi.fn(),
+      or: vi.fn(),
+      limit: vi.fn(),
+    };
+    builder.select.mockReturnValue(builder);
+    builder.eq.mockReturnValue(builder);
+    builder.neq.mockReturnValue(builder);
+    builder.or.mockReturnValue(builder);
+    builder.limit.mockResolvedValue({ data: [candidate], error: null });
+    fromMock.mockReturnValueOnce(builder);
+
+    const result = await fetchCamelotCompatibleTracks('import-1', makeTrack(), 2, 40);
+
+    expect(fromMock).toHaveBeenCalledWith('rekordbox_tracks');
+    expect(builder.or).toHaveBeenCalled();
+    expect(result).toEqual([candidate]);
   });
 });

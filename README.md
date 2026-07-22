@@ -167,13 +167,15 @@ the remote migration history:
 - `20260722010000_rekordbox_import_write_repair.sql`
 - `20260722020000_rekordbox_import_schema_convergence.sql`
 - `20260722030000_rekordbox_import_runtime_truth.sql`
+- `20260722040000_rekordbox_runtime_reliability_catchup.sql`
 
 The convergence migration repairs projects that skipped the June normalized-key
 or analysis-schema migrations as well as the July metadata and reliability
 migrations. The runtime-truth migration normalizes contradictory historical job
 states, keeps background progress truthful, and activates a successful snapshot
-at the database boundary. These migrations also restore import-critical tables
-and reload the PostgREST schema cache.
+at the database boundary. The runtime-reliability catch-up restores the Similar
+Vibes and track-playlist RPCs, clears abandoned historical 0% jobs, and reloads
+the PostgREST schema cache. These migrations also restore import-critical tables.
 
 For a dashboard-only deployment, run every file in `supabase/migrations/` in
 timestamp order. Skipping a migration can let Rekordbox parsing finish while the

@@ -224,7 +224,7 @@ async function applyPermissionCheck(
       switch (rootCheck.status) {
         case 'available': {
           const structureWarning = rootCheck.missingFolders.length > 0
-            ? `Could not find: ${rootCheck.missingFolders.join(', ')}. Verify this is the USB root.`
+            ? 'Could not find a media folder (Contents or Music). Track playback may be unavailable.'
             : null;
           dispatch({ type: 'SET_CONNECTED', handle, metadata, structureWarning });
           break;
@@ -386,7 +386,7 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
       switch (rootCheck.status) {
         case 'available': {
           const structureWarning = rootCheck.missingFolders.length > 0
-            ? `Could not find: ${rootCheck.missingFolders.join(', ')}. Verify this is the USB root.`
+            ? 'Could not find a media folder (Contents or Music). Track playback may be unavailable.'
             : null;
           dispatchState({ type: 'SET_CONNECTED', handle, metadata, structureWarning });
           return 'connected';

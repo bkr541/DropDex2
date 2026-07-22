@@ -86,4 +86,31 @@ describe('large-library query reliability', () => {
       { position: 7, playlist: { id: 'playlist-1', name: 'Warmup' } },
     ]);
   });
+
+
+  it('falls back to the ownership-filtered relation query when the RPC migration is missing', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'PGRST202', message: 'Could not find the function in the schema cache' },
+    });
+    const fallbackBuilder = {
+      select: vi.fn(),
+      eq: vi.fn(),
+    };
+    fallbackBuilder.select.mockReturnValue(fallbackBuilder);
+    fallbackBuilder.eq
+      .mockReturnValueOnce(fallbackBuilder)
+      .mockResolvedValueOnce({
+        data: [{ position: 3, playlist: { id: 'playlist-2', name: 'Peak Time' } }],
+        error: null,
+      });
+    fromMock.mockReturnValueOnce(fallbackBuilder);
+
+    const memberships = await fetchTrackPlaylists('import-1', 'track-1');
+
+    expect(fromMock).toHaveBeenCalledWith('rekordbox_playlist_tracks');
+    expect(memberships).toEqual([
+      { position: 3, playlist: { id: 'playlist-2', name: 'Peak Time' } },
+    ]);
+  });
 });

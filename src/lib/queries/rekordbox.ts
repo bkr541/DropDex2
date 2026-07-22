@@ -7,6 +7,7 @@ export { trackStatRowToTrack } from '../rekordbox/trackMappers';
 import {
   BPM_TOLERANCE_DEFAULT,
   SIMILAR_CANDIDATE_FETCH_LIMIT,
+  classifyTempoRelationship,
   hasSimilarVibesSignal,
   rankSimilarTracks,
   shouldUseBpm,
@@ -113,6 +114,19 @@ function parsePage<T>(value: unknown): PaginatedResult<T> {
     hasMore: offset + items.length < total,
   };
 }
+
+function isMissingRpcError(error: unknown): boolean {
+  const row = asRecord(error);
+  const code = typeof row.code === 'string' ? row.code : '';
+  const message = typeof row.message === 'string' ? row.message.toLowerCase() : '';
+  return code === 'PGRST202'
+    || code === '42883'
+    || message.includes('could not find the function')
+    || (message.includes('function') && message.includes('schema cache'));
+}
+
+let trackPlaylistsRpcUnavailable = false;
+let similarVibesRpcUnavailable = false;
 
 export async function fetchLatestImport(userId: string): Promise<RekordboxImport | null> {
   const { data, error } = await supabase
@@ -344,27 +358,143 @@ export interface TrackPlaylistMembership {
   playlist: RekordboxPlaylist;
 }
 
-export async function fetchTrackPlaylists(
+async function fetchTrackPlaylistsFallback(
   importId: string,
   trackId: string,
 ): Promise<TrackPlaylistMembership[]> {
-  const { data, error } = await supabase.rpc('get_rekordbox_track_playlists', {
-    p_import_id: importId,
-    p_track_id: trackId,
-  });
+  const { data, error } = await supabase
+    .from('rekordbox_playlist_tracks')
+    .select('position, playlist:rekordbox_playlists!inner(*)')
+    .eq('track_id', trackId)
+    .eq('playlist.import_id', importId);
 
   if (error) throw new Error(error.message);
-  if (!Array.isArray(data)) return [];
-
-  return data.flatMap((entry) => {
+  return (Array.isArray(data) ? data : []).flatMap((entry) => {
     const row = asRecord(entry);
-    const playlist = asRecord(row.playlist);
+    const rawPlaylist = Array.isArray(row.playlist) ? row.playlist[0] : row.playlist;
+    const playlist = asRecord(rawPlaylist);
     if (typeof playlist.id !== 'string' || typeof playlist.name !== 'string') return [];
     return [{
       position: asFiniteNumber(row.position),
       playlist: playlist as unknown as RekordboxPlaylist,
     }];
-  });
+  }).sort((left, right) => (
+    left.playlist.name.localeCompare(right.playlist.name) || left.position - right.position
+  ));
+}
+
+export async function fetchTrackPlaylists(
+  importId: string,
+  trackId: string,
+): Promise<TrackPlaylistMembership[]> {
+  if (!trackPlaylistsRpcUnavailable) {
+    const { data, error } = await supabase.rpc('get_rekordbox_track_playlists', {
+      p_import_id: importId,
+      p_track_id: trackId,
+    });
+
+    if (!error) {
+      if (!Array.isArray(data)) return [];
+      return data.flatMap((entry) => {
+        const row = asRecord(entry);
+        const playlist = asRecord(row.playlist);
+        if (typeof playlist.id !== 'string' || typeof playlist.name !== 'string') return [];
+        return [{
+          position: asFiniteNumber(row.position),
+          playlist: playlist as unknown as RekordboxPlaylist,
+        }];
+      });
+    }
+    if (!isMissingRpcError(error)) throw new Error(error.message);
+    trackPlaylistsRpcUnavailable = true;
+  }
+
+  return fetchTrackPlaylistsFallback(importId, trackId);
+}
+
+function normalizedCandidateBpmDiff(candidateBpm: number | null, selectedBpm: number | null): number {
+  if (!shouldUseBpm(candidateBpm) || !shouldUseBpm(selectedBpm)) return Number.POSITIVE_INFINITY;
+  return Math.min(
+    Math.abs(candidateBpm - selectedBpm),
+    Math.abs(candidateBpm * 2 - selectedBpm),
+    Math.abs(candidateBpm / 2 - selectedBpm),
+  );
+}
+
+function rankFallbackCandidates(
+  candidates: RekordboxTrack[],
+  track: Pick<RekordboxTrack, 'camelot_key' | 'bpm'>
+    & Partial<Pick<RekordboxTrack, 'genre' | 'label'>>,
+  compatibleCamelotKeys: string[],
+  bpmTolerance: number,
+  limit: number,
+): RekordboxTrack[] {
+  const selectedBpm = shouldUseBpm(track.bpm) ? track.bpm : null;
+  const normalizedGenre = track.genre?.trim().toLowerCase() || null;
+  const normalizedLabel = track.label?.trim().toLowerCase() || null;
+
+  return [...candidates].sort((left, right) => {
+    const score = (candidate: RekordboxTrack) => {
+      const keyIndex = compatibleCamelotKeys.indexOf(candidate.camelot_key || '');
+      const keyScore = [30, 25, 20, 20, 12][keyIndex] ?? 0;
+      const tempo = classifyTempoRelationship(selectedBpm, candidate.bpm, bpmTolerance);
+      const tempoScore = tempo.relationship === 'none'
+        ? 0
+        : bpmTolerance > 0
+          ? 10 * tempo.scoreMultiplier * (1 - tempo.difference / bpmTolerance)
+          : tempo.difference === 0 ? 10 * tempo.scoreMultiplier : 0;
+      const genreScore = normalizedGenre && candidate.genre?.trim().toLowerCase() === normalizedGenre ? 5 : 0;
+      const labelScore = normalizedLabel && candidate.label?.trim().toLowerCase() === normalizedLabel ? 3 : 0;
+      return keyScore + tempoScore + genreScore + labelScore;
+    };
+    return score(right) - score(left)
+      || normalizedCandidateBpmDiff(left.bpm, selectedBpm) - normalizedCandidateBpmDiff(right.bpm, selectedBpm)
+      || left.title.localeCompare(right.title)
+      || left.id.localeCompare(right.id);
+  }).slice(0, Math.max(1, limit));
+}
+
+async function fetchSimilarVibesFallback(
+  importId: string,
+  track: Pick<RekordboxTrack, 'id' | 'camelot_key' | 'bpm'>
+    & Partial<Pick<RekordboxTrack, 'genre' | 'label'>>,
+  compatibleCamelotKeys: string[],
+  bpmTolerance: number,
+  limit: number,
+): Promise<RekordboxTrack[]> {
+  const filters: string[] = [];
+  if (compatibleCamelotKeys.length > 0) {
+    filters.push(`camelot_key.in.(${compatibleCamelotKeys.join(',')})`);
+  }
+  const selectedBpm = shouldUseBpm(track.bpm) ? track.bpm : null;
+  if (selectedBpm != null) {
+    const tolerance = Math.max(0, bpmTolerance);
+    const ranges = [
+      [selectedBpm - tolerance, selectedBpm + tolerance],
+      [(selectedBpm - tolerance) / 2, (selectedBpm + tolerance) / 2],
+      [(selectedBpm - tolerance) * 2, (selectedBpm + tolerance) * 2],
+    ];
+    for (const [low, high] of ranges) {
+      filters.push(`and(bpm.gte.${Math.max(0, low)},bpm.lte.${Math.max(0, high)})`);
+    }
+  }
+
+  let query = supabase
+    .from('rekordbox_tracks')
+    .select('*')
+    .eq('import_id', importId)
+    .neq('id', track.id);
+  if (filters.length > 0) query = query.or(filters.join(','));
+  const { data, error } = await query.limit(Math.min(1000, Math.max(200, limit * 4)));
+  if (error) throw new Error(error.message);
+
+  return rankFallbackCandidates(
+    (Array.isArray(data) ? data : []) as RekordboxTrack[],
+    track,
+    compatibleCamelotKeys,
+    Math.max(0, bpmTolerance),
+    limit,
+  );
 }
 
 /**
@@ -385,19 +515,30 @@ export async function fetchCamelotCompatibleTracks(
   if (!hasSimilarVibesSignal(camelot_key, rawBpm)) return [];
 
   const compatibleCamelotKeys = getCompatibleCamelotKeys(camelot_key).map((key) => key.code);
-  const { data, error } = await supabase.rpc('get_rekordbox_similar_vibe_candidates', {
-    p_import_id: importId,
-    p_selected_track_id: id,
-    p_compatible_camelot_keys: compatibleCamelotKeys,
-    p_selected_bpm: shouldUseBpm(rawBpm) ? rawBpm : null,
-    p_bpm_tolerance: Math.max(0, bpmTolerance),
-    p_selected_genre: track.genre?.trim() || null,
-    p_selected_label: track.label?.trim() || null,
-    p_limit: Math.max(1, limit),
-  });
+  if (!similarVibesRpcUnavailable) {
+    const { data, error } = await supabase.rpc('get_rekordbox_similar_vibe_candidates', {
+      p_import_id: importId,
+      p_selected_track_id: id,
+      p_compatible_camelot_keys: compatibleCamelotKeys,
+      p_selected_bpm: shouldUseBpm(rawBpm) ? rawBpm : null,
+      p_bpm_tolerance: Math.max(0, bpmTolerance),
+      p_selected_genre: track.genre?.trim() || null,
+      p_selected_label: track.label?.trim() || null,
+      p_limit: Math.max(1, limit),
+    });
 
-  if (error) throw new Error(error.message);
-  return (Array.isArray(data) ? data : []) as RekordboxTrack[];
+    if (!error) return (Array.isArray(data) ? data : []) as RekordboxTrack[];
+    if (!isMissingRpcError(error)) throw new Error(error.message);
+    similarVibesRpcUnavailable = true;
+  }
+
+  return fetchSimilarVibesFallback(
+    importId,
+    track,
+    compatibleCamelotKeys,
+    Math.max(0, bpmTolerance),
+    Math.max(1, limit),
+  );
 }
 
 /**

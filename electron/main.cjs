@@ -6,7 +6,9 @@ const crypto = require('node:crypto');
 
 const APP_SCHEME = 'dropdex-media';
 const USB_CONFIG_FILE = 'usb-connection.json';
-const REKORDBOX_INDICATORS = ['PIONEER', 'Contents', 'Music'];
+const REKORDBOX_DATABASE_FOLDER = 'PIONEER';
+const REKORDBOX_MEDIA_FOLDERS = ['Contents', 'Music'];
+const REKORDBOX_ROOT_ENTRIES = [REKORDBOX_DATABASE_FOLDER, ...REKORDBOX_MEDIA_FOLDERS];
 const mediaTokens = new Map();
 let mainWindow = null;
 let usbConnection = null;
@@ -163,21 +165,33 @@ async function inspectUsbRoot(rootPath) {
   try {
     const stat = await fs.stat(rootPath);
     if (!stat.isDirectory()) {
-      return { status: 'wrong_root', foundFolders: [], missingFolders: [...REKORDBOX_INDICATORS] };
+      return { status: 'wrong_root', foundFolders: [], missingFolders: [REKORDBOX_DATABASE_FOLDER] };
     }
     const entries = await fs.readdir(rootPath, { withFileTypes: true });
     const directoryNames = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
     const foundFolders = [];
-    const missingFolders = [];
-    for (const indicator of REKORDBOX_INDICATORS) {
+    for (const indicator of REKORDBOX_ROOT_ENTRIES) {
       const found = directoryNames.find((entry) => entry.toLowerCase() === indicator.toLowerCase());
       if (found) foundFolders.push(found);
-      else missingFolders.push(indicator);
     }
-    if (foundFolders.length === 0) {
-      return { status: 'wrong_root', foundFolders, missingFolders };
+    const hasDatabaseFolder = foundFolders.some(
+      (entry) => entry.toLowerCase() === REKORDBOX_DATABASE_FOLDER.toLowerCase(),
+    );
+    if (!hasDatabaseFolder) {
+      return {
+        status: 'wrong_root',
+        foundFolders,
+        missingFolders: [REKORDBOX_DATABASE_FOLDER],
+      };
     }
-    return { status: 'available', foundFolders, missingFolders };
+    const hasMediaFolder = REKORDBOX_MEDIA_FOLDERS.some((indicator) => (
+      foundFolders.some((entry) => entry.toLowerCase() === indicator.toLowerCase())
+    ));
+    return {
+      status: 'available',
+      foundFolders,
+      missingFolders: hasMediaFolder ? [] : ['Contents or Music'],
+    };
   } catch (error) {
     const code = error && typeof error === 'object' ? error.code : 'io_error';
     return {
@@ -216,7 +230,7 @@ async function desktopConnectionState() {
     volumeName: usbConnection.volumeName,
     connectedAt: usbConnection.connectedAt,
     structureWarning: check.missingFolders.length > 0
-      ? `Could not find: ${check.missingFolders.join(', ')}. Verify this is the USB root.`
+      ? 'Could not find a media folder (Contents or Music). Track playback may be unavailable.'
       : null,
     error: null,
   };

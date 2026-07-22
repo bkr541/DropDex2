@@ -373,26 +373,50 @@ def complete_import_job(
 
 
 def recover_interrupted_import_jobs() -> int:
-    """Mark non-terminal jobs left by a process restart as retryable failures.
+    """Mark work left by a process restart as terminal and retryable.
 
-    Work is intentionally not resumed because this repository has no durable queue.
-    Cancellation requests are finalized as cancelled; all other in-flight jobs become
-    failed with IMPORT_INTERRUPTED so history is truthful after restart.
+    Metadata jobs use the durable status column. Analysis reprocessing can run
+    on an already-completed metadata snapshot, so completed + active analysis
+    must also be normalized after a restart.
     """
     sb = _create_supabase()
-    response = (
+    job_response = (
         sb.table("rekordbox_imports")
-        .select("id,user_id,status")
+        .select("*")
         .in_("status", ["created", "uploading", "queued", "processing", "cancel_requested"])
         .execute()
     )
+    analysis_response = (
+        sb.table("rekordbox_imports")
+        .select("*")
+        .eq("status", "completed")
+        .in_("analysis_status", list(_ACTIVE_ANALYSIS_STATES))
+        .execute()
+    )
+
+    rows_by_id = {str(row["id"]): row for row in (job_response.data or [])}
+    rows_by_id.update({str(row["id"]): row for row in (analysis_response.data or [])})
+
     recovered = 0
-    for row in response.data or []:
+    for row in rows_by_id.values():
         import_id = str(row["id"])
         user_id = str(row["user_id"])
         state = str(row["status"])
         try:
-            if state == "cancel_requested":
+            if state == "completed":
+                updates = _terminal_consistency_updates(row, "completed")
+                normalized = updates.get("analysis_status")
+                if normalized == "failed":
+                    updates.update({
+                        "error_code": "ANALYSIS_INTERRUPTED",
+                        "error_message": "Analysis stopped because the DropDex service restarted. Resume analysis to continue.",
+                        "retryable": True,
+                    })
+                updates["updated_at"] = _now()
+                sb.table("rekordbox_imports").update(updates).eq("id", import_id).eq(
+                    "user_id", user_id
+                ).execute()
+            elif state == "cancel_requested":
                 signal_local_cancellation(import_id)
                 cleanup_partial_import(import_id, user_id, sb=sb)
                 transition_import_job(

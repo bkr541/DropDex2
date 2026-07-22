@@ -263,8 +263,18 @@ describe('checkRekordboxStructure — connected root', () => {
     expect(result.status).toBe('available');
     if (result.status === 'available') {
       expect(result.foundFolders).toContain('PIONEER');
-      expect(result.missingFolders).toContain('Contents');
-      expect(result.missingFolders).toContain('Music');
+      expect(result.missingFolders).toEqual(['Contents or Music']);
+    }
+  });
+
+
+  it('accepts the standard PIONEER + Contents layout without requiring Music', async () => {
+    const root = makeDir('USB', { dirs: { PIONEER: {}, Contents: {} } });
+    const result = await checkRekordboxStructure(root);
+    expect(result.status).toBe('available');
+    if (result.status === 'available') {
+      expect(result.foundFolders).toEqual(['PIONEER', 'Contents']);
+      expect(result.missingFolders).toEqual([]);
     }
   });
 });
@@ -276,7 +286,18 @@ describe('checkRekordboxStructure — wrong root', () => {
     expect(result.status).toBe('wrong_root');
     if (result.status === 'wrong_root') {
       expect(result.foundFolders).toHaveLength(0);
-      expect(result.missingFolders).toHaveLength(3);
+      expect(result.missingFolders).toEqual(['PIONEER']);
+    }
+  });
+
+
+  it('does not accept a media-only folder without the PIONEER database anchor', async () => {
+    const root = makeDir('MusicOnly', { dirs: { Contents: {} } });
+    const result = await checkRekordboxStructure(root);
+    expect(result.status).toBe('wrong_root');
+    if (result.status === 'wrong_root') {
+      expect(result.foundFolders).toEqual(['Contents']);
+      expect(result.missingFolders).toEqual(['PIONEER']);
     }
   });
 });

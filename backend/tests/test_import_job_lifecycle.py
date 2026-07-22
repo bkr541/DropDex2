@@ -229,6 +229,30 @@ def test_restart_recovery_marks_processing_job_retryable_failed(monkeypatch):
     assert row["retryable"] is True
 
 
+def test_restart_recovery_terminates_analysis_on_completed_snapshot(monkeypatch):
+    client = FakeClient([
+        {
+            "id": "job-analysis-restart",
+            "user_id": "u",
+            "status": "completed",
+            "analysis_status": "parsing",
+            "analysis_expected_track_count": 20,
+            "analysis_parsed_track_count": 0,
+            "analysis_failed_track_count": 0,
+            "analysis_current_track_label": "Current Track",
+        }
+    ])
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    assert import_jobs.recover_interrupted_import_jobs() == 1
+    row = client.tables["rekordbox_imports"][0]
+    assert row["status"] == "completed"
+    assert row["analysis_status"] == "failed"
+    assert row["analysis_current_track_label"] is None
+    assert row["error_code"] == "ANALYSIS_INTERRUPTED"
+    assert row["retryable"] is True
+
+
 def test_failed_transition_terminates_stale_analysis_progress(monkeypatch):
     client = FakeClient([
         {

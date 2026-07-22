@@ -227,7 +227,9 @@ export async function resolveUsbFile(
   }
 }
 
-const REKORDBOX_INDICATORS = ['PIONEER', 'Contents', 'Music'] as const;
+const REKORDBOX_DATABASE_FOLDER = 'PIONEER' as const;
+const REKORDBOX_MEDIA_FOLDERS = ['Contents', 'Music'] as const;
+const REKORDBOX_ROOT_ENTRIES = [REKORDBOX_DATABASE_FOLDER, ...REKORDBOX_MEDIA_FOLDERS] as const;
 
 // ── USB root check (discriminated) ───────────────────────────────────────────
 
@@ -275,7 +277,7 @@ export async function checkRekordboxStructure(
   const found: string[] = [];
   const missing: string[] = [];
 
-  for (const name of REKORDBOX_INDICATORS) {
+  for (const name of REKORDBOX_ROOT_ENTRIES) {
     try {
       await root.getDirectoryHandle(name);
       found.push(name);
@@ -314,14 +316,20 @@ export async function checkRekordboxStructure(
     }
   }
 
-  // No Rekordbox folders found at all — likely the wrong directory.
-  if (found.length === 0) {
+  // PIONEER is the authoritative Rekordbox-export anchor. Contents and Music
+  // are alternative media layouts, not two simultaneously required folders.
+  if (!found.includes(REKORDBOX_DATABASE_FOLDER)) {
     return {
       status: 'wrong_root',
-      foundFolders: [],
-      missingFolders: [...REKORDBOX_INDICATORS],
+      foundFolders: found,
+      missingFolders: [REKORDBOX_DATABASE_FOLDER],
     };
   }
 
-  return { status: 'available', foundFolders: found, missingFolders: missing };
+  const hasMediaFolder = REKORDBOX_MEDIA_FOLDERS.some((name) => found.includes(name));
+  return {
+    status: 'available',
+    foundFolders: found,
+    missingFolders: hasMediaFolder ? [] : ['Contents or Music'],
+  };
 }

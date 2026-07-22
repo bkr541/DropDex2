@@ -4,6 +4,7 @@ import {
   getImportProgress,
   getInFlightImport,
   isImportInFlight,
+  isImportStalled,
   isImportTerminal,
 } from './importLifecycle';
 
@@ -21,7 +22,7 @@ function makeImport(overrides: Partial<RekordboxImport> = {}): RekordboxImport {
     playlist_track_count: 120,
     status: 'processing',
     error_message: null,
-    imported_at: '2026-07-22T00:00:00Z',
+    imported_at: new Date().toISOString(),
     source_bundle_type: 'usb_folder',
     analysis_status: 'parsing',
     analysis_expected_track_count: 100,
@@ -38,7 +39,7 @@ function makeImport(overrides: Partial<RekordboxImport> = {}): RekordboxImport {
     analysis_current_track_title: null,
     analysis_current_track_artist: null,
     analysis_current_track_label: 'Current Track',
-    analysis_progress_updated_at: '2026-07-22T00:01:00Z',
+    analysis_progress_updated_at: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -56,6 +57,20 @@ describe('rekordbox import lifecycle', () => {
     expect(isImportInFlight(resumed)).toBe(true);
   });
 
+
+  it('does not present an abandoned historical row as live background work', () => {
+    const now = Date.parse('2026-07-22T12:00:00Z');
+    const stale = makeImport({
+      status: 'processing',
+      analysis_status: 'uploading',
+      updated_at: '2026-06-19T12:00:00Z',
+      imported_at: '2026-06-19T12:00:00Z',
+      analysis_progress_updated_at: '2026-06-19T12:00:00Z',
+    });
+    expect(isImportStalled(stale, now)).toBe(true);
+    expect(isImportInFlight(stale, now)).toBe(false);
+  });
+
   it('uses persisted progress when it is ahead of finalized parsed counts', () => {
     expect(getImportProgress(makeImport())).toEqual({
       processed: 24,
@@ -65,9 +80,21 @@ describe('rekordbox import lifecycle', () => {
     });
   });
 
-  it('selects only a genuinely non-terminal import for the background banner', () => {
+  it('selects the freshest genuinely active import for the background banner', () => {
+    const now = Date.parse('2026-07-22T12:00:00Z');
     const failed = makeImport({ id: 'failed', status: 'failed' });
-    const processing = makeImport({ id: 'processing' });
-    expect(getInFlightImport([failed, processing])?.id).toBe('processing');
+    const stale = makeImport({
+      id: 'stale',
+      status: 'processing',
+      updated_at: '2026-06-19T12:00:00Z',
+      imported_at: '2026-06-19T12:00:00Z',
+      analysis_progress_updated_at: '2026-06-19T12:00:00Z',
+    });
+    const processing = makeImport({
+      id: 'processing',
+      updated_at: '2026-07-22T11:59:00Z',
+      analysis_progress_updated_at: '2026-07-22T11:59:00Z',
+    });
+    expect(getInFlightImport([failed, stale, processing], now)?.id).toBe('processing');
   });
 });

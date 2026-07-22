@@ -13,6 +13,8 @@ const ACTIVE_ANALYSIS_STATUSES = new Set<RekordboxAnalysisStatus>([
   'parsing',
 ]);
 
+export const IMPORT_ACTIVITY_STALE_MS = 60 * 60 * 1000;
+
 export interface ImportProgressSnapshot {
   processed: number;
   total: number;
@@ -20,22 +22,54 @@ export interface ImportProgressSnapshot {
   currentTrackLabel: string | null;
 }
 
+function parseTimestamp(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function getImportLastActivityAt(item: RekordboxImport): number {
+  const timestamps = [
+    item.analysis_progress_updated_at,
+    item.updated_at,
+    item.processing_started_at,
+    item.upload_completed_at,
+    item.imported_at,
+  ].map(parseTimestamp).filter((value): value is number => value != null);
+
+  return timestamps.length > 0 ? Math.max(...timestamps) : 0;
+}
+
 export function isImportTerminal(item: RekordboxImport): boolean {
   return TERMINAL_JOB_STATUSES.has(item.status);
 }
 
-export function isImportInFlight(item: RekordboxImport): boolean {
-  // Failed and cancelled jobs are always terminal. A completed metadata import
-  // may legitimately re-enter analysis during the resume/reprocess workflow,
-  // so completed + active analysis remains visible as background work. The
-  // runtime-truth migration removes historical stale combinations once.
+export function isAnalysisInFlight(status: RekordboxAnalysisStatus | null): boolean {
+  return status != null && ACTIVE_ANALYSIS_STATUSES.has(status);
+}
+
+function hasActiveRuntimeState(item: RekordboxImport): boolean {
   if (item.status === 'failed' || item.status === 'cancelled') return false;
   if (item.status === 'completed') return isAnalysisInFlight(item.analysis_status);
   return true;
 }
 
-export function isAnalysisInFlight(status: RekordboxAnalysisStatus | null): boolean {
-  return status != null && ACTIVE_ANALYSIS_STATUSES.has(status);
+export function isImportStalled(
+  item: RekordboxImport,
+  now = Date.now(),
+  staleAfterMs = IMPORT_ACTIVITY_STALE_MS,
+): boolean {
+  if (!hasActiveRuntimeState(item)) return false;
+  const lastActivityAt = getImportLastActivityAt(item);
+  return lastActivityAt <= 0 || now - lastActivityAt > staleAfterMs;
+}
+
+export function isImportInFlight(
+  item: RekordboxImport,
+  now = Date.now(),
+  staleAfterMs = IMPORT_ACTIVITY_STALE_MS,
+): boolean {
+  return hasActiveRuntimeState(item) && !isImportStalled(item, now, staleAfterMs);
 }
 
 export function getImportProgress(item: RekordboxImport): ImportProgressSnapshot {
@@ -64,8 +98,14 @@ export function getImportProgress(item: RekordboxImport): ImportProgressSnapshot
   };
 }
 
-export function getInFlightImport(imports: RekordboxImport[]): RekordboxImport | null {
-  return imports.find(isImportInFlight) ?? null;
+export function getInFlightImport(
+  imports: RekordboxImport[],
+  now = Date.now(),
+): RekordboxImport | null {
+  return imports
+    .filter((item) => isImportInFlight(item, now))
+    .sort((left, right) => getImportLastActivityAt(right) - getImportLastActivityAt(left))[0]
+    ?? null;
 }
 
 export function describeAnalysisStatus(status: RekordboxAnalysisStatus | null): string {

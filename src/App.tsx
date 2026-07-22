@@ -40,7 +40,7 @@ import { useTrackPreviewWaveforms } from './hooks/useTrackPreviewWaveforms';
 import { fetchReviewTracks, setActiveImport, deleteImport } from './lib/queries/rekordbox';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { getImportHistoryPresentation } from './lib/rekordbox/importHistoryPresentation';
-import { getImportProgress, getInFlightImport, isImportInFlight } from './lib/rekordbox/importLifecycle';
+import { getImportProgress, getInFlightImport, isImportInFlight, isImportStalled } from './lib/rekordbox/importLifecycle';
 import { ResumeAnalysisModal } from './components/ResumeAnalysisModal';
 import { ImportActivityBanner } from './components/imports/ImportActivityBanner';
 import { ApplicationErrorBoundary } from './components/errors/ApplicationErrorBoundary';
@@ -304,6 +304,9 @@ function ImportStatusView({
   );
   const progress = getImportProgress(item);
   const inFlight = isImportInFlight(item);
+  const stalled = isImportStalled(item);
+  const statusLabel = stalled ? 'Interrupted' : presentation.label;
+  const statusTone = stalled ? 'warning' : presentation.tone;
   const analysisCanResume = item.status === 'completed'
     && !inFlight
     && item.analysis_status !== 'completed'
@@ -320,14 +323,23 @@ function ImportStatusView({
           </div>
           <span className={cn(
             'rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest',
-            presentation.tone === 'error' ? 'bg-red-500/10 text-red-400' :
-            presentation.tone === 'warning' ? 'bg-amber-500/10 text-amber-400' :
-            presentation.tone === 'success' ? 'bg-emerald-500/10 text-emerald-400' :
+            statusTone === 'error' ? 'bg-red-500/10 text-red-400' :
+            statusTone === 'warning' ? 'bg-amber-500/10 text-amber-400' :
+            statusTone === 'success' ? 'bg-emerald-500/10 text-emerald-400' :
             'bg-blue-500/10 text-blue-400',
           )}>
-            {presentation.label}
+            {statusLabel}
           </span>
         </div>
+
+        {stalled && (
+          <div className="mt-6 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+            <p className="text-sm font-bold text-amber-300">This import stopped reporting progress</p>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              DropDex will no longer treat this historical job as active. Retry the import, or resume analysis when the metadata snapshot is complete.
+            </p>
+          </div>
+        )}
 
         {inFlight && (
           <div className="mt-6 rounded-2xl border border-primary/20 bg-primary/5 p-4">
@@ -363,13 +375,13 @@ function ImportStatusView({
           <p className="mt-5 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-300">{item.error_message}</p>
         )}
         <div className="mt-6 flex flex-wrap gap-2">
-          {!isActive && presentation.canActivate && (
+          {!isActive && !inFlight && !stalled && presentation.canActivate && (
             <button type="button" onClick={onMakeActive} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white">Make Active</button>
           )}
           {analysisCanResume && (
             <button type="button" onClick={onResume} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Resume Analysis</button>
           )}
-          {presentation.canRetry && item.status === 'failed' && (
+          {(presentation.canRetry || stalled) && item.status !== 'completed' && (
             <button type="button" onClick={onRetryImport} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Retry Import</button>
           )}
         </div>
@@ -1421,6 +1433,7 @@ export default function App() {
                         );
                         const importProgress = getImportProgress(imp);
                         const importInFlight = isImportInFlight(imp);
+                        const importStalled = isImportStalled(imp);
                         const showStatusBadge = imp.status !== 'completed'
                           || (imp.analysis_status !== 'completed' && imp.analysis_status !== 'not_requested');
                         return (
@@ -1444,10 +1457,10 @@ export default function App() {
                                   <span className={cn(
                                     "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded shrink-0",
                                     importPresentation.tone === 'error' ? "bg-red-500/10 text-red-400" :
-                                    importPresentation.tone === 'warning' ? "bg-amber-500/10 text-amber-400" :
+                                    (importPresentation.tone === 'warning' || importStalled) ? "bg-amber-500/10 text-amber-400" :
                                     "bg-blue-500/10 text-blue-400",
                                   )}>
-                                    {importPresentation.label}
+                                    {importStalled ? 'Interrupted' : importPresentation.label}
                                   </span>
                                 )}
                               </div>
@@ -1473,7 +1486,7 @@ export default function App() {
                               )}
                             </div>
                             <div className="flex items-center gap-3 shrink-0 pt-0.5">
-                              {!isActive && importPresentation.canActivate && (
+                              {!isActive && !importInFlight && !importStalled && importPresentation.canActivate && (
                                 <button
                                   onClick={() => handleSetActiveImport(imp.id)}
                                   className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
@@ -1481,7 +1494,7 @@ export default function App() {
                                   Make Active
                                 </button>
                               )}
-                              {importPresentation.canRetry && (
+                              {(importPresentation.canRetry || importStalled) && (
                                 <button
                                   onClick={() => {
                                     if (imp.status === 'completed') {

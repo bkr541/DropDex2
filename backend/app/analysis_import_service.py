@@ -155,6 +155,7 @@ def _set_analysis_progress(
             "analysis_current_track_artist": payload["current_track_artist"],
             "analysis_current_track_label": label,
             "analysis_progress_updated_at": updated_at,
+            "updated_at": updated_at,
         }).eq("id", import_id).execute()
     except Exception as exc:
         # Parsing must continue if a transient progress write fails. The final
@@ -398,7 +399,11 @@ def _prepare_analysis_batch(import_id: str, user_id: str):
     try:
         (
             sb.table("rekordbox_imports")
-            .update({"analysis_status": "uploading"})
+            .update({
+                "analysis_status": "uploading",
+                "analysis_progress_updated_at": _now_iso(),
+                "updated_at": _now_iso(),
+            })
             .eq("id", import_id)
             .execute()
         )
@@ -1153,6 +1158,7 @@ def _complete_analysis_import_sync(
                 "analysis_current_track_artist": None,
                 "analysis_current_track_label": None,
                 "analysis_progress_updated_at": _now_iso(),
+                "updated_at": _now_iso(),
             }
         ).eq("id", import_id).execute()
     except Exception as exc:
