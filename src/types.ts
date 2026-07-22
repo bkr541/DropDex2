@@ -40,6 +40,10 @@ export interface RekordboxImport {
   error_code?: string | null;
   retryable?: boolean;
   updated_at?: string;
+  upload_completed_at?: string | null;
+  processing_started_at?: string | null;
+  completed_at?: string | null;
+  cancelled_at?: string | null;
   imported_at: string;
   // Analysis pipeline fields (null until analysis is initiated)
   source_bundle_type: RekordboxSourceBundleType | null;
@@ -52,6 +56,13 @@ export interface RekordboxImport {
   analysis_parser_version: string | null;
   analysis_completed_at: string | null;
   analysis_warnings: unknown[];
+  analysis_progress_processed_track_count: number;
+  analysis_progress_total_track_count: number;
+  analysis_current_track_id: string | null;
+  analysis_current_track_title: string | null;
+  analysis_current_track_artist: string | null;
+  analysis_current_track_label: string | null;
+  analysis_progress_updated_at: string | null;
 }
 
 export type RekordboxTrackParseStatus =

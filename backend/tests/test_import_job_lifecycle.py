@@ -229,6 +229,109 @@ def test_restart_recovery_marks_processing_job_retryable_failed(monkeypatch):
     assert row["retryable"] is True
 
 
+def test_failed_transition_terminates_stale_analysis_progress(monkeypatch):
+    client = FakeClient([
+        {
+            "id": "job-analysis-fail",
+            "user_id": "u",
+            "status": "processing",
+            "analysis_status": "parsing",
+            "analysis_current_track_id": "track-1",
+            "analysis_current_track_title": "Current Song",
+            "analysis_current_track_artist": "Current Artist",
+            "analysis_current_track_label": "Current Artist - Current Song",
+        }
+    ])
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    import_jobs.mark_import_failed(
+        "job-analysis-fail",
+        "u",
+        error_code="ANALYSIS_FAILED",
+        message="Parser stopped.",
+        retryable=True,
+    )
+
+    row = client.tables["rekordbox_imports"][0]
+    assert row["status"] == "failed"
+    assert row["analysis_status"] == "failed"
+    assert row["analysis_completed_at"]
+    assert row["analysis_current_track_id"] is None
+    assert row["analysis_current_track_label"] is None
+    assert row["retryable"] is True
+
+
+def test_completed_transition_clears_old_error_and_live_track(monkeypatch):
+    client = FakeClient([
+        {
+            "id": "job-complete",
+            "user_id": "u",
+            "status": "processing",
+            "analysis_status": "completed",
+            "analysis_expected_track_count": 12,
+            "analysis_parsed_track_count": 12,
+            "analysis_failed_track_count": 0,
+            "analysis_current_track_id": "track-12",
+            "analysis_current_track_label": "Last Track",
+            "error_code": "OLD_ERROR",
+            "error_message": "Old failure",
+            "retryable": True,
+        }
+    ])
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    row = import_jobs.complete_import_job("job-complete", "u")
+
+    assert row["status"] == "completed"
+    assert row["analysis_status"] == "completed"
+    assert row["analysis_current_track_id"] is None
+    assert row["analysis_current_track_label"] is None
+    assert row["error_code"] is None
+    assert row["error_message"] is None
+    assert row["retryable"] is False
+
+
+def test_completed_transition_normalizes_legacy_active_analysis(monkeypatch):
+    client = FakeClient([
+        {
+            "id": "job-legacy-complete",
+            "user_id": "u",
+            "status": "processing",
+            "analysis_status": "parsing",
+            "analysis_expected_track_count": 8,
+            "analysis_parsed_track_count": 8,
+            "analysis_failed_track_count": 0,
+        }
+    ])
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    row = import_jobs.complete_import_job("job-legacy-complete", "u")
+
+    assert row["status"] == "completed"
+    assert row["analysis_status"] == "completed"
+    assert row["analysis_completed_at"]
+
+
+def test_completed_transition_preserves_explicit_partial_analysis(monkeypatch):
+    client = FakeClient([
+        {
+            "id": "job-partial-complete",
+            "user_id": "u",
+            "status": "processing",
+            "analysis_status": "partial",
+            "analysis_expected_track_count": 8,
+            "analysis_parsed_track_count": 8,
+            "analysis_failed_track_count": 0,
+        }
+    ])
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    row = import_jobs.complete_import_job("job-partial-complete", "u")
+
+    assert row["status"] == "completed"
+    assert row["analysis_status"] == "partial"
+
+
 @pytest.mark.asyncio
 async def test_database_processing_does_not_block_event_loop(monkeypatch):
     library = SimpleNamespace(

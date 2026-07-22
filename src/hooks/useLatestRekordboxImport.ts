@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { RekordboxImport } from '../types';
 import { fetchActiveImport } from '../lib/queries/rekordbox';
 
@@ -34,7 +34,7 @@ export function useLatestRekordboxImport(userId: string | null) {
     return () => { active = false; generationRef.current += 1; };
   }, [userId, tick]);
 
-  const refetch = () => setTick((t) => t + 1);
+  const refetch = useCallback(() => setTick((t) => t + 1), []);
 
   return { data, loading, error, refetch };
 }

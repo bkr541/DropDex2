@@ -1521,9 +1521,20 @@ def _complete_analysis_import_sync(
         )
         if import_row.get("status") == "processing":
             complete_import_job(import_id, user_id)
-            upsert_active_import(
-                settings.supabase_url, settings.supabase_secret_key, user_id, import_id
-            )
+            try:
+                upsert_active_import(
+                    settings.supabase_url, settings.supabase_secret_key, user_id, import_id
+                )
+            except Exception as activation_exc:
+                # The import is already durably completed. Do not turn a successful
+                # six-hour analysis run into an HTTP 500 merely because the active
+                # pointer could not be updated in the same instant. The frontend
+                # monitor retries activation when it observes the terminal row.
+                logger.warning(
+                    "Import %s completed but automatic activation failed: %s",
+                    import_id,
+                    activation_exc,
+                )
         elif not response.data:
             assert_import_not_cancelled(import_id, user_id, sb=sb)
     except ImportCancelledError:

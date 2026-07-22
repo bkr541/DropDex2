@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, Suspense, type ReactNode } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
 import {
   Search,
   Music,
@@ -20,6 +20,8 @@ import {
   Radio,
   Pencil,
   Usb,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatKey, formatPosition, formatPlaylistDuration } from './lib/utils';
@@ -38,7 +40,9 @@ import { useTrackPreviewWaveforms } from './hooks/useTrackPreviewWaveforms';
 import { fetchReviewTracks, setActiveImport, deleteImport } from './lib/queries/rekordbox';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { getImportHistoryPresentation } from './lib/rekordbox/importHistoryPresentation';
+import { getImportProgress, getInFlightImport, isImportInFlight } from './lib/rekordbox/importLifecycle';
 import { ResumeAnalysisModal } from './components/ResumeAnalysisModal';
+import { ImportActivityBanner } from './components/imports/ImportActivityBanner';
 import { ApplicationErrorBoundary } from './components/errors/ApplicationErrorBoundary';
 import { RouteLoadingState, RouteLoadErrorState, RouteNotFoundState } from './components/RouteStates';
 import { lazyWithRecovery } from './navigation/lazyWithRecovery';
@@ -66,6 +70,12 @@ import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './typ
 
 type Theme = 'dark' | 'light';
 type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search' | 'edit-profile' | 'drop-lab' | 'import' | 'not-found';
+
+type ImportNotice = {
+  kind: 'success' | 'warning';
+  title: string;
+  detail: string;
+};
 
 function viewForRoute(route: AppRoute): View {
   switch (route.name) {
@@ -278,14 +288,27 @@ function ImportStatusView({
   item,
   isActive,
   onResume,
+  onRetryImport,
   onMakeActive,
 }: {
   item: RekordboxImport;
   isActive: boolean;
   onResume: () => void;
+  onRetryImport: () => void;
   onMakeActive: () => void;
 }) {
-  const presentation = getImportHistoryPresentation(item.status, Boolean(item.retryable));
+  const presentation = getImportHistoryPresentation(
+    item.status,
+    Boolean(item.retryable),
+    item.analysis_status,
+  );
+  const progress = getImportProgress(item);
+  const inFlight = isImportInFlight(item);
+  const analysisCanResume = item.status === 'completed'
+    && !inFlight
+    && item.analysis_status !== 'completed'
+    && item.analysis_status !== 'not_requested';
+
   return (
     <section className="mx-auto max-w-2xl space-y-5 pt-4" data-testid="import-status-screen">
       <div className="glass rounded-3xl border border-[var(--color-border-subtle)] p-6">
@@ -295,15 +318,46 @@ function ImportStatusView({
             <h2 className="mt-1 truncate text-2xl font-black">{item.source_filename}</h2>
             <p className="mt-1 font-mono text-xs text-muted-foreground">{item.id}</p>
           </div>
-          <span className="rounded-full bg-[var(--color-surface)] px-3 py-1 text-[10px] font-bold uppercase tracking-widest">
+          <span className={cn(
+            'rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest',
+            presentation.tone === 'error' ? 'bg-red-500/10 text-red-400' :
+            presentation.tone === 'warning' ? 'bg-amber-500/10 text-amber-400' :
+            presentation.tone === 'success' ? 'bg-emerald-500/10 text-emerald-400' :
+            'bg-blue-500/10 text-blue-400',
+          )}>
             {presentation.label}
           </span>
         </div>
+
+        {inFlight && (
+          <div className="mt-6 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-bold">Analysis is continuing in the background</p>
+              <span className="font-mono text-xs font-bold text-primary">{progress.percent}%</span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--color-surface)]">
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-500"
+                style={{ width: `${progress.percent}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {progress.processed.toLocaleString()} / {progress.total.toLocaleString()} tracks
+              {progress.currentTrackLabel ? ` · ${progress.currentTrackLabel}` : ''}
+            </p>
+            {!isActive && (
+              <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+                Your previous active library remains visible until this snapshot reaches a terminal state. A successful snapshot will become active automatically.
+              </p>
+            )}
+          </div>
+        )}
+
         <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
           <div><dt className="text-[9px] uppercase text-muted-foreground">Tracks</dt><dd className="font-mono font-bold">{item.track_count.toLocaleString()}</dd></div>
           <div><dt className="text-[9px] uppercase text-muted-foreground">Playlists</dt><dd className="font-mono font-bold">{item.playlist_count.toLocaleString()}</dd></div>
           <div><dt className="text-[9px] uppercase text-muted-foreground">Imported</dt><dd className="font-mono text-xs font-bold">{new Date(item.imported_at).toLocaleDateString()}</dd></div>
-          <div><dt className="text-[9px] uppercase text-muted-foreground">Library</dt><dd className="font-mono text-xs font-bold">{isActive ? 'Active' : 'Snapshot'}</dd></div>
+          <div><dt className="text-[9px] uppercase text-muted-foreground">Library</dt><dd className="font-mono text-xs font-bold">{isActive ? 'Active' : inFlight ? 'Pending' : 'Snapshot'}</dd></div>
         </dl>
         {item.error_message && (
           <p className="mt-5 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-300">{item.error_message}</p>
@@ -312,8 +366,11 @@ function ImportStatusView({
           {!isActive && presentation.canActivate && (
             <button type="button" onClick={onMakeActive} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white">Make Active</button>
           )}
-          {(presentation.canRetry || item.analysis_status !== 'completed') && (
+          {analysisCanResume && (
             <button type="button" onClick={onResume} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Resume Analysis</button>
+          )}
+          {presentation.canRetry && item.status === 'failed' && (
+            <button type="button" onClick={onRetryImport} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Retry Import</button>
           )}
         </div>
       </div>
@@ -334,6 +391,13 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem('dropdex-sidebar-collapsed') === 'true'
   );
+  const [importNotice, setImportNotice] = useState<ImportNotice | null>(null);
+  const importStatusRef = useRef<Map<string, {
+    status: RekordboxImport['status'];
+    inFlight: boolean;
+  }>>(new Map());
+  const importStatusSeededRef = useRef(false);
+  const activationAttemptsRef = useRef<Set<string>>(new Set());
 
   const { session } = useAuthSession();
   const userId = session?.user?.id ?? null;
@@ -350,6 +414,7 @@ export default function App() {
     imports: allImports, loading: importsListLoading, error: importsListError,
     refetch: refetchImportList,
   } = useImportList(userId);
+  const inFlightImport = useMemo(() => getInFlightImport(allImports), [allImports]);
 
   const routeTrackId = route.name === 'track' ? route.trackId : null;
   const routeSourceTrackId = route.name === 'drop-lab' ? route.sourceTrackId : null;
@@ -415,6 +480,74 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('dropdex-theme', theme);
   }, [theme]);
+
+
+  useEffect(() => {
+    if (!importNotice) return;
+    const timeout = window.setTimeout(() => setImportNotice(null), 9000);
+    return () => window.clearTimeout(timeout);
+  }, [importNotice]);
+
+  useEffect(() => {
+    if (!userId) {
+      importStatusRef.current.clear();
+      importStatusSeededRef.current = false;
+      activationAttemptsRef.current.clear();
+      return;
+    }
+    if (importsListLoading) return;
+
+    if (!importStatusSeededRef.current) {
+      importStatusRef.current = new Map(allImports.map((item) => [
+        item.id,
+        { status: item.status, inFlight: isImportInFlight(item) },
+      ]));
+      importStatusSeededRef.current = true;
+      return;
+    }
+
+    for (const item of allImports) {
+      const previous = importStatusRef.current.get(item.id);
+      const currentInFlight = isImportInFlight(item);
+      importStatusRef.current.set(item.id, { status: item.status, inFlight: currentInFlight });
+      if (!previous || !previous.inFlight || currentInFlight) continue;
+
+      if (item.status === 'completed') {
+        const isReanalysis = previous.status === 'completed';
+        const hasWarnings = item.analysis_status === 'partial' || item.analysis_status === 'failed';
+        setImportNotice({
+          kind: hasWarnings ? 'warning' : 'success',
+          title: hasWarnings
+            ? 'Library analysis finished with warnings'
+            : isReanalysis ? 'Library analysis is ready' : 'New library is ready',
+          detail: isReanalysis
+            ? `${item.source_filename} finished reprocessing.`
+            : `${item.source_filename} finished processing and is now being activated.`,
+        });
+
+        if (!isReanalysis && !activationAttemptsRef.current.has(item.id)) {
+          activationAttemptsRef.current.add(item.id);
+          void setActiveImport(item.id)
+            .catch((error) => {
+              console.error('Automatic import activation fallback failed:', error);
+            })
+            .finally(() => {
+              refetchImport();
+              refetchImportList();
+              void refetchProfiles();
+            });
+        } else {
+          refetchImportList();
+        }
+      } else {
+        setImportNotice({
+          kind: 'warning',
+          title: item.status === 'cancelled' ? 'Library import cancelled' : 'Library import failed',
+          detail: item.error_message || `${item.source_filename} stopped before it could become the active library.`,
+        });
+      }
+    }
+  }, [allImports, importsListLoading, refetchImport, refetchImportList, refetchProfiles, userId]);
 
   // Load review tracks when entering review mode
   useEffect(() => {
@@ -520,6 +653,15 @@ export default function App() {
     refetchImport();
     refetchImportList();
     void refetchProfiles();
+  };
+
+  const handleImportStarted = (_importId: string) => {
+    refetchImportList();
+  };
+
+  const handleImportBackgrounded = (_importId: string) => {
+    setIsImportModalOpen(false);
+    refetchImportList();
   };
 
   const handleSetActiveImport = async (nextImportId: string) => {
@@ -839,6 +981,14 @@ export default function App() {
 
         {/* Scrollable content */}
         <main className={cn('flex-1 overflow-y-auto px-4 md:px-8 pb-32 md:pb-8', currentView === 'home' && 'pt-6')}>
+          {inFlightImport && (
+            <ImportActivityBanner
+              item={inFlightImport}
+              activeImport={latestImport}
+              onViewStatus={() => navigate({ name: 'import', importId: inFlightImport.id, resume: false })}
+              className={currentView === 'home' ? undefined : 'mt-4'}
+            />
+          )}
           <ApplicationErrorBoundary level="feature" resetKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
           <RouteFailureProbe />
           <AnimatePresence mode="wait">
@@ -1091,6 +1241,7 @@ export default function App() {
                   isActive={selectedImport.id === latestImport?.id}
                   onMakeActive={() => { void handleSetActiveImport(selectedImport.id); }}
                   onResume={() => navigate({ name: 'import', importId: selectedImport.id, resume: true }, { replace: true })}
+                  onRetryImport={() => setIsImportModalOpen(true)}
                 />
               </motion.div>
             )}
@@ -1212,7 +1363,7 @@ export default function App() {
                     <div className="p-4 flex items-center gap-3">
                       <Database size={18} className="text-muted-foreground" />
                       <div className="min-w-0">
-                        <p className="font-bold text-sm">Cloud Library</p>
+                        <p className="font-bold text-sm">Active Cloud Library</p>
                         <p className="text-xs text-muted-foreground">
                           {importLoading
                             ? 'Loading…'
@@ -1266,8 +1417,12 @@ export default function App() {
                       {allImports.map((imp) => {
                         const isActive = imp.id === latestImport?.id;
                         const importPresentation = getImportHistoryPresentation(
-                          imp.status, Boolean(imp.retryable),
+                          imp.status, Boolean(imp.retryable), imp.analysis_status,
                         );
+                        const importProgress = getImportProgress(imp);
+                        const importInFlight = isImportInFlight(imp);
+                        const showStatusBadge = imp.status !== 'completed'
+                          || (imp.analysis_status !== 'completed' && imp.analysis_status !== 'not_requested');
                         return (
                           <div key={imp.id} className="p-4 flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
@@ -1285,7 +1440,7 @@ export default function App() {
                                     Active
                                   </span>
                                 )}
-                                {imp.status !== 'completed' && (
+                                {showStatusBadge && (
                                   <span className={cn(
                                     "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded shrink-0",
                                     importPresentation.tone === 'error' ? "bg-red-500/10 text-red-400" :
@@ -1302,6 +1457,17 @@ export default function App() {
                               {imp.device_name && (
                                 <p className="text-[10px] text-muted-foreground font-mono">{imp.device_name}</p>
                               )}
+                              {importInFlight && (
+                                <div className="mt-2 max-w-md">
+                                  <div className="flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
+                                    <span className="truncate">{importProgress.currentTrackLabel || 'Preparing current track…'}</span>
+                                    <span className="shrink-0 font-mono">{importProgress.percent}%</span>
+                                  </div>
+                                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface)]">
+                                    <div className="h-full rounded-full bg-primary" style={{ width: `${importProgress.percent}%` }} />
+                                  </div>
+                                </div>
+                              )}
                               {(imp.status === 'failed' || imp.status === 'cancelled') && imp.error_message && (
                                 <p className="text-[10px] text-red-400 mt-1">{imp.error_message}</p>
                               )}
@@ -1317,18 +1483,26 @@ export default function App() {
                               )}
                               {importPresentation.canRetry && (
                                 <button
-                                  onClick={() => setIsImportModalOpen(true)}
+                                  onClick={() => {
+                                    if (imp.status === 'completed') {
+                                      navigate({ name: 'import', importId: imp.id, resume: true });
+                                    } else {
+                                      setIsImportModalOpen(true);
+                                    }
+                                  }}
                                   className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
                                 >
-                                  Retry
+                                  {imp.status === 'completed' ? 'Resume' : 'Retry'}
                                 </button>
                               )}
-                              <button
-                                onClick={() => handleDeleteImport(imp)}
-                                className="text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors"
-                              >
-                                Delete
-                              </button>
+                              {!importInFlight && (
+                                <button
+                                  onClick={() => handleDeleteImport(imp)}
+                                  className="text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors"
+                                >
+                                  Delete
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -1422,11 +1596,38 @@ export default function App() {
         libraryLabel={libraryLabel}
       />
 
+      <AnimatePresence>
+        {importNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -12, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+            className={cn(
+              'fixed right-4 top-4 z-[80] flex max-w-sm items-start gap-3 rounded-2xl border p-4 shadow-2xl backdrop-blur-xl',
+              importNotice.kind === 'success'
+                ? 'border-emerald-500/25 bg-emerald-950/90 text-emerald-50'
+                : 'border-amber-500/25 bg-amber-950/90 text-amber-50',
+            )}
+            role="status"
+          >
+            {importNotice.kind === 'success'
+              ? <CheckCircle2 size={20} className="mt-0.5 shrink-0 text-emerald-400" />
+              : <AlertTriangle size={20} className="mt-0.5 shrink-0 text-amber-400" />}
+            <div className="min-w-0">
+              <p className="text-sm font-black">{importNotice.title}</p>
+              <p className="mt-1 text-xs leading-relaxed opacity-80">{importNotice.detail}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <ImportLibraryModal
         isOpen={isImportModalOpen}
         accessToken={session?.access_token ?? null}
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={handleImportSuccess}
+        onImportStarted={handleImportStarted}
+        onBackgrounded={handleImportBackgrounded}
       />
 
       {resumeImportId && (

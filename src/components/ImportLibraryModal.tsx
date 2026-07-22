@@ -93,6 +93,8 @@ interface Props {
   accessToken: string | null;
   onClose: () => void;
   onSuccess: () => void;
+  onImportStarted?: (importId: string) => void;
+  onBackgrounded?: (importId: string) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -143,7 +145,14 @@ function clampPct(value: number): number {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ImportLibraryModal({ isOpen, accessToken, onClose, onSuccess }: Props) {
+export function ImportLibraryModal({
+  isOpen,
+  accessToken,
+  onClose,
+  onSuccess,
+  onImportStarted,
+  onBackgrounded,
+}: Props) {
   const [mode, setMode] = useState<Mode>('usb_folder');
   const [phase, setPhase] = useState<Phase>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -169,6 +178,7 @@ export function ImportLibraryModal({ isOpen, accessToken, onClose, onSuccess }: 
   const importIdRef = useRef<string | null>(null);
   const accessTokenRef = useRef<string | null>(null);
   const operationRef = useRef(0);
+  const backgroundedRef = useRef(false);
 
   // AuthProvider receives Supabase TOKEN_REFRESHED events and updates this prop.
   // Keep the latest token in a ref so long-running upload/parsing closures never
@@ -244,6 +254,7 @@ export function ImportLibraryModal({ isOpen, accessToken, onClose, onSuccess }: 
     setReconciliation(null);
     setRetryingCount(0);
     operationRef.current += 1;
+    backgroundedRef.current = false;
     importIdRef.current = null;
     accessTokenRef.current = null;
     abortControllerRef.current = null;
@@ -256,7 +267,19 @@ export function ImportLibraryModal({ isOpen, accessToken, onClose, onSuccess }: 
     setMode(m);
   };
 
+  const handleContinueInBackground = () => {
+    const importId = importIdRef.current;
+    if (!importId || phase !== 'parsing_analysis') return;
+    backgroundedRef.current = true;
+    onBackgrounded?.(importId);
+    onClose();
+  };
+
   const handleClose = () => {
+    if (phase === 'parsing_analysis') {
+      handleContinueInBackground();
+      return;
+    }
     if (isUploading) {
       setShowAbortDialog(true);
       return;
@@ -387,6 +410,7 @@ export function ImportLibraryModal({ isOpen, accessToken, onClose, onSuccess }: 
       });
       if (operation !== operationRef.current) return;
       importIdRef.current = job.import_id;
+      onImportStarted?.(job.import_id);
 
       if (mode === 'database_only') {
         await runDatabaseOnlyImport(token, controller, job.import_id, operation);
@@ -703,7 +727,12 @@ export function ImportLibraryModal({ isOpen, accessToken, onClose, onSuccess }: 
     let pollTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const pollParsingStatus = async () => {
-      if (stopParsePolling || controller.signal.aborted || operation !== operationRef.current) {
+      if (
+        stopParsePolling
+        || backgroundedRef.current
+        || controller.signal.aborted
+        || operation !== operationRef.current
+      ) {
         return;
       }
 
@@ -742,7 +771,12 @@ export function ImportLibraryModal({ isOpen, accessToken, onClose, onSuccess }: 
           console.debug('[DropDex] Analysis status polling failed:', err);
         }
       } finally {
-        if (!stopParsePolling && !controller.signal.aborted && operation === operationRef.current) {
+        if (
+          !stopParsePolling
+          && !backgroundedRef.current
+          && !controller.signal.aborted
+          && operation === operationRef.current
+        ) {
           pollTimeout = setTimeout(pollParsingStatus, PARSE_STATUS_POLL_MS);
         }
       }
@@ -764,6 +798,13 @@ export function ImportLibraryModal({ isOpen, accessToken, onClose, onSuccess }: 
       if (pollTimeout) clearTimeout(pollTimeout);
       if (isAbortError(err) || operation !== operationRef.current) return;
       const { message, structured } = extractError(err);
+      if (backgroundedRef.current) {
+        if (import.meta.env.DEV) {
+          console.error('[DropDex] Background analysis request failed:', message, structured);
+        }
+        reset();
+        return;
+      }
       setErrorMessage(message);
       setErrorStructured(structured);
       setPhase('error');
@@ -780,6 +821,15 @@ export function ImportLibraryModal({ isOpen, accessToken, onClose, onSuccess }: 
       totalTracks: completeResp.total_tracks,
       percent: 100,
     }));
+
+    if (backgroundedRef.current) {
+      // The persistent app-level monitor owns activation, refresh, and user
+      // notification. Do not navigate the user away from whatever they opened
+      // while this long-running request was finishing.
+      reset();
+      return;
+    }
+
     setFinalResult({ kind: 'with_analysis', data: completeResp });
     // "failed" analysis_status (all tracks missing_required) still lands in
     // partial_success so the user sees a useful summary rather than an error screen.
@@ -1092,12 +1142,25 @@ export function ImportLibraryModal({ isOpen, accessToken, onClose, onSuccess }: 
                     </p>
                   </div>
                 )}
-                <button
-                  onClick={() => setShowAbortDialog(true)}
-                  className="mt-6 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Cancel
-                </button>
+                <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={handleContinueInBackground}
+                    className="flex-1 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white transition-all active:scale-[0.99]"
+                  >
+                    Continue in Background
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAbortDialog(true)}
+                    className="flex-1 rounded-xl border border-[var(--color-border-subtle)] px-4 py-3 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Cancel Import
+                  </button>
+                </div>
+                <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
+                  You can keep using DropDex while analysis runs. The current active library stays visible until this import finishes.
+                </p>
               </div>
             )}
 

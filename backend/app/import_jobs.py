@@ -27,6 +27,55 @@ IMPORT_STATES = frozenset(
 )
 TERMINAL_IMPORT_STATES = frozenset({"cancelled", "completed", "failed"})
 CANCELLATION_STATES = frozenset({"cancel_requested", "cancelled"})
+
+
+_ACTIVE_ANALYSIS_STATES = frozenset({"awaiting_upload", "uploading", "uploaded", "parsing"})
+
+
+def _terminal_consistency_updates(row: dict[str, Any], new_state: str) -> dict[str, Any]:
+    """Return subordinate fields that keep a terminal import internally truthful.
+
+    Older deployments could leave rows such as status=failed with
+    analysis_status=parsing, which made the UI continue presenting dead work as
+    active. The durable job state is authoritative; terminal transitions clear
+    live progress labels and terminate any active analysis sub-state.
+    """
+    if new_state not in TERMINAL_IMPORT_STATES:
+        return {}
+
+    now = _now()
+    updates: dict[str, Any] = {
+        "analysis_current_track_id": None,
+        "analysis_current_track_title": None,
+        "analysis_current_track_artist": None,
+        "analysis_current_track_label": None,
+        "analysis_progress_updated_at": now,
+    }
+    analysis_status = row.get("analysis_status")
+
+    if new_state == "completed":
+        updates.update({"error_code": None, "error_message": None, "retryable": False})
+        if analysis_status in _ACTIVE_ANALYSIS_STATES:
+            expected = max(0, int(row.get("analysis_expected_track_count") or 0))
+            parsed = max(0, int(row.get("analysis_parsed_track_count") or 0))
+            failed = max(0, int(row.get("analysis_failed_track_count") or 0))
+            if expected == 0:
+                normalized = "not_requested"
+            elif parsed >= expected and failed == 0:
+                normalized = "completed"
+            elif parsed > 0:
+                normalized = "partial"
+            else:
+                normalized = "failed"
+            updates["analysis_status"] = normalized
+            updates["analysis_completed_at"] = row.get("analysis_completed_at") or now
+    elif analysis_status in _ACTIVE_ANALYSIS_STATES:
+        updates["analysis_status"] = "failed"
+        updates["analysis_completed_at"] = row.get("analysis_completed_at") or now
+
+    return updates
+
+
 ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     "created": frozenset({"uploading", "cancel_requested", "cancelled", "failed"}),
     "uploading": frozenset({"queued", "cancel_requested", "cancelled", "failed"}),
@@ -158,7 +207,13 @@ def transition_import_job(
                 "retryable": False,
             },
         )
-    payload = {"status": new_state, "updated_at": _now(), **(updates or {})}
+    terminal_updates = _terminal_consistency_updates(current, new_state)
+    payload = {
+        "status": new_state,
+        "updated_at": _now(),
+        **(updates or {}),
+        **terminal_updates,
+    }
     response = (
         client.table("rekordbox_imports")
         .update(payload)

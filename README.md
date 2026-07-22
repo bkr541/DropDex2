@@ -161,13 +161,19 @@ supabase migration list
 supabase db push --include-all
 ```
 
-After updating an existing installation, confirm that both
-`20260722010000_rekordbox_import_write_repair.sql` and
-`20260722020000_rekordbox_import_schema_convergence.sql` appear in the remote
-migration history. The convergence migration repairs projects that skipped the
-June normalized-key or analysis-schema migrations as well as the July metadata
-and reliability migrations. It also restores the cue and recommendation tables
-written during the initial USB import and reloads the PostgREST schema cache.
+After updating an existing installation, confirm that these repairs appear in
+the remote migration history:
+
+- `20260722010000_rekordbox_import_write_repair.sql`
+- `20260722020000_rekordbox_import_schema_convergence.sql`
+- `20260722030000_rekordbox_import_runtime_truth.sql`
+
+The convergence migration repairs projects that skipped the June normalized-key
+or analysis-schema migrations as well as the July metadata and reliability
+migrations. The runtime-truth migration normalizes contradictory historical job
+states, keeps background progress truthful, and activates a successful snapshot
+at the database boundary. These migrations also restore import-critical tables
+and reload the PostgREST schema cache.
 
 For a dashboard-only deployment, run every file in `supabase/migrations/` in
 timestamp order. Skipping a migration can let Rekordbox parsing finish while the
