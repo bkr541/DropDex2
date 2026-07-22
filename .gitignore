@@ -29,3 +29,6 @@ backend/*.egg-info/
 
 # Electron packaging output
 release/
+
+# Supabase CLI temp files
+supabase/.temp/
