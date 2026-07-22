@@ -181,6 +181,79 @@ class TestTrackMetadataFidelity:
         assert track.composer == "Composer"
         assert track.lyricist == "Lyricist"
         assert track.source_metadata["releaseDate"] == "2026-06-01T00:00:00+00:00"
+        assert track.rating == 5
+
+    @pytest.mark.parametrize("raw_rating", ["", "not-a-number", None])
+    def test_invalid_rating_syntax_is_stored_as_null(self, raw_rating):
+        content = types.SimpleNamespace(
+            content_id=42,
+            title="Track",
+            artist_name=None,
+            remixer_name=None,
+            album_name=None,
+            genre_name=None,
+            label_name=None,
+            color=None,
+            key=None,
+            bpmx100=0,
+            length=1000,
+            rating=raw_rating,
+            djComment=None,
+            path=None,
+            fileType=None,
+            dateAdded=None,
+            masterDbId=None,
+            masterContentId=None,
+            analysisDataFilePath=None,
+            analysedBits=None,
+            cueUpdateCount=None,
+            analysisDataUpdateCount=None,
+            informationUpdateCount=None,
+            to_dict=lambda: {"content_id": 42, "rating": raw_rating},
+        )
+        db = MagicMock()
+        db.get_content.return_value.all.return_value = [content]
+        library = ParsedLibrary()
+
+        _extract_tracks(db, library)
+
+        assert library.tracks[0].rating is None
+
+    def test_out_of_range_rating_is_dropped_with_warning(self):
+        content = types.SimpleNamespace(
+            content_id=42,
+            title="Track",
+            artist_name=None,
+            remixer_name=None,
+            album_name=None,
+            genre_name=None,
+            label_name=None,
+            color=None,
+            key=None,
+            bpmx100=0,
+            length=1000,
+            rating=9,
+            djComment=None,
+            path=None,
+            fileType=None,
+            dateAdded=None,
+            masterDbId=None,
+            masterContentId=None,
+            analysisDataFilePath=None,
+            analysedBits=None,
+            cueUpdateCount=None,
+            analysisDataUpdateCount=None,
+            informationUpdateCount=None,
+            to_dict=lambda: {"content_id": 42, "rating": 9},
+        )
+        db = MagicMock()
+        db.get_content.return_value.all.return_value = [content]
+        library = ParsedLibrary()
+
+        _extract_tracks(db, library)
+
+        assert library.tracks[0].rating is None
+        assert any("outside 0-5" in warning for warning in library.parse_warnings)
 
 
 class TestDeriveAnlzSiblings:

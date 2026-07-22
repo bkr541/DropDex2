@@ -151,13 +151,24 @@ uvicorn app.main:app --reload   # http://localhost:8000
 
 ### 4. Apply database migrations
 
-Run in order against your Supabase project (SQL editor or `supabase db push`):
+The application and Supabase schema must be deployed together. Do not apply only
+the early migrations listed in an older README copy; the current importer writes
+columns added by later migrations. From the repository root:
 
-1. `supabase/migrations/20260526120000_rekordbox_schema.sql` — rekordbox tables and RLS
-2. `supabase/migrations/20260526130000_user_settings.sql` — active import management
-3. `supabase/migrations/20260527010000_create_genres_and_artist_genres.sql` — genres catalog
-4. `supabase/migrations/20260527020000_backfill_artists_genres_from_site_db.sql` — genre backfill
-5. `supabase/migrations/20260527030000_create_discovery_scrape_job_support.sql` — discovery tables, artists, scrape jobs, setlist results
+```bash
+supabase link --project-ref YOUR_PROJECT_REF
+supabase migration list
+supabase db push
+```
+
+After updating an existing installation, confirm that
+`20260722010000_rekordbox_import_write_repair.sql` appears in the remote migration
+history. It restores the metadata columns used by USB imports, recreates the
+`recover_stale_discovery_jobs` RPC, and reloads the PostgREST schema cache.
+
+For a dashboard-only deployment, run every file in `supabase/migrations/` in
+timestamp order. Skipping a migration can let Rekordbox parsing finish while the
+`rekordbox_tracks` insert fails with HTTP 400.
 
 ## Environment variables
 

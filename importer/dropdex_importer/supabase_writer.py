@@ -34,6 +34,43 @@ _BATCH_SIZE = 500
 # ── Structured write error ────────────────────────────────────────────────────
 
 
+def _extract_postgrest_error(original_error: Exception) -> dict[str, object | None]:
+    """Return the safe structured fields exposed by postgrest.APIError.
+
+    postgrest-py exposes ``code``, ``message``, ``hint`` and ``details`` as
+    attributes. Older releases and several test doubles instead place a dict in
+    ``args[0]``. Supporting both forms prevents the real database error code
+    from being erased before the API layer can classify it.
+    """
+
+    raw: dict[str, object] = {}
+
+    json_method = getattr(original_error, "json", None)
+    if callable(json_method):
+        try:
+            value = json_method()
+            if isinstance(value, dict):
+                raw = value
+        except Exception:
+            pass
+
+    if not raw and getattr(original_error, "args", None):
+        first = original_error.args[0]
+        if isinstance(first, dict):
+            raw = first
+
+    def _safe_value(name: str) -> object | None:
+        value = getattr(original_error, name, None)
+        return value if value is not None else raw.get(name)
+
+    return {
+        "code": _safe_value("code"),
+        "message": _safe_value("message"),
+        "hint": _safe_value("hint"),
+        "details": _safe_value("details"),
+    }
+
+
 class RekordboxWriteError(RuntimeError):
     """Raised when a specific Supabase write stage fails.
 
@@ -56,15 +93,15 @@ class RekordboxWriteError(RuntimeError):
         self.import_id = import_id
 
         # Extract safe PostgREST fields; never forward credentials or raw SQL.
-        err_dict: dict = {}
-        if hasattr(original_error, "args") and original_error.args:
-            first = original_error.args[0]
-            if isinstance(first, dict):
-                err_dict = first
-        self.db_code: Optional[str] = err_dict.get("code")
-        self.db_message: Optional[str] = err_dict.get("message")
-        self.db_hint: Optional[str] = err_dict.get("hint")
-        self.db_details: Optional[str] = err_dict.get("details")
+        err_dict = _extract_postgrest_error(original_error)
+        self.db_code = str(err_dict["code"]) if err_dict["code"] is not None else None
+        self.db_message = (
+            str(err_dict["message"]) if err_dict["message"] is not None else None
+        )
+        self.db_hint = str(err_dict["hint"]) if err_dict["hint"] is not None else None
+        self.db_details = (
+            str(err_dict["details"]) if err_dict["details"] is not None else None
+        )
 
         super().__init__(
             f"Rekordbox import write failed stage={stage} table={table} "

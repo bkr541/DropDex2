@@ -677,18 +677,28 @@ async def start_analysis_import(
             if exc.db_code == "22P02":
                 detail["detail"] = (
                     "DropDex parsed your Rekordbox library, but a field in the database "
-                    "record has an unexpected format. This is a bug — please report it."
+                    "record has an unexpected format. Update DropDex and try the import again."
                 )
                 detail["diagnostic"] = "Invalid value syntax for a database column."
                 detail["retryable"] = False
-            elif exc.db_code == "PGRST204":
+            elif exc.db_code in ("PGRST204", "42P01", "42703"):
                 detail["detail"] = (
-                    "DropDex parsed your Rekordbox library, but the DropDex database "
-                    "schema is missing a required column. Apply the pending migrations and try again."
+                    "DropDex parsed your Rekordbox library, but the Supabase schema is "
+                    "behind this version of DropDex. Apply the pending Supabase migrations "
+                    "and restart DropDex before trying again."
                 )
-                detail["diagnostic"] = "Required database column is missing."
+                detail["diagnostic"] = (
+                    "Database schema mismatch. The required table or column is missing."
+                )
                 detail["retryable"] = False
-            elif exc.db_code in ("42501", "42P01"):
+            elif exc.db_code == "23514":
+                detail["detail"] = (
+                    "DropDex parsed your Rekordbox library, but one track contained a value "
+                    "outside the database's allowed range. Update DropDex and retry the import."
+                )
+                detail["diagnostic"] = "A database check constraint rejected a track record."
+                detail["retryable"] = False
+            elif exc.db_code == "42501":
                 detail["detail"] = (
                     "DropDex parsed your Rekordbox library, but the server could not "
                     "save it because the database connection is not authorized."

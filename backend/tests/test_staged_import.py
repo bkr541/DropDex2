@@ -1385,6 +1385,31 @@ class TestStructuredWriteErrors:
         assert detail["stage"] == "insert_tracks"
         assert detail["table"] == "rekordbox_tracks"
 
+    def test_real_postgrest_style_attributes_are_preserved(self):
+        """The current postgrest client exposes error fields as attributes."""
+        from dropdex_importer.supabase_writer import RekordboxWriteError
+
+        class AttributeApiError(Exception):
+            code = "PGRST204"
+            message = "Could not find the source_title column"
+            hint = None
+            details = None
+
+        def failing_write(*_):
+            raise RekordboxWriteError(
+                stage="insert_tracks",
+                table="rekordbox_tracks",
+                operation="batch_insert",
+                original_error=AttributeApiError("opaque rendered message"),
+            )
+
+        resp = self._post_start(failing_write)
+        assert resp.status_code == 500
+        detail = resp.json()["detail"]
+        assert detail["retryable"] is False
+        assert "schema" in detail["detail"].lower()
+        assert "PGRST204" not in str(detail)
+
     def test_bigint_error_code_22p02_returns_helpful_detail(self):
         """Error 22P02 (invalid syntax for bigint) yields a user-readable message."""
         from dropdex_importer.supabase_writer import RekordboxWriteError
@@ -1408,6 +1433,24 @@ class TestStructuredWriteErrors:
         # Must give a human-readable hint
         assert "detail" in detail
         assert len(detail["detail"]) > 20
+
+    def test_check_constraint_error_is_not_marked_retryable(self):
+        from dropdex_importer.supabase_writer import RekordboxWriteError
+
+        pg_exc = Exception({"code": "23514", "message": "check constraint", "hint": None, "details": None})
+
+        def failing_write(*_):
+            raise RekordboxWriteError(
+                stage="insert_tracks",
+                table="rekordbox_tracks",
+                operation="batch_insert",
+                original_error=pg_exc,
+            )
+
+        resp = self._post_start(failing_write)
+        detail = resp.json()["detail"]
+        assert detail["retryable"] is False
+        assert "allowed range" in detail["detail"]
 
     def test_structured_error_does_not_leak_credentials(self):
         """No credential-looking strings must appear in error responses."""

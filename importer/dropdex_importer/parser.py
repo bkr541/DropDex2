@@ -332,7 +332,19 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
 
         # Duration is stored in milliseconds.
         duration_ms = _int_or_none(c.length)
+        if duration_ms is not None and duration_ms < 0:
+            library.parse_warnings.append(
+                f"Track {c.content_id} has a negative duration; storing no duration."
+            )
+            duration_ms = None
         duration_seconds = duration_ms // 1000 if duration_ms is not None else None
+
+        rating = _int_or_none(getattr(c, "rating", None))
+        if rating is not None and not 0 <= rating <= 5:
+            library.parse_warnings.append(
+                f"Track {c.content_id} has rating {rating!r} outside 0-5; storing no rating."
+            )
+            rating = None
 
         comments = _str_or_none(c.djComment)
         file_path = _str_or_none(c.path)
@@ -380,7 +392,7 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
                 musical_key=musical_key,
                 bpm=bpm,
                 duration_seconds=duration_seconds,
-                rating=c.rating,  # 0-5 or None; store as-is
+                rating=rating,
                 comments=comments,
                 file_path=file_path,
                 file_format=file_format,
@@ -651,17 +663,26 @@ def _extract_recommendations(db: object, library: ParsedLibrary) -> None:
             except Exception:
                 source_created_at = None
 
+        rating = _int_or_none(getattr(r, "rating", None))
+        if rating is not None and not 0 <= rating <= 5:
+            library.parse_warnings.append(
+                "RecommendedLike edge "
+                f"{r.content_id_1}->{r.content_id_2} has rating {rating!r} outside 0-5; "
+                "storing no rating."
+            )
+            rating = None
+
         library.recommendation_edges.append(
             NormalizedRecommendationEdge(
                 source_rekordbox_content_id=str(r.content_id_1),
                 target_rekordbox_content_id=str(r.content_id_2),
-                rating=r.rating,
+                rating=rating,
                 source_created_at=source_created_at,
                 direction_preserved=True,
                 source_payload={
                     "content_id_1": r.content_id_1,
                     "content_id_2": r.content_id_2,
-                    "rating": r.rating,
+                    "rating": rating,
                 },
             )
         )
