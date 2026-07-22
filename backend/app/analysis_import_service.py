@@ -688,7 +688,9 @@ async def start_analysis_import(
                     "and restart DropDex before trying again."
                 )
                 detail["diagnostic"] = (
-                    "Database schema mismatch. The required table or column is missing."
+                    f"Database schema mismatch: {exc.db_message}"
+                    if exc.db_message
+                    else "Database schema mismatch. The required table or column is missing."
                 )
                 detail["retryable"] = False
             elif exc.db_code == "23514":

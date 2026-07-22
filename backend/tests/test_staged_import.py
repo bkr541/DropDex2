@@ -1408,6 +1408,7 @@ class TestStructuredWriteErrors:
         detail = resp.json()["detail"]
         assert detail["retryable"] is False
         assert "schema" in detail["detail"].lower()
+        assert "source_title" in detail["diagnostic"]
         assert "PGRST204" not in str(detail)
 
     def test_bigint_error_code_22p02_returns_helpful_detail(self):

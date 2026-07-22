@@ -14,6 +14,21 @@ begin;
 
 -- ── Rekordbox metadata-fidelity columns required by _insert_tracks ───────────
 alter table public.rekordbox_tracks
+  -- Normalized-key columns are part of the same insert payload. Some remote
+  -- projects skipped the June key migration as well as the July migrations.
+  add column if not exists camelot_key           text,
+  add column if not exists normalized_key_name   text,
+  add column if not exists key_tonic             text,
+  add column if not exists key_mode              text,
+  -- Device Library Plus analysis identity columns are also written during the
+  -- first track insert, before any ANLZ files are uploaded.
+  add column if not exists master_db_id                   text,
+  add column if not exists master_content_id              text,
+  add column if not exists analysis_data_file_path        text,
+  add column if not exists analysed_bits                  bigint,
+  add column if not exists cue_update_count               bigint,
+  add column if not exists analysis_data_update_count     bigint,
+  add column if not exists information_update_count       bigint,
   add column if not exists source_title          text,
   add column if not exists subtitle              text,
   add column if not exists original_artist       text,
@@ -113,6 +128,16 @@ end $$;
 
 -- ── Reliability columns and RPC used by the running backend ─────────────────
 alter table public.rekordbox_imports
+  add column if not exists source_bundle_type text,
+  add column if not exists analysis_status text,
+  add column if not exists analysis_expected_track_count integer not null default 0,
+  add column if not exists analysis_matched_track_count integer not null default 0,
+  add column if not exists analysis_parsed_track_count integer not null default 0,
+  add column if not exists analysis_failed_track_count integer not null default 0,
+  add column if not exists analysis_asset_count integer not null default 0,
+  add column if not exists analysis_parser_version text,
+  add column if not exists analysis_completed_at timestamptz,
+  add column if not exists analysis_warnings jsonb not null default '[]'::jsonb,
   add column if not exists analysis_progress_processed_track_count integer not null default 0,
   add column if not exists analysis_progress_total_track_count integer not null default 0,
   add column if not exists analysis_current_track_id uuid,
@@ -121,9 +146,15 @@ alter table public.rekordbox_imports
   add column if not exists analysis_current_track_label text,
   add column if not exists analysis_progress_updated_at timestamptz;
 
-alter table public.scrape_jobs
-  add column if not exists heartbeat_at timestamptz,
-  add column if not exists updated_at timestamptz not null default now();
+-- Discovery is optional for Rekordbox imports. Guard this repair so a project
+-- without the discovery schema does not roll back all track-column repairs.
+do $$
+begin
+  if to_regclass('public.scrape_jobs') is not null then
+    execute 'alter table public.scrape_jobs add column if not exists heartbeat_at timestamptz';
+    execute 'alter table public.scrape_jobs add column if not exists updated_at timestamptz not null default now()';
+  end if;
+end $$;
 
 create or replace function public.recover_stale_discovery_jobs(
   p_stale_before timestamptz
@@ -134,16 +165,22 @@ security definer
 set search_path = public
 as $$
 declare
-  recovered_count integer;
+  recovered_count integer := 0;
 begin
-  update public.scrape_jobs
-  set status = 'failed',
-      error_message = 'The scrape stopped because the DropDex service restarted. Please retry.',
-      completed_at = now(),
-      heartbeat_at = now(),
-      updated_at = now()
-  where status in ('queued', 'running')
-    and coalesce(heartbeat_at, started_at, created_at) < p_stale_before;
+  if to_regclass('public.scrape_jobs') is null then
+    return 0;
+  end if;
+
+  execute $update$
+    update public.scrape_jobs
+    set status = 'failed',
+        error_message = 'The scrape stopped because the DropDex service restarted. Please retry.',
+        completed_at = now(),
+        heartbeat_at = now(),
+        updated_at = now()
+    where status in ('queued', 'running')
+      and coalesce(heartbeat_at, started_at, created_at) < $1
+  $update$ using p_stale_before;
 
   get diagnostics recovered_count = row_count;
   return recovered_count;
