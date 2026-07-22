@@ -13,6 +13,7 @@ import {
   FileUp,
   Moon,
   Sun,
+  Disc3,
   Database,
   LogOut,
   User,
@@ -67,8 +68,22 @@ import { NowPlayingBar } from './components/player/NowPlayingBar';
 import { buildPlaylistIdentityKey } from './lib/queries/userPlaylists';
 import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
+import { useTheme } from './theme/ThemeProvider';
+import type { ThemeId } from './theme/theme';
 
-type Theme = 'dark' | 'light';
+type ThemeOption = {
+  id: ThemeId;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+};
+
+const THEME_OPTIONS: ThemeOption[] = [
+  { id: 'dark', label: 'Dark', description: 'Default', icon: Moon },
+  { id: 'light', label: 'Light', description: 'High contrast', icon: Sun },
+  { id: 'cdj', label: 'CDJ', description: 'Performance deck', icon: Disc3 },
+];
+
 type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search' | 'edit-profile' | 'drop-lab' | 'import' | 'not-found';
 
 type ImportNotice = {
@@ -210,7 +225,7 @@ const TrackCard = ({ track, onClick, isActive, position }: TrackCardProps) => {
       className={cn(
         'grid grid-cols-[56px_1fr_60px_60px] gap-3 items-center p-3 rounded-xl transition-all cursor-pointer mb-2',
         isActive
-          ? 'bg-[var(--color-surface-hover)] border border-primary/40 shadow-[0_4px_20px_rgba(207,107,101,0.15)]'
+          ? 'bg-[var(--color-surface-hover)] border border-primary/40 shadow-primary-selection'
           : 'bg-[var(--color-surface)] border border-[var(--color-border-faint)] hover:bg-[var(--color-surface-hover)]'
       )}
     >
@@ -396,9 +411,7 @@ export default function App() {
   const { route, navigate, goBack: navigateBack } = useAppRouter();
   const currentView = viewForRoute(route);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem('dropdex-theme') as Theme) || 'dark'
-  );
+  const { theme, setTheme } = useTheme();
   const [reviewTracks, setReviewTracks] = useState<RekordboxTrack[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem('dropdex-sidebar-collapsed') === 'true'
@@ -487,11 +500,6 @@ export default function App() {
   const { tracks: recentTracks, loading: recentTracksLoading } = useRecentTracks(importId);
   const { memberships: trackPlaylists, loading: trackPlaylistsLoading } =
     useTrackPlaylists(selectedTrackImportId, selectedTrack?.id ?? null);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('dropdex-theme', theme);
-  }, [theme]);
 
 
   useEffect(() => {
@@ -811,7 +819,7 @@ export default function App() {
           />
           {!sidebarCollapsed && (
             <span className="text-xl font-black tracking-tighter uppercase leading-none">
-              Drop<span className="text-primary">Dex</span>
+              Drop<span className="text-[var(--color-brand-primary)]">Dex</span>
             </span>
           )}
         </div>
@@ -1327,43 +1335,34 @@ export default function App() {
                       <p className="font-bold text-sm mb-0.5">Theme</p>
                       <p className="text-xs text-muted-foreground">Choose your preferred color scheme</p>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        onClick={() => setTheme('dark')}
-                        className={cn(
-                          'flex flex-col items-start gap-3 p-4 rounded-xl border-2 transition-all text-left',
-                          theme === 'dark'
-                            ? 'border-primary bg-primary/10'
-                            : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]'
-                        )}
-                      >
-                        <Moon size={22} className={theme === 'dark' ? 'text-primary' : 'text-muted-foreground'} />
-                        <div>
-                          <p className="font-bold text-sm">Dark</p>
-                          <p className="text-xs text-muted-foreground">Default</p>
-                        </div>
-                        {theme === 'dark' && (
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-primary">Active</span>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setTheme('light')}
-                        className={cn(
-                          'flex flex-col items-start gap-3 p-4 rounded-xl border-2 transition-all text-left',
-                          theme === 'light'
-                            ? 'border-primary bg-primary/10'
-                            : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]'
-                        )}
-                      >
-                        <Sun size={22} className={theme === 'light' ? 'text-primary' : 'text-muted-foreground'} />
-                        <div>
-                          <p className="font-bold text-sm">Light</p>
-                          <p className="text-xs text-muted-foreground">High contrast</p>
-                        </div>
-                        {theme === 'light' && (
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-primary">Active</span>
-                        )}
-                      </button>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {THEME_OPTIONS.map((option) => {
+                        const Icon = option.icon;
+                        const isActive = theme === option.id;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => setTheme(option.id)}
+                            aria-pressed={isActive}
+                            className={cn(
+                              'flex flex-col items-start gap-3 p-4 rounded-xl border-2 transition-all text-left',
+                              isActive
+                                ? 'border-primary bg-primary/10'
+                                : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]'
+                            )}
+                          >
+                            <Icon size={22} className={isActive ? 'text-primary' : 'text-muted-foreground'} />
+                            <div>
+                              <p className="font-bold text-sm">{option.label}</p>
+                              <p className="text-xs text-muted-foreground">{option.description}</p>
+                            </div>
+                            {isActive && (
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-primary">Active</span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </section>

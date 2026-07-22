@@ -14,11 +14,14 @@ import {
   buildDisplayBuckets,
   clampProgress,
   normalizeWaveform,
+  parseHexColor,
+  resolveMonoBaseColor,
   type NormalizedCol,
   type NormalizedColorCol,
   type NormalizedMonoCol,
 } from '../../lib/rekordbox/waveformRenderer';
 import { nextWaveformSeekFraction } from '../../lib/rekordbox/waveformKeyboard';
+import { useTheme } from '../../theme/ThemeProvider';
 
 export type WaveformVariant = 'compact' | 'detail' | 'transport';
 export type WaveformAppearance = 'dropdex' | 'rekordbox';
@@ -79,6 +82,11 @@ function columnIntensity(column: NormalizedCol): number {
 
 function rgba(color: [number, number, number], alpha: number): string {
   return `rgba(${color[0]},${color[1]},${color[2]},${Math.max(0, Math.min(1, alpha))})`;
+}
+
+function readThemeRgb(variable: string, fallback: [number, number, number]): [number, number, number] {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(variable);
+  return parseHexColor(value) ?? fallback;
 }
 
 function drawDropDexWaveform(
@@ -148,7 +156,12 @@ function drawRekordboxWaveform(
   buckets: NormalizedCol[],
   width: number,
   height: number,
-  options: { dimmed: boolean; progress: number | null },
+  options: {
+    dimmed: boolean;
+    progress: number | null;
+    monoColor: [number, number, number];
+    playheadColor: [number, number, number];
+  },
 ) {
   const center = height / 2;
   const span = width / buckets.length;
@@ -171,14 +184,14 @@ function drawRekordboxWaveform(
     } else {
       const mono = column as NormalizedMonoCol;
       const alpha = (0.35 + mono.i * 0.65) * alphaScale * progressAlpha;
-      context.fillStyle = `rgba(207,107,101,${alpha})`;
+      context.fillStyle = rgba(options.monoColor, alpha);
       context.fillRect(x, center - halfHeight, span, halfHeight * 2);
     }
   }
 
   if (options.progress !== null) {
     const x = options.progress * width;
-    context.fillStyle = 'rgba(255,247,244,0.94)';
+    context.fillStyle = rgba(options.playheadColor, 0.94);
     context.fillRect(Math.max(0, x - 0.5), 0, 1, height);
   }
 }
@@ -194,10 +207,11 @@ export function RekordboxPreviewWaveform({
   ariaLabel,
   seekStep = 0.01,
   variant = 'compact',
-  appearance = 'dropdex',
+  appearance,
   showCenterLine = true,
   allowTimelineSeek = false,
 }: RekordboxPreviewWaveformProps) {
+  const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hoverFraction, setHoverFraction] = useState<number | null>(null);
@@ -217,6 +231,7 @@ export function RekordboxPreviewWaveform({
     [displayCount, normalized],
   );
   const progress = activeProgress != null ? clampProgress(activeProgress) : null;
+  const resolvedAppearance = appearance ?? (theme === 'cdj' ? 'rekordbox' : 'dropdex');
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -234,7 +249,7 @@ export function RekordboxPreviewWaveform({
     context.scale(dpr, dpr);
     context.clearRect(0, 0, width, height);
 
-    if (appearance === 'dropdex') {
+    if (resolvedAppearance === 'dropdex') {
       drawDropDexWaveform(context, buckets, width, height, {
         dimmed,
         progress,
@@ -243,10 +258,20 @@ export function RekordboxPreviewWaveform({
         variant,
       });
     } else {
-      drawRekordboxWaveform(context, buckets, width, height, { dimmed, progress });
+      const monoColor = readThemeRgb('--color-waveform-mono', resolveMonoBaseColor(theme));
+      const playheadColor = readThemeRgb(
+        '--color-waveform-playhead',
+        theme === 'cdj' ? [248, 251, 255] : [255, 247, 244],
+      );
+      drawRekordboxWaveform(context, buckets, width, height, {
+        dimmed,
+        progress,
+        monoColor,
+        playheadColor,
+      });
     }
     context.restore();
-  }, [appearance, buckets, containerWidth, dimmed, dpr, height, hoverFraction, normalized, onSeek, progress, showCenterLine, variant]);
+  }, [buckets, containerWidth, dimmed, dpr, height, hoverFraction, normalized, onSeek, progress, resolvedAppearance, showCenterLine, theme, variant]);
 
   function seekFractionFromPointer(clientX: number, element: HTMLDivElement): number {
     const rect = element.getBoundingClientRect();
@@ -312,6 +337,7 @@ export function RekordboxPreviewWaveform({
       data-waveform-status={displayState.status}
       data-waveform-track-id={displayState.trackId ?? undefined}
       data-waveform-variant={variant}
+      data-waveform-appearance={resolvedAppearance}
     >
       {displayState.status !== 'loaded' ? (
         <WaveformEmptyState state={displayState} height={height} onRetry={onRetry} />

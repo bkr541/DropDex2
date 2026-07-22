@@ -18,7 +18,7 @@ export function ImportActivityBanner({ item, activeImport, onViewStatus, classNa
   return (
     <section
       className={cn(
-        'mb-5 overflow-hidden rounded-2xl border border-primary/25 bg-primary/5 shadow-[0_10px_35px_rgba(207,107,101,0.08)]',
+        'mb-5 overflow-hidden rounded-2xl border border-primary/25 bg-primary/5 shadow-primary-banner',
         className,
       )}
       aria-live="polite"

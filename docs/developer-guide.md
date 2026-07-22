@@ -95,10 +95,8 @@ Both priorities are implemented in `importer/dropdex_importer/waveform_parser.py
 
 1. `normalizeWaveform()` — convert raw columns to `NormalizedCol[]` once (memoized).
 2. `buildDisplayBuckets()` — peak-preserving downsampling to display pixel width (memoized).
-3. `drawWaveform()` — one `<canvas>` element, symmetric bars around vertical midline. Lower half at 65% of upper alpha for depth effect.
-4. **Progress overlay** — NOT drawn in canvas. Two absolutely-positioned `<div>`s handle progress:
-   - Left overlay: `background-color: var(--color-background); opacity: 0.65` — dims played region.
-   - Playhead: `background-color: var(--color-foreground); opacity: 0.9; width: 1px`.
+3. `drawDropDexWaveform()` or `drawRekordboxWaveform()` — render one symmetric `<canvas>` waveform using the resolved theme appearance.
+4. Playback progress controls played/unplayed alpha inside the renderer, and the playhead is drawn as a precise one-pixel canvas line.
 
 ### Retina/DPR
 
@@ -106,11 +104,13 @@ Both priorities are implemented in `importer/dropdex_importer/waveform_parser.py
 
 ### Theme support
 
-`useDocumentTheme()` watches `document.documentElement[data-theme]` via `MutationObserver`. On change, the canvas re-renders with the updated monochrome base color. Color (PWV4) waveforms are unaffected — their RGB values come from Rekordbox analysis data and are theme-independent.
+`ThemeProvider` owns the validated `dark | light | cdj` theme state, persists it under `dropdex-theme`, and applies it to `document.documentElement[data-theme]`. The inline bootstrap script in `index.html` validates and applies the stored value before React loads, preventing a theme flash on authentication and startup screens.
 
-### No-redraw during playback
+The CDJ theme automatically selects the existing `rekordbox` waveform appearance unless a caller explicitly supplies `appearance`. Monochrome PWAV/PWV2 data renders in deck cyan, while PWV4 color data keeps the RGB values supplied by Rekordbox analysis. Dark and Light continue using the original DropDex waveform presentation.
 
-The canvas `useEffect` explicitly excludes `activeProgress` from its dependency array. Only the CSS overlay divs update during playback — no waveform geometry is rebuilt per frame.
+### Playback redraws
+
+Waveform geometry is normalized and bucketed with `useMemo`. Playback progress and the playhead are rendered in the canvas, so an active waveform performs a lightweight canvas redraw as progress changes without re-normalizing or re-bucketing the source data.
 
 ---
 

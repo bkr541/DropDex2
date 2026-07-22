@@ -6,6 +6,7 @@ import { ApplicationErrorBoundary } from './components/errors/ApplicationErrorBo
 import { StartupConfigurationError } from './components/StartupConfigurationError';
 import { lazyWithRecovery } from './navigation/lazyWithRecovery';
 import { supabaseConfiguration } from './lib/supabase';
+import { ThemeProvider } from './theme/ThemeProvider';
 
 const App = lazyWithRecovery('application', () => import('./App.tsx'));
 
@@ -27,19 +28,21 @@ function ApplicationLoadingScreen() {
 export function RootApplication() {
   return (
     <StrictMode>
-      <ApplicationErrorBoundary level="root">
-        {supabaseConfiguration.status === 'missing' ? (
-          <StartupConfigurationError configuration={supabaseConfiguration} />
-        ) : (
-          <AuthProvider>
-            <AuthGate>
-              <Suspense fallback={<ApplicationLoadingScreen />}>
-                <App />
-              </Suspense>
-            </AuthGate>
-          </AuthProvider>
-        )}
-      </ApplicationErrorBoundary>
+      <ThemeProvider>
+        <ApplicationErrorBoundary level="root">
+          {supabaseConfiguration.status === 'missing' ? (
+            <StartupConfigurationError configuration={supabaseConfiguration} />
+          ) : (
+            <AuthProvider>
+              <AuthGate>
+                <Suspense fallback={<ApplicationLoadingScreen />}>
+                  <App />
+                </Suspense>
+              </AuthGate>
+            </AuthProvider>
+          )}
+        </ApplicationErrorBoundary>
+      </ThemeProvider>
     </StrictMode>
   );
 }

@@ -30,7 +30,7 @@ export function CandidateRow({ candidate, analysis, active, onSelect }: Candidat
       className={cn(
         'w-full grid grid-cols-[44px_1fr_auto] gap-3 items-center p-3 rounded-xl border text-left transition-all focus:outline-none focus:ring-2 focus:ring-primary/50',
         active
-          ? 'bg-primary/10 border-primary/40 shadow-[0_8px_24px_rgba(207,107,101,0.12)]'
+          ? 'bg-primary/10 border-primary/40 shadow-primary-card'
           : 'bg-[var(--color-surface)] border-[var(--color-border-faint)] hover:bg-[var(--color-surface-hover)]',
       )}
     >

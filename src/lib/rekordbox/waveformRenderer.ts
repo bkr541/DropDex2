@@ -26,6 +26,7 @@
  * No Supabase dependency — safe to import in Node test environments.
  */
 
+import type { ThemeId } from '../../theme/theme';
 import type {
   PreviewColumnColor,
   PreviewColumnMono,
@@ -218,14 +219,13 @@ export function computeProgress(currentTime: number, duration: number): number {
 
 /**
  * Select the monochrome waveform base color for the given theme.
- * Dark: near-white (foreground). Light: near-black (foreground).
+ * CDJ uses the deck-inspired waveform cyan; the original themes retain their
+ * existing foreground colors.
  */
-export function resolveMonoBaseColor(
-  theme: 'dark' | 'light',
-): [number, number, number] {
-  // Values match CSS variables --color-foreground in index.css:
-  // dark: #f0ede9 (240, 237, 233), light: #1a1c2e (26, 28, 46)
-  return theme === 'light' ? [26, 28, 46] : [240, 237, 233];
+export function resolveMonoBaseColor(theme: ThemeId): [number, number, number] {
+  if (theme === 'light') return [26, 28, 46];
+  if (theme === 'cdj') return [26, 155, 234];
+  return [240, 237, 233];
 }
 
 /** Type guard — true when a normalized column has r/g/b fields (color). */

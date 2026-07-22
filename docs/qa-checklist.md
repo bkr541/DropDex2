@@ -23,7 +23,7 @@ Test these scenarios manually before each release. Each scenario lists the expec
 
 - [ ] Import completes without error.
 - [ ] Analysis banner shows "Analysis Incomplete — Some tracks are missing waveform…".
-- [ ] Tracks with DAT-only waveforms show monochrome waveform (grey bars).
+- [ ] Tracks with DAT-only waveforms show the active theme’s monochrome waveform treatment.
 - [ ] Tracks with color (EXT) waveforms show colored bars.
 - [ ] Tracks with no ANLZ files at all show "No waveform" placeholder.
 
@@ -58,7 +58,7 @@ Test these scenarios manually before each release. Each scenario lists the expec
 
 **Setup:** Track with `.DAT` only (no `.EXT`).
 
-- [ ] Track row shows waveform in the current theme's foreground color (near-white on dark, near-black on light).
+- [ ] Dark and Light use the existing DropDex coral waveform; CDJ uses blue/cyan monochrome bars.
 - [ ] Intensity gradient visible (some bars lighter/darker).
 - [ ] "No waveform" placeholder does **not** appear.
 - [ ] Track Detail shows same monochrome waveform.
@@ -154,15 +154,18 @@ Test these scenarios manually before each release. Each scenario lists the expec
 
 ---
 
-## 13. Theme switching (dark / light)
+## 13. Theme switching (Dark / Light / CDJ)
 
 **Setup:** Tracks tab open with waveforms visible.
 
-- [ ] Toggle theme (Settings → Theme).
-- [ ] Monochrome waveforms redraw in new foreground color.
+- [ ] Toggle Dark → Light → CDJ from Settings → Theme.
+- [ ] The selection persists after a reload and unsupported stored values fall back to Dark.
+- [ ] CDJ applies throughout authentication, library, detail, discovery, Drop Lab, modals, and transport surfaces.
+- [ ] CDJ removes ambient blobs/glass blur, tightens panel radii, and uses blue interaction states while the DropDex logo remains coral/peach.
+- [ ] Monochrome waveforms switch to the Rekordbox appearance and redraw in blue/cyan under CDJ.
 - [ ] Color (RGB) waveforms do **not** change color.
-- [ ] Waveform playhead color updates to match new foreground.
-- [ ] Played-region overlay color updates to match new background.
+- [ ] Switching back to Dark or Light restores the original DropDex waveform appearance.
+- [ ] CDJ uses a bright white playhead and visibly dims the unplayed waveform region.
 - [ ] No visual artifacts or flickering.
 
 ---

@@ -165,7 +165,6 @@ describe('normalizeWaveform', () => {
     }
   });
 
-
   it('normalizes raw PWV5 detail heights with the 31-step scale exactly once', () => {
     const waveform = colorWf([{ h: 31, r: 255, g: 128, b: 0 }]);
     waveform.previewFormat = 'PWV5';
@@ -338,6 +337,10 @@ describe('resolveMonoBaseColor', () => {
     expect(r).toBe(26);
     expect(g).toBe(28);
     expect(b).toBe(46);
+  });
+
+  it('returns deck cyan for the CDJ theme', () => {
+    expect(resolveMonoBaseColor('cdj')).toEqual([26, 155, 234]);
   });
 });
 

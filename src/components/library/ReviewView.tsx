@@ -60,7 +60,7 @@ const ReviewCard = memo(function ReviewCard({
       onClick={onClick}
       className={cn(
         'glass p-6 rounded-3xl active:scale-[0.97] transition-transform overflow-hidden relative group cursor-pointer',
-        isActive && 'border border-secondary/30 shadow-[0_4px_20px_rgba(168,85,247,0.12)]',
+        isActive && 'border border-secondary/30 shadow-secondary-selection',
       )}
     >
       {/* Authentic Rekordbox waveform overlaid at the bottom of the card */}

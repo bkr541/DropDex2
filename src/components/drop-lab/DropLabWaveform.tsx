@@ -147,7 +147,7 @@ export function DropLabWaveform({
           />
         )}
         <div className="absolute top-0 bottom-0 left-1/2 w-px bg-foreground/80 shadow-[0_0_18px_rgba(255,255,255,0.35)]" />
-        <div className="absolute left-1/2 top-1/2 w-5 h-5 -ml-2.5 -mt-2.5 rounded-full border-2 border-background bg-primary shadow-[0_0_20px_rgba(207,107,101,0.55)]" />
+        <div className="absolute left-1/2 top-1/2 w-5 h-5 -ml-2.5 -mt-2.5 rounded-full border-2 border-background bg-primary shadow-primary-control" />
         <div className="absolute left-1/2 bottom-3 -translate-x-1/2 px-2 py-1 rounded-md bg-background/80 border border-[var(--color-border-subtle)] text-[9px] font-bold uppercase tracking-widest text-primary whitespace-nowrap">
           Aligned Drop Cue
         </div>

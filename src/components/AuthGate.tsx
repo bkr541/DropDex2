@@ -211,13 +211,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         className="w-full max-w-sm px-6"
       >
         <div className="flex items-center gap-3 mb-10 justify-center">
-          <div className="w-10 h-10 brand-gradient rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(207,107,101,0.4)]">
+          <div className="w-10 h-10 brand-gradient rounded-xl flex items-center justify-center shadow-brand-icon">
             <div className="w-5 h-5 bg-[var(--color-panel)] rounded-sm rotate-45 flex items-center justify-center">
-              <div className="w-1.5 h-1.5 bg-primary rounded-full" />
+              <div className="w-1.5 h-1.5 bg-[var(--color-brand-primary)] rounded-full" />
             </div>
           </div>
           <span className="text-2xl font-black tracking-tighter uppercase">
-            Drop<span className="text-primary">Dex</span>
+            Drop<span className="text-[var(--color-brand-primary)]">Dex</span>
           </span>
         </div>
 
@@ -230,7 +230,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               exit={{ opacity: 0, x: -16 }}
               className="text-center"
             >
-              <div className="w-16 h-16 brand-gradient rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_24px_rgba(207,107,101,0.4)]">
+              <div className="w-16 h-16 brand-gradient rounded-full flex items-center justify-center mx-auto mb-6 shadow-brand-hero">
                 <Mail size={28} className="text-white" />
               </div>
               <h1 className="text-2xl font-black mb-2">Enter your sign-in code</h1>
