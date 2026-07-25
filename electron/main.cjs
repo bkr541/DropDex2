@@ -18,6 +18,14 @@ const REKORDBOX_ROOT_ENTRIES = [REKORDBOX_DATABASE_FOLDER, ...REKORDBOX_MEDIA_FO
 const mediaTokens = new Map();
 let mainWindow = null;
 let usbConnection = null;
+let releasedUsbMetadata = null;
+let cachedUsbState = {
+  status: 'disconnected',
+  volumeName: null,
+  connectedAt: null,
+  structureWarning: null,
+  error: null,
+};
 let quittingAfterUsbRelease = false;
 const usbStreams = new UsbStreamRegistry({ closeTimeoutMs: 2500 });
 
@@ -57,10 +65,12 @@ async function loadUsbConnection() {
     usbConnection = sanitizeConnection(raw);
     if (usbConnection) {
       usbConnection.rootPath = await fs.realpath(usbConnection.rootPath);
+      releasedUsbMetadata = null;
       usbStreams.resetForConnection();
     }
   } catch {
     usbConnection = null;
+    releasedUsbMetadata = null;
   }
 }
 
@@ -204,30 +214,58 @@ async function inspectUsbRoot(rootPath) {
   }
 }
 
+function disconnectedUsbState() {
+  return {
+    status: 'disconnected',
+    volumeName: null,
+    connectedAt: null,
+    structureWarning: null,
+    error: null,
+  };
+}
+
+function releasedUsbState() {
+  if (!releasedUsbMetadata) return disconnectedUsbState();
+  return {
+    status: 'released',
+    volumeName: releasedUsbMetadata.volumeName,
+    connectedAt: releasedUsbMetadata.connectedAt,
+    structureWarning: cachedUsbState.structureWarning ?? null,
+    error: usbStreams.snapshot().lastError,
+  };
+}
+
 async function desktopConnectionState() {
+  // Once release succeeds, DropDex deliberately forgets the filesystem root.
+  // State refreshes must be cache-only so focus events and polling cannot issue
+  // stat/readdir/realpath calls against a drive that was handed back to Rekordbox.
   if (!usbConnection) {
-    return { status: 'disconnected', volumeName: null, connectedAt: null, structureWarning: null, error: null };
+    return releasedUsbMetadata ? releasedUsbState() : disconnectedUsbState();
   }
+  if (usbStreams.released) return { ...cachedUsbState };
+
   const check = await inspectUsbRoot(usbConnection.rootPath);
   if (check.status === 'unavailable') {
-    return {
+    cachedUsbState = {
       status: 'unavailable',
       volumeName: usbConnection.volumeName,
       connectedAt: usbConnection.connectedAt,
       structureWarning: null,
       error: check.message,
     };
+    return { ...cachedUsbState };
   }
   if (check.status === 'wrong_root') {
-    return {
+    cachedUsbState = {
       status: 'wrong_root',
       volumeName: usbConnection.volumeName,
       connectedAt: usbConnection.connectedAt,
       structureWarning: 'No Rekordbox folders found. Select the USB root folder, not PIONEER or a subfolder.',
       error: null,
     };
+    return { ...cachedUsbState };
   }
-  return {
+  cachedUsbState = {
     status: 'connected',
     volumeName: usbConnection.volumeName,
     connectedAt: usbConnection.connectedAt,
@@ -236,6 +274,7 @@ async function desktopConnectionState() {
       : null,
     error: null,
   };
+  return { ...cachedUsbState };
 }
 
 function mimeTypeFor(filePath) {
@@ -356,17 +395,30 @@ async function handleMediaRequest(request) {
 async function releaseUsbAccess({ disconnect = false } = {}) {
   // Close the admission gate before invalidating tokens so a concurrent IPC
   // request cannot mint a fresh USB media URL during release.
+  const connectionMetadata = usbConnection
+    ? { volumeName: usbConnection.volumeName, connectedAt: usbConnection.connectedAt }
+    : releasedUsbMetadata;
   usbStreams.beginRelease();
   mediaTokens.clear();
   const streamResult = await usbStreams.release();
-  if (disconnect) {
+
+  if (streamResult.allStreamsClosed) {
+    // A successful release is a true no-I/O handoff. Forget the mount path and
+    // remove its persisted copy. Reconnecting requires an explicit folder pick.
     usbConnection = null;
+    releasedUsbMetadata = disconnect ? null : connectionMetadata;
     await persistUsbConnection();
   }
+
+  const state = disconnect
+    ? disconnectedUsbState()
+    : streamResult.allStreamsClosed
+      ? releasedUsbState()
+      : { ...cachedUsbState };
   return {
     ...streamResult,
-    disconnected: disconnect,
-    state: await desktopConnectionState(),
+    disconnected: disconnect || streamResult.allStreamsClosed,
+    state,
     activity: usbStreams.snapshot({ connected: Boolean(usbConnection) }),
   };
 }
@@ -392,6 +444,7 @@ async function selectUsbRoot() {
     }
   }
   const rootPath = await fs.realpath(path.resolve(result.filePaths[0]));
+  releasedUsbMetadata = null;
   usbConnection = {
     rootPath,
     volumeName: path.basename(rootPath) || rootPath,
@@ -400,6 +453,7 @@ async function selectUsbRoot() {
   await persistUsbConnection();
   mediaTokens.clear();
   usbStreams.resetForConnection();
+  cachedUsbState = disconnectedUsbState();
   return { cancelled: false, state: await desktopConnectionState() };
 }
 

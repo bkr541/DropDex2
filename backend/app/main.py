@@ -18,6 +18,8 @@ from .analysis_import_service import (
     resume_recoverable_analysis_imports,
     start_analysis_import,
 )
+from .analysis_raw_archival import resume_pending_raw_archival
+from .analysis_staging import validate_staging_root
 from .auth import get_current_user_id
 from .bundle_import_service import import_bundle
 from .config import settings
@@ -108,6 +110,17 @@ async def supabase_api_error_handler(request: Request, exc: APIError) -> JSONRes
 
 
 @app.on_event("startup")
+async def validate_rekordbox_analysis_staging() -> None:
+    # Do not accept production imports unless pause/resume staging survives API
+    # restarts and every worker instance can see the same mounted directory.
+    await run_in_threadpool(
+        validate_staging_root,
+        settings.analysis_staging_root,
+        environment=settings.environment,
+    )
+
+
+@app.on_event("startup")
 async def recover_rekordbox_import_jobs() -> None:
     try:
         recovered = await run_in_threadpool(recover_interrupted_import_jobs)
@@ -116,6 +129,11 @@ async def recover_rekordbox_import_jobs() -> None:
         restarted = await run_in_threadpool(resume_recoverable_analysis_imports)
         if restarted:
             logger.warning("Restarted %d resumable Rekordbox analysis job(s)", restarted)
+        archive_restarted = await run_in_threadpool(resume_pending_raw_archival)
+        if archive_restarted:
+            logger.warning(
+                "Restarted %d trailing Rekordbox raw archive job(s)", archive_restarted
+            )
     except Exception:
         # Startup must remain available even if Supabase is temporarily offline.
         logger.exception("Could not recover interrupted Rekordbox imports at startup")
@@ -174,7 +192,12 @@ async def stop_discovery_job_reaper() -> None:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok"}
+    staging = await run_in_threadpool(
+        validate_staging_root,
+        settings.analysis_staging_root,
+        environment=settings.environment,
+    )
+    return {"status": "ok", "analysis_staging": staging}
 
 
 def _to_import_job_response(row: dict) -> ImportJobResponse:

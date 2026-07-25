@@ -36,6 +36,7 @@ from dropdex_importer.supabase_writer import RekordboxWriteError
 from fastapi import HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 
+from .analysis_raw_archival import start_raw_archival
 from .config import settings
 from .import_jobs import (
     ImportCancelledError,
@@ -46,6 +47,13 @@ from .import_jobs import (
     mark_import_failed,
     publish_worker_state,
     transition_import_job,
+)
+from .analysis_worker_lease import (
+    DurableWorkerLease,
+    WorkerLeaseConflict,
+    WorkerLeaseLost,
+    get_worker_lease,
+    lease_row_is_active,
 )
 from .import_worker_registry import WorkerStopRequested, worker_registry
 from .models import (
@@ -285,7 +293,7 @@ def _require_import_for_user(sb, import_id: str, user_id: str) -> dict:
             "analysis_current_track_artist, analysis_current_track_label, "
             "analysis_progress_updated_at, library_ready_at, readiness_stage, "
             "required_analysis_file_count, optional_archival_file_count, "
-            "optional_archival_status, performance_metrics, analysis_queue_track_count, "
+            "optional_archival_status, raw_archival_status, performance_metrics, analysis_queue_track_count, "
             "analysis_running_track_count, analysis_throughput_tracks_per_second, "
             "analysis_estimated_seconds_remaining, user_id"
         )
@@ -937,6 +945,9 @@ async def start_analysis_import(
             "optional_archival_file_count": optional_archival_file_count,
             "optional_archival_status": (
                 "queued" if settings.analysis_archive_2ex and optional_archival_file_count else "skipped"
+            ),
+            "raw_archival_status": (
+                "queued" if settings.analysis_archive_raw_assets and required_analysis_file_count else "skipped"
             ),
             "analysis_queue_track_count": affected_track_count,
             "analysis_running_track_count": 0,
@@ -2317,6 +2328,8 @@ def _run_fast_analysis_import_sync(
     import_id: str,
     user_id: str,
     affected_track_ids: Optional[List[str]] = None,
+    *,
+    worker_lease: DurableWorkerLease | None = None,
 ) -> CompleteResponse:
     """Run the bounded local-parser/single-writer pipeline with safe checkpoints."""
     from .analysis_fast_pipeline import run_fast_analysis_import
@@ -2339,7 +2352,7 @@ def _run_fast_analysis_import_sync(
         running_now = min(max(1, settings.analysis_parser_workers), total_queued)
         sb.table("rekordbox_imports").update({
             "analysis_status": "parsing",
-            "readiness_stage": "cues_and_beat_grids_processing",
+            "readiness_stage": "analysis_processing",
             "analysis_worker_status": "running",
             "analysis_worker_stage": "loading_staged_assets",
             "analysis_running_track_count": running_now,
@@ -2354,27 +2367,30 @@ def _run_fast_analysis_import_sync(
             worker_registry.checkpoint(
                 import_id, stage, current_track_id=current_track_id
             )
+            if worker_lease is not None:
+                worker_lease.checkpoint(stage, current_track_id)
 
         def progress(track: dict[str, Any] | None, processed: int, total: int) -> None:
             nonlocal last_durable_checkpoint
+            current_track_id = (
+                str(track.get("id")) if track and track.get("id") else None
+            )
             worker_registry.checkpoint(
                 import_id,
                 "feature_batch_committed",
-                current_track_id=str(track.get("id")) if track and track.get("id") else None,
+                current_track_id=current_track_id,
             )
+            if worker_lease is not None:
+                worker_lease.checkpoint(
+                    "feature_batch_committed", current_track_id, force=True
+                )
             elapsed = max(0.001, time.perf_counter() - started)
             throughput = processed / elapsed if processed > 0 else None
             remaining = max(0, total - processed)
             eta = round(remaining / throughput) if throughput and processed >= 2 else None
             running_count = min(max(1, settings.analysis_parser_workers), remaining)
             queue_count = max(0, remaining - running_count)
-            readiness_stage = (
-                "cues_and_beat_grids_processing"
-                if processed == 0
-                else "preview_waveforms_processing"
-                if processed < max(1, total // 2)
-                else "detailed_waveforms_processing"
-            )
+            readiness_stage = "analysis_processing"
             _set_analysis_progress(
                 import_id,
                 track=track,
@@ -2410,6 +2426,8 @@ def _run_fast_analysis_import_sync(
             progress=progress,
         )
         worker_registry.checkpoint(import_id, "finalizing_import")
+        if worker_lease is not None:
+            worker_lease.checkpoint("finalizing_import", force=True)
         state_counts = _summarize_track_states(sb, import_id)
         completed_count = state_counts.get("completed", 0) + state_counts.get("reused", 0)
         partial_count = state_counts.get("partial", 0)
@@ -2447,6 +2465,9 @@ def _run_fast_analysis_import_sync(
             "analysis_running_track_count": 0,
             "analysis_estimated_seconds_remaining": 0,
             "optional_archival_status": archival_status,
+            "raw_archival_status": (
+                "queued" if settings.analysis_archive_raw_assets else "skipped"
+            ),
             "analysis_worker_status": "completed",
             "analysis_worker_stage": "completed",
             "analysis_worker_current_track_id": None,
@@ -2474,6 +2495,20 @@ def _run_fast_analysis_import_sync(
             analysis_status=final_status,
         )
         worker_registry.acknowledge_stopped(import_id, status="completed")
+        raw_archival_started = False
+        try:
+            raw_archival_started = start_raw_archival(_create_supabase(), import_id, user_id)
+        except Exception as exc:
+            logger.warning("Could not queue trailing raw archival for %s: %s", import_id, exc)
+            sb.table("rekordbox_imports").update({
+                "raw_archival_status": "failed",
+                "updated_at": _now_iso(),
+            }).eq("id", import_id).eq("user_id", user_id).execute()
+        raw_archival_status = (
+            "running" if raw_archival_started else (
+                "queued" if settings.analysis_archive_raw_assets else "skipped"
+            )
+        )
         return CompleteResponse(
             import_id=import_id,
             analysis_status=final_status,
@@ -2491,6 +2526,7 @@ def _run_fast_analysis_import_sync(
             readiness_stage="analysis_complete" if final_status == "completed" else "analysis_partial",
             queued_track_count=0,
             optional_archival_status=archival_status,
+            raw_archival_status=raw_archival_status,
         )
     except (WorkerStopRequested, ImportCancelledError) as exc:
         snapshot = worker_registry.snapshot(import_id)
@@ -2517,6 +2553,11 @@ def _run_fast_analysis_import_sync(
             worker_registry.acknowledge_stopped(import_id, status=status)
         if reason == "pause":
             finalize_paused_import(import_id, user_id)
+        raise
+    except WorkerLeaseLost:
+        # Another process acquired the expired lease. Stop immediately and do
+        # not publish stale final state over the new owner.
+        worker_registry.acknowledge_stopped(import_id, status="interrupted")
         raise
     except Exception as exc:
         logger.exception("Fast analysis worker failed for import %s", import_id)
@@ -2548,14 +2589,46 @@ def _background_analysis_entry(
     import_id: str,
     user_id: str,
     affected_track_ids: Optional[List[str]],
+    worker_lease: DurableWorkerLease,
 ) -> None:
+    finalize_pause_after_release = False
     try:
-        _run_fast_analysis_import_sync(import_id, user_id, affected_track_ids)
-    except (WorkerStopRequested, ImportCancelledError):
+        _run_fast_analysis_import_sync(
+            import_id,
+            user_id,
+            affected_track_ids,
+            worker_lease=worker_lease,
+        )
+    except WorkerStopRequested as exc:
+        finalize_pause_after_release = exc.reason == "pause"
         logger.info("Background analysis %s stopped at a safe checkpoint", import_id)
+    except ImportCancelledError:
+        logger.info("Background analysis %s stopped at a safe checkpoint", import_id)
+    except WorkerLeaseLost:
+        logger.warning(
+            "Background analysis %s stopped after losing its durable worker lease",
+            import_id,
+        )
     except Exception:
         # State is persisted by _run_fast_analysis_import_sync. Never crash the API process.
         logger.exception("Background analysis thread ended for import %s", import_id)
+    finally:
+        try:
+            worker_lease.release()
+        except Exception:
+            logger.exception("Could not release analysis lease for import %s", import_id)
+        if finalize_pause_after_release:
+            # The worker-side pause handler runs while this lease is still valid,
+            # so its first finalization attempt intentionally does nothing. Once
+            # ownership is released, persist the paused state even if the API's
+            # bounded wait already returned `stopping`.
+            try:
+                finalize_paused_import(import_id, user_id)
+            except Exception:
+                logger.exception(
+                    "Could not finalize paused analysis after lease release for %s",
+                    import_id,
+                )
 
 
 def _start_background_analysis(
@@ -2567,14 +2640,26 @@ def _start_background_analysis(
         existing = _BACKGROUND_WORKERS.get(import_id)
         if existing and existing.is_alive():
             return False
+        sb = _create_supabase()
+        try:
+            worker_lease = DurableWorkerLease.claim(sb, import_id, user_id, "analysis")
+        except WorkerLeaseConflict:
+            logger.info("Analysis import %s is already leased by another worker", import_id)
+            return False
+        worker_lease.start_heartbeat()
         thread = threading.Thread(
             target=_background_analysis_entry,
-            args=(import_id, user_id, affected_track_ids),
+            args=(import_id, user_id, affected_track_ids, worker_lease),
             name=f"dropdex-analysis-{str(import_id)[:8]}",
             daemon=True,
         )
         _BACKGROUND_WORKERS[import_id] = thread
-        thread.start()
+        try:
+            thread.start()
+        except Exception:
+            _BACKGROUND_WORKERS.pop(import_id, None)
+            worker_lease.release()
+            raise
         return True
 
 
@@ -2641,6 +2726,7 @@ async def complete_analysis_import(
             library_ready=True,
             readiness_stage="analysis_complete",
             optional_archival_status=str(row.get("optional_archival_status") or "skipped"),
+            raw_archival_status=str(row.get("raw_archival_status") or "skipped"),
         )
     await run_in_threadpool(
         lambda: sb.table("rekordbox_imports").update({
@@ -2671,6 +2757,7 @@ async def complete_analysis_import(
         readiness_stage="library_metadata_ready",
         queued_track_count=queued_count,
         optional_archival_status=str(row.get("optional_archival_status") or "skipped"),
+        raw_archival_status=str(row.get("raw_archival_status") or "skipped"),
     )
 
 
@@ -2972,6 +3059,8 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
     )
 
     worker_snapshot = worker_registry.snapshot(import_id)
+    durable_lease = get_worker_lease(sb, import_id, "analysis")
+    durable_worker_active = lease_row_is_active(durable_lease)
     return AnalysisStatusResponse(
         import_id=import_id,
         analysis_status=analysis_status,
@@ -3016,18 +3105,23 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
             or import_row.get("analysis_worker_status")
             or "idle"
         ),
-        worker_active=bool(worker_snapshot.get("active")),
+        worker_active=bool(worker_snapshot.get("active") or durable_worker_active),
         worker_stage=(
             worker_snapshot.get("current_stage")
+            or (durable_lease or {}).get("stage")
             or import_row.get("analysis_worker_stage")
         ),
         worker_last_heartbeat=(
             worker_snapshot.get("last_heartbeat")
+            or (durable_lease or {}).get("heartbeat_at")
             or import_row.get("analysis_worker_heartbeat_at")
         ),
         worker_stopped_acknowledged=bool(
-            worker_snapshot.get("stopped_acknowledged")
-            or import_row.get("analysis_worker_stopped_acknowledged")
+            not durable_worker_active
+            and (
+                worker_snapshot.get("stopped_acknowledged")
+                or import_row.get("analysis_worker_stopped_acknowledged")
+            )
         ),
         library_ready=bool(import_row.get("library_ready_at")),
         readiness_stage=str(import_row.get("readiness_stage") or "library_metadata_ready"),
@@ -3038,6 +3132,7 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
         tracks_queued_count=int(import_row.get("analysis_queue_track_count") or 0),
         tracks_running_count=int(import_row.get("analysis_running_track_count") or 0),
         optional_archival_status=str(import_row.get("optional_archival_status") or "skipped"),
+        raw_archival_status=str(import_row.get("raw_archival_status") or "skipped"),
         measured_tracks_per_second=(
             float(import_row["analysis_throughput_tracks_per_second"])
             if import_row.get("analysis_throughput_tracks_per_second") is not None

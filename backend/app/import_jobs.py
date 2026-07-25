@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from fastapi import HTTPException
 
+from .analysis_worker_lease import get_worker_lease, lease_row_is_active
 from .config import settings
 from .import_worker_registry import worker_registry
 
@@ -335,12 +337,16 @@ def cleanup_partial_import(
     row = get_import_job(import_id, user_id, sb=client)
     if require_worker_ack:
         live = worker_registry.snapshot(import_id)
-        acknowledged = bool(
-            live.get("stopped_acknowledged")
-            or row.get("analysis_worker_stopped_acknowledged")
-        )
-        if live.get("active") or not acknowledged:
-            raise RuntimeError("Refusing cleanup before analysis worker acknowledgement")
+        active_kinds = [
+            kind
+            for kind in ("analysis", "raw_archival")
+            if _worker_kind_active(client, import_id, kind)
+        ]
+        if live.get("active") or active_kinds:
+            raise RuntimeError(
+                "Refusing cleanup while import workers still hold ownership: "
+                + ", ".join(active_kinds or ["local analysis worker"])
+            )
     paths: list[str] = []
     try:
         response = (
@@ -399,6 +405,46 @@ def _update_import_row(
     return get_import_job(import_id, user_id, sb=sb)
 
 
+def _durable_lease_snapshot(sb, import_id: str, worker_kind: str) -> dict[str, Any] | None:
+    try:
+        return get_worker_lease(sb, import_id, worker_kind)  # type: ignore[arg-type]
+    except Exception as exc:
+        logger.exception(
+            "Could not inspect %s worker lease for import %s", worker_kind, import_id
+        )
+        raise RuntimeError(
+            f"Could not verify {worker_kind} worker ownership for import {import_id}"
+        ) from exc
+
+
+def _worker_kind_active(sb, import_id: str, worker_kind: str) -> bool:
+    return lease_row_is_active(_durable_lease_snapshot(sb, import_id, worker_kind))
+
+
+def _wait_for_worker_kinds_inactive(
+    sb,
+    import_id: str,
+    worker_kinds: Iterable[str],
+    timeout_seconds: float,
+) -> bool:
+    """Wait until both local and durable workers have relinquished ownership."""
+    deadline = time.monotonic() + max(0.0, timeout_seconds)
+    kinds = tuple(worker_kinds)
+    while True:
+        local_active = bool(worker_registry.snapshot(import_id).get("active"))
+        durable_active = any(
+            _worker_kind_active(sb, import_id, worker_kind) for worker_kind in kinds
+        )
+        if not local_active and not durable_active:
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        # The durable worker refresh interval is normally one second. Polling
+        # faster keeps Pause/Delete responsive without hammering Postgres.
+        time.sleep(min(0.25, remaining))
+
+
 def _worker_state_updates(
     *,
     status: str,
@@ -448,25 +494,40 @@ def get_import_worker_state(import_id: str, user_id: str) -> dict[str, Any]:
     sb = _create_supabase()
     row = get_import_job(import_id, user_id, sb=sb)
     live = worker_registry.snapshot(import_id)
+    try:
+        durable = get_worker_lease(sb, import_id, "analysis")
+    except Exception:
+        logger.exception("Could not read durable analysis lease for %s", import_id)
+        durable = None
+    durable_active = lease_row_is_active(durable)
+    worker_active = bool(live.get("active") or durable_active)
     return {
         "import_id": import_id,
         "job_status": row.get("status"),
         "analysis_status": row.get("analysis_status") or "unknown",
-        "worker_status": live.get("worker_status")
-        if live.get("active") or live.get("last_heartbeat")
-        else (row.get("analysis_worker_status") or "idle"),
-        "worker_active": bool(live.get("active")),
+        "worker_status": (
+            live.get("worker_status")
+            if live.get("active") or live.get("last_heartbeat")
+            else ("running" if durable_active else row.get("analysis_worker_status") or "idle")
+        ),
+        "worker_active": worker_active,
         "current_track_id": live.get("current_track_id")
+        or (durable or {}).get("current_track_id")
         or row.get("analysis_worker_current_track_id")
         or row.get("analysis_current_track_id"),
         "processing_stage": live.get("current_stage")
+        or (durable or {}).get("stage")
         or row.get("analysis_worker_stage"),
         "last_heartbeat": live.get("last_heartbeat")
+        or (durable or {}).get("heartbeat_at")
         or row.get("analysis_worker_heartbeat_at"),
         "stop_reason": live.get("stop_reason"),
         "stopped_acknowledged": bool(
-            live.get("stopped_acknowledged")
-            or row.get("analysis_worker_stopped_acknowledged")
+            not worker_active
+            and (
+                live.get("stopped_acknowledged")
+                or row.get("analysis_worker_stopped_acknowledged")
+            )
         ),
         "stopped_at": live.get("stopped_at") or row.get("analysis_worker_stopped_at"),
         "error": live.get("error") or row.get("analysis_worker_error"),
@@ -526,7 +587,9 @@ def pause_import_analysis(
             "analysis_worker_stopped_at": None,
         },
     )
-    if worker_registry.wait_for_stopped(import_id, wait_timeout_seconds):
+    if _wait_for_worker_kinds_inactive(
+        sb, import_id, ("analysis",), wait_timeout_seconds
+    ):
         publish_worker_state(
             import_id,
             user_id,
@@ -564,11 +627,11 @@ def finalize_paused_import(import_id: str, user_id: str, *, sb=None) -> dict[str
     client = sb or _create_supabase()
     row = get_import_job(import_id, user_id, sb=client)
     live = worker_registry.snapshot(import_id)
-    acknowledged = bool(
-        live.get("stopped_acknowledged")
-        or row.get("analysis_worker_stopped_acknowledged")
-    )
-    if live.get("active") or not acknowledged:
+    try:
+        durable_active = _worker_kind_active(client, import_id, "analysis")
+    except RuntimeError:
+        return row
+    if live.get("active") or durable_active:
         return row
 
     state = str(row.get("status") or "")
@@ -595,11 +658,11 @@ def finalize_paused_import(import_id: str, user_id: str, *, sb=None) -> dict[str
 def _cleanup_after_worker_ack(import_id: str, user_id: str, *, sb) -> dict[str, Any]:
     live = worker_registry.snapshot(import_id)
     row = get_import_job(import_id, user_id, sb=sb)
-    acknowledged = bool(
-        live.get("stopped_acknowledged")
-        or row.get("analysis_worker_stopped_acknowledged")
+    durable_active = any(
+        _worker_kind_active(sb, import_id, kind)
+        for kind in ("analysis", "raw_archival")
     )
-    if live.get("active") or not acknowledged:
+    if live.get("active") or durable_active:
         return _update_import_row(
             sb,
             import_id,
@@ -680,14 +743,16 @@ def _schedule_delete_finalizer(
 
     def _finalize() -> None:
         try:
-            if not worker_registry.wait_for_stopped(import_id, max_wait_seconds):
+            sb = _create_supabase()
+            if not _wait_for_worker_kinds_inactive(
+                sb, import_id, ("analysis", "raw_archival"), max_wait_seconds
+            ):
                 logger.warning(
                     "Delete for import %s remains in stopping after %.1f seconds",
                     import_id,
                     max_wait_seconds,
                 )
                 return
-            sb = _create_supabase()
             row = get_import_job(import_id, user_id, sb=sb)
             if str(row.get("status") or "") in {
                 "cancel_requested",
@@ -745,7 +810,9 @@ def delete_import_job(
         user_id,
         request_updates,
     )
-    if not worker_registry.wait_for_stopped(import_id, wait_timeout_seconds):
+    if not _wait_for_worker_kinds_inactive(
+        sb, import_id, ("analysis", "raw_archival"), wait_timeout_seconds
+    ):
         timeout_updates: dict[str, Any] = {
             "analysis_status": "stopping",
             "analysis_worker_status": "stopping",
@@ -830,6 +897,13 @@ def recover_interrupted_import_jobs() -> int:
         analysis_status = str(row.get("analysis_status") or "")
         durable_worker_status = str(row.get("analysis_worker_status") or "")
         try:
+            if any(
+                _worker_kind_active(sb, import_id, kind)
+                for kind in ("analysis", "raw_archival")
+            ):
+                # Another API process/container still owns this import. Startup
+                # recovery must never rewrite live work owned elsewhere.
+                continue
             # A process restart proves the old in-process thread no longer exists,
             # but never proves that destructive cleanup should occur.
             delete_intent = state in {"cancel_requested", "deleting"} or (

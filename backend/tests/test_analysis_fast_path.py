@@ -219,7 +219,6 @@ def test_operation_counts_scale_by_changed_batches(
     )
     monkeypatch.setattr(fast, "_bulk_track_status", lambda *_: None)
     monkeypatch.setattr(fast, "_write_batch", lambda _sb, _user, _import, batch, *_: write_batches.append(len(batch)))
-    monkeypatch.setattr(fast, "_archive_batch", lambda *_: 0)
     monkeypatch.setattr(fast, "merge_import_metrics", lambda *_: None)
     monkeypatch.setattr(settings, "analysis_writer_batch_size", 32)
     monkeypatch.setattr(settings, "analysis_staging_root", str(tmp_path))
@@ -514,6 +513,7 @@ def test_status_honors_manifest_work_and_does_not_requeue_reused_tracks(monkeypa
     monkeypatch.setattr(import_service, "_get_tracks_for_analysis_status", lambda *_: tracks)
     monkeypatch.setattr(pagination, "fetch_all_rows", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(import_service.worker_registry, "snapshot", lambda *_: {})
+    monkeypatch.setattr(import_service, "get_worker_lease", lambda *_: None)
 
     status = import_service._get_analysis_status_sync("import-1", "user-1")
 

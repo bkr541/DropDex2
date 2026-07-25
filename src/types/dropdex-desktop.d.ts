@@ -3,6 +3,7 @@ import type { UsbFileResolutionError } from '../lib/usb/resolveUsbFile';
 export type DesktopUsbStatus =
   | 'disconnected'
   | 'connected'
+  | 'released'
   | 'wrong_root'
   | 'unavailable'
   | 'error';

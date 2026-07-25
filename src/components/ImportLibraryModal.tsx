@@ -94,6 +94,7 @@ interface ProgressiveReadiness {
   throughput: number | null;
   estimatedSecondsRemaining: number | null;
   optionalArchivalStatus: string;
+  rawArchivalStatus: string;
 }
 
 type FinalResult =
@@ -207,6 +208,7 @@ export function ImportLibraryModal({
     throughput: null,
     estimatedSecondsRemaining: null,
     optionalArchivalStatus: 'skipped',
+    rawArchivalStatus: 'skipped',
   });
 
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -383,6 +385,7 @@ export function ImportLibraryModal({
       throughput: null,
       estimatedSecondsRemaining: null,
       optionalArchivalStatus: 'skipped',
+      rawArchivalStatus: 'skipped',
     });
     libraryReadyPublishedRef.current = false;
     localUploadBackgroundedRef.current = false;
@@ -814,6 +817,7 @@ export function ImportLibraryModal({
       optionalArchivalStatus: startResp.optional_archival_file_count
         ? 'skipped'
         : 'not needed',
+      rawArchivalStatus: manifestWork.requiredAnalysisFiles > 0 ? 'queued' : 'not needed',
     });
 
     if (
@@ -1076,6 +1080,7 @@ export function ImportLibraryModal({
           throughput: status.measured_tracks_per_second ?? null,
           estimatedSecondsRemaining: status.estimated_seconds_remaining ?? null,
           optionalArchivalStatus: status.optional_archival_status ?? 'skipped',
+          rawArchivalStatus: status.raw_archival_status ?? 'skipped',
         });
 
         if (['completed', 'partial', 'failed'].includes(status.analysis_status)) {
@@ -1097,6 +1102,7 @@ export function ImportLibraryModal({
             readiness_stage: status.readiness_stage ?? 'analysis_complete',
             queued_track_count: status.tracks_queued_count ?? 0,
             optional_archival_status: status.optional_archival_status ?? 'skipped',
+            raw_archival_status: status.raw_archival_status ?? 'skipped',
           };
           setFinalResult({ kind: 'with_analysis', data: completeResponse });
           setPhase(status.analysis_status === 'completed' ? 'completed' : 'partial_success');
@@ -1738,9 +1744,15 @@ export function ImportLibraryModal({
                     </span>
                   </div>
                   <div className="mt-2 flex justify-between gap-4">
-                    <span className="text-muted-foreground">Optional .2EX archival</span>
-                    <span className="font-semibold capitalize text-foreground">{progressiveReadiness.optionalArchivalStatus}</span>
+                    <span className="text-muted-foreground">Raw DAT/EXT archive</span>
+                    <span className="font-semibold capitalize text-foreground">{progressiveReadiness.rawArchivalStatus}</span>
                   </div>
+                  {progressiveReadiness.optionalArchivalStatus !== 'skipped' && progressiveReadiness.optionalArchivalStatus !== 'not needed' && (
+                    <div className="mt-2 flex justify-between gap-4">
+                      <span className="text-muted-foreground">Operator-enabled .2EX archive</span>
+                      <span className="font-semibold capitalize text-foreground">{progressiveReadiness.optionalArchivalStatus}</span>
+                    </div>
+                  )}
                 </div>
                 <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
                   Processing{' '}

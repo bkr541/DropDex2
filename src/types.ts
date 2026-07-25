@@ -88,6 +88,7 @@ export interface RekordboxImport {
   required_analysis_file_count?: number;
   optional_archival_file_count?: number;
   optional_archival_status?: string;
+  raw_archival_status?: string;
   performance_metrics?: Record<string, unknown>;
   analysis_queue_track_count?: number;
   analysis_running_track_count?: number;

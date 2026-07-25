@@ -172,6 +172,7 @@ class CompleteResponse(BaseModel):
     readiness_stage: str = "analysis_complete"
     queued_track_count: int = 0
     optional_archival_status: str = "skipped"
+    raw_archival_status: str = "skipped"
 
 
 class ResumeTargetItem(BaseModel):
@@ -235,6 +236,7 @@ class AnalysisStatusResponse(BaseModel):
     tracks_queued_count: int = 0
     tracks_running_count: int = 0
     optional_archival_status: str = "skipped"
+    raw_archival_status: str = "skipped"
     measured_tracks_per_second: Optional[float] = None
     estimated_seconds_remaining: Optional[int] = None
     performance_metrics: Dict[str, Any] = Field(default_factory=dict)

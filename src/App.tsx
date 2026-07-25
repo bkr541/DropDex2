@@ -1654,7 +1654,9 @@ export default function App() {
           importId={backgroundImport.importId}
           usbReleased={backgroundImport.usbReleased}
           accessToken={session.access_token}
-          onClose={() => setBackgroundImport(null)}
+          onClose={() => {
+            if (backgroundImport.usbReleased) setBackgroundImport(null);
+          }}
           onManageLocalUpload={() => {
             setBackgroundImport(null);
             setIsImportModalOpen(true);

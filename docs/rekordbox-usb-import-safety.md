@@ -23,7 +23,7 @@ The browser import path is read-only. It receives `File` objects from the folder
 - resets file inputs and import-local directory handles;
 - revokes import-owned object URLs.
 
-The browser release handshake verifies that each resource count is zero before it reports release.
+The browser release handshake verifies that each resource count is zero before it reports release. It also removes the saved browser directory handle before transitioning to `released`; reconnecting requires a new explicit folder selection.
 
 ## Electron active-stream lifecycle
 
@@ -47,7 +47,7 @@ Streams unregister on close, end, or error. Explicit destruction is also tracked
 4. Destroy every registered stream independently.
 5. Wait for active streams and pending requests to reach zero, up to the configured timeout.
 6. Return a structured result with `allStreamsClosed`, `timedOut`, destroyed and remaining stream counts, pending requests, and the current activity snapshot.
-7. For disconnect, clear the selected root and persisted connection state after the bounded wait.
+7. On every successful release, forget the selected filesystem root and remove its persisted copy. Keep only display metadata so later state refreshes are cache-only and cannot call `stat`, `readdir`, or `realpath` on the released drive.
 
 One failing stream cannot prevent destruction of the others. The result remains unsuccessful until all handles and pending requests are gone.
 
@@ -94,9 +94,11 @@ Delete is a separate destructive action with stronger confirmation. It:
 
 If the bounded wait expires, the API returns `stopping` and leaves all data intact. An in-process finalizer continues waiting, but it still cannot clean anything until the same worker has acknowledged that it stopped writing.
 
-## Worker registry and durable state
+## Worker registry, database lease, and durable state
 
-The current implementation uses a thread-safe in-process registry behind a queue-neutral interface. It tracks the import ID, worker status, pause and delete signals, current track, current stage, heartbeat, error diagnostics, and stopped event. This contract can later be implemented by a durable external queue without changing the API semantics.
+A thread-safe in-process registry provides immediate local pause/delete signals. A Postgres-backed ownership lease is the cross-process referee for both analysis and trailing raw archival. Only one process/container may own each worker kind for an import. The lease records owner, token, expiration, heartbeat, stage, and current track. A heartbeat thread renews ownership even during long parsing, compression, or Storage upload calls.
+
+Remote Pause/Delete requests are read from the import row at lease checkpoints. Delete cannot clean data while either a local worker or any unexpired database lease remains. Startup recovery skips imports with valid leases owned by another instance and only recovers expired work. The execution contract remains queue-neutral, so an external queue can replace the thread runner later without changing safety semantics.
 
 The durable import states are:
 
@@ -132,8 +134,8 @@ The final per-track status is written last. Therefore a track interrupted after 
 
 Destructive cleanup requires both conditions:
 
-- the in-process registry reports no active worker; and
-- the stopped acknowledgement is present in memory or durable job state.
+- the in-process registry reports no active local worker; and
+- no unexpired `analysis` or `raw_archival` database lease exists.
 
 Child-table writes are rejected once the import reaches `deleting`, `cancelled`, or `failed`. They remain allowed during a cooperative stop request so the current atomic stage can finish before the next checkpoint. Cleanup is repeatable and storage removal tolerates already-removed objects.
 
@@ -145,9 +147,9 @@ When a track has partial feature rows but no final track-status write, resume re
 
 ## App and backend restart recovery
 
-On backend startup, jobs left in running, stopping, or pause-requested analysis states are converted to paused or interrupted resumable states. Their uploaded assets and parsed records are preserved. A restart never interprets stale work as permission to delete.
+On backend startup, jobs left in running, stopping, or pause-requested analysis states are converted to paused or interrupted resumable states only when no valid worker lease exists. Their uploaded assets and parsed records are preserved. Trailing raw archival left queued/running/failed is safely reclaimed after an expired lease. A restart never interprets stale work as permission to delete.
 
-Electron reloads only the persisted selected root. Active streams cannot survive a process exit. The activity registry starts clean and validates the real root before serving new media requests.
+Electron may restore a selected root only before release. A successful release forgets that root entirely; focus refreshes and polling return cached `released` metadata without touching the filesystem. Active streams cannot survive a process exit.
 
 ## Control APIs
 
@@ -166,3 +168,7 @@ The legacy `POST .../cancel` route remains an alias for explicit destructive del
 Patch 3 preserves the worker-stop and USB-release contract while moving deep analysis behind metadata readiness. The browser retains only manifest-requested DAT/EXT `File` objects; optional `.2EX` handles are not kept in import state. Uploaded bytes are atomically staged on the backend and parsed after local USB requests, retry timers, and dispatch queues are drained.
 
 The **USB access released** indicator therefore means the background worker is operating from durable staging, retained archives, or legacy cloud objects. Pause, resume, restart recovery, and Delete Import continue to use the Patch 2 local worker signal and stopped acknowledgement. See [Rekordbox import fast path and background analysis](rekordbox-import-performance.md) for staging, concurrency, batching, and readiness details.
+
+## Operating-system release verification
+
+The Electron test suite includes a macOS-only `lsof` integration check. It opens a stream beneath a temporary mounted-root stand-in, releases the registry, verifies the DropDex process has no matching descriptor, and confirms the directory can be renamed. Run the same check against a cloned expendable Rekordbox USB during release qualification; internal counters are not a substitute for the operating system's descriptor table.

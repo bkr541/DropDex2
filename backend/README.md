@@ -112,24 +112,29 @@ Rekordbox uploads are streamed to temporary files in bounded chunks. Parsing,
 filesystem work, Supabase writes, and analysis processing run behind FastAPI's
 thread-pool boundary so health, auth, and unrelated API requests remain responsive.
 
-There is **no separate durable import worker in this repository**. Start the normal
-FastAPI process; it owns the thread pool:
+Analysis execution remains an in-process thread, but ownership is durable and
+cross-process. Migration `20260725020000_rekordbox_import_remaining_safety.sql`
+adds an atomic Postgres lease for the analysis worker and the separate trailing
+raw-archive worker. Multiple Uvicorn workers or containers cannot process the
+same import simultaneously, remote Pause/Delete intent is observed at lease
+checkpoints, and cleanup refuses to run while any valid lease exists.
+
+Every process must mount the same persistent staging directory and production
+startup requires `DROPDEX_ANALYSIS_STAGING_ROOT`. Startup performs an fsync write
+probe before accepting imports. Example:
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+DROPDEX_ANALYSIS_STAGING_ROOT=/var/lib/dropdex/analysis-staging \
+  uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
 ```
 
-The in-process analysis worker publishes heartbeats, its current track and stage,
-pause/delete signals, and an explicit stopped acknowledgement. Pause preserves
-uploaded assets and completed tracks. Delete cannot clean records until that
-acknowledgement is present. If the process restarts, stale running or stopping
-jobs become paused or interrupted and remain resumable; their data is never
-deleted automatically.
+Pause preserves uploaded assets and completed tracks. Delete signals all active
+worker kinds and cannot clean records until their durable leases are released.
+If a process restarts, valid leases owned by another instance are left alone;
+expired work becomes interrupted/resumable and trailing archival is restarted.
 
-The execution registry is deliberately queue-neutral. Production deployments
-that need automatic continuation across process loss should move the isolated
-analysis function to a durable queue such as Celery or ARQ while preserving the
-same request, checkpoint, heartbeat, and stopped-acknowledgement contract. See
+A dedicated queue such as Celery or ARQ remains a useful operational upgrade for
+large deployments, but the database lease is now the safety referee. See
 `docs/rekordbox-usb-import-safety.md` for the full state machine and shutdown
 sequence.
 

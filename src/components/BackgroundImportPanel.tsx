@@ -122,9 +122,24 @@ export function BackgroundImportPanel({
             {(status?.readiness_stage ?? 'library_metadata_ready').replaceAll('_', ' ')}
           </p>
         </div>
-        <button type="button" onClick={onClose} aria-label="Hide import panel" className="text-muted-foreground hover:text-foreground">
-          <X size={16} />
-        </button>
+        {usbReleased ? (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Hide import panel"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <X size={16} />
+          </button>
+        ) : (
+          <span
+            role="status"
+            aria-label="USB reading is still active; this panel cannot be hidden"
+            className="rounded-full border border-amber-400/30 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-amber-200"
+          >
+            Keep open
+          </span>
+        )}
       </div>
 
       {usbReleased ? (
@@ -165,11 +180,16 @@ export function BackgroundImportPanel({
           <p className="mt-0.5 font-bold">{estimateLabel(status?.estimated_seconds_remaining)}</p>
         </div>
         <div className="rounded-lg bg-[var(--color-surface)] p-2">
-          <p className="text-muted-foreground">Optional .2EX</p>
-          <p className="mt-0.5 font-bold capitalize">{status?.optional_archival_status ?? 'skipped'}</p>
+          <p className="text-muted-foreground">Raw DAT/EXT archive</p>
+          <p className="mt-0.5 font-bold capitalize">{status?.raw_archival_status ?? 'skipped'}</p>
         </div>
       </div>
 
+      {status?.optional_archival_status && status.optional_archival_status !== 'skipped' && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Operator-enabled .2EX archival: <span className="font-bold capitalize">{status.optional_archival_status}</span>. It never blocks library readiness.
+        </p>
+      )}
       {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
       {(status?.failed_track_count ?? 0) > 0 && (
         <p className="mt-3 text-xs text-amber-300">

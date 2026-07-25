@@ -158,3 +158,35 @@ async def test_resume_waits_for_stopped_acknowledgement(
     assert exc.value.status_code == 409
     assert exc.value.detail["error_code"] == "ANALYSIS_STILL_STOPPING"
     assert exc.value.detail["retryable"] is True
+
+
+def test_fast_background_pause_finalizes_after_durable_lease_release(monkeypatch):
+    import_id = _job_id("fast-late-pause")
+    events: list[str] = []
+
+    class _Lease:
+        def release(self):
+            events.append("released")
+
+    def stop_for_pause(*_args, **_kwargs):
+        raise WorkerStopRequested(import_id, "pause", "before_parsing")
+
+    monkeypatch.setattr(
+        analysis_import_service,
+        "_run_fast_analysis_import_sync",
+        stop_for_pause,
+    )
+    monkeypatch.setattr(
+        analysis_import_service,
+        "finalize_paused_import",
+        lambda *_args, **_kwargs: events.append("finalized"),
+    )
+
+    analysis_import_service._background_analysis_entry(
+        import_id,
+        "user",
+        ["track-1"],
+        _Lease(),
+    )
+
+    assert events == ["released", "finalized"]

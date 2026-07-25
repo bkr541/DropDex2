@@ -6,14 +6,16 @@ Boundary sizes verified: 0, 1, 999, 1000, 1001, 1999, 2000, 2001, 2215, 6642.
 """
 from __future__ import annotations
 
-import sys
 import os
+import sys
 from types import SimpleNamespace
 from typing import Any, List, Optional
+
 import pytest
 
 # Ensure the backend package is importable in test discovery
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "importer"))
 
 from app.supabase_pagination import fetch_all_rows
 
@@ -22,30 +24,52 @@ from app.supabase_pagination import fetch_all_rows
 
 
 class _PagedFakeQuery:
-    """Fake query that accurately slices data using .range(start, end)."""
+    """Fake PostgREST query with filters, ordering, and range pagination."""
 
-    def __init__(self, data: List[dict]):
+    def __init__(self, data: List[dict], filters: list[tuple[str, str, Any]] | None = None):
         self._data = data
+        self._filters = list(filters or [])
         self._start: Optional[int] = None
         self._end: Optional[int] = None
+        self._order_column: str | None = None
 
     def select(self, *a, **k): return self
-    def eq(self, *a, **k): return self
-    def in_(self, *a, **k): return self
-    def order(self, *a, **k): return self
+
+    def eq(self, column, value):
+        self._filters.append(("eq", column, value))
+        return self
+
+    def in_(self, column, values):
+        self._filters.append(("in", column, set(values)))
+        return self
+
+    def order(self, column, *a, **k):
+        self._order_column = column
+        return self
 
     def range(self, start: int, end: int):
-        q = _PagedFakeQuery(self._data)
+        q = _PagedFakeQuery(self._data, self._filters)
         q._start = start
         q._end = end
+        q._order_column = self._order_column
         return q
 
     def execute(self) -> Any:
+        rows = list(self._data)
+        for operation, column, value in self._filters:
+            # Existing pagination tests use intentionally minimal rows. Apply a
+            # filter only when that column is represented in the fake dataset.
+            if not any(column in row for row in rows):
+                continue
+            if operation == "eq":
+                rows = [row for row in rows if row.get(column) == value]
+            else:
+                rows = [row for row in rows if row.get(column) in value]
+        if self._order_column and any(self._order_column in row for row in rows):
+            rows.sort(key=lambda row: str(row.get(self._order_column) or ""))
         if self._start is not None and self._end is not None:
-            page = self._data[self._start:self._end + 1]
-        else:
-            page = self._data
-        return SimpleNamespace(data=page)
+            rows = rows[self._start:self._end + 1]
+        return SimpleNamespace(data=rows)
 
 
 def _make_rows(n: int, *, id_prefix: str = "") -> List[dict]:
@@ -257,20 +281,27 @@ class TestCompleteAnalysisImportPagination:
 
     @pytest.mark.parametrize("asset_count", [0, 999, 1000, 1001, 2215, 6642])
     def test_all_assets_loaded(self, asset_count: int):
-        """complete_analysis_import must see all uploaded assets via pagination."""
-        from app.analysis_import_service import complete_analysis_import
-        tracks = self._make_tracks(asset_count // 3 + 1)
-        assets = self._make_assets(asset_count)
-        import_row = self._make_import_row()
-        sb = self._FakeSb(import_row, tracks, assets)
+        """The real fast-pipeline asset loader must cross every page boundary."""
+        from app.analysis_fast_pipeline import _load_assets
 
-        # complete_analysis_import writes back to the imports table; we only care
-        # that the call doesn't crash and returns a result (parse output depends on
-        # whether our fake ANLZ bytes are valid, so we tolerate any non-exception outcome).
-        try:
-            complete_analysis_import(sb, "imp-1", "u1")
-        except Exception:
-            pass  # parse/storage errors are expected with fake data; count load is what we test
+        tracks = self._make_tracks((asset_count + 1) // 2)
+        assets = [
+            {
+                "id": f"asset-{i:04d}",
+                "import_id": "imp-1",
+                "track_id": f"track-{(i // 2):04d}",
+                "asset_type": "DAT" if i % 2 == 0 else "EXT",
+                "relative_path": f"PIONEER/USBANLZ/P{i:04d}/ANLZ{i:04d}.{'DAT' if i % 2 == 0 else 'EXT'}",
+                "upload_status": "staged",
+                "staging_key": f"imp-1/assets/{i:04d}",
+            }
+            for i in range(asset_count)
+        ]
+        sb = self._FakeSb(self._make_import_row(), tracks, assets)
+
+        result = _load_assets(sb, "imp-1", tracks)
+        assert len(result) == asset_count
+        assert {row["id"] for row in result} == {row["id"] for row in assets}
 
 
 class _SingleFakeQuery:

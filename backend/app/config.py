@@ -1,3 +1,4 @@
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,7 +24,15 @@ class Settings(BaseSettings):
     analysis_parser_workers: int = 4
     analysis_writer_batch_size: int = 32
     analysis_result_queue_size: int = 16
-    analysis_staging_root: str | None = None
+    analysis_staging_root: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "DROPDEX_ANALYSIS_STAGING_ROOT",
+            "ANALYSIS_STAGING_ROOT",
+        ),
+    )
+    analysis_worker_lease_seconds: int = 45
+    analysis_worker_lease_refresh_seconds: float = 1.0
     analysis_archive_raw_assets: bool = True
     analysis_archive_2ex: bool = False
     analysis_feature_schema_version: str = "2026.07.fast-path.v1"
@@ -46,6 +55,26 @@ class Settings(BaseSettings):
     tracklists_detail_nav_timeout_ms: int = 15_000
     tracklists_detail_selector_timeout_ms: int = 20_000
     tracklists_detail_network_idle_timeout_ms: int = 3_000
+
+    @model_validator(mode="after")
+    def validate_production_analysis_storage(self) -> "Settings":
+        if self.environment.strip().lower() == "production" and not self.analysis_staging_root:
+            raise ValueError(
+                "DROPDEX_ANALYSIS_STAGING_ROOT is required in production; "
+                "temporary local staging is not restart-safe"
+            )
+        if self.analysis_worker_lease_seconds < 15:
+            raise ValueError("ANALYSIS_WORKER_LEASE_SECONDS must be at least 15")
+        if not 0.25 <= self.analysis_worker_lease_refresh_seconds <= 10:
+            raise ValueError(
+                "ANALYSIS_WORKER_LEASE_REFRESH_SECONDS must be between 0.25 and 10"
+            )
+        if self.analysis_worker_lease_refresh_seconds * 3 > self.analysis_worker_lease_seconds:
+            raise ValueError(
+                "ANALYSIS_WORKER_LEASE_REFRESH_SECONDS must be no more than "
+                "one third of ANALYSIS_WORKER_LEASE_SECONDS"
+            )
+        return self
 
 
 settings = Settings()

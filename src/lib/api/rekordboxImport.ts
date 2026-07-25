@@ -147,6 +147,7 @@ export interface CompleteResponse {
   readiness_stage?: string;
   queued_track_count?: number;
   optional_archival_status?: string;
+  raw_archival_status?: string;
 }
 
 /** Structured per-track unresolved target (new in v2 API). */
@@ -204,6 +205,7 @@ export interface AnalysisStatusResponse {
   tracks_queued_count?: number;
   tracks_running_count?: number;
   optional_archival_status?: string;
+  raw_archival_status?: string;
   measured_tracks_per_second?: number | null;
   estimated_seconds_remaining?: number | null;
   performance_metrics?: Record<string, unknown>;
@@ -372,6 +374,7 @@ function validateComplete(value: unknown): CompleteResponse {
   if (row.readiness_stage !== undefined) expectString(row.readiness_stage, contract, '$.readiness_stage');
   expectOptionalNumber(row.queued_track_count, contract, '$.queued_track_count');
   if (row.optional_archival_status !== undefined) expectString(row.optional_archival_status, contract, '$.optional_archival_status');
+  if (row.raw_archival_status !== undefined) expectString(row.raw_archival_status, contract, '$.raw_archival_status');
   expectArray(row.tracks, contract, '$.tracks').forEach((item, index) => {
     const path = `$.tracks[${index}]`;
     const track = expectRecord(item, contract, path);
@@ -422,6 +425,7 @@ function validateAnalysisStatus(value: unknown): AnalysisStatusResponse {
     'tracks_remaining_count', 'tracks_queued_count', 'tracks_running_count',
   ]) expectOptionalNumber(row[key], contract, `$.${key}`);
   if (row.optional_archival_status !== undefined) expectString(row.optional_archival_status, contract, '$.optional_archival_status');
+  if (row.raw_archival_status !== undefined) expectString(row.raw_archival_status, contract, '$.raw_archival_status');
   if (row.measured_tracks_per_second !== undefined) expectNullableNumber(row.measured_tracks_per_second, contract, '$.measured_tracks_per_second');
   if (row.estimated_seconds_remaining !== undefined) expectNullableNumber(row.estimated_seconds_remaining, contract, '$.estimated_seconds_remaining');
   if (row.performance_metrics !== undefined) expectRecord(row.performance_metrics, contract, '$.performance_metrics');

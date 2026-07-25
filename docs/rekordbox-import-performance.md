@@ -10,22 +10,19 @@ DropDex treats library readiness and deep-analysis completion as separate milest
 2. **Library metadata ready** publishes the import as the active library. Track lists and detail pages may be used immediately.
 3. **Required asset staging** reads only manifest-requested DAT and EXT files from the selected USB folder. Local USB references are released after the upload dispatcher and retries have stopped.
 4. **Background analysis** parses affected tracks with bounded concurrency and writes normalized features in batches.
-5. **Raw archival** packages staged source files into bounded compressed archives after normalized data is useful.
+5. **Raw archival** runs on a separate trailing worker after analysis completes. Compression and Storage upload never block another track from becoming ready.
 6. **Optional archival** may archive `.2EX` in a later job when explicitly enabled. It never participates in readiness or track success.
 
 The readiness stages stored on `rekordbox_imports` are:
 
 - `metadata_pending`
 - `library_metadata_ready`
-- `cues_and_beat_grids_processing`
-- `preview_waveforms_processing`
-- `detailed_waveforms_processing`
-- `optional_archival_processing`
+- `analysis_processing`
 - `analysis_paused`
 - `analysis_complete`
 - `analysis_partial`
 
-The frontend may dismiss the blocking modal after metadata is ready, including while required DAT/EXT files are still transferring. The library remains browseable. Until USB release is verified, the background panel keeps a prominent keep-connected warning, links back to the local upload controls, and withholds cloud pause/delete actions that cannot safely stop browser-side reads. After release, it exposes track counts, measured throughput, pause/resume, deletion, verified USB release, and optional archival state.
+The frontend may background the blocking modal after metadata is ready, including while required DAT/EXT files are still transferring. The library remains browseable. Until USB release is verified, the background safety panel is non-dismissible, keeps a prominent keep-connected warning, links back to the local upload controls, and withholds cloud pause/delete actions that cannot safely stop browser-side reads. After release, it becomes dismissible and exposes track counts, measured throughput, pause/resume, deletion, verified USB release, and trailing raw archival state.
 
 ## Required and optional artifacts
 
@@ -90,7 +87,7 @@ The batch endpoint first compares stored size and modification time with a retai
 
 New DAT/EXT bytes are atomically written beneath `ANALYSIS_STAGING_ROOT`. Database rows store opaque relative staging keys, never absolute server paths.
 
-Production deployments should mount this directory on durable storage shared by replacement application instances. A local temporary directory is only a development fallback.
+Production startup fails unless `DROPDEX_ANALYSIS_STAGING_ROOT` is explicitly configured and passes an fsync write probe. Mount this directory on durable storage shared at the same path by every API/worker instance. The `/tmp` fallback is development-only.
 
 The flow is:
 
@@ -103,7 +100,8 @@ browser File read
   -> bounded result queue
   -> single bulk writer
   -> normalized features ready
-  -> compressed raw archive upload
+  -> analysis worker completes and releases ownership
+  -> separate raw-archive worker compresses/uploads staged bytes
 ```
 
 Newly staged files are parsed directly. There is no required upload-to-Supabase-Storage followed by immediate download. Retained archives or legacy individual objects are restored during the controlled input-preparation stage, before parser workers start.
@@ -132,7 +130,7 @@ Parser workers perform local decoding and feature extraction. Cloud restoration 
 - track analysis state
 - progress checkpoints
 
-Detailed waveform payloads remain individual compressed storage objects because the existing waveform loader addresses them by track. Raw Rekordbox source assets are archived by writer group rather than as thousands of individual objects.
+Detailed waveform payloads remain individual compressed storage objects because the existing waveform loader addresses them by track. Raw Rekordbox source assets are archived in bounded groups by a separate trailing worker rather than as thousands of individual objects. Archive uploads stream from disk and do not call `Path.read_bytes()`.
 
 Pause and delete use the local worker signal for hot-path checks. Database heartbeats and persisted progress are updated at queueing and writer checkpoints rather than before and after every small parser operation.
 
@@ -156,7 +154,8 @@ The background panel reports file and track counts separately. Examples:
 - `Uploading 3,704 required analysis files for 1,852 tracks`
 - `Processing track 412 of 1,852`
 - `1,700 tracks reused, 152 tracks updated`
-- `Optional .2EX archival skipped`
+- `Raw DAT/EXT archive running`
+- `Operator-enabled .2EX archival skipped`
 
 An ETA is shown only after measured throughput exists. The UI does not invent a completion time from an empty sample.
 
@@ -173,7 +172,7 @@ Instrumented stages include:
 - temporary staging or retained-object restoration
 - asset parsing
 - feature writing
-- raw archival
+- trailing raw archival
 - time to library ready
 - total time to full analysis
 
@@ -213,7 +212,9 @@ Environment variables:
 ANALYSIS_PARSER_WORKERS=4
 ANALYSIS_WRITER_BATCH_SIZE=32
 ANALYSIS_RESULT_QUEUE_SIZE=16
-ANALYSIS_STAGING_ROOT=/var/lib/dropdex/analysis-staging
+DROPDEX_ANALYSIS_STAGING_ROOT=/var/lib/dropdex/analysis-staging
+ANALYSIS_WORKER_LEASE_SECONDS=45
+ANALYSIS_WORKER_LEASE_REFRESH_SECONDS=1.0
 ANALYSIS_ARCHIVE_RAW_ASSETS=true
 ANALYSIS_ARCHIVE_2EX=false
 ANALYSIS_FEATURE_SCHEMA_VERSION=2026.07.fast-path.v1
@@ -222,7 +223,8 @@ ANALYSIS_FEATURE_SCHEMA_VERSION=2026.07.fast-path.v1
 Operational guidance:
 
 - Keep parser workers conservative on small instances. Increase only after measuring CPU, memory, and database write latency.
-- Make `ANALYSIS_STAGING_ROOT` durable and writable by the API process.
+- Make `DROPDEX_ANALYSIS_STAGING_ROOT` durable, writable, and shared by every process that may own a lease.
+- Apply the worker-lease migration before running more than one Uvicorn worker or container. The database lease prevents duplicate ownership and makes remote Pause/Delete visible at checkpoints.
 - Ensure enough free space for the largest active import plus one compressed archive group.
 - Monitor staging cleanup after completed and deleted jobs.
 - Keep writer batches small enough for PostgREST payload limits.
@@ -240,6 +242,14 @@ Migration `20260725010000_rekordbox_import_fast_path.sql`:
 - adds bounded bulk track-state and nested metric-merge RPCs using invoker security
 - expands legacy status constraints without deleting old DAT, EXT, or `.2EX` rows
 
+
+Migration `20260725020000_rekordbox_import_remaining_safety.sql`:
+
+- adds atomic database-backed ownership leases for analysis and raw-archive workers
+- prevents multi-process startup recovery or Delete Import from racing a valid remote worker
+- adds independent `raw_archival_status` that never gates library readiness
+- adds the truthful `analysis_processing` readiness stage
+
 Apply migrations in timestamp order before deploying the backend. Existing imports remain readable. The migration does not delete or rewrite raw objects.
 
 ## Known limitations
@@ -248,4 +258,5 @@ Apply migrations in timestamp order before deploying the backend. Existing impor
 - Browser folder selection initially enumerates the folder supplied by the operating system, but React state retains only DAT/EXT file handles after scanning.
 - ZIP bundle import still transfers the caller-provided ZIP as one object. `.2EX` inside that ZIP is ignored by parsing, but removing it from network transfer requires a bundle-packaging change outside this patch.
 - Detailed waveform blobs remain per-track storage objects.
-- Multi-instance automatic resume requires every worker instance to see the same durable staging mount.
+- Worker execution still uses in-process threads, but ownership and stop intent are database-backed. Every process must see the same durable staging mount. A dedicated external queue remains a future operational upgrade, not a safety prerequisite after the lease migration.
+- `.2EX` archival has no normal end-user upload control. It remains operator-enabled plumbing and is hidden when skipped.

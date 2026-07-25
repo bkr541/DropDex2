@@ -51,7 +51,7 @@ describe('Rekordbox browser USB import read-only contract', () => {
 
     const cancellationCatch = source.indexOf('const cancelled =', importHandlerStart);
     const cancellationRelease = source.indexOf('await verifyAndPublishUsbRelease()', cancellationCatch);
-    const cloudCancellation = source.indexOf('await cancelCloudWork()', cancellationRelease);
+    const cloudCancellation = source.indexOf('await deleteCloudWork()', cancellationRelease);
     expect(cancellationCatch).toBeGreaterThan(importHandlerStart);
     expect(cancellationRelease).toBeGreaterThan(cancellationCatch);
     expect(cloudCancellation).toBeGreaterThan(cancellationRelease);

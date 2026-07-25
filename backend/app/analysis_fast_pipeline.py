@@ -2,8 +2,8 @@
 
 Parser workers only decode local files and build normalized feature payloads.
 A single writer consumes bounded batches, reconciles cues in bulk, persists
-features, checkpoints progress, and archives raw source files after useful data
-is committed. This prevents each parser from independently producing a cloud
+features and checkpoints progress. Raw source archival runs later on an
+independent worker so compression/storage cannot stall useful analysis. This prevents each parser from independently producing a cloud
 request storm.
 """
 
@@ -20,14 +20,12 @@ import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Callable, Iterator, Sequence
 
 from .analysis_performance import ImportMetrics, merge_import_metrics
 from .analysis_staging import (
     build_staging_key,
     copy_staged_file,
-    create_archive,
     resolve_staging_key,
     staged_file_exists,
 )
@@ -734,69 +732,6 @@ def _write_batch_resilient(
         return 1
 
 
-def _archive_batch(
-    sb: Any,
-    user_id: str,
-    import_id: str,
-    group_index: int,
-    parsed_batch: Sequence[ParsedTrack],
-) -> int:
-    if not settings.analysis_archive_raw_assets:
-        return 0
-    members: list[tuple[str, str]] = []
-    assets_by_key: dict[str, dict[str, Any]] = {}
-    for parsed in parsed_batch:
-        for asset in parsed.assets:
-            asset_type = str(asset.get("asset_type"))
-            if asset_type == "2EX" and not settings.analysis_archive_2ex:
-                continue
-            staging_key = asset.get("staging_key")
-            if not staging_key or not staged_file_exists(staging_key, settings.analysis_staging_root):
-                continue
-            member = f"{parsed.track['id']}/{Path(str(asset.get('relative_path') or asset_type)).name}"
-            members.append((staging_key, member))
-            assets_by_key[staging_key] = asset
-    if not members:
-        return 0
-
-    archive_path, member_map = create_archive(
-        import_id, group_index, members, settings.analysis_staging_root
-    )
-    storage_path = f"{user_id}/{import_id}/archives/{archive_path.name}"
-    sb.storage.from_("rekordbox-analysis-assets").upload(
-        path=storage_path,
-        file=archive_path.read_bytes(),
-        file_options={"upsert": "true", "content-type": "application/gzip"},
-    )
-    updates: list[dict[str, Any]] = []
-    for staging_key, member_name in member_map.items():
-        asset = _persistable_asset(assets_by_key[staging_key])
-        asset.update({
-            "upload_status": "archived",
-            "archival_status": "archived",
-            "archive_storage_bucket": "rekordbox-analysis-assets",
-            "archive_storage_path": storage_path,
-            "archive_member_path": member_name,
-        })
-        updates.append(asset)
-    if updates:
-        sb.table("rekordbox_analysis_assets").upsert(
-            updates, on_conflict="import_id,relative_path"
-        ).execute()
-        # The archive object and database provenance are durable now. Release
-        # the duplicated local source bytes so staging disk use stays bounded;
-        # future reprocessing transparently restores the archive member.
-        for staging_key in member_map:
-            try:
-                resolve_staging_key(
-                    staging_key, settings.analysis_staging_root
-                ).unlink(missing_ok=True)
-            except Exception as exc:
-                logger.debug("Could not remove archived staging file %s: %s", staging_key, exc)
-        archive_path.unlink(missing_ok=True)
-    return len(updates)
-
-
 def _rolling_parse_results(
     tracks: Sequence[dict[str, Any]],
     assets_by_track: dict[str, list[dict[str, Any]]],
@@ -955,7 +890,7 @@ def run_fast_analysis_import(
         for track_id in track_ids
     ])
 
-    completed = partial = failed = missing_required = archived = 0
+    completed = partial = failed = missing_required = 0
     processed = 0
     writer_batch: list[ParsedTrack] = []
     temp_root = tempfile.mkdtemp(prefix=f"dropdex-fast-{str(import_id)[:8]}-")
@@ -1017,22 +952,10 @@ def run_fast_analysis_import(
                 failed += int(result.parse_status == "failed")
                 missing_required += int(result.parse_status == "missing_required")
             processed += len(writer_batch)
-            # Publish useful feature readiness before raw archival. The archive
-            # is deliberately trailing work and must not delay waveforms, cues,
-            # or per-track completion appearing in an open library view.
+            # Publish useful feature readiness immediately. Raw DAT/EXT
+            # archival is queued only after analysis finalizes on a separate
+            # lease and never stalls the parser/writer pipeline.
             progress(writer_batch[-1].track, processed, total)
-            checkpoint("before_raw_archival", str(writer_batch[-1].track["id"]))
-            with metrics.timed("raw_archival"):
-                try:
-                    archived += _archive_batch(
-                        sb,
-                        user_id,
-                        import_id,
-                        metrics.counts.get("feature_write_batches", 0),
-                        writer_batch,
-                    )
-                except Exception as exc:
-                    logger.warning("Raw archival deferred for import %s: %s", import_id, exc)
             writer_batch.clear()
         if writer_batch:
             with metrics.timed("feature_writing"):
@@ -1053,21 +976,8 @@ def run_fast_analysis_import(
                 missing_required += int(result.parse_status == "missing_required")
             processed += len(writer_batch)
             progress(writer_batch[-1].track, processed, total)
-            checkpoint("before_raw_archival", str(writer_batch[-1].track["id"]))
-            with metrics.timed("raw_archival"):
-                try:
-                    archived += _archive_batch(
-                        sb,
-                        user_id,
-                        import_id,
-                        metrics.counts.get("feature_write_batches", 0),
-                        writer_batch,
-                    )
-                except Exception as exc:
-                    logger.warning("Raw archival deferred for import %s: %s", import_id, exc)
 
         metrics.increment("tracks_processed", processed)
-        metrics.increment("raw_assets_archived", archived)
         metrics.timings_ms["total_time_to_full_analysis"] = round((time.perf_counter() - started) * 1000.0, 3)
         merge_import_metrics(sb, import_id, metrics)
         return {
@@ -1076,7 +986,7 @@ def run_fast_analysis_import(
             "partial_count": partial,
             "failed_count": failed,
             "missing_required_count": missing_required,
-            "archived_asset_count": archived,
+            "archived_asset_count": 0,
             "metrics": metrics,
         }
     finally:

@@ -33,6 +33,39 @@ def staging_root(configured_root: str | None = None) -> Path:
     return root.resolve()
 
 
+def validate_staging_root(
+    configured_root: str | None = None,
+    *,
+    environment: str = "development",
+) -> dict[str, str | bool]:
+    """Validate that request-independent staging is present and writable.
+
+    Production must use an explicitly configured persistent/shared mount. The
+    write probe catches read-only or missing volume mounts before an import can
+    accept thousands of USB files and then discover that resume is impossible.
+    """
+    if environment.strip().lower() == "production" and not (
+        configured_root or os.getenv("DROPDEX_ANALYSIS_STAGING_ROOT")
+    ):
+        raise RuntimeError(
+            "DROPDEX_ANALYSIS_STAGING_ROOT is required in production"
+        )
+    root = staging_root(configured_root)
+    probe = root / f".dropdex-write-probe-{os.getpid()}"
+    try:
+        with probe.open("wb") as handle:
+            handle.write(b"dropdex-staging-health")
+            handle.flush()
+            os.fsync(handle.fileno())
+    finally:
+        probe.unlink(missing_ok=True)
+    return {
+        "ok": True,
+        "configured": bool(configured_root or os.getenv("DROPDEX_ANALYSIS_STAGING_ROOT")),
+        "path": str(root),
+    }
+
+
 def build_staging_key(import_id: str, track_id: str, asset_type: str, sha256: str) -> str:
     suffix = asset_type.lower()
     return "/".join(
@@ -72,8 +105,6 @@ def write_staged_bytes(key: str, content: bytes, configured_root: str | None = N
     return destination
 
 
-
-
 def copy_staged_file(
     key: str,
     source_path: str | Path,
@@ -97,6 +128,7 @@ def copy_staged_file(
         raise
     return destination
 
+
 def staged_file_exists(key: str | None, configured_root: str | None = None) -> bool:
     if not key:
         return False
@@ -107,8 +139,6 @@ def staged_file_exists(key: str | None, configured_root: str | None = None) -> b
 
 
 def remove_import_staging(import_id: str, configured_root: str | None = None) -> None:
-    import shutil
-
     root = staging_root(configured_root)
     path = resolve_staging_key(_segment(import_id), configured_root)
     if path == root or root not in path.parents:
@@ -118,13 +148,20 @@ def remove_import_staging(import_id: str, configured_root: str | None = None) ->
 
 def create_archive(
     import_id: str,
-    group_index: int,
+    group_index: int | str,
     members: Iterable[tuple[str, str]],
     configured_root: str | None = None,
 ) -> tuple[Path, dict[str, str]]:
     """Create a compressed archive from ``(staging_key, archive_member)`` pairs."""
     root = staging_root(configured_root)
-    archive_key = "/".join((_segment(import_id), "archives", f"group-{group_index:06d}.tar.gz"))
+    group_name = (
+        f"{group_index:06d}"
+        if isinstance(group_index, int)
+        else _segment(str(group_index))
+    )
+    archive_key = "/".join(
+        (_segment(import_id), "archives", f"group-{group_name}.tar.gz")
+    )
     archive_path = resolve_staging_key(archive_key, configured_root)
     archive_path.parent.mkdir(parents=True, exist_ok=True)
     member_map: dict[str, str] = {}

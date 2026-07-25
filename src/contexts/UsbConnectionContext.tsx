@@ -60,6 +60,7 @@ interface UsbState {
 type UsbAction =
   | { type: 'SET_UNSUPPORTED' }
   | { type: 'SET_DISCONNECTED' }
+  | { type: 'SET_BROWSER_RELEASED'; volumeName: string | null; connectedAt: string | null }
   | { type: 'SET_CONNECTING' }
   | { type: 'SET_DESKTOP_STATE'; state: DesktopUsbState; activity?: DesktopUsbActivityState }
   | {
@@ -109,6 +110,15 @@ function desktopStateToUsbState(
     };
   }
   switch (state.status) {
+    case 'released':
+      return {
+        ...initial,
+        status: 'released',
+        volumeName: state.volumeName,
+        connectedAt: state.connectedAt,
+        structureWarning: state.structureWarning,
+        error: state.error,
+      };
     case 'connected':
       return {
         ...initial,
@@ -146,6 +156,13 @@ function reducer(state: UsbState, action: UsbAction): UsbState {
       return { ...initial, status: 'unsupported' };
     case 'SET_DISCONNECTED':
       return initial;
+    case 'SET_BROWSER_RELEASED':
+      return {
+        ...initial,
+        status: 'released',
+        volumeName: action.volumeName,
+        connectedAt: action.connectedAt,
+      };
     case 'SET_CONNECTING':
       return { ...state, status: 'connecting', error: null };
     case 'SET_DESKTOP_STATE':
@@ -376,7 +393,17 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
     if (playbackErrors.length > 0) {
       console.warn('One or more USB playback cleanup handlers failed.', playbackErrors);
     }
-    if (runtime !== 'electron' || !desktop) return null;
+    if (runtime !== 'electron' || !desktop) {
+      const current = stateRef.current;
+      await removeUsbHandle();
+      setActivity(null);
+      dispatchState({
+        type: 'SET_BROWSER_RELEASED',
+        volumeName: current.volumeName,
+        connectedAt: current.connectedAt,
+      });
+      return null;
+    }
     const result = await desktop.releaseUsb();
     setActivity(result.activity);
     dispatchState({ type: 'SET_DESKTOP_STATE', state: result.state, activity: result.activity });
@@ -418,6 +445,7 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
 
   const ensurePermission = useCallback(async (): Promise<UsbStatus> => {
     if (runtime === 'electron') return refreshDesktopState();
+    if (stateRef.current.status === 'released') return 'released';
 
     const handle = handleRef.current;
     const current = stateRef.current;
