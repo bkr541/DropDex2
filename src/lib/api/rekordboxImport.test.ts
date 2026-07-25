@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  deleteRekordboxImport,
+  fetchRekordboxWorkerState,
   fetchRekordboxAnalysisStatus,
   isUnauthorizedRekordboxImportError,
+  pauseRekordboxAnalysis,
+  resumeRekordboxAnalysis,
   uploadRekordboxDb,
   uploadRekordboxZipBundle,
 } from './rekordboxImport';
@@ -69,6 +73,92 @@ describe('Rekordbox import upload requests', () => {
       new File(['database'], 'exportLibrary.db'),
       'token',
     )).rejects.toThrow('unexpected import result response');
+  });
+});
+
+describe('Rekordbox analysis worker control requests', () => {
+  const jobBody = {
+    import_id: 'job-123',
+    status: 'paused',
+    source_filename: 'exportLibrary.db',
+    source_bundle_type: 'usb_folder',
+    error_code: null,
+    error_message: null,
+    retryable: true,
+    analysis_status: 'paused',
+    worker_status: 'paused',
+    worker_stage: 'stopped',
+    worker_current_track_id: null,
+    worker_last_heartbeat: '2026-07-24T12:00:00Z',
+    worker_stopped_acknowledged: true,
+  };
+
+  it('uses distinct pause and destructive delete endpoints', async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      expect(init?.signal).toBe(controller.signal);
+      if (url.endsWith('/pause')) expect(init?.method).toBe('POST');
+      else expect(init?.method).toBe('DELETE');
+      return new Response(JSON.stringify(jobBody), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await pauseRekordboxAnalysis('job-123', 'token', controller.signal);
+    await deleteRekordboxImport('job-123', 'token', controller.signal);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/job-123/pause');
+    expect(fetchMock.mock.calls[1]?.[0]).toMatch(/\/job-123$/);
+  });
+
+  it('validates worker acknowledgement and stage polling data', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      import_id: 'job-123',
+      job_status: 'paused',
+      analysis_status: 'paused',
+      worker_status: 'paused',
+      worker_active: false,
+      current_track_id: null,
+      processing_stage: 'stopped',
+      last_heartbeat: '2026-07-24T12:00:00Z',
+      stop_reason: 'pause',
+      stopped_acknowledged: true,
+      stopped_at: '2026-07-24T12:00:01Z',
+      error: null,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+
+    await expect(fetchRekordboxWorkerState('job-123', 'token')).resolves.toMatchObject({
+      worker_active: false,
+      processing_stage: 'stopped',
+      stopped_acknowledged: true,
+    });
+  });
+
+  it('resumes through the retained-assets endpoint without a USB payload', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBeUndefined();
+      return new Response(JSON.stringify({
+        import_id: 'job-123',
+        analysis_status: 'completed',
+        total_tracks: 1,
+        completed_count: 1,
+        partial_count: 0,
+        failed_count: 0,
+        missing_required_count: 0,
+        missing_optional_ext_count: 0,
+        missing_optional_2ex_count: 0,
+        parser_version: 'test',
+        tracks: [],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await resumeRekordboxAnalysis('job-123', 'token');
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/job-123/resume');
   });
 });
 

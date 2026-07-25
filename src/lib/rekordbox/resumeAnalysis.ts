@@ -88,6 +88,14 @@ function fromStructuredTarget(t: ResumeTargetResponse): ResumeTarget {
   };
 }
 
+/**
+ * A USB selection is required only when a required source asset is absent.
+ * Optional EXT/2EX gaps and parse failures can resume from retained cloud data.
+ */
+export function resumeRequiresUsbSelection(targets: ResumeTarget[]): boolean {
+  return targets.some((target) => target.required && target.status !== 'parse_failed');
+}
+
 function legacyTarget(path: string, assetType: ResumeAssetType, required: boolean): ResumeTarget {
   return {
     path,

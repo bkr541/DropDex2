@@ -17,8 +17,9 @@ import {
 // ── Response types ────────────────────────────────────────────────────────────
 
 export type ImportJobState =
-  | 'created' | 'uploading' | 'queued' | 'processing'
-  | 'cancel_requested' | 'cancelled' | 'completed' | 'failed';
+  | 'created' | 'uploading' | 'queued' | 'processing' | 'running'
+  | 'pause_requested' | 'paused' | 'cancel_requested' | 'stopping'
+  | 'deleting' | 'cancelled' | 'completed' | 'failed' | 'interrupted';
 
 export interface ImportJob {
   import_id: string;
@@ -28,6 +29,27 @@ export interface ImportJob {
   error_code: string | null;
   error_message: string | null;
   retryable: boolean;
+  analysis_status?: string | null;
+  worker_status?: string | null;
+  worker_stage?: string | null;
+  worker_current_track_id?: string | null;
+  worker_last_heartbeat?: string | null;
+  worker_stopped_acknowledged?: boolean;
+}
+
+export interface ImportWorkerState {
+  import_id: string;
+  job_status: ImportJobState;
+  analysis_status: string;
+  worker_status: string;
+  worker_active: boolean;
+  current_track_id: string | null;
+  processing_stage: string | null;
+  last_heartbeat: string | null;
+  stop_reason: 'pause' | 'delete' | null;
+  stopped_acknowledged: boolean;
+  stopped_at: string | null;
+  error: string | null;
 }
 
 export interface ImportResult {
@@ -151,6 +173,12 @@ export interface AnalysisStatusResponse {
   failed_upload_count: number;
   failed_parse_count: number;
   affected_track_count: number;
+  job_status?: ImportJobState;
+  worker_status?: string;
+  worker_active?: boolean;
+  worker_stage?: string | null;
+  worker_last_heartbeat?: string | null;
+  worker_stopped_acknowledged?: boolean;
 }
 
 /** One ANLZ file to upload — carries its canonical Storage path. */
@@ -216,6 +244,12 @@ function validateImportJob(value: unknown): ImportJob {
   expectNullableString(row.error_code, contract, '$.error_code');
   expectNullableString(row.error_message, contract, '$.error_message');
   expectBoolean(row.retryable, contract, '$.retryable');
+  expectOptionalNullableString(row.analysis_status, contract, '$.analysis_status');
+  expectOptionalNullableString(row.worker_status, contract, '$.worker_status');
+  expectOptionalNullableString(row.worker_stage, contract, '$.worker_stage');
+  expectOptionalNullableString(row.worker_current_track_id, contract, '$.worker_current_track_id');
+  expectOptionalNullableString(row.worker_last_heartbeat, contract, '$.worker_last_heartbeat');
+  expectOptionalBoolean(row.worker_stopped_acknowledged, contract, '$.worker_stopped_acknowledged');
   return row as unknown as ImportJob;
 }
 
@@ -331,6 +365,12 @@ function validateAnalysisStatus(value: unknown): AnalysisStatusResponse {
   expectOptionalNullableString(row.current_track_artist, contract, '$.current_track_artist');
   expectOptionalNullableString(row.current_track_label, contract, '$.current_track_label');
   expectOptionalNumber(row.progress_percent, contract, '$.progress_percent');
+  if (row.job_status !== undefined) expectString(row.job_status, contract, '$.job_status');
+  if (row.worker_status !== undefined) expectString(row.worker_status, contract, '$.worker_status');
+  expectOptionalBoolean(row.worker_active, contract, '$.worker_active');
+  expectOptionalNullableString(row.worker_stage, contract, '$.worker_stage');
+  expectOptionalNullableString(row.worker_last_heartbeat, contract, '$.worker_last_heartbeat');
+  expectOptionalBoolean(row.worker_stopped_acknowledged, contract, '$.worker_stopped_acknowledged');
   expectArray(row.unresolved_targets, contract, '$.unresolved_targets').forEach((item, index) => {
     const path = `$.unresolved_targets[${index}]`;
     const target = expectRecord(item, contract, path);
@@ -345,6 +385,25 @@ function validateAnalysisStatus(value: unknown): AnalysisStatusResponse {
   });
   return row as unknown as AnalysisStatusResponse;
 }
+
+function validateWorkerState(value: unknown): ImportWorkerState {
+  const contract = 'import worker state';
+  const row = expectRecord(value, contract);
+  expectString(row.import_id, contract, '$.import_id');
+  expectString(row.job_status, contract, '$.job_status');
+  expectString(row.analysis_status, contract, '$.analysis_status');
+  expectString(row.worker_status, contract, '$.worker_status');
+  expectBoolean(row.worker_active, contract, '$.worker_active');
+  expectNullableString(row.current_track_id, contract, '$.current_track_id');
+  expectNullableString(row.processing_stage, contract, '$.processing_stage');
+  expectNullableString(row.last_heartbeat, contract, '$.last_heartbeat');
+  expectNullableString(row.stop_reason, contract, '$.stop_reason');
+  expectBoolean(row.stopped_acknowledged, contract, '$.stopped_acknowledged');
+  expectNullableString(row.stopped_at, contract, '$.stopped_at');
+  expectNullableString(row.error, contract, '$.error');
+  return row as unknown as ImportWorkerState;
+}
+
 
 async function parseResponse<T>(
   response: Response,
@@ -400,6 +459,37 @@ export async function cancelRekordboxImport(
   );
   return parseResponse(response, validateImportJob);
 }
+
+export async function pauseRekordboxAnalysis(
+  importId: string, accessToken: string, signal?: AbortSignal,
+): Promise<ImportJob> {
+  const response = await fetch(
+    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/pause`,
+    { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, signal },
+  );
+  return parseResponse(response, validateImportJob);
+}
+
+export async function deleteRekordboxImport(
+  importId: string, accessToken: string, signal?: AbortSignal,
+): Promise<ImportJob> {
+  const response = await fetch(
+    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` }, signal },
+  );
+  return parseResponse(response, validateImportJob);
+}
+
+export async function fetchRekordboxWorkerState(
+  importId: string, accessToken: string, signal?: AbortSignal,
+): Promise<ImportWorkerState> {
+  const response = await fetch(
+    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/worker-state`,
+    { headers: { Authorization: `Bearer ${accessToken}` }, signal },
+  );
+  return parseResponse(response, validateWorkerState);
+}
+
 
 export async function fetchRekordboxImportJob(
   importId: string, accessToken: string, signal?: AbortSignal,
@@ -522,6 +612,30 @@ export async function completeRekordboxImport(
   );
   return parseResponse(response, validateComplete);
 }
+
+export async function resumeRekordboxAnalysis(
+  importId: string,
+  accessToken: string,
+  options?: { affectedTrackIds?: string[]; signal?: AbortSignal },
+): Promise<CompleteResponse> {
+  const body = options?.affectedTrackIds?.length
+    ? JSON.stringify({ affected_track_ids: options.affectedTrackIds })
+    : undefined;
+  const response = await fetch(
+    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/resume`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body,
+      signal: options?.signal,
+    },
+  );
+  return parseResponse(response, validateComplete);
+}
+
 
 /** Poll analysis status for an existing import. */
 export async function fetchRekordboxAnalysisStatus(

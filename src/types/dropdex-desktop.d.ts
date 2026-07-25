@@ -15,6 +15,28 @@ export interface DesktopUsbState {
   error: string | null;
 }
 
+
+export interface DesktopUsbActivityState {
+  connected: boolean;
+  activeStreamCount: number;
+  pendingRequestCount: number;
+  activePlaybackCount: number;
+  releasing: boolean;
+  released: boolean;
+  lastError: string | null;
+}
+
+export interface DesktopUsbReleaseResult {
+  allStreamsClosed: boolean;
+  timedOut: boolean;
+  destroyedStreamCount: number;
+  remainingStreamCount: number;
+  pendingRequestCount: number;
+  disconnected: boolean;
+  state: DesktopUsbState;
+  activity: DesktopUsbActivityState;
+}
+
 export type DesktopTrackSourceResult =
   | {
       ok: true;
@@ -33,8 +55,10 @@ export interface DropDexDesktopBridge {
   readonly isElectron: true;
   getRuntimeInfo(): Promise<{ platform: string; version: string }>;
   getUsbState(): Promise<DesktopUsbState>;
-  selectUsbRoot(): Promise<{ cancelled: boolean; state: DesktopUsbState }>;
-  disconnectUsb(): Promise<DesktopUsbState>;
+  getUsbActivityState(): Promise<DesktopUsbActivityState>;
+  selectUsbRoot(): Promise<{ cancelled: boolean; state: DesktopUsbState; error?: string }>;
+  releaseUsb(): Promise<DesktopUsbReleaseResult>;
+  disconnectUsb(): Promise<DesktopUsbReleaseResult>;
   resolveTrackSource(segments: string[]): Promise<DesktopTrackSourceResult>;
   openExternal(url: string): Promise<boolean>;
 }

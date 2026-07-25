@@ -3,6 +3,12 @@ const { createReadStream, promises: fs } = require('node:fs');
 const { Readable } = require('node:stream');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { UsbStreamRegistry } = require('./usbStreamRegistry.cjs');
+const {
+  isPathInsideRoot,
+  resolveContainedRealPath,
+  validateUsbPathSegments,
+} = require('./usbPathSafety.cjs');
 
 const APP_SCHEME = 'dropdex-media';
 const USB_CONFIG_FILE = 'usb-connection.json';
@@ -12,6 +18,8 @@ const REKORDBOX_ROOT_ENTRIES = [REKORDBOX_DATABASE_FOLDER, ...REKORDBOX_MEDIA_FO
 const mediaTokens = new Map();
 let mainWindow = null;
 let usbConnection = null;
+let quittingAfterUsbRelease = false;
+const usbStreams = new UsbStreamRegistry({ closeTimeoutMs: 2500 });
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -47,6 +55,10 @@ async function loadUsbConnection() {
   try {
     const raw = JSON.parse(await fs.readFile(configPath(), 'utf8'));
     usbConnection = sanitizeConnection(raw);
+    if (usbConnection) {
+      usbConnection.rootPath = await fs.realpath(usbConnection.rootPath);
+      usbStreams.resetForConnection();
+    }
   } catch {
     usbConnection = null;
   }
@@ -59,26 +71,6 @@ async function persistUsbConnection() {
   }
   await fs.mkdir(path.dirname(configPath()), { recursive: true });
   await fs.writeFile(configPath(), JSON.stringify(usbConnection, null, 2), 'utf8');
-}
-
-function isPathInsideRoot(rootPath, candidatePath) {
-  const root = path.resolve(rootPath);
-  const candidate = path.resolve(candidatePath);
-  const relative = path.relative(root, candidate);
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
-function validateSegments(segments) {
-  if (!Array.isArray(segments) || segments.length === 0) return false;
-  return segments.every((segment) => (
-    typeof segment === 'string'
-    && segment.length > 0
-    && segment !== '.'
-    && segment !== '..'
-    && !segment.includes('/')
-    && !segment.includes('\\')
-    && !segment.includes('\0')
-  ));
 }
 
 async function findCaseInsensitiveEntry(directory, requestedName, expectedKind) {
@@ -116,14 +108,20 @@ async function findCaseInsensitiveEntry(directory, requestedName, expectedKind) 
 }
 
 async function resolveUsbTrackPath(segments) {
+  if (usbStreams.releasing || usbStreams.released) {
+    return { ok: false, error: { kind: 'permission_denied', message: 'USB media access has been released.' } };
+  }
   if (!usbConnection) {
     return { ok: false, error: { kind: 'permission_denied', message: 'No USB drive is connected.' } };
   }
-  if (!validateSegments(segments)) {
+  if (!validateUsbPathSegments(segments)) {
     return { ok: false, error: { kind: 'security', message: 'Unsafe USB path was rejected.' } };
   }
 
-  let current = usbConnection.rootPath;
+  // Capture the canonical root once so disconnect cannot replace the shared
+  // connection object halfway through an in-flight containment check.
+  const rootPath = usbConnection.rootPath;
+  let current = rootPath;
   try {
     for (let index = 0; index < segments.length; index += 1) {
       const expectedKind = index === segments.length - 1 ? 'file' : 'directory';
@@ -139,16 +137,20 @@ async function resolveUsbTrackPath(segments) {
         };
       }
       current = path.join(current, match.name);
-      if (!isPathInsideRoot(usbConnection.rootPath, current)) {
+      if (!isPathInsideRoot(rootPath, current)) {
         return { ok: false, error: { kind: 'security', message: 'Resolved path escaped the selected USB root.' } };
       }
     }
 
-    const stat = await fs.stat(current);
+    const realPath = await resolveContainedRealPath(rootPath, current);
+    if (!realPath) {
+      return { ok: false, error: { kind: 'security', message: 'Resolved USB path escaped the selected USB root.' } };
+    }
+    const stat = await fs.stat(realPath);
     if (!stat.isFile()) {
       return { ok: false, error: { kind: 'type_mismatch', segment: segments.at(-1), message: 'Resolved USB entry is not a file.' } };
     }
-    return { ok: true, filePath: current, size: stat.size };
+    return { ok: true, filePath: realPath, size: stat.size };
   } catch (error) {
     const code = error && typeof error === 'object' ? error.code : null;
     if (code === 'ENOENT' || code === 'ENOTDIR') {
@@ -280,7 +282,9 @@ function pruneMediaTokens() {
 }
 
 async function handleMediaRequest(request) {
+  let finishRequest = null;
   try {
+    finishRequest = usbStreams.beginRequest();
     const requestUrl = new URL(request.url);
     const token = decodeURIComponent(requestUrl.pathname.replace(/^\/+/, ''));
     const entry = mediaTokens.get(token);
@@ -298,7 +302,11 @@ async function handleMediaRequest(request) {
         },
       });
     }
-    const stat = await fs.stat(entry.filePath);
+    const realPath = await resolveContainedRealPath(usbConnection.rootPath, entry.filePath);
+    if (!realPath) {
+      return new Response('Unsafe media path.', { status: 403 });
+    }
+    const stat = await fs.stat(realPath);
     const range = parseRange(request.headers.get('range'), stat.size);
     if (range && range.invalid) {
       return new Response(null, {
@@ -316,21 +324,51 @@ async function handleMediaRequest(request) {
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'no-store',
       'Content-Length': String(contentLength),
-      'Content-Type': mimeTypeFor(entry.filePath),
+      'Content-Type': mimeTypeFor(realPath),
     });
     if (range) headers.set('Content-Range', `bytes ${start}-${end}/${stat.size}`);
 
     if (request.method === 'HEAD') {
       return new Response(null, { status: range ? 206 : 200, headers });
     }
-    const nodeStream = createReadStream(entry.filePath, { start, end });
+    usbStreams.assertAcceptingRequests();
+    const nodeStream = createReadStream(realPath, { start, end });
+    try {
+      usbStreams.track(nodeStream, { playback: true });
+    } catch (error) {
+      nodeStream.destroy();
+      throw error;
+    }
+    finishRequest();
+    finishRequest = null;
     return new Response(Readable.toWeb(nodeStream), {
       status: range ? 206 : 200,
       headers,
     });
   } catch (error) {
-    return new Response(error instanceof Error ? error.message : 'Media stream failed.', { status: 500 });
+    const status = error && error.code === 'USB_RELEASING' ? 409 : 500;
+    return new Response(error instanceof Error ? error.message : 'Media stream failed.', { status });
+  } finally {
+    finishRequest?.();
   }
+}
+
+async function releaseUsbAccess({ disconnect = false } = {}) {
+  // Close the admission gate before invalidating tokens so a concurrent IPC
+  // request cannot mint a fresh USB media URL during release.
+  usbStreams.beginRelease();
+  mediaTokens.clear();
+  const streamResult = await usbStreams.release();
+  if (disconnect) {
+    usbConnection = null;
+    await persistUsbConnection();
+  }
+  return {
+    ...streamResult,
+    disconnected: disconnect,
+    state: await desktopConnectionState(),
+    activity: usbStreams.snapshot({ connected: Boolean(usbConnection) }),
+  };
 }
 
 async function selectUsbRoot() {
@@ -343,7 +381,17 @@ async function selectUsbRoot() {
     return { cancelled: true, state: await desktopConnectionState() };
   }
 
-  const rootPath = path.resolve(result.filePaths[0]);
+  if (usbConnection || usbStreams.snapshot().activeStreamCount > 0) {
+    const released = await releaseUsbAccess({ disconnect: true });
+    if (!released.allStreamsClosed) {
+      return {
+        cancelled: false,
+        state: released.state,
+        error: 'The previous USB still has active media reads. Try disconnecting again.',
+      };
+    }
+  }
+  const rootPath = await fs.realpath(path.resolve(result.filePaths[0]));
   usbConnection = {
     rootPath,
     volumeName: path.basename(rootPath) || rootPath,
@@ -351,33 +399,47 @@ async function selectUsbRoot() {
   };
   await persistUsbConnection();
   mediaTokens.clear();
+  usbStreams.resetForConnection();
   return { cancelled: false, state: await desktopConnectionState() };
 }
 
 function registerIpcHandlers() {
   ipcMain.handle('dropdex:runtime-info', () => ({ platform: process.platform, version: app.getVersion() }));
   ipcMain.handle('dropdex:usb-state', () => desktopConnectionState());
+  ipcMain.handle('dropdex:usb-activity-state', () => (
+    usbStreams.snapshot({ connected: Boolean(usbConnection) })
+  ));
   ipcMain.handle('dropdex:select-usb-root', () => selectUsbRoot());
-  ipcMain.handle('dropdex:disconnect-usb', async () => {
-    usbConnection = null;
-    mediaTokens.clear();
-    await persistUsbConnection();
-    return desktopConnectionState();
-  });
+  ipcMain.handle('dropdex:release-usb', () => releaseUsbAccess({ disconnect: false }));
+  ipcMain.handle('dropdex:disconnect-usb', () => releaseUsbAccess({ disconnect: true }));
   ipcMain.handle('dropdex:resolve-track-source', async (_event, segments) => {
-    pruneMediaTokens();
-    const resolved = await resolveUsbTrackPath(segments);
-    if (!resolved.ok) return resolved;
-    const token = crypto.randomUUID();
-    mediaTokens.set(token, { filePath: resolved.filePath, lastAccess: Date.now() });
-    return {
-      ok: true,
-      source: {
-        kind: 'url',
-        url: `${APP_SCHEME}://track/${encodeURIComponent(token)}`,
-        size: resolved.size,
-      },
-    };
+    let finishRequest = null;
+    try {
+      finishRequest = usbStreams.beginRequest();
+      pruneMediaTokens();
+      const resolved = await resolveUsbTrackPath(segments);
+      if (!resolved.ok) return resolved;
+      // Release may have started while path resolution awaited the filesystem.
+      // Re-check admission before minting a token so no post-release URL exists.
+      usbStreams.assertAcceptingRequests();
+      const token = crypto.randomUUID();
+      mediaTokens.set(token, { filePath: resolved.filePath, lastAccess: Date.now() });
+      return {
+        ok: true,
+        source: {
+          kind: 'url',
+          url: `${APP_SCHEME}://track/${encodeURIComponent(token)}`,
+          size: resolved.size,
+        },
+      };
+    } catch (error) {
+      if (error && error.code === 'USB_RELEASING') {
+        return { ok: false, error: { kind: 'permission_denied', message: 'USB media access has been released.' } };
+      }
+      return { ok: false, error: { kind: 'unexpected', message: error instanceof Error ? error.message : String(error) } };
+    } finally {
+      finishRequest?.();
+    }
   });
   ipcMain.handle('dropdex:open-external', async (_event, url) => {
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return false;
@@ -443,6 +505,15 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
+});
+
+app.on('before-quit', (event) => {
+  if (quittingAfterUsbRelease) return;
+  const activity = usbStreams.snapshot();
+  if (activity.activeStreamCount === 0 && activity.pendingRequestCount === 0) return;
+  event.preventDefault();
+  quittingAfterUsbRelease = true;
+  void releaseUsbAccess({ disconnect: true }).finally(() => app.exit(0));
 });
 
 app.on('window-all-closed', () => {

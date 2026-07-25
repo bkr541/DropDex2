@@ -57,6 +57,13 @@ describe('rekordbox import lifecycle', () => {
     expect(isImportInFlight(resumed)).toBe(true);
   });
 
+  it('treats pause requests as live work but paused and interrupted jobs as resumable history', () => {
+    expect(isImportInFlight(makeImport({ status: 'pause_requested', analysis_status: 'pause_requested' }))).toBe(true);
+    expect(isImportInFlight(makeImport({ status: 'stopping', analysis_status: 'stopping' }))).toBe(true);
+    expect(isImportInFlight(makeImport({ status: 'paused', analysis_status: 'paused' }))).toBe(false);
+    expect(isImportInFlight(makeImport({ status: 'interrupted', analysis_status: 'interrupted' }))).toBe(false);
+  });
+
 
   it('does not present an abandoned historical row as live background work', () => {
     const now = Date.parse('2026-07-22T12:00:00Z');

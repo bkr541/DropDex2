@@ -5,6 +5,7 @@ import {
   useEffect,
   useReducer,
   useRef,
+  useState,
   type ReactNode,
 } from 'react';
 import {
@@ -23,7 +24,8 @@ import {
   type ResolveUsbFileOptions,
   type UsbFileResolutionError,
 } from '../lib/usb/resolveUsbFile';
-import type { DesktopUsbState } from '../types/dropdex-desktop';
+import type { DesktopUsbActivityState, DesktopUsbReleaseResult, DesktopUsbState } from '../types/dropdex-desktop';
+import { stopUsbBackedPlayback } from '../lib/usb/usbPlaybackCoordinator';
 
 export type UsbStatus =
   | 'unsupported'
@@ -31,6 +33,7 @@ export type UsbStatus =
   | 'permission-required'
   | 'connecting'
   | 'connected'
+  | 'released'
   | 'wrong_root'
   | 'unavailable'
   | 'error';
@@ -58,7 +61,7 @@ type UsbAction =
   | { type: 'SET_UNSUPPORTED' }
   | { type: 'SET_DISCONNECTED' }
   | { type: 'SET_CONNECTING' }
-  | { type: 'SET_DESKTOP_STATE'; state: DesktopUsbState }
+  | { type: 'SET_DESKTOP_STATE'; state: DesktopUsbState; activity?: DesktopUsbActivityState }
   | {
       type: 'SET_PERMISSION_REQUIRED';
       handle: FileSystemDirectoryHandle;
@@ -91,7 +94,20 @@ const initial: UsbState = {
   structureWarning: null,
 };
 
-function desktopStateToUsbState(state: DesktopUsbState): UsbState {
+function desktopStateToUsbState(
+  state: DesktopUsbState,
+  activity?: DesktopUsbActivityState,
+): UsbState {
+  if (activity?.released && state.status !== 'disconnected') {
+    return {
+      ...initial,
+      status: 'released',
+      volumeName: state.volumeName,
+      connectedAt: state.connectedAt,
+      structureWarning: state.structureWarning,
+      error: activity.lastError,
+    };
+  }
   switch (state.status) {
     case 'connected':
       return {
@@ -133,7 +149,7 @@ function reducer(state: UsbState, action: UsbAction): UsbState {
     case 'SET_CONNECTING':
       return { ...state, status: 'connecting', error: null };
     case 'SET_DESKTOP_STATE':
-      return desktopStateToUsbState(action.state);
+      return desktopStateToUsbState(action.state, action.activity);
     case 'SET_PERMISSION_REQUIRED':
       return {
         ...state,
@@ -183,7 +199,9 @@ function reducer(state: UsbState, action: UsbAction): UsbState {
 
 export interface UsbConnectionContextValue extends UsbState {
   runtime: UsbRuntime;
+  activity: DesktopUsbActivityState | null;
   connect(): Promise<void>;
+  release(): Promise<DesktopUsbReleaseResult | null>;
   disconnect(): Promise<void>;
   reconnect(): Promise<void>;
   selectNewUsb(): Promise<void>;
@@ -251,6 +269,7 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
   const runtime: UsbRuntime = window.dropdexDesktop?.isElectron ? 'electron' : 'browser';
   const desktop = window.dropdexDesktop;
   const [state, dispatch] = useReducer(reducer, initial);
+  const [activity, setActivity] = useState<DesktopUsbActivityState | null>(null);
 
   const handleRef = useRef<FileSystemDirectoryHandle | null>(null);
   const playableRef = useRef(false);
@@ -272,9 +291,13 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
   const refreshDesktopState = useCallback(async (): Promise<UsbStatus> => {
     if (!desktop) return 'unsupported';
     try {
-      const next = await desktop.getUsbState();
-      dispatchState({ type: 'SET_DESKTOP_STATE', state: next });
-      return next.status;
+      const [next, nextActivity] = await Promise.all([
+        desktop.getUsbState(),
+        desktop.getUsbActivityState(),
+      ]);
+      setActivity(nextActivity);
+      dispatchState({ type: 'SET_DESKTOP_STATE', state: next, activity: nextActivity });
+      return nextActivity.released && next.status !== 'disconnected' ? 'released' : next.status;
     } catch (error) {
       dispatchState({ type: 'SET_ERROR', error: error instanceof Error ? error.message : String(error) });
       return 'error';
@@ -329,7 +352,13 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
     try {
       if (runtime === 'electron' && desktop) {
         const result = await desktop.selectUsbRoot();
-        dispatchState({ type: 'SET_DESKTOP_STATE', state: result.state });
+        if (result.error) {
+          dispatchState({ type: 'SET_ERROR', error: result.error });
+          return;
+        }
+        const nextActivity = await desktop.getUsbActivityState();
+        setActivity(nextActivity);
+        dispatchState({ type: 'SET_DESKTOP_STATE', state: result.state, activity: nextActivity });
         return;
       }
       await chooseBrowserUsb();
@@ -342,24 +371,46 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
     }
   }, [chooseBrowserUsb, desktop, dispatchState, runtime]);
 
+  const release = useCallback(async (): Promise<DesktopUsbReleaseResult | null> => {
+    const playbackErrors = await stopUsbBackedPlayback();
+    if (playbackErrors.length > 0) {
+      console.warn('One or more USB playback cleanup handlers failed.', playbackErrors);
+    }
+    if (runtime !== 'electron' || !desktop) return null;
+    const result = await desktop.releaseUsb();
+    setActivity(result.activity);
+    dispatchState({ type: 'SET_DESKTOP_STATE', state: result.state, activity: result.activity });
+    return result;
+  }, [desktop, dispatchState, runtime]);
+
   const disconnect = useCallback(async () => {
+    const playbackErrors = await stopUsbBackedPlayback();
+    if (playbackErrors.length > 0) {
+      console.warn('One or more USB playback cleanup handlers failed.', playbackErrors);
+    }
     if (runtime === 'electron' && desktop) {
-      const next = await desktop.disconnectUsb();
-      dispatchState({ type: 'SET_DESKTOP_STATE', state: next });
+      const result = await desktop.disconnectUsb();
+      setActivity(result.activity);
+      dispatchState({ type: 'SET_DESKTOP_STATE', state: result.state, activity: result.activity });
       return;
     }
     await removeUsbHandle();
+    setActivity(null);
     dispatchState({ type: 'SET_DISCONNECTED' });
   }, [desktop, dispatchState, runtime]);
 
   const reconnect = useCallback(async () => {
     dispatchState({ type: 'SET_CONNECTING' });
     if (runtime === 'electron') {
-      await refreshDesktopState();
+      if (stateRef.current.status === 'released') {
+        await connect();
+      } else {
+        await refreshDesktopState();
+      }
       return;
     }
     await restoreFromStore(dispatchState);
-  }, [dispatchState, refreshDesktopState, runtime]);
+  }, [connect, dispatchState, refreshDesktopState, runtime]);
 
   const selectNewUsb = useCallback(async () => {
     await connect();
@@ -444,7 +495,9 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
   const value: UsbConnectionContextValue = {
     ...state,
     runtime,
+    activity,
     connect,
+    release,
     disconnect,
     reconnect,
     selectNewUsb,

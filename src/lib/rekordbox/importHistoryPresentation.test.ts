@@ -15,7 +15,7 @@ describe('import history presentation', () => {
     });
   });
 
-  it('allows only completed imports to become active', () => {
+  it('allows completed, paused, and interrupted snapshots to remain available', () => {
     expect(getImportHistoryPresentation('completed', false, 'partial')).toMatchObject({
       label: 'Completed with warnings', canActivate: true, tone: 'warning',
     });
@@ -24,6 +24,24 @@ describe('import history presentation', () => {
     });
     expect(getImportHistoryPresentation('completed', false, 'parsing')).toMatchObject({
       label: 'Parsing analysis data', canActivate: true, terminal: false, tone: 'info',
+    });
+    expect(getImportHistoryPresentation('paused', true, 'paused')).toMatchObject({
+      label: 'Analysis paused', canActivate: true, canRetry: true, terminal: true,
+    });
+    expect(getImportHistoryPresentation('interrupted', true, 'interrupted')).toMatchObject({
+      label: 'Analysis interrupted', canActivate: true, canRetry: true, terminal: true,
+    });
+  });
+
+  it('distinguishes pause, worker stop, and destructive deletion states', () => {
+    expect(getImportHistoryPresentation('pause_requested', false, 'pause_requested')).toMatchObject({
+      label: 'Stopping cloud analysis', canActivate: false, terminal: false,
+    });
+    expect(getImportHistoryPresentation('stopping', false, 'stopping')).toMatchObject({
+      label: 'Stopping worker', canActivate: false, terminal: false,
+    });
+    expect(getImportHistoryPresentation('deleting', false, 'stopping')).toMatchObject({
+      label: 'Deleting import', canActivate: false, terminal: false,
     });
   });
 

@@ -85,11 +85,18 @@ bridge lets the main process:
 - validate and resolve track paths beneath that approved root,
 - reject traversal and ambiguous case-insensitive matches,
 - stream audio through `dropdex-media://` with byte-range support for seeking,
+- register and destroy every active USB-backed media stream during release,
+- expose separate USB activity and cloud-worker stop acknowledgements,
 - keep the browser File System Access implementation as a fallback web mode.
 
 This removes the Brave-specific `showDirectoryPicker` failure from the desktop
 workflow. The browser build still requires Chrome/Edge-compatible folder access
 and a secure origin (`https://` or localhost).
+
+During analysis, **Pause Analysis** preserves completed work and uploaded assets
+for resume. **Delete Import** is a separate destructive action that waits for the
+backend worker to acknowledge it has stopped writing before cleanup. See
+`docs/rekordbox-usb-import-safety.md` for the coordinated shutdown contract.
 
 The shared DropDex waveform now uses one canvas renderer across library rows,
 track detail, and the bottom transport. The transport waveform replaces the old

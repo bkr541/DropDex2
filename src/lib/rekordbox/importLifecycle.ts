@@ -1,9 +1,11 @@
 import type { RekordboxAnalysisStatus, RekordboxImport } from '../../types';
 
 const TERMINAL_JOB_STATUSES = new Set<RekordboxImport['status']>([
+  'paused',
   'cancelled',
   'completed',
   'failed',
+  'interrupted',
 ]);
 
 const ACTIVE_ANALYSIS_STATUSES = new Set<RekordboxAnalysisStatus>([
@@ -11,6 +13,8 @@ const ACTIVE_ANALYSIS_STATUSES = new Set<RekordboxAnalysisStatus>([
   'uploading',
   'uploaded',
   'parsing',
+  'pause_requested',
+  'stopping',
 ]);
 
 export const IMPORT_ACTIVITY_STALE_MS = 60 * 60 * 1000;
@@ -50,6 +54,7 @@ export function isAnalysisInFlight(status: RekordboxAnalysisStatus | null): bool
 
 function hasActiveRuntimeState(item: RekordboxImport): boolean {
   if (item.status === 'failed' || item.status === 'cancelled') return false;
+  if (item.status === 'paused' || item.status === 'interrupted') return false;
   if (item.status === 'completed') return isAnalysisInFlight(item.analysis_status);
   return true;
 }
@@ -114,6 +119,11 @@ export function describeAnalysisStatus(status: RekordboxAnalysisStatus | null): 
     case 'uploading': return 'Uploading analysis files';
     case 'uploaded': return 'Preparing analysis';
     case 'parsing': return 'Parsing analysis data';
+    case 'pause_requested': return 'Stopping cloud analysis';
+    case 'stopping': return 'Stopping cloud analysis';
+    case 'paused': return 'Analysis paused';
+    case 'interrupted': return 'Analysis interrupted';
+    case 'cancelled': return 'Analysis deleted';
     case 'completed': return 'Analysis completed';
     case 'partial': return 'Analysis completed with warnings';
     case 'failed': return 'Analysis failed';

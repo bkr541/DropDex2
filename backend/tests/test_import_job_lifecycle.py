@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import threading
 import time
 from types import SimpleNamespace
 
@@ -218,18 +219,256 @@ def test_cancel_during_processing_is_idempotent_and_terminal(monkeypatch):
         import_jobs.complete_import_job("job-1", "u")
 
 
-def test_restart_recovery_marks_processing_job_retryable_failed(monkeypatch):
+def test_pause_before_worker_start_is_idempotent_and_preserves_data(monkeypatch):
+    import_id = "job-pause-before-start"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "processing",
+            "analysis_status": "parsing",
+        }
+    ])
+    client.tables["rekordbox_tracks"] = [{"id": "track-1", "import_id": import_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    first = import_jobs.pause_import_analysis(import_id, "u", wait_timeout_seconds=0)
+    second = import_jobs.pause_import_analysis(import_id, "u", wait_timeout_seconds=0)
+
+    assert first["status"] == "paused"
+    assert second["status"] == "paused"
+    assert client.tables["rekordbox_tracks"] == [{"id": "track-1", "import_id": import_id}]
+
+
+def test_delete_waits_for_worker_acknowledgement_before_cleanup(monkeypatch):
+    import_id = "job-delete-waits"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "processing",
+            "analysis_status": "parsing",
+        }
+    ])
+    client.tables["rekordbox_tracks"] = [{"id": "track-1", "import_id": import_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+    import_jobs.worker_registry.register(import_id)
+
+    def acknowledge() -> None:
+        time.sleep(0.02)
+        import_jobs.worker_registry.acknowledge_stopped(import_id, status="stopped")
+
+    thread = threading.Thread(target=acknowledge)
+    thread.start()
+    row = import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0.2)
+    thread.join()
+
+    assert row["status"] == "cancelled"
+    assert client.tables["rekordbox_tracks"] == []
+
+
+def test_delete_timeout_never_races_cleanup(monkeypatch):
+    import_id = "job-delete-timeout"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "processing",
+            "analysis_status": "parsing",
+        }
+    ])
+    client.tables["rekordbox_tracks"] = [{"id": "track-1", "import_id": import_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+    monkeypatch.setattr(import_jobs, "_schedule_delete_finalizer", lambda *_a, **_k: None)
+    import_jobs.worker_registry.register(import_id)
+
+    row = import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
+
+    assert row["status"] == "stopping"
+    assert row["analysis_worker_stopped_acknowledged"] is False
+    assert client.tables["rekordbox_tracks"] == [{"id": "track-1", "import_id": import_id}]
+    import_jobs.worker_registry.acknowledge_stopped(import_id, status="stopped")
+
+
+def test_repeated_pause_while_worker_is_stopping_is_idempotent(monkeypatch):
+    import_id = "job-pause-stopping-repeat"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "processing",
+            "analysis_status": "parsing",
+        }
+    ])
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+    import_jobs.worker_registry.register(import_id)
+
+    first = import_jobs.pause_import_analysis(import_id, "u", wait_timeout_seconds=0)
+    second = import_jobs.pause_import_analysis(import_id, "u", wait_timeout_seconds=0)
+
+    assert first["status"] == "stopping"
+    assert second["status"] == "stopping"
+    assert second["analysis_worker_status"] == "stopping"
+    import_jobs.worker_registry.acknowledge_stopped(import_id, status="paused")
+
+
+def test_repeated_delete_while_worker_is_stopping_is_idempotent(monkeypatch):
+    import_id = "job-delete-stopping-repeat"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "processing",
+            "analysis_status": "parsing",
+        }
+    ])
+    client.tables["rekordbox_tracks"] = [{"id": "track-1", "import_id": import_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+    monkeypatch.setattr(import_jobs, "_schedule_delete_finalizer", lambda *_a, **_k: None)
+    import_jobs.worker_registry.register(import_id)
+
+    first = import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
+    second = import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
+
+    assert first["status"] == "stopping"
+    assert second["status"] == "stopping"
+    assert client.tables["rekordbox_tracks"] == [{"id": "track-1", "import_id": import_id}]
+    import_jobs.worker_registry.acknowledge_stopped(import_id, status="stopped")
+
+
+def test_failed_import_can_be_explicitly_deleted(monkeypatch):
+    import_id = "job-failed-delete"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "failed",
+            "analysis_status": "failed",
+        }
+    ])
+    client.tables["rekordbox_tracks"] = [{"id": "track-1", "import_id": import_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    row = import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
+
+    assert row["status"] == "cancelled"
+    assert client.tables["rekordbox_tracks"] == []
+
+
+def test_storage_failure_preserves_asset_metadata_for_cleanup_retry(monkeypatch):
+    import_id = "job-storage-retry-paths"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "deleting",
+            "analysis_status": "stopping",
+            "analysis_worker_stopped_acknowledged": True,
+        }
+    ])
+    client.tables["rekordbox_analysis_assets"] = [
+        {"id": "asset-1", "import_id": import_id, "storage_path": "u/i/a.dat"}
+    ]
+    client.tables["rekordbox_tracks"] = [
+        {"id": "track-1", "import_id": import_id}
+    ]
+
+    class FailingBucket:
+        def remove(self, paths):
+            assert paths == ["u/i/a.dat"]
+            raise RuntimeError("storage offline")
+
+    class FailingStorage:
+        def from_(self, _bucket):
+            return FailingBucket()
+
+    client.storage = FailingStorage()
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+    import_jobs.worker_registry.acknowledge_stopped(import_id, status="stopped")
+
+    with pytest.raises(RuntimeError, match="storage offline"):
+        import_jobs.cleanup_partial_import(
+            import_id,
+            "u",
+            sb=client,
+            require_worker_ack=True,
+        )
+
+    assert client.tables["rekordbox_analysis_assets"] == [
+        {"id": "asset-1", "import_id": import_id, "storage_path": "u/i/a.dat"}
+    ]
+    assert client.tables["rekordbox_tracks"] == [
+        {"id": "track-1", "import_id": import_id}
+    ]
+
+
+def test_delete_cleanup_failure_remains_retryable_and_idempotent(monkeypatch):
+    import_id = "job-delete-cleanup-retry"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "failed",
+            "analysis_status": "failed",
+        }
+    ])
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+    monkeypatch.setattr(
+        import_jobs,
+        "cleanup_partial_import",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("storage unavailable")),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
+
+    assert exc.value.status_code == 503
+    row = client.tables["rekordbox_imports"][0]
+    assert row["status"] == "deleting"
+    assert row["error_code"] == "DELETE_CLEANUP_FAILED"
+    assert row["retryable"] is True
+
+    monkeypatch.setattr(import_jobs, "cleanup_partial_import", lambda *_a, **_k: None)
+    retried = import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
+    assert retried["status"] == "cancelled"
+
+
+def test_late_pause_acknowledgement_persists_resumable_state(monkeypatch):
+    import_id = "job-late-pause"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "stopping",
+            "analysis_status": "stopping",
+            "analysis_worker_stopped_acknowledged": False,
+        }
+    ])
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+    import_jobs.worker_registry.register(import_id)
+    import_jobs.worker_registry.acknowledge_stopped(import_id, status="paused")
+
+    row = import_jobs.finalize_paused_import(import_id, "u")
+
+    assert row["status"] == "paused"
+    assert row["analysis_status"] == "paused"
+    assert row["analysis_worker_stopped_acknowledged"] is True
+
+
+def test_restart_recovery_marks_processing_job_resumable_interrupted(monkeypatch):
     client = FakeClient([{"id": "job-2", "user_id": "u", "status": "processing"}])
     monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
 
     assert import_jobs.recover_interrupted_import_jobs() == 1
     row = client.tables["rekordbox_imports"][0]
-    assert row["status"] == "failed"
-    assert row["error_code"] == "IMPORT_INTERRUPTED"
+    assert row["status"] == "interrupted"
+    assert row["analysis_status"] == "interrupted"
+    assert row["analysis_worker_stopped_acknowledged"] is True
+    assert row["error_code"] == "ANALYSIS_INTERRUPTED"
     assert row["retryable"] is True
 
 
-def test_restart_recovery_terminates_analysis_on_completed_snapshot(monkeypatch):
+def test_restart_recovery_preserves_completed_snapshot_as_resumable(monkeypatch):
     client = FakeClient([
         {
             "id": "job-analysis-restart",
@@ -247,10 +486,37 @@ def test_restart_recovery_terminates_analysis_on_completed_snapshot(monkeypatch)
     assert import_jobs.recover_interrupted_import_jobs() == 1
     row = client.tables["rekordbox_imports"][0]
     assert row["status"] == "completed"
-    assert row["analysis_status"] == "failed"
+    assert row["analysis_status"] == "interrupted"
+    assert row["analysis_worker_status"] == "interrupted"
+    assert row["analysis_worker_stopped_acknowledged"] is True
     assert row["analysis_current_track_label"] is None
     assert row["error_code"] == "ANALYSIS_INTERRUPTED"
     assert row["retryable"] is True
+
+
+def test_restart_preserves_delete_intent_without_cleaning_data(monkeypatch):
+    import_id = "job-delete-restart"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "stopping",
+            "analysis_status": "stopping",
+            "analysis_worker_status": "cancel_requested",
+        }
+    ])
+    client.tables["rekordbox_tracks"] = [{"id": "track-1", "import_id": import_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    assert import_jobs.recover_interrupted_import_jobs() == 1
+    row = client.tables["rekordbox_imports"][0]
+    assert row["status"] == "stopping"
+    assert row["analysis_status"] == "stopping"
+    assert row["analysis_worker_status"] == "stopped"
+    assert row["analysis_worker_stopped_acknowledged"] is True
+    assert row["error_code"] == "DELETE_INTERRUPTED"
+    assert row["retryable"] is True
+    assert client.tables["rekordbox_tracks"] == [{"id": "track-1", "import_id": import_id}]
 
 
 def test_failed_transition_terminates_stale_analysis_progress(monkeypatch):

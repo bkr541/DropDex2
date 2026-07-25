@@ -38,7 +38,8 @@ import { useRecentTracks } from './hooks/useRekordboxTracks';
 import { useTrackPlaylists } from './hooks/useTrackPlaylists';
 import { useImportList } from './hooks/useImportList';
 import { useTrackPreviewWaveforms } from './hooks/useTrackPreviewWaveforms';
-import { fetchReviewTracks, setActiveImport, deleteImport } from './lib/queries/rekordbox';
+import { fetchReviewTracks, setActiveImport } from './lib/queries/rekordbox';
+import { deleteRekordboxImport } from './lib/api/rekordboxImport';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { getImportHistoryPresentation } from './lib/rekordbox/importHistoryPresentation';
 import { getImportProgress, getInFlightImport, isImportInFlight, isImportStalled } from './lib/rekordbox/importLifecycle';
@@ -322,7 +323,7 @@ function ImportStatusView({
   const stalled = isImportStalled(item);
   const statusLabel = stalled ? 'Interrupted' : presentation.label;
   const statusTone = stalled ? 'warning' : presentation.tone;
-  const analysisCanResume = item.status === 'completed'
+  const analysisCanResume = (item.status === 'completed' || item.status === 'paused' || item.status === 'interrupted')
     && !inFlight
     && item.analysis_status !== 'completed'
     && item.analysis_status !== 'not_requested';
@@ -396,7 +397,7 @@ function ImportStatusView({
           {analysisCanResume && (
             <button type="button" onClick={onResume} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Resume Analysis</button>
           )}
-          {(presentation.canRetry || stalled) && item.status !== 'completed' && (
+          {(presentation.canRetry || stalled) && !analysisCanResume && (
             <button type="button" onClick={onRetryImport} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Retry Import</button>
           )}
         </div>
@@ -709,7 +710,16 @@ export default function App() {
     if (!confirm(confirmMsg)) return;
 
     try {
-      await deleteImport(imp.id);
+      const token = session?.access_token;
+      if (!token) throw new Error('Your session expired. Sign in again before deleting an import.');
+      const result = await deleteRekordboxImport(imp.id, token);
+      if (result.status !== 'cancelled') {
+        setImportNotice({
+          kind: 'warning',
+          title: 'Delete is waiting for worker shutdown',
+          detail: 'DropDex will not delete cloud data until the analysis worker acknowledges that it stopped writing.',
+        });
+      }
       if (route.name === 'import' && route.importId === imp.id) {
         navigate({ name: 'settings' }, { replace: true });
       }
@@ -1496,7 +1506,7 @@ export default function App() {
                               {(importPresentation.canRetry || importStalled) && (
                                 <button
                                   onClick={() => {
-                                    if (imp.status === 'completed') {
+                                    if (imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted') {
                                       navigate({ name: 'import', importId: imp.id, resume: true });
                                     } else {
                                       setIsImportModalOpen(true);
@@ -1504,15 +1514,18 @@ export default function App() {
                                   }}
                                   className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
                                 >
-                                  {imp.status === 'completed' ? 'Resume' : 'Retry'}
+                                  {imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted' ? 'Resume' : 'Retry'}
                                 </button>
                               )}
-                              {!importInFlight && (
+                              {(!importInFlight || (
+                                imp.retryable
+                                && (imp.status === 'stopping' || imp.status === 'deleting')
+                              )) && (
                                 <button
                                   onClick={() => handleDeleteImport(imp)}
                                   className="text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors"
                                 >
-                                  Delete
+                                  {imp.status === 'stopping' || imp.status === 'deleting' ? 'Retry Delete' : 'Delete'}
                                 </button>
                               )}
                             </div>

@@ -19,6 +19,27 @@ class ImportJobResponse(BaseModel):
     error_code: str | None = None
     error_message: str | None = None
     retryable: bool = False
+    analysis_status: str | None = None
+    worker_status: str | None = None
+    worker_stage: str | None = None
+    worker_current_track_id: str | None = None
+    worker_last_heartbeat: str | None = None
+    worker_stopped_acknowledged: bool = True
+
+
+class ImportWorkerStateResponse(BaseModel):
+    import_id: str
+    job_status: str
+    analysis_status: str
+    worker_status: str
+    worker_active: bool
+    current_track_id: str | None = None
+    processing_stage: str | None = None
+    last_heartbeat: str | None = None
+    stop_reason: str | None = None
+    stopped_acknowledged: bool
+    stopped_at: str | None = None
+    error: str | None = None
 
 
 class PlaylistSummary(BaseModel):
@@ -179,6 +200,12 @@ class AnalysisStatusResponse(BaseModel):
     failed_upload_count: int = 0
     failed_parse_count: int = 0
     affected_track_count: int = 0
+    job_status: str = "unknown"
+    worker_status: str = "idle"
+    worker_active: bool = False
+    worker_stage: Optional[str] = None
+    worker_last_heartbeat: Optional[str] = None
+    worker_stopped_acknowledged: bool = True
 
 
 # ── Related Tracks import models ───────────────────────────────────────────────

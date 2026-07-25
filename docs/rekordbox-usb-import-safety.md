@@ -1,49 +1,162 @@
-# Rekordbox USB import safety
+# Rekordbox USB and analysis-worker safety
 
-## When DropDex accesses the USB
+DropDex treats local USB access and cloud analysis as two independent lifecycles. A green USB release acknowledgement proves that Electron and the browser have stopped reading the selected drive. A paused worker acknowledgement proves that the backend has stopped producing analysis writes. Neither acknowledgement implies the other.
 
-DropDex accesses the selected Rekordbox USB only during the local browser phase:
+## Safety states shown to users
 
-1. The folder picker returns read-only browser `File` objects.
-2. DropDex locates `exportLibrary.db` and the ANLZ files beneath `PIONEER/USBANLZ`.
-3. The database is uploaded to obtain a manifest.
-4. Only ANLZ files named by that manifest are uploaded in bounded batches.
+During a USB-folder import, the UI reports these gates separately:
 
-The frontend does not request writable File System Access API handles and does not write, rename, delete, or modify files on the USB. Rekordbox should remain closed during this phase so it does not open the device library while DropDex still has active reads in flight. The drive should not be ejected until DropDex confirms release.
+1. **Stopping local USB reads**
+2. **USB access released**
+3. **Stopping cloud analysis** or **Stopping worker before delete**
 
-## When the USB is released
+Rekordbox must remain closed only while local USB activity is non-zero. Once **USB access released** is shown, DropDex is operating from uploaded cloud assets and the user may open Rekordbox or eject the drive even if cloud analysis is still stopping.
 
-Before cloud parsing begins, DropDex performs one idempotent cleanup routine. It aborts the local controller, stops the upload scheduler, cancels retry timers, clears selected database and ANLZ `File` references, clears matched-file arrays, batch arrays, and path maps, resets file inputs, revokes import object URLs, and drops import-local directory handles.
+## Browser-side USB release
 
-DropDex reports **USB access released** only after a release handshake verifies all of the following:
+The browser import path is read-only. It receives `File` objects from the folder picker and never requests a writable handle. Before cloud parsing starts, one idempotent cleanup routine:
 
-- no upload request is active;
-- no retry timer remains;
-- no queued batch can start;
-- no active local `AbortController` remains;
-- no import-local database, ANLZ, matched-file, batch, or path-map `File` reference remains;
-- no import-local object URL remains;
-- no import-local directory handle remains.
+- aborts local upload requests;
+- closes the upload scheduler so no undispatched batch can start;
+- cancels retry timers;
+- clears database, ANLZ, matched-file, batch, and retry-map references;
+- resets file inputs and import-local directory handles;
+- revokes import-owned object URLs.
 
-Cloud parsing receives only the import ID and normalized numeric metadata. It does not receive or depend on browser `File` objects.
+The browser release handshake verifies that each resource count is zero before it reports release.
 
-## What Cancel does during USB upload
+## Electron active-stream lifecycle
 
-Cancel closes both scheduling gates immediately: the local aborted flag and the `AbortSignal`. Queued batches become `cancelled-before-start`; they are not counted as completed. Active requests receive abort and are allowed to settle. Abort-aware retry delays are cancelled immediately, and no retry can begin after cancellation.
+Every Electron `createReadStream` used by the `dropdex-media://` protocol is registered in the main-process `UsbStreamRegistry` before it is returned to Chromium. The registry tracks:
 
-The UI separately reports:
+- active streams;
+- active playback streams;
+- protocol requests still resolving or opening a stream;
+- release-in-progress and released flags;
+- the last stream error.
 
-1. stopping local USB reads;
-2. USB access released;
-3. stopping cloud processing.
+Streams unregister on close, end, or error. Explicit destruction is also tracked. A throwing `destroy()` call is recorded as an error but is not treated as proof that the operating-system handle closed.
 
-The modal remains visible until local USB access has stopped. Closing the modal during local reads uses the same cancellation and cleanup sequence.
+### Release and disconnect sequence
 
-## What Cancel does during cloud parsing
+`releaseUsb` and `disconnectUsb` use the same bounded shutdown barrier:
 
-Once **USB access released** is shown, Cancel affects only backend/cloud processing. The frontend immediately reports that local USB access was already released. Closing the modal at this stage may leave cloud parsing running in the background; it does not reacquire or access the USB.
+1. Stop accepting new media-token and protocol requests.
+2. Invalidate every media token.
+3. Ask registered renderer playback owners to pause, clear their active source, revoke owned object URLs, and abort outstanding range fetches.
+4. Destroy every registered stream independently.
+5. Wait for active streams and pending requests to reach zero, up to the configured timeout.
+6. Return a structured result with `allStreamsClosed`, `timedOut`, destroyed and remaining stream counts, pending requests, and the current activity snapshot.
+7. For disconnect, clear the selected root and persisted connection state after the bounded wait.
 
+One failing stream cannot prevent destruction of the others. The result remains unsuccessful until all handles and pending requests are gone.
 
-## Resume Analysis
+### USB activity IPC
 
-The Resume Analysis flow follows the same read-only rules. Its upload dispatcher uses the same cancellation gates and retry timers, and it clears rescanned `File` objects, matched files, batches, and retry path maps before selective cloud reprocessing begins. Closing during a Resume Analysis upload requires confirmation and keeps the modal visible while active reads settle. The cloud reprocessing request receives only the import ID and affected track IDs.
+The preload bridge exposes:
+
+- `getUsbActivityState()`
+- `releaseUsb()`
+- `disconnectUsb()`
+
+The activity payload includes `connected`, `activeStreamCount`, `pendingRequestCount`, `activePlaybackCount`, `releasing`, `released`, and `lastError`. The renderer uses the structured release result, not a spinner timeout, as the proof that Electron USB activity reached zero.
+
+### Path containment
+
+USB media resolution remains rooted at the user-selected real path. Requests reject empty, dot, traversal, slash-containing, backslash-containing, and NUL-containing path segments. Each resolved path must remain inside the selected root both before and after `realpath`, which blocks normalization and symlink escapes. Media tokens store only previously validated contained paths.
+
+## Pause Analysis versus Delete Import
+
+### Pause Analysis
+
+Pause is the default action during cloud parsing. It:
+
+- records `pause_requested`;
+- signals the active worker;
+- stops scheduling a new track;
+- stops the current track at the next safe checkpoint;
+- waits for the worker's stopped acknowledgement;
+- preserves uploaded assets, completed tracks, and progress;
+- stores `paused` and allows resume after a reload.
+
+A bounded API wait may return `stopping` if the current stage has not reached a checkpoint yet. That timeout never authorizes cleanup. The worker finalizes the durable paused state when it later acknowledges stop.
+
+### Delete Import
+
+Delete is a separate destructive action with stronger confirmation. It:
+
+1. records the delete request;
+2. signals the worker, with delete taking precedence over pause;
+3. waits for a stopped acknowledgement;
+4. transitions to `deleting` only after acknowledgement;
+5. removes DropDex cloud assets and import child records idempotently;
+6. stores `cancelled` after cleanup.
+
+If the bounded wait expires, the API returns `stopping` and leaves all data intact. An in-process finalizer continues waiting, but it still cannot clean anything until the same worker has acknowledged that it stopped writing.
+
+## Worker registry and durable state
+
+The current implementation uses a thread-safe in-process registry behind a queue-neutral interface. It tracks the import ID, worker status, pause and delete signals, current track, current stage, heartbeat, error diagnostics, and stopped event. This contract can later be implemented by a durable external queue without changing the API semantics.
+
+The durable import states are:
+
+```text
+created -> uploading -> queued -> processing/running
+running -> pause_requested -> paused
+running -> cancel_requested -> stopping -> deleting -> cancelled
+paused/interrupted -> queued/processing -> running
+running -> completed | failed | interrupted
+```
+
+Database constraints and the transition trigger reject invalid jumps. Terminal cancelled and failed jobs cannot be resurrected. A completed metadata snapshot may retain overall `completed` while its analysis sub-state is parsing, paused, or interrupted so the imported library remains visible.
+
+## Safe checkpoints inside a track
+
+The worker checks the stop signal:
+
+- before loading retained asset metadata;
+- before each track;
+- before, during, and after asset downloads;
+- before and after parsing;
+- before and after beat-grid writes;
+- before and after waveform writes;
+- before and after cue writes;
+- before and after phrase writes;
+- before the final track-status write;
+- after a track completes;
+- before final import aggregation.
+
+The final per-track status is written last. Therefore a track interrupted after one or more feature writes remains incomplete and is safely retried instead of being mistaken for finalized work.
+
+## Cleanup and write-race prevention
+
+Destructive cleanup requires both conditions:
+
+- the in-process registry reports no active worker; and
+- the stopped acknowledgement is present in memory or durable job state.
+
+Child-table writes are rejected once the import reaches `deleting`, `cancelled`, or `failed`. They remain allowed during a cooperative stop request so the current atomic stage can finish before the next checkpoint. Cleanup is repeatable and storage removal tolerates already-removed objects.
+
+## Resume behavior
+
+Resume uses retained uploaded assets and does not require the USB when required files are already present. It selects only tracks whose final analysis status is absent or failed. Tracks marked `completed`, `partial`, `reused`, or `skipped` are not reprocessed unnecessarily. Progress uses the entire retained library, so completed work from before the pause remains counted.
+
+When a track has partial feature rows but no final track-status write, resume re-runs that track. Feature writers use idempotent reconciliation or upsert behavior so a retry cannot create duplicate cue rows.
+
+## App and backend restart recovery
+
+On backend startup, jobs left in running, stopping, or pause-requested analysis states are converted to paused or interrupted resumable states. Their uploaded assets and parsed records are preserved. A restart never interprets stale work as permission to delete.
+
+Electron reloads only the persisted selected root. Active streams cannot survive a process exit. The activity registry starts clean and validates the real root before serving new media requests.
+
+## Control APIs
+
+Backend endpoints:
+
+- `POST /api/rekordbox/import/{id}/pause`
+- `POST /api/rekordbox/import/{id}/resume`
+- `DELETE /api/rekordbox/import/{id}`
+- `GET /api/rekordbox/import/{id}/worker-state`
+- `GET /api/rekordbox/import/{id}/analysis-status`
+
+The legacy `POST .../cancel` route remains an alias for explicit destructive deletion. New UI paths use Pause Analysis or Delete Import directly.

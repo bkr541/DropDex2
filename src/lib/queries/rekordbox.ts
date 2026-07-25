@@ -192,14 +192,6 @@ export async function setActiveImport(importId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function deleteImport(importId: string): Promise<void> {
-  const { error } = await supabase
-    .from('rekordbox_imports')
-    .delete()
-    .eq('id', importId);
-  if (error) throw new Error(error.message);
-}
-
 export async function fetchPlaylists(importId: string): Promise<PlaylistWithCount[]> {
   const { data, error } = await supabase.rpc('get_rekordbox_playlists_with_counts', {
     p_import_id: importId,

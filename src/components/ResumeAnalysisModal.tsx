@@ -9,14 +9,15 @@ declare module 'react' {
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertCircle, AlertTriangle, CheckCircle2, FolderOpen, Loader2, RefreshCw, X } from 'lucide-react';
+import { useUsbConnection } from '../contexts/UsbConnectionContext';
 import { supabase } from '../lib/supabase';
 import {
-  completeRekordboxImport,
   fetchRekordboxAnalysisStatus,
+  resumeRekordboxAnalysis,
 } from '../lib/api/rekordboxImport';
 import type { AnalysisStatusResponse, CompleteResponse } from '../lib/api/rekordboxImport';
 import { buildBatches, isAnlzFile, type MatchedAnalysisFile } from '../lib/rekordbox/analysisPaths';
-import { buildResumeTargets, buildResumeMatchResult, buildStatusSummary } from '../lib/rekordbox/resumeAnalysis';
+import { buildResumeTargets, buildResumeMatchResult, buildStatusSummary, resumeRequiresUsbSelection } from '../lib/rekordbox/resumeAnalysis';
 import type { ResumeTarget, ResumeStatusSummary } from '../lib/rekordbox/resumeAnalysis';
 import { UploadAccumulator } from '../lib/rekordbox/analysisUploadResults';
 import { isAbortError, uploadBatchWithRetry } from '../lib/rekordbox/uploadBatch';
@@ -79,6 +80,7 @@ function pluralFiles(n: number) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Props) {
+  const { release: releaseUsb } = useUsbConnection();
   const [phase, setPhase] = useState<ResumePhase>('fetching_status');
   const [status, setStatus] = useState<AnalysisStatusResponse | null>(null);
   const [targets, setTargets] = useState<ResumeTarget[]>([]);
@@ -134,6 +136,15 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
     });
   }, []);
 
+  const releaseUsbBeforeCloudParsing = useCallback(async () => {
+    const desktopRelease = await releaseUsb();
+    if (desktopRelease && !desktopRelease.allStreamsClosed) {
+      throw new Error(
+        `Electron USB release timed out with ${desktopRelease.remainingStreamCount} active stream(s).`,
+      );
+    }
+  }, [releaseUsb]);
+
   const runParsing = useCallback(async (
     impId: string,
     tok: string,
@@ -147,7 +158,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
       const { data: { session } } = await supabase.auth.getSession();
       if (!isCurrentOperation(impId, generation, ac)) return;
       const finalTok = session?.access_token ?? tok;
-      const resp = await completeRekordboxImport(impId, finalTok, {
+      const resp = await resumeRekordboxAnalysis(impId, finalTok, {
         affectedTrackIds: affectedIds,
         signal: ac.signal,
       });
@@ -210,8 +221,11 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
         setTargets(t);
         setStatusSummary(buildStatusSummary(resp));
 
-        if (t.length === 0) {
-          // Nothing missing — just re-trigger parsing to clean up any parse failures.
+        if (!resumeRequiresUsbSelection(t)) {
+          // Required assets are already retained. Optional file gaps and parse
+          // retries must not make the user reconnect the USB.
+          setPhase('stopping_usb_reads');
+          await releaseUsbBeforeCloudParsing();
           await runParsing(importId, tok, ac, generation);
         } else {
           setPhase('scan_prompt');
@@ -229,7 +243,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
       controllerRef.current?.abort();
       controllerRef.current = null;
     };
-  }, [importId, isCurrentOperation, isOpen, performResumeUsbCleanup, runParsing]);
+  }, [importId, isCurrentOperation, isOpen, performResumeUsbCleanup, releaseUsbBeforeCloudParsing, runParsing]);
 
   function handleClose() {
     if (phase === 'stopping_usb_reads') return;
@@ -427,6 +441,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
       if (!release.released) {
         throw new Error(`USB release verification failed: ${release.blockers.join(', ')}`);
       }
+      await releaseUsbBeforeCloudParsing();
 
       setMatchSummary(null);
       setRetryingCount(0);
@@ -449,7 +464,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
         onClose();
       }
     }
-  }, [importId, isCurrentOperation, onClose, performResumeUsbCleanup, runParsing, targets]);
+  }, [importId, isCurrentOperation, onClose, performResumeUsbCleanup, releaseUsbBeforeCloudParsing, runParsing, targets]);
 
   if (!isOpen) return null;
 

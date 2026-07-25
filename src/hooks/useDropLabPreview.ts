@@ -4,6 +4,7 @@ import { useUsbConnection } from '../contexts/UsbConnectionContext';
 import { resolveUsbPath } from '../lib/rekordbox/usbPathResolver';
 import type { DropLabTimeSegment } from '../lib/music/dropLabSegments';
 import type { RekordboxTrack } from '../types';
+import { registerUsbPlaybackStopHandler } from '../lib/usb/usbPlaybackCoordinator';
 
 type PreviewStatus = 'idle' | 'loading' | 'ready' | 'playing' | 'error';
 
@@ -52,6 +53,7 @@ export function useDropLabPreview(input: {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const nodesRef = useRef<AudioBufferSourceNode[]>([]);
   const requestIdRef = useRef(0);
+  const fetchAbortRef = useRef<AbortController | null>(null);
 
   const disabledReason = useMemo(() => {
     if (!input.sourceTrack || !input.candidateTrack) return 'Choose a candidate';
@@ -60,7 +62,7 @@ export function useDropLabPreview(input: {
     if (sourceFileError) return sourceFileError;
     const candidateFileError = fileStatus(input.candidateTrack);
     if (candidateFileError) return candidateFileError;
-    if (usb.status === 'disconnected' || usb.status === 'permission-required' || usb.status === 'unavailable' || usb.status === 'wrong_root') {
+    if (usb.status === 'disconnected' || usb.status === 'released' || usb.status === 'permission-required' || usb.status === 'unavailable' || usb.status === 'wrong_root') {
       return 'Connect USB to Preview';
     }
     if (usb.status === 'unsupported') return 'USB preview unsupported';
@@ -80,6 +82,15 @@ export function useDropLabPreview(input: {
   }, []);
 
   useEffect(() => stop, [stop]);
+
+  useEffect(() => registerUsbPlaybackStopHandler(() => {
+    requestIdRef.current += 1;
+    fetchAbortRef.current?.abort();
+    fetchAbortRef.current = null;
+    stop();
+    setDecoded(null);
+    setStatus('idle');
+  }), [stop]);
 
   useEffect(() => {
     stop();
@@ -102,6 +113,9 @@ export function useDropLabPreview(input: {
     if (sourcePath.status !== 'ok' || candidatePath.status !== 'ok') return;
 
     const requestId = ++requestIdRef.current;
+    const fetchController = new AbortController();
+    fetchAbortRef.current?.abort();
+    fetchAbortRef.current = fetchController;
     setStatus('loading');
 
     async function decodeTrack(track: RekordboxTrack, segments: string[]): Promise<AudioBuffer> {
@@ -112,7 +126,7 @@ export function useDropLabPreview(input: {
       if (!result.ok) throw new Error('Connect the Rekordbox USB drive to preview this transition.');
       const arrayBuffer = result.source.kind === 'file'
         ? await result.source.file.arrayBuffer()
-        : await fetch(result.source.url, { cache: 'no-store' }).then((response) => {
+        : await fetch(result.source.url, { cache: 'no-store', signal: fetchController.signal }).then((response) => {
             if (!response.ok) throw new Error(`Could not stream audio (${response.status}).`);
             return response.arrayBuffer();
           });
@@ -133,15 +147,22 @@ export function useDropLabPreview(input: {
     ])
       .then(([source, candidate]) => {
         if (requestId !== requestIdRef.current) return;
+        if (fetchAbortRef.current === fetchController) fetchAbortRef.current = null;
         setDecoded({ source, candidate });
         setStatus('ready');
       })
       .catch((err: unknown) => {
         if (requestId !== requestIdRef.current) return;
+        if (fetchAbortRef.current === fetchController) fetchAbortRef.current = null;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
         setDecoded(null);
         setError(err instanceof Error ? err.message : 'Could not prepare transition preview.');
         setStatus('error');
       });
+    return () => {
+      if (fetchAbortRef.current === fetchController) fetchAbortRef.current = null;
+      fetchController.abort();
+    };
   }, [
     input.sourceTrack,
     input.candidateTrack,

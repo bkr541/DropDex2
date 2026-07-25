@@ -19,14 +19,17 @@ import {
   Package,
   X,
 } from 'lucide-react';
+import { useUsbConnection } from '../contexts/UsbConnectionContext';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import {
-  cancelRekordboxImport,
   completeRekordboxImport,
+  deleteRekordboxImport,
   createRekordboxImportJob,
   fetchRekordboxAnalysisStatus,
   fetchRekordboxImportJob,
+  fetchRekordboxWorkerState,
+  pauseRekordboxAnalysis,
   startRekordboxImport,
   uploadRekordboxDb,
   uploadRekordboxZipBundle,
@@ -60,7 +63,7 @@ import {
 type Mode = 'usb_folder' | 'zip_bundle' | 'database_only';
 
 type LocalUsbStage = 'uploading_database' | 'matching_analysis' | 'uploading_analysis' | 'uploading_bundle';
-type AbortDialogIntent = 'cancel' | 'close';
+type AbortDialogIntent = 'pause' | 'delete' | 'close';
 
 interface FolderScan {
   dbFile: File | null;
@@ -154,6 +157,7 @@ export function ImportLibraryModal({
   onImportStarted,
   onBackgrounded,
 }: Props) {
+  const usb = useUsbConnection();
   const [mode, setMode] = useState<Mode>('usb_folder');
   const [phase, setPhase] = useState<UsbImportPhase>('idle');
   const [localUsbStage, setLocalUsbStage] = useState<LocalUsbStage>('uploading_database');
@@ -169,7 +173,7 @@ export function ImportLibraryModal({
   const [errorMessage, setErrorMessage] = useState('');
   const [errorStructured, setErrorStructured] = useState<ImportWriteError | null>(null);
   const [showAbortDialog, setShowAbortDialog] = useState(false);
-  const [abortDialogIntent, setAbortDialogIntent] = useState<AbortDialogIntent>('cancel');
+  const [abortDialogIntent, setAbortDialogIntent] = useState<AbortDialogIntent>('delete');
   const [usbReleaseConfirmed, setUsbReleaseConfirmed] = useState(false);
   const [cloudCancellationStarted, setCloudCancellationStarted] = useState(false);
   const [rejectedCount, setRejectedCount] = useState(0);
@@ -202,6 +206,7 @@ export function ImportLibraryModal({
   const uploadQueueRuntimeRef = useRef<UploadQueueRuntime | null>(null);
   const usbCleanupRef = useRef(new IdempotentUsbCleanup());
   const cancelBackendPromiseRef = useRef<Promise<void> | null>(null);
+  const pauseBackendPromiseRef = useRef<Promise<void> | null>(null);
   const cloudCancellationControllerRef = useRef<AbortController | null>(null);
   const cloudCancellationTimersRef = useRef(new AbortableTimerRegistry());
   const localCleanupRoutineRef = useRef<(updateState: boolean) => void>(() => undefined);
@@ -313,6 +318,7 @@ export function ImportLibraryModal({
     cancelRequestedRef.current = false;
     closeAfterCancelRef.current = false;
     cancelBackendPromiseRef.current = null;
+    pauseBackendPromiseRef.current = null;
     cloudCancellationControllerRef.current?.abort();
     cloudCancellationControllerRef.current = null;
     cloudCancellationTimersRef.current.cancelAll();
@@ -335,7 +341,7 @@ export function ImportLibraryModal({
     setErrorMessage('');
     setErrorStructured(null);
     setShowAbortDialog(false);
-    setAbortDialogIntent('cancel');
+    setAbortDialogIntent('delete');
     setRejectedCount(0);
     setReuseStats(null);
     setReconciliation(null);
@@ -354,6 +360,7 @@ export function ImportLibraryModal({
     retryTimersRef.current = new AbortableTimerRegistry();
     usbCleanupRef.current = new IdempotentUsbCleanup();
     cancelBackendPromiseRef.current = null;
+    pauseBackendPromiseRef.current = null;
     cloudCancellationControllerRef.current?.abort();
     cloudCancellationControllerRef.current = null;
     cloudCancellationTimersRef.current.cancelAll();
@@ -407,6 +414,13 @@ export function ImportLibraryModal({
       throw new Error(`USB release verification failed: ${verification.blockers.join(', ')}`);
     }
 
+    const desktopRelease = await usb.release();
+    if (desktopRelease && !desktopRelease.allStreamsClosed) {
+      throw new Error(
+        `Electron USB release timed out with ${desktopRelease.remainingStreamCount} active stream(s).`,
+      );
+    }
+
     uploadQueueRuntimeRef.current = null;
     usbReleaseConfirmedRef.current = true;
     if (mountedRef.current) {
@@ -421,7 +435,7 @@ export function ImportLibraryModal({
     onClose();
   };
 
-  const cancelCloudWork = (): Promise<void> => {
+  const deleteCloudWork = (): Promise<void> => {
     if (cancelBackendPromiseRef.current) return cancelBackendPromiseRef.current;
 
     const promise = (async () => {
@@ -439,7 +453,7 @@ export function ImportLibraryModal({
 
       if (mountedRef.current) {
         setCloudCancellationStarted(true);
-        setPhase('cancelling_cloud_work');
+        setPhase('deleting_import');
       }
 
       if (!id) {
@@ -458,7 +472,7 @@ export function ImportLibraryModal({
 
       try {
         let job = await requestWithAuthRetry(
-          (token) => cancelRekordboxImport(id, token, cancellationController.signal),
+          (token) => deleteRekordboxImport(id, token, cancellationController.signal),
           fallbackToken,
         );
 
@@ -514,6 +528,87 @@ export function ImportLibraryModal({
     return promise;
   };
 
+  const pauseCloudWork = (): Promise<void> => {
+    if (pauseBackendPromiseRef.current) return pauseBackendPromiseRef.current;
+
+    const promise = (async () => {
+      const id = importIdRef.current;
+      const fallbackToken = accessTokenRef.current ?? undefined;
+      cloudAbortControllerRef.current?.abort();
+      cloudAbortControllerRef.current = null;
+
+      cloudCancellationControllerRef.current?.abort();
+      cloudCancellationTimersRef.current.cancelAll();
+      const controller = new AbortController();
+      const timers = new AbortableTimerRegistry();
+      cloudCancellationControllerRef.current = controller;
+      cloudCancellationTimersRef.current = timers;
+      if (mountedRef.current) {
+        setCloudCancellationStarted(true);
+        setPhase('pausing_cloud_work');
+      }
+      if (!id) {
+        if (mountedRef.current) setPhase('paused');
+        return;
+      }
+
+      try {
+        await requestWithAuthRetry(
+          (token) => pauseRekordboxAnalysis(id, token, controller.signal),
+          fallbackToken,
+        );
+        let worker = await requestWithAuthRetry(
+          (token) => fetchRekordboxWorkerState(id, token, controller.signal),
+          fallbackToken,
+        );
+        for (let poll = 0; poll < CLOUD_CANCEL_MAX_POLLS; poll += 1) {
+          if (worker.stopped_acknowledged && !worker.worker_active) break;
+          await waitForAbortableDelay(CLOUD_CANCEL_POLL_MS, controller.signal, timers);
+          worker = await requestWithAuthRetry(
+            (token) => fetchRekordboxWorkerState(id, token, controller.signal),
+            fallbackToken,
+          );
+        }
+        if (!mountedRef.current) return;
+        if (worker.stopped_acknowledged && !worker.worker_active) {
+          const finalJob = await requestWithAuthRetry(
+            (token) => fetchRekordboxImportJob(id, token, controller.signal),
+            fallbackToken,
+          );
+          const analysisFinished = finalJob.analysis_status === 'completed'
+            || finalJob.analysis_status === 'partial';
+          setPhase(analysisFinished ? 'completed' : 'paused');
+          onSuccess();
+        } else {
+          setErrorMessage(
+            'USB access is zero, but cloud analysis is still stopping. Import History will show the final paused state.',
+          );
+          setPhase('failed');
+        }
+      } catch (error) {
+        if (!mountedRef.current || isAbortError(error)) return;
+        setErrorMessage(
+          'USB access is zero, but DropDex could not confirm the worker pause. Check Import History before resuming.',
+        );
+        setPhase('failed');
+      } finally {
+        timers.cancelAll();
+        if (cloudCancellationControllerRef.current === controller) {
+          cloudCancellationControllerRef.current = null;
+        }
+        if (cloudCancellationTimersRef.current === timers) {
+          cloudCancellationTimersRef.current = new AbortableTimerRegistry();
+        }
+        pauseBackendPromiseRef.current = null;
+        closeAfterCancellationIfRequested();
+      }
+    })();
+
+    pauseBackendPromiseRef.current = promise;
+    return promise;
+  };
+
+
   const requestLocalUsbStop = () => {
     if (mountedRef.current) setPhase('stopping_usb_reads');
     localAbortRequestedRef.current = true;
@@ -544,21 +639,22 @@ export function ImportLibraryModal({
       openAbortDialog('close');
       return;
     }
-    if (phase === 'cancelling_cloud_work') return;
+    if (phase === 'deleting_import' || phase === 'pausing_cloud_work') return;
     reset();
     onClose();
   };
 
   const confirmAbort = () => {
     closeAfterCancelRef.current = abortDialogIntent === 'close';
-    cancelRequestedRef.current = true;
+    cancelRequestedRef.current = abortDialogIntent !== 'pause';
     setShowAbortDialog(false);
     setErrorMessage('');
 
     if (phase === 'parsing_cloud_data' || phase === 'usb_released') {
       usbReleaseConfirmedRef.current = true;
       setUsbReleaseConfirmed(true);
-      void cancelCloudWork();
+      if (abortDialogIntent === 'delete') void deleteCloudWork();
+      else void pauseCloudWork();
       return;
     }
 
@@ -567,7 +663,7 @@ export function ImportLibraryModal({
       return;
     }
 
-    void cancelCloudWork();
+    void deleteCloudWork();
   };
 
   const handleDone = () => {
@@ -895,7 +991,7 @@ export function ImportLibraryModal({
       setPhase(completeResponse.analysis_status === 'completed' ? 'completed' : 'partial_success');
     } catch (error) {
       if (isAbortError(error) && cancelRequestedRef.current) {
-        await cancelCloudWork();
+        await deleteCloudWork();
         return;
       }
       if (isAbortError(error) || operation !== operationRef.current) return;
@@ -964,7 +1060,7 @@ export function ImportLibraryModal({
         throwIfLocalCancellationRequested(controller);
         await verifyAndPublishUsbRelease();
         if (cancelRequestedRef.current) {
-          await cancelCloudWork();
+          await deleteCloudWork();
           return;
         }
         setFinalResult({ kind: 'library_only', data: result });
@@ -984,7 +1080,7 @@ export function ImportLibraryModal({
         throwIfLocalCancellationRequested(controller);
         await verifyAndPublishUsbRelease();
         if (cancelRequestedRef.current) {
-          await cancelCloudWork();
+          await deleteCloudWork();
           return;
         }
         setFinalResult({ kind: 'with_analysis', data: result });
@@ -996,7 +1092,7 @@ export function ImportLibraryModal({
       const cloudContext = await runUsbFolderUpload(token, controller, job.import_id, operation);
       await verifyAndPublishUsbRelease();
       if (cancelRequestedRef.current) {
-        await cancelCloudWork();
+        await deleteCloudWork();
         return;
       }
 
@@ -1019,7 +1115,7 @@ export function ImportLibraryModal({
       }
 
       if (cancelled) {
-        if (cancelRequestedRef.current) await cancelCloudWork();
+        if (cancelRequestedRef.current) await deleteCloudWork();
         return;
       }
       if (operation !== operationRef.current) return;
@@ -1106,18 +1202,35 @@ export function ImportLibraryModal({
                 >
                   <div className="bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-2xl p-6 text-center max-w-xs w-full">
                     <AlertTriangle className="mx-auto mb-3 text-amber-400" size={28} />
-                    <p className="font-bold text-lg mb-2">{abortDialogIntent === 'close' ? 'Close and stop import?' : 'Cancel import?'}</p>
+                    <p className="font-bold text-lg mb-2">
+                      {abortDialogIntent === 'pause'
+                        ? 'Pause analysis?'
+                        : abortDialogIntent === 'close'
+                          ? 'Close and delete import?'
+                          : 'Permanently delete import?'}
+                    </p>
                     <p className="text-sm text-muted-foreground mb-5">
-                      {localUsbAccessActive
-                        ? 'DropDex will stop scheduling USB reads, wait for active uploads to settle, release the USB, then cancel cloud work.'
-                        : 'The USB is already released. DropDex will cancel cloud processing and keep the job visible in Import History.'}
+                      {abortDialogIntent === 'pause'
+                        ? 'The USB is already released. DropDex will stop the cloud worker at a safe checkpoint and retain completed tracks and uploaded assets for resume.'
+                        : localUsbAccessActive
+                          ? 'DropDex will stop USB reads, prove the drive is released, wait for the cloud worker to acknowledge stop, then delete DropDex cloud data.'
+                          : 'This permanently deletes the DropDex import, uploaded analysis assets, and parsed records after the worker acknowledges it has stopped writing.'}
                     </p>
                     <div className="flex gap-3">
                       <button
                         onClick={confirmAbort}
-                        className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors"
+                        className={cn(
+                          'flex-1 py-3 text-white rounded-xl font-bold transition-colors',
+                          abortDialogIntent === 'pause'
+                            ? 'bg-primary hover:bg-primary/90'
+                            : 'bg-red-500 hover:bg-red-600',
+                        )}
                       >
-                        {abortDialogIntent === 'close' ? 'Stop and close' : 'Yes, cancel'}
+                        {abortDialogIntent === 'pause'
+                          ? 'Pause Analysis'
+                          : abortDialogIntent === 'close'
+                            ? 'Stop and delete'
+                            : 'Delete Import and Data'}
                       </button>
                       <button
                         onClick={() => setShowAbortDialog(false)}
@@ -1374,7 +1487,7 @@ export function ImportLibraryModal({
                 )}
 
                 <button
-                  onClick={() => openAbortDialog('cancel')}
+                  onClick={() => openAbortDialog('delete')}
                   className="mt-6 text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Cancel import
@@ -1398,7 +1511,8 @@ export function ImportLibraryModal({
             {/* ── Verified USB release / cancellation sequence ── */}
             {(phase === 'stopping_usb_reads' ||
               (phase === 'usb_released' && cancelRequestedRef.current) ||
-              phase === 'cancelling_cloud_work') && (
+              phase === 'deleting_import' ||
+              phase === 'pausing_cloud_work') && (
               <div className="space-y-5 py-4">
                 <div className="text-center">
                   <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
@@ -1430,9 +1544,13 @@ export function ImportLibraryModal({
                     active={false}
                   />
                   <SafetyStep
-                    label="Stopping cloud processing"
+                    label={phase === 'deleting_import' ? 'Stopping worker before delete' : 'Stopping cloud analysis'}
                     complete={false}
-                    active={cloudCancellationStarted || phase === 'cancelling_cloud_work'}
+                    active={
+                      cloudCancellationStarted
+                      || phase === 'deleting_import'
+                      || phase === 'pausing_cloud_work'
+                    }
                   />
                 </div>
 
@@ -1484,25 +1602,54 @@ export function ImportLibraryModal({
                     )}
                   </p>
                 </div>
-                <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+                <div className="mt-6 grid gap-2 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={handleContinueInBackground}
-                    className="flex-1 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white transition-all active:scale-[0.99]"
+                    className="rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white transition-all active:scale-[0.99]"
                   >
                     Continue in Background
                   </button>
                   <button
                     type="button"
-                    onClick={() => openAbortDialog('cancel')}
-                    className="flex-1 rounded-xl border border-[var(--color-border-subtle)] px-4 py-3 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground"
+                    onClick={() => openAbortDialog('pause')}
+                    className="rounded-xl border border-primary/40 px-4 py-3 text-sm font-bold text-primary transition-colors hover:bg-primary/10"
                   >
-                    Cancel Cloud Processing
+                    Pause Analysis
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openAbortDialog('delete')}
+                    className="sm:col-span-2 rounded-xl border border-red-500/30 px-4 py-2.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/10"
+                  >
+                    Delete Import and Cloud Data
                   </button>
                 </div>
                 <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
-                  Closing now leaves cloud parsing running. Cancelling now does not access the USB.
+                  Pause keeps completed work and retained uploads for resume. Delete waits for worker shutdown before removing cloud data. Neither action needs the USB.
                 </p>
+              </div>
+            )}
+
+            {phase === 'paused' && (
+              <div className="space-y-5 py-4 text-center">
+                <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="text-amber-300" size={28} />
+                </div>
+                <h2 className="text-xl font-bold">Analysis Paused Safely</h2>
+                <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left">
+                  <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-400" />
+                  <p className="text-xs leading-relaxed text-emerald-100">
+                    USB activity is zero. The cloud worker acknowledged that it stopped writing. Completed tracks and uploaded assets were retained for resume from Import History.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDone}
+                  className="w-full rounded-xl bg-primary px-4 py-3 font-bold text-white"
+                >
+                  Done
+                </button>
               </div>
             )}
 

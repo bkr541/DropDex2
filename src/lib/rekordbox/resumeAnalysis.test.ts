@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildResumeTargets, buildResumeMatchResult } from './resumeAnalysis';
+import { buildResumeTargets, buildResumeMatchResult, resumeRequiresUsbSelection } from './resumeAnalysis';
 import type { AnalysisStatusResponse } from '../api/rekordboxImport';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -80,6 +80,35 @@ describe('buildResumeTargets', () => {
     expect(types).toContain('DAT');
     expect(types).toContain('EXT');
     expect(types).toContain('2EX');
+  });
+});
+
+describe('resumeRequiresUsbSelection', () => {
+  it('does not require USB for optional-only gaps', () => {
+    const targets = buildResumeTargets(
+      mockStatus([], ['PIONEER/USBANLZ/P001/ANLZ0000.EXT']),
+    );
+    expect(resumeRequiresUsbSelection(targets)).toBe(false);
+  });
+
+  it('does not require USB to retry a retained parse failure', () => {
+    expect(resumeRequiresUsbSelection([{
+      path: 'PIONEER/USBANLZ/P001/ANLZ0000.DAT',
+      assetType: 'DAT',
+      required: true,
+      trackId: 'track-1',
+      rekordboxContentId: '1',
+      status: 'parse_failed',
+      reason: 'Retry retained asset',
+      attemptCount: 1,
+    }])).toBe(false);
+  });
+
+  it('requires USB when a required DAT asset is missing', () => {
+    const targets = buildResumeTargets(
+      mockStatus(['PIONEER/USBANLZ/P001/ANLZ0000.DAT']),
+    );
+    expect(resumeRequiresUsbSelection(targets)).toBe(true);
   });
 });
 

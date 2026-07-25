@@ -14,6 +14,7 @@ from .analysis_import_service import (
     complete_analysis_import,
     get_analysis_status,
     process_analysis_batch,
+    resume_analysis_import,
     start_analysis_import,
 )
 from .auth import get_current_user_id
@@ -24,7 +25,10 @@ from .discovery.routes import router as discovery_router
 from .import_jobs import (
     cancel_import_job,
     create_import_job,
+    delete_import_job,
     get_import_job,
+    get_import_worker_state,
+    pause_import_analysis,
     recover_interrupted_import_jobs,
 )
 from .import_service import run_import
@@ -36,6 +40,7 @@ from .models import (
     ImportJobCreateRequest,
     ImportJobResponse,
     ImportResponse,
+    ImportWorkerStateResponse,
     ImportStartResponse,
     RelatedTracksImportResponse,
     RelatedTracksPayload,
@@ -57,7 +62,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -168,6 +173,26 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+def _to_import_job_response(row: dict) -> ImportJobResponse:
+    return ImportJobResponse(
+        import_id=row["id"],
+        status=row["status"],
+        source_filename=row.get("source_filename") or "upload",
+        source_bundle_type=row.get("source_bundle_type"),
+        error_code=row.get("error_code"),
+        error_message=row.get("error_message"),
+        retryable=bool(row.get("retryable")),
+        analysis_status=row.get("analysis_status"),
+        worker_status=row.get("analysis_worker_status"),
+        worker_stage=row.get("analysis_worker_stage"),
+        worker_current_track_id=row.get("analysis_worker_current_track_id"),
+        worker_last_heartbeat=row.get("analysis_worker_heartbeat_at"),
+        worker_stopped_acknowledged=bool(
+            row.get("analysis_worker_stopped_acknowledged", True)
+        ),
+    )
+
+
 @app.post("/api/rekordbox/import/jobs", response_model=ImportJobResponse)
 def create_rekordbox_import_job(
     body: ImportJobCreateRequest,
@@ -188,15 +213,7 @@ def create_rekordbox_import_job(
         source_bundle_type=body.source_bundle_type,
         device_name=body.device_name,
     )
-    return ImportJobResponse(
-        import_id=row["id"],
-        status=row["status"],
-        source_filename=row.get("source_filename") or body.source_filename,
-        source_bundle_type=row.get("source_bundle_type"),
-        error_code=row.get("error_code"),
-        error_message=row.get("error_message"),
-        retryable=bool(row.get("retryable")),
-    )
+    return _to_import_job_response(row)
 
 
 @app.get("/api/rekordbox/import/{import_id}/job-status", response_model=ImportJobResponse)
@@ -205,15 +222,7 @@ def rekordbox_import_job_status(
     user_id: str = Depends(get_current_user_id),
 ) -> ImportJobResponse:
     row = get_import_job(import_id, user_id)
-    return ImportJobResponse(
-        import_id=row["id"],
-        status=row["status"],
-        source_filename=row.get("source_filename") or "upload",
-        source_bundle_type=row.get("source_bundle_type"),
-        error_code=row.get("error_code"),
-        error_message=row.get("error_message"),
-        retryable=bool(row.get("retryable")),
-    )
+    return _to_import_job_response(row)
 
 
 @app.post("/api/rekordbox/import/{import_id}/cancel", response_model=ImportJobResponse)
@@ -222,15 +231,42 @@ def cancel_rekordbox_import(
     user_id: str = Depends(get_current_user_id),
 ) -> ImportJobResponse:
     row = cancel_import_job(import_id, user_id)
-    return ImportJobResponse(
-        import_id=row["id"],
-        status=row["status"],
-        source_filename=row.get("source_filename") or "upload",
-        source_bundle_type=row.get("source_bundle_type"),
-        error_code=row.get("error_code"),
-        error_message=row.get("error_message"),
-        retryable=bool(row.get("retryable")),
-    )
+    return _to_import_job_response(row)
+
+
+@app.post(
+    "/api/rekordbox/import/{import_id}/pause",
+    response_model=ImportJobResponse,
+)
+def pause_rekordbox_analysis(
+    import_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> ImportJobResponse:
+    """Pause cloud analysis at the next safe worker checkpoint."""
+    return _to_import_job_response(pause_import_analysis(import_id, user_id))
+
+
+@app.delete(
+    "/api/rekordbox/import/{import_id}",
+    response_model=ImportJobResponse,
+)
+def delete_rekordbox_import(
+    import_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> ImportJobResponse:
+    """Explicitly stop, acknowledge, and delete an import."""
+    return _to_import_job_response(delete_import_job(import_id, user_id))
+
+
+@app.get(
+    "/api/rekordbox/import/{import_id}/worker-state",
+    response_model=ImportWorkerStateResponse,
+)
+def rekordbox_import_worker_state(
+    import_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> ImportWorkerStateResponse:
+    return ImportWorkerStateResponse(**get_import_worker_state(import_id, user_id))
 
 
 @app.post("/api/rekordbox/import", response_model=ImportResponse)
@@ -326,6 +362,24 @@ async def rekordbox_analysis_complete(
     """
     affected_track_ids = body.affected_track_ids if body else None
     return await complete_analysis_import(import_id, user_id, affected_track_ids=affected_track_ids)
+
+
+@app.post(
+    "/api/rekordbox/import/{import_id}/resume",
+    response_model=CompleteResponse,
+)
+async def rekordbox_analysis_resume(
+    import_id: str,
+    body: Optional[CompleteRequest] = None,
+    user_id: str = Depends(get_current_user_id),
+) -> CompleteResponse:
+    """Resume only incomplete analysis work using retained uploaded assets."""
+    affected_track_ids = body.affected_track_ids if body else None
+    return await resume_analysis_import(
+        import_id,
+        user_id,
+        affected_track_ids=affected_track_ids,
+    )
 
 
 @app.get(

@@ -12,6 +12,11 @@ export type RekordboxAnalysisStatus =
   | 'uploading'
   | 'uploaded'
   | 'parsing'
+  | 'pause_requested'
+  | 'paused'
+  | 'stopping'
+  | 'cancelled'
+  | 'interrupted'
   | 'completed'
   | 'partial'
   | 'failed';
@@ -32,10 +37,16 @@ export interface RekordboxImport {
     | 'uploading'
     | 'queued'
     | 'processing'
+    | 'running'
+    | 'pause_requested'
+    | 'paused'
     | 'cancel_requested'
+    | 'stopping'
+    | 'deleting'
     | 'cancelled'
     | 'completed'
-    | 'failed';
+    | 'failed'
+    | 'interrupted';
   error_message: string | null;
   error_code?: string | null;
   retryable?: boolean;
@@ -63,6 +74,14 @@ export interface RekordboxImport {
   analysis_current_track_artist: string | null;
   analysis_current_track_label: string | null;
   analysis_progress_updated_at: string | null;
+  analysis_worker_status?: string | null;
+  analysis_worker_stage?: string | null;
+  analysis_worker_current_track_id?: string | null;
+  analysis_worker_heartbeat_at?: string | null;
+  analysis_worker_stop_requested_at?: string | null;
+  analysis_worker_stopped_at?: string | null;
+  analysis_worker_stopped_acknowledged?: boolean;
+  analysis_worker_error?: string | null;
 }
 
 export type RekordboxTrackParseStatus =
@@ -72,6 +91,7 @@ export type RekordboxTrackParseStatus =
   | 'completed'
   | 'partial'
   | 'failed'
+  | 'missing_required'
   | 'skipped'
   | 'reused';
 

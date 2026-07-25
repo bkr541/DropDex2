@@ -41,6 +41,8 @@ export function getImportHistoryPresentation(
         || analysisStatus === 'uploading'
         || analysisStatus === 'uploaded'
         || analysisStatus === 'parsing'
+        || analysisStatus === 'pause_requested'
+        || analysisStatus === 'stopping'
       ) {
         return {
           label: describeAnalysisStatus(analysisStatus),
@@ -58,12 +60,30 @@ export function getImportHistoryPresentation(
         terminal: true,
       };
     }
+    case 'paused':
+      return { label: 'Analysis paused', tone: 'warning', canActivate: true, canRetry: true, terminal: true };
+    case 'interrupted':
+      return { label: 'Analysis interrupted', tone: 'warning', canActivate: true, canRetry: true, terminal: true };
+    case 'pause_requested':
+      return { label: 'Stopping cloud analysis', tone: 'warning', canActivate: false, canRetry: false, terminal: false };
+    case 'stopping':
+      return { label: 'Stopping worker', tone: 'warning', canActivate: false, canRetry: false, terminal: false };
+    case 'deleting':
+      return { label: 'Deleting import', tone: 'warning', canActivate: false, canRetry: false, terminal: false };
+    case 'running':
+      return {
+        label: analysisStatus ? describeAnalysisStatus(analysisStatus) : 'Running',
+        tone: 'info',
+        canActivate: false,
+        canRetry: false,
+        terminal: false,
+      };
     case 'failed':
       return { label: 'Failed', tone: 'error', canActivate: false, canRetry: retryable, terminal: true };
     case 'cancelled':
       return { label: 'Cancelled', tone: 'warning', canActivate: false, canRetry: false, terminal: true };
     case 'cancel_requested':
-      return { label: 'Cancelling', tone: 'warning', canActivate: false, canRetry: false, terminal: false };
+      return { label: 'Delete requested', tone: 'warning', canActivate: false, canRetry: false, terminal: false };
     case 'created':
       return { label: 'Created', tone: 'info', canActivate: false, canRetry: false, terminal: false };
     case 'uploading':

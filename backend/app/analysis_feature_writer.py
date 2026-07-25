@@ -213,7 +213,9 @@ def reconcile_and_write_cues(
                 "source_payload": anlz.source_payload,
             }
             try:
-                sb.table("rekordbox_cues").insert(row).execute()
+                sb.table("rekordbox_cues").upsert(
+                    row, on_conflict="track_id,dedupe_key"
+                ).execute()
             except Exception as exc:
                 logger.error(
                     "Failed to insert ANLZ-only cue for track %s (idx=%s): %s",

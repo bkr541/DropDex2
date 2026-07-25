@@ -11,6 +11,7 @@ import { useUsbConnection, type UsbStatus } from './UsbConnectionContext';
 import { resolveUsbPath } from '../lib/rekordbox/usbPathResolver';
 import type { RekordboxImport, RekordboxTrack } from '../types';
 import type { UsbFileResolutionError } from '../lib/usb/resolveUsbFile';
+import { registerUsbPlaybackStopHandler } from '../lib/usb/usbPlaybackCoordinator';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -224,6 +225,8 @@ export function usbStatusPlaybackMessage(status: UsbStatus): string {
       return 'USB is disconnected.';
     case 'connected':
       return '';
+    case 'released':
+      return 'USB media access was released. Reconnect the drive before playback.';
   }
 }
 
@@ -247,6 +250,7 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ownedUrlRef = useRef<string | null>(null);
   const ownedUrlIsRevocableRef = useRef(false);
+  const ownedSourceIsUsbRef = useRef(false);
   const ignoreMediaEventsRef = useRef(false);
   const playRequestIdRef = useRef(0);
   const pendingPlayRef = useRef<RekordboxTrack | null>(null);
@@ -256,6 +260,7 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
     const revokeUrl = ownedUrlIsRevocableRef.current;
     ownedUrlRef.current = null;
     ownedUrlIsRevocableRef.current = false;
+    ownedSourceIsUsbRef.current = false;
     ignoreMediaEventsRef.current = true;
     safeResetAudio(audioRef.current, oldUrl, revokeUrl);
     ignoreMediaEventsRef.current = false;
@@ -342,6 +347,7 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
       safeResetAudio(audio, ownedUrlRef.current, ownedUrlIsRevocableRef.current);
       ownedUrlRef.current = null;
       ownedUrlIsRevocableRef.current = false;
+      ownedSourceIsUsbRef.current = false;
       audioRef.current = null;
       playRequestIdRef.current = Number.MAX_SAFE_INTEGER;
     };
@@ -433,6 +439,7 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
 
     ownedUrlRef.current = newUrl;
     ownedUrlIsRevocableRef.current = revokeNewUrl;
+    ownedSourceIsUsbRef.current = true;
     audio.src = newUrl;
     audio.volume = stateRef.current.volume;
     audio.muted = stateRef.current.muted;
@@ -469,10 +476,20 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
       return;
     }
 
+    if (!ownedSourceIsUsbRef.current) return;
     const current = stateRef.current;
     if (current.status === 'idle' || current.status === 'error') return;
     failPlayback(usbStatusPlaybackMessage(usbStatus), current.activeTrack);
   }, [usbCtx.status, failPlayback, playTrack]);
+
+
+  useEffect(() => registerUsbPlaybackStopHandler(() => {
+    if (!ownedSourceIsUsbRef.current) return;
+    playRequestIdRef.current += 1;
+    pendingPlayRef.current = null;
+    releaseCurrentSource();
+    dispatch({ type: 'STOP' });
+  }), [releaseCurrentSource]);
 
   const toggleTrack = useCallback(async (track: RekordboxTrack): Promise<void> => {
     const s = stateRef.current;

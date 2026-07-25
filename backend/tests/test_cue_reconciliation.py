@@ -153,6 +153,7 @@ class _FakeSbCues:
         self._cues = existing_cues
         self.updates: List[Dict[str, Any]] = []   # (id, update_dict) tuples
         self.inserts: List[Dict[str, Any]] = []
+        self.upsert_conflicts: List[str | None] = []
 
     def table(self, name: str) -> "_FakeCueProxy":
         return _FakeCueProxy(self, name)
@@ -185,11 +186,17 @@ class _FakeCueProxy:
         self._data = data
         return self
 
+    def upsert(self, data, on_conflict=None, **k):
+        self._op = "upsert"
+        self._data = data
+        self._sb.upsert_conflicts.append(on_conflict)
+        return self
+
     def execute(self):
         if self._op == "update":
             self._sb.updates.append({"filter_val": self._filter_val, "data": self._data})
             return SimpleNamespace(data=[])
-        if self._op == "insert":
+        if self._op in {"insert", "upsert"}:
             self._sb.inserts.append(self._data)
             return SimpleNamespace(data=[])
         # select
@@ -242,6 +249,7 @@ class TestReconcileAndWriteCues:
         assert inserted["source_db_present"] is False
         assert inserted["source_anlz_present"] is True
         assert inserted["hot_cue_slot"] == 1
+        assert sb.upsert_conflicts == ["track_id,dedupe_key"]
 
     def test_same_known_slot_matches_and_updates(self):
         """

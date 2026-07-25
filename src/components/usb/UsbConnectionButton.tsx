@@ -10,6 +10,9 @@ function StatusDot({ status }: { status: UsbStatus }) {
   if (status === 'connected') {
     return <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-green-500" />;
   }
+  if (status === 'released') {
+    return <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-cyan-400" />;
+  }
   if (status === 'permission-required' || status === 'wrong_root') {
     return <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400" />;
   }
@@ -35,6 +38,7 @@ function statusLabel(status: UsbStatus, volumeName: string | null): string {
     case 'unsupported':       return 'USB unavailable';
     case 'connecting':        return 'Connecting…';
     case 'connected':         return volumeName ?? 'USB Connected';
+    case 'released':          return 'USB Released';
     case 'permission-required': return 'Re-authorize USB';
     case 'wrong_root':        return 'Wrong folder selected';
     case 'unavailable':       return 'USB not found';
@@ -46,6 +50,7 @@ function statusLabel(status: UsbStatus, volumeName: string | null): string {
 function statusTitle(status: UsbStatus, volumeName: string | null): string {
   switch (status) {
     case 'connected':           return `Connected: ${volumeName ?? 'USB'}`;
+    case 'released':            return 'USB access is released and all tracked streams are closed. Click to reconnect.';
     case 'permission-required': return 'USB permission expired — click to re-authorize';
     case 'wrong_root':          return 'Wrong folder — select the USB root, not PIONEER or a subfolder';
     case 'unavailable':         return 'USB drive not found — reinsert or select a different drive';
@@ -96,6 +101,8 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
     collapsed ? 'justify-center py-2.5 px-0 w-full' : 'gap-3 px-4 py-2.5 flex-1 min-w-0',
     status === 'connected'
       ? 'text-green-400 bg-green-500/10 border-green-500/20 hover:bg-green-500/15'
+      : status === 'released'
+      ? 'text-cyan-300 bg-cyan-500/10 border-cyan-500/20 hover:bg-cyan-500/15 cursor-pointer'
       : status === 'permission-required'
       ? 'text-amber-400 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/15 cursor-pointer'
       : status === 'wrong_root'

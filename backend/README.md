@@ -119,12 +119,19 @@ FastAPI process; it owns the thread pool:
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-If that process restarts, imports left in `created`, `uploading`, `queued`, or
-`processing` are marked `failed` with retryable error code `IMPORT_INTERRUPTED`.
-Jobs left in `cancel_requested` are finalized as `cancelled`. Work is not resumed
-automatically. Production deployments that require automatic continuation should
-move the isolated import functions to a durable queue such as Celery or ARQ while
-keeping the same database state machine.
+The in-process analysis worker publishes heartbeats, its current track and stage,
+pause/delete signals, and an explicit stopped acknowledgement. Pause preserves
+uploaded assets and completed tracks. Delete cannot clean records until that
+acknowledgement is present. If the process restarts, stale running or stopping
+jobs become paused or interrupted and remain resumable; their data is never
+deleted automatically.
+
+The execution registry is deliberately queue-neutral. Production deployments
+that need automatic continuation across process loss should move the isolated
+analysis function to a durable queue such as Celery or ARQ while preserving the
+same request, checkpoint, heartbeat, and stopped-acknowledgement contract. See
+`docs/rekordbox-usb-import-safety.md` for the full state machine and shutdown
+sequence.
 
 Apply the import-job migration before starting the patched backend:
 

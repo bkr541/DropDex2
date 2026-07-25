@@ -39,10 +39,13 @@ from .import_jobs import (
     ImportCancelledError,
     assert_import_not_cancelled,
     complete_import_job,
+    finalize_paused_import,
     local_cancellation_requested,
     mark_import_failed,
+    publish_worker_state,
     transition_import_job,
 )
+from .import_worker_registry import WorkerStopRequested, worker_registry
 from .models import (
     AnalysisStatusResponse,
     BatchFileResult,
@@ -78,6 +81,37 @@ _ANALYSIS_PROGRESS: Dict[str, Dict[str, Any]] = {}
 _ANALYSIS_PROGRESS_LAST_PERSISTED: Dict[str, float] = {}
 _ANALYSIS_PROGRESS_PERSIST_INTERVAL_SECONDS = 0.5
 
+
+
+def _analysis_worker_checkpoint(
+    import_id: str,
+    user_id: str,
+    stage: str,
+    *,
+    current_track_id: str | None = None,
+    sb=None,
+) -> None:
+    """Publish a safe worker boundary before the next costly or write stage."""
+    worker_registry.checkpoint(
+        import_id,
+        stage,
+        current_track_id=current_track_id,
+    )
+    if sb is None:
+        return
+    try:
+        sb.table("rekordbox_imports").update(
+            {
+                "analysis_worker_status": "running",
+                "analysis_worker_stage": stage,
+                "analysis_worker_current_track_id": current_track_id,
+                "analysis_worker_heartbeat_at": _now_iso(),
+                "analysis_worker_stopped_acknowledged": False,
+                "analysis_worker_stopped_at": None,
+            }
+        ).eq("id", import_id).eq("user_id", user_id).execute()
+    except Exception as exc:
+        logger.warning("Could not persist worker checkpoint %s for %s: %s", stage, import_id, exc)
 
 def _format_current_track_label(track: Optional[dict]) -> Optional[str]:
     """Return a compact Artist - Title label for live import progress."""
@@ -286,6 +320,24 @@ def _get_tracks_with_paths(sb, import_id: str) -> List[dict]:
     return [t for t in rows if t.get("analysis_data_file_path")]
 
 
+_FINAL_ANALYSIS_TRACK_STATUSES = frozenset({"completed", "partial", "reused", "skipped"})
+
+
+def _select_tracks_for_analysis(
+    all_tracks: List[dict],
+    affected_track_ids: Optional[List[str]] = None,
+) -> List[dict]:
+    """Return only tracks whose final checkpoint has not been committed."""
+    affected = set(affected_track_ids or [])
+    return [
+        track
+        for track in all_tracks
+        if (not affected or track.get("id") in affected)
+        and str(track.get("analysis_parse_status") or "")
+        not in _FINAL_ANALYSIS_TRACK_STATUSES
+    ]
+
+
 def _get_tracks_for_rescan(sb, import_id: str) -> List[dict]:
     """Return ALL tracks for this import with full identity fields for rescan matching.
 
@@ -384,7 +436,7 @@ def _prepare_analysis_batch(import_id: str, user_id: str):
     """Load batch metadata with blocking Supabase work outside the event loop."""
     sb = _create_supabase()
     import_row = _require_import_for_user(sb, import_id, user_id)
-    if import_row.get("status") in {"cancel_requested", "cancelled", "failed"}:
+    if import_row.get("status") in {"cancelled", "failed", "deleting"}:
         raise HTTPException(
             status_code=409,
             detail={
@@ -402,6 +454,12 @@ def _prepare_analysis_batch(import_id: str, user_id: str):
             .update({
                 "analysis_status": "uploading",
                 "analysis_progress_updated_at": _now_iso(),
+                "analysis_worker_status": "running",
+                "analysis_worker_stage": "loading_assets",
+                "analysis_worker_current_track_id": None,
+                "analysis_worker_heartbeat_at": _now_iso(),
+                "analysis_worker_stopped_acknowledged": False,
+                "analysis_worker_stopped_at": None,
                 "updated_at": _now_iso(),
             })
             .eq("id", import_id)
@@ -1132,7 +1190,7 @@ def _complete_analysis_import_sync(
     """
     sb = _create_supabase()
     import_row = _require_import_for_user(sb, import_id, user_id)
-    if import_row.get("status") in {"cancel_requested", "cancelled", "failed"}:
+    if import_row.get("status") in {"cancelled", "failed", "deleting"}:
         raise HTTPException(
             status_code=409,
             detail={
@@ -1144,15 +1202,13 @@ def _complete_analysis_import_sync(
                 "retryable": bool(import_row.get("retryable")),
             },
         )
-    assert_import_not_cancelled(import_id, user_id, sb=sb)
+    _analysis_worker_checkpoint(import_id, user_id, "before_loading_assets", sb=sb)
 
     # Transition to 'parsing' before starting work
     try:
         sb.table("rekordbox_imports").update(
             {
                 "analysis_status": "parsing",
-                "analysis_progress_processed_track_count": 0,
-                "analysis_progress_total_track_count": 0,
                 "analysis_current_track_id": None,
                 "analysis_current_track_title": None,
                 "analysis_current_track_artist": None,
@@ -1166,7 +1222,7 @@ def _complete_analysis_import_sync(
 
     from .supabase_pagination import fetch_all_rows  # noqa: PLC0415
 
-    # Build asset query; filter by affected_track_ids for selective reprocessing.
+    # Load all uploaded asset metadata so resume can publish full-library counts.
     def _asset_query():
         q = (
             sb.table("rekordbox_analysis_assets")
@@ -1174,8 +1230,6 @@ def _complete_analysis_import_sync(
             .eq("import_id", import_id)
             .eq("upload_status", "uploaded")
         )
-        if affected_track_ids:
-            q = q.in_("track_id", affected_track_ids)
         return q
 
     uploaded_assets: List[dict] = fetch_all_rows(_asset_query, order_column="id")
@@ -1186,11 +1240,15 @@ def _complete_analysis_import_sync(
         if tid:
             assets_by_track.setdefault(tid, []).append(asset)
 
-    tracks = _get_tracks_with_paths(sb, import_id)
-    # Restrict to affected tracks when selective reprocessing
-    if affected_track_ids:
-        affected_set = set(affected_track_ids)
-        tracks = [t for t in tracks if t.get("id") in affected_set]
+    all_tracks = _get_tracks_with_paths(sb, import_id)
+    track_status_by_id = {
+        str(track.get("id")): str(track.get("analysis_parse_status") or "")
+        for track in all_tracks
+    }
+    final_track_statuses = _FINAL_ANALYSIS_TRACK_STATUSES
+    # Selective resume touches only requested tracks. A normal run or reload
+    # resume never repeats tracks whose final track-status write already landed.
+    tracks = _select_tracks_for_analysis(all_tracks, affected_track_ids)
 
     # Diagnostic invariant: loaded counts must match what was stored.
     _expected = import_row.get("analysis_expected_track_count") or 0
@@ -1202,19 +1260,19 @@ def _complete_analysis_import_sync(
         "uploaded_assets=%d (DAT=%d EXT=%d 2EX=%d)",
         import_id,
         _expected,
-        len(tracks),
+        len(all_tracks),
         len(uploaded_assets),
         _dat_count,
         _ext_count,
         _2ex_count,
     )
-    if _expected and len(tracks) != _expected:
+    if _expected and len(all_tracks) != _expected:
         logger.warning(
             "complete: track count mismatch import=%s expected=%d loaded=%d — "
             "pagination issue or write failure",
             import_id,
             _expected,
-            len(tracks),
+            len(all_tracks),
         )
 
     from dropdex_importer.analysis_paths import (  # noqa: PLC0415
@@ -1225,31 +1283,35 @@ def _complete_analysis_import_sync(
     track_results: List[TrackCompleteStatus] = []
     completed_count = partial_count = failed_count = missing_required_count = 0
     missing_optional_ext_count = missing_optional_2ex_count = 0
-    matched_track_count = 0
 
     tmp_dir: Optional[str] = None
     try:
         tmp_dir = tempfile.mkdtemp()
-        total_track_count = len(tracks)
+        total_track_count = len(all_tracks)
+        already_finalized_count = sum(
+            1 for status in track_status_by_id.values() if status in final_track_statuses
+        )
         _set_analysis_progress(
             import_id,
             track=None,
-            processed_track_count=0,
+            processed_track_count=already_finalized_count,
             total_track_count=total_track_count,
             sb=sb,
             force_persist=True,
         )
 
         for track in tracks:
-            assert_import_not_cancelled(import_id, user_id, sb=sb)
+            track_id = track["id"]
+            _analysis_worker_checkpoint(
+                import_id, user_id, "before_next_track", current_track_id=track_id, sb=sb
+            )
             _set_analysis_progress(
                 import_id,
                 track=track,
-                processed_track_count=len(track_results),
+                processed_track_count=already_finalized_count + len(track_results),
                 total_track_count=total_track_count,
                 sb=sb,
             )
-            track_id = track["id"]
             rb_cid = str(track.get("rekordbox_content_id", ""))
             track_assets = assets_by_track.get(track_id, [])
 
@@ -1285,18 +1347,47 @@ def _complete_analysis_import_sync(
                         ],
                     )
                 )
+                _analysis_worker_checkpoint(
+                    import_id,
+                    user_id,
+                    "before_updating_track_status",
+                    current_track_id=track_id,
+                    sb=sb,
+                )
+                sb.table("rekordbox_tracks").update(
+                    {
+                        "analysis_parse_status": "missing_required",
+                        "analysis_parse_warnings": [
+                            {
+                                "code": "SIBLING_MISSING",
+                                "asset_type": "DAT",
+                                "message": "Required DAT file was not uploaded.",
+                                "detail": None,
+                            }
+                        ],
+                    }
+                ).eq("id", track_id).execute()
+                track_status_by_id[str(track_id)] = "missing_required"
+                _analysis_worker_checkpoint(
+                    import_id, user_id, "after_track_completed", current_track_id=track_id, sb=sb
+                )
                 _set_analysis_progress(
                     import_id,
                     track=track,
-                    processed_track_count=len(track_results),
+                    processed_track_count=already_finalized_count + len(track_results),
                     total_track_count=total_track_count,
                     sb=sb,
                 )
                 continue
 
-            matched_track_count += 1
             local_paths: Dict[str, Optional[str]] = {"DAT": None, "EXT": None, "2EX": None}
+            _analysis_worker_checkpoint(
+                import_id, user_id, "before_downloading_assets", current_track_id=track_id, sb=sb
+            )
             for asset in track_assets:
+                _analysis_worker_checkpoint(
+                    import_id, user_id, "downloading_asset", current_track_id=track_id, sb=sb
+                )
                 atype = asset["asset_type"]
                 ext_suffix = _ASSET_EXT_MAP.get(atype, ".dat")
                 local_path = os.path.join(tmp_dir, f"{asset['id']}{ext_suffix}")
@@ -1307,7 +1398,16 @@ def _complete_analysis_import_sync(
                     local_paths[atype] = local_path
                 except Exception as exc:
                     logger.error("Failed to download asset %s: %s", asset["id"], exc)
+                _analysis_worker_checkpoint(
+                    import_id, user_id, "after_downloading_asset", current_track_id=track_id, sb=sb
+                )
 
+            _analysis_worker_checkpoint(
+                import_id, user_id, "after_downloading_assets", current_track_id=track_id, sb=sb
+            )
+            _analysis_worker_checkpoint(
+                import_id, user_id, "before_parsing", current_track_id=track_id, sb=sb
+            )
             try:
                 bundle = _parse_bundle(
                     dat_path=local_paths["DAT"],
@@ -1333,17 +1433,47 @@ def _complete_analysis_import_sync(
                         ],
                     )
                 )
+                _analysis_worker_checkpoint(
+                    import_id,
+                    user_id,
+                    "before_updating_track_status",
+                    current_track_id=track_id,
+                    sb=sb,
+                )
+                sb.table("rekordbox_tracks").update(
+                    {
+                        "analysis_parse_status": "failed",
+                        "analysis_parse_warnings": [
+                            {
+                                "code": "PARSE_ERROR",
+                                "asset_type": "BUNDLE",
+                                "message": "An error occurred while parsing analysis files.",
+                                "detail": None,
+                            }
+                        ],
+                    }
+                ).eq("id", track_id).execute()
+                track_status_by_id[str(track_id)] = "failed"
+                _analysis_worker_checkpoint(
+                    import_id, user_id, "after_track_completed", current_track_id=track_id, sb=sb
+                )
                 _set_analysis_progress(
                     import_id,
                     track=track,
-                    processed_track_count=len(track_results),
+                    processed_track_count=already_finalized_count + len(track_results),
                     total_track_count=total_track_count,
                     sb=sb,
                 )
                 continue
 
+            _analysis_worker_checkpoint(
+                import_id, user_id, "after_parsing", current_track_id=track_id, sb=sb
+            )
             parsed_count = 0
             asset_lookup = {a["asset_type"]: a for a in track_assets}
+            _analysis_worker_checkpoint(
+                import_id, user_id, "before_writing_asset_status", current_track_id=track_id, sb=sb
+            )
             for atype, result_obj in (
                 ("DAT", bundle.dat),
                 ("EXT", bundle.ext),
@@ -1365,6 +1495,13 @@ def _complete_analysis_import_sync(
                         logger.error("Failed to update asset %s: %s", asset_row["id"], exc)
                     if result_obj.parse_status in ("completed", "partial"):
                         parsed_count += 1
+            _analysis_worker_checkpoint(
+                import_id,
+                user_id,
+                "after_writing_asset_status",
+                current_track_id=track_id,
+                sb=sb,
+            )
 
             overall = bundle.overall_status
 
@@ -1377,6 +1514,9 @@ def _complete_analysis_import_sync(
             }
             bg = None  # BeatGridResult; passed to phrase extraction
 
+            _analysis_worker_checkpoint(
+                import_id, user_id, "before_writing_beat_grid", current_track_id=track_id, sb=sb
+            )
             try:
                 from dropdex_importer.beatgrid_parser import extract_beat_grid  # noqa: PLC0415
 
@@ -1393,6 +1533,12 @@ def _complete_analysis_import_sync(
                 logger.error("Beat grid extraction failed for track %s: %s", track_id, exc)
                 feature_statuses["beat_grid"] = "failed"
 
+            _analysis_worker_checkpoint(
+                import_id, user_id, "after_writing_beat_grid", current_track_id=track_id, sb=sb
+            )
+            _analysis_worker_checkpoint(
+                import_id, user_id, "before_writing_waveform", current_track_id=track_id, sb=sb
+            )
             try:
                 from dropdex_importer.waveform_parser import extract_waveforms  # noqa: PLC0415
 
@@ -1413,6 +1559,12 @@ def _complete_analysis_import_sync(
                 logger.error("Waveform extraction failed for track %s: %s", track_id, exc)
                 feature_statuses["waveform"] = "failed"
 
+            _analysis_worker_checkpoint(
+                import_id, user_id, "after_writing_waveform", current_track_id=track_id, sb=sb
+            )
+            _analysis_worker_checkpoint(
+                import_id, user_id, "before_writing_cues", current_track_id=track_id, sb=sb
+            )
             try:
                 from dropdex_importer.cue_parser import parse_anlz_cues  # noqa: PLC0415
 
@@ -1425,6 +1577,12 @@ def _complete_analysis_import_sync(
                 logger.error("Cue extraction failed for track %s: %s", track_id, exc)
                 feature_statuses["cues"] = "failed"
 
+            _analysis_worker_checkpoint(
+                import_id, user_id, "after_writing_cues", current_track_id=track_id, sb=sb
+            )
+            _analysis_worker_checkpoint(
+                import_id, user_id, "before_writing_phrases", current_track_id=track_id, sb=sb
+            )
             try:
                 from dropdex_importer.phrase_parser import extract_phrases  # noqa: PLC0415
 
@@ -1442,6 +1600,12 @@ def _complete_analysis_import_sync(
                 logger.error("Phrase extraction failed for track %s: %s", track_id, exc)
                 feature_statuses["phrases"] = "failed"
 
+            _analysis_worker_checkpoint(
+                import_id, user_id, "after_writing_phrases", current_track_id=track_id, sb=sb
+            )
+            _analysis_worker_checkpoint(
+                import_id, user_id, "before_updating_track_status", current_track_id=track_id, sb=sb
+            )
             try:
                 sb.table("rekordbox_tracks").update(
                     {
@@ -1450,8 +1614,11 @@ def _complete_analysis_import_sync(
                         "analysis_feature_statuses": feature_statuses,
                     }
                 ).eq("id", track_id).execute()
+                track_status_by_id[str(track_id)] = overall
             except Exception as exc:
                 logger.error("Failed to update track %s: %s", track_id, exc)
+                overall = "failed"
+                track_status_by_id[str(track_id)] = "failed"
 
             if overall == "completed":
                 completed_count += 1
@@ -1474,10 +1641,13 @@ def _complete_analysis_import_sync(
                     warnings=all_warnings,
                 )
             )
+            _analysis_worker_checkpoint(
+                import_id, user_id, "after_track_completed", current_track_id=track_id, sb=sb
+            )
             _set_analysis_progress(
                 import_id,
                 track=track,
-                processed_track_count=len(track_results),
+                processed_track_count=already_finalized_count + len(track_results),
                 total_track_count=total_track_count,
                 sb=sb,
             )
@@ -1486,39 +1656,85 @@ def _complete_analysis_import_sync(
         if tmp_dir:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    total_tracks = len(tracks)
+    library_total_tracks = len(all_tracks)
     total_asset_count = len(uploaded_assets)
-    parsed_track_count = completed_count + partial_count
+    durable_completed_count = sum(
+        1 for status in track_status_by_id.values() if status in {"completed", "reused", "skipped"}
+    )
+    durable_partial_count = sum(
+        1 for status in track_status_by_id.values() if status == "partial"
+    )
+    durable_failed_count = sum(
+        1 for status in track_status_by_id.values() if status == "failed"
+    )
+    durable_missing_required_count = sum(
+        1 for status in track_status_by_id.values() if status == "missing_required"
+    )
+    durable_problem_count = durable_failed_count + durable_missing_required_count
+    durable_missing_optional_ext_count = sum(
+        1
+        for track in all_tracks
+        if not any(
+            asset.get("asset_type") == "EXT"
+            for asset in assets_by_track.get(str(track.get("id")), [])
+        )
+    )
+    durable_missing_optional_2ex_count = sum(
+        1
+        for track in all_tracks
+        if not any(
+            asset.get("asset_type") == "2EX"
+            for asset in assets_by_track.get(str(track.get("id")), [])
+        )
+    )
+    parsed_track_count = durable_completed_count + durable_partial_count
+    durable_matched_track_count = sum(
+        1
+        for track in all_tracks
+        if any(
+            asset.get("asset_type") == "DAT"
+            for asset in assets_by_track.get(str(track.get("id")), [])
+        )
+        or track_status_by_id.get(str(track.get("id"))) in final_track_statuses
+    )
 
-    if total_tracks == 0:
+    if library_total_tracks == 0:
         final_status = "completed"
-    elif missing_required_count == total_tracks and completed_count == 0 and partial_count == 0:
+    elif parsed_track_count == 0 and durable_problem_count >= library_total_tracks:
         final_status = "failed"
-    elif failed_count > 0 or partial_count > 0 or missing_required_count > 0:
+    elif (
+        durable_partial_count > 0
+        or durable_problem_count > 0
+        or parsed_track_count < library_total_tracks
+    ):
         final_status = "partial"
     else:
         final_status = "completed"
 
-    assert_import_not_cancelled(import_id, user_id, sb=sb)
+    _analysis_worker_checkpoint(import_id, user_id, "before_finalizing", sb=sb)
     try:
         response = (
             sb.table("rekordbox_imports")
             .update(
                 {
                     "analysis_status": final_status,
-                    "analysis_matched_track_count": matched_track_count,
+                    "analysis_matched_track_count": durable_matched_track_count,
                     "analysis_parsed_track_count": parsed_track_count,
-                    "analysis_failed_track_count": failed_count + missing_required_count,
+                    "analysis_failed_track_count": durable_problem_count,
                     "analysis_asset_count": total_asset_count,
                     "analysis_parser_version": _PARSER_VERSION,
                     "analysis_completed_at": _now_iso(),
-                    "analysis_progress_processed_track_count": total_tracks,
-                    "analysis_progress_total_track_count": total_tracks,
+                    "analysis_progress_processed_track_count": library_total_tracks,
+                    "analysis_progress_total_track_count": library_total_tracks,
                     "analysis_current_track_id": None,
                     "analysis_current_track_title": None,
                     "analysis_current_track_artist": None,
                     "analysis_current_track_label": None,
                     "analysis_progress_updated_at": _now_iso(),
+                    "analysis_worker_status": "completed",
+                    "analysis_worker_stage": "completed",
+                    "analysis_worker_current_track_id": None,
+                    "analysis_worker_heartbeat_at": _now_iso(),
                 }
             )
             .eq("id", import_id)
@@ -1568,16 +1784,116 @@ def _complete_analysis_import_sync(
     return CompleteResponse(
         import_id=import_id,
         analysis_status=final_status,
-        total_tracks=total_tracks,
-        completed_count=completed_count,
-        partial_count=partial_count,
-        failed_count=failed_count,
-        missing_required_count=missing_required_count,
-        missing_optional_ext_count=missing_optional_ext_count,
-        missing_optional_2ex_count=missing_optional_2ex_count,
+        total_tracks=library_total_tracks,
+        completed_count=durable_completed_count,
+        partial_count=durable_partial_count,
+        failed_count=durable_failed_count,
+        missing_required_count=durable_missing_required_count,
+        missing_optional_ext_count=durable_missing_optional_ext_count,
+        missing_optional_2ex_count=durable_missing_optional_2ex_count,
         parser_version=_PARSER_VERSION,
         tracks=track_results,
     )
+
+
+def _run_complete_analysis_import_sync(
+    import_id: str,
+    user_id: str,
+    affected_track_ids: Optional[List[str]] = None,
+) -> CompleteResponse:
+    """Own the worker lifecycle and always publish a stopped acknowledgement."""
+    worker_registry.register(import_id)
+    try:
+        publish_worker_state(
+            import_id,
+            user_id,
+            status="running",
+            stage="starting",
+            stopped_acknowledged=False,
+            analysis_status="parsing",
+        )
+        result = _complete_analysis_import_sync(import_id, user_id, affected_track_ids)
+        try:
+            publish_worker_state(
+                import_id,
+                user_id,
+                status="completed",
+                stage="completed",
+                stopped_acknowledged=True,
+            )
+        except Exception:
+            logger.exception("Could not persist completed worker acknowledgement for %s", import_id)
+        finally:
+            # The in-process event is the cleanup barrier. Publish the worker's
+            # last durable state before waking any delete waiter so no worker
+            # write can land after destructive cleanup has started.
+            worker_registry.acknowledge_stopped(import_id, status="completed")
+        return result
+    except (WorkerStopRequested, ImportCancelledError) as exc:
+        snapshot = worker_registry.snapshot(import_id)
+        reason = snapshot.get("stop_reason") or (
+            "delete" if isinstance(exc, ImportCancelledError) else exc.reason
+        )
+        final_worker_status = "paused" if reason == "pause" else "stopped"
+        final_analysis_status = "paused" if reason == "pause" else "stopping"
+        try:
+            publish_worker_state(
+                import_id,
+                user_id,
+                status=final_worker_status,
+                stage="stopped",
+                stopped_acknowledged=True,
+                analysis_status=final_analysis_status,
+            )
+        except Exception:
+            logger.exception("Could not persist stopped worker acknowledgement for %s", import_id)
+        finally:
+            worker_registry.acknowledge_stopped(import_id, status=final_worker_status)
+        if reason == "pause":
+            finalize_paused_import(import_id, user_id)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "ANALYSIS_PAUSED" if reason == "pause" else "DELETE_REQUESTED",
+                "detail": (
+                    "Analysis paused at a safe checkpoint."
+                    if reason == "pause"
+                    else "Analysis stopped and acknowledged the delete request."
+                ),
+                "retryable": reason == "pause",
+            },
+        ) from exc
+    except HTTPException:
+        try:
+            publish_worker_state(
+                import_id,
+                user_id,
+                status="failed",
+                stage="failed",
+                stopped_acknowledged=True,
+                error="Analysis request failed.",
+            )
+        except Exception:
+            logger.exception("Could not persist failed worker acknowledgement for %s", import_id)
+        finally:
+            worker_registry.acknowledge_stopped(import_id, status="failed")
+        raise
+    except Exception as exc:
+        try:
+            publish_worker_state(
+                import_id,
+                user_id,
+                status="failed",
+                stage="failed",
+                stopped_acknowledged=True,
+                error=str(exc)[:2000],
+                analysis_status="failed",
+            )
+        except Exception:
+            logger.exception("Could not persist failed worker diagnostics for %s", import_id)
+        finally:
+            worker_registry.acknowledge_stopped(import_id, status="failed", error=str(exc))
+        raise
 
 
 async def complete_analysis_import(
@@ -1587,7 +1903,82 @@ async def complete_analysis_import(
 ) -> CompleteResponse:
     """Run CPU/file/database-heavy analysis outside the event loop."""
     return await run_in_threadpool(
-        _complete_analysis_import_sync, import_id, user_id, affected_track_ids
+        _run_complete_analysis_import_sync, import_id, user_id, affected_track_ids
+    )
+
+
+async def resume_analysis_import(
+    import_id: str,
+    user_id: str,
+    affected_track_ids: Optional[List[str]] = None,
+) -> CompleteResponse:
+    """Resume retained analysis work and skip tracks already finalized."""
+    sb = _create_supabase()
+    row = _require_import_for_user(sb, import_id, user_id)
+    if row.get("status") in {"cancelled", "deleting", "failed"}:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "IMPORT_NOT_RESUMABLE",
+                "detail": f"Import is {row.get('status')} and cannot be resumed.",
+                "retryable": False,
+            },
+        )
+    snapshot = worker_registry.snapshot(import_id)
+    if snapshot.get("active"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "ANALYSIS_ALREADY_RUNNING",
+                "detail": "Analysis is already running.",
+                "retryable": False,
+            },
+        )
+    job_status = str(row.get("status") or "")
+    analysis_status = str(row.get("analysis_status") or "")
+    if job_status in {"pause_requested", "stopping", "cancel_requested"} or analysis_status in {
+        "pause_requested",
+        "stopping",
+    }:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "ANALYSIS_STILL_STOPPING",
+                "detail": "Wait for the worker's stopped acknowledgement before resuming.",
+                "retryable": True,
+            },
+        )
+    if job_status not in {"paused", "interrupted", "completed"}:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "IMPORT_NOT_RESUMABLE",
+                "detail": f"Import is {job_status or 'unknown'} and cannot be resumed.",
+                "retryable": False,
+            },
+        )
+    worker_registry.clear_stop_requests(import_id)
+    updates = {
+        "analysis_status": "parsing",
+        "analysis_worker_status": "queued",
+        "analysis_worker_stage": "resume_queued",
+        "analysis_worker_current_track_id": None,
+        "analysis_worker_stopped_acknowledged": False,
+        "analysis_worker_stopped_at": None,
+        "error_code": None,
+        "error_message": None,
+        "retryable": False,
+        "updated_at": _now_iso(),
+    }
+    if job_status in {"paused", "interrupted"}:
+        updates["status"] = "processing"
+    sb.table("rekordbox_imports").update(updates).eq("id", import_id).eq(
+        "user_id", user_id
+    ).execute()
+    return await complete_analysis_import(
+        import_id,
+        user_id,
+        affected_track_ids=affected_track_ids,
     )
 
 
@@ -1772,6 +2163,7 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
         else _format_current_track_label(current_track)
     )
 
+    worker_snapshot = worker_registry.snapshot(import_id)
     return AnalysisStatusResponse(
         import_id=import_id,
         analysis_status=analysis_status,
@@ -1808,6 +2200,25 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
         failed_upload_count=failed_upload_count,
         failed_parse_count=failed_parse_count,
         affected_track_count=len(affected_track_ids),
+        job_status=str(import_row.get("status") or "unknown"),
+        worker_status=str(
+            worker_snapshot.get("worker_status")
+            or import_row.get("analysis_worker_status")
+            or "idle"
+        ),
+        worker_active=bool(worker_snapshot.get("active")),
+        worker_stage=(
+            worker_snapshot.get("current_stage")
+            or import_row.get("analysis_worker_stage")
+        ),
+        worker_last_heartbeat=(
+            worker_snapshot.get("last_heartbeat")
+            or import_row.get("analysis_worker_heartbeat_at")
+        ),
+        worker_stopped_acknowledged=bool(
+            worker_snapshot.get("stopped_acknowledged")
+            or import_row.get("analysis_worker_stopped_acknowledged")
+        ),
     )
 
 
