@@ -160,3 +160,9 @@ Backend endpoints:
 - `GET /api/rekordbox/import/{id}/analysis-status`
 
 The legacy `POST .../cancel` route remains an alias for explicit destructive deletion. New UI paths use Pause Analysis or Delete Import directly.
+
+## Performance fast path compatibility
+
+Patch 3 preserves the worker-stop and USB-release contract while moving deep analysis behind metadata readiness. The browser retains only manifest-requested DAT/EXT `File` objects; optional `.2EX` handles are not kept in import state. Uploaded bytes are atomically staged on the backend and parsed after local USB requests, retry timers, and dispatch queues are drained.
+
+The **USB access released** indicator therefore means the background worker is operating from durable staging, retained archives, or legacy cloud objects. Pause, resume, restart recovery, and Delete Import continue to use the Patch 2 local worker signal and stopped acknowledgement. See [Rekordbox import fast path and background analysis](rekordbox-import-performance.md) for staging, concurrency, batching, and readiness details.

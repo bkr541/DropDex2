@@ -279,3 +279,4 @@ python -m pytest tests/ -v
 ## Documentation
 
 - [Rekordbox USB import safety](docs/rekordbox-usb-import-safety.md) explains the read-only browser lifecycle, cancellation behavior, and the verified point at which the drive is released.
+- [Rekordbox import fast path](docs/rekordbox-import-performance.md) documents incremental manifests, durable staging, bounded parsing, bulk writes, progressive readiness, metrics, and deployment tuning.

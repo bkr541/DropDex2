@@ -11,6 +11,7 @@ import {
 import { useCallback } from 'react';
 import { cn, formatDuration, formatKey, formatPosition } from '../../lib/utils';
 import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
+import { TrackAnalysisStatusBadge } from './TrackAnalysisStatusBadge';
 import { SimilarVibesSection } from './SimilarVibesSection';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
@@ -116,6 +117,7 @@ export function TrackDetailView({
             <p className="text-sm font-bold text-primary uppercase tracking-widest truncate">
               {artistDisplay}
             </p>
+            <TrackAnalysisStatusBadge status={track.analysis_parse_status} className="mt-2" />
           </div>
 
           {/* Key badge */}

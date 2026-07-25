@@ -41,6 +41,7 @@ import { useTrackPreviewWaveforms } from './hooks/useTrackPreviewWaveforms';
 import { fetchReviewTracks, setActiveImport } from './lib/queries/rekordbox';
 import { deleteRekordboxImport } from './lib/api/rekordboxImport';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
+import { BackgroundImportPanel } from './components/BackgroundImportPanel';
 import { getImportHistoryPresentation } from './lib/rekordbox/importHistoryPresentation';
 import { getImportProgress, getInFlightImport, isImportInFlight, isImportStalled } from './lib/rekordbox/importLifecycle';
 import { ResumeAnalysisModal } from './components/ResumeAnalysisModal';
@@ -412,6 +413,7 @@ export default function App() {
   const { route, navigate, goBack: navigateBack } = useAppRouter();
   const currentView = viewForRoute(route);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [backgroundImport, setBackgroundImport] = useState<{ importId: string; usbReleased: boolean } | null>(null);
   const { theme, setTheme } = useTheme();
   const [reviewTracks, setReviewTracks] = useState<RekordboxTrack[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
@@ -680,7 +682,8 @@ export default function App() {
     refetchImportList();
   };
 
-  const handleImportBackgrounded = (_importId: string) => {
+  const handleImportBackgrounded = (nextImportId: string, usbReleased: boolean) => {
+    setBackgroundImport({ importId: nextImportId, usbReleased });
     setIsImportModalOpen(false);
     refetchImportList();
   };
@@ -1645,6 +1648,23 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {backgroundImport && session?.access_token && (
+        <BackgroundImportPanel
+          importId={backgroundImport.importId}
+          usbReleased={backgroundImport.usbReleased}
+          accessToken={session.access_token}
+          onClose={() => setBackgroundImport(null)}
+          onManageLocalUpload={() => {
+            setBackgroundImport(null);
+            setIsImportModalOpen(true);
+          }}
+          onChanged={() => {
+            refetchImport();
+            refetchImportList();
+          }}
+        />
+      )}
 
       <ImportLibraryModal
         isOpen={isImportModalOpen}

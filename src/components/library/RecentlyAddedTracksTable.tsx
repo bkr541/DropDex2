@@ -5,6 +5,7 @@ import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
+import { TrackAnalysisStatusBadge } from './TrackAnalysisStatusBadge';
 import type { RekordboxTrack } from '../../types';
 import { waveformStateForTrack, type WaveformLoadState } from '../../lib/queries/waveformValidation';
 
@@ -107,6 +108,9 @@ function TrackRowRecent({
           )}>
             {track.title}
           </p>
+          {track.analysis_parse_status !== 'completed' && (
+            <TrackAnalysisStatusBadge status={track.analysis_parse_status} className="mt-1" />
+          )}
           <div className="mt-1.5">
             <RekordboxPreviewWaveform
               state={waveformState}
@@ -151,6 +155,9 @@ function TrackRowRecent({
             )}>
               {track.title}
             </p>
+            {track.analysis_parse_status !== 'completed' && (
+              <TrackAnalysisStatusBadge status={track.analysis_parse_status} className="mt-1" />
+            )}
             <div className="flex items-center gap-3 mt-0.5">
               <p className="text-[11px] text-muted-foreground truncate flex-1 leading-tight">{track.artist ?? '—'}</p>
               {track.bpm != null && (

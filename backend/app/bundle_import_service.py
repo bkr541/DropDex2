@@ -3,7 +3,7 @@ ZIP bundle import service.
 
 Accepts a single ZIP archive containing:
   - exportLibrary.db   (required; matched case-insensitively on basename)
-  - ANLZ files         (DAT/EXT/2EX; only those referenced by the manifest are extracted)
+  - ANLZ files         (DAT/EXT fast path; .2EX remains optional archival work)
 
 Any other file type (audio, artwork, etc.) is silently ignored.
 
@@ -369,12 +369,13 @@ def _import_bundle_sync(
 
                 matched_track_count += 1
 
-                # Extract ANLZ files from ZIP to temp directory
+                # Extract only fast-path ANLZ files from ZIP. .2EX contains
+                # PWV6/PWV7/PWVC data that is not yet user-visible, so it must
+                # not delay library readiness or make a track fail.
                 local_paths: Dict[str, Optional[str]] = {"DAT": None, "EXT": None, "2EX": None}
                 for spec, key in (
                     (dat_spec, "DAT"),
                     (ext_spec, "EXT"),
-                    (two_ex_spec, "2EX"),
                 ):
                     if spec is None:
                         continue
@@ -414,7 +415,7 @@ def _import_bundle_sync(
                     bundle = parse_track_analysis_bundle(
                         dat_path=local_paths["DAT"],
                         ext_path=local_paths["EXT"],
-                        two_ex_path=local_paths["2EX"],
+                        two_ex_path=None,
                     )
                 except Exception as exc:
                     logger.error("Bundle parse error for track %s: %s", track_id, exc)
@@ -434,7 +435,6 @@ def _import_bundle_sync(
                 for spec, key, asset_obj in (
                     (dat_spec, "DAT", bundle.dat),
                     (ext_spec, "EXT", bundle.ext),
-                    (two_ex_spec, "2EX", bundle.two_ex),
                 ):
                     if spec is None or local_paths[key] is None:
                         continue
@@ -531,7 +531,7 @@ def _import_bundle_sync(
 
                     from .analysis_feature_writer import write_waveform  # noqa: PLC0415
 
-                    wf = extract_waveforms(bundle.dat, bundle.ext, bundle.two_ex)
+                    wf = extract_waveforms(bundle.dat, bundle.ext, None)
                     ok = write_waveform(
                         sb, import_id, track_id, wf, user_id, asset_ids, DROPDEX_ANLZ_PARSER_VERSION
                     )
@@ -600,7 +600,7 @@ def _import_bundle_sync(
                     failed_count += 1
 
                 all_warnings = [w.as_dict() for w in (bundle.warnings or [])]
-                for asset_obj in (bundle.dat, bundle.ext, bundle.two_ex):
+                for asset_obj in (bundle.dat, bundle.ext):
                     if asset_obj:
                         all_warnings.extend(w.as_dict() for w in asset_obj.warnings)
 

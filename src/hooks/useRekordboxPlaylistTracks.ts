@@ -5,6 +5,7 @@ import {
   fetchPlaylistTracksPage,
   PLAYLIST_TRACK_PAGE_SIZE,
 } from '../lib/queries/rekordbox';
+import { subscribeToRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
 
 export function useRekordboxPlaylistTracks(playlistId: string | null) {
   const [tracks, setTracks] = useState<PlaylistTrackItem[]>([]);
@@ -15,6 +16,22 @@ export function useRekordboxPlaylistTracks(playlistId: string | null) {
   const [statsLoading, setStatsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const generationRef = useRef(0);
+  const tracksRef = useRef<PlaylistTrackItem[]>([]);
+
+  tracksRef.current = tracks;
+
+  useEffect(() => subscribeToRekordboxAnalysisProgress(() => {
+    if (!playlistId) return;
+    const generation = generationRef.current;
+    const visibleCount = Math.max(PLAYLIST_TRACK_PAGE_SIZE, tracksRef.current.length);
+    void fetchPlaylistTracksPage(playlistId, 0, visibleCount)
+      .then((page) => {
+        if (generation !== generationRef.current) return;
+        setTracks(page.items);
+        setTotal(page.total);
+      })
+      .catch(() => undefined);
+  }), [playlistId]);
 
   useEffect(() => {
     const generation = ++generationRef.current;

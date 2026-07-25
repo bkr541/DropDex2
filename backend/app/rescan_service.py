@@ -39,6 +39,9 @@ class TrackIdentity:
     analysis_data_update_count: Optional[int]
     cue_update_count: Optional[int]
     information_update_count: Optional[int]
+    parser_version: Optional[str] = None
+    feature_schema_version: Optional[str] = None
+    retained_source_available: bool = False
 
 
 @dataclass
@@ -63,6 +66,9 @@ class ReuseDecision:
 def decide_reuse(
     new_track: TrackIdentity,
     prior_track: TrackIdentity,
+    *,
+    parser_version: Optional[str] = None,
+    feature_schema_version: Optional[str] = None,
 ) -> ReuseDecision:
     """
     Given a new track and its matched prior track, decide what can be reused.
@@ -85,6 +91,16 @@ def decide_reuse(
         new_track.analysis_data_file_path != prior_track.analysis_data_file_path
         and new_track.analysis_data_file_path is not None
     )
+    parser_changed = bool(
+        parser_version
+        and prior_track.parser_version
+        and parser_version != prior_track.parser_version
+    )
+    schema_changed = bool(
+        feature_schema_version
+        and prior_track.feature_schema_version
+        and feature_schema_version != prior_track.feature_schema_version
+    )
 
     if analysis_changed or path_changed:
         # Need to upload new analysis files
@@ -93,6 +109,19 @@ def decide_reuse(
         reuse_waveform = False
         reuse_phrases = False
         reuse_reason = "Analysis data changed" if analysis_changed else "Analysis path changed"
+    elif parser_changed or schema_changed:
+        # A retained DAT/EXT source lets a new parser/schema run without asking
+        # the DJ to reconnect the USB. Legacy rows with no recorded version are
+        # treated as compatible so the migration does not force a full reparse.
+        status = "reparse_from_retained" if prior_track.retained_source_available else "needs_dat"
+        reuse_grid = False
+        reuse_waveform = False
+        reuse_phrases = False
+        reuse_reason = (
+            "Retained source will be reprocessed for the current parser/schema"
+            if prior_track.retained_source_available
+            else "Parser/schema changed and no retained source is available"
+        )
     else:
         # Analysis unchanged — reuse parsed data
         status = "reused"
@@ -128,6 +157,9 @@ def match_tracks_to_prior_import(
     user_id: str,
     new_import_id: str,
     new_tracks: List[Dict[str, Any]],
+    *,
+    parser_version: Optional[str] = None,
+    feature_schema_version: Optional[str] = None,
 ) -> Dict[str, ReuseDecision]:
     """
     For each new track, find the best match in the user's prior completed imports.
@@ -159,11 +191,45 @@ def match_tracks_to_prior_import(
                 "id, import_id, master_db_id, master_content_id, rekordbox_content_id, "
                 "analysis_data_file_path, analysis_data_update_count, cue_update_count, "
                 "information_update_count, analysis_parse_status"
+                ", analysis_feature_schema_version"
             )
             .in_("import_id", prior_import_ids)
         ),
         order_column="id",
     )
+
+    # Load retained source provenance in bounded queries. Parser workers can
+    # later restore these assets without requiring another USB upload.
+    retained_by_track: Dict[str, Dict[str, Any]] = {}
+    prior_track_ids = [str(row["id"]) for row in prior_tracks]
+    for offset in range(0, len(prior_track_ids), 250):
+        chunk = prior_track_ids[offset : offset + 250]
+        asset_response = (
+            sb.table("rekordbox_analysis_assets")
+            .select(
+                "track_id, asset_type, upload_status, storage_path, staging_key, "
+                "archive_storage_path, parser_version, feature_schema_version"
+            )
+            .in_("track_id", chunk)
+            .in_("asset_type", ["DAT", "EXT"])
+            .execute()
+        )
+        for asset in asset_response.data or []:
+            if str(asset.get("upload_status") or "") not in {"staged", "uploaded", "archived"}:
+                continue
+            if not (
+                asset.get("staging_key")
+                or asset.get("archive_storage_path")
+                or asset.get("storage_path")
+            ):
+                continue
+            track_id = str(asset.get("track_id") or "")
+            retained = retained_by_track.setdefault(track_id, {})
+            retained["available"] = True
+            # DAT is the authoritative parser-version source; EXT is a fallback.
+            if asset.get("asset_type") == "DAT" or not retained.get("parser_version"):
+                retained["parser_version"] = asset.get("parser_version")
+                retained["feature_schema_version"] = asset.get("feature_schema_version")
 
     # 3. Build lookup indexes
     # Primary: (master_db_id, master_content_id) -> TrackIdentity
@@ -182,6 +248,14 @@ def match_tracks_to_prior_import(
             analysis_data_update_count=pt.get("analysis_data_update_count"),
             cue_update_count=pt.get("cue_update_count"),
             information_update_count=pt.get("information_update_count"),
+            parser_version=retained_by_track.get(str(pt["id"]), {}).get("parser_version"),
+            feature_schema_version=(
+                pt.get("analysis_feature_schema_version")
+                or retained_by_track.get(str(pt["id"]), {}).get("feature_schema_version")
+            ),
+            retained_source_available=bool(
+                retained_by_track.get(str(pt["id"]), {}).get("available")
+            ),
         )
 
         if identity.master_db_id and identity.master_content_id:
@@ -223,7 +297,12 @@ def match_tracks_to_prior_import(
         if prior is None:
             continue  # No prior match found -> needs full upload
 
-        decision = decide_reuse(new_identity, prior)
+        decision = decide_reuse(
+            new_identity,
+            prior,
+            parser_version=parser_version,
+            feature_schema_version=feature_schema_version,
+        )
         decisions[nt["id"]] = decision
 
     return decisions
@@ -344,3 +423,79 @@ def _copy_cues(sb, source_id: str, target_id: str, target_import_id: str) -> Non
         nr["import_id"] = target_import_id
         new_rows.append(nr)
     sb.table("rekordbox_cues").upsert(new_rows, on_conflict="track_id,dedupe_key").execute()
+
+
+def copy_normalized_data_for_tracks_bulk(
+    sb,
+    target_import_id: str,
+    mappings: List[Tuple[str, str, ReuseDecision]],
+    *,
+    batch_size: int = 500,
+) -> Dict[str, int]:
+    """Copy reusable normalized rows with bounded table operations.
+
+    ``mappings`` contains ``(source_track_id, target_track_id, decision)``.
+    The function intentionally groups reads by table instead of issuing four
+    reads and writes for every unchanged track.
+    """
+    if not mappings:
+        return {"read_batches": 0, "write_batches": 0, "rows_copied": 0}
+
+    # A Rekordbox export can contain duplicate references to the same retained
+    # source track. Keep every target instead of silently letting the last one
+    # win in a dict comprehension.
+    mappings_by_source: Dict[str, List[Tuple[str, ReuseDecision]]] = {}
+    for source, target, decision in mappings:
+        mappings_by_source.setdefault(source, []).append((target, decision))
+    read_batches = 0
+    write_batches = 0
+    rows_copied = 0
+
+    table_specs = (
+        ("rekordbox_track_beat_grids", "track_id", "track_id", "reuse_grid"),
+        ("rekordbox_track_waveforms", "track_id", "track_id", "reuse_waveform"),
+        ("rekordbox_track_phrases", "track_id,phrase_index", "track_id", "reuse_phrases"),
+        ("rekordbox_cues", "track_id,dedupe_key", "track_id", "reuse_cues"),
+    )
+
+    for table, conflict, track_column, flag_name in table_specs:
+        eligible_sources = [
+            source
+            for source, targets in mappings_by_source.items()
+            if any(bool(getattr(decision, flag_name)) for _, decision in targets)
+        ]
+        if not eligible_sources:
+            continue
+        for offset in range(0, len(eligible_sources), 250):
+            source_chunk = eligible_sources[offset : offset + 250]
+            response = sb.table(table).select("*").in_(track_column, source_chunk).execute()
+            read_batches += 1
+            remapped: List[Dict[str, Any]] = []
+            for source_row in response.data or []:
+                source_track_id = str(source_row.get(track_column) or "")
+                mapped_targets = mappings_by_source.get(source_track_id)
+                if not mapped_targets:
+                    continue
+                for target_track_id, decision in mapped_targets:
+                    if not bool(getattr(decision, flag_name)):
+                        continue
+                    row = dict(source_row)
+                    row.pop("id", None)
+                    row.pop("created_at", None)
+                    row.pop("updated_at", None)
+                    row[track_column] = target_track_id
+                    row["import_id"] = target_import_id
+                    remapped.append(row)
+            for write_offset in range(0, len(remapped), max(1, batch_size)):
+                write_rows = remapped[write_offset : write_offset + max(1, batch_size)]
+                if not write_rows:
+                    continue
+                sb.table(table).upsert(write_rows, on_conflict=conflict).execute()
+                write_batches += 1
+                rows_copied += len(write_rows)
+
+    return {
+        "read_batches": read_batches,
+        "write_batches": write_batches,
+        "rows_copied": rows_copied,
+    }

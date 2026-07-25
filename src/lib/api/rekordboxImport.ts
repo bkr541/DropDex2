@@ -69,6 +69,10 @@ export interface ManifestEntry {
   ext_path: string | null;
   two_ex_path: string | null;
   dat_required: boolean;
+  ext_required?: boolean;
+  required_asset_types?: string[];
+  optional_archival_asset_types?: string[];
+  source_fingerprint?: string | null;
   manifest_status?: string;
   reused_from_track_id?: string | null;
   reuse_reason?: string | null;
@@ -86,6 +90,11 @@ export interface ImportStartResponse {
   tracks_needing_upload?: number;
   tracks_reparse_from_retained?: number;
   tracks_metadata_only?: number;
+  required_analysis_file_count?: number;
+  optional_archival_file_count?: number;
+  tracks_already_reusable?: number;
+  library_ready?: boolean;
+  readiness_stage?: string;
 }
 
 export interface ReuseStats {
@@ -133,6 +142,11 @@ export interface CompleteResponse {
   missing_optional_2ex_count: number;
   parser_version: string;
   tracks: TrackCompleteStatus[];
+  background_started?: boolean;
+  library_ready?: boolean;
+  readiness_stage?: string;
+  queued_track_count?: number;
+  optional_archival_status?: string;
 }
 
 /** Structured per-track unresolved target (new in v2 API). */
@@ -153,6 +167,8 @@ export interface AnalysisStatusResponse {
   expected_track_count: number;
   matched_track_count: number;
   parsed_track_count: number;
+  completed_track_count?: number;
+  partial_track_count?: number;
   failed_track_count: number;
   asset_count: number;
   // Legacy path arrays — still present for backward compat.
@@ -179,6 +195,18 @@ export interface AnalysisStatusResponse {
   worker_stage?: string | null;
   worker_last_heartbeat?: string | null;
   worker_stopped_acknowledged?: boolean;
+  library_ready?: boolean;
+  readiness_stage?: string;
+  required_analysis_file_count?: number;
+  optional_archival_file_count?: number;
+  tracks_ready_count?: number;
+  tracks_remaining_count?: number;
+  tracks_queued_count?: number;
+  tracks_running_count?: number;
+  optional_archival_status?: string;
+  measured_tracks_per_second?: number | null;
+  estimated_seconds_remaining?: number | null;
+  performance_metrics?: Record<string, unknown>;
 }
 
 /** One ANLZ file to upload — carries its canonical Storage path. */
@@ -280,6 +308,11 @@ function validateImportStart(value: unknown): ImportStartResponse {
   expectOptionalNumber(row.tracks_needing_upload, contract, '$.tracks_needing_upload');
   expectOptionalNumber(row.tracks_reparse_from_retained, contract, '$.tracks_reparse_from_retained');
   expectOptionalNumber(row.tracks_metadata_only, contract, '$.tracks_metadata_only');
+  expectOptionalNumber(row.required_analysis_file_count, contract, '$.required_analysis_file_count');
+  expectOptionalNumber(row.optional_archival_file_count, contract, '$.optional_archival_file_count');
+  expectOptionalNumber(row.tracks_already_reusable, contract, '$.tracks_already_reusable');
+  expectOptionalBoolean(row.library_ready, contract, '$.library_ready');
+  if (row.readiness_stage !== undefined) expectString(row.readiness_stage, contract, '$.readiness_stage');
   expectArray(row.manifest, contract, '$.manifest').forEach((item, index) => {
     const path = `$.manifest[${index}]`;
     const manifest = expectRecord(item, contract, path);
@@ -289,6 +322,10 @@ function validateImportStart(value: unknown): ImportStartResponse {
     expectNullableString(manifest.ext_path, contract, `${path}.ext_path`);
     expectNullableString(manifest.two_ex_path, contract, `${path}.two_ex_path`);
     expectBoolean(manifest.dat_required, contract, `${path}.dat_required`);
+    expectOptionalBoolean(manifest.ext_required, contract, `${path}.ext_required`);
+    if (manifest.required_asset_types !== undefined) expectStringArray(manifest.required_asset_types, contract, `${path}.required_asset_types`);
+    if (manifest.optional_archival_asset_types !== undefined) expectStringArray(manifest.optional_archival_asset_types, contract, `${path}.optional_archival_asset_types`);
+    expectOptionalNullableString(manifest.source_fingerprint, contract, `${path}.source_fingerprint`);
     if (manifest.manifest_status !== undefined) expectString(manifest.manifest_status, contract, `${path}.manifest_status`);
     expectOptionalNullableString(manifest.reused_from_track_id, contract, `${path}.reused_from_track_id`);
     expectOptionalNullableString(manifest.reuse_reason, contract, `${path}.reuse_reason`);
@@ -330,6 +367,11 @@ function validateComplete(value: unknown): CompleteResponse {
     expectNumber(row[key], contract, `$.${key}`);
   }
   expectString(row.parser_version, contract, '$.parser_version');
+  expectOptionalBoolean(row.background_started, contract, '$.background_started');
+  expectOptionalBoolean(row.library_ready, contract, '$.library_ready');
+  if (row.readiness_stage !== undefined) expectString(row.readiness_stage, contract, '$.readiness_stage');
+  expectOptionalNumber(row.queued_track_count, contract, '$.queued_track_count');
+  if (row.optional_archival_status !== undefined) expectString(row.optional_archival_status, contract, '$.optional_archival_status');
   expectArray(row.tracks, contract, '$.tracks').forEach((item, index) => {
     const path = `$.tracks[${index}]`;
     const track = expectRecord(item, contract, path);
@@ -355,6 +397,8 @@ function validateAnalysisStatus(value: unknown): AnalysisStatusResponse {
   ]) {
     expectNumber(row[key], contract, `$.${key}`);
   }
+  expectOptionalNumber(row.completed_track_count, contract, '$.completed_track_count');
+  expectOptionalNumber(row.partial_track_count, contract, '$.partial_track_count');
   expectStringArray(row.missing_required_paths, contract, '$.missing_required_paths');
   expectStringArray(row.missing_optional_ext, contract, '$.missing_optional_ext');
   expectStringArray(row.missing_optional_2ex, contract, '$.missing_optional_2ex');
@@ -371,6 +415,16 @@ function validateAnalysisStatus(value: unknown): AnalysisStatusResponse {
   expectOptionalNullableString(row.worker_stage, contract, '$.worker_stage');
   expectOptionalNullableString(row.worker_last_heartbeat, contract, '$.worker_last_heartbeat');
   expectOptionalBoolean(row.worker_stopped_acknowledged, contract, '$.worker_stopped_acknowledged');
+  expectOptionalBoolean(row.library_ready, contract, '$.library_ready');
+  if (row.readiness_stage !== undefined) expectString(row.readiness_stage, contract, '$.readiness_stage');
+  for (const key of [
+    'required_analysis_file_count', 'optional_archival_file_count', 'tracks_ready_count',
+    'tracks_remaining_count', 'tracks_queued_count', 'tracks_running_count',
+  ]) expectOptionalNumber(row[key], contract, `$.${key}`);
+  if (row.optional_archival_status !== undefined) expectString(row.optional_archival_status, contract, '$.optional_archival_status');
+  if (row.measured_tracks_per_second !== undefined) expectNullableNumber(row.measured_tracks_per_second, contract, '$.measured_tracks_per_second');
+  if (row.estimated_seconds_remaining !== undefined) expectNullableNumber(row.estimated_seconds_remaining, contract, '$.estimated_seconds_remaining');
+  if (row.performance_metrics !== undefined) expectRecord(row.performance_metrics, contract, '$.performance_metrics');
   expectArray(row.unresolved_targets, contract, '$.unresolved_targets').forEach((item, index) => {
     const path = `$.unresolved_targets[${index}]`;
     const target = expectRecord(item, contract, path);
@@ -568,6 +622,11 @@ export async function uploadRekordboxAnalysisBatch(
 ): Promise<BatchUploadResponse> {
   throwIfSignalAborted(signal);
   const formData = new FormData();
+  formData.append('file_metadata', JSON.stringify(files.map((item) => ({
+    canonical_path: item.canonicalPath,
+    size: item.file.size,
+    last_modified_ms: item.file.lastModified || 0,
+  }))));
   for (const item of files) {
     // Use the full canonical path (e.g. PIONEER/USBANLZ/P001/ANLZ0000.DAT) as
     // the multipart filename so the backend can validate and store it correctly.
@@ -591,12 +650,17 @@ export async function uploadRekordboxAnalysisBatch(
 export async function completeRekordboxImport(
   importId: string,
   accessToken: string,
-  options?: { affectedTrackIds?: string[]; signal?: AbortSignal },
+  options?: {
+    affectedTrackIds?: string[];
+    clientMetrics?: Record<string, Record<string, number>>;
+    signal?: AbortSignal;
+  },
 ): Promise<CompleteResponse> {
-  const body =
-    options?.affectedTrackIds && options.affectedTrackIds.length > 0
-      ? JSON.stringify({ affected_track_ids: options.affectedTrackIds })
-      : undefined;
+  const body = JSON.stringify({
+    affected_track_ids: options?.affectedTrackIds?.length ? options.affectedTrackIds : null,
+    background: true,
+    client_metrics: options?.clientMetrics ?? null,
+  });
 
   const response = await fetch(
     `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/complete`,
@@ -604,7 +668,7 @@ export async function completeRekordboxImport(
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        'Content-Type': 'application/json',
       },
       body,
       signal: options?.signal,
@@ -616,18 +680,24 @@ export async function completeRekordboxImport(
 export async function resumeRekordboxAnalysis(
   importId: string,
   accessToken: string,
-  options?: { affectedTrackIds?: string[]; signal?: AbortSignal },
+  options?: {
+    affectedTrackIds?: string[];
+    clientMetrics?: Record<string, Record<string, number>>;
+    signal?: AbortSignal;
+  },
 ): Promise<CompleteResponse> {
-  const body = options?.affectedTrackIds?.length
-    ? JSON.stringify({ affected_track_ids: options.affectedTrackIds })
-    : undefined;
+  const body = JSON.stringify({
+    affected_track_ids: options?.affectedTrackIds?.length ? options.affectedTrackIds : null,
+    background: true,
+    client_metrics: options?.clientMetrics ?? null,
+  });
   const response = await fetch(
     `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/resume`,
     {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        'Content-Type': 'application/json',
       },
       body,
       signal: options?.signal,

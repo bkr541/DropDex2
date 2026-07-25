@@ -11,6 +11,7 @@ export type RekordboxAnalysisStatus =
   | 'awaiting_upload'
   | 'uploading'
   | 'uploaded'
+  | 'queued'
   | 'parsing'
   | 'pause_requested'
   | 'paused'
@@ -82,6 +83,16 @@ export interface RekordboxImport {
   analysis_worker_stopped_at?: string | null;
   analysis_worker_stopped_acknowledged?: boolean;
   analysis_worker_error?: string | null;
+  library_ready_at?: string | null;
+  readiness_stage?: string | null;
+  required_analysis_file_count?: number;
+  optional_archival_file_count?: number;
+  optional_archival_status?: string;
+  performance_metrics?: Record<string, unknown>;
+  analysis_queue_track_count?: number;
+  analysis_running_track_count?: number;
+  analysis_throughput_tracks_per_second?: number | null;
+  analysis_estimated_seconds_remaining?: number | null;
 }
 
 export type RekordboxTrackParseStatus =
@@ -153,6 +164,8 @@ export interface RekordboxTrack {
   information_update_count: number | null;
   analysis_reused_from_track_id: string | null;
   analysis_parse_status: RekordboxTrackParseStatus | null;
+  analysis_manifest_status?: 'reused' | 'metadata_only' | 'needs_dat' | 'needs_ext' | 'needs_analysis' | 'reparse_from_retained' | 'unavailable';
+  analysis_failure_reason?: string | null;
   analysis_parse_warnings: unknown[];
 }
 
@@ -185,7 +198,7 @@ export interface RekordboxUserSettings {
 export type RekordboxAssetType = 'DAT' | 'EXT' | '2EX';
 
 export type RekordboxAssetUploadStatus =
-  'pending' | 'uploading' | 'uploaded' | 'failed';
+  'pending' | 'uploading' | 'staged' | 'uploaded' | 'archived' | 'failed';
 
 export type RekordboxAssetParseStatus =
   'not_requested' | 'queued' | 'parsing' | 'completed' | 'failed' | 'skipped';
@@ -200,7 +213,16 @@ export interface RekordboxAnalysisAsset {
   sha256: string;
   size_bytes: number | null;
   storage_bucket: string;
-  storage_path: string;
+  storage_path: string | null;
+  staging_key?: string | null;
+  source_mtime_ms?: number | null;
+  source_fingerprint?: string | null;
+  feature_schema_version?: string | null;
+  archive_storage_bucket?: string | null;
+  archive_storage_path?: string | null;
+  archive_member_path?: string | null;
+  retained_from_asset_id?: string | null;
+  archival_status?: 'not_requested' | 'queued' | 'archiving' | 'archived' | 'skipped' | 'failed';
   upload_status: RekordboxAssetUploadStatus;
   parse_status: RekordboxAssetParseStatus;
   parser_version: string | null;

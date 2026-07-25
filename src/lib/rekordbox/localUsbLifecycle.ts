@@ -71,15 +71,35 @@ export class IdempotentUsbCleanup {
 export interface CloudParsingContext {
   importId: string;
   expectedTrackCount: number;
+  affectedTrackIds: string[];
+  tracksAlreadyReady: number;
+  optionalArchivalFiles: number;
+  clientMetrics: {
+    timings_ms: { usb_file_matching: number };
+    counts: { usb_files_matched: number; affected_tracks: number };
+    bytes: { required_analysis_files: number };
+  };
 }
 
-/** Deliberately strips the File-bearing manifest before cloud parsing begins. */
+/** Deliberately strips every File-bearing structure before cloud parsing begins. */
 export function createCloudParsingContext(
   importId: string,
   expectedTrackCount: number,
+  affectedTrackIds: string[] = [],
+  tracksAlreadyReady = 0,
+  optionalArchivalFiles = 0,
+  clientMetrics: CloudParsingContext['clientMetrics'] = {
+    timings_ms: { usb_file_matching: 0 },
+    counts: { usb_files_matched: 0, affected_tracks: 0 },
+    bytes: { required_analysis_files: 0 },
+  },
 ): CloudParsingContext {
   return {
     importId,
     expectedTrackCount: Math.max(0, expectedTrackCount),
+    affectedTrackIds: Array.from(new Set(affectedTrackIds)),
+    tracksAlreadyReady: Math.max(0, tracksAlreadyReady),
+    optionalArchivalFiles: Math.max(0, optionalArchivalFiles),
+    clientMetrics,
   };
 }

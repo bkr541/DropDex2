@@ -133,7 +133,7 @@ export async function fetchLatestImport(userId: string): Promise<RekordboxImport
     .from('rekordbox_imports')
     .select('*')
     .eq('user_id', userId)
-    .eq('status', 'completed')
+    .or('status.eq.completed,library_ready_at.not.is.null')
     .order('imported_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -156,7 +156,7 @@ export async function fetchActiveImport(userId: string): Promise<RekordboxImport
       .from('rekordbox_imports')
       .select('*')
       .eq('id', activeId)
-      .eq('status', 'completed')
+      .or('status.eq.completed,library_ready_at.not.is.null')
       .maybeSingle();
     if (imp) return imp as RekordboxImport;
   }

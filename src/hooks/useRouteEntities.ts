@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RekordboxImport, RekordboxTrack } from '../types';
 import type { PlaylistWithCount } from '../lib/queries/rekordbox';
 import { fetchImportById, fetchPlaylistById, fetchTracksByIds } from '../lib/queries/rekordbox';
+import { subscribeToRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
 
 interface RouteEntityState<T> {
   data: T | null;
@@ -26,6 +27,13 @@ export function useRouteTracks(trackIds: string[]): {
   const [error, setError] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
   const generationRef = useRef(0);
+
+  useEffect(
+    () => subscribeToRekordboxAnalysisProgress(() => {
+      if (normalizedIds.length > 0) setRetryToken((value) => value + 1);
+    }),
+    [normalizedIds.length],
+  );
 
   useEffect(() => {
     const generation = ++generationRef.current;

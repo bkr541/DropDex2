@@ -24,6 +24,7 @@ import {
   shouldAcceptWaveformResult,
   shouldExposeWaveformResult,
 } from '../lib/queries/waveformRequestGuard';
+import { subscribeToRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
 
 const CACHE_MAX_ENTRIES = 2_000;
 const CACHE_TTL_LOADED_MS = 10 * 60_000;
@@ -135,6 +136,12 @@ export function useTrackPreviewWaveforms(
     },
     [],
   );
+
+  useEffect(() => subscribeToRekordboxAnalysisProgress((detail) => {
+    if (!importId || detail.importId !== importId) return;
+    invalidatePreviewWaveformCache(importId, requestedIds);
+    setRetryTrigger((value) => value + 1);
+  }), [importId, requestedIds]);
 
   // Import changes invalidate all in-flight UI commits from the previous import.
   useEffect(() => {

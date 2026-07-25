@@ -345,11 +345,16 @@ def cleanup_partial_import(
     try:
         response = (
             client.table("rekordbox_analysis_assets")
-            .select("storage_path")
+            .select("storage_path, archive_storage_path")
             .eq("import_id", import_id)
             .execute()
         )
-        paths = [str(x["storage_path"]) for x in (response.data or []) if x.get("storage_path")]
+        paths = sorted({
+            str(path)
+            for item in (response.data or [])
+            for path in (item.get("storage_path"), item.get("archive_storage_path"))
+            if path
+        })
     except Exception as exc:
         logger.exception("Could not enumerate storage paths for import %s", import_id)
         raise RuntimeError(
@@ -368,6 +373,12 @@ def cleanup_partial_import(
     errors = _delete_import_children(client, import_id)
     if errors:
         raise RuntimeError("Import cleanup is incomplete: " + "; ".join(errors))
+    try:
+        from .analysis_staging import remove_import_staging
+        remove_import_staging(import_id, settings.analysis_staging_root)
+    except Exception as exc:
+        logger.exception("Staging cleanup failed for cancelled import %s", import_id)
+        raise RuntimeError(f"Import cleanup is incomplete: staging: {exc}") from exc
 
 
 def _update_import_row(

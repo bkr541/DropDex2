@@ -119,6 +119,39 @@ class TestDecideReuse:
         # (guard: new_track.analysis_data_file_path is not None required for path_changed)
         assert d.manifest_status == "reused"
 
+    def test_parser_change_reprocesses_from_retained_assets(self):
+        new = make_identity(track_id="new")
+        prior = make_identity(
+            track_id="prior",
+            parser_version="old-parser",
+            feature_schema_version="old-schema",
+            retained_source_available=True,
+        )
+        decision = decide_reuse(
+            new,
+            prior,
+            parser_version="new-parser",
+            feature_schema_version="new-schema",
+        )
+        assert decision.manifest_status == "reparse_from_retained"
+        assert not decision.reuse_grid
+
+    def test_parser_change_requests_dat_when_raw_source_is_unavailable(self):
+        new = make_identity(track_id="new")
+        prior = make_identity(
+            track_id="prior",
+            parser_version="old-parser",
+            retained_source_available=False,
+        )
+        decision = decide_reuse(new, prior, parser_version="new-parser")
+        assert decision.manifest_status == "needs_dat"
+
+    def test_legacy_missing_parser_version_remains_reusable(self):
+        new = make_identity(track_id="new")
+        prior = make_identity(track_id="prior", parser_version=None)
+        decision = decide_reuse(new, prior, parser_version="new-parser")
+        assert decision.manifest_status == "reused"
+
 
 class TestMatchTracksToPriorImport:
     def _make_sb(self, prior_import_ids, prior_tracks):

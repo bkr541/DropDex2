@@ -18,7 +18,7 @@ export interface MatchedAnalysisFile {
   /** The raw webkitRelativePath from the browser FileList */
   originalBrowserPath: string;
   /** DAT | EXT | 2EX */
-  assetType: string;
+  assetType: 'DAT' | 'EXT' | '2EX';
   /** Supabase track row ID from the manifest */
   trackId: string;
 }
@@ -105,6 +105,14 @@ export function isAnlzFile(file: File): boolean {
   return ANLZ_EXTS.has(file.name.slice(dotIdx).toLowerCase());
 }
 
+/** True only for DAT/EXT files used by the initial fast-path import. */
+export function isBlockingAnlzFile(file: File): boolean {
+  const dotIdx = file.name.lastIndexOf('.');
+  if (dotIdx === -1) return false;
+  const extension = file.name.slice(dotIdx).toLowerCase();
+  return extension === '.dat' || extension === '.ext';
+}
+
 /** Find exportLibrary.db within a FileList (case-insensitive). */
 export function findDatabaseFile(files: File[]): File | null {
   for (const f of files) {
@@ -113,18 +121,100 @@ export function findDatabaseFile(files: File[]): File | null {
   return null;
 }
 
-/**
- * Build a list of all expected paths from the manifest (dat/ext/two_ex).
- * Null paths are omitted.
- */
+export interface AnalysisManifestWorkEntry {
+  track_id: string;
+  dat_path: string | null;
+  ext_path: string | null;
+  two_ex_path: string | null;
+  manifest_status?: string;
+  required_asset_types?: string[];
+  optional_archival_asset_types?: string[];
+}
+
+const NO_USB_UPLOAD_STATUSES = new Set([
+  'reused',
+  'metadata_only',
+  'reparse_from_retained',
+  'unavailable',
+]);
+
+export function requiredAssetTypesForManifestEntry(
+  entry: AnalysisManifestWorkEntry,
+): Array<'DAT' | 'EXT'> {
+  if (NO_USB_UPLOAD_STATUSES.has(entry.manifest_status ?? 'needs_analysis')) return [];
+  if (entry.required_asset_types) {
+    return ['DAT', 'EXT'].filter((type): type is 'DAT' | 'EXT' =>
+      entry.required_asset_types?.includes(type) ?? false,
+    );
+  }
+  if (entry.manifest_status === 'needs_ext') return ['EXT'];
+  return ['DAT', 'EXT'];
+}
+
+export interface ManifestWorkSummary {
+  requiredAnalysisFiles: number;
+  optionalArchivalFiles: number;
+  tracksRequiringAnalysis: number;
+  tracksAlreadyReusable: number;
+  unavailableTracks: number;
+  affectedTrackIds: string[];
+  uploadBatchCount: number;
+}
+
+/** Deterministic operation-count plan used by the UI and performance tests. */
+export function summarizeManifestWork(
+  manifest: AnalysisManifestWorkEntry[],
+  maxFilesPerBatch = 50,
+): ManifestWorkSummary {
+  let requiredAnalysisFiles = 0;
+  let optionalArchivalFiles = 0;
+  let tracksAlreadyReusable = 0;
+  let unavailableTracks = 0;
+  const affectedTrackIds: string[] = [];
+
+  for (const entry of manifest) {
+    const status = entry.manifest_status ?? 'needs_analysis';
+    if (status === 'reused' || status === 'metadata_only') tracksAlreadyReusable += 1;
+    if (status === 'unavailable') unavailableTracks += 1;
+    if (!NO_USB_UPLOAD_STATUSES.has(status)) {
+      affectedTrackIds.push(entry.track_id);
+    } else if (status === 'reparse_from_retained') {
+      affectedTrackIds.push(entry.track_id);
+    }
+    const required = requiredAssetTypesForManifestEntry(entry);
+    if (required.includes('DAT') && entry.dat_path) requiredAnalysisFiles += 1;
+    if (required.includes('EXT') && entry.ext_path) requiredAnalysisFiles += 1;
+    if (entry.two_ex_path) optionalArchivalFiles += 1;
+  }
+
+  return {
+    requiredAnalysisFiles,
+    optionalArchivalFiles,
+    tracksRequiringAnalysis: affectedTrackIds.length,
+    tracksAlreadyReusable,
+    unavailableTracks,
+    affectedTrackIds,
+    uploadBatchCount: Math.ceil(requiredAnalysisFiles / Math.max(1, maxFilesPerBatch)),
+  };
+}
+
+/** Build only the paths requested by the manifest. .2EX is opt-in archival work. */
 export function extractManifestPaths(
-  manifest: Array<{ dat_path: string | null; ext_path: string | null; two_ex_path: string | null }>,
+  manifest: AnalysisManifestWorkEntry[],
+  options?: { includeOptionalArchival?: boolean },
 ): string[] {
   const paths: string[] = [];
   for (const entry of manifest) {
-    if (entry.dat_path) paths.push(entry.dat_path);
-    if (entry.ext_path) paths.push(entry.ext_path);
-    if (entry.two_ex_path) paths.push(entry.two_ex_path);
+    const required = requiredAssetTypesForManifestEntry(entry);
+    if (required.includes('DAT') && entry.dat_path) paths.push(entry.dat_path);
+    if (required.includes('EXT') && entry.ext_path) paths.push(entry.ext_path);
+    if (
+      options?.includeOptionalArchival &&
+      entry.two_ex_path &&
+      (entry.optional_archival_asset_types ?? ['2EX']).includes('2EX')
+    ) {
+      paths.push(entry.two_ex_path);
+    }
   }
   return paths;
 }
@@ -153,28 +243,35 @@ export function matchFilesToManifest(
  * Build a typed MatchedAnalysisFile array from a folder pick and the import manifest.
  *
  * Each file is included only if its canonical PIONEER-anchored path matches one
- * of the paths listed in the manifest (dat_path, ext_path, two_ex_path).  Two
+ * of the paths explicitly requested by each manifest status. Optional .2EX
+ * archival is excluded by default. Two
  * files with the same basename in different directories are correctly
  * distinguished via their full canonical path.
  */
 export function buildMatchedFiles(
   files: File[],
-  manifest: Array<{
-    track_id: string;
-    dat_path: string | null;
-    ext_path: string | null;
-    two_ex_path: string | null;
-  }>,
+  manifest: AnalysisManifestWorkEntry[],
+  options?: { includeOptionalArchival?: boolean },
 ): MatchedAnalysisFile[] {
-  // Build: lower(canonical_path) → { trackId, assetType }
-  const expected = new Map<string, { trackId: string; assetType: string }>();
+  // Build: lower(canonical_path) → { trackId, assetType }. Manifest status is
+  // authoritative, so reused/metadata-only/retained tracks upload nothing.
+  const expected = new Map<
+    string,
+    { trackId: string; assetType: 'DAT' | 'EXT' | '2EX' }
+  >();
   for (const entry of manifest) {
-    if (entry.dat_path)
+    const required = requiredAssetTypesForManifestEntry(entry);
+    if (required.includes('DAT') && entry.dat_path)
       expected.set(entry.dat_path.toLowerCase(), { trackId: entry.track_id, assetType: 'DAT' });
-    if (entry.ext_path)
+    if (required.includes('EXT') && entry.ext_path)
       expected.set(entry.ext_path.toLowerCase(), { trackId: entry.track_id, assetType: 'EXT' });
-    if (entry.two_ex_path)
+    if (
+      options?.includeOptionalArchival &&
+      entry.two_ex_path &&
+      (entry.optional_archival_asset_types ?? ['2EX']).includes('2EX')
+    ) {
       expected.set(entry.two_ex_path.toLowerCase(), { trackId: entry.track_id, assetType: '2EX' });
+    }
   }
 
   const result: MatchedAnalysisFile[] = [];

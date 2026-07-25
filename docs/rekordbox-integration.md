@@ -2,11 +2,12 @@
 
 ## Overview
 
-DropDex imports Rekordbox library data through a staged pipeline with three distinct phases:
+DropDex imports Rekordbox library data through a progressive staged pipeline:
 
-1. **Start import** — upload `exportLibrary.db`, receive the ANLZ manifest
-2. **Batch upload** — upload DAT, EXT, and 2EX analysis files
-3. **Complete** — server parses and persists all analysis features
+1. **Start import** — upload `exportLibrary.db`, publish library metadata, and receive an incremental ANLZ manifest
+2. **Required upload** — stage only manifest-requested DAT and EXT files
+3. **Background analysis** — parse affected tracks with bounded concurrency and bulk feature writes
+4. **Optional archival** — archive raw sources after useful data is ready; `.2EX` remains disabled by default
 
 ---
 
@@ -36,7 +37,7 @@ POST /api/rekordbox/import/bundle
 
 ## Supported ANLZ Data
 
-All analysis data is extracted from Rekordbox `.DAT`, `.EXT`, and `.2EX` files.
+Initial user-visible analysis is extracted from Rekordbox `.DAT` and `.EXT` files. `.2EX` is retained as optional archival input because PWV6, PWV7, and PWVC are not decoded into user-visible features. See [Rekordbox import fast path and background analysis](rekordbox-import-performance.md).
 
 | Feature | Tags read | Stored in |
 |---|---|---|
@@ -49,7 +50,7 @@ All analysis data is extracted from Rekordbox `.DAT`, `.EXT`, and `.2EX` files.
 
 ### Preserved but unsupported tags
 
-Tags not yet decoded are preserved in `rekordbox_analysis_assets.unknown_tag_types`. The `.2EX` file format (PWV6, PWV7, PWVC) is uploaded and stored but not decoded; the asset `parse_status` is set to `partial`. Future parser upgrades can reparse retained assets without re-upload.
+Tags not yet decoded from DAT or EXT are preserved in `rekordbox_analysis_assets.unknown_tag_types`. Existing legacy `.2EX` rows remain readable, but new `.2EX` files are not uploaded or parsed in the blocking fast path. Optional `.2EX` archival can be enabled for a separate background workflow without affecting readiness or track success.
 
 ### Parser version
 
@@ -271,7 +272,6 @@ The staged manifest marks each track with a `manifest_status`:
 | `reused` | Analysis fully reused from prior import |
 | `needs_dat` | DAT upload required (analysis changed or new) |
 | `needs_ext` | Only EXT is needed |
-| `needs_2ex` | Only 2EX is needed |
 | `reparse_from_retained` | Re-parse from stored asset (no upload needed) |
 | `metadata_only` | Only metadata changed; analysis data copied |
 | `unavailable` | No prior data and no file provided |
@@ -288,7 +288,7 @@ This allows the client to skip unnecessary uploads. For example, when only cues 
 | `POST` | `/api/rekordbox/import/start` | Start staged import, get manifest |
 | `POST` | `/api/rekordbox/import/bundle` | ZIP bundle import |
 | `POST` | `/api/rekordbox/import/{id}/analysis-batch` | Upload ANLZ batch |
-| `POST` | `/api/rekordbox/import/{id}/complete` | Parse all uploaded ANLZ files |
+| `POST` | `/api/rekordbox/import/{id}/complete` | Queue affected tracks for background analysis |
 | `GET` | `/api/rekordbox/import/{id}/analysis-status` | Poll analysis progress |
 | `POST` | `/api/rekordbox/import/{id}/related-tracks` | Upload Related Tracks from bridge |
 
@@ -301,7 +301,7 @@ All endpoints require a valid Supabase Bearer token. `user_id` is derived from t
 ### Some tracks show `parse_status = failed`
 
 - Check `analysis_parse_warnings` on the track row for specific error codes.
-- Common codes: `SIBLING_MISSING` (no EXT alongside DAT), `PARSE_ERROR` (corrupt ANLZ), `TAG_UNSUPPORTED` (unknown tag in `.2EX`).
+- Common codes: `SIBLING_MISSING` (no EXT alongside DAT), `PARSE_ERROR` (corrupt ANLZ), and `TAG_UNSUPPORTED` (unknown DAT/EXT tag). Legacy `.2EX` warnings remain readable but new `.2EX` files are outside the fast parse path.
 - If the DAT file is intact, EXT failures produce `partial` status.
 
 ### Beat grid is missing but waveform is present

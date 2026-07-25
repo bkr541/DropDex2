@@ -8,10 +8,16 @@ import {
   type LibraryStats,
   type LibraryTrackFilters,
 } from '../lib/queries/rekordbox';
+import { subscribeToRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
 
 export function useRecentTracks(importId: string | null) {
   const [tracks, setTracks] = useState<RekordboxTrack[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => subscribeToRekordboxAnalysisProgress((detail) => {
+    if (!importId || detail.importId !== importId) return;
+    void fetchRecentTracks(importId).then(setTracks).catch(() => undefined);
+  }), [importId]);
 
   useEffect(() => {
     if (!importId) {
@@ -91,6 +97,28 @@ export function useLibraryTracks(
   const normalizedSearch = search?.trim() || null;
   const normalizedGenre = genre?.trim() || null;
   const normalizedArtist = artist?.trim() || null;
+
+  useEffect(() => subscribeToRekordboxAnalysisProgress((detail) => {
+    if (!importId || !enabled || detail.importId !== importId) return;
+    const generation = generationRef.current;
+    void fetchLibraryTracksPage(importId, 0, Math.max(pageSize, tracks.length), {
+      search: normalizedSearch,
+      genre: normalizedGenre,
+      artist: normalizedArtist,
+    }).then((page) => {
+      if (generation !== generationRef.current) return;
+      setTracks(page.items);
+      setTotal(page.total);
+    }).catch(() => undefined);
+  }), [
+    enabled,
+    importId,
+    normalizedArtist,
+    normalizedGenre,
+    normalizedSearch,
+    pageSize,
+    tracks.length,
+  ]);
 
   useEffect(() => {
     const generation = ++generationRef.current;

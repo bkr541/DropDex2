@@ -15,6 +15,7 @@ from .analysis_import_service import (
     get_analysis_status,
     process_analysis_batch,
     resume_analysis_import,
+    resume_recoverable_analysis_imports,
     start_analysis_import,
 )
 from .auth import get_current_user_id
@@ -112,6 +113,9 @@ async def recover_rekordbox_import_jobs() -> None:
         recovered = await run_in_threadpool(recover_interrupted_import_jobs)
         if recovered:
             logger.warning("Recovered %d interrupted Rekordbox import job(s)", recovered)
+        restarted = await run_in_threadpool(resume_recoverable_analysis_imports)
+        if restarted:
+            logger.warning("Restarted %d resumable Rekordbox analysis job(s)", restarted)
     except Exception:
         # Startup must remain available even if Supabase is temporarily offline.
         logger.exception("Could not recover interrupted Rekordbox imports at startup")
@@ -330,7 +334,8 @@ async def import_rekordbox_bundle(
 )
 async def rekordbox_analysis_batch(
     import_id: str,
-    files: List[UploadFile] = File(..., description="ANLZ analysis files (.DAT, .EXT, .2EX)"),
+    files: List[UploadFile] = File(..., description="Required ANLZ analysis files (.DAT, .EXT)"),
+    file_metadata: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user_id),
 ) -> BatchUploadResponse:
     """
@@ -341,7 +346,9 @@ async def rekordbox_analysis_batch(
     are validated for traversal attacks and matched against the import manifest.
     Idempotent: re-uploading a file with the same SHA returns already_received.
     """
-    return await process_analysis_batch(import_id, user_id, files)
+    return await process_analysis_batch(
+        import_id, user_id, files, file_metadata=file_metadata
+    )
 
 
 @app.post(
@@ -354,14 +361,22 @@ async def rekordbox_analysis_complete(
     user_id: str = Depends(get_current_user_id),
 ) -> CompleteResponse:
     """
-    Parse all uploaded ANLZ assets and persist the analysis results.
+    Queue affected staged DAT/EXT assets for bounded background analysis.
 
     When body.affected_track_ids is provided, only those tracks are reparsed
     (selective reprocessing for resume-analysis sessions). Omit the body or pass
     an empty/null list to reparse all tracks.
     """
     affected_track_ids = body.affected_track_ids if body else None
-    return await complete_analysis_import(import_id, user_id, affected_track_ids=affected_track_ids)
+    background = body.background if body else True
+    client_metrics = body.client_metrics if body else None
+    return await complete_analysis_import(
+        import_id,
+        user_id,
+        affected_track_ids=affected_track_ids,
+        background=background,
+        client_metrics=client_metrics,
+    )
 
 
 @app.post(
@@ -375,10 +390,14 @@ async def rekordbox_analysis_resume(
 ) -> CompleteResponse:
     """Resume only incomplete analysis work using retained uploaded assets."""
     affected_track_ids = body.affected_track_ids if body else None
+    background = body.background if body else True
+    client_metrics = body.client_metrics if body else None
     return await resume_analysis_import(
         import_id,
         user_id,
         affected_track_ids=affected_track_ids,
+        background=background,
+        client_metrics=client_metrics,
     )
 
 

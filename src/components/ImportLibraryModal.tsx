@@ -41,7 +41,8 @@ import {
   buildBatches,
   buildMatchedFiles,
   findDatabaseFile,
-  isAnlzFile,
+  isBlockingAnlzFile,
+  summarizeManifestWork,
   type MatchedAnalysisFile,
 } from '../lib/rekordbox/analysisPaths';
 import { UploadAccumulator, isTransientFileFailure } from '../lib/rekordbox/analysisUploadResults';
@@ -86,6 +87,15 @@ interface ParseProgress {
   percent: number;
 }
 
+interface ProgressiveReadiness {
+  stage: string;
+  tracksReady: number;
+  tracksRemaining: number;
+  throughput: number | null;
+  estimatedSecondsRemaining: number | null;
+  optionalArchivalStatus: string;
+}
+
 type FinalResult =
   | { kind: 'with_analysis'; data: CompleteResponse }
   | { kind: 'library_only'; data: ImportResult };
@@ -96,7 +106,7 @@ interface Props {
   onClose: () => void;
   onSuccess: () => void;
   onImportStarted?: (importId: string) => void;
-  onBackgrounded?: (importId: string) => void;
+  onBackgrounded?: (importId: string, usbReleased: boolean) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -147,6 +157,15 @@ function clampPct(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function fmtEta(seconds: number): string {
+  if (seconds < 60) return 'under a minute';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `about ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `about ${hours} hr ${remainder} min` : `about ${hours} hr`;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ImportLibraryModal({
@@ -180,6 +199,15 @@ export function ImportLibraryModal({
   const [reuseStats, setReuseStats] = useState<ReuseStats | null>(null);
   const [reconciliation, setReconciliation] = useState<ManifestReconciliation | null>(null);
   const [retryingCount, setRetryingCount] = useState(0);
+  const [libraryMetadataReady, setLibraryMetadataReady] = useState(false);
+  const [progressiveReadiness, setProgressiveReadiness] = useState<ProgressiveReadiness>({
+    stage: 'Library metadata ready',
+    tracksReady: 0,
+    tracksRemaining: 0,
+    throughput: null,
+    estimatedSecondsRemaining: null,
+    optionalArchivalStatus: 'skipped',
+  });
 
   const folderInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -189,6 +217,8 @@ export function ImportLibraryModal({
   const accessTokenRef = useRef<string | null>(null);
   const operationRef = useRef(0);
   const backgroundedRef = useRef(false);
+  const libraryReadyPublishedRef = useRef(false);
+  const localUploadBackgroundedRef = useRef(false);
   const mountedRef = useRef(true);
   const selectedFileRef = useRef<File | null>(null);
   const folderScanRef = useRef<FolderScan | null>(null);
@@ -346,6 +376,17 @@ export function ImportLibraryModal({
     setReuseStats(null);
     setReconciliation(null);
     setRetryingCount(0);
+    setProgressiveReadiness({
+      stage: 'Library metadata ready',
+      tracksReady: 0,
+      tracksRemaining: 0,
+      throughput: null,
+      estimatedSecondsRemaining: null,
+      optionalArchivalStatus: 'skipped',
+    });
+    libraryReadyPublishedRef.current = false;
+    localUploadBackgroundedRef.current = false;
+    setLibraryMetadataReady(false);
     usbReleaseConfirmedRef.current = false;
     setUsbReleaseConfirmed(false);
     setCloudCancellationStarted(false);
@@ -426,6 +467,10 @@ export function ImportLibraryModal({
     if (mountedRef.current) {
       setUsbReleaseConfirmed(true);
       setPhase('usb_released');
+    }
+    const releasedImportId = importIdRef.current;
+    if (releasedImportId && localUploadBackgroundedRef.current) {
+      onBackgrounded?.(releasedImportId, true);
     }
   };
 
@@ -619,9 +664,22 @@ export function ImportLibraryModal({
 
   const handleContinueInBackground = () => {
     const importId = importIdRef.current;
-    if (!importId || (phase !== 'parsing_cloud_data' && phase !== 'usb_released')) return;
+    if (!importId) return;
+
+    if (phase === 'uploading_usb_data' && mode === 'usb_folder' && libraryMetadataReady) {
+      // Keep this mounted import worker alive while the modal is hidden. The
+      // browser still owns the read-only File handles until upload and release
+      // verification finish, so the background panel must not expose cloud
+      // pause/delete controls yet.
+      localUploadBackgroundedRef.current = true;
+      onBackgrounded?.(importId, false);
+      onClose();
+      return;
+    }
+
+    if (phase !== 'parsing_cloud_data' && phase !== 'usb_released') return;
     backgroundedRef.current = true;
-    onBackgrounded?.(importId);
+    onBackgrounded?.(importId, true);
     onClose();
   };
 
@@ -681,7 +739,10 @@ export function ImportLibraryModal({
     setPhase('scanning_usb');
     const files = Array.from(fileList);
     const dbFile = findDatabaseFile(files);
-    const anlzFiles = files.filter(isAnlzFile);
+    // Do not retain thousands of optional .2EX File handles in React state.
+    // DAT/EXT are the only assets in the blocking fast path. Archival can be
+    // performed later without delaying USB release or library readiness.
+    const anlzFiles = files.filter(isBlockingAnlzFile);
     const folderName =
       (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath
         ?.split('/')[0] ?? 'Selected folder';
@@ -737,6 +798,24 @@ export function ImportLibraryModal({
 
     importIdRef.current = startResp.import_id;
 
+    if (startResp.library_ready !== false && !libraryReadyPublishedRef.current) {
+      libraryReadyPublishedRef.current = true;
+      setLibraryMetadataReady(true);
+      onSuccess();
+    }
+    const manifestWork = summarizeManifestWork(startResp.manifest, BATCH_SIZE);
+    const affectedTrackIds = manifestWork.affectedTrackIds;
+    setProgressiveReadiness({
+      stage: 'Library metadata ready',
+      tracksReady: startResp.tracks_already_reusable ?? 0,
+      tracksRemaining: affectedTrackIds.length,
+      throughput: null,
+      estimatedSecondsRemaining: null,
+      optionalArchivalStatus: startResp.optional_archival_file_count
+        ? 'skipped'
+        : 'not needed',
+    });
+
     if (
       (startResp.tracks_reused ?? 0) > 0 ||
       (startResp.tracks_metadata_only ?? 0) > 0 ||
@@ -751,7 +830,9 @@ export function ImportLibraryModal({
     }
 
     setLocalUsbStage('matching_analysis');
+    const matchingStartedAt = performance.now();
     const matchedFiles = buildMatchedFiles(scan.anlzFiles, startResp.manifest);
+    const matchingElapsedMs = performance.now() - matchingStartedAt;
     const batches = buildBatches(matchedFiles, BATCH_SIZE, MAX_BYTES_PER_BATCH);
     matchedFilesRef.current = matchedFiles;
     uploadBatchesRef.current = batches;
@@ -894,6 +975,17 @@ export function ImportLibraryModal({
     return createCloudParsingContext(
       startResp.import_id,
       startResp.expected_track_count || startResp.manifest.length || 0,
+      affectedTrackIds,
+      startResp.tracks_already_reusable ?? 0,
+      startResp.optional_archival_file_count ?? 0,
+      {
+        timings_ms: { usb_file_matching: matchingElapsedMs },
+        counts: {
+          usb_files_matched: matchedFiles.length,
+          affected_tracks: affectedTrackIds.length,
+        },
+        bytes: { required_analysis_files: totalBytes },
+      },
     );
   };
 
@@ -903,27 +995,59 @@ export function ImportLibraryModal({
     operation: number,
   ) => {
     const cloudController = new AbortController();
+    const pollTimers = new AbortableTimerRegistry();
     cloudAbortControllerRef.current = cloudController;
     setParseProgress({
       currentTrackLabel: null,
-      parsedTracks: 0,
+      parsedTracks: context.tracksAlreadyReady,
       totalTracks: context.expectedTrackCount,
-      percent: 0,
+      percent: clampPct(
+        context.expectedTrackCount > 0
+          ? (context.tracksAlreadyReady / context.expectedTrackCount) * 100
+          : 0,
+      ),
     });
     setPhase('parsing_cloud_data');
 
-    let stopPolling = false;
-    let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+    try {
+      const queued = await requestWithAuthRetry(
+        (token) => completeRekordboxImport(
+          context.importId,
+          token,
+          {
+            affectedTrackIds: context.affectedTrackIds,
+            clientMetrics: context.clientMetrics,
+            signal: cloudController.signal,
+          },
+        ),
+        fallbackToken,
+      );
 
-    const pollParsingStatus = async () => {
-      if (
-        stopPolling ||
-        backgroundedRef.current ||
-        cloudController.signal.aborted ||
-        operation !== operationRef.current
-      ) return;
+      if (queued.analysis_status === 'completed' && context.affectedTrackIds.length === 0) {
+        setFinalResult({ kind: 'with_analysis', data: queued });
+        setParseProgress({
+          currentTrackLabel: null,
+          parsedTracks: queued.total_tracks,
+          totalTracks: queued.total_tracks,
+          percent: 100,
+        });
+        setPhase('completed');
+        return;
+      }
 
-      try {
+      // When the user minimized during the USB transfer, the compact panel is
+      // now the sole progress poller. Wait until this completion request has
+      // successfully queued the worker before stopping the modal poll loop.
+      if (localUploadBackgroundedRef.current) {
+        backgroundedRef.current = true;
+        return;
+      }
+
+      while (
+        !backgroundedRef.current &&
+        !cloudController.signal.aborted &&
+        operation === operationRef.current
+      ) {
         const status = await requestWithAuthRetry(
           (token) => fetchRekordboxAnalysisStatus(
             context.importId,
@@ -932,7 +1056,7 @@ export function ImportLibraryModal({
           ),
           fallbackToken,
         );
-        if (stopPolling || operation !== operationRef.current) return;
+        if (operation !== operationRef.current || backgroundedRef.current) return;
 
         const totalTracks = status.expected_track_count || context.expectedTrackCount;
         const parsedTracks = Math.max(0, status.parsed_track_count || 0);
@@ -945,63 +1069,62 @@ export function ImportLibraryModal({
           totalTracks,
           percent,
         });
-      } catch (error) {
-        if (isUnauthorizedRekordboxImportError(error)) {
-          stopPolling = true;
-          setParseProgress((current) => ({
-            ...current,
-            currentTrackLabel: 'Progress connection paused; server-side parsing is still running.',
-          }));
-        } else if (!isAbortError(error) && import.meta.env.DEV) {
-          console.debug('[DropDex] Analysis status polling failed:', error);
+        setProgressiveReadiness({
+          stage: status.readiness_stage?.replaceAll('_', ' ') ?? 'Analysis processing',
+          tracksReady: status.tracks_ready_count ?? parsedTracks,
+          tracksRemaining: status.tracks_remaining_count ?? Math.max(0, totalTracks - parsedTracks),
+          throughput: status.measured_tracks_per_second ?? null,
+          estimatedSecondsRemaining: status.estimated_seconds_remaining ?? null,
+          optionalArchivalStatus: status.optional_archival_status ?? 'skipped',
+        });
+
+        if (['completed', 'partial', 'failed'].includes(status.analysis_status)) {
+          const completeResponse: CompleteResponse = {
+            import_id: context.importId,
+            analysis_status: status.analysis_status,
+            total_tracks: totalTracks,
+            completed_count: status.completed_track_count
+              ?? Math.max(0, parsedTracks - status.failed_track_count),
+            partial_count: status.partial_track_count ?? 0,
+            failed_count: status.failed_track_count,
+            missing_required_count: status.missing_required_count,
+            missing_optional_ext_count: status.missing_optional_ext.length,
+            missing_optional_2ex_count: 0,
+            parser_version: status.parser_version ?? 'unknown',
+            tracks: [],
+            background_started: true,
+            library_ready: status.library_ready ?? true,
+            readiness_stage: status.readiness_stage ?? 'analysis_complete',
+            queued_track_count: status.tracks_queued_count ?? 0,
+            optional_archival_status: status.optional_archival_status ?? 'skipped',
+          };
+          setFinalResult({ kind: 'with_analysis', data: completeResponse });
+          setPhase(status.analysis_status === 'completed' ? 'completed' : 'partial_success');
+          return;
         }
-      } finally {
-        if (
-          !stopPolling &&
-          !backgroundedRef.current &&
-          !cloudController.signal.aborted &&
-          operation === operationRef.current
-        ) {
-          pollTimeout = setTimeout(pollParsingStatus, PARSE_STATUS_POLL_MS);
+        if (status.analysis_status === 'paused') {
+          setPhase('paused');
+          return;
         }
+
+        await waitForAbortableDelay(
+          PARSE_STATUS_POLL_MS,
+          cloudController.signal,
+          pollTimers,
+        );
       }
-    };
-
-    void pollParsingStatus();
-
-    try {
-      const completeResponse = await requestWithAuthRetry(
-        (token) => completeRekordboxImport(
-          context.importId,
-          token,
-          { signal: cloudController.signal },
-        ),
-        fallbackToken,
-      );
-      if (operation !== operationRef.current || backgroundedRef.current || !mountedRef.current) return;
-
-      setParseProgress({
-        currentTrackLabel: null,
-        parsedTracks: completeResponse.total_tracks,
-        totalTracks: completeResponse.total_tracks,
-        percent: 100,
-      });
-
-      setFinalResult({ kind: 'with_analysis', data: completeResponse });
-      setPhase(completeResponse.analysis_status === 'completed' ? 'completed' : 'partial_success');
     } catch (error) {
       if (isAbortError(error) && cancelRequestedRef.current) {
         await deleteCloudWork();
         return;
       }
-      if (isAbortError(error) || operation !== operationRef.current) return;
+      if (isAbortError(error) || operation !== operationRef.current || backgroundedRef.current) return;
       const extracted = extractError(error);
       setErrorMessage(extracted.message);
       setErrorStructured(extracted.structured);
       setPhase('failed');
     } finally {
-      stopPolling = true;
-      if (pollTimeout) clearTimeout(pollTimeout);
+      pollTimers.cancelAll();
       if (cloudAbortControllerRef.current === cloudController) {
         cloudAbortControllerRef.current = null;
       }
@@ -1324,7 +1447,7 @@ export function ImportLibraryModal({
                               <AlertCircle size={14} className="text-amber-400 shrink-0" />
                             )}
                             <span className="text-xs">
-                              {folderScan.anlzFiles.length.toLocaleString()} ANLZ analysis file
+                              {folderScan.anlzFiles.length.toLocaleString()} required DAT/EXT analysis file
                               {folderScan.anlzFiles.length !== 1 ? 's' : ''} found
                             </span>
                           </div>
@@ -1486,9 +1609,24 @@ export function ImportLibraryModal({
                   </>
                 )}
 
+                {mode === 'usb_folder' && libraryMetadataReady && (
+                  <div className="mt-6 space-y-2">
+                    <button
+                      type="button"
+                      onClick={handleContinueInBackground}
+                      className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white transition-all active:scale-[0.99]"
+                    >
+                      Browse Library in Background
+                    </button>
+                    <p className="text-[10px] leading-relaxed text-amber-200">
+                      Keep the USB connected and Rekordbox closed until the background panel confirms USB access is released.
+                    </p>
+                  </div>
+                )}
+
                 <button
                   onClick={() => openAbortDialog('delete')}
-                  className="mt-6 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  className="mt-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Cancel import
                 </button>
@@ -1571,17 +1709,43 @@ export function ImportLibraryModal({
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
                   <Loader2 className="animate-spin text-primary" size={28} />
                 </div>
-                <h2 className="text-xl font-bold mb-2">Parsing Uploaded Analysis Data…</h2>
+                <h2 className="text-xl font-bold mb-2">Library Ready, Analysis Running</h2>
                 <div className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left">
                   <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-400" />
                   <p className="text-xs leading-relaxed text-emerald-100">
                     USB reading is complete. DropDex is continuing from uploaded copies and no longer needs the USB. You may open Rekordbox or eject the drive.
                   </p>
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Parsing{' '}
+                <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 text-left text-xs">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Current stage</span>
+                    <span className="font-semibold capitalize text-foreground">{progressiveReadiness.stage}</span>
+                  </div>
+                  <div className="mt-2 flex justify-between gap-4">
+                    <span className="text-muted-foreground">Tracks ready</span>
+                    <span className="font-semibold text-foreground">{progressiveReadiness.tracksReady.toLocaleString()}</span>
+                  </div>
+                  <div className="mt-2 flex justify-between gap-4">
+                    <span className="text-muted-foreground">Tracks remaining</span>
+                    <span className="font-semibold text-foreground">{progressiveReadiness.tracksRemaining.toLocaleString()}</span>
+                  </div>
+                  <div className="mt-2 flex justify-between gap-4">
+                    <span className="text-muted-foreground">Estimate</span>
+                    <span className="font-semibold text-foreground">
+                      {progressiveReadiness.estimatedSecondsRemaining != null
+                        ? fmtEta(progressiveReadiness.estimatedSecondsRemaining)
+                        : 'Measuring throughput…'}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex justify-between gap-4">
+                    <span className="text-muted-foreground">Optional .2EX archival</span>
+                    <span className="font-semibold capitalize text-foreground">{progressiveReadiness.optionalArchivalStatus}</span>
+                  </div>
+                </div>
+                <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
+                  Processing{' '}
                   <span className="font-semibold text-foreground">
-                    {parseProgress.currentTrackLabel || 'current track…'}
+                    {parseProgress.currentTrackLabel || 'queued tracks…'}
                   </span>
                 </p>
                 <div className="mt-5">
@@ -1704,7 +1868,7 @@ export function ImportLibraryModal({
                   </div>
                 )}
 
-                {/* Optional missing waveform files (doesn't affect analysis_status = completed) */}
+                {/* Optional waveform/archival gaps never affect readiness. */}
                 {withAnalysis && (withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
                   <div className="mb-4 p-3 rounded-xl bg-amber-500/8 border border-amber-500/20 text-left">
                     <p className="text-[9px] uppercase tracking-widest text-amber-400/80 font-bold mb-2">
@@ -1715,11 +1879,11 @@ export function ImportLibraryModal({
                         <SummaryRow label="Missing color waveform (EXT)" value={withAnalysis.missing_optional_ext_count} />
                       )}
                       {withAnalysis.missing_optional_2ex_count > 0 && (
-                        <SummaryRow label="Missing detail waveform (2EX)" value={withAnalysis.missing_optional_2ex_count} />
+                        <SummaryRow label="Optional .2EX not archived" value={withAnalysis.missing_optional_2ex_count} />
                       )}
                     </div>
                     <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
-                      These optional files are missing but do not affect playback. Re-import from the same USB to add them.
+                      Optional assets do not affect library readiness or track analysis.
                     </p>
                   </div>
                 )}
@@ -1852,7 +2016,7 @@ export function ImportLibraryModal({
                               <SummaryRow label="Missing color waveform (EXT)" value={withAnalysis.missing_optional_ext_count} />
                             )}
                             {withAnalysis.missing_optional_2ex_count > 0 && (
-                              <SummaryRow label="Missing detail waveform (2EX)" value={withAnalysis.missing_optional_2ex_count} />
+                              <SummaryRow label="Optional .2EX not archived" value={withAnalysis.missing_optional_2ex_count} />
                             )}
                           </div>
                           {(reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0) && (

@@ -1,142 +1,121 @@
 import type { ManifestEntry } from '../api/rekordboxImport';
-import type { MatchedAnalysisFile } from './analysisPaths';
+import {
+  requiredAssetTypesForManifestEntry,
+  type MatchedAnalysisFile,
+} from './analysisPaths';
 
 export type AssetType = 'DAT' | 'EXT' | '2EX';
 
 export interface MissingFileInfo {
-  /** Canonical PIONEER-anchored relative path. */
   relativePath: string;
   trackId: string;
   rekordboxContentId: string | null;
   assetType: AssetType;
-  /** True when this is a required DAT file; false for optional EXT / 2EX. */
   required: boolean;
-  /** Why the file is not in the uploaded set. */
   reason: 'not_found_on_disk' | 'upload_failed';
 }
 
 export interface FileTypeStats {
   expected: number;
   uploaded: number;
-  /** On disk but upload failed or batch failed. */
   failed: number;
-  /** Not found on disk at all. */
   missing: number;
 }
 
 export interface ManifestReconciliation {
-  /** Total number of paths listed in the manifest (DAT + EXT + 2EX, non-null). */
+  /** Required/requested blocking files only. Optional archival is separate. */
   expectedFiles: number;
-  /** Files found on disk that match a manifest entry (uploaded + failed). */
+  optionalArchivalFiles: number;
   matchedFiles: number;
-  /** Files the server accepted (received + already_received). */
   successfullyUploadedFiles: number;
-  /** Files on disk whose upload failed after all retries. */
   failedFiles: number;
-  /** Files in the manifest but absent from the selected folder. */
   missingFiles: number;
-  /** Required DAT files not in the uploaded set, with per-file metadata. */
   requiredMissingFiles: MissingFileInfo[];
-  /** Optional EXT / 2EX files not in the uploaded set. */
   optionalMissingFiles: MissingFileInfo[];
   filesByType: Record<AssetType, FileTypeStats>;
-  /** Track IDs that have at least one required file missing or failed. */
   affectedTrackIds: string[];
+  tracksRequiringAnalysis: number;
+  tracksAlreadyReusable: number;
+  unavailableTracks: number;
 }
 
-/**
- * Compare the import manifest against the final upload results and produce a
- * structured reconciliation that the UI can display and that informs the user
- * which tracks may have incomplete analysis.
- *
- * @param manifest        The ManifestEntry[] returned by /start.
- * @param matchedFiles    Files found on the USB that matched a manifest entry.
- * @param uploadedPaths   Lowercase canonical paths accepted by the server
- *                        (from UploadAccumulator.successfullyUploadedPaths).
- */
+/** Reconcile only manifest-requested DAT/EXT work. .2EX never blocks readiness. */
 export function buildManifestReconciliation(
   manifest: ManifestEntry[],
   matchedFiles: MatchedAnalysisFile[],
   uploadedPaths: Set<string>,
 ): ManifestReconciliation {
-  // Build a set of paths that were found on disk (whether or not upload succeeded).
-  const matchedPathSet = new Set(matchedFiles.map((f) => f.canonicalPath.toLowerCase()));
-
+  const matchedPathSet = new Set(matchedFiles.map((file) => file.canonicalPath.toLowerCase()));
   const filesByType: Record<AssetType, FileTypeStats> = {
     DAT: { expected: 0, uploaded: 0, failed: 0, missing: 0 },
     EXT: { expected: 0, uploaded: 0, failed: 0, missing: 0 },
     '2EX': { expected: 0, uploaded: 0, failed: 0, missing: 0 },
   };
-
   const requiredMissingFiles: MissingFileInfo[] = [];
   const optionalMissingFiles: MissingFileInfo[] = [];
-  const affectedTrackIdSet = new Set<string>();
+  const affectedTrackIds = new Set<string>();
   let successfullyUploadedFiles = 0;
   let failedFiles = 0;
   let missingFiles = 0;
+  let tracksRequiringAnalysis = 0;
+  let tracksAlreadyReusable = 0;
+  let unavailableTracks = 0;
+  let optionalArchivalFiles = 0;
 
   for (const entry of manifest) {
-    const specs: Array<{ path: string | null; type: AssetType; required: boolean }> = [
-      { path: entry.dat_path, type: 'DAT', required: entry.dat_required },
-      { path: entry.ext_path, type: 'EXT', required: false },
-      { path: entry.two_ex_path, type: '2EX', required: false },
-    ];
+    const status = entry.manifest_status ?? 'needs_analysis';
+    if (status === 'reused' || status === 'metadata_only') tracksAlreadyReusable += 1;
+    if (status === 'unavailable') unavailableTracks += 1;
+    const requested = requiredAssetTypesForManifestEntry(entry);
+    if (requested.length > 0 || status === 'reparse_from_retained') tracksRequiringAnalysis += 1;
+    if (entry.two_ex_path) {
+      optionalArchivalFiles += 1;
+      filesByType['2EX'].expected += 1;
+    }
+
+    const specs: Array<{ path: string | null; type: 'DAT' | 'EXT'; required: boolean }> = [];
+    if (requested.includes('DAT')) specs.push({ path: entry.dat_path, type: 'DAT', required: true });
+    if (requested.includes('EXT')) specs.push({ path: entry.ext_path, type: 'EXT', required: false });
 
     for (const spec of specs) {
-      if (!spec.path) continue; // not expected for this track
-
+      if (!spec.path) continue;
       const lower = spec.path.toLowerCase();
-      const counts = filesByType[spec.type];
-      counts.expected++;
-
+      filesByType[spec.type].expected += 1;
       if (uploadedPaths.has(lower)) {
-        counts.uploaded++;
-        successfullyUploadedFiles++;
-      } else if (matchedPathSet.has(lower)) {
-        // Found on disk but upload failed (file-level failure or batch failure).
-        counts.failed++;
-        failedFiles++;
-        const info: MissingFileInfo = {
-          relativePath: spec.path,
-          trackId: entry.track_id,
-          rekordboxContentId: entry.rekordbox_content_id ?? null,
-          assetType: spec.type,
-          required: spec.required,
-          reason: 'upload_failed',
-        };
-        if (spec.required) {
-          requiredMissingFiles.push(info);
-          affectedTrackIdSet.add(entry.track_id);
-        } else {
-          optionalMissingFiles.push(info);
-        }
+        filesByType[spec.type].uploaded += 1;
+        successfullyUploadedFiles += 1;
+        continue;
+      }
+
+      const reason = matchedPathSet.has(lower) ? 'upload_failed' : 'not_found_on_disk';
+      if (reason === 'upload_failed') {
+        filesByType[spec.type].failed += 1;
+        failedFiles += 1;
       } else {
-        // Not found on the selected USB drive at all.
-        counts.missing++;
-        missingFiles++;
-        const info: MissingFileInfo = {
-          relativePath: spec.path,
-          trackId: entry.track_id,
-          rekordboxContentId: entry.rekordbox_content_id ?? null,
-          assetType: spec.type,
-          required: spec.required,
-          reason: 'not_found_on_disk',
-        };
-        if (spec.required) {
-          requiredMissingFiles.push(info);
-          affectedTrackIdSet.add(entry.track_id);
-        } else {
-          optionalMissingFiles.push(info);
-        }
+        filesByType[spec.type].missing += 1;
+        missingFiles += 1;
+      }
+      const missing: MissingFileInfo = {
+        relativePath: spec.path,
+        trackId: entry.track_id,
+        rekordboxContentId: entry.rekordbox_content_id ?? null,
+        assetType: spec.type,
+        required: spec.required,
+        reason,
+      };
+      if (spec.required) {
+        requiredMissingFiles.push(missing);
+        affectedTrackIds.add(entry.track_id);
+      } else {
+        optionalMissingFiles.push(missing);
       }
     }
   }
 
-  const expectedFiles =
-    filesByType.DAT.expected + filesByType.EXT.expected + filesByType['2EX'].expected;
-
+  const expectedFiles = filesByType.DAT.expected + filesByType.EXT.expected;
   return {
     expectedFiles,
+    optionalArchivalFiles,
     matchedFiles: successfullyUploadedFiles + failedFiles,
     successfullyUploadedFiles,
     failedFiles,
@@ -144,6 +123,9 @@ export function buildManifestReconciliation(
     requiredMissingFiles,
     optionalMissingFiles,
     filesByType,
-    affectedTrackIds: Array.from(affectedTrackIdSet),
+    affectedTrackIds: Array.from(affectedTrackIds),
+    tracksRequiringAnalysis,
+    tracksAlreadyReusable,
+    unavailableTracks,
   };
 }

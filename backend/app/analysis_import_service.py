@@ -3,8 +3,8 @@ Staged Rekordbox USB analysis import service.
 
 Implements the three-phase workflow:
   1. start_analysis_import   — parse exportLibrary.db, persist, return manifest
-  2. process_analysis_batch  — validate and upload ANLZ files to Storage
-  3. complete_analysis_import — download, parse, persist analysis results
+  2. process_analysis_batch  — validate and durably stage requested ANLZ files
+  3. complete_analysis_import — queue bounded background parsing and bulk writes
   4. get_analysis_status      — read-only status query
 
 Security invariants
@@ -20,15 +20,17 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import json
 import logging
 import os
 import shutil
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from dropdex_importer.supabase_writer import RekordboxWriteError
 from fastapi import HTTPException, UploadFile
@@ -56,7 +58,11 @@ from .models import (
     TrackCompleteStatus,
 )
 from .rekordbox_parser import parse_library
-from .rescan_service import copy_normalized_data_for_track, match_tracks_to_prior_import
+from .rescan_service import (
+    copy_normalized_data_for_track,
+    copy_normalized_data_for_tracks_bulk,
+    match_tracks_to_prior_import,
+)
 from .supabase_writer import write_to_supabase_full
 from .upload_stream import read_upload_bounded, stream_upload_to_temp
 from .user_settings import upsert_active_import
@@ -65,6 +71,7 @@ from .validation import validate
 logger = logging.getLogger(__name__)
 
 _VALID_ANLZ_SUFFIXES = frozenset({".dat", ".ext", ".2ex"})
+_REQUIRED_ANLZ_SUFFIXES = frozenset({".dat", ".ext"})
 _ASSET_EXT_MAP = {"DAT": ".DAT", "EXT": ".EXT", "2EX": ".2EX"}
 _ANALYSIS_BUCKET = "rekordbox-analysis-assets"
 
@@ -80,6 +87,11 @@ _ANALYSIS_PROGRESS_LOCK = Lock()
 _ANALYSIS_PROGRESS: Dict[str, Dict[str, Any]] = {}
 _ANALYSIS_PROGRESS_LAST_PERSISTED: Dict[str, float] = {}
 _ANALYSIS_PROGRESS_PERSIST_INTERVAL_SECONDS = 0.5
+_PATH_MAP_CACHE_LOCK = Lock()
+_PATH_MAP_CACHE: Dict[str, Dict[str, dict]] = {}
+_PATH_MAP_BUILD_LOCKS: Dict[str, Lock] = {}
+_BACKGROUND_WORKER_LOCK = Lock()
+_BACKGROUND_WORKERS: Dict[str, threading.Thread] = {}
 
 
 
@@ -258,20 +270,6 @@ def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _build_storage_path(user_id: str, import_id: str, canonical_path: str) -> str:
-    """Return {user_id}/{import_id}/anlz/{canonical_path} for Storage.
-
-    First segment is user_id so the Storage RLS policy
-    ``(storage.foldername(name))[1] = auth.uid()::text`` allows owners to read
-    their own objects.
-    """
-    try:
-        from dropdex_importer.analysis_paths import build_storage_path as _bp  # noqa: PLC0415
-
-        return _bp(user_id, import_id, canonical_path)
-    except (ImportError, AttributeError):
-        return f"{user_id}/{import_id}/anlz/{canonical_path.lstrip('/')}"
-
 
 def _require_import_for_user(sb, import_id: str, user_id: str) -> dict:
     """Fetch import row scoped to user_id. Raises HTTP 404 if not found."""
@@ -285,7 +283,11 @@ def _require_import_for_user(sb, import_id: str, user_id: str) -> dict:
             "analysis_progress_processed_track_count, analysis_progress_total_track_count, "
             "analysis_current_track_id, analysis_current_track_title, "
             "analysis_current_track_artist, analysis_current_track_label, "
-            "analysis_progress_updated_at"
+            "analysis_progress_updated_at, library_ready_at, readiness_stage, "
+            "required_analysis_file_count, optional_archival_file_count, "
+            "optional_archival_status, performance_metrics, analysis_queue_track_count, "
+            "analysis_running_track_count, analysis_throughput_tracks_per_second, "
+            "analysis_estimated_seconds_remaining, user_id"
         )
         .eq("id", import_id)
         .eq("user_id", user_id)
@@ -299,25 +301,32 @@ def _require_import_for_user(sb, import_id: str, user_id: str) -> dict:
     return data
 
 
-def _get_tracks_with_paths(sb, import_id: str) -> List[dict]:
-    """Return ALL tracks for this import that have an analysis_data_file_path.
-
-    Uses pagination so imports larger than 1,000 tracks are fully represented.
-    """
+def _get_tracks_for_analysis_status(sb, import_id: str) -> List[dict]:
+    """Return every track needed for manifest and progressive status views."""
     from .supabase_pagination import fetch_all_rows  # noqa: PLC0415
 
-    rows = fetch_all_rows(
+    return fetch_all_rows(
         lambda: (
             sb.table("rekordbox_tracks")
             .select(
                 "id, rekordbox_content_id, title, artist, "
-                "analysis_data_file_path, analysis_parse_status"
+                "analysis_data_file_path, analysis_parse_status, analysis_manifest_status, "
+                "analysis_source_fingerprint, analysis_failure_reason, "
+                "analysis_reused_from_track_id"
             )
             .eq("import_id", import_id)
         ),
         order_column="id",
     )
-    return [t for t in rows if t.get("analysis_data_file_path")]
+
+
+def _get_tracks_with_paths(sb, import_id: str) -> List[dict]:
+    """Return tracks with an analysis path for upload and legacy parse work."""
+    return [
+        track
+        for track in _get_tracks_for_analysis_status(sb, import_id)
+        if track.get("analysis_data_file_path")
+    ]
 
 
 _FINAL_ANALYSIS_TRACK_STATUSES = frozenset({"completed", "partial", "reused", "skipped"})
@@ -359,188 +368,159 @@ def _get_tracks_for_rescan(sb, import_id: str) -> List[dict]:
     )
 
 
-def _build_path_map(tracks: List[dict]) -> Dict[str, dict]:
-    """
-    Build a lower(canonical_path) → {track_id, asset_type} map covering all
-    three siblings (DAT, EXT, 2EX) for every track.
-    """
-    from dropdex_importer.analysis_paths import (  # noqa: PLC0415
-        derive_anlz_siblings,
-        normalize_anlz_path,
+def _required_asset_types_for_status(status: str) -> frozenset[str]:
+    normalized = status or "needs_analysis"
+    if normalized in {"reused", "metadata_only", "reparse_from_retained", "unavailable"}:
+        return frozenset()
+    if normalized == "needs_ext":
+        return frozenset({"EXT"})
+    return frozenset({"DAT", "EXT"})
+
+
+def _track_source_fingerprint(track: dict, manifest_entry: ManifestEntryResponse) -> str:
+    """Build a stable, cheap track identity without re-hashing USB files."""
+    normalized_path = str(track.get("analysis_data_file_path") or manifest_entry.dat_path or "").replace("\\", "/").lower()
+    values = (
+        str(track.get("rekordbox_content_id") or manifest_entry.rekordbox_content_id or ""),
+        normalized_path,
+        str(track.get("master_db_id") or ""),
+        str(track.get("master_content_id") or ""),
+        str(track.get("analysis_data_update_count") or 0),
+        str(track.get("cue_update_count") or 0),
+        str(track.get("information_update_count") or 0),
+        _PARSER_VERSION,
+        settings.analysis_feature_schema_version,
     )
+    return hashlib.sha256("|".join(values).encode("utf-8")).hexdigest()
+
+
+def _apply_manifest_work_rules(entry: ManifestEntryResponse) -> None:
+    """Translate a manifest status into explicit required and optional work."""
+    required = list(_required_asset_types_for_status(entry.manifest_status))
+    ordered = [asset_type for asset_type in ("DAT", "EXT") if asset_type in required]
+    entry.required_asset_types = ordered
+    entry.dat_required = "DAT" in ordered
+    entry.ext_required = "EXT" in ordered
+    entry.optional_archival_asset_types = ["2EX"] if entry.two_ex_path else []
+
+
+def _persist_track_manifest_state(sb, import_id: str, entries: Sequence[ManifestEntryResponse]) -> None:
+    rows = [
+        {
+            "track_id": entry.track_id,
+            "analysis_parse_status": (
+                "reused"
+                if entry.manifest_status in {"reused", "metadata_only"}
+                else "skipped"
+                if entry.manifest_status == "unavailable"
+                else "queued"
+            ),
+            "analysis_manifest_status": entry.manifest_status,
+            "analysis_reused_from_track_id": entry.reused_from_track_id,
+            "analysis_source_fingerprint": entry.source_fingerprint,
+            "analysis_feature_schema_version": settings.analysis_feature_schema_version,
+            "analysis_failure_reason": (entry.reuse_reason if entry.manifest_status == "unavailable" else None),
+            "analysis_queued_at": (
+                None
+                if entry.manifest_status in {"reused", "metadata_only", "unavailable"}
+                else _now_iso()
+            ),
+        }
+        for entry in entries
+    ]
+    if not rows:
+        return
+    try:
+        sb.rpc(
+            "bulk_update_rekordbox_track_analysis",
+            {"p_import_id": import_id, "p_rows": rows},
+        ).execute()
+        return
+    except Exception as exc:
+        logger.warning("Bulk manifest status RPC unavailable, using bounded fallback: %s", exc)
+    for offset in range(0, len(rows), 200):
+        for row in rows[offset : offset + 200]:
+            track_id = row["track_id"]
+            payload = {key: value for key, value in row.items() if key != "track_id"}
+            sb.table("rekordbox_tracks").update(payload).eq("id", track_id).eq(
+                "import_id", import_id
+            ).execute()
+
+
+def _build_path_map(tracks: List[dict]) -> Dict[str, dict]:
+    """Build the import path map once, restricted to requested blocking assets."""
+    from dropdex_importer.analysis_paths import derive_anlz_siblings, normalize_anlz_path
 
     path_map: Dict[str, dict] = {}
     for track in tracks:
-        raw = track.get("analysis_data_file_path") or ""
-        canonical = normalize_anlz_path(raw)
+        canonical = normalize_anlz_path(track.get("analysis_data_file_path") or "")
         if not canonical:
             continue
         dat_path, ext_path, two_ex_path = derive_anlz_siblings(canonical)
-        for path, asset_type in (
-            (dat_path, "DAT"),
-            (ext_path, "EXT"),
-            (two_ex_path, "2EX"),
-        ):
-            path_map[path.lower()] = {"track_id": track["id"], "asset_type": asset_type}
+        required_types = _required_asset_types_for_status(
+            str(track.get("analysis_manifest_status") or "needs_analysis")
+        )
+        for path, asset_type in ((dat_path, "DAT"), (ext_path, "EXT")):
+            if asset_type in required_types:
+                path_map[path.lower()] = {
+                    "track_id": track["id"],
+                    "asset_type": asset_type,
+                    "required": True,
+                    "source_fingerprint": track.get("analysis_source_fingerprint"),
+                }
+        if settings.analysis_archive_2ex and two_ex_path:
+            path_map[two_ex_path.lower()] = {
+                "track_id": track["id"],
+                "asset_type": "2EX",
+                "required": False,
+                "optional_archival": True,
+                "source_fingerprint": track.get("analysis_source_fingerprint"),
+            }
     return path_map
 
 
-def _get_existing_asset(sb, import_id: str, relative_path_lower: str) -> Optional[dict]:
-    """Return an existing analysis asset row, or None."""
-    resp = (
-        sb.table("rekordbox_analysis_assets")
-        .select("id, sha256, upload_status")
-        .eq("import_id", import_id)
-        .eq("relative_path", relative_path_lower)
-        .maybe_single()
-        .execute()
-    )
-    return resp.data if resp is not None else None
+def _invalidate_path_map_cache(import_id: str) -> None:
+    with _PATH_MAP_CACHE_LOCK:
+        _PATH_MAP_CACHE.pop(import_id, None)
+        _PATH_MAP_BUILD_LOCKS.pop(import_id, None)
 
-
-def _upsert_asset(sb, asset_data: dict) -> None:
-    """Insert or update a rekordbox_analysis_assets row (check-then-write)."""
-    existing = (
-        sb.table("rekordbox_analysis_assets")
-        .select("id")
-        .eq("import_id", asset_data["import_id"])
-        .eq("relative_path", asset_data["relative_path"])
-        .maybe_single()
-        .execute()
-    )
-    existing_data = existing.data if existing is not None else None
-    if existing_data:
-        update_payload = {k: v for k, v in asset_data.items() if k != "import_id"}
-        sb.table("rekordbox_analysis_assets").update(update_payload).eq(
-            "id", existing_data["id"]
-        ).execute()
-    else:
-        sb.table("rekordbox_analysis_assets").insert(asset_data).execute()
-
-
-def _upload_content_to_storage(sb, storage_path: str, content: bytes) -> bool:
-    """Upload bytes to Supabase Storage. Returns True on success."""
-    try:
-        sb.storage.from_(_ANALYSIS_BUCKET).upload(
-            path=storage_path,
-            file=content,
-            file_options={"upsert": "true"},
-        )
-        return True
-    except Exception as exc:
-        logger.error("Storage upload failed at %s: %s", storage_path, exc)
-        return False
 
 
 def _prepare_analysis_batch(import_id: str, user_id: str):
-    """Load batch metadata with blocking Supabase work outside the event loop."""
+    """Load import metadata and reuse a single path map for every upload batch."""
     sb = _create_supabase()
     import_row = _require_import_for_user(sb, import_id, user_id)
     if import_row.get("status") in {"cancelled", "failed", "deleting"}:
         raise HTTPException(
             status_code=409,
             detail={
-                "error_code": (
-                    "IMPORT_CANCELLED" if import_row.get("status") != "failed" else "IMPORT_FAILED"
-                ),
-                "detail": import_row.get("error_message")
-                or f"Import is {import_row.get('status')}.",
+                "error_code": "IMPORT_CANCELLED" if import_row.get("status") != "failed" else "IMPORT_FAILED",
+                "detail": import_row.get("error_message") or f"Import is {import_row.get('status')}.",
                 "retryable": bool(import_row.get("retryable")),
             },
         )
-    try:
-        (
-            sb.table("rekordbox_imports")
-            .update({
-                "analysis_status": "uploading",
-                "analysis_progress_updated_at": _now_iso(),
-                "analysis_worker_status": "running",
-                "analysis_worker_stage": "loading_assets",
-                "analysis_worker_current_track_id": None,
-                "analysis_worker_heartbeat_at": _now_iso(),
-                "analysis_worker_stopped_acknowledged": False,
-                "analysis_worker_stopped_at": None,
-                "updated_at": _now_iso(),
-            })
-            .eq("id", import_id)
-            .execute()
-        )
-    except Exception as exc:
-        logger.warning("Failed to set analysis_status=uploading for %s: %s", import_id, exc)
-    tracks = _get_tracks_with_paths(sb, import_id)
-    return sb, _build_path_map(tracks)
 
+    with _PATH_MAP_CACHE_LOCK:
+        cached = _PATH_MAP_CACHE.get(import_id)
+        build_lock = _PATH_MAP_BUILD_LOCKS.setdefault(import_id, Lock())
+    if cached is not None:
+        return sb, cached, False, import_row
 
-def _persist_analysis_upload(
-    sb,
-    *,
-    import_id: str,
-    user_id: str,
-    canonical: str,
-    raw_path: str,
-    content: bytes,
-    track_info: dict,
-) -> tuple[str, str, int]:
-    """Persist one bounded ANLZ payload without blocking the async request loop."""
-    canonical_lower = canonical.lower()
-    sha256 = _sha256_bytes(content)
-    existing = _get_existing_asset(sb, import_id, canonical_lower)
-    if existing and existing.get("sha256") == sha256:
-        return "already_received", sha256, len(content)
+    with build_lock:
+        # Concurrent browser upload batches can arrive together. Recheck after
+        # acquiring the per-import build lock so only one batch loads all tracks.
+        with _PATH_MAP_CACHE_LOCK:
+            cached = _PATH_MAP_CACHE.get(import_id)
+        if cached is not None:
+            return sb, cached, False, import_row
 
-    try:
-        assert_import_not_cancelled(import_id, user_id, sb=sb)
-    except ImportCancelledError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error_code": "IMPORT_CANCELLED",
-                "detail": "Import was cancelled.",
-                "retryable": False,
-            },
-        ) from exc
+        tracks = _get_tracks_with_paths(sb, import_id)
+        path_map = _build_path_map(tracks)
+        with _PATH_MAP_CACHE_LOCK:
+            _PATH_MAP_CACHE[import_id] = path_map
 
-    storage_path = _build_storage_path(user_id, import_id, canonical)
-    if not _upload_content_to_storage(sb, storage_path, content):
-        return "error", sha256, len(content)
+        return sb, path_map, True, import_row
 
-    try:
-        assert_import_not_cancelled(import_id, user_id, sb=sb)
-        _upsert_asset(
-            sb,
-            {
-                "import_id": import_id,
-                "track_id": track_info["track_id"],
-                "asset_type": track_info["asset_type"],
-                "relative_path": canonical_lower,
-                "original_filename": Path(raw_path).name,
-                "sha256": sha256,
-                "size_bytes": len(content),
-                "storage_bucket": _ANALYSIS_BUCKET,
-                "storage_path": storage_path,
-                "upload_status": "uploaded",
-                "parse_status": "not_requested",
-                "uploaded_at": _now_iso(),
-            },
-        )
-    except Exception as exc:
-        try:
-            sb.storage.from_(_ANALYSIS_BUCKET).remove([storage_path])
-        except Exception:
-            logger.warning("Could not remove uncommitted analysis object %s", storage_path)
-        try:
-            assert_import_not_cancelled(import_id, user_id, sb=sb)
-        except ImportCancelledError as cancelled:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "error_code": "IMPORT_CANCELLED",
-                    "detail": "Import was cancelled.",
-                    "retryable": False,
-                },
-            ) from cancelled
-        raise exc
-    return "received", sha256, len(content)
 
 
 def _build_manifest_entries(write_result) -> List[ManifestEntryResponse]:
@@ -616,6 +596,11 @@ async def start_analysis_import(
     imports to find unchanged tracks whose analysis data can be reused without
     re-uploading ANLZ files.
     """
+    request_started = time.perf_counter()
+    parse_started = request_started
+    db_write_elapsed_ms = 0.0
+    parse_elapsed_ms = 0.0
+    db_bytes = 0
     precreated_job = import_id is not None
     filename = file.filename or "upload"
     if not filename.lower().endswith(".db"):
@@ -650,7 +635,7 @@ async def start_analysis_import(
                 expected_states={"created"},
                 new_state="uploading",
             )
-        tmp_path, _ = await stream_upload_to_temp(
+        tmp_path, db_bytes = await stream_upload_to_temp(
             file,
             max_bytes=settings.max_rekordbox_db_upload_bytes,
             suffix=".db",
@@ -676,7 +661,9 @@ async def start_analysis_import(
             )
 
         try:
+            parse_started = time.perf_counter()
             library = await run_in_threadpool(parse_library, tmp_path)
+            parse_elapsed_ms = (time.perf_counter() - parse_started) * 1000.0
         except ImportError:
             logger.exception("dropdex_importer not available")
             raise HTTPException(
@@ -717,9 +704,11 @@ async def start_analysis_import(
             )
 
         try:
+            db_write_started = time.perf_counter()
             write_result = await run_in_threadpool(
                 _write_library_for_job, library, user_id, import_id
             )
+            db_write_elapsed_ms = (time.perf_counter() - db_write_started) * 1000.0
         except RekordboxWriteError as exc:
             if import_id:
                 await run_in_threadpool(assert_import_not_cancelled, import_id, user_id)
@@ -794,146 +783,207 @@ async def start_analysis_import(
 
         import_id = write_result.import_id
 
-        if not precreated_job:
-            try:
-                await run_in_threadpool(
-                    upsert_active_import,
-                    settings.supabase_url,
-                    settings.supabase_secret_key,
-                    user_id,
-                    import_id,
-                )
-            except Exception:
-                logger.warning("Failed to set active import for user %s", user_id)
+        try:
+            await run_in_threadpool(
+                upsert_active_import,
+                settings.supabase_url,
+                settings.supabase_secret_key,
+                user_id,
+                import_id,
+            )
+        except Exception:
+            logger.warning("Failed to set active import for user %s", user_id)
 
         manifest = _build_manifest_entries(write_result)
 
-        # ── Incremental rescan (Part D / F) ───────────────────────────────────
-        # Fetch a Supabase client for the rescan + metadata update phase.
-        # The entire rescan block is non-fatal — if anything fails here the
-        # manifest is still returned with all entries marked 'needs_dat'.
-        sb = None
-        try:
-            sb = await run_in_threadpool(_create_supabase)
-        except Exception as exc:
-            logger.warning("Failed to create Supabase client for rescan phase: %s", exc)
-
+        # Build the import identity map once. Rescan failures remain non-fatal and
+        # conservatively fall back to requesting DAT/EXT for the affected track.
+        sb = await run_in_threadpool(_create_supabase)
         new_tracks_full: List[dict] = []
         reuse_decisions: Dict[str, Any] = {}
-        if sb is not None:
-            try:
-                new_tracks_full = await run_in_threadpool(_get_tracks_for_rescan, sb, import_id)
-            except Exception as exc:
-                logger.warning("Failed to fetch tracks for rescan %s: %s", import_id, exc)
-
-            try:
-                reuse_decisions = await run_in_threadpool(
-                    match_tracks_to_prior_import, sb, user_id, import_id, new_tracks_full
+        try:
+            new_tracks_full = await run_in_threadpool(_get_tracks_for_rescan, sb, import_id)
+            reuse_decisions = await run_in_threadpool(
+                lambda: match_tracks_to_prior_import(
+                    sb,
+                    user_id,
+                    import_id,
+                    new_tracks_full,
+                    parser_version=_PARSER_VERSION,
+                    feature_schema_version=settings.analysis_feature_schema_version,
                 )
-            except Exception as exc:
-                logger.warning(
-                    "Incremental rescan failed for import %s (non-fatal): %s", import_id, exc
-                )
+            )
+        except Exception as exc:
+            logger.warning(
+                "Incremental rescan failed for import %s; using conservative upload plan: %s",
+                import_id,
+                exc,
+            )
 
+        tracks_by_id = {str(track.get("id")): track for track in new_tracks_full}
         tracks_reused = 0
         tracks_needing_upload = 0
         tracks_reparse_from_retained = 0
         tracks_metadata_only = 0
+        unavailable_tracks = 0
+        reuse_mappings: List[tuple[str, str, Any]] = []
 
         for entry in manifest:
             decision = reuse_decisions.get(entry.track_id)
-            if decision is None:
-                entry.manifest_status = "needs_dat"
-                tracks_needing_upload += 1
-                continue
-
-            entry.manifest_status = decision.manifest_status
-            entry.reused_from_track_id = decision.reused_from_track_id
-            entry.reuse_reason = decision.reuse_reason
-            entry.cue_changed = decision.cue_changed
-            entry.analysis_changed = decision.analysis_changed
-            entry.information_changed = decision.information_changed
-
-            if decision.manifest_status == "reused":
-                tracks_reused += 1
-                try:
-                    await run_in_threadpool(
-                        copy_normalized_data_for_track,
-                        sb,
-                        decision.reused_from_track_id,
-                        entry.track_id,
-                        import_id,
-                        decision,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to copy normalized data from %s to %s: %s",
-                        decision.reused_from_track_id,
-                        entry.track_id,
-                        exc,
-                    )
-                    # Fallback: mark as needing upload if copy failed
-                    entry.manifest_status = "needs_dat"
-                    entry.reuse_reason = None
-                    tracks_reused -= 1
-                    tracks_needing_upload += 1
-            elif decision.manifest_status == "metadata_only":
-                tracks_metadata_only += 1
-                try:
-                    await run_in_threadpool(
-                        copy_normalized_data_for_track,
-                        sb,
-                        decision.reused_from_track_id,
-                        entry.track_id,
-                        import_id,
-                        decision,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to copy normalized data (metadata_only) from %s to %s: %s",
-                        decision.reused_from_track_id,
-                        entry.track_id,
-                        exc,
-                    )
-                    entry.manifest_status = "needs_dat"
-                    entry.reuse_reason = None
-                    tracks_metadata_only -= 1
-                    tracks_needing_upload += 1
-            elif decision.manifest_status == "reparse_from_retained":
-                tracks_reparse_from_retained += 1
+            if decision is not None:
+                entry.manifest_status = decision.manifest_status
+                entry.reused_from_track_id = decision.reused_from_track_id
+                entry.reuse_reason = decision.reuse_reason
+                entry.cue_changed = decision.cue_changed
+                entry.analysis_changed = decision.analysis_changed
+                entry.information_changed = decision.information_changed
             else:
-                # needs_dat, needs_ext, needs_2ex, unavailable
+                entry.manifest_status = "needs_dat"
+
+            if (
+                entry.manifest_status in {"reused", "metadata_only"}
+                and entry.reused_from_track_id
+                and decision is not None
+            ):
+                reuse_mappings.append(
+                    (entry.reused_from_track_id, entry.track_id, decision)
+                )
+
+            if entry.manifest_status == "reused":
+                tracks_reused += 1
+            elif entry.manifest_status == "metadata_only":
+                tracks_metadata_only += 1
+            elif entry.manifest_status == "reparse_from_retained":
+                tracks_reparse_from_retained += 1
+            elif entry.manifest_status == "unavailable":
+                unavailable_tracks += 1
+            else:
                 tracks_needing_upload += 1
 
-        # Tracks with no manifest entry at all count as needing upload
-        # (they have no analysis path — analysis_data_file_path is None)
+            _apply_manifest_work_rules(entry)
+            entry.source_fingerprint = _track_source_fingerprint(
+                tracks_by_id.get(entry.track_id, {}), entry
+            )
 
+        if reuse_mappings:
+            try:
+                reuse_metrics = await run_in_threadpool(
+                    copy_normalized_data_for_tracks_bulk,
+                    sb,
+                    import_id,
+                    reuse_mappings,
+                )
+                logger.info(
+                    "Incremental reuse import=%s tracks=%d read_batches=%d write_batches=%d rows=%d",
+                    import_id,
+                    len(reuse_mappings),
+                    reuse_metrics.get("read_batches", 0),
+                    reuse_metrics.get("write_batches", 0),
+                    reuse_metrics.get("rows_copied", 0),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Bulk normalized reuse failed for import %s; falling back to requested assets: %s",
+                    import_id,
+                    exc,
+                )
+                fallback_targets = {target for _, target, _ in reuse_mappings}
+                tracks_reused = 0
+                tracks_metadata_only = 0
+                for entry in manifest:
+                    if entry.track_id in fallback_targets:
+                        entry.manifest_status = "needs_dat"
+                        entry.reused_from_track_id = None
+                        entry.reuse_reason = None
+                        _apply_manifest_work_rules(entry)
+                tracks_needing_upload += len(fallback_targets)
+
+        required_analysis_file_count = sum(
+            len(entry.required_asset_types) for entry in manifest
+        )
+        optional_archival_file_count = sum(
+            1 for entry in manifest if entry.two_ex_path
+        )
+        tracks_already_reusable = tracks_reused + tracks_metadata_only
+        affected_track_count = (
+            tracks_needing_upload + tracks_reparse_from_retained
+        )
         analysis_status = (
             "awaiting_upload"
-            if (tracks_needing_upload > 0 or tracks_metadata_only > 0)
-            else ("not_requested" if not manifest else "completed")
+            if required_analysis_file_count > 0
+            else "queued"
+            if tracks_reparse_from_retained > 0
+            else "completed"
+            if manifest
+            else "not_requested"
         )
 
-        # Persist source bundle type and expected track count without completing the job.
-        if precreated_job:
-            await run_in_threadpool(assert_import_not_cancelled, import_id, user_id)
+        await run_in_threadpool(_persist_track_manifest_state, sb, import_id, manifest)
+        _invalidate_path_map_cache(import_id)
+
+        metadata_ready_at = _now_iso()
+        import_updates = {
+            "source_bundle_type": "usb_folder",
+            "analysis_expected_track_count": len(manifest),
+            "analysis_matched_track_count": max(0, len(manifest) - unavailable_tracks),
+            "analysis_parsed_track_count": tracks_already_reusable,
+            "analysis_failed_track_count": 0,
+            "analysis_status": analysis_status,
+            "library_ready_at": metadata_ready_at,
+            "readiness_stage": (
+                "analysis_complete" if affected_track_count == 0 else "library_metadata_ready"
+            ),
+            "required_analysis_file_count": required_analysis_file_count,
+            "optional_archival_file_count": optional_archival_file_count,
+            "optional_archival_status": (
+                "queued" if settings.analysis_archive_2ex and optional_archival_file_count else "skipped"
+            ),
+            "analysis_queue_track_count": affected_track_count,
+            "analysis_running_track_count": 0,
+            "analysis_progress_processed_track_count": tracks_already_reusable + unavailable_tracks,
+            "analysis_progress_total_track_count": len(manifest),
+            "analysis_progress_updated_at": metadata_ready_at,
+        }
         try:
             await run_in_threadpool(
-                lambda: (
-                    sb.table("rekordbox_imports")
-                    .update(
-                        {
-                            "source_bundle_type": "usb_folder",
-                            "analysis_expected_track_count": len(manifest),
-                            "analysis_status": analysis_status,
-                        }
-                    )
-                    .eq("id", import_id)
-                    .execute()
-                )
+                lambda: sb.table("rekordbox_imports").update(import_updates).eq(
+                    "id", import_id
+                ).eq("user_id", user_id).execute()
             )
         except Exception:
-            logger.warning("Failed to update import metadata for %s", import_id)
+            logger.exception("Failed to persist progressive readiness for import %s", import_id)
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error_code": "IMPORT_READINESS_WRITE_FAILED",
+                    "detail": "Library metadata was imported, but readiness state could not be saved.",
+                    "retryable": True,
+                },
+            )
+
+        from .analysis_performance import ImportMetrics, merge_import_metrics
+        readiness_metrics = ImportMetrics(import_id)
+        readiness_metrics.timings_ms.update({
+            "database_parse": round(parse_elapsed_ms, 3),
+            "database_import": round(db_write_elapsed_ms, 3),
+            "manifest_generation": round(
+                max(0.0, (time.perf_counter() - request_started) * 1000.0 - parse_elapsed_ms - db_write_elapsed_ms),
+                3,
+            ),
+            "total_time_to_library_ready": round(
+                (time.perf_counter() - request_started) * 1000.0, 3
+            ),
+        })
+        readiness_metrics.counts.update({
+            "library_tracks": len(manifest),
+            "tracks_reused": tracks_reused,
+            "tracks_metadata_only": tracks_metadata_only,
+            "tracks_requiring_analysis": affected_track_count,
+            "required_analysis_files": required_analysis_file_count,
+            "optional_archival_files": optional_archival_file_count,
+        })
+        readiness_metrics.bytes["database_upload"] = int(db_bytes or 0)
+        await run_in_threadpool(merge_import_metrics, sb, import_id, readiness_metrics)
 
         return ImportStartResponse(
             import_id=import_id,
@@ -944,6 +994,11 @@ async def start_analysis_import(
             tracks_needing_upload=tracks_needing_upload,
             tracks_reparse_from_retained=tracks_reparse_from_retained,
             tracks_metadata_only=tracks_metadata_only,
+            required_analysis_file_count=required_analysis_file_count,
+            optional_archival_file_count=optional_archival_file_count,
+            tracks_already_reusable=tracks_already_reusable,
+            library_ready=True,
+            readiness_stage=import_updates["readiness_stage"],
         )
 
     except ImportCancelledError:
@@ -980,20 +1035,189 @@ async def start_analysis_import(
         await file.close()
 
 
+def _fetch_existing_assets_for_paths(
+    sb,
+    import_id: str,
+    relative_paths: Sequence[str],
+) -> Dict[str, dict]:
+    if not relative_paths:
+        return {}
+    rows: List[dict] = []
+    unique_paths = list(dict.fromkeys(path.lower() for path in relative_paths))
+    for offset in range(0, len(unique_paths), 250):
+        chunk = unique_paths[offset : offset + 250]
+        response = (
+            sb.table("rekordbox_analysis_assets")
+            .select("*")
+            .eq("import_id", import_id)
+            .in_("relative_path", chunk)
+            .execute()
+        )
+        rows.extend(response.data or [])
+    return {str(row.get("relative_path") or "").lower(): row for row in rows}
+
+
+def _bulk_upsert_assets(sb, rows: List[dict]) -> None:
+    if not rows:
+        return
+    existing = [row for row in rows if row.get("id")]
+    new_rows = [{k: v for k, v in row.items() if k != "id"} for row in rows if not row.get("id")]
+    if existing:
+        sb.table("rekordbox_analysis_assets").upsert(existing, on_conflict="id").execute()
+    if new_rows:
+        sb.table("rekordbox_analysis_assets").insert(new_rows).execute()
+
+
+def _mark_batch_activity(
+    sb,
+    import_id: str,
+    user_id: str,
+    *,
+    required_upload: bool,
+    optional_upload: bool,
+) -> None:
+    updates: dict[str, Any] = {
+        "analysis_progress_updated_at": _now_iso(),
+        "updated_at": _now_iso(),
+    }
+    if required_upload:
+        updates.update({
+            "analysis_status": "uploading",
+            "analysis_worker_status": "running",
+            "analysis_worker_stage": "staging_assets",
+            "analysis_worker_current_track_id": None,
+            "analysis_worker_heartbeat_at": _now_iso(),
+            "analysis_worker_stopped_acknowledged": False,
+            "analysis_worker_stopped_at": None,
+        })
+    if optional_upload:
+        updates["optional_archival_status"] = "running"
+    try:
+        sb.table("rekordbox_imports").update(updates).eq("id", import_id).eq(
+            "user_id", user_id
+        ).execute()
+    except Exception as exc:
+        logger.warning("Failed to publish analysis batch activity for %s: %s", import_id, exc)
+
+
+def _archive_optional_2ex_rows(
+    sb,
+    user_id: str,
+    import_id: str,
+    rows: Sequence[dict],
+) -> int:
+    """Archive an explicitly supplied optional .2EX batch without parsing it."""
+    optional_rows = [
+        dict(row)
+        for row in rows
+        if str(row.get("asset_type") or "") == "2EX"
+        and str(row.get("upload_status") or "") not in {"uploaded", "archived"}
+        and row.get("staging_key")
+    ]
+    if not optional_rows:
+        return 0
+
+    from .analysis_staging import create_archive, resolve_staging_key, staged_file_exists
+
+    members: list[tuple[str, str]] = []
+    by_key: dict[str, dict] = {}
+    for row in optional_rows:
+        staging_key = str(row["staging_key"])
+        if not staged_file_exists(staging_key, settings.analysis_staging_root):
+            continue
+        member = f"{row.get('track_id')}/{Path(str(row.get('relative_path') or 'asset.2EX')).name}"
+        members.append((staging_key, member))
+        by_key[staging_key] = row
+    if not members:
+        return 0
+
+    archive_path, member_map = create_archive(
+        import_id, time.time_ns(), members, settings.analysis_staging_root
+    )
+    storage_path = f"{user_id}/{import_id}/archives/optional-{archive_path.name}"
+    sb.storage.from_(_ANALYSIS_BUCKET).upload(
+        path=storage_path,
+        file=archive_path.read_bytes(),
+        file_options={"upsert": "true", "content-type": "application/gzip"},
+    )
+
+    updates: list[dict] = []
+    for staging_key, member_name in member_map.items():
+        row = dict(by_key[staging_key])
+        row.update({
+            "upload_status": "archived",
+            "parse_status": "not_requested",
+            "archival_status": "archived",
+            "archive_storage_bucket": _ANALYSIS_BUCKET,
+            "archive_storage_path": storage_path,
+            "archive_member_path": member_name,
+        })
+        updates.append(row)
+    if updates:
+        sb.table("rekordbox_analysis_assets").upsert(
+            updates, on_conflict="import_id,relative_path"
+        ).execute()
+        for staging_key in member_map:
+            try:
+                resolve_staging_key(
+                    staging_key, settings.analysis_staging_root
+                ).unlink(missing_ok=True)
+            except Exception as exc:
+                logger.debug("Could not remove optional staging file %s: %s", staging_key, exc)
+        archive_path.unlink(missing_ok=True)
+    return len(updates)
+
+
+def _mark_optional_archive_failed(sb, import_id: str, rows: Sequence[dict]) -> None:
+    failed_rows: list[dict] = []
+    for row in rows:
+        if str(row.get("asset_type") or "") != "2EX":
+            continue
+        failed = dict(row)
+        failed["upload_status"] = failed.get("upload_status") or "staged"
+        failed["parse_status"] = "not_requested"
+        failed["archival_status"] = "failed"
+        failed_rows.append(failed)
+    if failed_rows:
+        sb.table("rekordbox_analysis_assets").upsert(
+            failed_rows, on_conflict="import_id,relative_path"
+        ).execute()
+
+
+def _parse_file_metadata(raw: str | None) -> Dict[str, dict]:
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(value, list):
+        return {}
+    result: Dict[str, dict] = {}
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("canonical_path") or "").lower()
+        if not path:
+            continue
+        result[path] = {
+            "size": int(item.get("size") or 0),
+            "last_modified_ms": int(item.get("last_modified_ms") or 0),
+        }
+    return result
+
+
 async def process_analysis_batch(
     import_id: str,
     user_id: str,
     files: List[UploadFile],
+    file_metadata: str | None = None,
 ) -> BatchUploadResponse:
-    """
-    Accept ANLZ file uploads, validate against the import manifest, and store.
-
-    Each file's upload.filename must be the canonical ANLZ path
-    (e.g. PIONEER/USBANLZ/P001/ANLZ0000.DAT).  Paths are validated for
-    traversal attacks before any content is read.
-    """
+    """Validate and durably stage a bounded batch without a Storage round trip."""
     try:
-        return await _process_analysis_batch_inner(import_id, user_id, files)
+        return await _process_analysis_batch_inner(
+            import_id, user_id, files, file_metadata=file_metadata
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -1002,7 +1226,7 @@ async def process_analysis_batch(
             status_code=500,
             detail={
                 "error_code": "ANALYSIS_BATCH_FAILED",
-                "detail": "DropDex could not store this analysis batch. Please retry.",
+                "detail": "DropDex could not stage this analysis batch. Please retry.",
                 "retryable": True,
             },
         ) from exc
@@ -1012,8 +1236,12 @@ async def _process_analysis_batch_inner(
     import_id: str,
     user_id: str,
     files: List[UploadFile],
+    *,
+    file_metadata: str | None = None,
 ) -> BatchUploadResponse:
-    from dropdex_importer.analysis_paths import is_safe_path, normalize_anlz_path  # noqa: PLC0415
+    from dropdex_importer.analysis_paths import is_safe_path, normalize_anlz_path
+    from .analysis_performance import ImportMetrics, merge_import_metrics
+    from .analysis_staging import build_staging_key, staged_file_exists, write_staged_bytes
 
     if len(files) > settings.max_analysis_files_per_batch:
         raise HTTPException(
@@ -1024,36 +1252,108 @@ async def _process_analysis_batch_inner(
             ),
         )
 
-    logger.info("batch: start import=%s file_count=%d", import_id, len(files))
-    sb, path_map = await run_in_threadpool(_prepare_analysis_batch, import_id, user_id)
+    metrics = ImportMetrics(import_id)
+    metrics.start("file_transfer")
+    metrics.increment("upload_batches", 1)
+    sb, path_map, built_map, import_row = await run_in_threadpool(
+        _prepare_analysis_batch, import_id, user_id
+    )
+    metrics.increment("track_map_builds", 1 if built_map else 0)
+    metadata_by_path = _parse_file_metadata(file_metadata)
 
+    candidates: List[tuple[UploadFile, str, dict]] = []
     results: List[BatchFileResult] = []
-    total_batch_bytes = 0
-    newly_received_count = 0
-    received_bytes_total = 0
-
     for upload in files:
         raw_path = upload.filename or ""
-
         if not raw_path or not is_safe_path(raw_path):
-            results.append(
-                BatchFileResult(
-                    canonical_path=raw_path or "(empty)",
-                    status="rejected",
-                    reject_reason="Invalid file path.",
-                )
-            )
+            results.append(BatchFileResult(
+                canonical_path=raw_path or "(empty)",
+                status="rejected",
+                reject_reason="Invalid file path.",
+            ))
             continue
-
-        suffix = Path(raw_path).suffix.lower()
+        canonical = normalize_anlz_path(raw_path)
+        if canonical is None:
+            results.append(BatchFileResult(
+                canonical_path=raw_path,
+                status="rejected",
+                reject_reason="Invalid file path.",
+            ))
+            continue
+        suffix = Path(canonical).suffix.lower()
         if suffix not in _VALID_ANLZ_SUFFIXES:
-            results.append(
-                BatchFileResult(
-                    canonical_path=raw_path,
-                    status="rejected",
-                    reject_reason="File is not a supported ANLZ analysis file (.DAT, .EXT, or .2EX).",
-                )
+            results.append(BatchFileResult(
+                canonical_path=canonical,
+                status="rejected",
+                reject_reason="File is not a supported ANLZ analysis file.",
+            ))
+            continue
+        track_info = path_map.get(canonical.lower())
+        if track_info is None:
+            optional_reason = (
+                "Optional .2EX archival is disabled for this import."
+                if suffix == ".2ex" and not settings.analysis_archive_2ex
+                else "File path is not requested by this import manifest."
             )
+            results.append(BatchFileResult(
+                canonical_path=canonical,
+                status="skipped_optional" if suffix == ".2ex" else "rejected",
+                reject_reason=optional_reason,
+            ))
+            continue
+        candidates.append((upload, canonical, track_info))
+
+    required_upload = any(not bool(info.get("optional_archival")) for _, _, info in candidates)
+    optional_upload = any(bool(info.get("optional_archival")) for _, _, info in candidates)
+    if (required_upload and (built_map or import_row.get("analysis_status") != "uploading")) or optional_upload:
+        await run_in_threadpool(
+            _mark_batch_activity,
+            sb,
+            import_id,
+            user_id,
+            required_upload=required_upload,
+            optional_upload=optional_upload,
+        )
+
+    existing_by_path = await run_in_threadpool(
+        _fetch_existing_assets_for_paths,
+        sb,
+        import_id,
+        [canonical for _, canonical, _ in candidates],
+    )
+
+    total_batch_bytes = 0
+    rows_to_write: List[dict] = []
+    optional_rows_to_archive: List[dict] = []
+    received_bytes = 0
+    for upload, canonical, track_info in candidates:
+        canonical_lower = canonical.lower()
+        source_meta = metadata_by_path.get(canonical_lower, {})
+        existing = existing_by_path.get(canonical_lower)
+        expected_size = int(source_meta.get("size") or getattr(upload, "size", 0) or 0)
+        expected_mtime = int(source_meta.get("last_modified_ms") or 0)
+        unchanged_by_metadata = bool(
+            existing
+            and expected_size > 0
+            and int(existing.get("size_bytes") or 0) == expected_size
+            and expected_mtime > 0
+            and int(existing.get("source_mtime_ms") or 0) == expected_mtime
+            and (
+                staged_file_exists(existing.get("staging_key"), settings.analysis_staging_root)
+                or existing.get("archive_storage_path")
+                or existing.get("storage_path")
+            )
+        )
+        if unchanged_by_metadata:
+            results.append(BatchFileResult(
+                canonical_path=canonical,
+                status="already_received",
+                sha256=existing.get("sha256"),
+                file_size=expected_size,
+            ))
+            if track_info.get("optional_archival") and existing:
+                optional_rows_to_archive.append(existing)
+            metrics.increment("assets_reused_without_hash", 1)
             continue
 
         try:
@@ -1065,113 +1365,162 @@ async def _process_analysis_batch_inner(
         except HTTPException as exc:
             if isinstance(exc.detail, dict) and exc.detail.get("error_code") == "IMPORT_CANCELLED":
                 raise
-            results.append(
-                BatchFileResult(
-                    canonical_path=raw_path,
-                    status="rejected",
-                    reject_reason=(
-                        exc.detail.get("detail")
-                        if isinstance(exc.detail, dict)
-                        else str(exc.detail)
-                    ),
-                )
-            )
-            continue
-        file_size = len(content)
-
-        total_batch_bytes += file_size
-        if total_batch_bytes > settings.max_analysis_batch_bytes:
-            results.append(
-                BatchFileResult(
-                    canonical_path=raw_path,
-                    status="rejected",
-                    reject_reason="Batch size limit exceeded. Please send a smaller batch.",
-                )
-            )
-            continue
-
-        canonical = normalize_anlz_path(raw_path)
-        if canonical is None:
-            results.append(
-                BatchFileResult(
-                    canonical_path=raw_path,
-                    status="rejected",
-                    reject_reason="Invalid file path.",
-                )
-            )
-            continue
-
-        canonical_lower = canonical.lower()
-        track_info = path_map.get(canonical_lower)
-        if track_info is None:
-            results.append(
-                BatchFileResult(
-                    canonical_path=canonical,
-                    status="rejected",
-                    reject_reason=(
-                        "File path does not match any expected analysis file for this import."
-                    ),
-                )
-            )
-            continue
-
-        status, sha256, persisted_size = await run_in_threadpool(
-            _persist_analysis_upload,
-            sb,
-            import_id=import_id,
-            user_id=user_id,
-            canonical=canonical,
-            raw_path=raw_path,
-            content=content,
-            track_info=track_info,
-        )
-        if status == "already_received":
-            results.append(
-                BatchFileResult(
-                    canonical_path=canonical,
-                    status="already_received",
-                    sha256=sha256,
-                    file_size=persisted_size,
-                )
-            )
-            continue
-        if status == "error":
-            results.append(
-                BatchFileResult(
-                    canonical_path=canonical,
-                    status="error",
-                    reject_reason="Upload failed. Please try again.",
-                )
-            )
-            continue
-
-        newly_received_count += 1
-        received_bytes_total += persisted_size
-        results.append(
-            BatchFileResult(
+            results.append(BatchFileResult(
                 canonical_path=canonical,
-                status="received",
+                status="rejected",
+                reject_reason=(
+                    exc.detail.get("detail")
+                    if isinstance(exc.detail, dict)
+                    else str(exc.detail)
+                ),
+            ))
+            continue
+
+        total_batch_bytes += len(content)
+        if total_batch_bytes > settings.max_analysis_batch_bytes:
+            results.append(BatchFileResult(
+                canonical_path=canonical,
+                status="rejected",
+                reject_reason="Batch size limit exceeded. Please send a smaller batch.",
+            ))
+            continue
+
+        sha256 = _sha256_bytes(content)
+        if existing and existing.get("sha256") == sha256 and (
+            staged_file_exists(existing.get("staging_key"), settings.analysis_staging_root)
+            or existing.get("archive_storage_path")
+            or existing.get("storage_path")
+        ):
+            results.append(BatchFileResult(
+                canonical_path=canonical,
+                status="already_received",
                 sha256=sha256,
-                file_size=persisted_size,
-            )
+                file_size=len(content),
+            ))
+            if track_info.get("optional_archival"):
+                optional_rows_to_archive.append(existing)
+            metrics.increment("assets_reused_by_hash", 1)
+            continue
+
+        staging_key = build_staging_key(
+            import_id,
+            str(track_info["track_id"]),
+            str(track_info["asset_type"]),
+            sha256,
         )
+        await run_in_threadpool(
+            write_staged_bytes,
+            staging_key,
+            content,
+            settings.analysis_staging_root,
+        )
+        source_fingerprint = "|".join((
+            str(track_info.get("source_fingerprint") or ""),
+            canonical_lower,
+            str(len(content)),
+            str(expected_mtime),
+            sha256,
+            _PARSER_VERSION,
+            settings.analysis_feature_schema_version,
+        ))
+        row = dict(existing or {})
+        row.update({
+            "import_id": import_id,
+            "track_id": track_info["track_id"],
+            "asset_type": track_info["asset_type"],
+            "relative_path": canonical_lower,
+            "original_filename": Path(canonical).name,
+            "sha256": sha256,
+            "size_bytes": len(content),
+            "storage_bucket": _ANALYSIS_BUCKET,
+            "storage_path": existing.get("storage_path") if existing else None,
+            "staging_key": staging_key,
+            "source_mtime_ms": expected_mtime or None,
+            "source_fingerprint": hashlib.sha256(source_fingerprint.encode("utf-8")).hexdigest(),
+            "feature_schema_version": settings.analysis_feature_schema_version,
+            "upload_status": "staged",
+            "parse_status": "not_requested" if track_info.get("optional_archival") else "queued",
+            "archival_status": (
+                "queued"
+                if track_info.get("optional_archival") or settings.analysis_archive_raw_assets
+                else "skipped"
+            ),
+            "uploaded_at": _now_iso(),
+        })
+        rows_to_write.append(row)
+        if track_info.get("optional_archival"):
+            optional_rows_to_archive.append(row)
+        results.append(BatchFileResult(
+            canonical_path=canonical,
+            status="received",
+            sha256=sha256,
+            file_size=len(content),
+        ))
+        received_bytes += len(content)
+        metrics.increment("assets_staged", 1)
+        metrics.add_bytes("assets_staged", len(content))
 
-    received = sum(1 for r in results if r.status == "received")
-    already_received = sum(1 for r in results if r.status == "already_received")
-    rejected = sum(1 for r in results if r.status == "rejected")
-    errors = sum(1 for r in results if r.status == "error")
+    try:
+        await run_in_threadpool(_bulk_upsert_assets, sb, rows_to_write)
+    except Exception:
+        logger.exception("Bulk asset metadata write failed for import %s", import_id)
+        received_paths = {str(row.get("relative_path")) for row in rows_to_write}
+        for result in results:
+            if result.canonical_path.lower() in received_paths and result.status == "received":
+                result.status = "error"
+                result.reject_reason = "The staged file could not be checkpointed. Please retry."
+        received_bytes = 0
 
-    # analysis_asset_count is set authoritatively by complete_analysis_import using
-    # a paginated query.  A per-batch read-modify-write here would race with
-    # concurrent batch requests and silently lose increments.  Skip it.
+    if optional_rows_to_archive:
+        try:
+            with metrics.timed("optional_archival"):
+                archived_count = await run_in_threadpool(
+                    _archive_optional_2ex_rows,
+                    sb,
+                    user_id,
+                    import_id,
+                    optional_rows_to_archive,
+                )
+            metrics.increment("optional_assets_archived", archived_count)
+        except Exception as exc:
+            logger.warning("Optional .2EX archival deferred for import %s: %s", import_id, exc)
+            try:
+                await run_in_threadpool(
+                    _mark_optional_archive_failed,
+                    sb,
+                    import_id,
+                    optional_rows_to_archive,
+                )
+            except Exception:
+                logger.exception("Could not persist optional archival failure for %s", import_id)
+
+        optional_status = await run_in_threadpool(
+            _resolve_optional_archival_status,
+            sb,
+            import_id,
+            int(import_row.get("optional_archival_file_count") or 0),
+        )
+        try:
+            await run_in_threadpool(
+                lambda: sb.table("rekordbox_imports").update({
+                    "optional_archival_status": optional_status,
+                    "updated_at": _now_iso(),
+                }).eq("id", import_id).eq("user_id", user_id).execute()
+            )
+        except Exception as exc:
+            logger.warning("Could not publish optional archival status for %s: %s", import_id, exc)
+
+    metrics.increment("asset_metadata_write_batches", 1 if rows_to_write else 0)
+    metrics.stop("file_transfer")
+    await run_in_threadpool(merge_import_metrics, sb, import_id, metrics)
 
     return BatchUploadResponse(
         import_id=import_id,
-        received_count=received,
-        already_received_count=already_received,
-        rejected_count=rejected,
-        error_count=errors,
-        received_bytes=received_bytes_total,
+        received_count=sum(1 for result in results if result.status == "received"),
+        already_received_count=sum(1 for result in results if result.status == "already_received"),
+        rejected_count=sum(1 for result in results if result.status in {"rejected", "skipped_optional"}),
+        error_count=sum(1 for result in results if result.status == "error"),
+        received_bytes=received_bytes,
         files=results,
     )
 
@@ -1896,14 +2245,432 @@ def _run_complete_analysis_import_sync(
         raise
 
 
-async def complete_analysis_import(
+def _summarize_track_states(sb, import_id: str) -> dict[str, int]:
+    from .supabase_pagination import fetch_all_rows
+
+    rows = fetch_all_rows(
+        lambda: (
+            sb.table("rekordbox_tracks")
+            .select("id, analysis_parse_status")
+            .eq("import_id", import_id)
+        ),
+        order_column="id",
+    )
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = str(row.get("analysis_parse_status") or "not_requested")
+        counts[status] = counts.get(status, 0) + 1
+    counts["total"] = len(rows)
+    return counts
+
+
+def _resolve_optional_archival_status(
+    sb,
+    import_id: str,
+    expected_file_count: int,
+) -> str:
+    """Report optional .2EX archival independently from library readiness.
+
+    Existing individual Storage objects count as durable archival, as do the
+    bounded archive groups introduced by this patch. Missing optional files
+    remain queued for an explicit later upload and never affect track success.
+    """
+    if not settings.analysis_archive_2ex or expected_file_count <= 0:
+        return "skipped"
+
+    from .supabase_pagination import fetch_all_rows
+
+    rows = fetch_all_rows(
+        lambda: (
+            sb.table("rekordbox_analysis_assets")
+            .select("id, upload_status, archival_status")
+            .eq("import_id", import_id)
+            .eq("asset_type", "2EX")
+        ),
+        order_column="id",
+    )
+    if any(
+        str(row.get("upload_status") or "") == "failed"
+        or str(row.get("archival_status") or "") == "failed"
+        for row in rows
+    ):
+        return "failed"
+    if len(rows) >= expected_file_count and all(
+        str(row.get("upload_status") or "") in {"uploaded", "archived"}
+        for row in rows
+    ):
+        return "completed"
+    if any(
+        str(row.get("upload_status") or "") == "uploading"
+        or str(row.get("archival_status") or "") in {"queued", "archiving"}
+        for row in rows
+    ):
+        return "running" if any(
+            str(row.get("upload_status") or "") == "uploading"
+            or str(row.get("archival_status") or "") == "archiving"
+            for row in rows
+        ) else "queued"
+    return "queued"
+
+
+def _run_fast_analysis_import_sync(
     import_id: str,
     user_id: str,
     affected_track_ids: Optional[List[str]] = None,
 ) -> CompleteResponse:
-    """Run CPU/file/database-heavy analysis outside the event loop."""
-    return await run_in_threadpool(
-        _run_complete_analysis_import_sync, import_id, user_id, affected_track_ids
+    """Run the bounded local-parser/single-writer pipeline with safe checkpoints."""
+    from .analysis_fast_pipeline import run_fast_analysis_import
+
+    worker_registry.register(import_id)
+    sb = _create_supabase()
+    started = time.perf_counter()
+    last_durable_checkpoint = 0.0
+    try:
+        import_row = _require_import_for_user(sb, import_id, user_id)
+        publish_worker_state(
+            import_id,
+            user_id,
+            status="running",
+            stage="loading_staged_assets",
+            stopped_acknowledged=False,
+            analysis_status="parsing",
+        )
+        total_queued = max(0, int(import_row.get("analysis_queue_track_count") or 0))
+        running_now = min(max(1, settings.analysis_parser_workers), total_queued)
+        sb.table("rekordbox_imports").update({
+            "analysis_status": "parsing",
+            "readiness_stage": "cues_and_beat_grids_processing",
+            "analysis_worker_status": "running",
+            "analysis_worker_stage": "loading_staged_assets",
+            "analysis_running_track_count": running_now,
+            "analysis_queue_track_count": max(0, total_queued - running_now),
+            "updated_at": _now_iso(),
+        }).eq("id", import_id).eq("user_id", user_id).execute()
+
+        def checkpoint(stage: str, current_track_id: str | None) -> None:
+            # Patch 2's local signal is the hot-path pause/delete check. Durable
+            # heartbeats are written by the batch progress callback, not before
+            # and after every parser operation.
+            worker_registry.checkpoint(
+                import_id, stage, current_track_id=current_track_id
+            )
+
+        def progress(track: dict[str, Any] | None, processed: int, total: int) -> None:
+            nonlocal last_durable_checkpoint
+            worker_registry.checkpoint(
+                import_id,
+                "feature_batch_committed",
+                current_track_id=str(track.get("id")) if track and track.get("id") else None,
+            )
+            elapsed = max(0.001, time.perf_counter() - started)
+            throughput = processed / elapsed if processed > 0 else None
+            remaining = max(0, total - processed)
+            eta = round(remaining / throughput) if throughput and processed >= 2 else None
+            running_count = min(max(1, settings.analysis_parser_workers), remaining)
+            queue_count = max(0, remaining - running_count)
+            readiness_stage = (
+                "cues_and_beat_grids_processing"
+                if processed == 0
+                else "preview_waveforms_processing"
+                if processed < max(1, total // 2)
+                else "detailed_waveforms_processing"
+            )
+            _set_analysis_progress(
+                import_id,
+                track=track,
+                processed_track_count=processed,
+                total_track_count=total,
+                sb=sb,
+                force_persist=True,
+            )
+            now = time.monotonic()
+            if now - last_durable_checkpoint >= 0.5 or processed >= total:
+                sb.table("rekordbox_imports").update({
+                    "readiness_stage": readiness_stage,
+                    "analysis_queue_track_count": queue_count,
+                    "analysis_running_track_count": running_count,
+                    "analysis_throughput_tracks_per_second": throughput,
+                    "analysis_estimated_seconds_remaining": eta,
+                    "analysis_worker_stage": "feature_batch_committed",
+                    "analysis_worker_current_track_id": (
+                        str(track.get("id")) if track and track.get("id") else None
+                    ),
+                    "analysis_worker_heartbeat_at": _now_iso(),
+                    "updated_at": _now_iso(),
+                }).eq("id", import_id).eq("user_id", user_id).execute()
+                last_durable_checkpoint = now
+
+        result = run_fast_analysis_import(
+            sb,
+            import_id,
+            user_id,
+            affected_track_ids=affected_track_ids,
+            parser_version=_PARSER_VERSION,
+            checkpoint=checkpoint,
+            progress=progress,
+        )
+        worker_registry.checkpoint(import_id, "finalizing_import")
+        state_counts = _summarize_track_states(sb, import_id)
+        completed_count = state_counts.get("completed", 0) + state_counts.get("reused", 0)
+        partial_count = state_counts.get("partial", 0)
+        failed_count = state_counts.get("failed", 0)
+        missing_required_count = state_counts.get("missing_required", 0)
+        skipped_count = state_counts.get("skipped", 0)
+        total_tracks = int(import_row.get("analysis_expected_track_count") or state_counts["total"])
+        finalized = completed_count + partial_count + failed_count + missing_required_count + skipped_count
+        if total_tracks == 0:
+            final_status = "completed"
+        elif completed_count == 0 and partial_count == 0 and failed_count + missing_required_count >= total_tracks:
+            final_status = "failed"
+        elif failed_count or missing_required_count or partial_count or finalized < total_tracks:
+            final_status = "partial"
+        else:
+            final_status = "completed"
+
+        archival_status = _resolve_optional_archival_status(
+            sb,
+            import_id,
+            int(import_row.get("optional_archival_file_count") or 0),
+        )
+        sb.table("rekordbox_imports").update({
+            "analysis_status": final_status,
+            "readiness_stage": "analysis_complete" if final_status == "completed" else "analysis_partial",
+            "analysis_matched_track_count": min(
+                total_tracks, completed_count + partial_count + failed_count
+            ),
+            "analysis_parsed_track_count": completed_count + partial_count,
+            "analysis_failed_track_count": failed_count + missing_required_count,
+            "analysis_asset_count": result.get("metrics").counts.get("assets_loaded", 0),
+            "analysis_parser_version": _PARSER_VERSION,
+            "analysis_completed_at": _now_iso(),
+            "analysis_queue_track_count": 0,
+            "analysis_running_track_count": 0,
+            "analysis_estimated_seconds_remaining": 0,
+            "optional_archival_status": archival_status,
+            "analysis_worker_status": "completed",
+            "analysis_worker_stage": "completed",
+            "analysis_worker_current_track_id": None,
+            "analysis_worker_heartbeat_at": _now_iso(),
+            "analysis_worker_stopped_acknowledged": True,
+            "updated_at": _now_iso(),
+        }).eq("id", import_id).eq("user_id", user_id).execute()
+        try:
+            complete_import_job(import_id, user_id)
+        except HTTPException:
+            # Legacy imports may already be completed while analysis is resumed.
+            pass
+        try:
+            upsert_active_import(
+                settings.supabase_url, settings.supabase_secret_key, user_id, import_id
+            )
+        except Exception as exc:
+            logger.warning("Could not refresh active import pointer for %s: %s", import_id, exc)
+        publish_worker_state(
+            import_id,
+            user_id,
+            status="completed",
+            stage="completed",
+            stopped_acknowledged=True,
+            analysis_status=final_status,
+        )
+        worker_registry.acknowledge_stopped(import_id, status="completed")
+        return CompleteResponse(
+            import_id=import_id,
+            analysis_status=final_status,
+            total_tracks=total_tracks,
+            completed_count=completed_count,
+            partial_count=partial_count,
+            failed_count=failed_count,
+            missing_required_count=missing_required_count,
+            missing_optional_ext_count=0,
+            missing_optional_2ex_count=0,
+            parser_version=_PARSER_VERSION,
+            tracks=[],
+            background_started=False,
+            library_ready=True,
+            readiness_stage="analysis_complete" if final_status == "completed" else "analysis_partial",
+            queued_track_count=0,
+            optional_archival_status=archival_status,
+        )
+    except (WorkerStopRequested, ImportCancelledError) as exc:
+        snapshot = worker_registry.snapshot(import_id)
+        reason = snapshot.get("stop_reason") or (
+            "delete" if isinstance(exc, ImportCancelledError) else exc.reason
+        )
+        status = "paused" if reason == "pause" else "stopped"
+        try:
+            publish_worker_state(
+                import_id,
+                user_id,
+                status=status,
+                stage="stopped",
+                stopped_acknowledged=True,
+                analysis_status="paused" if reason == "pause" else "stopping",
+            )
+            sb.table("rekordbox_imports").update({
+                "readiness_stage": "analysis_paused" if reason == "pause" else "analysis_partial",
+                "analysis_running_track_count": 0,
+                "analysis_worker_stopped_acknowledged": True,
+                "updated_at": _now_iso(),
+            }).eq("id", import_id).eq("user_id", user_id).execute()
+        finally:
+            worker_registry.acknowledge_stopped(import_id, status=status)
+        if reason == "pause":
+            finalize_paused_import(import_id, user_id)
+        raise
+    except Exception as exc:
+        logger.exception("Fast analysis worker failed for import %s", import_id)
+        try:
+            sb.table("rekordbox_imports").update({
+                "analysis_status": "partial",
+                "readiness_stage": "analysis_partial",
+                "analysis_running_track_count": 0,
+                "analysis_worker_status": "failed",
+                "analysis_worker_stage": "failed",
+                "analysis_worker_stopped_acknowledged": True,
+                "error_code": "ANALYSIS_WORKER_FAILED",
+                "error_message": "Background analysis stopped unexpectedly. Resume is available.",
+                "retryable": True,
+                "updated_at": _now_iso(),
+            }).eq("id", import_id).eq("user_id", user_id).execute()
+        except Exception:
+            logger.exception("Could not persist fast worker failure for %s", import_id)
+        worker_registry.acknowledge_stopped(import_id, status="failed", error=str(exc))
+        raise
+    finally:
+        with _BACKGROUND_WORKER_LOCK:
+            current = _BACKGROUND_WORKERS.get(import_id)
+            if current is threading.current_thread():
+                _BACKGROUND_WORKERS.pop(import_id, None)
+
+
+def _background_analysis_entry(
+    import_id: str,
+    user_id: str,
+    affected_track_ids: Optional[List[str]],
+) -> None:
+    try:
+        _run_fast_analysis_import_sync(import_id, user_id, affected_track_ids)
+    except (WorkerStopRequested, ImportCancelledError):
+        logger.info("Background analysis %s stopped at a safe checkpoint", import_id)
+    except Exception:
+        # State is persisted by _run_fast_analysis_import_sync. Never crash the API process.
+        logger.exception("Background analysis thread ended for import %s", import_id)
+
+
+def _start_background_analysis(
+    import_id: str,
+    user_id: str,
+    affected_track_ids: Optional[List[str]],
+) -> bool:
+    with _BACKGROUND_WORKER_LOCK:
+        existing = _BACKGROUND_WORKERS.get(import_id)
+        if existing and existing.is_alive():
+            return False
+        thread = threading.Thread(
+            target=_background_analysis_entry,
+            args=(import_id, user_id, affected_track_ids),
+            name=f"dropdex-analysis-{str(import_id)[:8]}",
+            daemon=True,
+        )
+        _BACKGROUND_WORKERS[import_id] = thread
+        thread.start()
+        return True
+
+
+def resume_recoverable_analysis_imports() -> int:
+    """Restart only jobs interrupted by process shutdown, never user-paused jobs."""
+    sb = _create_supabase()
+    response = (
+        sb.table("rekordbox_imports")
+        .select("id, user_id")
+        .eq("status", "interrupted")
+        .in_("analysis_status", ["queued", "uploading", "parsing", "partial", "interrupted"])
+        .execute()
+    )
+    started = 0
+    for row in response.data or []:
+        import_id = str(row.get("id") or "")
+        user_id = str(row.get("user_id") or "")
+        if import_id and user_id and _start_background_analysis(import_id, user_id, None):
+            started += 1
+    return started
+
+
+async def complete_analysis_import(
+    import_id: str,
+    user_id: str,
+    affected_track_ids: Optional[List[str]] = None,
+    *,
+    background: bool = False,
+    client_metrics: Optional[Dict[str, Any]] = None,
+) -> CompleteResponse:
+    """Queue fast analysis for API callers while preserving synchronous test compatibility."""
+    if not background:
+        return await run_in_threadpool(
+            _run_complete_analysis_import_sync, import_id, user_id, affected_track_ids
+        )
+
+    sb = await run_in_threadpool(_create_supabase)
+    row = await run_in_threadpool(_require_import_for_user, sb, import_id, user_id)
+    # Upload dispatch is complete before this endpoint is called. Release the
+    # cached path plan; a later retry can rebuild it from persisted manifest state.
+    _invalidate_path_map_cache(import_id)
+    if client_metrics:
+        from .analysis_performance import merge_import_metrics, sanitize_client_import_metrics
+
+        safe_client_metrics = sanitize_client_import_metrics(client_metrics)
+        if safe_client_metrics:
+            await run_in_threadpool(
+                merge_import_metrics, sb, import_id, safe_client_metrics
+            )
+    queued_count = len(set(affected_track_ids or [])) or int(
+        row.get("analysis_queue_track_count") or row.get("analysis_expected_track_count") or 0
+    )
+    if queued_count == 0:
+        return CompleteResponse(
+            import_id=import_id,
+            analysis_status="completed",
+            total_tracks=int(row.get("analysis_expected_track_count") or 0),
+            completed_count=int(row.get("analysis_parsed_track_count") or 0),
+            partial_count=0,
+            failed_count=int(row.get("analysis_failed_track_count") or 0),
+            missing_required_count=0,
+            parser_version=_PARSER_VERSION,
+            tracks=[],
+            library_ready=True,
+            readiness_stage="analysis_complete",
+            optional_archival_status=str(row.get("optional_archival_status") or "skipped"),
+        )
+    await run_in_threadpool(
+        lambda: sb.table("rekordbox_imports").update({
+            "analysis_status": "queued",
+            "readiness_stage": "library_metadata_ready",
+            "analysis_queue_track_count": queued_count,
+            "analysis_worker_status": "queued",
+            "analysis_worker_stage": "queued",
+            "analysis_worker_stopped_acknowledged": False,
+            "updated_at": _now_iso(),
+        }).eq("id", import_id).eq("user_id", user_id).execute()
+    )
+    started = await run_in_threadpool(
+        _start_background_analysis, import_id, user_id, affected_track_ids
+    )
+    return CompleteResponse(
+        import_id=import_id,
+        analysis_status="queued",
+        total_tracks=int(row.get("analysis_expected_track_count") or queued_count),
+        completed_count=int(row.get("analysis_parsed_track_count") or 0),
+        partial_count=0,
+        failed_count=int(row.get("analysis_failed_track_count") or 0),
+        missing_required_count=0,
+        parser_version=_PARSER_VERSION,
+        tracks=[],
+        background_started=started,
+        library_ready=True,
+        readiness_stage="library_metadata_ready",
+        queued_track_count=queued_count,
+        optional_archival_status=str(row.get("optional_archival_status") or "skipped"),
     )
 
 
@@ -1911,6 +2678,9 @@ async def resume_analysis_import(
     import_id: str,
     user_id: str,
     affected_track_ids: Optional[List[str]] = None,
+    *,
+    background: bool = False,
+    client_metrics: Optional[Dict[str, Any]] = None,
 ) -> CompleteResponse:
     """Resume retained analysis work and skip tracks already finalized."""
     sb = _create_supabase()
@@ -1979,6 +2749,8 @@ async def resume_analysis_import(
         import_id,
         user_id,
         affected_track_ids=affected_track_ids,
+        background=background,
+        client_metrics=client_metrics,
     )
 
 
@@ -1994,7 +2766,7 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
     sb = _create_supabase()
     import_row = _require_import_for_user(sb, import_id, user_id)
 
-    tracks = _get_tracks_with_paths(sb, import_id)
+    tracks = _get_tracks_for_analysis_status(sb, import_id)
 
     from .supabase_pagination import fetch_all_rows  # noqa: PLC0415
 
@@ -2016,7 +2788,7 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
             continue
         path_lower = r["relative_path"].lower()
         status = r.get("upload_status", "")
-        if status == "uploaded":
+        if status in {"staged", "uploaded", "archived"}:
             uploaded_by_type[atype].add(path_lower)
         elif status in ("failed", "error"):
             failed_uploads_by_type[atype].add(path_lower)
@@ -2028,19 +2800,77 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
     affected_track_ids: set = set()
 
     for track in tracks:
-        track_id = track.get("id", "")
+        track_id = str(track.get("id") or "")
         rekordbox_content_id = track.get("rekordbox_content_id")
+        manifest_status = str(track.get("analysis_manifest_status") or "needs_analysis")
+        parse_status = str(track.get("analysis_parse_status") or "not_requested")
         raw = track.get("analysis_data_file_path") or ""
         canonical = normalize_anlz_path(raw)
         if not canonical:
             continue
-        dat_path, ext_path, two_ex_path = derive_anlz_siblings(canonical)
-        track_has_target = False
+        dat_path, ext_path, _two_ex_path = derive_anlz_siblings(canonical)
 
-        # DAT — required
-        if dat_path.lower() not in uploaded_by_type["DAT"]:
-            missing_required.append(dat_path)
-            upload_failed = dat_path.lower() in failed_uploads_by_type["DAT"]
+        # Reused, metadata-only, and unavailable tracks are already final and
+        # never become USB resume targets merely because this import owns no raw
+        # asset row. Retained reparses resume from their prior source object.
+        if manifest_status in {"reused", "metadata_only", "unavailable"}:
+            continue
+        if manifest_status == "reparse_from_retained":
+            if parse_status in {"failed", "missing_required", "partial"}:
+                unresolved_targets.append(
+                    ResumeTargetItem(
+                        track_id=track_id,
+                        rekordbox_content_id=rekordbox_content_id,
+                        relative_path=dat_path,
+                        asset_type="DAT",
+                        required=False,
+                        status="parse_failed",
+                        reason="Retry parsing from the retained source asset.",
+                        attempt_count=None,
+                    )
+                )
+            if parse_status not in _FINAL_ANALYSIS_TRACK_STATUSES:
+                affected_track_ids.add(track_id)
+            continue
+        if parse_status in _FINAL_ANALYSIS_TRACK_STATUSES:
+            continue
+
+        requested_types = _required_asset_types_for_status(manifest_status)
+        track_has_target = False
+        specs = []
+        if "DAT" in requested_types:
+            specs.append((dat_path, "DAT", True))
+        if "EXT" in requested_types:
+            specs.append((ext_path, "EXT", manifest_status == "needs_ext"))
+
+        for relative_path, asset_type, required in specs:
+            lower = relative_path.lower()
+            if lower in uploaded_by_type[asset_type]:
+                continue
+            upload_failed = lower in failed_uploads_by_type[asset_type]
+            if asset_type == "DAT":
+                missing_required.append(relative_path)
+            else:
+                missing_optional_ext.append(relative_path)
+            unresolved_targets.append(
+                ResumeTargetItem(
+                    track_id=track_id,
+                    rekordbox_content_id=rekordbox_content_id,
+                    relative_path=relative_path,
+                    asset_type=asset_type,
+                    required=required,
+                    status="upload_failed"
+                    if upload_failed
+                    else "missing"
+                    if required
+                    else "optional_missing",
+                    reason="Upload failed; retry this asset." if upload_failed else None,
+                    attempt_count=None,
+                )
+            )
+            track_has_target = True
+
+        if parse_status in {"failed", "missing_required", "partial"} and not track_has_target:
             unresolved_targets.append(
                 ResumeTargetItem(
                     track_id=track_id,
@@ -2048,51 +2878,15 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
                     relative_path=dat_path,
                     asset_type="DAT",
                     required=True,
-                    status="upload_failed" if upload_failed else "missing",
-                    reason="Upload failed — retry" if upload_failed else None,
+                    status="parse_failed",
+                    reason=str(track.get("analysis_failure_reason") or "Retry parsing retained staged assets."),
                     attempt_count=None,
                 )
             )
-            track_has_target = True
+        affected_track_ids.add(track_id)
 
-        # EXT — optional color waveform
-        if ext_path.lower() not in uploaded_by_type["EXT"]:
-            missing_optional_ext.append(ext_path)
-            upload_failed = ext_path.lower() in failed_uploads_by_type["EXT"]
-            unresolved_targets.append(
-                ResumeTargetItem(
-                    track_id=track_id,
-                    rekordbox_content_id=rekordbox_content_id,
-                    relative_path=ext_path,
-                    asset_type="EXT",
-                    required=False,
-                    status="upload_failed" if upload_failed else "optional_missing",
-                    reason="Upload failed — retry" if upload_failed else None,
-                    attempt_count=None,
-                )
-            )
-            track_has_target = True
-
-        # 2EX — optional detail waveform
-        if two_ex_path.lower() not in uploaded_by_type["2EX"]:
-            missing_optional_2ex.append(two_ex_path)
-            upload_failed = two_ex_path.lower() in failed_uploads_by_type["2EX"]
-            unresolved_targets.append(
-                ResumeTargetItem(
-                    track_id=track_id,
-                    rekordbox_content_id=rekordbox_content_id,
-                    relative_path=two_ex_path,
-                    asset_type="2EX",
-                    required=False,
-                    status="upload_failed" if upload_failed else "optional_missing",
-                    reason="Upload failed — retry" if upload_failed else None,
-                    attempt_count=None,
-                )
-            )
-            track_has_target = True
-
-        if track_has_target:
-            affected_track_ids.add(track_id)
+    # .2EX is optional archival work and is intentionally absent from the
+    # readiness/resume target list. Existing retained .2EX rows stay readable.
 
     # Summary counts from structured targets
     missing_required_count = sum(
@@ -2107,6 +2901,20 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
     analysis_status = import_row.get("analysis_status") or "unknown"
     expected_track_count = int(import_row.get("analysis_expected_track_count") or len(tracks) or 0)
     final_track_statuses = {"completed", "partial", "failed", "skipped", "reused"}
+    completed_track_count = sum(
+        1
+        for track in tracks
+        if str(track.get("analysis_parse_status") or "") in {"completed", "reused"}
+    )
+    partial_track_count = sum(
+        1 for track in tracks if str(track.get("analysis_parse_status") or "") == "partial"
+    )
+    analysis_ready_track_count = sum(
+        1
+        for track in tracks
+        if str(track.get("analysis_parse_status") or "")
+        in {"completed", "partial", "reused", "skipped"}
+    )
     derived_parsed_track_count = sum(
         1 for t in tracks if (t.get("analysis_parse_status") or "") in final_track_statuses
     )
@@ -2170,6 +2978,8 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
         expected_track_count=expected_track_count,
         matched_track_count=import_row.get("analysis_matched_track_count", 0),
         parsed_track_count=parsed_track_count,
+        completed_track_count=completed_track_count,
+        partial_track_count=partial_track_count,
         failed_track_count=import_row.get("analysis_failed_track_count", 0),
         asset_count=import_row.get("analysis_asset_count", 0),
         missing_required_paths=missing_required,
@@ -2219,6 +3029,26 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
             worker_snapshot.get("stopped_acknowledged")
             or import_row.get("analysis_worker_stopped_acknowledged")
         ),
+        library_ready=bool(import_row.get("library_ready_at")),
+        readiness_stage=str(import_row.get("readiness_stage") or "library_metadata_ready"),
+        required_analysis_file_count=int(import_row.get("required_analysis_file_count") or 0),
+        optional_archival_file_count=int(import_row.get("optional_archival_file_count") or 0),
+        tracks_ready_count=max(0, analysis_ready_track_count),
+        tracks_remaining_count=max(0, expected_track_count - parsed_track_count),
+        tracks_queued_count=int(import_row.get("analysis_queue_track_count") or 0),
+        tracks_running_count=int(import_row.get("analysis_running_track_count") or 0),
+        optional_archival_status=str(import_row.get("optional_archival_status") or "skipped"),
+        measured_tracks_per_second=(
+            float(import_row["analysis_throughput_tracks_per_second"])
+            if import_row.get("analysis_throughput_tracks_per_second") is not None
+            else None
+        ),
+        estimated_seconds_remaining=(
+            int(import_row["analysis_estimated_seconds_remaining"])
+            if import_row.get("analysis_estimated_seconds_remaining") is not None
+            else None
+        ),
+        performance_metrics=import_row.get("performance_metrics") or {},
     )
 
 

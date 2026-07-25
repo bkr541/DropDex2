@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     max_bundle_uncompressed_bytes: int = 524_288_000   # 500 MB — ZIP decompressed total
     max_bundle_entries: int = 10_000                   # max entries inside ZIP
 
+    # ── Progressive Rekordbox analysis pipeline ──────────────────────────────
+    analysis_parser_workers: int = 4
+    analysis_writer_batch_size: int = 32
+    analysis_result_queue_size: int = 16
+    analysis_staging_root: str | None = None
+    analysis_archive_raw_assets: bool = True
+    analysis_archive_2ex: bool = False
+    analysis_feature_schema_version: str = "2026.07.fast-path.v1"
+
     # Set to "production" via ENVIRONMENT env var to suppress detailed errors.
     environment: str = "development"
 

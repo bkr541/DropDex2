@@ -77,8 +77,12 @@ class ManifestEntryResponse(BaseModel):
     ext_path: Optional[str] = None
     two_ex_path: Optional[str] = None
     dat_required: bool = True
+    ext_required: bool = True
+    required_asset_types: List[str] = Field(default_factory=lambda: ["DAT", "EXT"])
+    optional_archival_asset_types: List[str] = Field(default_factory=lambda: ["2EX"])
+    source_fingerprint: Optional[str] = None
     # Incremental rescan fields (Part D / F)
-    manifest_status: str = "needs_dat"  # reused | needs_dat | metadata_only | reparse_from_retained | needs_ext | needs_2ex | unavailable
+    manifest_status: str = "needs_dat"  # reused | needs_dat | metadata_only | reparse_from_retained | needs_ext | needs_analysis | unavailable
     reused_from_track_id: Optional[str] = None
     reuse_reason: Optional[str] = None  # human-readable explanation
     cue_changed: bool = False
@@ -98,6 +102,11 @@ class ImportStartResponse(BaseModel):
     tracks_needing_upload: int = 0
     tracks_reparse_from_retained: int = 0
     tracks_metadata_only: int = 0
+    required_analysis_file_count: int = 0
+    optional_archival_file_count: int = 0
+    tracks_already_reusable: int = 0
+    library_ready: bool = True
+    readiness_stage: str = "library_metadata_ready"
 
 
 class BatchFileResult(BaseModel):
@@ -126,8 +135,12 @@ class CompleteRequest(BaseModel):
     """Optional body for POST /api/rekordbox/import/{import_id}/complete."""
 
     # When provided, only reparse these track IDs (selective reprocessing).
-    # Omit or pass null/empty to reparse all tracks.
+    # Omit or pass null/empty to use the backend manifest selection.
     affected_track_ids: Optional[List[str]] = None
+    # API routes default to background execution; direct service callers may opt out.
+    background: bool = True
+    # Aggregate browser-side timings/counts only. Paths and track metadata are rejected.
+    client_metrics: Optional[Dict[str, Any]] = None
 
 
 class TrackCompleteStatus(BaseModel):
@@ -137,7 +150,7 @@ class TrackCompleteStatus(BaseModel):
     rekordbox_content_id: str
     parse_status: str  # completed | partial | failed | missing_required
     assets_parsed: int
-    warnings: List[Dict[str, Any]] = []
+    warnings: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class CompleteResponse(BaseModel):
@@ -154,6 +167,11 @@ class CompleteResponse(BaseModel):
     missing_optional_2ex_count: int = 0
     parser_version: str
     tracks: List[TrackCompleteStatus]
+    background_started: bool = False
+    library_ready: bool = True
+    readiness_stage: str = "analysis_complete"
+    queued_track_count: int = 0
+    optional_archival_status: str = "skipped"
 
 
 class ResumeTargetItem(BaseModel):
@@ -177,6 +195,8 @@ class AnalysisStatusResponse(BaseModel):
     expected_track_count: int
     matched_track_count: int
     parsed_track_count: int
+    completed_track_count: int = 0
+    partial_track_count: int = 0
     failed_track_count: int
     asset_count: int
     # Legacy flat path arrays — preserved for backward compatibility.
@@ -184,7 +204,7 @@ class AnalysisStatusResponse(BaseModel):
     missing_optional_ext: List[str] = []
     missing_optional_2ex: List[str] = []
     parser_version: Optional[str] = None
-    warnings: List[Dict[str, Any]] = []
+    warnings: List[Dict[str, Any]] = Field(default_factory=list)
     # Live parsing progress persisted on the import row so every worker and a
     # restarted backend reports the same state.
     current_track_id: Optional[str] = None
@@ -206,6 +226,18 @@ class AnalysisStatusResponse(BaseModel):
     worker_stage: Optional[str] = None
     worker_last_heartbeat: Optional[str] = None
     worker_stopped_acknowledged: bool = True
+    library_ready: bool = True
+    readiness_stage: str = "library_metadata_ready"
+    required_analysis_file_count: int = 0
+    optional_archival_file_count: int = 0
+    tracks_ready_count: int = 0
+    tracks_remaining_count: int = 0
+    tracks_queued_count: int = 0
+    tracks_running_count: int = 0
+    optional_archival_status: str = "skipped"
+    measured_tracks_per_second: Optional[float] = None
+    estimated_seconds_remaining: Optional[int] = None
+    performance_metrics: Dict[str, Any] = Field(default_factory=dict)
 
 
 # ── Related Tracks import models ───────────────────────────────────────────────

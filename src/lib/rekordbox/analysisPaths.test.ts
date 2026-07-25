@@ -6,9 +6,11 @@ import {
   findDatabaseFile,
   getCanonicalAnlzPath,
   isAnlzFile,
+  isBlockingAnlzFile,
   isSafePath,
   matchFilesToManifest,
   normalizeAnlzPath,
+  summarizeManifestWork,
 } from './analysisPaths';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -173,6 +175,17 @@ describe('isAnlzFile', () => {
   it('returns false for file with no extension', () => expect(isAnlzFile(mockFile('ANLZ0000'))).toBe(false));
 });
 
+describe('isBlockingAnlzFile', () => {
+  it('keeps DAT and EXT in the initial fast path', () => {
+    expect(isBlockingAnlzFile(mockFile('ANLZ0000.DAT'))).toBe(true);
+    expect(isBlockingAnlzFile(mockFile('ANLZ0000.ext'))).toBe(true);
+  });
+
+  it('excludes optional 2EX from the initial fast path', () => {
+    expect(isBlockingAnlzFile(mockFile('ANLZ0000.2EX'))).toBe(false);
+  });
+});
+
 // ── findDatabaseFile ──────────────────────────────────────────────────────────
 
 describe('findDatabaseFile', () => {
@@ -199,28 +212,40 @@ describe('findDatabaseFile', () => {
 // ── extractManifestPaths ──────────────────────────────────────────────────────
 
 describe('extractManifestPaths', () => {
-  it('extracts all three path types', () => {
+  it('extracts only required DAT/EXT paths by default', () => {
     const manifest = [
-      { dat_path: 'PIONEER/USBANLZ/P001/ANLZ0000.DAT', ext_path: 'PIONEER/USBANLZ/P001/ANLZ0000.EXT', two_ex_path: 'PIONEER/USBANLZ/P001/ANLZ0000.2EX' },
+      { track_id: 't1', dat_path: 'PIONEER/USBANLZ/P001/ANLZ0000.DAT', ext_path: 'PIONEER/USBANLZ/P001/ANLZ0000.EXT', two_ex_path: 'PIONEER/USBANLZ/P001/ANLZ0000.2EX' },
     ];
     expect(extractManifestPaths(manifest)).toEqual([
       'PIONEER/USBANLZ/P001/ANLZ0000.DAT',
       'PIONEER/USBANLZ/P001/ANLZ0000.EXT',
+    ]);
+  });
+
+  it('includes 2EX only for explicit optional archival work', () => {
+    const manifest = [{
+      track_id: 't1',
+      dat_path: null,
+      ext_path: null,
+      two_ex_path: 'PIONEER/USBANLZ/P001/ANLZ0000.2EX',
+      manifest_status: 'reused',
+    }];
+    expect(extractManifestPaths(manifest, { includeOptionalArchival: true })).toEqual([
       'PIONEER/USBANLZ/P001/ANLZ0000.2EX',
     ]);
   });
 
   it('omits null paths', () => {
     const manifest = [
-      { dat_path: 'PIONEER/USBANLZ/P001/ANLZ0000.DAT', ext_path: null, two_ex_path: null },
+      { track_id: 't1', dat_path: 'PIONEER/USBANLZ/P001/ANLZ0000.DAT', ext_path: null, two_ex_path: null },
     ];
     expect(extractManifestPaths(manifest)).toEqual(['PIONEER/USBANLZ/P001/ANLZ0000.DAT']);
   });
 
   it('handles multiple manifest entries', () => {
     const manifest = [
-      { dat_path: 'PIONEER/USBANLZ/P001/ANLZ0000.DAT', ext_path: null, two_ex_path: null },
-      { dat_path: 'PIONEER/USBANLZ/P002/ANLZ0000.DAT', ext_path: null, two_ex_path: null },
+      { track_id: 't1', dat_path: 'PIONEER/USBANLZ/P001/ANLZ0000.DAT', ext_path: null, two_ex_path: null },
+      { track_id: 't2', dat_path: 'PIONEER/USBANLZ/P002/ANLZ0000.DAT', ext_path: null, two_ex_path: null },
     ];
     expect(extractManifestPaths(manifest)).toHaveLength(2);
   });
@@ -351,6 +376,88 @@ describe('buildMatchedFiles', () => {
   it('returns empty array for empty manifest', () => {
     const f = mockFile('ANLZ0000.DAT', 'USB/PIONEER/USBANLZ/P001/ANLZ0000.DAT');
     expect(buildMatchedFiles([f], [])).toHaveLength(0);
+  });
+
+  it('honors manifest statuses instead of uploading every listed path', () => {
+    const files = [
+      mockFile('A.DAT', 'USB/PIONEER/USBANLZ/P001/A.DAT'),
+      mockFile('A.EXT', 'USB/PIONEER/USBANLZ/P001/A.EXT'),
+      mockFile('A.2EX', 'USB/PIONEER/USBANLZ/P001/A.2EX'),
+    ];
+    const statuses = ['reused', 'metadata_only', 'reparse_from_retained', 'unavailable'];
+    for (const manifestStatus of statuses) {
+      expect(buildMatchedFiles(files, [{
+        track_id: manifestStatus,
+        dat_path: 'PIONEER/USBANLZ/P001/A.DAT',
+        ext_path: 'PIONEER/USBANLZ/P001/A.EXT',
+        two_ex_path: 'PIONEER/USBANLZ/P001/A.2EX',
+        manifest_status: manifestStatus,
+      }])).toHaveLength(0);
+    }
+  });
+
+  it('uploads EXT only for needs_ext and never includes 2EX by default', () => {
+    const files = [
+      mockFile('A.DAT', 'USB/PIONEER/USBANLZ/P001/A.DAT'),
+      mockFile('A.EXT', 'USB/PIONEER/USBANLZ/P001/A.EXT'),
+      mockFile('A.2EX', 'USB/PIONEER/USBANLZ/P001/A.2EX'),
+    ];
+    const result = buildMatchedFiles(files, [{
+      track_id: 't1',
+      dat_path: 'PIONEER/USBANLZ/P001/A.DAT',
+      ext_path: 'PIONEER/USBANLZ/P001/A.EXT',
+      two_ex_path: 'PIONEER/USBANLZ/P001/A.2EX',
+      manifest_status: 'needs_ext',
+    }]);
+    expect(result.map((file) => file.assetType)).toEqual(['EXT']);
+  });
+});
+
+describe('summarizeManifestWork operation counts', () => {
+  const makeLibrary = (count: number, changedPercent: number) => Array.from(
+    { length: count },
+    (_, index) => {
+      const changed = index < Math.round(count * changedPercent);
+      return {
+        track_id: `track-${index}`,
+        dat_path: `PIONEER/USBANLZ/P${index}/A.DAT`,
+        ext_path: `PIONEER/USBANLZ/P${index}/A.EXT`,
+        two_ex_path: `PIONEER/USBANLZ/P${index}/A.2EX`,
+        manifest_status: changed ? 'needs_analysis' : 'reused',
+      };
+    },
+  );
+
+  it('plans 100-track initial imports without 2EX blocking work', () => {
+    const summary = summarizeManifestWork(makeLibrary(100, 1), 50);
+    expect(summary.requiredAnalysisFiles).toBe(200);
+    expect(summary.optionalArchivalFiles).toBe(100);
+    expect(summary.tracksRequiringAnalysis).toBe(100);
+    expect(summary.uploadBatchCount).toBe(4);
+  });
+
+  it('bounds a 2,000-track initial import by upload batches', () => {
+    const summary = summarizeManifestWork(makeLibrary(2_000, 1), 50);
+    expect(summary.requiredAnalysisFiles).toBe(4_000);
+    expect(summary.optionalArchivalFiles).toBe(2_000);
+    expect(summary.tracksRequiringAnalysis).toBe(2_000);
+    expect(summary.uploadBatchCount).toBe(80);
+  });
+
+  it('plans a 2,000-track no-change repeat import with zero uploads', () => {
+    const summary = summarizeManifestWork(makeLibrary(2_000, 0), 50);
+    expect(summary.requiredAnalysisFiles).toBe(0);
+    expect(summary.tracksRequiringAnalysis).toBe(0);
+    expect(summary.tracksAlreadyReusable).toBe(2_000);
+    expect(summary.uploadBatchCount).toBe(0);
+  });
+
+  it('limits a 5 percent change to the affected 100 tracks', () => {
+    const summary = summarizeManifestWork(makeLibrary(2_000, 0.05), 50);
+    expect(summary.requiredAnalysisFiles).toBe(200);
+    expect(summary.tracksRequiringAnalysis).toBe(100);
+    expect(summary.tracksAlreadyReusable).toBe(1_900);
+    expect(summary.uploadBatchCount).toBe(4);
   });
 });
 
