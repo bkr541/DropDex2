@@ -267,3 +267,8 @@ python -m pytest tests/ -v
 - The bundle exceeds 500 KB (gzip: ~181 KB). Code-splitting via `React.lazy` or Vite `manualChunks` would reduce initial load time but has not been implemented.
 - `fetchTrackPlaylists` filters by `import_id` in JavaScript after fetching all rows for a track across all imports. A PostgREST join filter on the playlists table would be more efficient for users with many imports.
 - The backend sets `active_import_id` via a direct REST call after writing the import. If this call fails (non-fatal), the user sees the fallback (newest import) on next load — functionally correct but the explicit setting is silently skipped.
+
+
+## Documentation
+
+- [Rekordbox USB import safety](docs/rekordbox-usb-import-safety.md) explains the read-only browser lifecycle, cancellation behavior, and the verified point at which the drive is released.

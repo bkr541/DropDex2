@@ -15,12 +15,15 @@ import {
   fetchRekordboxAnalysisStatus,
 } from '../lib/api/rekordboxImport';
 import type { AnalysisStatusResponse, CompleteResponse } from '../lib/api/rekordboxImport';
-import { buildBatches, isAnlzFile } from '../lib/rekordbox/analysisPaths';
+import { buildBatches, isAnlzFile, type MatchedAnalysisFile } from '../lib/rekordbox/analysisPaths';
 import { buildResumeTargets, buildResumeMatchResult, buildStatusSummary } from '../lib/rekordbox/resumeAnalysis';
-import type { ResumeMatchResult, ResumeTarget, ResumeStatusSummary } from '../lib/rekordbox/resumeAnalysis';
+import type { ResumeTarget, ResumeStatusSummary } from '../lib/rekordbox/resumeAnalysis';
 import { UploadAccumulator } from '../lib/rekordbox/analysisUploadResults';
 import { isAbortError, uploadBatchWithRetry } from '../lib/rekordbox/uploadBatch';
+import { AbortableTimerRegistry, waitForAbortableDelay } from '../lib/rekordbox/abortableRetry';
 import { isFreshImportResponse } from '../lib/rekordbox/importRequestFreshness';
+import { runCancellableUploadQueue, UploadQueueRuntime } from '../lib/rekordbox/cancellableUploadQueue';
+import { IdempotentUsbCleanup, verifyUsbReleased } from '../lib/rekordbox/localUsbLifecycle';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,10 +31,17 @@ type ResumePhase =
   | 'fetching_status'
   | 'scan_prompt'
   | 'uploading'
+  | 'stopping_usb_reads'
   | 'parsing'
   | 'done'
   | 'done_partial'
   | 'error';
+
+interface ResumeMatchSummary {
+  matched: number;
+  stillMissingRequired: number;
+  stillMissingOptional: number;
+}
 
 interface ResumeProgress {
   filesUploaded: number;
@@ -73,7 +83,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
   const [status, setStatus] = useState<AnalysisStatusResponse | null>(null);
   const [targets, setTargets] = useState<ResumeTarget[]>([]);
   const [statusSummary, setStatusSummary] = useState<ResumeStatusSummary | null>(null);
-  const [matchResult, setMatchResult] = useState<ResumeMatchResult | null>(null);
+  const [matchSummary, setMatchSummary] = useState<ResumeMatchSummary | null>(null);
   const [progress, setProgress] = useState<ResumeProgress>({ filesUploaded: 0, filesTotal: 0, bytesUploaded: 0, bytesTotal: 0 });
   const [completeResp, setCompleteResp] = useState<CompleteResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -82,6 +92,14 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
   const folderInputRef = useRef<HTMLInputElement>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  const retryTimersRef = useRef(new AbortableTimerRegistry());
+  const uploadQueueRuntimeRef = useRef<UploadQueueRuntime | null>(null);
+  const scannedFilesRef = useRef<File[]>([]);
+  const matchedFilesRef = useRef<MatchedAnalysisFile[]>([]);
+  const uploadBatchesRef = useRef<MatchedAnalysisFile[][]>([]);
+  const retryFilesByPathRef = useRef<Map<string, MatchedAnalysisFile>>(new Map());
+  const usbCleanupRef = useRef(new IdempotentUsbCleanup());
+  const closeAfterUsbStopRef = useRef(false);
   const requestGenerationRef = useRef(0);
   const activeImportIdRef = useRef(importId);
   activeImportIdRef.current = importId;
@@ -94,6 +112,26 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
     return !controller.signal.aborted
       && requestedImportId === activeImportIdRef.current
       && generation === requestGenerationRef.current;
+  }, []);
+
+  const performResumeUsbCleanup = useCallback((abortController = true) => {
+    usbCleanupRef.current.run(() => {
+      // Resume Analysis is read-only: stop requests and release browser File
+      // references only. Never request a writable handle or mutate the USB.
+      uploadQueueRuntimeRef.current?.abortScheduling();
+      retryTimersRef.current.cancelAll();
+      if (abortController) {
+        controllerRef.current?.abort();
+        controllerRef.current = null;
+      }
+
+      scannedFilesRef.current.length = 0;
+      matchedFilesRef.current.length = 0;
+      for (const batch of uploadBatchesRef.current) batch.length = 0;
+      uploadBatchesRef.current.length = 0;
+      retryFilesByPathRef.current.clear();
+      if (folderInputRef.current) folderInputRef.current.value = '';
+    });
   }, []);
 
   const runParsing = useCallback(async (
@@ -133,15 +171,17 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
   // Fetch analysis status on open
   useEffect(() => {
     if (!isOpen) return;
+    performResumeUsbCleanup();
     controllerRef.current?.abort();
     setPhase('fetching_status');
     setStatus(null);
     setTargets([]);
     setStatusSummary(null);
-    setMatchResult(null);
+    setMatchSummary(null);
     setCompleteResp(null);
     setErrorMessage('');
     setWrongDrive(false);
+    closeAfterUsbStopRef.current = false;
     setRetryingCount(0);
     setProgress({ filesUploaded: 0, filesTotal: 0, bytesUploaded: 0, bytesTotal: 0 });
 
@@ -185,25 +225,54 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
     return () => {
       requestGenerationRef.current += 1;
+      performResumeUsbCleanup();
       controllerRef.current?.abort();
+      controllerRef.current = null;
     };
-  }, [importId, isCurrentOperation, isOpen, runParsing]);
+  }, [importId, isCurrentOperation, isOpen, performResumeUsbCleanup, runParsing]);
 
   function handleClose() {
+    if (phase === 'stopping_usb_reads') return;
+    if (phase === 'uploading') {
+      const confirmed = window.confirm(
+        'DropDex is still reading the Rekordbox USB. Stop the upload and close after active reads have settled?',
+      );
+      if (!confirmed) return;
+      closeAfterUsbStopRef.current = true;
+      requestGenerationRef.current += 1;
+      setPhase('stopping_usb_reads');
+      performResumeUsbCleanup();
+      return;
+    }
+
     requestGenerationRef.current += 1;
+    closeAfterUsbStopRef.current = false;
+    performResumeUsbCleanup();
     controllerRef.current?.abort();
+    controllerRef.current = null;
+    setMatchSummary(null);
     onClose();
   }
 
   function handleDone() {
     requestGenerationRef.current += 1;
+    closeAfterUsbStopRef.current = false;
+    performResumeUsbCleanup();
     controllerRef.current?.abort();
+    controllerRef.current = null;
+    setMatchSummary(null);
     onSuccess();
     onClose();
   }
 
   const handleFolderChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    performResumeUsbCleanup();
+    usbCleanupRef.current = new IdempotentUsbCleanup();
+    retryTimersRef.current = new AbortableTimerRegistry();
+    uploadQueueRuntimeRef.current = null;
+
     const files = Array.from(e.target.files ?? []).filter(isAnlzFile);
+    scannedFilesRef.current = files;
     e.target.value = '';
 
     const requestedImportId = importId;
@@ -213,23 +282,31 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
     controllerRef.current = ac;
 
     const result = buildResumeMatchResult(files, targets);
+    matchedFilesRef.current = result.matched;
     if (!isCurrentOperation(requestedImportId, generation, ac)) return;
-    setMatchResult(result);
+    setMatchSummary({
+      matched: result.matched.length,
+      stillMissingRequired: result.stillMissingRequired.length,
+      stillMissingOptional: result.stillMissingOptional.length,
+    });
 
     if (result.matched.length === 0) {
       setWrongDrive(true);
+      performResumeUsbCleanup();
       return;
     }
 
     setWrongDrive(false);
 
     // ── Begin upload ──────────────────────────────────────────────────────────
+    let intentionalUsbRelease = false;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!isCurrentOperation(requestedImportId, generation, ac)) return;
       const tok = session?.access_token ?? '';
 
       const batches = buildBatches(result.matched, BATCH_SIZE, MAX_BYTES_PER_BATCH);
+      uploadBatchesRef.current = batches;
       const totalFiles = result.matched.length;
       const totalBytes = result.matched.reduce((s, f) => s + f.file.size, 0);
 
@@ -238,52 +315,72 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
       const accumulator = new UploadAccumulator();
 
-      // Upload in concurrent groups
-      let uploadAborted = false;
-      for (let batchStart = 0; batchStart < batches.length && !uploadAborted; batchStart += MAX_CONCURRENT) {
-        const group = batches.slice(batchStart, batchStart + MAX_CONCURRENT);
-        await Promise.all(group.map(async (batch) => {
-          if (!isCurrentOperation(requestedImportId, generation, ac)) {
-            uploadAborted = true;
-            return;
-          }
-          const resp = await uploadBatchWithRetry(requestedImportId, batch, tok, ac.signal);
-          if (!isCurrentOperation(requestedImportId, generation, ac)) {
-            uploadAborted = true;
-            return;
-          }
-          if (resp === null) {
-            accumulator.recordFailedBatch(batch);
-          } else {
-            accumulator.addBatchResponse(resp, batch);
-          }
-          setProgress((p) => ({
-            ...p,
+      const runtime = new UploadQueueRuntime(batches.length);
+      uploadQueueRuntimeRef.current = runtime;
+      const queueResult = await runCancellableUploadQueue<MatchedAnalysisFile[], Awaited<ReturnType<typeof uploadBatchWithRetry>>>({
+        batches,
+        maxConcurrent: MAX_CONCURRENT,
+        signal: ac.signal,
+        runtime,
+        isLocallyAborted: () => !isCurrentOperation(requestedImportId, generation, ac),
+        isAbortError,
+        isFailedResult: (response) => response === null,
+        runBatch: (batch) => uploadBatchWithRetry(
+          requestedImportId,
+          batch,
+          tok,
+          ac.signal,
+          3,
+          {
+            retryTimers: retryTimersRef.current,
+            isLocallyAborted: () => !isCurrentOperation(requestedImportId, generation, ac),
+          },
+        ),
+        onBatchSuccess: (response, batch) => {
+          if (response === null) return;
+          accumulator.addBatchResponse(response, batch);
+          if (!isCurrentOperation(requestedImportId, generation, ac)) return;
+          setProgress((current) => ({
+            ...current,
             filesUploaded: accumulator.confirmedFiles,
             bytesUploaded: accumulator.confirmedBytes,
           }));
-        }));
-        if (!isCurrentOperation(requestedImportId, generation, ac)) uploadAborted = true;
-      }
+        },
+        onBatchFailure: (_error, batch) => accumulator.recordFailedBatch(batch),
+      });
+      let uploadAborted = queueResult.cancelled || !isCurrentOperation(requestedImportId, generation, ac);
 
       // File-level retry for transient failures
       if (!uploadAborted) {
         const filesByLowerPath = new Map(result.matched.map((mf) => [mf.canonicalPath.toLowerCase(), mf]));
+        retryFilesByPathRef.current = filesByLowerPath;
         for (let ri = 0; ri < FILE_RETRY_DELAYS_MS.length && !uploadAborted; ri++) {
           const retryPaths = accumulator.retryableFilePaths;
           if (retryPaths.length === 0) break;
           setRetryingCount(retryPaths.length);
-          await new Promise<void>((resolve) => {
-            const t = setTimeout(resolve, FILE_RETRY_DELAYS_MS[ri]);
-            ac.signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
-          });
+          await waitForAbortableDelay(
+            FILE_RETRY_DELAYS_MS[ri],
+            ac.signal,
+            retryTimersRef.current,
+            () => !isCurrentOperation(requestedImportId, generation, ac),
+          );
           if (!isCurrentOperation(requestedImportId, generation, ac)) {
             uploadAborted = true;
             break;
           }
           const retryBatch = retryPaths.map((p) => filesByLowerPath.get(p)).filter((mf): mf is NonNullable<typeof mf> => mf !== undefined);
           if (retryBatch.length === 0) break;
-          const retryResp = await uploadBatchWithRetry(requestedImportId, retryBatch, tok, ac.signal, 1);
+          const retryResp = await uploadBatchWithRetry(
+            requestedImportId,
+            retryBatch,
+            tok,
+            ac.signal,
+            1,
+            {
+              retryTimers: retryTimersRef.current,
+              isLocallyAborted: () => !isCurrentOperation(requestedImportId, generation, ac),
+            },
+          );
           if (!isCurrentOperation(requestedImportId, generation, ac)) {
             uploadAborted = true;
             break;
@@ -299,7 +396,10 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
         if (isCurrentOperation(requestedImportId, generation, ac)) setRetryingCount(0);
       }
 
-      if (uploadAborted || !isCurrentOperation(requestedImportId, generation, ac)) return;
+      if (uploadAborted || !isCurrentOperation(requestedImportId, generation, ac)) {
+        performResumeUsbCleanup();
+        return;
+      }
 
       // Selective reprocessing: only reparse tracks that received new files in this session.
       const uploadedTrackIds = [...new Set(
@@ -307,14 +407,49 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
       )];
       const affectedIds = uploadedTrackIds.length > 0 ? uploadedTrackIds : undefined;
 
-      await runParsing(requestedImportId, tok, ac, generation, affectedIds);
-    } catch (err) {
-      if (isAbortError(err) || !isCurrentOperation(requestedImportId, generation, ac)) return;
+      // Release every browser File reference before the ID-only cloud parsing call.
+      intentionalUsbRelease = true;
+      performResumeUsbCleanup();
+      const queueSnapshot = uploadQueueRuntimeRef.current?.snapshot();
+      const release = verifyUsbReleased({
+        activeUploadRequests: queueSnapshot?.activeRequests ?? 0,
+        queuedBatches: queueSnapshot?.queuedBatches ?? 0,
+        retryTimerCount: retryTimersRef.current.activeCount,
+        controllerActive: Boolean(controllerRef.current && !controllerRef.current.signal.aborted),
+        databaseFileCount: 0,
+        analysisFileCount: scannedFilesRef.current.length,
+        matchedFileCount: matchedFilesRef.current.length,
+        batchFileCount: uploadBatchesRef.current.reduce((count, batch) => count + batch.length, 0),
+        pathMapCount: retryFilesByPathRef.current.size,
+        objectUrlCount: 0,
+        directoryHandleCount: 0,
+      });
+      if (!release.released) {
+        throw new Error(`USB release verification failed: ${release.blockers.join(', ')}`);
+      }
+
+      setMatchSummary(null);
       setRetryingCount(0);
-      setErrorMessage(err instanceof Error ? err.message : 'Analysis upload failed.');
-      setPhase('error');
+      const cloudController = new AbortController();
+      controllerRef.current = cloudController;
+      await runParsing(requestedImportId, tok, cloudController, generation, affectedIds);
+    } catch (err) {
+      const cancelled = isAbortError(err)
+        || (!intentionalUsbRelease && !isCurrentOperation(requestedImportId, generation, ac));
+      performResumeUsbCleanup();
+      if (!cancelled) {
+        setRetryingCount(0);
+        setErrorMessage(err instanceof Error ? err.message : 'Analysis upload failed.');
+        setPhase('error');
+      }
+    } finally {
+      if (closeAfterUsbStopRef.current) {
+        closeAfterUsbStopRef.current = false;
+        setMatchSummary(null);
+        onClose();
+      }
     }
-  }, [importId, isCurrentOperation, runParsing, targets]);
+  }, [importId, isCurrentOperation, onClose, performResumeUsbCleanup, runParsing, targets]);
 
   if (!isOpen) return null;
 
@@ -410,14 +545,14 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   </div>
                 )}
 
-                {matchResult && !wrongDrive && (
+                {matchSummary && !wrongDrive && (
                   <div className="mb-4 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-left space-y-1.5">
-                    <StatusRow label="Found on USB" value={matchResult.matched.length} />
-                    {matchResult.stillMissingRequired.length > 0 && (
-                      <StatusRow label="Still missing (required)" value={matchResult.stillMissingRequired.length} warn />
+                    <StatusRow label="Found on USB" value={matchSummary.matched} />
+                    {matchSummary.stillMissingRequired > 0 && (
+                      <StatusRow label="Still missing (required)" value={matchSummary.stillMissingRequired} warn />
                     )}
-                    {matchResult.stillMissingOptional.length > 0 && (
-                      <StatusRow label="Still missing (optional)" value={matchResult.stillMissingOptional.length} />
+                    {matchSummary.stillMissingOptional > 0 && (
+                      <StatusRow label="Still missing (optional)" value={matchSummary.stillMissingOptional} />
                     )}
                   </div>
                 )}
@@ -453,6 +588,12 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   </div>
                 </div>
                 <h2 className="text-lg font-bold mb-1">Uploading Missing Files</h2>
+                <div className="my-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left">
+                  <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-400" />
+                  <p className="text-xs leading-relaxed text-amber-100">
+                    DropDex is reading this Rekordbox USB. Keep Rekordbox closed and do not eject the drive until upload completes.
+                  </p>
+                </div>
                 <p className="text-sm text-muted-foreground">
                   {progress.filesUploaded.toLocaleString()} / {progress.filesTotal.toLocaleString()} files
                   {progress.bytesTotal > 0 && (
@@ -467,6 +608,17 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
               </div>
             )}
 
+            {/* ── Stopping local USB reads ── */}
+            {phase === 'stopping_usb_reads' && (
+              <div className="text-center py-4">
+                <Loader2 className="animate-spin text-amber-400 mx-auto mb-4" size={32} />
+                <h2 className="text-lg font-bold mb-1">Stopping USB Reads</h2>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  No new batch or retry can begin. Keep Rekordbox closed until this window closes.
+                </p>
+              </div>
+            )}
+
             {/* ── Parsing ── */}
             {phase === 'parsing' && (
               <div className="text-center py-4">
@@ -477,6 +629,12 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   </div>
                 </div>
                 <h2 className="text-lg font-bold mb-1">Reprocessing Analysis</h2>
+                <div className="my-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left">
+                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                  <p className="text-xs leading-relaxed text-emerald-100">
+                    USB access is released. Reprocessing uses uploaded copies only.
+                  </p>
+                </div>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   Parsing waveform, cue, and beat data for affected tracks…
                 </p>

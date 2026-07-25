@@ -1,3 +1,7 @@
+/**
+ * Rekordbox folder discovery is intentionally read-only. These helpers inspect
+ * File metadata and paths only; they never obtain writable filesystem handles.
+ */
 const ANLZ_EXTS = new Set(['.dat', '.ext', '.2ex']);
 const PIONEER_ANCHOR_UPPER = 'PIONEER/USBANLZ';
 

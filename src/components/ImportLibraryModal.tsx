@@ -26,13 +26,14 @@ import {
   completeRekordboxImport,
   createRekordboxImportJob,
   fetchRekordboxAnalysisStatus,
+  fetchRekordboxImportJob,
   startRekordboxImport,
   uploadRekordboxDb,
   uploadRekordboxZipBundle,
   RekordboxImportError,
   isUnauthorizedRekordboxImportError,
 } from '../lib/api/rekordboxImport';
-import type { CompleteResponse, ImportResult, ImportStartResponse, ImportWriteError, ReuseStats } from '../lib/api/rekordboxImport';
+import type { BatchUploadResponse, CompleteResponse, ImportResult, ImportWriteError, ReuseStats } from '../lib/api/rekordboxImport';
 import {
   buildBatches,
   buildMatchedFiles,
@@ -44,24 +45,22 @@ import { UploadAccumulator, isTransientFileFailure } from '../lib/rekordbox/anal
 import { buildManifestReconciliation } from '../lib/rekordbox/manifestReconciliation';
 import type { ManifestReconciliation } from '../lib/rekordbox/manifestReconciliation';
 import { isAbortError, uploadBatchWithRetry } from '../lib/rekordbox/uploadBatch';
+import { AbortableTimerRegistry, waitForAbortableDelay } from '../lib/rekordbox/abortableRetry';
+import { runCancellableUploadQueue, UploadQueueRuntime } from '../lib/rekordbox/cancellableUploadQueue';
+import {
+  createCloudParsingContext,
+  IdempotentUsbCleanup,
+  type CloudParsingContext,
+  type UsbImportPhase,
+  verifyUsbReleased,
+} from '../lib/rekordbox/localUsbLifecycle';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Mode = 'usb_folder' | 'zip_bundle' | 'database_only';
 
-type Phase =
-  | 'idle'
-  | 'scanning'
-  | 'database_selected'
-  | 'starting_import'
-  | 'matching_analysis'
-  | 'uploading_analysis'
-  | 'parsing_analysis'
-  | 'success'
-  | 'partial_success'
-  | 'cancelling'
-  | 'cancelled'
-  | 'error';
+type LocalUsbStage = 'uploading_database' | 'matching_analysis' | 'uploading_analysis' | 'uploading_bundle';
+type AbortDialogIntent = 'cancel' | 'close';
 
 interface FolderScan {
   dbFile: File | null;
@@ -103,6 +102,8 @@ const BATCH_SIZE = 50;
 const MAX_BYTES_PER_BATCH = 50 * 1024 * 1024; // 50 MB
 const MAX_CONCURRENT = 3;
 const PARSE_STATUS_POLL_MS = 2500;
+const CLOUD_CANCEL_POLL_MS = 1000;
+const CLOUD_CANCEL_MAX_POLLS = 30;
 
 const MODE_LABELS: Record<Mode, { label: string; icon: React.ReactNode; tip: string }> = {
   usb_folder: {
@@ -154,7 +155,8 @@ export function ImportLibraryModal({
   onBackgrounded,
 }: Props) {
   const [mode, setMode] = useState<Mode>('usb_folder');
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [phase, setPhase] = useState<UsbImportPhase>('idle');
+  const [localUsbStage, setLocalUsbStage] = useState<LocalUsbStage>('uploading_database');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [folderScan, setFolderScan] = useState<FolderScan | null>(null);
   const [progress, setProgress] = useState<UploadProgress>({
@@ -167,6 +169,9 @@ export function ImportLibraryModal({
   const [errorMessage, setErrorMessage] = useState('');
   const [errorStructured, setErrorStructured] = useState<ImportWriteError | null>(null);
   const [showAbortDialog, setShowAbortDialog] = useState(false);
+  const [abortDialogIntent, setAbortDialogIntent] = useState<AbortDialogIntent>('cancel');
+  const [usbReleaseConfirmed, setUsbReleaseConfirmed] = useState(false);
+  const [cloudCancellationStarted, setCloudCancellationStarted] = useState(false);
   const [rejectedCount, setRejectedCount] = useState(0);
   const [reuseStats, setReuseStats] = useState<ReuseStats | null>(null);
   const [reconciliation, setReconciliation] = useState<ManifestReconciliation | null>(null);
@@ -174,11 +179,32 @@ export function ImportLibraryModal({
 
   const folderInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const localAbortControllerRef = useRef<AbortController | null>(null);
+  const cloudAbortControllerRef = useRef<AbortController | null>(null);
   const importIdRef = useRef<string | null>(null);
   const accessTokenRef = useRef<string | null>(null);
   const operationRef = useRef(0);
   const backgroundedRef = useRef(false);
+  const mountedRef = useRef(true);
+  const selectedFileRef = useRef<File | null>(null);
+  const folderScanRef = useRef<FolderScan | null>(null);
+  const matchedFilesRef = useRef<MatchedAnalysisFile[]>([]);
+  const uploadBatchesRef = useRef<MatchedAnalysisFile[][]>([]);
+  const retryFilesByPathRef = useRef<Map<string, MatchedAnalysisFile>>(new Map());
+  const directoryHandlesRef = useRef<FileSystemDirectoryHandle[]>([]);
+  const objectUrlsRef = useRef<Set<string>>(new Set());
+  const activeLocalRequestsRef = useRef(0);
+  const localAbortRequestedRef = useRef(false);
+  const cancelRequestedRef = useRef(false);
+  const usbReleaseConfirmedRef = useRef(false);
+  const closeAfterCancelRef = useRef(false);
+  const retryTimersRef = useRef(new AbortableTimerRegistry());
+  const uploadQueueRuntimeRef = useRef<UploadQueueRuntime | null>(null);
+  const usbCleanupRef = useRef(new IdempotentUsbCleanup());
+  const cancelBackendPromiseRef = useRef<Promise<void> | null>(null);
+  const cloudCancellationControllerRef = useRef<AbortController | null>(null);
+  const cloudCancellationTimersRef = useRef(new AbortableTimerRegistry());
+  const localCleanupRoutineRef = useRef<(updateState: boolean) => void>(() => undefined);
 
   // AuthProvider receives Supabase TOKEN_REFRESHED events and updates this prop.
   // Keep the latest token in a ref so long-running upload/parsing closures never
@@ -233,33 +259,105 @@ export function ImportLibraryModal({
     }
   };
 
-  const isUploading =
-    phase === 'starting_import' ||
-    phase === 'matching_analysis' ||
-    phase === 'uploading_analysis' ||
-    phase === 'parsing_analysis';
+  const localUsbAccessActive =
+    phase === 'uploading_usb_data' || phase === 'stopping_usb_reads';
+
+  const setSelectedFileResource = (file: File | null) => {
+    selectedFileRef.current = file;
+    setSelectedFile(file);
+  };
+
+  const setFolderScanResource = (scan: FolderScan | null) => {
+    folderScanRef.current = scan;
+    setFolderScan(scan);
+  };
+
+  const performLocalUsbCleanup = (updateState = true) => {
+    usbCleanupRef.current.run(() => {
+      // Browser import is strictly read-only. Cleanup only aborts reads and drops
+      // browser references; it never opens a writable handle or mutates the USB.
+      localAbortRequestedRef.current = true;
+      uploadQueueRuntimeRef.current?.abortScheduling();
+      retryTimersRef.current.cancelAll();
+      localAbortControllerRef.current?.abort();
+      localAbortControllerRef.current = null;
+
+      selectedFileRef.current = null;
+      folderScanRef.current = null;
+      matchedFilesRef.current = [];
+      uploadBatchesRef.current = [];
+      retryFilesByPathRef.current.clear();
+      directoryHandlesRef.current = [];
+
+      for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
+      objectUrlsRef.current.clear();
+
+      if (folderInputRef.current) folderInputRef.current.value = '';
+      if (fileInputRef.current) fileInputRef.current.value = '';
+
+      if (updateState && mountedRef.current) {
+        setSelectedFile(null);
+        setFolderScan(null);
+        setRetryingCount(0);
+      }
+    });
+  };
+  localCleanupRoutineRef.current = performLocalUsbCleanup;
+
+  const prepareLocalUsbLifecycle = () => {
+    usbCleanupRef.current = new IdempotentUsbCleanup();
+    retryTimersRef.current.cancelAll();
+    retryTimersRef.current = new AbortableTimerRegistry();
+    uploadQueueRuntimeRef.current = null;
+    localAbortRequestedRef.current = false;
+    cancelRequestedRef.current = false;
+    closeAfterCancelRef.current = false;
+    cancelBackendPromiseRef.current = null;
+    cloudCancellationControllerRef.current?.abort();
+    cloudCancellationControllerRef.current = null;
+    cloudCancellationTimersRef.current.cancelAll();
+    cloudCancellationTimersRef.current = new AbortableTimerRegistry();
+    activeLocalRequestsRef.current = 0;
+    usbReleaseConfirmedRef.current = false;
+    setUsbReleaseConfirmed(false);
+    setCloudCancellationStarted(false);
+  };
 
   const reset = () => {
+    performLocalUsbCleanup(true);
+    cloudAbortControllerRef.current?.abort();
+    cloudAbortControllerRef.current = null;
     setPhase('idle');
-    setSelectedFile(null);
-    setFolderScan(null);
+    setLocalUsbStage('uploading_database');
     setProgress({ filesUploaded: 0, filesTotal: 0, bytesUploaded: 0, bytesTotal: 0, bundlePct: 0 });
     setParseProgress({ currentTrackLabel: null, parsedTracks: 0, totalTracks: 0, percent: 0 });
     setFinalResult(null);
     setErrorMessage('');
     setErrorStructured(null);
     setShowAbortDialog(false);
+    setAbortDialogIntent('cancel');
     setRejectedCount(0);
     setReuseStats(null);
     setReconciliation(null);
     setRetryingCount(0);
+    usbReleaseConfirmedRef.current = false;
+    setUsbReleaseConfirmed(false);
+    setCloudCancellationStarted(false);
     operationRef.current += 1;
     backgroundedRef.current = false;
     importIdRef.current = null;
-    accessTokenRef.current = null;
-    abortControllerRef.current = null;
-    if (folderInputRef.current) folderInputRef.current.value = '';
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    cancelRequestedRef.current = false;
+    closeAfterCancelRef.current = false;
+    localAbortRequestedRef.current = false;
+    activeLocalRequestsRef.current = 0;
+    uploadQueueRuntimeRef.current = null;
+    retryTimersRef.current = new AbortableTimerRegistry();
+    usbCleanupRef.current = new IdempotentUsbCleanup();
+    cancelBackendPromiseRef.current = null;
+    cloudCancellationControllerRef.current?.abort();
+    cloudCancellationControllerRef.current = null;
+    cloudCancellationTimersRef.current.cancelAll();
+    cloudCancellationTimersRef.current = new AbortableTimerRegistry();
   };
 
   const switchMode = (m: Mode) => {
@@ -267,72 +365,209 @@ export function ImportLibraryModal({
     setMode(m);
   };
 
+  const runTrackedLocalRequest = async <T,>(request: () => Promise<T>): Promise<T> => {
+    activeLocalRequestsRef.current += 1;
+    try {
+      return await request();
+    } finally {
+      activeLocalRequestsRef.current = Math.max(0, activeLocalRequestsRef.current - 1);
+    }
+  };
+
+  const throwIfLocalCancellationRequested = (controller: AbortController) => {
+    if (localAbortRequestedRef.current || controller.signal.aborted) {
+      throw new DOMException('Local USB work aborted', 'AbortError');
+    }
+  };
+
+  const verifyAndPublishUsbRelease = async () => {
+    performLocalUsbCleanup(true);
+    await Promise.resolve();
+
+    const queueSnapshot = uploadQueueRuntimeRef.current?.snapshot();
+    const verification = verifyUsbReleased({
+      activeUploadRequests:
+        activeLocalRequestsRef.current + (queueSnapshot?.activeRequests ?? 0),
+      queuedBatches: queueSnapshot?.queuedBatches ?? 0,
+      retryTimerCount: retryTimersRef.current.activeCount,
+      controllerActive: Boolean(
+        localAbortControllerRef.current && !localAbortControllerRef.current.signal.aborted,
+      ),
+      databaseFileCount:
+        (selectedFileRef.current ? 1 : 0) + (folderScanRef.current?.dbFile ? 1 : 0),
+      analysisFileCount: folderScanRef.current?.anlzFiles.length ?? 0,
+      matchedFileCount: matchedFilesRef.current.length,
+      batchFileCount: uploadBatchesRef.current.reduce((count, batch) => count + batch.length, 0),
+      pathMapCount: retryFilesByPathRef.current.size,
+      objectUrlCount: objectUrlsRef.current.size,
+      directoryHandleCount: directoryHandlesRef.current.length,
+    });
+
+    if (!verification.released) {
+      throw new Error(`USB release verification failed: ${verification.blockers.join(', ')}`);
+    }
+
+    uploadQueueRuntimeRef.current = null;
+    usbReleaseConfirmedRef.current = true;
+    if (mountedRef.current) {
+      setUsbReleaseConfirmed(true);
+      setPhase('usb_released');
+    }
+  };
+
+  const closeAfterCancellationIfRequested = () => {
+    if (!closeAfterCancelRef.current) return;
+    reset();
+    onClose();
+  };
+
+  const cancelCloudWork = (): Promise<void> => {
+    if (cancelBackendPromiseRef.current) return cancelBackendPromiseRef.current;
+
+    const promise = (async () => {
+      const id = importIdRef.current;
+      const fallbackToken = accessTokenRef.current ?? undefined;
+      cloudAbortControllerRef.current?.abort();
+      cloudAbortControllerRef.current = null;
+
+      cloudCancellationControllerRef.current?.abort();
+      cloudCancellationTimersRef.current.cancelAll();
+      const cancellationController = new AbortController();
+      const cancellationTimers = new AbortableTimerRegistry();
+      cloudCancellationControllerRef.current = cancellationController;
+      cloudCancellationTimersRef.current = cancellationTimers;
+
+      if (mountedRef.current) {
+        setCloudCancellationStarted(true);
+        setPhase('cancelling_cloud_work');
+      }
+
+      if (!id) {
+        cancellationController.abort();
+        cancellationTimers.cancelAll();
+        if (cloudCancellationControllerRef.current === cancellationController) {
+          cloudCancellationControllerRef.current = null;
+        }
+        if (cloudCancellationTimersRef.current === cancellationTimers) {
+          cloudCancellationTimersRef.current = new AbortableTimerRegistry();
+        }
+        if (mountedRef.current) setPhase('cancelled');
+        closeAfterCancellationIfRequested();
+        return;
+      }
+
+      try {
+        let job = await requestWithAuthRetry(
+          (token) => cancelRekordboxImport(id, token, cancellationController.signal),
+          fallbackToken,
+        );
+
+        for (let poll = 0; poll < CLOUD_CANCEL_MAX_POLLS; poll += 1) {
+          if (job.status === 'cancelled' || job.status === 'completed' || job.status === 'failed') break;
+          await waitForAbortableDelay(
+            CLOUD_CANCEL_POLL_MS,
+            cancellationController.signal,
+            cancellationTimers,
+          );
+          job = await requestWithAuthRetry(
+            (token) => fetchRekordboxImportJob(id, token, cancellationController.signal),
+            fallbackToken,
+          );
+        }
+
+        if (!mountedRef.current) return;
+
+        if (job.status === 'cancelled') {
+          setPhase('cancelled');
+        } else if (job.status === 'completed') {
+          setErrorMessage(
+            'This import finished before the cancellation reached the server. It remains completed in Import History.',
+          );
+          setPhase('failed');
+          onSuccess();
+        } else if (job.status === 'failed') {
+          setErrorMessage(job.error_message ?? 'The import failed while cancellation was being processed.');
+          setPhase('failed');
+        } else {
+          setErrorMessage('USB access is released, but cloud cancellation is still pending. Check Import History before starting another import.');
+          setPhase('failed');
+        }
+      } catch (error) {
+        if (!mountedRef.current || isAbortError(error)) return;
+        setErrorMessage(
+          'USB access is released, but DropDex could not confirm cloud cancellation. Check Import History before retrying.',
+        );
+        setPhase('failed');
+      } finally {
+        cancellationTimers.cancelAll();
+        if (cloudCancellationControllerRef.current === cancellationController) {
+          cloudCancellationControllerRef.current = null;
+        }
+        if (cloudCancellationTimersRef.current === cancellationTimers) {
+          cloudCancellationTimersRef.current = new AbortableTimerRegistry();
+        }
+        closeAfterCancellationIfRequested();
+      }
+    })();
+
+    cancelBackendPromiseRef.current = promise;
+    return promise;
+  };
+
+  const requestLocalUsbStop = () => {
+    if (mountedRef.current) setPhase('stopping_usb_reads');
+    localAbortRequestedRef.current = true;
+    uploadQueueRuntimeRef.current?.abortScheduling();
+    retryTimersRef.current.cancelAll();
+    performLocalUsbCleanup(true);
+  };
+
   const handleContinueInBackground = () => {
     const importId = importIdRef.current;
-    if (!importId || phase !== 'parsing_analysis') return;
+    if (!importId || (phase !== 'parsing_cloud_data' && phase !== 'usb_released')) return;
     backgroundedRef.current = true;
     onBackgrounded?.(importId);
     onClose();
   };
 
+  const openAbortDialog = (intent: AbortDialogIntent) => {
+    setAbortDialogIntent(intent);
+    setShowAbortDialog(true);
+  };
+
   const handleClose = () => {
-    if (phase === 'parsing_analysis') {
+    if (phase === 'parsing_cloud_data' || phase === 'usb_released') {
       handleContinueInBackground();
       return;
     }
-    if (isUploading) {
-      setShowAbortDialog(true);
+    if (localUsbAccessActive) {
+      openAbortDialog('close');
       return;
     }
+    if (phase === 'cancelling_cloud_work') return;
     reset();
     onClose();
   };
 
   const confirmAbort = () => {
-    const id = importIdRef.current;
-    const token = accessTokenRef.current;
-    operationRef.current += 1;
-    abortControllerRef.current?.abort();
+    closeAfterCancelRef.current = abortDialogIntent === 'close';
+    cancelRequestedRef.current = true;
     setShowAbortDialog(false);
     setErrorMessage('');
-    setPhase('cancelling');
 
-    if (!id || !token) {
-      setErrorMessage(
-        'The local request stopped before DropDex received an import ID. Check Import History before retrying.',
-      );
-      setPhase('error');
+    if (phase === 'parsing_cloud_data' || phase === 'usb_released') {
+      usbReleaseConfirmedRef.current = true;
+      setUsbReleaseConfirmed(true);
+      void cancelCloudWork();
       return;
     }
 
-    void cancelRekordboxImport(id, token)
-      .then((job) => {
-        if (job.status === 'cancelled') {
-          setPhase('cancelled');
-          return;
-        }
-        if (job.status === 'completed') {
-          setErrorMessage(
-            'This import finished before the cancellation reached the server. It remains completed in Import History.',
-          );
-          setPhase('error');
-          onSuccess();
-          return;
-        }
-        if (job.status === 'failed') {
-          setErrorMessage(job.error_message ?? 'The import failed while cancellation was being processed.');
-          setPhase('error');
-          return;
-        }
-        setErrorMessage('Cancellation is still pending. Check Import History before starting another import.');
-        setPhase('error');
-      })
-      .catch(() => {
-        setErrorMessage(
-          'The upload stopped locally, but DropDex could not confirm backend cancellation. Check Import History before retrying.',
-        );
-        setPhase('error');
-      });
+    if (localUsbAccessActive) {
+      requestLocalUsbStop();
+      return;
+    }
+
+    void cancelCloudWork();
   };
 
   const handleDone = () => {
@@ -347,7 +582,7 @@ export function ImportLibraryModal({
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
 
-    setPhase('scanning');
+    setPhase('scanning_usb');
     const files = Array.from(fileList);
     const dbFile = findDatabaseFile(files);
     const anlzFiles = files.filter(isAnlzFile);
@@ -355,7 +590,7 @@ export function ImportLibraryModal({
       (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath
         ?.split('/')[0] ?? 'Selected folder';
 
-    setFolderScan({ dbFile, anlzFiles, folderName });
+    setFolderScanResource({ dbFile, anlzFiles, folderName });
     setPhase('database_selected');
   };
 
@@ -368,141 +603,44 @@ export function ImportLibraryModal({
     if (mode === 'zip_bundle') {
       if (!file.name.toLowerCase().endsWith('.zip')) {
         setErrorMessage('Please select a .zip file.');
-        setPhase('error');
+        setPhase('failed');
         return;
       }
-    } else {
-      if (!file.name.toLowerCase().endsWith('.db')) {
-        setErrorMessage(
-          'Please select a .db file. The rekordbox database is named exportLibrary.db.',
-        );
-        setPhase('error');
-        return;
-      }
+    } else if (!file.name.toLowerCase().endsWith('.db')) {
+      setErrorMessage(
+        'Please select a .db file. The rekordbox database is named exportLibrary.db.',
+      );
+      setPhase('failed');
+      return;
     }
 
-    setSelectedFile(file);
+    setSelectedFileResource(file);
     setPhase('database_selected');
   };
 
-  // ── Import handler ───────────────────────────────────────────────────────────
+  const runUsbFolderUpload = async (
+    token: string,
+    controller: AbortController,
+    jobId: string,
+    operation: number,
+  ): Promise<CloudParsingContext> => {
+    const scan = folderScanRef.current;
+    if (!scan?.dbFile) throw new Error('No exportLibrary.db found in the selected folder.');
 
-  const handleImport = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) {
-      setErrorMessage('You must be signed in to import a library.');
-      setPhase('error');
-      return;
-    }
-    const token = session.access_token;
-    accessTokenRef.current = token;
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    const operation = ++operationRef.current;
-    const sourceFile = mode === 'usb_folder' ? folderScan?.dbFile : selectedFile;
-    if (!sourceFile) return;
-
-    setPhase('starting_import');
-    try {
-      const job = await createRekordboxImportJob(sourceFile.name, mode, token, {
-        deviceName: folderScan?.folderName,
-        signal: controller.signal,
-      });
-      if (operation !== operationRef.current) return;
-      importIdRef.current = job.import_id;
-      onImportStarted?.(job.import_id);
-
-      if (mode === 'database_only') {
-        await runDatabaseOnlyImport(token, controller, job.import_id, operation);
-      } else if (mode === 'zip_bundle') {
-        await runZipBundleImport(token, controller, job.import_id, operation);
-      } else {
-        await runUsbFolderImport(token, controller, job.import_id, operation);
-      }
-    } catch (err) {
-      if (operation !== operationRef.current || isAbortError(err)) return;
-      const { message, structured } = extractError(err);
-      setErrorMessage(message);
-      setErrorStructured(structured);
-      setPhase('error');
-    }
-  };
-
-  const runDatabaseOnlyImport = async (
-    token: string, controller: AbortController, jobId: string, operation: number,
-  ) => {
-    if (!selectedFile) return;
-    setPhase('starting_import');
-    try {
-      const result = await uploadRekordboxDb(selectedFile, token, {
-        deviceName: folderScan?.folderName, signal: controller.signal, importId: jobId,
-      });
-      if (operation !== operationRef.current) return;
-      setFinalResult({ kind: 'library_only', data: result });
-      setPhase('success');
-    } catch (err) {
-      if (isAbortError(err) || operation !== operationRef.current) return;
-      const { message, structured } = extractError(err);
-      setErrorMessage(message);
-      setErrorStructured(structured);
-      setPhase('error');
-    }
-  };
-
-  const runZipBundleImport = async (
-    token: string, controller: AbortController, jobId: string, operation: number,
-  ) => {
-    if (!selectedFile) return;
-    setPhase('uploading_analysis');
-    try {
-      const result = await uploadRekordboxZipBundle(
-        selectedFile,
-        token,
-        (pct) => setProgress(p => ({ ...p, bundlePct: pct })),
-        controller.signal,
-        jobId,
-      );
-      if (operation !== operationRef.current) return;
-      setFinalResult({ kind: 'with_analysis', data: result });
-      setPhase(result.analysis_status === 'completed' ? 'success' : 'partial_success');
-    } catch (err) {
-      if (isAbortError(err) || operation !== operationRef.current) return;
-      const { message, structured } = extractError(err);
-      setErrorMessage(message);
-      setErrorStructured(structured);
-      setPhase('error');
-    }
-  };
-
-  const runUsbFolderImport = async (
-    token: string, controller: AbortController, jobId: string, operation: number,
-  ) => {
-    if (!folderScan?.dbFile) {
-      setErrorMessage('No exportLibrary.db found in the selected folder.');
-      setPhase('error');
-      return;
-    }
-
-    // ── Stage 1: upload DB, get manifest ──────────────────────────────────────
-    setPhase('starting_import');
-    let startResp: ImportStartResponse;
-    try {
-      startResp = await startRekordboxImport(
-        folderScan.dbFile, token, controller.signal, folderScan.folderName, jobId,
-      );
-      if (operation !== operationRef.current) return;
-    } catch (err) {
-      if (isAbortError(err) || operation !== operationRef.current) return;
-      const { message, structured } = extractError(err);
-      setErrorMessage(message);
-      setErrorStructured(structured);
-      setPhase('error');
-      return;
-    }
+    setLocalUsbStage('uploading_database');
+    setPhase('uploading_usb_data');
+    const startResp = await runTrackedLocalRequest(() => startRekordboxImport(
+      scan.dbFile as File,
+      token,
+      controller.signal,
+      scan.folderName,
+      jobId,
+    ));
+    throwIfLocalCancellationRequested(controller);
+    if (operation !== operationRef.current) throw new DOMException('Stale import', 'AbortError');
 
     importIdRef.current = startResp.import_id;
 
-    // Capture reuse stats if the backend returned them (incremental rescan)
     if (
       (startResp.tracks_reused ?? 0) > 0 ||
       (startResp.tracks_metadata_only ?? 0) > 0 ||
@@ -516,12 +654,13 @@ export function ImportLibraryModal({
       });
     }
 
-    // ── Stage 2: match scanned files against manifest ─────────────────────────
-    setPhase('matching_analysis');
-    const matchedFiles = buildMatchedFiles(folderScan.anlzFiles, startResp.manifest);
+    setLocalUsbStage('matching_analysis');
+    const matchedFiles = buildMatchedFiles(scan.anlzFiles, startResp.manifest);
     const batches = buildBatches(matchedFiles, BATCH_SIZE, MAX_BYTES_PER_BATCH);
+    matchedFilesRef.current = matchedFiles;
+    uploadBatchesRef.current = batches;
 
-    const totalBytes = matchedFiles.reduce((sum, m) => sum + m.file.size, 0);
+    const totalBytes = matchedFiles.reduce((sum, item) => sum + item.file.size, 0);
     setProgress({
       filesUploaded: 0,
       filesTotal: matchedFiles.length,
@@ -530,163 +669,117 @@ export function ImportLibraryModal({
       bundlePct: 0,
     });
 
-    // ── Stage 3: concurrent batch upload ANLZ files ───────────────────────────
-    setPhase('uploading_analysis');
-
-    // Lookup map for file-level retry: lowercase canonical path → MatchedAnalysisFile.
-    const filesByLowerPath = new Map<string, MatchedAnalysisFile>(
-      matchedFiles.map((mf) => [mf.canonicalPath.toLowerCase(), mf]),
-    );
-
+    setLocalUsbStage('uploading_analysis');
     const accumulator = new UploadAccumulator();
-    let uploadAborted = false;
+    const runtime = new UploadQueueRuntime(batches.length);
+    uploadQueueRuntimeRef.current = runtime;
 
-    await new Promise<void>((resolve) => {
-      let active = 0;
-      let dispatched = 0;
-      let settled = 0;
-      const total = batches.length;
-
-      if (total === 0) { resolve(); return; }
-
-      const maybeDone = () => {
-        if (settled === total) resolve();
-      };
-
-      const runNext = () => {
-        while (active < MAX_CONCURRENT && dispatched < total) {
-          const batch = batches[dispatched++];
-          active++;
-
-          uploadBatchWithRetry(
-            startResp.import_id,
-            batch,
-            accessTokenRef.current ?? token,
-            controller.signal,
-          )
-            .then((resp) => {
-              active--;
-              settled++;
-              if (resp) {
-                accumulator.addBatchResponse(resp, batch);
-              } else {
-                accumulator.recordFailedBatch(batch);
-              }
-              // Update progress from server-confirmed bytes (not attempted batch bytes)
-              setProgress((p) => ({
-                ...p,
-                filesUploaded: accumulator.confirmedFiles,
-                bytesUploaded: accumulator.confirmedBytes,
-              }));
-              setRejectedCount(accumulator.summary.rejectedFiles + accumulator.summary.errorFiles);
-              runNext();
-              maybeDone();
-            })
-            .catch((err) => {
-              active--;
-              settled++;
-              if (isAbortError(err)) {
-                uploadAborted = true;
-              } else {
-                console.warn('[DropDex] Batch upload error (all retries exhausted):', err);
-                accumulator.recordFailedBatch(batch);
-              }
-              runNext();
-              maybeDone();
-            });
-        }
-      };
-
-      runNext();
+    const queueResult = await runCancellableUploadQueue<MatchedAnalysisFile[], BatchUploadResponse | null>({
+      batches,
+      maxConcurrent: MAX_CONCURRENT,
+      signal: controller.signal,
+      runtime,
+      isLocallyAborted: () => localAbortRequestedRef.current,
+      isAbortError,
+      isFailedResult: (response) => response === null,
+      runBatch: (batch) => uploadBatchWithRetry(
+        startResp.import_id,
+        batch,
+        accessTokenRef.current ?? token,
+        controller.signal,
+        3,
+        {
+          retryTimers: retryTimersRef.current,
+          isLocallyAborted: () => localAbortRequestedRef.current,
+        },
+      ),
+      onBatchSuccess: (response, batch) => {
+        if (response) accumulator.addBatchResponse(response, batch);
+        if (!mountedRef.current || operation !== operationRef.current) return;
+        setProgress((current) => ({
+          ...current,
+          filesUploaded: accumulator.confirmedFiles,
+          bytesUploaded: accumulator.confirmedBytes,
+        }));
+        setRejectedCount(accumulator.summary.rejectedFiles + accumulator.summary.errorFiles);
+      },
+      onBatchFailure: (error, batch) => {
+        if (!isAbortError(error)) accumulator.recordFailedBatch(batch);
+      },
     });
 
-    // ── Stage 3a: file-level retry for transient individual-file failures ────────
-    // The initial batch loop handles request-level failures (network, HTTP errors).
-    // This loop handles HTTP 200 responses where individual files inside the batch
-    // failed with a transient status (e.g. status "error", or rejected with
-    // "Upload failed. Please try again."). We retry those files up to 2 more times
-    // (3 total attempts per file), without calling addBatchResponse again so that
-    // _attemptedFiles counts unique files rather than attempts.
-    //
-    // Delays: 500 ms before attempt 2, 1 000 ms before attempt 3.
-    const FILE_RETRY_DELAYS_MS = [500, 1000];
+    if (queueResult.cancelled || localAbortRequestedRef.current || controller.signal.aborted) {
+      throw new DOMException('USB upload cancelled', 'AbortError');
+    }
 
-    for (let ri = 0; ri < FILE_RETRY_DELAYS_MS.length && !uploadAborted; ri++) {
+    const filesByLowerPath = new Map<string, MatchedAnalysisFile>(
+      matchedFiles.map((file) => [file.canonicalPath.toLowerCase(), file]),
+    );
+    retryFilesByPathRef.current = filesByLowerPath;
+    const fileRetryDelaysMs = [500, 1000];
+
+    for (let retryIndex = 0; retryIndex < fileRetryDelaysMs.length; retryIndex += 1) {
+      throwIfLocalCancellationRequested(controller);
       const retryPaths = accumulator.retryableFilePaths;
       if (retryPaths.length === 0) break;
-
       setRetryingCount(retryPaths.length);
 
-      // Abortable delay before each retry attempt.
-      await new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, FILE_RETRY_DELAYS_MS[ri]);
-        controller.signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
-      });
-
-      if (controller.signal.aborted) { uploadAborted = true; break; }
+      await waitForAbortableDelay(
+        fileRetryDelaysMs[retryIndex],
+        controller.signal,
+        retryTimersRef.current,
+        () => localAbortRequestedRef.current,
+      );
+      throwIfLocalCancellationRequested(controller);
 
       const retryBatch = retryPaths
-        .map((p) => filesByLowerPath.get(p))
-        .filter((mf): mf is MatchedAnalysisFile => mf !== undefined);
-
+        .map((path) => filesByLowerPath.get(path))
+        .filter((file): file is MatchedAnalysisFile => file !== undefined);
       if (retryBatch.length === 0) break;
 
-      if (import.meta.env.DEV) {
-        console.debug('[ANLZ retry] File-level retry attempt', ri + 2, {
-          count: retryBatch.length,
-          files: retryBatch.map((f) => ({
-            path: f.canonicalPath,
-            type: f.assetType,
-            attempt: ri + 2,
-          })),
-        });
-      }
-
-      // Use maxAttempts=1 here: request-level retries are handled by
-      // uploadBatchWithRetry only on the initial pass.
       const { data: { session: retrySession } } = await supabase.auth.getSession();
-      const retryTok = retrySession?.access_token ?? accessTokenRef.current ?? token;
-      accessTokenRef.current = retryTok;
-      const retryResp = await uploadBatchWithRetry(
+      throwIfLocalCancellationRequested(controller);
+      const retryToken = retrySession?.access_token ?? accessTokenRef.current ?? token;
+      accessTokenRef.current = retryToken;
+
+      const retryResponse = await runTrackedLocalRequest(() => uploadBatchWithRetry(
         startResp.import_id,
         retryBatch,
-        retryTok,
+        retryToken,
         controller.signal,
         1,
-      );
+        {
+          retryTimers: retryTimersRef.current,
+          isLocallyAborted: () => localAbortRequestedRef.current,
+        },
+      ));
+      throwIfLocalCancellationRequested(controller);
+      if (retryResponse === null) break;
 
-      if (retryResp === null) {
-        // Request-level failure during file retry — leave affected files as-is.
-        if (import.meta.env.DEV) {
-          console.debug('[ANLZ retry] Request-level failure on retry attempt', ri + 2, {
-            paths: retryPaths,
-          });
-        }
-        break;
-      }
-
-      for (const fr of retryResp.files) {
-        const succeeded = fr.status === 'received' || fr.status === 'already_received';
-        if (succeeded) {
+      for (const fileResult of retryResponse.files) {
+        if (fileResult.status === 'received' || fileResult.status === 'already_received') {
           accumulator.correctFileRetrySuccess(
-            fr.canonical_path,
-            fr.status as 'received' | 'already_received',
-            fr.file_size,
+            fileResult.canonical_path,
+            fileResult.status,
+            fileResult.file_size,
           );
         }
-        if (import.meta.env.DEV) {
-          console.debug('[ANLZ retry] File result on attempt', ri + 2, {
-            path: fr.canonical_path,
-            status: fr.status,
-            reason: fr.reject_reason,
-            resolved: succeeded,
-            stillRetryable: !succeeded && isTransientFileFailure(fr),
+        if (
+          import.meta.env.DEV &&
+          fileResult.status !== 'received' &&
+          fileResult.status !== 'already_received'
+        ) {
+          console.debug('[ANLZ retry] File remains unresolved', {
+            path: fileResult.canonical_path,
+            status: fileResult.status,
+            reason: fileResult.reject_reason,
+            retryable: isTransientFileFailure(fileResult),
           });
         }
       }
 
-      setProgress((p) => ({
-        ...p,
+      setProgress((current) => ({
+        ...current,
         filesUploaded: accumulator.confirmedFiles,
         bytesUploaded: accumulator.confirmedBytes,
       }));
@@ -694,88 +787,84 @@ export function ImportLibraryModal({
     }
 
     setRetryingCount(0);
+    throwIfLocalCancellationRequested(controller);
 
-    if (uploadAborted || operation !== operationRef.current) return;
-
-    // ── Stage 3b: manifest reconciliation ────────────────────────────────────
-    // Compare what the manifest expected against what was actually uploaded.
-    // This produces structured info about missing / failed files, surfaced in
-    // the completion UI. It does NOT gate calling /complete — the backend
-    // handles missing DAT files by marking individual tracks as missing_required
-    // and returning analysis_status "partial", so all valid tracks still parse.
-    const recon = buildManifestReconciliation(
+    setReconciliation(buildManifestReconciliation(
       startResp.manifest,
       matchedFiles,
       accumulator.successfullyUploadedPaths,
-    );
-    setReconciliation(recon);
+    ));
 
-    // ── Stage 4: trigger server-side parsing ──────────────────────────────────
-    // Always call /complete unless the user explicitly cancelled. The backend
-    // is idempotent (upsert semantics) and handles missing files gracefully.
-    const initialTotalTracks = startResp.expected_track_count || startResp.manifest.length || 0;
+    return createCloudParsingContext(
+      startResp.import_id,
+      startResp.expected_track_count || startResp.manifest.length || 0,
+    );
+  };
+
+  const runCloudParsing = async (
+    context: CloudParsingContext,
+    fallbackToken: string,
+    operation: number,
+  ) => {
+    const cloudController = new AbortController();
+    cloudAbortControllerRef.current = cloudController;
     setParseProgress({
       currentTrackLabel: null,
       parsedTracks: 0,
-      totalTracks: initialTotalTracks,
+      totalTracks: context.expectedTrackCount,
       percent: 0,
     });
-    setPhase('parsing_analysis');
+    setPhase('parsing_cloud_data');
 
-    let completeResp: CompleteResponse;
-    let stopParsePolling = false;
+    let stopPolling = false;
     let pollTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const pollParsingStatus = async () => {
       if (
-        stopParsePolling
-        || backgroundedRef.current
-        || controller.signal.aborted
-        || operation !== operationRef.current
-      ) {
-        return;
-      }
+        stopPolling ||
+        backgroundedRef.current ||
+        cloudController.signal.aborted ||
+        operation !== operationRef.current
+      ) return;
 
       try {
         const status = await requestWithAuthRetry(
-          (activeToken) => fetchRekordboxAnalysisStatus(
-            startResp.import_id,
-            activeToken,
-            controller.signal,
+          (token) => fetchRekordboxAnalysisStatus(
+            context.importId,
+            token,
+            cloudController.signal,
           ),
-          token,
+          fallbackToken,
         );
-        if (stopParsePolling || operation !== operationRef.current) return;
+        if (stopPolling || operation !== operationRef.current) return;
 
-        const totalTracks = status.expected_track_count || initialTotalTracks || 0;
+        const totalTracks = status.expected_track_count || context.expectedTrackCount;
         const parsedTracks = Math.max(0, status.parsed_track_count || 0);
         const percent = typeof status.progress_percent === 'number'
           ? clampPct(status.progress_percent)
           : clampPct(totalTracks > 0 ? (parsedTracks / totalTracks) * 100 : 0);
-
         setParseProgress({
           currentTrackLabel: status.current_track_label || null,
           parsedTracks,
           totalTracks,
           percent,
         });
-      } catch (err) {
-        if (isUnauthorizedRekordboxImportError(err)) {
-          stopParsePolling = true;
+      } catch (error) {
+        if (isUnauthorizedRekordboxImportError(error)) {
+          stopPolling = true;
           setParseProgress((current) => ({
             ...current,
             currentTrackLabel: 'Progress connection paused; server-side parsing is still running.',
           }));
-        }
-        if (!isAbortError(err) && import.meta.env.DEV) {
-          console.debug('[DropDex] Analysis status polling failed:', err);
+        } else if (!isAbortError(error) && import.meta.env.DEV) {
+          console.debug('[DropDex] Analysis status polling failed:', error);
         }
       } finally {
         if (
-          !stopParsePolling
-          && !backgroundedRef.current
-          && !controller.signal.aborted
-          && operation === operationRef.current
+          !stopPolling &&
+          !backgroundedRef.current &&
+          !cloudController.signal.aborted &&
+          operation === operationRef.current
         ) {
           pollTimeout = setTimeout(pollParsingStatus, PARSE_STATUS_POLL_MS);
         }
@@ -785,56 +874,195 @@ export function ImportLibraryModal({
     void pollParsingStatus();
 
     try {
-      completeResp = await requestWithAuthRetry(
-        (activeToken) => completeRekordboxImport(
-          startResp.import_id,
-          activeToken,
-          { signal: controller.signal },
+      const completeResponse = await requestWithAuthRetry(
+        (token) => completeRekordboxImport(
+          context.importId,
+          token,
+          { signal: cloudController.signal },
         ),
-        token,
+        fallbackToken,
       );
-    } catch (err) {
-      stopParsePolling = true;
-      if (pollTimeout) clearTimeout(pollTimeout);
-      if (isAbortError(err) || operation !== operationRef.current) return;
-      const { message, structured } = extractError(err);
-      if (backgroundedRef.current) {
-        if (import.meta.env.DEV) {
-          console.error('[DropDex] Background analysis request failed:', message, structured);
-        }
-        reset();
+      if (operation !== operationRef.current || backgroundedRef.current || !mountedRef.current) return;
+
+      setParseProgress({
+        currentTrackLabel: null,
+        parsedTracks: completeResponse.total_tracks,
+        totalTracks: completeResponse.total_tracks,
+        percent: 100,
+      });
+
+      setFinalResult({ kind: 'with_analysis', data: completeResponse });
+      setPhase(completeResponse.analysis_status === 'completed' ? 'completed' : 'partial_success');
+    } catch (error) {
+      if (isAbortError(error) && cancelRequestedRef.current) {
+        await cancelCloudWork();
         return;
       }
-      setErrorMessage(message);
-      setErrorStructured(structured);
-      setPhase('error');
-      return;
+      if (isAbortError(error) || operation !== operationRef.current) return;
+      const extracted = extractError(error);
+      setErrorMessage(extracted.message);
+      setErrorStructured(extracted.structured);
+      setPhase('failed');
     } finally {
-      stopParsePolling = true;
+      stopPolling = true;
       if (pollTimeout) clearTimeout(pollTimeout);
+      if (cloudAbortControllerRef.current === cloudController) {
+        cloudAbortControllerRef.current = null;
+      }
     }
+  };
 
-    if (operation !== operationRef.current) return;
-    setParseProgress((p) => ({
-      ...p,
-      parsedTracks: completeResp.total_tracks,
-      totalTracks: completeResp.total_tracks,
-      percent: 100,
-    }));
+  // ── Import handler ───────────────────────────────────────────────────────────
 
-    if (backgroundedRef.current) {
-      // The persistent app-level monitor owns activation, refresh, and user
-      // notification. Do not navigate the user away from whatever they opened
-      // while this long-running request was finishing.
-      reset();
+  const handleImport = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      setErrorMessage('You must be signed in to import a library.');
+      setPhase('failed');
       return;
     }
 
-    setFinalResult({ kind: 'with_analysis', data: completeResp });
-    // "failed" analysis_status (all tracks missing_required) still lands in
-    // partial_success so the user sees a useful summary rather than an error screen.
-    setPhase(completeResp.analysis_status === 'completed' ? 'success' : 'partial_success');
+    let sourceFile = mode === 'usb_folder' ? folderScanRef.current?.dbFile ?? null : selectedFileRef.current;
+    if (!sourceFile) return;
+    const sourceFilename = sourceFile.name;
+
+    prepareLocalUsbLifecycle();
+    const token = session.access_token;
+    accessTokenRef.current = token;
+    const controller = new AbortController();
+    localAbortControllerRef.current = controller;
+    const operation = ++operationRef.current;
+
+    try {
+      setLocalUsbStage(mode === 'zip_bundle' ? 'uploading_bundle' : 'uploading_database');
+      setPhase('uploading_usb_data');
+      const job = await runTrackedLocalRequest(() => createRekordboxImportJob(
+        sourceFilename,
+        mode,
+        token,
+        {
+          deviceName: folderScanRef.current?.folderName,
+          signal: controller.signal,
+        },
+      ));
+      throwIfLocalCancellationRequested(controller);
+      if (operation !== operationRef.current) return;
+      importIdRef.current = job.import_id;
+      onImportStarted?.(job.import_id);
+
+      if (mode === 'database_only') {
+        const result = await runTrackedLocalRequest(() => uploadRekordboxDb(
+          sourceFile,
+          token,
+          {
+            deviceName: folderScanRef.current?.folderName,
+            signal: controller.signal,
+            importId: job.import_id,
+          },
+        ));
+        sourceFile = null;
+        throwIfLocalCancellationRequested(controller);
+        await verifyAndPublishUsbRelease();
+        if (cancelRequestedRef.current) {
+          await cancelCloudWork();
+          return;
+        }
+        setFinalResult({ kind: 'library_only', data: result });
+        setPhase('completed');
+        return;
+      }
+
+      if (mode === 'zip_bundle') {
+        const result = await runTrackedLocalRequest(() => uploadRekordboxZipBundle(
+          sourceFile,
+          token,
+          (percent) => setProgress((current) => ({ ...current, bundlePct: percent })),
+          controller.signal,
+          job.import_id,
+        ));
+        sourceFile = null;
+        throwIfLocalCancellationRequested(controller);
+        await verifyAndPublishUsbRelease();
+        if (cancelRequestedRef.current) {
+          await cancelCloudWork();
+          return;
+        }
+        setFinalResult({ kind: 'with_analysis', data: result });
+        setPhase(result.analysis_status === 'completed' ? 'completed' : 'partial_success');
+        return;
+      }
+
+      sourceFile = null;
+      const cloudContext = await runUsbFolderUpload(token, controller, job.import_id, operation);
+      await verifyAndPublishUsbRelease();
+      if (cancelRequestedRef.current) {
+        await cancelCloudWork();
+        return;
+      }
+
+      await Promise.resolve();
+      if (operation !== operationRef.current) return;
+      await runCloudParsing(cloudContext, token, operation);
+    } catch (error) {
+      sourceFile = null;
+      const cancelled = isAbortError(error) || controller.signal.aborted || localAbortRequestedRef.current;
+      try {
+        await verifyAndPublishUsbRelease();
+      } catch (releaseError) {
+        const extracted = extractError(releaseError);
+        setErrorMessage(
+          `DropDex could not verify that USB access ended. Keep Rekordbox closed and do not eject the drive. ${extracted.message}`,
+        );
+        setErrorStructured(extracted.structured);
+        setPhase('failed');
+        return;
+      }
+
+      if (cancelled) {
+        if (cancelRequestedRef.current) await cancelCloudWork();
+        return;
+      }
+      if (operation !== operationRef.current) return;
+      const extracted = extractError(error);
+      setErrorMessage(extracted.message);
+      setErrorStructured(extracted.structured);
+      setPhase('failed');
+    }
   };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      localAbortRequestedRef.current = true;
+      uploadQueueRuntimeRef.current?.abortScheduling();
+      retryTimersRef.current.cancelAll();
+      localCleanupRoutineRef.current(false);
+      if (!usbReleaseConfirmedRef.current) {
+        cloudAbortControllerRef.current?.abort();
+        cloudAbortControllerRef.current = null;
+      }
+      cloudCancellationControllerRef.current?.abort();
+      cloudCancellationControllerRef.current = null;
+      cloudCancellationTimersRef.current.cancelAll();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!localUsbAccessActive) return undefined;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      localAbortRequestedRef.current = true;
+      uploadQueueRuntimeRef.current?.abortScheduling();
+      retryTimersRef.current.cancelAll();
+      localCleanupRoutineRef.current(false);
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [localUsbAccessActive]);
 
   // ── Derived display values ────────────────────────────────────────────────────
 
@@ -878,17 +1106,18 @@ export function ImportLibraryModal({
                 >
                   <div className="bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-2xl p-6 text-center max-w-xs w-full">
                     <AlertTriangle className="mx-auto mb-3 text-amber-400" size={28} />
-                    <p className="font-bold text-lg mb-2">Cancel import?</p>
+                    <p className="font-bold text-lg mb-2">{abortDialogIntent === 'close' ? 'Close and stop import?' : 'Cancel import?'}</p>
                     <p className="text-sm text-muted-foreground mb-5">
-                      DropDex will stop upload or processing, remove partial import records, and
-                      keep the cancelled job visible in Import History.
+                      {localUsbAccessActive
+                        ? 'DropDex will stop scheduling USB reads, wait for active uploads to settle, release the USB, then cancel cloud work.'
+                        : 'The USB is already released. DropDex will cancel cloud processing and keep the job visible in Import History.'}
                     </p>
                     <div className="flex gap-3">
                       <button
                         onClick={confirmAbort}
                         className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors"
                       >
-                        Yes, cancel
+                        {abortDialogIntent === 'close' ? 'Stop and close' : 'Yes, cancel'}
                       </button>
                       <button
                         onClick={() => setShowAbortDialog(false)}
@@ -903,7 +1132,7 @@ export function ImportLibraryModal({
             </AnimatePresence>
 
             {/* ── Header ── */}
-            {(phase === 'idle' || phase === 'database_selected' || phase === 'scanning') && (
+            {(phase === 'idle' || phase === 'database_selected' || phase === 'scanning_usb') && (
               <div className="flex items-start justify-between mb-6">
                 <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0">
                   <Database className="text-primary" size={22} />
@@ -918,7 +1147,7 @@ export function ImportLibraryModal({
             )}
 
             {/* ── Mode tabs (idle / selected) ── */}
-            {(phase === 'idle' || phase === 'database_selected' || phase === 'scanning') && (
+            {(phase === 'idle' || phase === 'database_selected' || phase === 'scanning_usb') && (
               <>
                 <h2 className="text-2xl font-bold mb-4">Import Rekordbox Library</h2>
 
@@ -1092,56 +1321,169 @@ export function ImportLibraryModal({
               </>
             )}
 
-            {/* ── In-progress states ── */}
-            {(phase === 'starting_import' ||
-              phase === 'matching_analysis' ||
-              phase === 'parsing_analysis') && (
+            {/* ── Local USB access ── */}
+            {phase === 'uploading_usb_data' && (
               <div className="text-center py-4">
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
                   <Loader2 className="animate-spin text-primary" size={28} />
                 </div>
                 <h2 className="text-xl font-bold mb-2">
-                  {phase === 'starting_import' && 'Uploading Database…'}
-                  {phase === 'matching_analysis' && 'Matching Analysis Files…'}
-                  {phase === 'parsing_analysis' && 'Parsing Analysis Data…'}
+                  {localUsbStage === 'uploading_database' && 'Uploading Rekordbox Database…'}
+                  {localUsbStage === 'matching_analysis' && 'Matching Analysis Files…'}
+                  {localUsbStage === 'uploading_analysis' && 'Uploading Analysis Files…'}
+                  {localUsbStage === 'uploading_bundle' && 'Uploading Bundle…'}
                 </h2>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {phase === 'starting_import' &&
-                    'Sending exportLibrary.db to DropDex and retrieving the track manifest.'}
-                  {phase === 'matching_analysis' &&
-                    'Matching local ANLZ files to the import manifest.'}
-                  {phase === 'parsing_analysis' && (
-                    <>
-                      Parsing{' '}
-                      <span className="font-semibold text-foreground">
-                        {parseProgress.currentTrackLabel || 'current track…'}
-                      </span>
-                    </>
-                  )}
-                </p>
-                {phase === 'parsing_analysis' && (
-                  <div className="mt-5">
+
+                <div className="mt-4 mb-5 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left">
+                  <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-400" />
+                  <p className="text-xs leading-relaxed text-amber-100">
+                    DropDex is currently reading this Rekordbox USB. Keep Rekordbox closed and do not eject the drive until DropDex confirms that USB access has ended.
+                  </p>
+                </div>
+
+                {(localUsbStage === 'uploading_analysis' || localUsbStage === 'uploading_bundle') && (
+                  <>
                     <div className="w-full h-2 bg-[var(--color-surface)] rounded-full overflow-hidden mb-3">
                       <div
-                        className="h-full bg-primary rounded-full transition-all duration-500"
-                        style={{ width: `${parseProgress.percent}%` }}
+                        className="h-full bg-primary rounded-full transition-all duration-300"
+                        style={{ width: `${uploadPct}%` }}
                       />
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {parseProgress.percent}%
-                      {parseProgress.totalTracks > 0 && (
-                        <>
-                          {' '}·{' '}
-                          {Math.min(
-                            parseProgress.parsedTracks,
-                            parseProgress.totalTracks,
-                          ).toLocaleString()}
-                          {' '} / {parseProgress.totalTracks.toLocaleString()} tracks
-                        </>
-                      )}
+                    <p className="text-sm text-muted-foreground mb-1">{uploadPct}%</p>
+                    {mode !== 'zip_bundle' && progress.filesTotal > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {progress.filesUploaded.toLocaleString()} /{' '}
+                        {progress.filesTotal.toLocaleString()} files accepted
+                        {progress.bytesTotal > 0 && (
+                          <> · {fmtBytes(progress.bytesUploaded)} / {fmtBytes(progress.bytesTotal)}</>
+                        )}
+                        {rejectedCount > 0 && (
+                          <span className="text-amber-400"> · {rejectedCount.toLocaleString()} rejected</span>
+                        )}
+                      </p>
+                    )}
+                    {retryingCount > 0 && (
+                      <p className="text-xs text-amber-400 mt-1">
+                        Retrying {retryingCount} failed file{retryingCount !== 1 ? 's' : ''}…
+                      </p>
+                    )}
+                    {mode === 'zip_bundle' && selectedFile && (
+                      <p className="text-xs text-muted-foreground">{fmtBytes(selectedFile.size)}</p>
+                    )}
+                  </>
+                )}
+
+                <button
+                  onClick={() => openAbortDialog('cancel')}
+                  className="mt-6 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Cancel import
+                </button>
+              </div>
+            )}
+
+            {/* ── Normal verified USB release ── */}
+            {phase === 'usb_released' && !cancelRequestedRef.current && (
+              <div className="space-y-4 py-4 text-center">
+                <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="text-emerald-400" size={28} />
+                </div>
+                <h2 className="text-xl font-bold">USB Access Released</h2>
+                <p className="text-sm text-muted-foreground">
+                  USB reading is complete. DropDex is continuing from uploaded copies and no longer needs the USB.
+                </p>
+              </div>
+            )}
+
+            {/* ── Verified USB release / cancellation sequence ── */}
+            {(phase === 'stopping_usb_reads' ||
+              (phase === 'usb_released' && cancelRequestedRef.current) ||
+              phase === 'cancelling_cloud_work') && (
+              <div className="space-y-5 py-4">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
+                    {usbReleaseConfirmed ? (
+                      <CheckCircle2 className="text-emerald-400" size={28} />
+                    ) : (
+                      <Loader2 className="animate-spin text-amber-400" size={28} />
+                    )}
+                  </div>
+                  <h2 className="text-xl font-bold mb-2">
+                    {usbReleaseConfirmed ? 'USB Access Released' : 'Stopping USB Reads…'}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {usbReleaseConfirmed
+                      ? 'USB reading is complete. DropDex is continuing from uploaded copies and no longer needs the USB.'
+                      : 'Waiting only for active local upload requests to stop. No new batch or retry can begin.'}
+                  </p>
+                </div>
+
+                <div className="space-y-2 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4">
+                  <SafetyStep
+                    label="Stopping local USB reads"
+                    complete={usbReleaseConfirmed}
+                    active={!usbReleaseConfirmed}
+                  />
+                  <SafetyStep
+                    label="USB access released"
+                    complete={usbReleaseConfirmed}
+                    active={false}
+                  />
+                  <SafetyStep
+                    label="Stopping cloud processing"
+                    complete={false}
+                    active={cloudCancellationStarted || phase === 'cancelling_cloud_work'}
+                  />
+                </div>
+
+                {!usbReleaseConfirmed && (
+                  <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+                    <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-400" />
+                    <p className="text-xs leading-relaxed text-amber-100">
+                      Keep Rekordbox closed and do not eject the drive until the USB access released step is checked.
                     </p>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── Cloud parsing, no File objects retained ── */}
+            {phase === 'parsing_cloud_data' && (
+              <div className="text-center py-4">
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Loader2 className="animate-spin text-primary" size={28} />
+                </div>
+                <h2 className="text-xl font-bold mb-2">Parsing Uploaded Analysis Data…</h2>
+                <div className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left">
+                  <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-400" />
+                  <p className="text-xs leading-relaxed text-emerald-100">
+                    USB reading is complete. DropDex is continuing from uploaded copies and no longer needs the USB. You may open Rekordbox or eject the drive.
+                  </p>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Parsing{' '}
+                  <span className="font-semibold text-foreground">
+                    {parseProgress.currentTrackLabel || 'current track…'}
+                  </span>
+                </p>
+                <div className="mt-5">
+                  <div className="w-full h-2 bg-[var(--color-surface)] rounded-full overflow-hidden mb-3">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all duration-500"
+                      style={{ width: `${parseProgress.percent}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {parseProgress.percent}%
+                    {parseProgress.totalTracks > 0 && (
+                      <>
+                        {' '}·{' '}
+                        {Math.min(parseProgress.parsedTracks, parseProgress.totalTracks).toLocaleString()}
+                        {' '} / {parseProgress.totalTracks.toLocaleString()} tracks
+                      </>
+                    )}
+                  </p>
+                </div>
                 <div className="mt-6 flex flex-col gap-2 sm:flex-row">
                   <button
                     type="button"
@@ -1152,71 +1494,20 @@ export function ImportLibraryModal({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowAbortDialog(true)}
+                    onClick={() => openAbortDialog('cancel')}
                     className="flex-1 rounded-xl border border-[var(--color-border-subtle)] px-4 py-3 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground"
                   >
-                    Cancel Import
+                    Cancel Cloud Processing
                   </button>
                 </div>
                 <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
-                  You can keep using DropDex while analysis runs. The current active library stays visible until this import finishes.
+                  Closing now leaves cloud parsing running. Cancelling now does not access the USB.
                 </p>
-              </div>
-            )}
-
-            {phase === 'uploading_analysis' && (
-              <div className="text-center py-4">
-                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Loader2 className="animate-spin text-primary" size={28} />
-                </div>
-                <h2 className="text-xl font-bold mb-5">
-                  {mode === 'zip_bundle' ? 'Uploading Bundle…' : 'Uploading Analysis Files…'}
-                </h2>
-
-                {/* Progress bar */}
-                <div className="w-full h-2 bg-[var(--color-surface)] rounded-full overflow-hidden mb-3">
-                  <div
-                    className="h-full bg-primary rounded-full transition-all duration-300"
-                    style={{ width: `${uploadPct}%` }}
-                  />
-                </div>
-                <p className="text-sm text-muted-foreground mb-1">
-                  {uploadPct}%
-                </p>
-                {mode !== 'zip_bundle' && progress.filesTotal > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    {progress.filesUploaded.toLocaleString()} /{' '}
-                    {progress.filesTotal.toLocaleString()} files accepted
-                    {progress.bytesTotal > 0 && (
-                      <> · {fmtBytes(progress.bytesUploaded)} / {fmtBytes(progress.bytesTotal)}</>
-                    )}
-                    {rejectedCount > 0 && (
-                      <span className="text-amber-400"> · {rejectedCount.toLocaleString()} rejected</span>
-                    )}
-                  </p>
-                )}
-                {retryingCount > 0 && (
-                  <p className="text-xs text-amber-400 mt-1">
-                    Retrying {retryingCount} failed file{retryingCount !== 1 ? 's' : ''}…
-                  </p>
-                )}
-                {mode === 'zip_bundle' && selectedFile && (
-                  <p className="text-xs text-muted-foreground">
-                    {fmtBytes(selectedFile.size)}
-                  </p>
-                )}
-
-                <button
-                  onClick={() => setShowAbortDialog(true)}
-                  className="mt-6 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Cancel upload
-                </button>
               </div>
             )}
 
             {/* ── Success ── */}
-            {phase === 'success' && (
+            {phase === 'completed' && (
               <div className="text-center">
                 <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
                   <CheckCircle2 className="text-emerald-400" size={28} />
@@ -1224,6 +1515,15 @@ export function ImportLibraryModal({
                 <h2 className="text-xl font-bold mb-1">
                   {withAnalysis ? 'Library Imported with Analysis!' : 'Library Imported!'}
                 </h2>
+
+                {usbReleaseConfirmed && (
+                  <div className="my-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left">
+                    <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                    <p className="text-xs leading-relaxed text-emerald-100">
+                      USB reading is complete. DropDex no longer needs the USB.
+                    </p>
+                  </div>
+                )}
 
                 {withAnalysis && (
                   <p className="text-sm text-muted-foreground mb-5">
@@ -1350,6 +1650,14 @@ export function ImportLibraryModal({
                   <AlertTriangle className="text-amber-400" size={28} />
                 </div>
                 <h2 className="text-xl font-bold mb-2">Library Imported with Warnings</h2>
+                {usbReleaseConfirmed && (
+                  <div className="my-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left">
+                    <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                    <p className="text-xs leading-relaxed text-emerald-100">
+                      USB reading is complete. DropDex no longer needs the USB.
+                    </p>
+                  </div>
+                )}
                 {withAnalysis && (
                     <>
                       <p className="text-sm text-muted-foreground mb-5">
@@ -1420,25 +1728,13 @@ export function ImportLibraryModal({
             )}
 
             {/* ── Cancellation ── */}
-            {phase === 'cancelling' && (
-              <div className="space-y-4 py-4 text-center">
-                <Loader2 size={34} className="mx-auto animate-spin text-amber-500" />
-                <div>
-                  <h3 className="font-semibold">Cancelling import…</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    DropDex is stopping backend work and cleaning up partial records.
-                  </p>
-                </div>
-              </div>
-            )}
-
             {phase === 'cancelled' && (
               <div className="space-y-4 py-4 text-center">
                 <AlertCircle size={34} className="mx-auto text-amber-500" />
                 <div>
                   <h3 className="font-semibold">Import cancelled</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    DropDex stopped this import and will not activate partial results.
+                    USB access was released before cloud cancellation completed. DropDex will not activate partial results.
                   </p>
                   {errorMessage && <p className="mt-2 text-sm text-destructive">{errorMessage}</p>}
                 </div>
@@ -1448,7 +1744,7 @@ export function ImportLibraryModal({
               </div>
             )}
 
-            {phase === 'error' && (
+            {phase === 'failed' && (
               <div className="text-center">
                 <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
                   <AlertCircle className="text-red-400" size={28} />
@@ -1493,6 +1789,32 @@ export function ImportLibraryModal({
         </div>
       )}
     </AnimatePresence>
+  );
+}
+
+
+function SafetyStep({
+  label,
+  complete,
+  active,
+}: {
+  label: string;
+  complete: boolean;
+  active: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-3 text-left">
+      {complete ? (
+        <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />
+      ) : active ? (
+        <Loader2 size={16} className="shrink-0 animate-spin text-amber-400" />
+      ) : (
+        <div className="h-4 w-4 shrink-0 rounded-full border border-[var(--color-border-subtle)]" />
+      )}
+      <span className={cn('text-xs', complete ? 'text-foreground' : 'text-muted-foreground')}>
+        {label}
+      </span>
+    </div>
   );
 }
 

@@ -200,6 +200,10 @@ export function isUnauthorizedRekordboxImportError(error: unknown): boolean {
 
 const API_BASE = IMPORT_API_BASE;
 
+function throwIfSignalAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException('Upload aborted', 'AbortError');
+}
+
 type Validator<T> = (value: unknown) => T;
 
 function validateImportJob(value: unknown): ImportJob {
@@ -413,10 +417,12 @@ export async function uploadRekordboxDb(
   accessToken: string,
   options?: { deviceName?: string; signal?: AbortSignal; importId?: string },
 ): Promise<ImportResult> {
+  throwIfSignalAborted(options?.signal);
   const formData = new FormData();
   formData.append('file', file);
   if (options?.deviceName) formData.append('device_name', options.deviceName);
   if (options?.importId) formData.append('import_id', options.importId);
+  throwIfSignalAborted(options?.signal);
 
   const response = await fetch(`${API_BASE}/api/rekordbox/import`, {
     method: 'POST',
@@ -431,7 +437,11 @@ export async function uploadRekordboxDb(
   return parseResponse(response, validateImportResult);
 }
 
-/** Stage 1 of USB folder import: upload exportLibrary.db and receive the ANLZ manifest. */
+/**
+ * Stage 1 of USB folder import: upload exportLibrary.db and receive the ANLZ manifest.
+ * Read-only contract: File/FormData reads are the only local operations. This
+ * client never requests a writable handle and never modifies the source drive.
+ */
 export async function startRekordboxImport(
   file: File,
   accessToken: string,
@@ -439,10 +449,12 @@ export async function startRekordboxImport(
   deviceName?: string,
   importId?: string,
 ): Promise<ImportStartResponse> {
+  throwIfSignalAborted(signal);
   const formData = new FormData();
   formData.append('file', file);
   if (deviceName) formData.append('device_name', deviceName);
   if (importId) formData.append('import_id', importId);
+  throwIfSignalAborted(signal);
 
   const response = await fetch(`${API_BASE}/api/rekordbox/import/start`, {
     method: 'POST',
@@ -453,19 +465,25 @@ export async function startRekordboxImport(
   return parseResponse(response, validateImportStart);
 }
 
-/** Stage 2: upload a batch of ANLZ analysis files for an existing import. */
+/**
+ * Stage 2: upload a batch of ANLZ analysis files for an existing import.
+ * The browser reads immutable File objects supplied by the folder picker; no
+ * USB-side write, delete, rename, or database mutation API is used.
+ */
 export async function uploadRekordboxAnalysisBatch(
   importId: string,
   files: AnalysisFileUpload[],
   accessToken: string,
   signal?: AbortSignal,
 ): Promise<BatchUploadResponse> {
+  throwIfSignalAborted(signal);
   const formData = new FormData();
   for (const item of files) {
     // Use the full canonical path (e.g. PIONEER/USBANLZ/P001/ANLZ0000.DAT) as
     // the multipart filename so the backend can validate and store it correctly.
     formData.append('files', item.file, item.canonicalPath);
   }
+  throwIfSignalAborted(signal);
 
   const response = await fetch(
     `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/analysis-batch`,
@@ -530,15 +548,19 @@ export async function uploadRekordboxZipBundle(
   signal?: AbortSignal,
   importId?: string,
 ): Promise<CompleteResponse> {
-  if (signal?.aborted) {
-    throw new DOMException('Upload aborted', 'AbortError');
-  }
+  throwIfSignalAborted(signal);
 
   return new Promise<CompleteResponse>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
     formData.append('file', file);
     if (importId) formData.append('import_id', importId);
+    try {
+      throwIfSignalAborted(signal);
+    } catch (error) {
+      reject(error);
+      return;
+    }
 
     let settled = false;
 
