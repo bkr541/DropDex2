@@ -36,10 +36,7 @@ from typing import Dict, List, Optional
 from fastapi import HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 
-from .analysis_import_service import (
-    _ANALYSIS_BUCKET,
-    _upsert_asset,
-)
+from .analysis_import_service import _ANALYSIS_BUCKET
 from .config import settings
 from .import_jobs import (
     ImportCancelledError,
@@ -107,6 +104,21 @@ def _build_storage_path(user_id: str, import_id: str, canonical_path: str) -> st
     from dropdex_importer.analysis_paths import build_storage_path as _bp  # noqa: PLC0415
 
     return _bp(user_id, import_id, canonical_path)
+
+
+def _upsert_bundle_asset(sb, asset_data: dict) -> None:
+    """Atomically persist one bundle asset by its canonical import path.
+
+    The fast-path refactor removed the old check-then-write helper from
+    ``analysis_import_service``. Bundle imports still need retry-safe writes, so
+    use the natural key installed by the fast-path migration rather than
+    depending on a private helper owned by another service.
+    """
+    (
+        sb.table("rekordbox_analysis_assets")
+        .upsert(asset_data, on_conflict="import_id,relative_path")
+        .execute()
+    )
 
 
 def _is_zip_slip(entry_name: str) -> bool:
@@ -463,7 +475,7 @@ def _import_bundle_sync(
                     asset_warnings = [w.as_dict() for w in asset_obj.warnings] if asset_obj else []
                     now = _now_iso()
 
-                    _upsert_asset(
+                    _upsert_bundle_asset(
                         sb,
                         {
                             "import_id": import_id,
