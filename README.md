@@ -168,6 +168,13 @@ supabase migration list
 supabase db push --include-all
 ```
 
+Migration `20260725010000_rekordbox_import_fast_path.sql` intentionally leaves
+tracks from failed, cancelled, or deleting imports untouched. The worker-safety
+trigger blocks child writes for those terminal jobs, and schema deployment must
+not require deleting a failed import. If an earlier copy of this migration
+failed at the legacy-track backfill, update the migration file and rerun
+`supabase db push --include-all`; do not mark the failed migration as applied.
+
 After updating an existing installation, confirm that these repairs appear in
 the remote migration history:
 
@@ -175,6 +182,8 @@ the remote migration history:
 - `20260722020000_rekordbox_import_schema_convergence.sql`
 - `20260722030000_rekordbox_import_runtime_truth.sql`
 - `20260722040000_rekordbox_runtime_reliability_catchup.sql`
+- `20260725010000_rekordbox_import_fast_path.sql`
+- `20260725020000_rekordbox_import_remaining_safety.sql`
 
 The convergence migration repairs projects that skipped the June normalized-key
 or analysis-schema migrations as well as the July metadata and reliability

@@ -138,7 +138,8 @@ large deployments, but the database lease is now the safety referee. See
 `docs/rekordbox-usb-import-safety.md` for the full state machine and shutdown
 sequence.
 
-Apply the import-job migration before starting the patched backend:
+Apply all migrations, including the fast-path and worker-lease migrations,
+before starting the backend:
 
 ```bash
 supabase db push

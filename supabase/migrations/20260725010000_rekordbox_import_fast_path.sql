@@ -1,6 +1,8 @@
 -- DropDex Rekordbox import fast path and progressive-readiness state.
 -- Existing DAT/EXT/2EX imports remain readable. No raw objects are deleted.
 
+begin;
+
 alter table public.rekordbox_imports
   add column if not exists library_ready_at timestamptz,
   add column if not exists readiness_stage text not null default 'metadata_pending',
@@ -80,15 +82,26 @@ alter table public.rekordbox_tracks
 -- Backfill legacy imports without inventing missing fingerprints. Completed or
 -- intentionally skipped legacy tracks remain reusable; metadata-only rows do
 -- not become falsely incomplete merely because they never had an ANLZ path.
-update public.rekordbox_tracks
+--
+-- The worker-safety migration installs reject_terminal_import_write on child
+-- tables. PostgreSQL fires that trigger even when an UPDATE writes the same
+-- value, so terminal imports must be excluded explicitly. Failed/cancelled
+-- imports remain intact for inspection or deliberate cleanup by the user.
+update public.rekordbox_tracks as track
    set analysis_manifest_status = case
-         when analysis_data_file_path is null or btrim(analysis_data_file_path) = ''
+         when track.analysis_data_file_path is null or btrim(track.analysis_data_file_path) = ''
            then 'metadata_only'
-         when analysis_parse_status in ('completed', 'partial', 'reused', 'skipped')
+         when track.analysis_parse_status in ('completed', 'partial', 'reused', 'skipped')
            then 'reused'
          else 'needs_analysis'
        end
- where analysis_manifest_status = 'needs_analysis';
+ where track.analysis_manifest_status = 'needs_analysis'
+   and not exists (
+     select 1
+       from public.rekordbox_imports as import_job
+      where import_job.id = track.import_id
+        and import_job.status in ('deleting', 'cancelled', 'failed')
+   );
 
 -- Existing completed imports are immediately browseable after deployment.
 update public.rekordbox_imports
@@ -238,3 +251,5 @@ alter table public.rekordbox_imports
       'completed', 'partial', 'failed', 'interrupted'
     )
   );
+
+commit;
