@@ -72,12 +72,12 @@ function TrackRowSearch({
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(track); } }}
       aria-label={`Open ${track.title}${track.artist ? ` by ${track.artist}` : ''}`}
       className={cn(
-        'group w-full px-4 py-2.5 hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset',
+        'group w-full px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset',
         isActiveRow && 'border-l-2 border-l-primary bg-primary/5 hover:bg-primary/10',
       )}
     >
       {/* Desktop */}
-      <div className="hidden sm:grid grid-cols-[36px_1fr_1fr_56px_56px] items-center gap-x-2">
+      <div className="hidden sm:grid grid-cols-[36px_1fr_1fr_56px_56px] items-center gap-x-2 gap-y-2">
         {/* Play button */}
         <div className="flex items-center justify-center">
           <button
@@ -104,7 +104,7 @@ function TrackRowSearch({
           </button>
         </div>
 
-        {/* Title + waveform */}
+        {/* Title */}
         <div className="min-w-0 pr-2">
           <p className={cn(
             'text-sm font-semibold truncate transition-colors leading-tight',
@@ -112,16 +112,6 @@ function TrackRowSearch({
           )}>
             {track.title}
           </p>
-          <div className="mt-1.5">
-            <RekordboxPreviewWaveform
-              state={waveformState}
-              height={22}
-              onRetry={onRetryWaveform}
-              activeProgress={progress}
-              onSeek={canSeek ? handleWaveformSeek : undefined}
-              ariaLabel=""
-            />
-          </div>
         </div>
 
         <p className="text-xs text-muted-foreground truncate pr-4">{track.artist ?? '—'}</p>
@@ -129,6 +119,18 @@ function TrackRowSearch({
           {track.bpm != null ? track.bpm.toFixed(1) : '—'}
         </p>
         <p className="text-xs font-mono text-secondary text-center">{formatKey(track.musical_key)}</p>
+
+        <div className="col-span-full">
+          <RekordboxPreviewWaveform
+            state={waveformState}
+            height={30}
+            variant="compact"
+            onRetry={onRetryWaveform}
+            activeProgress={progress}
+            onSeek={canSeek ? handleWaveformSeek : undefined}
+            ariaLabel=""
+          />
+        </div>
       </div>
 
       {/* Mobile */}
@@ -165,7 +167,8 @@ function TrackRowSearch({
         <div className="mt-1.5">
           <RekordboxPreviewWaveform
             state={waveformState}
-            height={20}
+            height={26}
+            variant="compact"
             onRetry={onRetryWaveform}
             activeProgress={progress}
             onSeek={canSeek ? handleWaveformSeek : undefined}

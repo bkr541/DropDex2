@@ -23,17 +23,6 @@ import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 
-const GENRE_BADGE_STYLES = [
-  'bg-foreground text-primary border-foreground',
-  'bg-foreground text-secondary border-foreground',
-  'bg-foreground text-emerald-400 border-foreground',
-  'bg-foreground text-amber-400 border-foreground',
-  'bg-foreground text-sky-400 border-foreground',
-  'bg-foreground text-violet-400 border-foreground',
-  'bg-foreground text-rose-400 border-foreground',
-  'bg-foreground text-teal-400 border-foreground',
-];
-
 const ANALYSIS_TITLES: Record<string, string> = {
   partial: 'Analysis Incomplete',
   failed: 'Analysis Failed',
@@ -417,12 +406,12 @@ const TrackRow = memo(function TrackRow({
       onKeyDown={handleKeyDown}
       aria-label={`Open ${t.title}${t.artist ? ` by ${t.artist}` : ''}`}
       className={cn(
-        'group w-full px-4 py-2.5 hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset',
+        'group w-full px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset',
         isActiveRow && 'border-l-2 border-l-primary bg-primary/5 hover:bg-primary/10',
       )}
     >
       {/* ── Desktop grid (6 columns: play | identity | BPM | Key | Genre | Date) ── */}
-      <div className="hidden sm:grid grid-cols-[36px_1fr_56px_56px_88px_88px] items-center gap-x-2">
+      <div className="hidden sm:grid grid-cols-[36px_1fr_56px_56px_88px_88px] items-center gap-x-2 gap-y-2">
         {/* Play button */}
         <div className="flex items-center justify-center">
           <button
@@ -450,7 +439,7 @@ const TrackRow = memo(function TrackRow({
           </button>
         </div>
 
-        {/* Identity: title + artist + waveform */}
+        {/* Identity */}
         <div className="min-w-0 pr-2">
           <p className={cn(
             'text-sm font-semibold truncate transition-colors leading-tight',
@@ -461,16 +450,6 @@ const TrackRow = memo(function TrackRow({
           <p className="text-[11px] text-muted-foreground truncate mt-0.5 leading-tight">
             {t.artist ?? '—'}
           </p>
-          <div className="mt-1.5">
-            <RekordboxPreviewWaveform
-              state={waveformState}
-              height={22}
-              onRetry={onRetryWaveform}
-              activeProgress={progress}
-              onSeek={canSeek ? handleWaveformSeek : undefined}
-              ariaLabel=""
-            />
-          </div>
         </div>
         {/* BPM */}
         <p className="text-xs font-mono text-primary text-center tabular-nums">
@@ -486,6 +465,19 @@ const TrackRow = memo(function TrackRow({
         <p className="text-[10px] text-muted-foreground text-right tabular-nums">
           {t.date_added?.slice(0, 10) ?? '—'}
         </p>
+
+        {/* Full-record waveform */}
+        <div className="col-span-full">
+          <RekordboxPreviewWaveform
+            state={waveformState}
+            height={30}
+            variant="compact"
+            onRetry={onRetryWaveform}
+            activeProgress={progress}
+            onSeek={canSeek ? handleWaveformSeek : undefined}
+            ariaLabel=""
+          />
+        </div>
       </div>
 
       {/* ── Mobile layout ── */}
@@ -536,7 +528,8 @@ const TrackRow = memo(function TrackRow({
         <div className="mt-1.5">
           <RekordboxPreviewWaveform
             state={waveformState}
-            height={20}
+            height={26}
+            variant="compact"
             onRetry={onRetryWaveform}
             activeProgress={progress}
             onSeek={canSeek ? handleWaveformSeek : undefined}
@@ -799,15 +792,9 @@ export function LibraryView({
                       <p className="text-xs text-muted-foreground italic">No genre data</p>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
-                        {topGenres.map(([genre], i) => (
-                          <span
-                            key={genre}
-                            className={cn(
-                              'px-2.5 py-1 rounded-full text-[10px] font-bold border',
-                              GENRE_BADGE_STYLES[i % GENRE_BADGE_STYLES.length],
-                            )}
-                          >
-                            {genre}
+                        {topGenres.map(([genre]) => (
+                          <span key={genre} className="library-genre-badge" title={genre}>
+                            <span className="truncate">{genre}</span>
                           </span>
                         ))}
                       </div>
