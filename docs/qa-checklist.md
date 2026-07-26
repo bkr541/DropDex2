@@ -159,7 +159,11 @@ Test these scenarios manually before each release. Each scenario lists the expec
 **Setup:** Tracks tab open with waveforms visible.
 
 - [ ] Toggle Dark → Light → CDJ from Settings → Theme.
-- [ ] The selection persists after a reload and unsupported stored values fall back to Dark.
+- [ ] The selection applies immediately, persists after a reload, and unsupported stored values fall back to Dark.
+- [ ] Sign in to the same account on a second browser/device → the Supabase-synced theme is applied after authentication.
+- [ ] Sign in as two different users on the same computer → each account restores its own cached/synced theme instead of inheriting the other account's preference.
+- [ ] Change the theme while offline or while the Supabase preference request is blocked, reload, then restore connectivity → the local choice remains active and is retried rather than being replaced by the older database value.
+- [ ] Rapidly click Dark → Light → CDJ while throttling network requests → the final database value is CDJ and an older request does not win.
 - [ ] CDJ applies throughout authentication, library, detail, discovery, Drop Lab, modals, and transport surfaces.
 - [ ] CDJ removes ambient blobs/glass blur, tightens panel radii, and uses blue interaction states while the DropDex logo remains coral/peach.
 - [ ] Monochrome waveforms switch to the Rekordbox appearance and redraw in blue/cyan under CDJ.

@@ -104,7 +104,16 @@ Both priorities are implemented in `importer/dropdex_importer/waveform_parser.py
 
 ### Theme support
 
-`ThemeProvider` owns the validated `dark | light | cdj` theme state, persists it under `dropdex-theme`, and applies it to `document.documentElement[data-theme]`. The inline bootstrap script in `index.html` validates and applies the stored value before React loads, preventing a theme flash on authentication and startup screens.
+`ThemeProvider` owns the validated `dark | light | cdj` theme state and applies it to `document.documentElement[data-theme]`. The inline bootstrap script in `index.html` still validates and applies the generic `dropdex-theme` local cache before React loads, preventing a theme flash on authentication and startup screens.
+
+Authenticated theme persistence is local-first and account-synced:
+
+1. `dropdex-theme` stores the last rendered theme for synchronous startup.
+2. `dropdex-theme:<user-id>` stores an account-specific local cache for fast account switching.
+3. `public.user_preferences.appearance_theme` is the account-level source of truth across devices.
+4. `dropdex-theme-pending:<user-id>` retains an unsynced local selection after an offline or failed write. That value wins on the next session and is retried before an older remote preference can overwrite it.
+
+On sign-in, the provider applies any account-local cache immediately, then loads the Supabase preference. Existing users without a `user_preferences` row are migrated by upserting their current local theme. User selections update the UI and local caches immediately while a serialized, coalescing write queue syncs the newest selection to Supabase. Request generations and local revision checks prevent a stale remote fetch from overwriting a newer click or a different signed-in account.
 
 The CDJ theme automatically selects the existing `rekordbox` waveform appearance unless a caller explicitly supplies `appearance`. Monochrome PWAV/PWV2 data renders in deck cyan, while PWV4 color data keeps the RGB values supplied by Rekordbox analysis. Dark and Light continue using the original DropDex waveform presentation.
 

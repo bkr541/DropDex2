@@ -28,21 +28,21 @@ function ApplicationLoadingScreen() {
 export function RootApplication() {
   return (
     <StrictMode>
-      <ThemeProvider>
-        <ApplicationErrorBoundary level="root">
-          {supabaseConfiguration.status === 'missing' ? (
-            <StartupConfigurationError configuration={supabaseConfiguration} />
-          ) : (
-            <AuthProvider>
+      <ApplicationErrorBoundary level="root">
+        {supabaseConfiguration.status === 'missing' ? (
+          <StartupConfigurationError configuration={supabaseConfiguration} />
+        ) : (
+          <AuthProvider>
+            <ThemeProvider>
               <AuthGate>
                 <Suspense fallback={<ApplicationLoadingScreen />}>
                   <App />
                 </Suspense>
               </AuthGate>
-            </AuthProvider>
-          )}
-        </ApplicationErrorBoundary>
-      </ThemeProvider>
+            </ThemeProvider>
+          </AuthProvider>
+        )}
+      </ApplicationErrorBoundary>
     </StrictMode>
   );
 }

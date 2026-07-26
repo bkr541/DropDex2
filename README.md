@@ -72,7 +72,8 @@ Supabase Postgres (per-user, RLS enforced)
   ├─ rekordbox_tracks           — track metadata
   ├─ rekordbox_playlists        — playlist tree
   ├─ rekordbox_playlist_tracks  — ordered track placements
-  └─ rekordbox_user_settings    — active import pointer
+  ├─ rekordbox_user_settings    — active import pointer
+  └─ user_preferences           — account-level appearance settings
 ```
 
 ## Desktop playback and USB access
