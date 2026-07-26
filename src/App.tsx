@@ -1611,11 +1611,11 @@ export default function App() {
           </ApplicationErrorBoundary>
         </main>
         {/* ── Desktop NowPlaying — in-flow at bottom of content column ── */}
-        {currentView !== 'drop-lab' && <NowPlayingBar className="hidden md:flex shrink-0" />}
+        <NowPlayingBar className="hidden md:flex shrink-0" />
       </div>
 
       {/* ── Mobile NowPlaying — fixed above mobile nav ── */}
-      {currentView !== 'drop-lab' && <NowPlayingBar className="md:hidden fixed bottom-0 left-0 right-0 z-50" />}
+      <NowPlayingBar className="md:hidden fixed bottom-0 left-0 right-0 z-50" />
 
       {/* ── Mobile-only: bottom nav (shifts up when player is active) ── */}
       <MobileNavBar

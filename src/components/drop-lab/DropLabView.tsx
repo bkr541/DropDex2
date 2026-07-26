@@ -228,8 +228,26 @@ export function DropLabView({
   function handleCandidateSelect(trackId: string) {
     setActiveCandidateId(trackId);
     setBeatOffset(0);
+    setCandidateDropId(null);
     onActiveCandidateChange?.(trackId);
+    onDropSelectionChange?.(selectedDropId, null);
   }
+
+  function handleSourceDropChange(dropId: string) {
+    setSelectedDropId(dropId);
+    onDropSelectionChange?.(dropId, candidateDropId);
+  }
+
+  function handleCandidateDropChange(dropId: string) {
+    setCandidateDropId(dropId);
+    onDropSelectionChange?.(selectedDropId, dropId);
+  }
+
+  const alignmentLabel = beatOffset === -1
+    ? 'Candidate starts one beat before its detected drop'
+    : beatOffset === 1
+      ? 'Candidate starts one beat after its detected drop'
+      : 'Candidate starts exactly on its detected drop';
 
   if (!sourceTrack) {
     return (
@@ -273,6 +291,9 @@ export function DropLabView({
             candidateDetail.detailState.status === 'loading'
           }
           unavailableMessage={waveformPanelMessage}
+          previewProgress={preview.progress}
+          previewPlaying={preview.playing}
+          alignmentLabel={alignmentLabel}
         />
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.72fr)]">
@@ -305,10 +326,13 @@ export function DropLabView({
             {segments.source?.timingSource === 'bpm' || segments.candidate?.timingSource === 'bpm' ? (
               <DropAnalysisStatus kind="info">Beat-grid timing is incomplete, so BPM timing is being used for this window.</DropAnalysisStatus>
             ) : null}
-            {preview.disabledReason && (
+            {preview.status === 'loading' && (
+              <DropAnalysisStatus kind="info">Preparing source and candidate audio for the transition preview.</DropAnalysisStatus>
+            )}
+            {preview.status !== 'loading' && preview.disabledReason && (
               <DropAnalysisStatus kind="warning">{preview.disabledReason}</DropAnalysisStatus>
             )}
-            {!preview.disabledReason && activeCandidate && sourceDrop && candidateDrop && (
+            {preview.ready && activeCandidate && sourceDrop && candidateDrop && (
               <DropAnalysisStatus kind="ready">Transition preview is prepared from decoded source and candidate audio.</DropAnalysisStatus>
             )}
             {analysis.error && <DropAnalysisStatus kind="warning">{analysis.error}</DropAnalysisStatus>}
@@ -327,10 +351,20 @@ export function DropLabView({
       <DropLabControls
         beatOffset={beatOffset}
         barCount={barCount}
+        sourceDropPoints={sourceAnalysis?.dropPoints ?? []}
+        candidateDropPoints={candidateAnalysis?.dropPoints ?? []}
+        sourceDropId={sourceDrop?.id ?? null}
+        candidateDropId={candidateDrop?.id ?? null}
         previewLabel={preview.buttonLabel}
-        previewDisabled={Boolean(preview.disabledReason) || (!preview.ready && !preview.playing)}
+        previewDisabled={preview.actionDisabled}
         previewPlaying={preview.playing}
+        previewLoading={preview.status === 'loading'}
+        previewError={preview.status === 'error'}
+        previewProgress={preview.progress}
+        previewPhase={preview.phase}
         disabledReason={preview.disabledReason}
+        onSourceDropChange={handleSourceDropChange}
+        onCandidateDropChange={handleCandidateDropChange}
         onBeatOffsetChange={setBeatOffset}
         onBarCountChange={setBarCount}
         onPreview={preview.playOrStop}
