@@ -19,10 +19,11 @@ import { useTrackPlaylists } from './hooks/useTrackPlaylists';
 import { useImportList } from './hooks/useImportList';
 import { useTrackPreviewWaveforms } from './hooks/useTrackPreviewWaveforms';
 import { fetchImportById, fetchReviewTracks, setActiveImport } from './lib/queries/rekordbox';
-import { deleteRekordboxImport, RekordboxImportError } from './lib/api/rekordboxImport';
+import { deleteAllRekordboxImports, deleteRekordboxImport, RekordboxImportError } from './lib/api/rekordboxImport';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { BackgroundImportPanel } from './components/BackgroundImportPanel';
 import { DeleteLibraryModal } from './components/DeleteLibraryModal';
+import { DeleteAllLibrariesModal } from './components/DeleteAllLibrariesModal';
 import { getImportHistoryPresentation } from './lib/rekordbox/importHistoryPresentation';
 import {
   getNextUsableLibrarySnapshot,
@@ -431,6 +432,11 @@ export default function App() {
   const [deleteLibrarySubmitting, setDeleteLibrarySubmitting] = useState(false);
   const deleteLibrarySubmittingRef = useRef(false);
   const [deleteLibraryError, setDeleteLibraryError] = useState<string | null>(null);
+  const [deleteAllLibrariesOpen, setDeleteAllLibrariesOpen] = useState(false);
+  const [deleteAllLibrariesSubmitting, setDeleteAllLibrariesSubmitting] = useState(false);
+  const deleteAllLibrariesSubmittingRef = useRef(false);
+  const [deleteAllLibrariesError, setDeleteAllLibrariesError] = useState<string | null>(null);
+  const [deleteAllLibrariesPass, setDeleteAllLibrariesPass] = useState(0);
   const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(() => new Set());
   const deleteExecutorRef = useRef<ConfirmedDeleteExecutor | null>(null);
   const pendingDeletionContextsRef = useRef<Map<string, PendingDeletionContext>>(new Map());
@@ -623,15 +629,17 @@ export default function App() {
         navigate({ name: 'settings' }, { replace: true });
       }
 
-      setImportNotice({
-        kind: 'success',
-        title: context.strategy === 'start_over' && context.wasActive
-          ? 'Book deleted. DropDex is ready to start over.'
-          : 'Book deleted',
-        detail: context.strategy === 'activate_next' && context.wasActive && context.fallbackFilename
-          ? `${context.sourceFilename} was permanently deleted. ${context.fallbackFilename} is now your active library.`
-          : `${context.sourceFilename} and its Rekordbox-imported data were permanently deleted.`,
-      });
+      if (!deleteAllLibrariesSubmittingRef.current) {
+        setImportNotice({
+          kind: 'success',
+          title: context.strategy === 'start_over' && context.wasActive
+            ? 'Book deleted. DropDex is ready to start over.'
+            : 'Book deleted',
+          detail: context.strategy === 'activate_next' && context.wasActive && context.fallbackFilename
+            ? `${context.sourceFilename} was permanently deleted. ${context.fallbackFilename} is now your active library.`
+            : `${context.sourceFilename} and its Rekordbox-imported data were permanently deleted.`,
+        });
+      }
 
       // The parent-row disappearance is the terminal hard-delete event. Re-read
       // the canonical user setting now, rather than trusting any transient
@@ -902,6 +910,69 @@ export default function App() {
     } finally {
       deleteLibrarySubmittingRef.current = false;
       setDeleteLibrarySubmitting(false);
+    }
+  };
+
+  const handleConfirmDeleteAllLibraries = async () => {
+    if (deleteAllLibrariesSubmittingRef.current) return;
+    const token = session?.access_token;
+    if (!token) {
+      setDeleteAllLibrariesError('Your session expired. Sign in again before deleting library data.');
+      return;
+    }
+
+    deleteAllLibrariesSubmittingRef.current = true;
+    setDeleteAllLibrariesSubmitting(true);
+    setDeleteAllLibrariesError(null);
+    setDeleteAllLibrariesPass(0);
+
+    try {
+      // A bulk reset is a sequence of the existing durable hard-delete operation.
+      // Workers can need time to acknowledge stop, so retry clean pending passes
+      // without turning persistent cleanup/database errors into an endless loop.
+      const MAX_BULK_DELETE_PASSES = 40;
+      for (let pass = 1; pass <= MAX_BULK_DELETE_PASSES; pass++) {
+        setDeleteAllLibrariesPass(pass);
+        const result = await deleteAllRekordboxImports(token);
+        refetchImportList();
+        refetchImport();
+
+        if (result.remaining_count === 0) {
+          pendingDeletionContextsRef.current.clear();
+          setPendingDeletionIds(new Set());
+          setBackgroundImport(null);
+          setDeleteAllLibrariesOpen(false);
+          setDeleteAllLibrariesError(null);
+          setImportNotice({
+            kind: 'success',
+            title: 'All Rekordbox library data deleted',
+            detail: 'Every Rekordbox snapshot and its imported library data were permanently removed. DropDex is ready for a fresh USB import.',
+          });
+          return;
+        }
+
+        await new Promise<void>((resolve) => setTimeout(resolve, 1500));
+      }
+
+      throw new Error(
+        'Some library snapshots are still waiting for worker shutdown. Retry Delete All to continue the same cleanup.',
+      );
+    } catch (err) {
+      const baseMessage = err instanceof Error
+        ? err.message
+        : 'DropDex could not delete all Rekordbox library data. Please retry.';
+      const developerDiagnostic = import.meta.env.DEV
+        && err instanceof RekordboxImportError
+        && err.structured?.diagnostic
+        ? ` (${err.structured.stage ?? 'cleanup'}: ${err.structured.diagnostic})`
+        : '';
+      console.error('Failed to delete all Rekordbox library data:', err);
+      setDeleteAllLibrariesError(`${baseMessage}${developerDiagnostic}`);
+      refetchImportList();
+      refetchImport();
+    } finally {
+      deleteAllLibrariesSubmittingRef.current = false;
+      setDeleteAllLibrariesSubmitting(false);
     }
   };
 
@@ -1721,6 +1792,34 @@ export default function App() {
                   )}
                 </section>
 
+                {/* Library Reset */}
+                <section className="space-y-3">
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Library Reset</h2>
+                  <div className="glass rounded-2xl p-4 flex items-center justify-between gap-4 border border-red-500/10">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <WarningAlt size={18} className="mt-0.5 shrink-0 text-red-400" />
+                      <div className="min-w-0">
+                        <p className="font-bold text-sm">Delete All Rekordbox Data</p>
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          Permanently remove every library snapshot and all imported Rekordbox data for this account.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={deleteAllLibrariesSubmitting}
+                      onClick={() => {
+                        setDeleteAllLibrariesError(null);
+                        setDeleteAllLibrariesPass(0);
+                        setDeleteAllLibrariesOpen(true);
+                      }}
+                      className="shrink-0 text-xs font-bold text-red-400 transition-colors hover:text-red-300 disabled:opacity-50"
+                    >
+                      Delete All
+                    </button>
+                  </div>
+                </section>
+
                 {/* About */}
                 <section className="space-y-3">
                   <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">About</h2>
@@ -1820,6 +1919,21 @@ export default function App() {
       />
 
       <AnimatePresence>
+        <DeleteAllLibrariesModal
+          open={deleteAllLibrariesOpen}
+          visibleSnapshotCount={allImports.length}
+          deleting={deleteAllLibrariesSubmitting}
+          cleanupPass={deleteAllLibrariesPass}
+          error={deleteAllLibrariesError}
+          onClose={() => {
+            if (deleteAllLibrariesSubmitting) return;
+            setDeleteAllLibrariesOpen(false);
+            setDeleteAllLibrariesError(null);
+            setDeleteAllLibrariesPass(0);
+          }}
+          onConfirm={handleConfirmDeleteAllLibraries}
+        />
+
         <DeleteLibraryModal
           target={deleteLibraryTarget}
           isActive={Boolean(deleteLibraryTarget && (

@@ -39,6 +39,13 @@ export interface ImportJob {
   worker_stopped_acknowledged?: boolean;
 }
 
+export interface DeleteAllImportsResponse {
+  status: 'completed' | 'pending';
+  deleted_count: number;
+  remaining_count: number;
+  pending_import_ids: string[];
+}
+
 export interface ImportWorkerState {
   import_id: string;
   job_status: ImportJobState;
@@ -302,6 +309,16 @@ function validateImportJob(value: unknown): ImportJob {
   return row as unknown as ImportJob;
 }
 
+function validateDeleteAllImports(value: unknown): DeleteAllImportsResponse {
+  const contract = 'delete all Rekordbox imports';
+  const row = expectRecord(value, contract);
+  expectString(row.status, contract, '$.status');
+  expectNumber(row.deleted_count, contract, '$.deleted_count');
+  expectNumber(row.remaining_count, contract, '$.remaining_count');
+  expectStringArray(row.pending_import_ids, contract, '$.pending_import_ids');
+  return row as unknown as DeleteAllImportsResponse;
+}
+
 function validateImportResult(value: unknown): ImportResult {
   const contract = 'import result';
   const row = expectRecord(value, contract);
@@ -545,6 +562,16 @@ export async function pauseRekordboxAnalysis(
     { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, signal },
   );
   return parseResponse(response, validateImportJob);
+}
+
+export async function deleteAllRekordboxImports(
+  accessToken: string, signal?: AbortSignal,
+): Promise<DeleteAllImportsResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/rekordbox/imports`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` }, signal },
+  );
+  return parseResponse(response, validateDeleteAllImports);
 }
 
 export async function deleteRekordboxImport(

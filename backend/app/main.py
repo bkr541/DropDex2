@@ -28,6 +28,7 @@ from .discovery.routes import router as discovery_router
 from .import_jobs import (
     cancel_import_job,
     create_import_job,
+    delete_all_import_jobs,
     delete_import_job,
     get_import_job,
     get_import_worker_state,
@@ -40,6 +41,7 @@ from .models import (
     BatchUploadResponse,
     CompleteRequest,
     CompleteResponse,
+    DeleteAllImportsResponse,
     ImportJobCreateRequest,
     ImportJobResponse,
     ImportResponse,
@@ -271,6 +273,17 @@ def pause_rekordbox_analysis(
 ) -> ImportJobResponse:
     """Pause cloud analysis at the next safe worker checkpoint."""
     return _to_import_job_response(pause_import_analysis(import_id, user_id))
+
+
+@app.delete(
+    "/api/rekordbox/imports",
+    response_model=DeleteAllImportsResponse,
+)
+def delete_all_rekordbox_imports(
+    user_id: str = Depends(get_current_user_id),
+) -> DeleteAllImportsResponse:
+    """Delete every Rekordbox library snapshot owned by the authenticated user."""
+    return DeleteAllImportsResponse(**delete_all_import_jobs(user_id))
 
 
 @app.delete(

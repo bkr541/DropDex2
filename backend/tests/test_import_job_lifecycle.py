@@ -1891,3 +1891,98 @@ async def test_database_processing_does_not_block_event_loop(monkeypatch):
     upload = UploadFile(filename="exportLibrary.db", file=io.BytesIO(b"db"))
     await asyncio.gather(run_import(upload, "u"), heartbeat())
     assert ticks >= 4
+
+
+def test_delete_all_import_jobs_removes_every_owned_snapshot_and_settings(monkeypatch):
+    older_id = "job-delete-all-older"
+    newer_id = "job-delete-all-newer"
+    other_id = "job-delete-all-other-user"
+    client = FakeClient([
+        {
+            "id": older_id,
+            "user_id": "u",
+            "status": "completed",
+            "analysis_status": "completed",
+            "library_ready_at": "2026-08-16T10:00:00Z",
+            "imported_at": "2026-08-16T10:00:00Z",
+        },
+        {
+            "id": newer_id,
+            "user_id": "u",
+            "status": "completed",
+            "analysis_status": "completed",
+            "library_ready_at": "2026-08-17T10:00:00Z",
+            "imported_at": "2026-08-17T10:00:00Z",
+        },
+        {
+            "id": other_id,
+            "user_id": "other",
+            "status": "completed",
+            "analysis_status": "completed",
+            "library_ready_at": "2026-08-17T11:00:00Z",
+            "imported_at": "2026-08-17T11:00:00Z",
+        },
+    ])
+    client.tables["rekordbox_user_settings"] = [
+        {"user_id": "u", "active_import_id": newer_id},
+        {"user_id": "other", "active_import_id": other_id},
+    ]
+    client.tables["rekordbox_tracks"] = [
+        {"id": "track-old", "import_id": older_id},
+        {"id": "track-new", "import_id": newer_id},
+        {"id": "track-other", "import_id": other_id},
+    ]
+    client.tables["rekordbox_retained_analysis_dependencies"] = [
+        {
+            "source_import_id": older_id,
+            "dependent_import_id": newer_id,
+            "source_track_id": "track-old",
+            "dependent_track_id": "track-new",
+        }
+    ]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    result = import_jobs.delete_all_import_jobs("u", wait_timeout_seconds=0)
+
+    assert result == {
+        "status": "completed",
+        "deleted_count": 2,
+        "remaining_count": 0,
+        "pending_import_ids": [],
+    }
+    assert [row["id"] for row in client.tables["rekordbox_imports"]] == [other_id]
+    assert client.tables["rekordbox_tracks"] == [
+        {"id": "track-other", "import_id": other_id}
+    ]
+    assert client.tables["rekordbox_user_settings"] == [
+        {"user_id": "other", "active_import_id": other_id}
+    ]
+    assert client.tables["rekordbox_retained_analysis_dependencies"] == []
+
+
+def test_delete_all_import_jobs_purges_hidden_cancelled_parent(monkeypatch):
+    import_id = "job-hidden-cancelled"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "cancelled",
+            "analysis_status": "cancelled",
+            "imported_at": "2026-08-17T12:00:00Z",
+        }
+    ])
+    client.tables["rekordbox_user_settings"] = [
+        {"user_id": "u", "active_import_id": None}
+    ]
+    client.tables["rekordbox_tracks"] = [
+        {"id": "stale-track", "import_id": import_id}
+    ]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    result = import_jobs.delete_all_import_jobs("u", wait_timeout_seconds=0)
+
+    assert result["status"] == "completed"
+    assert result["remaining_count"] == 0
+    assert client.tables["rekordbox_imports"] == []
+    assert client.tables["rekordbox_tracks"] == []
+    assert client.tables["rekordbox_user_settings"] == []

@@ -35,6 +35,20 @@ describe('Rekordbox hard-delete production UI contract', () => {
     expect(modal).toContain('disabled={deleting || !confirmationValid}');
     expect(decisions).toContain("return value === 'DELETE';");
   });
+  it('exposes a true Delete All reset that uses a dedicated backend delete-all endpoint', () => {
+    const app = readFileSync('src/App.tsx', 'utf8');
+    const modal = readFileSync('src/components/DeleteAllLibrariesModal.tsx', 'utf8');
+    const api = readFileSync('src/lib/api/rekordboxImport.ts', 'utf8');
+
+    expect(app).toContain('Delete All Rekordbox Data');
+    expect(app).toContain('<DeleteAllLibrariesModal');
+    expect(app).toContain('deleteAllRekordboxImports(token)');
+    expect(modal).toContain("confirmation === 'DELETE ALL'");
+    expect(modal).toContain('every Rekordbox snapshot owned by this account');
+    expect(api).toContain('export async function deleteAllRekordboxImports');
+    expect(api).toContain('`${API_BASE}/api/rekordbox/imports`');
+  });
+
   it('bounds automatic destructive retries and preserves structured cleanup diagnostics', () => {
     const app = readFileSync('src/App.tsx', 'utf8');
 

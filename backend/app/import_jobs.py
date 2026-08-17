@@ -1173,6 +1173,127 @@ def delete_import_job(
     )
 
 
+def _list_user_rekordbox_imports(sb, user_id: str) -> list[dict[str, Any]]:
+    rows = fetch_all_rows(
+        lambda: (
+            sb.table("rekordbox_imports")
+            .select("id, imported_at, status")
+            .eq("user_id", user_id)
+        ),
+        order_column="id",
+    )
+    # Retained-analysis dependencies always point from a newer dependent import
+    # to an older source import. Deleting newest-first naturally releases those
+    # dependency rows before their source snapshot is removed.
+    return sorted(
+        rows,
+        key=lambda row: (str(row.get("imported_at") or ""), str(row.get("id") or "")),
+        reverse=True,
+    )
+
+
+def delete_all_import_jobs(
+    user_id: str,
+    *,
+    wait_timeout_seconds: float = 0.25,
+) -> dict[str, Any]:
+    """Delete every Rekordbox snapshot owned by one user.
+
+    This is intentionally implemented through the same worker-stop, cloud
+    storage cleanup, child-row cleanup, retained-dependency gate, and atomic
+    parent-row finalization used by Delete Import. One request performs one
+    newest-first cleanup pass. If workers are still stopping, callers may retry
+    until ``remaining_count`` reaches zero.
+    """
+    sb = _create_supabase()
+    rows = _list_user_rekordbox_imports(sb, user_id)
+    deleted_count = 0
+
+    for row in rows:
+        import_id = str(row.get("id") or "")
+        if not import_id:
+            continue
+        try:
+            if str(row.get("status") or "") == "cancelled":
+                # Older deployments could leave a terminal cancelled parent row
+                # behind. Delete All must also purge those hidden/stale snapshots.
+                signal_local_cancellation(import_id)
+                worker_registry.request_stop(import_id, "delete")
+                if not _wait_for_worker_kinds_inactive(
+                    sb,
+                    import_id,
+                    ("analysis", "raw_archival"),
+                    wait_timeout_seconds,
+                ):
+                    _update_import_row(
+                        sb,
+                        import_id,
+                        user_id,
+                        {
+                            "status": "stopping",
+                            "analysis_status": "stopping",
+                            "analysis_worker_status": "stopping",
+                            "analysis_worker_stop_requested_at": _now(),
+                            "analysis_worker_stopped_acknowledged": False,
+                            "delete_active_strategy": "start_over",
+                        },
+                    )
+                    _schedule_delete_finalizer(
+                        import_id,
+                        user_id,
+                        active_strategy="start_over",
+                    )
+                    continue
+                result = _cleanup_after_worker_ack(
+                    import_id,
+                    user_id,
+                    sb=sb,
+                    active_strategy="start_over",
+                )
+            else:
+                result = delete_import_job(
+                    import_id,
+                    user_id,
+                    wait_timeout_seconds=wait_timeout_seconds,
+                    active_strategy="start_over",
+                )
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                # A background finalizer can win the race between the initial
+                # list and this pass. Parent disappearance means success.
+                deleted_count += 1
+                continue
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            if exc.status_code == 409 and detail.get("error_code") == "DELETE_DEPENDENCY_ACTIVE":
+                continue
+            raise
+
+        if str(result.get("status") or "") == "cancelled":
+            deleted_count += 1
+
+    remaining_rows = _list_user_rekordbox_imports(sb, user_id)
+    remaining_ids = [str(row.get("id")) for row in remaining_rows if row.get("id")]
+
+    if not remaining_ids:
+        # Remove the now-meaningless active-library pointer row as part of a true
+        # first-import reset. Account/profile/theme/discovery preferences live in
+        # separate tables and are intentionally untouched.
+        sb.table("rekordbox_user_settings").delete().eq("user_id", user_id).execute()
+        return {
+            "status": "completed",
+            "deleted_count": deleted_count,
+            "remaining_count": 0,
+            "pending_import_ids": [],
+        }
+
+    return {
+        "status": "pending",
+        "deleted_count": deleted_count,
+        "remaining_count": len(remaining_ids),
+        "pending_import_ids": remaining_ids,
+    }
+
+
 def cancel_import_job(import_id: str, user_id: str) -> dict[str, Any]:
     """Backward-compatible alias for the explicit destructive delete operation."""
     return delete_import_job(import_id, user_id)

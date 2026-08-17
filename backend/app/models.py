@@ -27,6 +27,13 @@ class ImportJobResponse(BaseModel):
     worker_stopped_acknowledged: bool = True
 
 
+class DeleteAllImportsResponse(BaseModel):
+    status: str
+    deleted_count: int
+    remaining_count: int
+    pending_import_ids: List[str] = Field(default_factory=list)
+
+
 class ImportWorkerStateResponse(BaseModel):
     import_id: str
     job_status: str

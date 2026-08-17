@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  deleteAllRekordboxImports,
   deleteRekordboxImport,
   fetchRekordboxWorkerState,
   fetchRekordboxAnalysisStatus,
@@ -138,6 +139,28 @@ describe('Rekordbox analysis worker control requests', () => {
 
     expect(fetchMock.mock.calls[0]?.[0]).toContain('/job-123/pause');
     expect(fetchMock.mock.calls[1]?.[0]).toMatch(/\/job-123\?active_strategy=activate_next$/);
+  });
+
+  it('uses the dedicated destructive endpoint for deleting every snapshot', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toMatch(/\/api\/rekordbox\/imports$/);
+      expect(init?.method).toBe('DELETE');
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer token');
+      return new Response(JSON.stringify({
+        status: 'completed',
+        deleted_count: 3,
+        remaining_count: 0,
+        pending_import_ids: [],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(deleteAllRekordboxImports('token')).resolves.toEqual({
+      status: 'completed',
+      deleted_count: 3,
+      remaining_count: 0,
+      pending_import_ids: [],
+    });
   });
 
   it('sends the explicit Start Over strategy for destructive library deletion', async () => {
