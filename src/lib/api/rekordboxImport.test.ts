@@ -99,7 +99,10 @@ describe('Rekordbox analysis worker control requests', () => {
       const url = String(input);
       expect(init?.signal).toBe(controller.signal);
       if (url.endsWith('/pause')) expect(init?.method).toBe('POST');
-      else expect(init?.method).toBe('DELETE');
+      else {
+        expect(init?.method).toBe('DELETE');
+        expect(url).toContain('active_strategy=activate_next');
+      }
       return new Response(JSON.stringify(jobBody), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -111,7 +114,22 @@ describe('Rekordbox analysis worker control requests', () => {
     await deleteRekordboxImport('job-123', 'token', controller.signal);
 
     expect(fetchMock.mock.calls[0]?.[0]).toContain('/job-123/pause');
-    expect(fetchMock.mock.calls[1]?.[0]).toMatch(/\/job-123$/);
+    expect(fetchMock.mock.calls[1]?.[0]).toMatch(/\/job-123\?active_strategy=activate_next$/);
+  });
+
+  it('sends the explicit Start Over strategy for destructive library deletion', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toContain('active_strategy=start_over');
+      return new Response(JSON.stringify(jobBody), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await deleteRekordboxImport('job-123', 'token', undefined, 'start_over');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('validates worker acknowledgement and stage polling data', async () => {

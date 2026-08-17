@@ -16,6 +16,8 @@ import {
 
 // ── Response types ────────────────────────────────────────────────────────────
 
+export type DeleteActiveStrategy = 'activate_next' | 'start_over';
+
 export type ImportJobState =
   | 'created' | 'uploading' | 'queued' | 'processing' | 'running'
   | 'pause_requested' | 'paused' | 'cancel_requested' | 'stopping'
@@ -529,10 +531,14 @@ export async function pauseRekordboxAnalysis(
 }
 
 export async function deleteRekordboxImport(
-  importId: string, accessToken: string, signal?: AbortSignal,
+  importId: string,
+  accessToken: string,
+  signal?: AbortSignal,
+  activeStrategy: DeleteActiveStrategy = 'activate_next',
 ): Promise<ImportJob> {
+  const params = new URLSearchParams({ active_strategy: activeStrategy });
   const response = await fetch(
-    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}`,
+    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}?${params.toString()}`,
     { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` }, signal },
   );
   return parseResponse(response, validateImportJob);

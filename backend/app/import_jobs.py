@@ -37,6 +37,7 @@ IMPORT_STATES = frozenset(
 TERMINAL_IMPORT_STATES = frozenset({"cancelled", "completed", "failed"})
 IMMUTABLE_IMPORT_STATES = frozenset({"cancelled"})
 CANCELLATION_STATES = frozenset({"cancel_requested", "stopping", "deleting", "cancelled"})
+DELETE_ACTIVE_STRATEGIES = frozenset({"activate_next", "start_over"})
 
 
 _ACTIVE_ANALYSIS_STATES = frozenset({"awaiting_upload", "uploading", "uploaded", "parsing", "pause_requested", "stopping"})
@@ -655,7 +656,13 @@ def finalize_paused_import(import_id: str, user_id: str, *, sb=None) -> dict[str
     )
 
 
-def _cleanup_after_worker_ack(import_id: str, user_id: str, *, sb) -> dict[str, Any]:
+def _cleanup_after_worker_ack(
+    import_id: str,
+    user_id: str,
+    *,
+    sb,
+    active_strategy: str = "activate_next",
+) -> dict[str, Any]:
     live = worker_registry.snapshot(import_id)
     row = get_import_job(import_id, user_id, sb=sb)
     durable_active = any(
@@ -710,29 +717,64 @@ def _cleanup_after_worker_ack(import_id: str, user_id: str, *, sb) -> dict[str, 
                 "retryable": True,
             },
         ) from exc
-    return _update_import_row(
-        sb,
-        import_id,
-        user_id,
-        {
-            "status": "cancelled",
-            "analysis_status": "cancelled",
-            "analysis_worker_status": "stopped",
-            "analysis_worker_stage": "deleted",
-            "analysis_worker_stopped_acknowledged": True,
-            "analysis_worker_stopped_at": _now(),
-            "cancelled_at": _now(),
-            "error_code": "IMPORT_CANCELLED",
-            "error_message": "Import and retained cloud analysis data were deleted.",
-            "retryable": False,
-        },
-    )
+
+    deleted_response = {
+        **row,
+        "status": "cancelled",
+        "analysis_status": "cancelled",
+        "analysis_worker_status": "stopped",
+        "analysis_worker_stage": "deleted",
+        "analysis_worker_stopped_acknowledged": True,
+        "analysis_worker_stopped_at": _now(),
+        "cancelled_at": _now(),
+        "error_code": None,
+        "error_message": None,
+        "retryable": False,
+    }
+    try:
+        sb.rpc(
+            "hard_delete_rekordbox_import",
+            {
+                "p_import_id": import_id,
+                "p_user_id": user_id,
+                "p_active_strategy": active_strategy,
+            },
+        ).execute()
+    except Exception as exc:
+        logger.exception("Hard-delete finalization failed for import %s", import_id)
+        try:
+            _update_import_row(
+                sb,
+                import_id,
+                user_id,
+                {
+                    "status": "deleting",
+                    "analysis_status": "stopping",
+                    "analysis_worker_status": "deleting",
+                    "analysis_worker_error": str(exc)[:2000],
+                    "error_code": "DELETE_FINALIZE_FAILED",
+                    "error_message": "Library data was cleaned, but DropDex could not finalize deletion. Retry Delete Import.",
+                    "retryable": True,
+                },
+            )
+        except Exception:
+            logger.exception("Could not persist hard-delete finalization failure for %s", import_id)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error_code": "DELETE_FINALIZE_FAILED",
+                "detail": "Library data was cleaned, but DropDex could not finalize deletion. Retry Delete Import.",
+                "retryable": True,
+            },
+        ) from exc
+    return deleted_response
 
 
 def _schedule_delete_finalizer(
     import_id: str,
     user_id: str,
     *,
+    active_strategy: str = "activate_next",
     max_wait_seconds: float = 300.0,
 ) -> None:
     """Continue waiting without ever treating a timeout as worker acknowledgement."""
@@ -759,7 +801,13 @@ def _schedule_delete_finalizer(
                 "stopping",
                 "deleting",
             }:
-                _cleanup_after_worker_ack(import_id, user_id, sb=sb)
+                persisted_strategy = str(row.get("delete_active_strategy") or active_strategy)
+                _cleanup_after_worker_ack(
+                    import_id,
+                    user_id,
+                    sb=sb,
+                    active_strategy=persisted_strategy,
+                )
         except Exception:
             logger.exception("Could not finalize acknowledged delete for import %s", import_id)
         finally:
@@ -778,8 +826,18 @@ def delete_import_job(
     user_id: str,
     *,
     wait_timeout_seconds: float = 5.0,
+    active_strategy: str = "activate_next",
 ) -> dict[str, Any]:
-    """Stop the worker, await acknowledgement, then perform idempotent cleanup."""
+    """Stop the worker, await acknowledgement, then hard-delete the library snapshot."""
+    if active_strategy not in DELETE_ACTIVE_STRATEGIES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error_code": "INVALID_DELETE_ACTIVE_STRATEGY",
+                "detail": "Unsupported active-library behavior for deletion.",
+                "retryable": False,
+            },
+        )
     sb = _create_supabase()
     row = get_import_job(import_id, user_id, sb=sb)
     current_status = str(row.get("status") or "")
@@ -800,6 +858,7 @@ def delete_import_job(
             if stopped_acknowledged
             else None
         ),
+        "delete_active_strategy": active_strategy,
     }
     if current_status not in {"cancel_requested", "stopping", "deleting"}:
         request_updates["status"] = "cancel_requested"
@@ -830,9 +889,18 @@ def delete_import_job(
             user_id,
             timeout_updates,
         )
-        _schedule_delete_finalizer(import_id, user_id)
+        _schedule_delete_finalizer(
+            import_id,
+            user_id,
+            active_strategy=active_strategy,
+        )
         return stopping
-    return _cleanup_after_worker_ack(import_id, user_id, sb=sb)
+    return _cleanup_after_worker_ack(
+        import_id,
+        user_id,
+        sb=sb,
+        active_strategy=active_strategy,
+    )
 
 
 def cancel_import_job(import_id: str, user_id: str) -> dict[str, Any]:

@@ -71,11 +71,18 @@ export function useImportList(userId: string | null) {
         const rows = await Promise.all(inFlightIds.map((id) => fetchImportById(id)));
         if (stopped) return;
         const updates = new Map(
-          rows.filter((row): row is RekordboxImport => row != null).map((row) => [row.id, row]),
+          rows
+            .filter((row): row is RekordboxImport => row != null && row.status !== 'cancelled')
+            .map((row) => [row.id, row]),
         );
-        if (updates.size > 0) {
+        const deletedIds = new Set(
+          inFlightIds.filter((_id, index) => rows[index] == null || rows[index]?.status === 'cancelled'),
+        );
+        if (updates.size > 0 || deletedIds.size > 0) {
           setImports((current) => {
-            const next = current.map((item) => updates.get(item.id) ?? item);
+            const next = current
+              .filter((item) => !deletedIds.has(item.id))
+              .map((item) => updates.get(item.id) ?? item);
             importsRef.current = next;
             return next;
           });

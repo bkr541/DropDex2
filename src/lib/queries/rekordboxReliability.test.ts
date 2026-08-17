@@ -28,6 +28,7 @@ vi.mock('../supabase', () => ({
 }));
 
 import {
+  fetchActiveImport,
   fetchAllImports,
   fetchTrackPlaylists,
   fetchTracksByIds,
@@ -54,6 +55,37 @@ describe('large-library query reliability', () => {
 
     expect(imports).toHaveLength(1001);
     expect(rangeMock.mock.calls).toEqual([[0, 499], [500, 999], [1000, 1499]]);
+  });
+
+  it('filters legacy cancelled tombstones out of library snapshots', async () => {
+    rangeMock.mockResolvedValueOnce({
+      data: [
+        { id: 'usable', status: 'completed' },
+        { id: 'deleted-tombstone', status: 'cancelled' },
+      ],
+      error: null,
+    });
+
+    const imports = await fetchAllImports('user-1');
+
+    expect(imports.map((item) => item.id)).toEqual(['usable']);
+  });
+
+  it('treats an explicit null active_import_id as the Start Over empty state', async () => {
+    const settingsBuilder = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { active_import_id: null },
+        error: null,
+      }),
+    };
+    settingsBuilder.select.mockReturnValue(settingsBuilder);
+    settingsBuilder.eq.mockReturnValue(settingsBuilder);
+    fromMock.mockReturnValueOnce(settingsBuilder as never);
+
+    await expect(fetchActiveImport('user-1')).resolves.toBeNull();
+    expect(fromMock).toHaveBeenCalledTimes(1);
   });
 
   it('chunks large track-id lookups and preserves requested order', async () => {

@@ -42,7 +42,9 @@ import { fetchReviewTracks, setActiveImport } from './lib/queries/rekordbox';
 import { deleteRekordboxImport } from './lib/api/rekordboxImport';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { BackgroundImportPanel } from './components/BackgroundImportPanel';
+import { DeleteLibraryModal } from './components/DeleteLibraryModal';
 import { getImportHistoryPresentation } from './lib/rekordbox/importHistoryPresentation';
+import { getNextUsableLibrarySnapshot, type DeleteActiveStrategy } from './lib/rekordbox/libraryDeletion';
 import { getImportProgress, getInFlightImport, isImportInFlight, isImportStalled } from './lib/rekordbox/importLifecycle';
 import { ResumeAnalysisModal } from './components/ResumeAnalysisModal';
 import { ImportActivityBanner } from './components/imports/ImportActivityBanner';
@@ -420,6 +422,9 @@ export default function App() {
     () => localStorage.getItem('dropdex-sidebar-collapsed') === 'true'
   );
   const [importNotice, setImportNotice] = useState<ImportNotice | null>(null);
+  const [deleteLibraryTarget, setDeleteLibraryTarget] = useState<RekordboxImport | null>(null);
+  const [deleteLibrarySubmitting, setDeleteLibrarySubmitting] = useState(false);
+  const [deleteLibraryError, setDeleteLibraryError] = useState<string | null>(null);
   const importStatusRef = useRef<Map<string, {
     status: RekordboxImport['status'];
     inFlight: boolean;
@@ -570,7 +575,11 @@ export default function App() {
         });
       }
     }
-  }, [allImports, importsListLoading, refetchImport, refetchImportList, refetchProfiles, userId]);
+
+    if (latestImport && !allImports.some((item) => item.id === latestImport.id)) {
+      refetchImport();
+    }
+  }, [allImports, importsListLoading, latestImport, refetchImport, refetchImportList, refetchProfiles, userId]);
 
   // Load review tracks when entering review mode
   useEffect(() => {
@@ -697,39 +706,56 @@ export default function App() {
     }
   };
 
-  const handleDeleteImport = async (imp: RekordboxImport) => {
+  const handleDeleteImport = (imp: RekordboxImport) => {
+    setDeleteLibraryError(null);
+    setDeleteLibraryTarget(imp);
+  };
+
+  const handleConfirmDeleteImport = async (activeStrategy: DeleteActiveStrategy) => {
+    const imp = deleteLibraryTarget;
+    if (!imp || deleteLibrarySubmitting) return;
+
     const isActive = imp.id === latestImport?.id;
-    const isOnly = allImports.length === 1;
-
-    if (isActive && isOnly) {
-      alert('Cannot delete your only library snapshot. Import a new library first.');
-      return;
-    }
-
-    const confirmMsg = isActive
-      ? 'This is your active library. Deleting it will automatically switch to your next most recent import. Continue?'
-      : 'Delete this library snapshot? This cannot be undone.';
-
-    if (!confirm(confirmMsg)) return;
+    const fallback = getNextUsableLibrarySnapshot(allImports, imp.id);
+    setDeleteLibrarySubmitting(true);
+    setDeleteLibraryError(null);
 
     try {
       const token = session?.access_token;
-      if (!token) throw new Error('Your session expired. Sign in again before deleting an import.');
-      const result = await deleteRekordboxImport(imp.id, token);
-      if (result.status !== 'cancelled') {
-        setImportNotice({
-          kind: 'warning',
-          title: 'Delete is waiting for worker shutdown',
-          detail: 'DropDex will not delete cloud data until the analysis worker acknowledges that it stopped writing.',
-        });
-      }
+      if (!token) throw new Error('Your session expired. Sign in again before deleting a library.');
+      const result = await deleteRekordboxImport(imp.id, token, undefined, activeStrategy);
+
       if (route.name === 'import' && route.importId === imp.id) {
         navigate({ name: 'settings' }, { replace: true });
       }
+
+      setDeleteLibraryTarget(null);
+      if (result.status === 'cancelled') {
+        setImportNotice({
+          kind: 'success',
+          title: activeStrategy === 'start_over' && isActive
+            ? 'Library deleted. DropDex is ready to start over.'
+            : 'Library deleted',
+          detail: activeStrategy === 'activate_next' && isActive && fallback
+            ? `${imp.source_filename} was permanently deleted. ${fallback.source_filename} is now your active library.`
+            : `${imp.source_filename} and its Rekordbox-imported data were permanently deleted.`,
+        });
+      } else {
+        setImportNotice({
+          kind: 'warning',
+          title: 'Delete is waiting for worker shutdown',
+          detail: 'DropDex will keep the library visible until the analysis worker acknowledges that it stopped and destructive cleanup can finish safely.',
+        });
+      }
+
       if (isActive) refetchImport();
       refetchImportList();
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'DropDex could not delete this library. Please retry.';
       console.error('Failed to delete import:', err);
+      setDeleteLibraryError(message);
+    } finally {
+      setDeleteLibrarySubmitting(false);
     }
   };
 
@@ -1625,6 +1651,20 @@ export default function App() {
       />
 
       <AnimatePresence>
+        <DeleteLibraryModal
+          target={deleteLibraryTarget}
+          isActive={Boolean(deleteLibraryTarget && deleteLibraryTarget.id === latestImport?.id)}
+          nextUsableImport={deleteLibraryTarget ? getNextUsableLibrarySnapshot(allImports, deleteLibraryTarget.id) : null}
+          deleting={deleteLibrarySubmitting}
+          error={deleteLibraryError}
+          onClose={() => {
+            if (deleteLibrarySubmitting) return;
+            setDeleteLibraryTarget(null);
+            setDeleteLibraryError(null);
+          }}
+          onConfirm={handleConfirmDeleteImport}
+        />
+
         {importNotice && (
           <motion.div
             initial={{ opacity: 0, y: -12, scale: 0.98 }}

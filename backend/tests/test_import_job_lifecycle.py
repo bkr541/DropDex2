@@ -185,6 +185,57 @@ class FakeStorage:
         return FakeStorageBucket()
 
 
+class FakeRpc:
+    def __init__(self, client, name: str, payload: dict):
+        self.client = client
+        self.name = name
+        self.payload = payload
+
+    def execute(self):
+        if self.name != "hard_delete_rekordbox_import":
+            raise AssertionError(self.name)
+        import_id = self.payload["p_import_id"]
+        user_id = self.payload["p_user_id"]
+        strategy = self.payload["p_active_strategy"]
+        imports = self.client.tables.setdefault("rekordbox_imports", [])
+        target = next((row for row in imports if row.get("id") == import_id and row.get("user_id") == user_id), None)
+        if target is None:
+            raise RuntimeError("Import not found")
+
+        settings = self.client.tables.setdefault("rekordbox_user_settings", [])
+        settings_row = next((row for row in settings if row.get("user_id") == user_id), None)
+        usable = {"completed", "paused", "interrupted"}
+        if settings_row is not None:
+            effective_active = settings_row.get("active_import_id")
+        else:
+            effective_active = next((row.get("id") for row in imports if row.get("user_id") == user_id and row.get("status") in usable), None)
+
+        self.client.tables["rekordbox_imports"] = [
+            row for row in imports if not (row.get("id") == import_id and row.get("user_id") == user_id)
+        ]
+        for table, rows in list(self.client.tables.items()):
+            if table in {"rekordbox_imports", "rekordbox_user_settings"}:
+                continue
+            self.client.tables[table] = [row for row in rows if row.get("import_id") != import_id]
+
+        next_active = effective_active
+        if effective_active == import_id:
+            if strategy == "activate_next":
+                next_active = next((
+                    row.get("id")
+                    for row in self.client.tables["rekordbox_imports"]
+                    if row.get("user_id") == user_id and row.get("status") in usable
+                ), None)
+            else:
+                next_active = None
+            if settings_row is None:
+                settings_row = {"user_id": user_id}
+                settings.append(settings_row)
+            settings_row["active_import_id"] = next_active
+
+        return SimpleNamespace(data=next_active)
+
+
 class FakeClient:
     def __init__(self, rows):
         self.tables = {"rekordbox_imports": rows}
@@ -193,30 +244,28 @@ class FakeClient:
     def table(self, name):
         return FakeQuery(self, name)
 
+    def rpc(self, name, payload):
+        return FakeRpc(self, name, payload)
 
-def test_cancel_during_upload_is_idempotent(monkeypatch):
+
+def test_cancel_during_upload_hard_deletes_import(monkeypatch):
     client = FakeClient([{"id": "job-upload", "user_id": "u", "status": "uploading"}])
     monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
 
-    first = import_jobs.cancel_import_job("job-upload", "u")
-    second = import_jobs.cancel_import_job("job-upload", "u")
+    result = import_jobs.cancel_import_job("job-upload", "u")
 
-    assert first["status"] == "cancelled"
-    assert second["status"] == "cancelled"
+    assert result["status"] == "cancelled"
+    assert client.tables["rekordbox_imports"] == []
 
 
-def test_cancel_during_processing_is_idempotent_and_terminal(monkeypatch):
+def test_cancel_during_processing_hard_deletes_import(monkeypatch):
     client = FakeClient([{"id": "job-1", "user_id": "u", "status": "processing"}])
     monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
 
-    first = import_jobs.cancel_import_job("job-1", "u")
-    second = import_jobs.cancel_import_job("job-1", "u")
+    result = import_jobs.cancel_import_job("job-1", "u")
 
-    assert first["status"] == "cancelled"
-    assert second["status"] == "cancelled"
-    import_jobs._events.clear()
-    with pytest.raises(import_jobs.ImportCancelledError):
-        import_jobs.complete_import_job("job-1", "u")
+    assert result["status"] == "cancelled"
+    assert client.tables["rekordbox_imports"] == []
 
 
 def test_pause_before_worker_start_is_idempotent_and_preserves_data(monkeypatch):
@@ -265,6 +314,7 @@ def test_delete_waits_for_worker_acknowledgement_before_cleanup(monkeypatch):
 
     assert row["status"] == "cancelled"
     assert client.tables["rekordbox_tracks"] == []
+    assert client.tables["rekordbox_imports"] == []
 
 
 def test_delete_timeout_never_races_cleanup(monkeypatch):
@@ -353,6 +403,7 @@ def test_failed_import_can_be_explicitly_deleted(monkeypatch):
 
     assert row["status"] == "cancelled"
     assert client.tables["rekordbox_tracks"] == []
+    assert client.tables["rekordbox_imports"] == []
 
 
 def test_storage_failure_preserves_asset_metadata_for_cleanup_retry(monkeypatch):
@@ -431,6 +482,122 @@ def test_delete_cleanup_failure_remains_retryable_and_idempotent(monkeypatch):
     monkeypatch.setattr(import_jobs, "cleanup_partial_import", lambda *_a, **_k: None)
     retried = import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
     assert retried["status"] == "cancelled"
+    assert client.tables["rekordbox_imports"] == []
+
+
+def test_delete_removes_associated_analysis_children_before_parent_hard_delete(monkeypatch):
+    import_id = "job-analysis-delete"
+    client = FakeClient([{"id": import_id, "user_id": "u", "status": "completed"}])
+    client.tables["rekordbox_tracks"] = [{"id": "track-1", "import_id": import_id}]
+    client.tables["rekordbox_cues"] = [{"id": "cue-1", "import_id": import_id}]
+    client.tables["rekordbox_track_beat_grids"] = [{"id": "grid-1", "import_id": import_id}]
+    client.tables["rekordbox_track_waveforms"] = [{"id": "wave-1", "import_id": import_id}]
+    client.tables["rekordbox_track_phrases"] = [{"id": "phrase-1", "import_id": import_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
+
+    assert client.tables["rekordbox_imports"] == []
+    assert client.tables["rekordbox_tracks"] == []
+    assert client.tables["rekordbox_cues"] == []
+    assert client.tables["rekordbox_track_beat_grids"] == []
+    assert client.tables["rekordbox_track_waveforms"] == []
+    assert client.tables["rekordbox_track_phrases"] == []
+
+
+def test_hard_delete_finalization_failure_keeps_retryable_visible_import(monkeypatch):
+    import_id = "job-finalize-retry"
+
+    class FinalizeFailClient(FakeClient):
+        def rpc(self, name, payload):
+            class Failure:
+                def execute(self):
+                    raise RuntimeError("database finalize unavailable")
+            return Failure()
+
+    client = FinalizeFailClient([{"id": import_id, "user_id": "u", "status": "failed"}])
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    with pytest.raises(HTTPException) as exc:
+        import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
+
+    assert exc.value.status_code == 503
+    row = client.tables["rekordbox_imports"][0]
+    assert row["status"] == "deleting"
+    assert row["error_code"] == "DELETE_FINALIZE_FAILED"
+    assert row["retryable"] is True
+
+
+def test_delete_active_library_activates_newest_remaining_usable_snapshot(monkeypatch):
+    active_id = "job-active"
+    fallback_id = "job-fallback"
+    client = FakeClient([
+        {"id": active_id, "user_id": "u", "status": "completed"},
+        {"id": fallback_id, "user_id": "u", "status": "paused"},
+        {"id": "job-failed", "user_id": "u", "status": "failed"},
+    ])
+    client.tables["rekordbox_user_settings"] = [{"user_id": "u", "active_import_id": active_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    result = import_jobs.delete_import_job(active_id, "u", wait_timeout_seconds=0, active_strategy="activate_next")
+
+    assert result["status"] == "cancelled"
+    assert {row["id"] for row in client.tables["rekordbox_imports"]} == {fallback_id, "job-failed"}
+    assert client.tables["rekordbox_user_settings"][0]["active_import_id"] == fallback_id
+
+
+def test_delete_active_library_start_over_leaves_explicitly_no_active_library(monkeypatch):
+    active_id = "job-active"
+    client = FakeClient([
+        {"id": active_id, "user_id": "u", "status": "completed"},
+        {"id": "job-older", "user_id": "u", "status": "completed"},
+    ])
+    client.tables["rekordbox_user_settings"] = [{"user_id": "u", "active_import_id": active_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    import_jobs.delete_import_job(active_id, "u", wait_timeout_seconds=0, active_strategy="start_over")
+
+    assert [row["id"] for row in client.tables["rekordbox_imports"]] == ["job-older"]
+    assert client.tables["rekordbox_user_settings"][0]["active_import_id"] is None
+
+
+def test_delete_only_library_returns_to_explicit_empty_state(monkeypatch):
+    active_id = "job-only"
+    client = FakeClient([{"id": active_id, "user_id": "u", "status": "completed"}])
+    client.tables["rekordbox_user_settings"] = [{"user_id": "u", "active_import_id": active_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    import_jobs.delete_import_job(active_id, "u", wait_timeout_seconds=0, active_strategy="start_over")
+
+    assert client.tables["rekordbox_imports"] == []
+    assert client.tables["rekordbox_user_settings"][0]["active_import_id"] is None
+
+
+def test_delete_inactive_snapshot_does_not_change_active_library(monkeypatch):
+    active_id = "job-active"
+    inactive_id = "job-inactive"
+    client = FakeClient([
+        {"id": active_id, "user_id": "u", "status": "completed"},
+        {"id": inactive_id, "user_id": "u", "status": "completed"},
+    ])
+    client.tables["rekordbox_user_settings"] = [{"user_id": "u", "active_import_id": active_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    import_jobs.delete_import_job(inactive_id, "u", wait_timeout_seconds=0, active_strategy="start_over")
+
+    assert [row["id"] for row in client.tables["rekordbox_imports"]] == [active_id]
+    assert client.tables["rekordbox_user_settings"][0]["active_import_id"] == active_id
+
+
+def test_invalid_delete_active_strategy_is_rejected_before_mutation(monkeypatch):
+    client = FakeClient([{"id": "job-1", "user_id": "u", "status": "completed"}])
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    with pytest.raises(HTTPException) as exc:
+        import_jobs.delete_import_job("job-1", "u", active_strategy="surprise")
+
+    assert exc.value.status_code == 422
+    assert client.tables["rekordbox_imports"][0]["id"] == "job-1"
 
 
 def test_late_pause_acknowledgement_persists_resumable_state(monkeypatch):

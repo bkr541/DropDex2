@@ -133,7 +133,7 @@ export async function fetchLatestImport(userId: string): Promise<RekordboxImport
     .from('rekordbox_imports')
     .select('*')
     .eq('user_id', userId)
-    .or('status.eq.completed,library_ready_at.not.is.null')
+    .in('status', ['completed', 'paused', 'interrupted'])
     .order('imported_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -143,25 +143,35 @@ export async function fetchLatestImport(userId: string): Promise<RekordboxImport
 }
 
 export async function fetchActiveImport(userId: string): Promise<RekordboxImport | null> {
-  // Try the user's explicitly chosen active import first
-  const { data: settings } = await supabase
+  // A settings row with active_import_id=null is intentional: the user chose
+  // Delete & Start Over. Only users without a settings row fall back to the
+  // newest usable snapshot for backwards compatibility.
+  const { data: settings, error: settingsError } = await supabase
     .from('rekordbox_user_settings')
     .select('active_import_id')
     .eq('user_id', userId)
     .maybeSingle();
 
-  const activeId = (settings as RekordboxUserSettings | null)?.active_import_id;
-  if (activeId) {
-    const { data: imp } = await supabase
+  if (settingsError) throw new Error(settingsError.message);
+  if (settings) {
+    const activeId = (settings as RekordboxUserSettings).active_import_id;
+    if (!activeId) return null;
+
+    const { data: imp, error } = await supabase
       .from('rekordbox_imports')
       .select('*')
       .eq('id', activeId)
-      .or('status.eq.completed,library_ready_at.not.is.null')
+      .in('status', ['completed', 'paused', 'interrupted'])
       .maybeSingle();
+    if (error) throw new Error(error.message);
     if (imp) return imp as RekordboxImport;
+
+    // A dangling/invalid active id should be rare because hard deletion repairs
+    // it atomically. Recover safely for older deployments instead of exposing a
+    // stale library.
+    return fetchLatestImport(userId);
   }
 
-  // Fallback: newest completed import
   return fetchLatestImport(userId);
 }
 
@@ -180,7 +190,7 @@ export async function fetchAllImports(userId: string): Promise<RekordboxImport[]
 
     if (error) throw new Error(error.message);
     const page = (data ?? []) as RekordboxImport[];
-    imports.push(...page);
+    imports.push(...page.filter((item) => item.status !== 'cancelled'));
     if (page.length < pageSize) break;
   }
 

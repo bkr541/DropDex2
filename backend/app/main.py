@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -279,10 +279,13 @@ def pause_rekordbox_analysis(
 )
 def delete_rekordbox_import(
     import_id: str,
+    active_strategy: Literal["activate_next", "start_over"] = "activate_next",
     user_id: str = Depends(get_current_user_id),
 ) -> ImportJobResponse:
-    """Explicitly stop, acknowledge, and delete an import."""
-    return _to_import_job_response(delete_import_job(import_id, user_id))
+    """Explicitly stop, acknowledge, and hard-delete an import."""
+    return _to_import_job_response(
+        delete_import_job(import_id, user_id, active_strategy=active_strategy)
+    )
 
 
 @app.get(
