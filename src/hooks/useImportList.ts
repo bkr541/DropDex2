@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RekordboxImport } from '../types';
 import { fetchAllImports, fetchImportById } from '../lib/queries/rekordbox';
 import { isImportInFlight } from '../lib/rekordbox/importLifecycle';
+import { isPendingHardDelete } from '../lib/rekordbox/libraryDeletion';
 
 const ACTIVE_IMPORT_POLL_MS = 5000;
 const HIDDEN_IMPORT_POLL_MS = 15000;
@@ -55,7 +56,9 @@ export function useImportList(userId: string | null) {
   }, [userId, tick]);
 
   const inFlightIds = useMemo(
-    () => imports.filter(isImportInFlight).map((item) => item.id),
+    () => imports
+      .filter((item) => isImportInFlight(item) || isPendingHardDelete(item))
+      .map((item) => item.id),
     [imports],
   );
   const inFlightKey = inFlightIds.join(',');
@@ -75,9 +78,20 @@ export function useImportList(userId: string | null) {
             .filter((row): row is RekordboxImport => row != null && row.status !== 'cancelled')
             .map((row) => [row.id, row]),
         );
-        const deletedIds = new Set(
-          inFlightIds.filter((_id, index) => rows[index] == null || rows[index]?.status === 'cancelled'),
-        );
+        const deletedIds = new Set<string>();
+        const unexpectedMissingIds: string[] = [];
+        inFlightIds.forEach((id, index) => {
+          const row = rows[index];
+          if (row != null && row.status !== 'cancelled') return;
+          const current = importsRef.current.find((item) => item.id === id);
+          if (current && isPendingHardDelete(current)) deletedIds.add(id);
+          else unexpectedMissingIds.push(id);
+        });
+
+        if (unexpectedMissingIds.length > 0) {
+          setError('An import disappeared unexpectedly while DropDex was monitoring it. Refresh Import History before continuing.');
+        }
+
         if (updates.size > 0 || deletedIds.size > 0) {
           setImports((current) => {
             const next = current

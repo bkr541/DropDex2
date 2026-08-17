@@ -256,6 +256,23 @@ export function isUnauthorizedRekordboxImportError(error: unknown): boolean {
   return error instanceof RekordboxImportError && error.status === 401;
 }
 
+export function isNotFoundRekordboxImportError(error: unknown): boolean {
+  return error instanceof RekordboxImportError && error.status === 404;
+}
+
+/**
+ * A missing import is a successful terminal state only when this client already
+ * knows that this exact import is in the destructive hard-delete lifecycle.
+ * Callers must supply that context explicitly rather than treating arbitrary
+ * 404 responses as successful deletion.
+ */
+export function isExpectedHardDeleteNotFound(
+  error: unknown,
+  deletionPending: boolean,
+): boolean {
+  return deletionPending && isNotFoundRekordboxImportError(error);
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 const API_BASE = IMPORT_API_BASE;

@@ -589,6 +589,90 @@ def test_repeated_delete_while_worker_is_stopping_is_idempotent(monkeypatch):
     import_jobs.worker_registry.acknowledge_stopped(import_id, status="stopped")
 
 
+def test_pending_start_over_retry_preserves_original_strategy(monkeypatch):
+    active_id = "job-delete-start-over-retry"
+    fallback_id = "job-delete-start-over-fallback"
+    client = FakeClient([
+        {
+            "id": active_id,
+            "user_id": "u",
+            "status": "processing",
+            "analysis_status": "parsing",
+            "library_ready_at": "2026-08-16T14:00:00Z",
+        },
+        {
+            "id": fallback_id,
+            "user_id": "u",
+            "status": "completed",
+            "library_ready_at": "2026-08-16T12:00:00Z",
+        },
+    ])
+    client.tables["rekordbox_user_settings"] = [{"user_id": "u", "active_import_id": active_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+    monkeypatch.setattr(import_jobs, "_schedule_delete_finalizer", lambda *_a, **_k: None)
+    import_jobs.worker_registry.register(active_id)
+
+    first = import_jobs.delete_import_job(
+        active_id, "u", wait_timeout_seconds=0, active_strategy="start_over"
+    )
+    retried = import_jobs.delete_import_job(
+        active_id, "u", wait_timeout_seconds=0, active_strategy="activate_next"
+    )
+
+    assert first["status"] == "stopping"
+    assert retried["status"] == "stopping"
+    assert retried["delete_active_strategy"] == "start_over"
+
+    import_jobs.worker_registry.acknowledge_stopped(active_id, status="stopped")
+    import_jobs.delete_import_job(
+        active_id, "u", wait_timeout_seconds=0, active_strategy="activate_next"
+    )
+
+    assert [row["id"] for row in client.tables["rekordbox_imports"]] == [fallback_id]
+    assert client.tables["rekordbox_user_settings"][0]["active_import_id"] is None
+
+
+def test_pending_activate_next_retry_preserves_original_strategy(monkeypatch):
+    active_id = "job-delete-activate-next-retry"
+    fallback_id = "job-delete-activate-next-fallback"
+    client = FakeClient([
+        {
+            "id": active_id,
+            "user_id": "u",
+            "status": "processing",
+            "analysis_status": "parsing",
+            "library_ready_at": "2026-08-16T14:00:00Z",
+        },
+        {
+            "id": fallback_id,
+            "user_id": "u",
+            "status": "completed",
+            "library_ready_at": "2026-08-16T12:00:00Z",
+        },
+    ])
+    client.tables["rekordbox_user_settings"] = [{"user_id": "u", "active_import_id": active_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+    monkeypatch.setattr(import_jobs, "_schedule_delete_finalizer", lambda *_a, **_k: None)
+    import_jobs.worker_registry.register(active_id)
+
+    import_jobs.delete_import_job(
+        active_id, "u", wait_timeout_seconds=0, active_strategy="activate_next"
+    )
+    retried = import_jobs.delete_import_job(
+        active_id, "u", wait_timeout_seconds=0, active_strategy="start_over"
+    )
+
+    assert retried["delete_active_strategy"] == "activate_next"
+
+    import_jobs.worker_registry.acknowledge_stopped(active_id, status="stopped")
+    import_jobs.delete_import_job(
+        active_id, "u", wait_timeout_seconds=0, active_strategy="start_over"
+    )
+
+    assert [row["id"] for row in client.tables["rekordbox_imports"]] == [fallback_id]
+    assert client.tables["rekordbox_user_settings"][0]["active_import_id"] == fallback_id
+
+
 def test_failed_import_can_be_explicitly_deleted(monkeypatch):
     import_id = "job-failed-delete"
     client = FakeClient([
@@ -1009,6 +1093,54 @@ def test_delete_active_library_activates_newest_remaining_usable_snapshot(monkey
     assert result["status"] == "cancelled"
     assert {row["id"] for row in client.tables["rekordbox_imports"]} == {fallback_id, "job-failed"}
     assert client.tables["rekordbox_user_settings"][0]["active_import_id"] == fallback_id
+
+
+def test_activate_next_selects_newest_of_three_remaining_usable_snapshots(monkeypatch):
+    active_id = "job-active-three-fallbacks"
+    newest_id = "job-newest-fallback"
+    middle_id = "job-middle-fallback"
+    oldest_id = "job-oldest-fallback"
+    client = FakeClient([
+        {
+            "id": active_id,
+            "user_id": "u",
+            "status": "completed",
+            "library_ready_at": "2026-08-16T15:00:00Z",
+            "imported_at": "2026-08-16T15:00:00Z",
+        },
+        {
+            "id": newest_id,
+            "user_id": "u",
+            "status": "paused",
+            "library_ready_at": "2026-08-16T14:00:00Z",
+            "imported_at": "2026-08-16T14:00:00Z",
+        },
+        {
+            "id": middle_id,
+            "user_id": "u",
+            "status": "interrupted",
+            "library_ready_at": "2026-08-16T13:00:00Z",
+            "imported_at": "2026-08-16T13:00:00Z",
+        },
+        {
+            "id": oldest_id,
+            "user_id": "u",
+            "status": "completed",
+            "library_ready_at": "2026-08-16T12:00:00Z",
+            "imported_at": "2026-08-16T12:00:00Z",
+        },
+    ])
+    client.tables["rekordbox_user_settings"] = [{"user_id": "u", "active_import_id": active_id}]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    import_jobs.delete_import_job(
+        active_id, "u", wait_timeout_seconds=0, active_strategy="activate_next"
+    )
+
+    assert client.tables["rekordbox_user_settings"][0]["active_import_id"] == newest_id
+    assert {row["id"] for row in client.tables["rekordbox_imports"]} == {
+        newest_id, middle_id, oldest_id
+    }
 
 
 def test_activate_next_skips_interrupted_snapshot_that_never_became_library_ready(monkeypatch):

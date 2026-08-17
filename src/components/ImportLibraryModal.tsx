@@ -34,6 +34,7 @@ import {
   uploadRekordboxDb,
   uploadRekordboxZipBundle,
   RekordboxImportError,
+  isExpectedHardDeleteNotFound,
   isUnauthorizedRekordboxImportError,
 } from '../lib/api/rekordboxImport';
 import type { BatchUploadResponse, CompleteResponse, ImportResult, ImportWriteError, ReuseStats } from '../lib/api/rekordboxImport';
@@ -48,6 +49,7 @@ import {
 import { UploadAccumulator, isTransientFileFailure } from '../lib/rekordbox/analysisUploadResults';
 import { buildManifestReconciliation } from '../lib/rekordbox/manifestReconciliation';
 import type { ManifestReconciliation } from '../lib/rekordbox/manifestReconciliation';
+import type { DeleteActiveStrategy } from '../lib/rekordbox/libraryDeletion';
 import { isAbortError, uploadBatchWithRetry } from '../lib/rekordbox/uploadBatch';
 import { AbortableTimerRegistry, waitForAbortableDelay } from '../lib/rekordbox/abortableRetry';
 import { runCancellableUploadQueue, UploadQueueRuntime } from '../lib/rekordbox/cancellableUploadQueue';
@@ -108,6 +110,10 @@ interface Props {
   onSuccess: () => void;
   onImportStarted?: (importId: string) => void;
   onBackgrounded?: (importId: string, usbReleased: boolean) => void;
+  onRequestDelete?: (
+    importId: string,
+    executeConfirmedDelete: (strategy: DeleteActiveStrategy) => Promise<void>,
+  ) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -176,6 +182,7 @@ export function ImportLibraryModal({
   onSuccess,
   onImportStarted,
   onBackgrounded,
+  onRequestDelete,
 }: Props) {
   const usb = useUsbConnection();
   const [mode, setMode] = useState<Mode>('usb_folder');
@@ -232,6 +239,7 @@ export function ImportLibraryModal({
   const activeLocalRequestsRef = useRef(0);
   const localAbortRequestedRef = useRef(false);
   const cancelRequestedRef = useRef(false);
+  const confirmedDeleteStrategyRef = useRef<DeleteActiveStrategy>('activate_next');
   const usbReleaseConfirmedRef = useRef(false);
   const closeAfterCancelRef = useRef(false);
   const retryTimersRef = useRef(new AbortableTimerRegistry());
@@ -348,6 +356,7 @@ export function ImportLibraryModal({
     uploadQueueRuntimeRef.current = null;
     localAbortRequestedRef.current = false;
     cancelRequestedRef.current = false;
+    confirmedDeleteStrategyRef.current = 'activate_next';
     closeAfterCancelRef.current = false;
     cancelBackendPromiseRef.current = null;
     pauseBackendPromiseRef.current = null;
@@ -397,6 +406,7 @@ export function ImportLibraryModal({
     backgroundedRef.current = false;
     importIdRef.current = null;
     cancelRequestedRef.current = false;
+    confirmedDeleteStrategyRef.current = 'activate_next';
     closeAfterCancelRef.current = false;
     localAbortRequestedRef.current = false;
     activeLocalRequestsRef.current = 0;
@@ -483,7 +493,9 @@ export function ImportLibraryModal({
     onClose();
   };
 
-  const deleteCloudWork = (): Promise<void> => {
+  const deleteCloudWork = (
+    activeStrategy: DeleteActiveStrategy = confirmedDeleteStrategyRef.current,
+  ): Promise<void> => {
     if (cancelBackendPromiseRef.current) return cancelBackendPromiseRef.current;
 
     const promise = (async () => {
@@ -520,7 +532,7 @@ export function ImportLibraryModal({
 
       try {
         let job = await requestWithAuthRetry(
-          (token) => deleteRekordboxImport(id, token, cancellationController.signal),
+          (token) => deleteRekordboxImport(id, token, cancellationController.signal, activeStrategy),
           fallbackToken,
         );
 
@@ -531,16 +543,30 @@ export function ImportLibraryModal({
             cancellationController.signal,
             cancellationTimers,
           );
-          job = await requestWithAuthRetry(
-            (token) => fetchRekordboxImportJob(id, token, cancellationController.signal),
-            fallbackToken,
-          );
+          try {
+            job = await requestWithAuthRetry(
+              (token) => fetchRekordboxImportJob(id, token, cancellationController.signal),
+              fallbackToken,
+            );
+          } catch (error) {
+            if (isExpectedHardDeleteNotFound(error, true)) {
+              // The DELETE request above was accepted for this exact import. A
+              // subsequent 404 is the expected hard-delete terminal state.
+              if (mountedRef.current) {
+                setPhase('cancelled');
+                onSuccess();
+              }
+              return;
+            }
+            throw error;
+          }
         }
 
         if (!mountedRef.current) return;
 
         if (job.status === 'cancelled') {
           setPhase('cancelled');
+          onSuccess();
         } else if (job.status === 'completed') {
           setErrorMessage(
             'This import finished before the cancellation reached the server. It remains completed in Import History.',
@@ -686,8 +712,40 @@ export function ImportLibraryModal({
     onClose();
   };
 
+  const executeConfirmedHardDelete = async (
+    strategy: DeleteActiveStrategy,
+    intent: AbortDialogIntent = abortDialogIntent,
+  ): Promise<void> => {
+    confirmedDeleteStrategyRef.current = strategy;
+    closeAfterCancelRef.current = intent === 'close';
+    cancelRequestedRef.current = true;
+    setShowAbortDialog(false);
+    setErrorMessage('');
+
+    if (phase === 'parsing_cloud_data' || phase === 'usb_released') {
+      usbReleaseConfirmedRef.current = true;
+      setUsbReleaseConfirmed(true);
+      await deleteCloudWork(strategy);
+      return;
+    }
+
+    if (localUsbAccessActive) {
+      requestLocalUsbStop();
+      return;
+    }
+
+    await deleteCloudWork(strategy);
+  };
+
   const openAbortDialog = (intent: AbortDialogIntent) => {
     setAbortDialogIntent(intent);
+    if (intent !== 'pause' && importIdRef.current && onRequestDelete) {
+      onRequestDelete(
+        importIdRef.current,
+        (strategy) => executeConfirmedHardDelete(strategy, intent),
+      );
+      return;
+    }
     setShowAbortDialog(true);
   };
 
@@ -714,7 +772,7 @@ export function ImportLibraryModal({
     if (phase === 'parsing_cloud_data' || phase === 'usb_released') {
       usbReleaseConfirmedRef.current = true;
       setUsbReleaseConfirmed(true);
-      if (abortDialogIntent === 'delete') void deleteCloudWork();
+      if (abortDialogIntent === 'delete') void deleteCloudWork(confirmedDeleteStrategyRef.current);
       else void pauseCloudWork();
       return;
     }
@@ -2055,9 +2113,9 @@ export function ImportLibraryModal({
               <div className="space-y-4 py-4 text-center">
                 <AlertCircle size={34} className="mx-auto text-amber-500" />
                 <div>
-                  <h3 className="font-semibold">Import cancelled</h3>
+                  <h3 className="font-semibold">Import deleted</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    USB access was released before cloud cancellation completed. DropDex will not activate partial results.
+                    The Rekordbox import and its DropDex cloud data were permanently deleted. USB access is released.
                   </p>
                   {errorMessage && <p className="mt-2 text-sm text-destructive">{errorMessage}</p>}
                 </div>

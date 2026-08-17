@@ -1,8 +1,8 @@
 import { AlertTriangle, CheckCircle2, Loader2, Pause, Play, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  deleteRekordboxImport,
   fetchRekordboxAnalysisStatus,
+  isExpectedHardDeleteNotFound,
   pauseRekordboxAnalysis,
   resumeRekordboxAnalysis,
   type AnalysisStatusResponse,
@@ -28,6 +28,8 @@ export function BackgroundImportPanel({
   onClose,
   onChanged,
   onManageLocalUpload,
+  onRequestDelete,
+  deletionPending,
 }: {
   importId: string;
   accessToken: string;
@@ -35,13 +37,16 @@ export function BackgroundImportPanel({
   onClose: () => void;
   onChanged: () => void;
   onManageLocalUpload: () => void;
+  onRequestDelete: () => void;
+  deletionPending: boolean;
 }) {
   const [status, setStatus] = useState<AnalysisStatusResponse | null>(null);
-  const [action, setAction] = useState<'pause' | 'resume' | 'delete' | null>(null);
+  const [action, setAction] = useState<'pause' | 'resume' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
   const lastNotifiedStatus = useRef<string | null>(null);
   const lastReadyCount = useRef<number | null>(null);
+  const hardDeleteCompleteRef = useRef(false);
   const onChangedRef = useRef(onChanged);
 
   useEffect(() => {
@@ -49,6 +54,7 @@ export function BackgroundImportPanel({
   }, [onChanged]);
 
   const load = useCallback(async () => {
+    if (hardDeleteCompleteRef.current) return;
     try {
       const next = await fetchRekordboxAnalysisStatus(importId, accessToken);
       if (!mounted.current) return;
@@ -67,9 +73,18 @@ export function BackgroundImportPanel({
         onChangedRef.current();
       }
     } catch (err) {
+      if (mounted.current && isExpectedHardDeleteNotFound(err, deletionPending)) {
+        // This exact import is known to be in a client-requested hard-delete
+        // lifecycle, so disappearance is the expected terminal state. Stop this
+        // panel's polling immediately even before React finishes unmounting it.
+        hardDeleteCompleteRef.current = true;
+        onChangedRef.current();
+        onClose();
+        return;
+      }
       if (mounted.current) setError(err instanceof Error ? err.message : 'Could not refresh import progress.');
     }
-  }, [accessToken, importId]);
+  }, [accessToken, deletionPending, importId, onClose]);
 
   useEffect(() => {
     mounted.current = true;
@@ -90,7 +105,7 @@ export function BackgroundImportPanel({
   const terminal = status ? ['completed', 'partial', 'failed'].includes(status.analysis_status) : false;
   const progress = status?.progress_percent ?? 0;
 
-  const runAction = async (nextAction: 'pause' | 'resume' | 'delete') => {
+  const runAction = async (nextAction: 'pause' | 'resume') => {
     setAction(nextAction);
     setError(null);
     try {
@@ -98,14 +113,8 @@ export function BackgroundImportPanel({
       if (nextAction === 'resume') {
         await resumeRekordboxAnalysis(importId, accessToken, { affectedTrackIds });
       }
-      const deleted = nextAction === 'delete'
-        ? await deleteRekordboxImport(importId, accessToken)
-        : null;
       await load();
       onChanged();
-      // Patch 2 may return a transient stopping state while a worker releases
-      // resources. Keep the panel visible until deletion is acknowledged.
-      if (deleted?.status === 'cancelled') onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : `Could not ${nextAction} this import.`);
     } finally {
@@ -210,8 +219,8 @@ export function BackgroundImportPanel({
               {action === 'resume' ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Resume
             </button>
           )}
-          <button type="button" disabled={action !== null} onClick={() => void runAction('delete')} className="flex items-center justify-center gap-2 rounded-xl border border-red-500/30 px-3 py-2 text-xs font-bold text-red-300 disabled:opacity-50">
-            {action === 'delete' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Delete Import
+          <button type="button" disabled={action !== null || deletionPending} onClick={onRequestDelete} className="flex items-center justify-center gap-2 rounded-xl border border-red-500/30 px-3 py-2 text-xs font-bold text-red-300 disabled:opacity-50">
+            {deletionPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} {deletionPending ? 'Deleting…' : 'Delete Import'}
           </button>
         </div>
       )}

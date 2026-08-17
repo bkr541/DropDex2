@@ -13,7 +13,11 @@ import {
   shouldUseBpm,
 } from '../music/similarVibes';
 import { getCompatibleCamelotKeys } from '../music/camelot';
-import { USABLE_LIBRARY_STATUSES } from '../rekordbox/libraryDeletion';
+import {
+  USABLE_LIBRARY_STATUSES,
+  isPendingHardDelete,
+  isUsableLibrarySnapshot,
+} from '../rekordbox/libraryDeletion';
 
 export interface PlaylistWithCount extends RekordboxPlaylist {
   track_count: number;
@@ -148,33 +152,62 @@ export async function fetchActiveImport(userId: string): Promise<RekordboxImport
   // A settings row with active_import_id=null is intentional: the user chose
   // Delete & Start Over. Only users without a settings row fall back to the
   // newest usable snapshot for backwards compatibility.
-  const { data: settings, error: settingsError } = await supabase
-    .from('rekordbox_user_settings')
-    .select('active_import_id')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (settingsError) throw new Error(settingsError.message);
-  if (settings) {
-    const activeId = (settings as RekordboxUserSettings).active_import_id;
-    if (!activeId) return null;
-
-    const { data: imp, error } = await supabase
-      .from('rekordbox_imports')
-      .select('*')
-      .eq('id', activeId)
-      .in('status', [...USABLE_LIBRARY_STATUSES])
-      .not('library_ready_at', 'is', null)
+  const readSettings = async (): Promise<RekordboxUserSettings | null> => {
+    const { data, error } = await supabase
+      .from('rekordbox_user_settings')
+      .select('active_import_id')
+      .eq('user_id', userId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (imp) return imp as RekordboxImport;
+    return data as RekordboxUserSettings | null;
+  };
 
-    // A dangling/invalid active id should be rare because hard deletion repairs
-    // it atomically. Recover safely for older deployments instead of exposing a
-    // stale library.
+  const readImport = async (importId: string): Promise<RekordboxImport | null> => {
+    const { data, error } = await supabase
+      .from('rekordbox_imports')
+      .select('*')
+      .eq('id', importId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data as RekordboxImport | null;
+  };
+
+  const settings = await readSettings();
+  if (!settings) return fetchLatestImport(userId);
+  if (!settings.active_import_id) return null;
+
+  const activeId = settings.active_import_id;
+  const activeImport = await readImport(activeId);
+  if (activeImport) {
+    if (isUsableLibrarySnapshot(activeImport)) return activeImport;
+
+    // During an explicitly requested Start Over delete, the persisted strategy
+    // outranks generic newest-library fallback. Returning null here prevents an
+    // older snapshot from becoming sticky client state while workers shut down.
+    if (isPendingHardDelete(activeImport) && activeImport.delete_active_strategy === 'start_over') {
+      return null;
+    }
     return fetchLatestImport(userId);
   }
 
+  // The parent row and user-settings pointer are repaired atomically during hard
+  // delete, but the two REST reads above can straddle that transaction. Re-read
+  // settings before applying a fallback so Start Over cannot be misread as an
+  // orphaned pointer to the deleted import.
+  const refreshedSettings = await readSettings();
+  if (!refreshedSettings) return fetchLatestImport(userId);
+  if (!refreshedSettings.active_import_id) return null;
+  if (refreshedSettings.active_import_id !== activeId) {
+    const refreshedImport = await readImport(refreshedSettings.active_import_id);
+    if (refreshedImport && isUsableLibrarySnapshot(refreshedImport)) return refreshedImport;
+    if (refreshedImport && isPendingHardDelete(refreshedImport)
+      && refreshedImport.delete_active_strategy === 'start_over') {
+      return null;
+    }
+  }
+
+  // A genuinely dangling/invalid active id is an older-deployment recovery case.
   return fetchLatestImport(userId);
 }
 

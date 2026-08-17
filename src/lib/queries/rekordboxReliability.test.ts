@@ -121,6 +121,110 @@ describe('large-library query reliability', () => {
     expect(fromMock).toHaveBeenCalledTimes(1);
   });
 
+  it('suppresses latest-library fallback while Start Over deletion is pending', async () => {
+    const settingsBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: { active_import_id: 'active-delete' }, error: null,
+      }),
+    };
+    settingsBuilder.select.mockReturnValue(settingsBuilder);
+    settingsBuilder.eq.mockReturnValue(settingsBuilder);
+
+    const importBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: 'active-delete', status: 'stopping', library_ready_at: '2026-08-16T12:00:00Z',
+          delete_active_strategy: 'start_over',
+        },
+        error: null,
+      }),
+    };
+    importBuilder.select.mockReturnValue(importBuilder);
+    importBuilder.eq.mockReturnValue(importBuilder);
+
+    fromMock
+      .mockReturnValueOnce(settingsBuilder as never)
+      .mockReturnValueOnce(importBuilder as never);
+
+    await expect(fetchActiveImport('user-1')).resolves.toBeNull();
+    expect(fromMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('allows activate-next deletion to render the newest usable fallback while pending', async () => {
+    const settingsBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: { active_import_id: 'active-delete' }, error: null,
+      }),
+    };
+    settingsBuilder.select.mockReturnValue(settingsBuilder);
+    settingsBuilder.eq.mockReturnValue(settingsBuilder);
+
+    const importBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: 'active-delete', status: 'stopping', library_ready_at: '2026-08-16T12:00:00Z',
+          delete_active_strategy: 'activate_next',
+        },
+        error: null,
+      }),
+    };
+    importBuilder.select.mockReturnValue(importBuilder);
+    importBuilder.eq.mockReturnValue(importBuilder);
+
+    const latestBuilder = {
+      select: vi.fn(), eq: vi.fn(), in: vi.fn(), not: vi.fn(), order: vi.fn(), limit: vi.fn(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: 'fallback', status: 'completed', library_ready_at: '2026-08-16T11:00:00Z' },
+        error: null,
+      }),
+    };
+    latestBuilder.select.mockReturnValue(latestBuilder);
+    latestBuilder.eq.mockReturnValue(latestBuilder);
+    latestBuilder.in.mockReturnValue(latestBuilder);
+    latestBuilder.not.mockReturnValue(latestBuilder);
+    latestBuilder.order.mockReturnValue(latestBuilder);
+    latestBuilder.limit.mockReturnValue(latestBuilder);
+
+    fromMock
+      .mockReturnValueOnce(settingsBuilder as never)
+      .mockReturnValueOnce(importBuilder as never)
+      .mockReturnValueOnce(latestBuilder as never);
+
+    await expect(fetchActiveImport('user-1')).resolves.toMatchObject({ id: 'fallback' });
+  });
+
+  it('re-reads settings when the active row disappears across hard-delete finalization', async () => {
+    const firstSettingsBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: { active_import_id: 'just-deleted' }, error: null,
+      }),
+    };
+    firstSettingsBuilder.select.mockReturnValue(firstSettingsBuilder);
+    firstSettingsBuilder.eq.mockReturnValue(firstSettingsBuilder);
+
+    const missingImportBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    };
+    missingImportBuilder.select.mockReturnValue(missingImportBuilder);
+    missingImportBuilder.eq.mockReturnValue(missingImportBuilder);
+
+    const refreshedSettingsBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: { active_import_id: null }, error: null,
+      }),
+    };
+    refreshedSettingsBuilder.select.mockReturnValue(refreshedSettingsBuilder);
+    refreshedSettingsBuilder.eq.mockReturnValue(refreshedSettingsBuilder);
+
+    fromMock
+      .mockReturnValueOnce(firstSettingsBuilder as never)
+      .mockReturnValueOnce(missingImportBuilder as never)
+      .mockReturnValueOnce(refreshedSettingsBuilder as never);
+
+    await expect(fetchActiveImport('user-1')).resolves.toBeNull();
+    expect(fromMock).toHaveBeenCalledTimes(3);
+  });
+
   it('chunks large track-id lookups and preserves requested order', async () => {
     const ids = Array.from({ length: 405 }, (_, index) => `track-${index}`);
     inMock.mockImplementation(async (_column: string, chunk: string[]) => ({

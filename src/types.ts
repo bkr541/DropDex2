@@ -51,6 +51,8 @@ export interface RekordboxImport {
   error_message: string | null;
   error_code?: string | null;
   retryable?: boolean;
+  /** Persisted strategy for a hard delete once the destructive lifecycle begins. */
+  delete_active_strategy?: 'activate_next' | 'start_over' | null;
   updated_at?: string;
   upload_completed_at?: string | null;
   processing_started_at?: string | null;

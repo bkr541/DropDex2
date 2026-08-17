@@ -1014,6 +1014,15 @@ def delete_import_job(
     if current_status == "cancelled":
         return row
 
+    persisted_strategy = str(row.get("delete_active_strategy") or "")
+    deletion_already_pending = current_status in {"cancel_requested", "stopping", "deleting"}
+    if deletion_already_pending and persisted_strategy in DELETE_ACTIVE_STRATEGIES:
+        # The first confirmed destructive request owns the pending intent. A retry
+        # continues that request; transient frontend state must never reinterpret it.
+        effective_active_strategy = persisted_strategy
+    else:
+        effective_active_strategy = active_strategy
+
     signal_local_cancellation(import_id)
     worker_registry.request_stop(import_id, "delete")
     stop_snapshot = worker_registry.snapshot(import_id)
@@ -1028,7 +1037,7 @@ def delete_import_job(
             if stopped_acknowledged
             else None
         ),
-        "delete_active_strategy": active_strategy,
+        "delete_active_strategy": effective_active_strategy,
     }
     if current_status not in {"cancel_requested", "stopping", "deleting"}:
         request_updates["status"] = "cancel_requested"
@@ -1062,14 +1071,14 @@ def delete_import_job(
         _schedule_delete_finalizer(
             import_id,
             user_id,
-            active_strategy=active_strategy,
+            active_strategy=effective_active_strategy,
         )
         return stopping
     return _cleanup_after_worker_ack(
         import_id,
         user_id,
         sb=sb,
-        active_strategy=active_strategy,
+        active_strategy=effective_active_strategy,
     )
 
 

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { RekordboxImport } from '../../types';
 import {
   getNextUsableLibrarySnapshot,
+  getPersistedDeleteStrategy,
   isDeleteConfirmationValid,
+  isPendingHardDelete,
   isUsableLibrarySnapshot,
 } from './libraryDeletion';
 
@@ -32,7 +34,11 @@ describe('library deletion decisions', () => {
     expect(isDeleteConfirmationValid('DELETE')).toBe(true);
     expect(isDeleteConfirmationValid('delete')).toBe(false);
     expect(isDeleteConfirmationValid('Delete')).toBe(false);
+    expect(isDeleteConfirmationValid('DEL')).toBe(false);
     expect(isDeleteConfirmationValid('DELETE ')).toBe(false);
+    expect(isDeleteConfirmationValid(' DELETE')).toBe(false);
+    expect(isDeleteConfirmationValid('DELETE\n')).toBe(false);
+    expect(isDeleteConfirmationValid('')).toBe(false);
   });
 
   it('only treats activatable library snapshots as usable fallbacks', () => {
@@ -46,6 +52,16 @@ describe('library deletion decisions', () => {
     expect(isUsableLibrarySnapshot(snapshot('processing', 'processing'))).toBe(false);
     expect(isUsableLibrarySnapshot(snapshot('pre-ready-paused', 'paused', false))).toBe(false);
     expect(isUsableLibrarySnapshot(snapshot('pre-ready-interrupted', 'interrupted', false))).toBe(false);
+  });
+
+  it('recognizes only persisted stopping/deleting rows as pending hard deletes', () => {
+    const pending = { ...snapshot('pending', 'stopping'), delete_active_strategy: 'start_over' as const };
+    const ordinaryStopping = snapshot('ordinary-stop', 'stopping');
+
+    expect(isPendingHardDelete(pending)).toBe(true);
+    expect(getPersistedDeleteStrategy(pending)).toBe('start_over');
+    expect(isPendingHardDelete(ordinaryStopping)).toBe(false);
+    expect(getPersistedDeleteStrategy(ordinaryStopping)).toBeNull();
   });
 
   it('selects the newest remaining usable snapshot from the already date-sorted import list', () => {

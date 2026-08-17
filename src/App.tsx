@@ -39,7 +39,7 @@ import { useRecentTracks } from './hooks/useRekordboxTracks';
 import { useTrackPlaylists } from './hooks/useTrackPlaylists';
 import { useImportList } from './hooks/useImportList';
 import { useTrackPreviewWaveforms } from './hooks/useTrackPreviewWaveforms';
-import { fetchReviewTracks, setActiveImport } from './lib/queries/rekordbox';
+import { fetchImportById, fetchReviewTracks, setActiveImport } from './lib/queries/rekordbox';
 import { deleteRekordboxImport } from './lib/api/rekordboxImport';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { BackgroundImportPanel } from './components/BackgroundImportPanel';
@@ -47,6 +47,8 @@ import { DeleteLibraryModal } from './components/DeleteLibraryModal';
 import { getImportHistoryPresentation } from './lib/rekordbox/importHistoryPresentation';
 import {
   getNextUsableLibrarySnapshot,
+  getPersistedDeleteStrategy,
+  isPendingHardDelete,
   isUsableLibrarySnapshot,
   type DeleteActiveStrategy,
 } from './lib/rekordbox/libraryDeletion';
@@ -416,6 +418,16 @@ function ImportStatusView({
   );
 }
 
+type ConfirmedDeleteExecutor = (strategy: DeleteActiveStrategy) => Promise<void>;
+
+interface PendingDeletionContext {
+  importId: string;
+  sourceFilename: string;
+  strategy: DeleteActiveStrategy;
+  wasActive: boolean;
+  fallbackFilename: string | null;
+}
+
 // --- App Root ---
 
 export default function App() {
@@ -431,7 +443,11 @@ export default function App() {
   const [importNotice, setImportNotice] = useState<ImportNotice | null>(null);
   const [deleteLibraryTarget, setDeleteLibraryTarget] = useState<RekordboxImport | null>(null);
   const [deleteLibrarySubmitting, setDeleteLibrarySubmitting] = useState(false);
+  const deleteLibrarySubmittingRef = useRef(false);
   const [deleteLibraryError, setDeleteLibraryError] = useState<string | null>(null);
+  const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(() => new Set());
+  const deleteExecutorRef = useRef<ConfirmedDeleteExecutor | null>(null);
+  const pendingDeletionContextsRef = useRef<Map<string, PendingDeletionContext>>(new Map());
   const importStatusRef = useRef<Map<string, {
     status: RekordboxImport['status'];
     inFlight: boolean;
@@ -528,6 +544,9 @@ export default function App() {
       importStatusRef.current.clear();
       importStatusSeededRef.current = false;
       activationAttemptsRef.current.clear();
+      pendingDeletionContextsRef.current.clear();
+      setPendingDeletionIds(new Set());
+      deleteExecutorRef.current = null;
       return;
     }
     if (importsListLoading) return;
@@ -587,6 +606,61 @@ export default function App() {
       refetchImport();
     }
   }, [allImports, importsListLoading, latestImport, refetchImport, refetchImportList, refetchProfiles, userId]);
+
+  useEffect(() => {
+    if (!userId || importsListLoading) return;
+
+    let contextsChanged = false;
+    for (const item of allImports) {
+      if (!isPendingHardDelete(item) || pendingDeletionContextsRef.current.has(item.id)) continue;
+      const strategy = getPersistedDeleteStrategy(item);
+      if (!strategy) continue;
+      const fallback = getNextUsableLibrarySnapshot(allImports, item.id);
+      pendingDeletionContextsRef.current.set(item.id, {
+        importId: item.id,
+        sourceFilename: item.source_filename,
+        strategy,
+        wasActive: strategy === 'start_over' || latestImport?.id === item.id,
+        fallbackFilename: fallback?.source_filename ?? null,
+      });
+      contextsChanged = true;
+    }
+
+    const visibleIds = new Set(allImports.map((item) => item.id));
+    for (const [importId, context] of pendingDeletionContextsRef.current) {
+      if (visibleIds.has(importId)) continue;
+
+      pendingDeletionContextsRef.current.delete(importId);
+      contextsChanged = true;
+      if (backgroundImport?.importId === importId) setBackgroundImport(null);
+      if (route.name === 'import' && route.importId === importId) {
+        navigate({ name: 'settings' }, { replace: true });
+      }
+
+      setImportNotice({
+        kind: 'success',
+        title: context.strategy === 'start_over' && context.wasActive
+          ? 'Library deleted. DropDex is ready to start over.'
+          : 'Library deleted',
+        detail: context.strategy === 'activate_next' && context.wasActive && context.fallbackFilename
+          ? `${context.sourceFilename} was permanently deleted. ${context.fallbackFilename} is now your active library.`
+          : `${context.sourceFilename} and its Rekordbox-imported data were permanently deleted.`,
+      });
+
+      // The parent-row disappearance is the terminal hard-delete event. Re-read
+      // the canonical user setting now, rather than trusting any transient
+      // active-library fallback the client rendered while deletion was pending.
+      refetchImport();
+      void refetchProfiles();
+    }
+
+    if (contextsChanged) {
+      setPendingDeletionIds(new Set(pendingDeletionContextsRef.current.keys()));
+    }
+  }, [
+    allImports, backgroundImport?.importId, importsListLoading, latestImport?.id, navigate,
+    refetchImport, refetchProfiles, route, userId,
+  ]);
 
   // Load review tracks when entering review mode
   useEffect(() => {
@@ -714,55 +788,103 @@ export default function App() {
     }
   };
 
+  const openDeleteConfirmation = async (
+    importId: string,
+    executor: ConfirmedDeleteExecutor | null = null,
+  ) => {
+    setDeleteLibraryError(null);
+    deleteExecutorRef.current = executor;
+
+    let target = allImports.find((item) => item.id === importId) ?? null;
+    if (!target) {
+      try {
+        target = await fetchImportById(importId);
+      } catch (error) {
+        console.error('Failed to load import before delete confirmation:', error);
+      }
+    }
+
+    if (!target) {
+      deleteExecutorRef.current = null;
+      setImportNotice({
+        kind: 'warning',
+        title: 'Library is no longer available',
+        detail: 'DropDex could not find that import. Refresh Import History before trying another destructive action.',
+      });
+      refetchImportList();
+      refetchImport();
+      return;
+    }
+
+    setDeleteLibraryTarget(target);
+  };
+
   const handleDeleteImport = (imp: RekordboxImport) => {
+    deleteExecutorRef.current = null;
     setDeleteLibraryError(null);
     setDeleteLibraryTarget(imp);
   };
 
-  const handleConfirmDeleteImport = async (activeStrategy: DeleteActiveStrategy) => {
+  const handleConfirmDeleteImport = async (requestedStrategy: DeleteActiveStrategy) => {
     const imp = deleteLibraryTarget;
-    if (!imp || deleteLibrarySubmitting) return;
+    if (!imp || deleteLibrarySubmittingRef.current) return;
 
-    const isActive = imp.id === latestImport?.id;
+    const persistedStrategy = getPersistedDeleteStrategy(imp);
+    const activeStrategy = persistedStrategy ?? requestedStrategy;
+    const isActive = imp.id === latestImport?.id || persistedStrategy === 'start_over';
     const fallback = getNextUsableLibrarySnapshot(allImports, imp.id);
+    const context: PendingDeletionContext = {
+      importId: imp.id,
+      sourceFilename: imp.source_filename,
+      strategy: activeStrategy,
+      wasActive: isActive,
+      fallbackFilename: fallback?.source_filename ?? null,
+    };
+
+    deleteLibrarySubmittingRef.current = true;
     setDeleteLibrarySubmitting(true);
     setDeleteLibraryError(null);
 
     try {
-      const token = session?.access_token;
-      if (!token) throw new Error('Your session expired. Sign in again before deleting a library.');
-      const result = await deleteRekordboxImport(imp.id, token, undefined, activeStrategy);
+      pendingDeletionContextsRef.current.set(imp.id, context);
+      setPendingDeletionIds(new Set(pendingDeletionContextsRef.current.keys()));
 
-      if (route.name === 'import' && route.importId === imp.id) {
-        navigate({ name: 'settings' }, { replace: true });
+      const customExecutor = deleteExecutorRef.current;
+      let result: Awaited<ReturnType<typeof deleteRekordboxImport>> | null = null;
+      if (customExecutor) {
+        await customExecutor(activeStrategy);
+      } else {
+        const token = session?.access_token;
+        if (!token) throw new Error('Your session expired. Sign in again before deleting a library.');
+        result = await deleteRekordboxImport(imp.id, token, undefined, activeStrategy);
       }
 
+      deleteExecutorRef.current = null;
       setDeleteLibraryTarget(null);
-      if (result.status === 'cancelled') {
-        setImportNotice({
-          kind: 'success',
-          title: activeStrategy === 'start_over' && isActive
-            ? 'Library deleted. DropDex is ready to start over.'
-            : 'Library deleted',
-          detail: activeStrategy === 'activate_next' && isActive && fallback
-            ? `${imp.source_filename} was permanently deleted. ${fallback.source_filename} is now your active library.`
-            : `${imp.source_filename} and its Rekordbox-imported data were permanently deleted.`,
-        });
-      } else {
+
+      if (result?.status !== 'cancelled') {
         setImportNotice({
           kind: 'warning',
           title: 'Delete is waiting for worker shutdown',
-          detail: 'DropDex will keep the library visible until the analysis worker acknowledges that it stopped and destructive cleanup can finish safely.',
+          detail: 'DropDex will keep observing this hard delete until the worker stops and the import disappears. Your original deletion choice is preserved.',
         });
       }
 
-      if (isActive) refetchImport();
+      // For Start Over, this refetch returns null even while the target is still
+      // stopping because fetchActiveImport honors the persisted server intent.
+      if (isActive || activeStrategy === 'start_over') refetchImport();
       refetchImportList();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'DropDex could not delete this library. Please retry.';
       console.error('Failed to delete import:', err);
       setDeleteLibraryError(message);
+      pendingDeletionContextsRef.current.delete(imp.id);
+      setPendingDeletionIds(new Set(pendingDeletionContextsRef.current.keys()));
+      // If the backend had already entered a retryable pending-delete state, the
+      // refetched durable row will re-register the persisted strategy.
+      refetchImportList();
     } finally {
+      deleteLibrarySubmittingRef.current = false;
       setDeleteLibrarySubmitting(false);
     }
   };
@@ -1494,7 +1616,7 @@ export default function App() {
                         const showStatusBadge = imp.status !== 'completed'
                           || (imp.analysis_status !== 'completed' && imp.analysis_status !== 'not_requested');
                         return (
-                          <div key={imp.id} className="p-4 flex items-start justify-between gap-3">
+                          <div key={imp.id} data-testid={`import-history-row-${imp.id}`} className="p-4 flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <button
@@ -1685,7 +1807,10 @@ export default function App() {
       <AnimatePresence>
         <DeleteLibraryModal
           target={deleteLibraryTarget}
-          isActive={Boolean(deleteLibraryTarget && deleteLibraryTarget.id === latestImport?.id)}
+          isActive={Boolean(deleteLibraryTarget && (
+            deleteLibraryTarget.id === latestImport?.id
+            || pendingDeletionContextsRef.current.get(deleteLibraryTarget.id)?.wasActive
+          ))}
           nextUsableImport={deleteLibraryTarget ? getNextUsableLibrarySnapshot(allImports, deleteLibraryTarget.id) : null}
           deleting={deleteLibrarySubmitting}
           error={deleteLibraryError}
@@ -1693,6 +1818,7 @@ export default function App() {
             if (deleteLibrarySubmitting) return;
             setDeleteLibraryTarget(null);
             setDeleteLibraryError(null);
+            deleteExecutorRef.current = null;
           }}
           onConfirm={handleConfirmDeleteImport}
         />
@@ -1733,6 +1859,10 @@ export default function App() {
             setBackgroundImport(null);
             setIsImportModalOpen(true);
           }}
+          onRequestDelete={() => {
+            void openDeleteConfirmation(backgroundImport.importId);
+          }}
+          deletionPending={pendingDeletionIds.has(backgroundImport.importId)}
           onChanged={() => {
             refetchImport();
             refetchImportList();
@@ -1747,6 +1877,9 @@ export default function App() {
         onSuccess={handleImportSuccess}
         onImportStarted={handleImportStarted}
         onBackgrounded={handleImportBackgrounded}
+        onRequestDelete={(importId, executor) => {
+          void openDeleteConfirmation(importId, executor);
+        }}
       />
 
       {resumeImportId && (

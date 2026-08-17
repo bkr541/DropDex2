@@ -3,6 +3,7 @@ import { AlertTriangle, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { RekordboxImport } from '../types';
 import {
+  getPersistedDeleteStrategy,
   isDeleteConfirmationValid,
   type DeleteActiveStrategy,
 } from '../lib/rekordbox/libraryDeletion';
@@ -30,10 +31,12 @@ export function DeleteLibraryModal({
   const [confirmation, setConfirmation] = useState('');
   const [strategy, setStrategy] = useState<DeleteActiveStrategy>('activate_next');
 
-  const canChooseFallback = Boolean(isActive && nextUsableImport);
-  const effectiveStrategy: DeleteActiveStrategy = isActive
+  const persistedStrategy = target ? getPersistedDeleteStrategy(target) : null;
+  const retryingPendingDelete = persistedStrategy != null;
+  const canChooseFallback = Boolean(isActive && nextUsableImport && !retryingPendingDelete);
+  const effectiveStrategy: DeleteActiveStrategy = persistedStrategy ?? (isActive
     ? (canChooseFallback ? strategy : 'start_over')
-    : 'activate_next';
+    : 'activate_next');
 
   useEffect(() => {
     setConfirmation('');
@@ -42,11 +45,12 @@ export function DeleteLibraryModal({
 
   if (!target) return null;
 
-  const actionLabel = isActive
+  const baseActionLabel = isActive || persistedStrategy === 'start_over'
     ? effectiveStrategy === 'start_over'
       ? 'Delete & Start Over'
       : 'Delete Active Library'
     : 'Delete Library';
+  const actionLabel = retryingPendingDelete ? `Retry ${baseActionLabel}` : baseActionLabel;
   const confirmationValid = isDeleteConfirmationValid(confirmation);
 
   return (
@@ -91,6 +95,16 @@ export function DeleteLibraryModal({
             </div>
           </div>
 
+          {retryingPendingDelete && (
+            <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+              <p className="text-sm font-bold text-amber-300">Deletion is already pending.</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Retry will continue the original confirmed action: <span className="font-bold">{baseActionLabel}</span>.
+                The strategy cannot change while this hard delete is in progress.
+              </p>
+            </div>
+          )}
+
           {canChooseFallback && (
             <div className="mt-5 space-y-2">
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">After deletion</p>
@@ -131,7 +145,7 @@ export function DeleteLibraryModal({
             </div>
           )}
 
-          {isActive && !nextUsableImport && (
+          {isActive && !nextUsableImport && !retryingPendingDelete && (
             <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
               <p className="text-sm font-bold text-amber-300">This is your only usable library.</p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">

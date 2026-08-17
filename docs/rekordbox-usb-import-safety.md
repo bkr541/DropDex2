@@ -85,14 +85,15 @@ A bounded API wait may return `stopping` if the current stage has not reached a 
 
 Delete is a separate destructive action with stronger confirmation. It:
 
-1. records the delete request;
+1. records the delete request and the confirmed active-library strategy;
 2. signals the worker, with delete taking precedence over pause;
 3. waits for a stopped acknowledgement;
 4. transitions to `deleting` only after acknowledgement;
 5. removes DropDex cloud assets and import child records idempotently;
-6. stores `cancelled` after cleanup.
+6. hard-deletes the parent import row;
+7. atomically repairs `active_import_id` to the newest genuinely usable remaining snapshot, or clears it when the user chose **Delete & Start Over**.
 
-If the bounded wait expires, the API returns `stopping` and leaves all data intact. An in-process finalizer continues waiting, but it still cannot clean anything until the same worker has acknowledged that it stopped writing.
+If the bounded wait expires, the API returns `stopping` and leaves all data intact. An in-process finalizer continues waiting, but it still cannot clean anything until the same worker has acknowledged that it stopped writing. The persisted deletion strategy remains authoritative across retries, so a delayed **Delete & Start Over** cannot be reinterpreted as activate-next. Once cleanup succeeds, the parent row disappears; the hard-delete path does not retain a synthetic `cancelled` history row.
 
 ## Worker registry, database lease, and durable state
 
@@ -105,12 +106,13 @@ The durable import states are:
 ```text
 created -> uploading -> queued -> processing/running
 running -> pause_requested -> paused
-running -> cancel_requested -> stopping -> deleting -> cancelled
+running -> cancel_requested -> stopping -> deleting -> [parent row hard-deleted]
+completed/paused/interrupted/failed -> deleting -> [parent row hard-deleted]
 paused/interrupted -> queued/processing -> running
 running -> completed | failed | interrupted
 ```
 
-Database constraints and the transition trigger reject invalid jumps. Terminal cancelled and failed jobs cannot be resurrected. A completed metadata snapshot may retain overall `completed` while its analysis sub-state is parsing, paused, or interrupted so the imported library remains visible.
+Database constraints and the transition trigger reject invalid jumps. Legacy `cancelled` rows from older deployments remain terminal, but the current destructive path ends by deleting the parent import row rather than creating a new cancelled tombstone. Failed jobs cannot be resurrected through normal resume behavior. A completed metadata snapshot may retain overall `completed` while its analysis sub-state is parsing, paused, or interrupted so the imported library remains visible.
 
 ## Safe checkpoints inside a track
 
@@ -137,7 +139,7 @@ Destructive cleanup requires both conditions:
 - the in-process registry reports no active local worker; and
 - no unexpired `analysis` or `raw_archival` database lease exists.
 
-Child-table writes are rejected once the import reaches `deleting`, `cancelled`, or `failed`. They remain allowed during a cooperative stop request so the current atomic stage can finish before the next checkpoint. Cleanup is repeatable and storage removal tolerates already-removed objects.
+Child-table writes are rejected once the import reaches `deleting`, a legacy `cancelled` state, or `failed`. They remain allowed during a cooperative stop request so the current atomic stage can finish before the next checkpoint. Cleanup is repeatable and storage removal tolerates already-removed objects. A status lookup that returns not-found is treated as successful completion only by a client already observing that exact import's confirmed hard-delete request; unrelated missing imports retain normal not-found/error handling.
 
 ## Resume behavior
 

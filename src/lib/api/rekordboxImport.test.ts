@@ -3,6 +3,8 @@ import {
   deleteRekordboxImport,
   fetchRekordboxWorkerState,
   fetchRekordboxAnalysisStatus,
+  isExpectedHardDeleteNotFound,
+  isNotFoundRekordboxImportError,
   isUnauthorizedRekordboxImportError,
   pauseRekordboxAnalysis,
   resumeRekordboxAnalysis,
@@ -12,6 +14,27 @@ import {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('Rekordbox import API errors', () => {
+  it('keeps 404 classification explicit for deletion-aware callers', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ detail: 'Import not found.' }),
+      { status: 404, headers: { 'Content-Type': 'application/json' } },
+    )));
+
+    let caught: unknown;
+    try {
+      await fetchRekordboxAnalysisStatus('missing-import', 'token');
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(isNotFoundRekordboxImportError(caught)).toBe(true);
+    expect(isExpectedHardDeleteNotFound(caught, true)).toBe(true);
+    expect(isExpectedHardDeleteNotFound(caught, false)).toBe(false);
+    expect(isUnauthorizedRekordboxImportError(caught)).toBe(false);
+  });
 });
 
 describe('Rekordbox import upload requests', () => {
