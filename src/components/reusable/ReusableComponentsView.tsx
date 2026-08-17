@@ -2,6 +2,7 @@ import { Stage1Showcase } from './Stage1Showcase';
 import { Stage2Showcase } from './Stage2Showcase';
 import { Stage3Showcase } from './Stage3Showcase';
 import { Stage4Showcase } from './Stage4Showcase';
+import './reusable-components-layout.css';
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (

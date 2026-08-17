@@ -1,0 +1,211 @@
+/* Reusable Components is an in-app component catalogue, not a white design-board mockup.
+   The shared controls keep their production geometry while the catalogue only supplies
+   enough preview width to demonstrate them without stretching them to fill the page. */
+.dd-stage1-board,
+.dd-stage2-board,
+.dd-stage3-board,
+.dd-stage4-board {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-foreground);
+  box-shadow: none;
+  font-family: var(--font-sans);
+}
+
+.dd-stage1-board,
+.dd-stage2-board,
+.dd-stage4-board {
+  gap: 26px;
+}
+
+.dd-stage1-grid,
+.dd-stage2-grid,
+.dd-stage3-layout,
+.dd-stage4-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-flow: row;
+  grid-auto-rows: auto;
+  gap: 28px 24px;
+  align-items: start;
+}
+
+/* Remove the reference-board specimen tiles. The application background is the canvas. */
+.dd-stage1-card,
+.dd-stage3-card {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.dd-stage1-card > h3,
+.dd-stage2-card > h3,
+.dd-stage3-card > h3,
+.dd-stage4-specimen > h3 {
+  min-height: 16px;
+  color: var(--color-foreground);
+}
+
+.dd-stage1-card__content,
+.dd-stage2-card__content,
+.dd-stage3-card__content,
+.dd-stage4-specimen__content {
+  align-self: start;
+  width: min(100%, var(--dd-showcase-preview-width, 320px));
+  max-width: 100%;
+}
+
+/* The old boards used bespoke 6/7/10/12-column art-direction. Reset every specimen
+   to the catalogue's three-column flow, then opt only genuinely wide app components
+   into a two-column slot. */
+.dd-stage1-grid > *,
+.dd-stage2-grid > *,
+.dd-stage3-layout > *,
+.dd-stage4-grid > * {
+  grid-column: auto;
+  grid-row: auto;
+}
+
+/* Stage 1: production-sized control slots. */
+.dd-stage1-card { --dd-showcase-preview-width: 300px; }
+.dd-stage1-card[data-stage1-card="Icon Button"] { --dd-showcase-preview-width: 176px; }
+.dd-stage1-card[data-stage1-card="Action Row Button"] {
+  --dd-showcase-preview-width: 600px;
+  grid-column: span 2;
+}
+.dd-stage1-card[data-stage1-card="Disabled Button"] { --dd-showcase-preview-width: 360px; }
+.dd-stage1-card[data-stage1-card="Back Button / Breadcrumb"] { --dd-showcase-preview-width: 420px; }
+.dd-stage1-card[data-stage1-card="USB Connection Button"] { --dd-showcase-preview-width: 260px; }
+.dd-stage1-card[data-stage1-card="Segmented / Toggle Row"] { --dd-showcase-preview-width: 380px; }
+.dd-stage1-card[data-stage1-card="Settings Row"] {
+  --dd-showcase-preview-width: 520px;
+  grid-column: span 2;
+}
+.dd-stage1-card[data-stage1-card="Multi-Select / Removable Chips"] { --dd-showcase-preview-width: 430px; }
+.dd-stage1-card[data-stage1-card="Number Input"] { --dd-showcase-preview-width: 210px; }
+.dd-stage1-card[data-stage1-card="Range Slider"] { --dd-showcase-preview-width: 430px; }
+.dd-stage1-card[data-stage1-card="Accent Palette"] { --dd-showcase-preview-width: 390px; }
+
+.dd-stage1-board .dd-number-control__unit,
+.dd-stage1-board .dd-range-control__bound,
+.dd-stage1-board .dd-form-field__label,
+.dd-stage1-board .dd-state-guide,
+.dd-stage1-board .dd-state-guide::before {
+  color: var(--color-foreground);
+}
+.dd-stage1-board .dd-form-field__message,
+.dd-stage1-board .dd-state-guide__item {
+  color: var(--color-muted-foreground);
+}
+
+/* Stage 2: feedback components retain the dimensions used by their reusable primitives. */
+.dd-stage2-card { --dd-showcase-preview-width: 390px; }
+.dd-stage2-card[data-stage2-card="Status Badge"] { --dd-showcase-preview-width: 360px; }
+.dd-stage2-card[data-stage2-card="Analysis Status Badge"] { --dd-showcase-preview-width: 190px; }
+.dd-stage2-card[data-stage2-card="Status Dot"] { --dd-showcase-preview-width: 180px; }
+.dd-stage2-card[data-stage2-card="Progress Bar"] { --dd-showcase-preview-width: 340px; }
+.dd-stage2-card[data-stage2-card="Spinner / Loader"] { --dd-showcase-preview-width: 180px; }
+.dd-stage2-card[data-stage2-card="Toast / Notification"] { --dd-showcase-preview-width: 360px; }
+.dd-stage2-card[data-stage2-card="Import Activity Banner"] { --dd-showcase-preview-width: 430px; }
+.dd-stage2-card[data-stage2-card="Warning / Alert Banner"] { --dd-showcase-preview-width: 400px; }
+.dd-stage2-card[data-stage2-card="Error / Empty State"] { --dd-showcase-preview-width: 260px; }
+.dd-stage2-card[data-stage2-card="Background Import Panel / Floating Activity Panel"] { --dd-showcase-preview-width: 380px; }
+.dd-stage2-card[data-stage2-card="Progress / Status Modal"] { --dd-showcase-preview-width: 340px; }
+.dd-stage2-card[data-stage2-card="File Upload Button"] { --dd-showcase-preview-width: 240px; }
+.dd-stage2-card[data-stage2-card="Upload Dropzone"] { --dd-showcase-preview-width: 260px; }
+.dd-stage2-card[data-stage2-card="Modal / Dialog"] { --dd-showcase-preview-width: 330px; }
+.dd-stage2-card[data-stage2-card="Destructive Confirmation Modal"] { --dd-showcase-preview-width: 380px; }
+.dd-stage2-card[data-stage2-card="Selectable Option Card"] { --dd-showcase-preview-width: 470px; }
+.dd-stage2-card[data-stage2-card="Skeleton Row"] { --dd-showcase-preview-width: 380px; }
+.dd-stage2-card[data-stage2-card="Skeleton Card"] { --dd-showcase-preview-width: 380px; }
+.dd-stage2-card[data-stage2-card="Skeleton Chip"] { --dd-showcase-preview-width: 320px; }
+
+.dd-stage2-board .dd-stage2-dot-list .dd-status-dot-wrap,
+.dd-stage2-board .dd-stage2-loader-list > div,
+.dd-stage2-board .dd-stage2-progress-card .dd-progress__value {
+  color: var(--color-foreground);
+}
+.dd-stage2-board .dd-stage2-restore,
+.dd-stage2-board .dd-stage2-action-result {
+  color: var(--color-muted-foreground);
+}
+.dd-stage2-board .dd-stage2-restore:hover { background: var(--color-surface-hover); }
+
+/* Stage 3: most media components fit one catalogue column at their production geometry.
+   The real data table and sticky transport dock need two columns instead of being scaled down. */
+.dd-stage3-card { --dd-showcase-preview-width: 420px; }
+.dd-stage3-card[data-stage3-card="Play / Pause Button"],
+.dd-stage3-card[data-stage3-card="Stop Playback Button"],
+.dd-stage3-card[data-stage3-card="Mute / Unmute Button"] { --dd-showcase-preview-width: 180px; }
+.dd-stage3-card[data-stage3-card="Media Transport Control Group"] { --dd-showcase-preview-width: 420px; }
+.dd-stage3-card[data-stage3-card^="Rekordbox Waveform"] { --dd-showcase-preview-width: 320px; }
+.dd-stage3-card[data-stage3-card="Selectable Listbox / Option Row"] { --dd-showcase-preview-width: 230px; }
+.dd-stage3-card[data-stage3-card="Load More Button"] { --dd-showcase-preview-width: 190px; }
+.dd-stage3-card[data-stage3-card="External Link Icon Action"] { --dd-showcase-preview-width: 80px; }
+.dd-stage3-card[data-stage3-card="Data Table / Track Table"] {
+  --dd-showcase-preview-width: 820px;
+  grid-column: span 2;
+}
+.dd-stage3-card[data-stage3-card="Sticky Action / Transport Dock"] {
+  --dd-showcase-preview-width: 860px;
+  grid-column: span 2;
+}
+
+/* Stage 4: cards/type samples stay app-sized; the tab/navigation strip gets two columns. */
+.dd-stage4-specimen { --dd-showcase-preview-width: 300px; }
+.dd-stage4-specimen[data-stage4-card="Glass Card"],
+.dd-stage4-specimen[data-stage4-card="Surface Card"],
+.dd-stage4-specimen[data-stage4-card="Stat Tile / KPI"] { --dd-showcase-preview-width: 320px; }
+.dd-stage4-specimen[data-stage4-card="Playlist Card"] { --dd-showcase-preview-width: 290px; }
+.dd-stage4-specimen[data-stage4-card="Artwork / Thumbnail"],
+.dd-stage4-specimen[data-stage4-card="Artwork With Fallback"] { --dd-showcase-preview-width: 170px; }
+.dd-stage4-specimen[data-stage4-card^="Avatar"],
+.dd-stage4-specimen[data-stage4-card="Image Avatar"] { --dd-showcase-preview-width: 100px; }
+.dd-stage4-specimen[data-stage4-card="Headings"],
+.dd-stage4-specimen[data-stage4-card="Body & Muted Text"],
+.dd-stage4-specimen[data-stage4-card="Mono / Code Text"] { --dd-showcase-preview-width: 270px; }
+.dd-stage4-specimen[data-stage4-card="Brand / Accent Text"] { --dd-showcase-preview-width: 220px; }
+.dd-stage4-specimen[data-stage4-card="Brand Gradient Text"] { --dd-showcase-preview-width: 280px; }
+.dd-stage4-specimen[data-stage4-card="Divider"] { --dd-showcase-preview-width: 250px; }
+.dd-stage4-specimen[data-stage4-card="Sidebar Nav Items"] { --dd-showcase-preview-width: 210px; }
+.dd-stage4-specimen[data-stage4-card="Tab Navigation"] {
+  --dd-showcase-preview-width: 760px;
+  grid-column: span 2;
+}
+
+.dd-stage4-board .dd-stage4-gradient p,
+.dd-stage4-board .dd-stage4-divider-list span {
+  color: var(--color-muted-foreground);
+}
+
+@media (max-width: 1100px) {
+  .dd-stage1-grid,
+  .dd-stage2-grid,
+  .dd-stage3-layout,
+  .dd-stage4-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .dd-stage1-grid,
+  .dd-stage2-grid,
+  .dd-stage3-layout,
+  .dd-stage4-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .dd-stage1-card[data-stage1-card="Action Row Button"],
+  .dd-stage1-card[data-stage1-card="Settings Row"],
+  .dd-stage3-card[data-stage3-card="Data Table / Track Table"],
+  .dd-stage3-card[data-stage3-card="Sticky Action / Transport Dock"],
+  .dd-stage4-specimen[data-stage4-card="Tab Navigation"] {
+    grid-column: span 1;
+  }
+}
