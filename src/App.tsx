@@ -318,12 +318,14 @@ function ImportStatusView({
   onResume,
   onRetryImport,
   onMakeActive,
+  onRetryDelete,
 }: {
   item: RekordboxImport;
   isActive: boolean;
   onResume: () => void;
   onRetryImport: () => void;
   onMakeActive: () => void;
+  onRetryDelete?: () => void;
 }) {
   const presentation = getImportHistoryPresentation(
     item.status,
@@ -411,6 +413,9 @@ function ImportStatusView({
           )}
           {(presentation.canRetry || stalled) && !analysisCanResume && (
             <button type="button" onClick={onRetryImport} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Retry Import</button>
+          )}
+          {isPendingHardDelete(item) && onRetryDelete && (
+            <button type="button" onClick={onRetryDelete} className="rounded-xl border border-red-500/25 bg-red-500/8 px-4 py-2 text-sm font-bold text-red-400 hover:bg-red-500/15 transition-colors">Retry Delete</button>
           )}
         </div>
       </div>
@@ -1442,6 +1447,7 @@ export default function App() {
                   onMakeActive={() => { void handleSetActiveImport(selectedImport.id); }}
                   onResume={() => navigate({ name: 'import', importId: selectedImport.id, resume: true }, { replace: true })}
                   onRetryImport={() => setIsImportModalOpen(true)}
+                  onRetryDelete={() => handleDeleteImport(selectedImport)}
                 />
               </motion.div>
             )}
@@ -1687,15 +1693,12 @@ export default function App() {
                                   {imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted' ? 'Resume' : 'Retry'}
                                 </button>
                               )}
-                              {(!importInFlight || (
-                                imp.retryable
-                                && (imp.status === 'stopping' || imp.status === 'deleting')
-                              )) && (
+                              {(!importInFlight || imp.retryable || isPendingHardDelete(imp)) && (
                                 <button
                                   onClick={() => handleDeleteImport(imp)}
                                   className="text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors"
                                 >
-                                  {imp.status === 'stopping' || imp.status === 'deleting' ? 'Retry Delete' : 'Delete'}
+                                  {isPendingHardDelete(imp) ? 'Retry Delete' : 'Delete'}
                                 </button>
                               )}
                             </div>
