@@ -1,27 +1,16 @@
 import { useState } from 'react';
 import {
   Music, Settings,
-  ChevronRight, ChevronLeft, User, TrendingUp,
-  Layers, Play, Pause, Square, Volume2, VolumeX, SkipBack, SkipForward,
-  ListMusic, ExternalLink, Shuffle, Repeat2,
-  Star, MoreHorizontal, LayoutGrid, Library, AudioWaveform, DiscAlbum,
+  ChevronRight, User, TrendingUp,
+  Layers, Play,
+  ListMusic, MoreHorizontal, LayoutGrid, Library, AudioWaveform, DiscAlbum,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { TrackAnalysisStatusBadge } from '../library/TrackAnalysisStatusBadge';
 import { WaveformDisplay } from '../library/WaveformDisplay';
-import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
-import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { Stage1Showcase } from './Stage1Showcase';
 import { Stage2Showcase } from './Stage2Showcase';
-
-// ── waveform mock states ───────────────────────────────────────────────────────
-
-const SEED = 'dropdex-reusable-demo';
-
-const WF_LOADING: WaveformLoadState    = { status: 'loading',     trackId: 'demo' };
-const WF_UNAVAIL: WaveformLoadState    = { status: 'unavailable', trackId: 'demo' };
-const WF_ERROR: WaveformLoadState      = { status: 'error',   trackId: 'demo', error: 'Network timeout', retryable: true };
-const WF_INVALID: WaveformLoadState    = { status: 'invalid', trackId: 'demo', error: 'Unsupported format', reason: 'unsupported', retryable: false };
+import { Stage3Showcase } from './Stage3Showcase';
 
 // ── cell wrapper ──────────────────────────────────────────────────────────────
 
@@ -55,261 +44,6 @@ function StageOneSection() {
 
 function StageTwoSection() {
   return <Stage2Showcase />;
-}
-
-// ── WAVEFORM & TRANSPORT ──────────────────────────────────────────────────────
-
-function WaveformSection() {
-  const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
-
-  return (
-    <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Cell label="Play / Pause Button">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setPlaying(!playing)}
-              className="w-10 h-10 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] flex items-center justify-center text-foreground hover:bg-[var(--color-surface-hover)] transition-colors"
-            >
-              {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
-            </button>
-            <button className="w-10 h-10 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-colors">
-              <Square size={14} fill="currentColor" />
-            </button>
-            <button
-              onClick={() => setMuted(!muted)}
-              className="w-10 h-10 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-colors"
-            >
-              {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-            </button>
-          </div>
-        </Cell>
-
-        <Cell label="Media Transport Control Group" className="md:col-span-2">
-          <div className="flex items-center justify-center gap-2">
-            <button className="w-9 h-9 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-              <SkipBack size={14} fill="currentColor" />
-            </button>
-            <button className="w-9 h-9 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-              <ChevronLeft size={14} />
-            </button>
-            <button className="w-12 h-12 rounded-xl bg-foreground flex items-center justify-center text-background hover:opacity-90 transition-opacity shadow-lg">
-              <Play size={18} fill="currentColor" />
-            </button>
-            <button className="w-9 h-9 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-              <ChevronRight size={14} />
-            </button>
-            <button className="w-9 h-9 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-              <SkipForward size={14} fill="currentColor" />
-            </button>
-          </div>
-        </Cell>
-
-        <Cell label="Transport Add-ons">
-          <div className="flex gap-2 flex-wrap">
-            <button className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2.5 py-1.5 text-[9px] font-bold text-muted-foreground hover:text-foreground transition-colors">
-              <Shuffle size={11} /> SHUFFLE
-            </button>
-            <button className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-[9px] font-bold text-primary transition-colors">
-              <Repeat2 size={11} /> REPEAT
-            </button>
-            <button className="flex items-center gap-1 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-1.5 text-[9px] font-bold text-muted-foreground hover:text-foreground transition-colors">
-              <ExternalLink size={11} />
-            </button>
-          </div>
-        </Cell>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Cell label="Waveform — Decorative (primary)">
-          <div className="h-14 w-full waveform-surface rounded-lg overflow-hidden">
-            <WaveformDisplay seed={SEED} barCount={80} color="primary" showFallbackLabel={false} />
-          </div>
-        </Cell>
-        <Cell label="Waveform — Decorative (secondary)">
-          <div className="h-14 w-full waveform-surface rounded-lg overflow-hidden">
-            <WaveformDisplay seed={`${SEED}-2`} barCount={80} color="secondary" showFallbackLabel={false} />
-          </div>
-        </Cell>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Cell label="Waveform — With Visualizer Label">
-          <div className="h-14 w-full waveform-surface rounded-lg overflow-hidden">
-            <WaveformDisplay seed={`${SEED}-3`} barCount={60} showFallbackLabel />
-          </div>
-        </Cell>
-        <Cell label="Interactive / Seekable Waveform">
-          <div className="relative h-14 w-full waveform-surface rounded-lg overflow-hidden cursor-pointer group">
-            <WaveformDisplay seed={`${SEED}-4`} barCount={100} color="primary" showFallbackLabel={false} />
-            <div className="absolute inset-y-0 left-[30%] w-px bg-primary shadow-[0_0_6px_rgba(207,107,101,0.8)]" />
-            <div className="absolute bottom-1 left-[28%] text-[9px] font-mono text-primary/80">1:20</div>
-            <div className="absolute bottom-1 left-[28%] translate-x-4 text-[9px] font-mono font-bold text-primary">2:00</div>
-            <div className="absolute bottom-1 right-2 text-[9px] font-mono text-muted-foreground">3:40</div>
-          </div>
-        </Cell>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Cell label="Rekordbox Waveform — Loading">
-          <RekordboxPreviewWaveform state={WF_LOADING} height={40} variant="compact" />
-        </Cell>
-        <Cell label="Rekordbox Waveform — Unavailable">
-          <RekordboxPreviewWaveform state={WF_UNAVAIL} height={40} variant="compact" />
-        </Cell>
-        <Cell label="Rekordbox Waveform — Error">
-          <RekordboxPreviewWaveform state={WF_ERROR} height={40} variant="compact" onRetry={() => {}} />
-        </Cell>
-        <Cell label="Rekordbox Waveform — Invalid">
-          <RekordboxPreviewWaveform state={WF_INVALID} height={40} variant="compact" />
-        </Cell>
-      </div>
-    </>
-  );
-}
-
-// ── TRACK ROWS & TABLE ────────────────────────────────────────────────────────
-
-function TrackSection() {
-  const tracks = [
-    { n: 1, title: 'Midnight Roller', artist: 'Camelot',          bpm: 128, key: '8A', time: '06:35', stars: 3 },
-    { n: 2, title: 'Innerbloom (Extended Mix)', artist: 'RÜFÜS DU SOL', bpm: 124, key: '7A', time: '07:12', stars: 5 },
-    { n: 3, title: 'The Cave',         artist: 'Maya Jane Coles',  bpm: 125, key: '8A', time: '06:57', stars: 3 },
-    { n: 4, title: 'Higher Place',     artist: 'Kölsch',           bpm: 126, key: '7A', time: '07:12', stars: 3 },
-    { n: 5, title: 'Halcyon',          artist: 'Orbital',          bpm: 128, key: '8A', time: '06:35', stars: 5 },
-  ];
-  const [active, setActive] = useState<number | null>(2);
-
-  return (
-    <>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Cell label="Hover Track Row">
-          <div className="space-y-1">
-            {['Midnight Roller — Camelot', 'Higher Place — Kölsch'].map((t) => {
-              const [title, artist] = t.split(' — ');
-              return (
-                <div key={t} className="group flex items-center gap-3 rounded-xl border border-transparent bg-[var(--color-surface)] px-3 py-2.5 hover:border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] cursor-pointer transition-all">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/20 to-secondary/10 flex items-center justify-center text-[9px] font-black text-primary shrink-0">
-                    {(artist[0] + (artist[1] || '')).toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold truncate">{title}</p>
-                    <p className="text-[10px] text-muted-foreground uppercase truncate">{artist}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="font-mono text-[10px] font-bold">128</span>
-                    <span className="font-mono text-[10px] font-bold text-primary">8A</span>
-                    <span className="text-[10px] text-muted-foreground">06:35</span>
-                    <div className="h-6 w-12 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <WaveformDisplay seed={title} barCount={30} color="primary" showFallbackLabel={false} />
-                    </div>
-                    <button className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground">
-                      <MoreHorizontal size={13} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Cell>
-
-        <Cell label="Active Track Row">
-          <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/6 px-3 py-2.5 cursor-pointer">
-            <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-              <Play size={14} fill="white" className="text-white" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-foreground truncate">Midnight Roller</p>
-              <p className="text-[10px] text-muted-foreground uppercase truncate">Camelot</p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="font-mono text-[10px] font-bold">128</span>
-              <span className="font-mono text-[10px] font-bold text-primary">8A</span>
-              <span className="text-[10px] text-muted-foreground">06:35</span>
-              <div className="h-6 w-12">
-                <WaveformDisplay seed="active" barCount={30} color="primary" showFallbackLabel={false} />
-              </div>
-              <button className="text-muted-foreground hover:text-foreground"><MoreHorizontal size={13} /></button>
-            </div>
-          </div>
-        </Cell>
-      </div>
-
-      <Cell label="Data Table / Track Table">
-        <div className="rounded-xl border border-[var(--color-border-subtle)] overflow-hidden">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
-                {['#', 'Track Name', 'Artist', 'BPM', 'Key', 'Time', 'Rating', 'Genre', ''].map((h) => (
-                  <th key={h} className="px-3 py-2 text-[9px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {tracks.map((tr) => (
-                <tr
-                  key={tr.n}
-                  onClick={() => setActive(tr.n)}
-                  className={cn('border-b border-[var(--color-border-faint)] last:border-0 cursor-pointer transition-colors', active === tr.n ? 'bg-primary/6' : 'hover:bg-[var(--color-surface)]')}
-                >
-                  <td className="px-3 py-2 text-[10px] font-mono text-muted-foreground">{tr.n}</td>
-                  <td className="px-3 py-2 text-xs font-bold truncate max-w-[140px]">{tr.title}</td>
-                  <td className="px-3 py-2 text-[10px] text-muted-foreground truncate max-w-[120px]">{tr.artist}</td>
-                  <td className="px-3 py-2 text-[10px] font-mono font-bold">{tr.bpm}</td>
-                  <td className="px-3 py-2 text-[10px] font-mono font-bold text-primary">{tr.key}</td>
-                  <td className="px-3 py-2 text-[10px] font-mono text-muted-foreground">{tr.time}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex gap-0.5">
-                      {[1,2,3,4,5].map((s) => (
-                        <Star key={s} size={9} className={s <= tr.stars ? 'text-yellow-400 fill-yellow-400' : 'text-muted-foreground/30'} />
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-[10px] text-muted-foreground">Tech House</td>
-                  <td className="px-3 py-2 text-muted-foreground hover:text-foreground"><MoreHorizontal size={12} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Cell>
-
-      <Cell label="Sticky Action / Transport Dock">
-        <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-card)] px-4 py-3 flex items-center gap-4">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-secondary shrink-0 flex items-center justify-center">
-            <Music size={13} className="text-white" />
-          </div>
-          <div className="min-w-0 hidden sm:block">
-            <p className="text-[10px] font-black truncate">Midnight Roller</p>
-            <p className="text-[9px] text-muted-foreground font-mono">128 BPM · 8A · 06:35</p>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button className="w-7 h-7 rounded-lg bg-[var(--color-surface)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><SkipBack size={12} fill="currentColor" /></button>
-            <button className="w-7 h-7 rounded-lg bg-[var(--color-surface)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ChevronLeft size={12} /></button>
-            <button className="w-8 h-8 rounded-lg bg-foreground flex items-center justify-center text-background hover:opacity-90 transition-opacity"><Play size={13} fill="currentColor" /></button>
-            <button className="w-7 h-7 rounded-lg bg-[var(--color-surface)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ChevronRight size={12} /></button>
-            <button className="w-7 h-7 rounded-lg bg-[var(--color-surface)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><SkipForward size={12} fill="currentColor" /></button>
-          </div>
-          <div className="flex-1 flex items-center gap-2 min-w-0">
-            <span className="text-[9px] font-mono text-muted-foreground shrink-0">1:47</span>
-            <div className="flex-1 h-1.5 rounded-full bg-[var(--color-surface)] overflow-hidden">
-              <div className="h-full w-[46%] bg-gradient-to-r from-primary to-secondary rounded-full" />
-            </div>
-            <span className="text-[9px] font-mono text-muted-foreground shrink-0">3:56</span>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[9px] font-mono font-bold text-primary">8A</span>
-            <button className="text-muted-foreground hover:text-foreground"><Volume2 size={13} /></button>
-            <div className="w-12 h-1 rounded-full bg-[var(--color-surface)] overflow-hidden">
-              <div className="h-full w-3/4 bg-emerald-400 rounded-full" />
-            </div>
-            <button className="text-muted-foreground hover:text-foreground"><Settings size={12} /></button>
-          </div>
-        </div>
-      </Cell>
-    </>
-  );
 }
 
 // ── CARDS ─────────────────────────────────────────────────────────────────────
@@ -671,13 +405,8 @@ export function ReusableComponentsView() {
       </section>
 
       <section className="space-y-3">
-        <SectionHeader>Waveform & Transport</SectionHeader>
-        <WaveformSection />
-      </section>
-
-      <section className="space-y-3">
-        <SectionHeader>Track Rows & Table</SectionHeader>
-        <TrackSection />
+        <SectionHeader>Playback, Waveforms, Track Rows &amp; Tables</SectionHeader>
+        <Stage3Showcase />
       </section>
 
       <section className="space-y-3">
