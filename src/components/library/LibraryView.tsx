@@ -116,39 +116,52 @@ function ArtistProfileCard({
     : null;
 
   return (
-    <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-5 text-center">
-      <div className="relative inline-block mb-3">
+    <div className="glass rounded-2xl border border-[var(--color-border-subtle)] px-5 py-6 text-center">
+      <div className="relative inline-block mb-4">
+        <div className="absolute inset-[-5px] rounded-full border-2 border-primary shadow-[0_0_24px_rgba(10,145,255,0.34)] pointer-events-none" />
         {avatarUrl && !imgError ? (
           <img
             src={avatarUrl}
             alt={profile?.display_name ?? 'Profile'}
             onError={() => setImgError(true)}
-            className="w-20 h-20 rounded-full object-cover ring-4 ring-primary/25 shadow-xl"
+            className="w-24 h-24 rounded-full object-cover"
           />
         ) : (
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border-2 border-primary/20 flex items-center justify-center shadow-lg">
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border border-primary/30 flex items-center justify-center shadow-lg">
             {initials ? (
               <span className="text-2xl font-black text-primary">{initials}</span>
             ) : (
-              <User size={32} className="text-primary/70" />
+              <User size={34} className="text-primary/70" />
             )}
           </div>
         )}
-        <div className="absolute inset-[-6px] rounded-full border border-primary/10 pointer-events-none" />
-        <div className="absolute inset-[-13px] rounded-full border border-primary/5 pointer-events-none" />
+        <span className="absolute right-0 bottom-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-[var(--color-background)] shadow-[0_0_10px_rgba(16,185,129,0.6)]" />
       </div>
+
       <h1 className="text-2xl font-black uppercase leading-tight tracking-tight">{libraryName}</h1>
-      <p className="text-xs text-muted-foreground mt-1.5 font-semibold">
-        {latestImport.track_count.toLocaleString()} tracks
-      </p>
-      <p className="text-xs text-muted-foreground font-semibold">
-        {latestImport.playlist_count} playlists
-      </p>
+
+      <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center">
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex items-center gap-2">
+            <Music size={16} className="text-muted-foreground" />
+            <span className="text-lg font-black tabular-nums">{latestImport.track_count.toLocaleString()}</span>
+          </div>
+          <span className="text-[10px] text-muted-foreground font-semibold">Tracks</span>
+        </div>
+        <div className="h-10 w-px bg-[var(--color-border-subtle)]" />
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex items-center gap-2">
+            <FolderOpen size={16} className="text-muted-foreground" />
+            <span className="text-lg font-black tabular-nums">{latestImport.playlist_count}</span>
+          </div>
+          <span className="text-[10px] text-muted-foreground font-semibold">Playlists</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-// ── Book info card (left column, desktop) ────────────────────────────────
+// ── Library health card (left column, desktop) ─────────────────────────────
 
 function DesktopLibraryInfoCard({
   latestImport,
@@ -167,7 +180,6 @@ function DesktopLibraryInfoCard({
   onImport: () => void;
   onResumeAnalysis?: (importId: string) => void;
 }) {
-  const { volumeName } = useUsbConnection();
   const analysisStatus = latestImport.analysis_status;
   const showAnalysis =
     analysisStatus && analysisStatus !== 'not_requested' && analysisStatus !== 'completed';
@@ -181,128 +193,104 @@ function DesktopLibraryInfoCard({
     analysisStatus === 'awaiting_upload' ||
     analysisStatus === 'uploading';
 
-  const shortDate = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
+  const fullDate = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
+    year: 'numeric',
   });
 
   return (
-    <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4 space-y-3">
-      <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold">
-        Book Info
+    <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4 space-y-4">
+      <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold">
+        Library Health
       </p>
 
-      {/* USB Import */}
-      <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 px-3 py-2.5">
-          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1">
-            USB Import
-          </p>
-          <div className="flex items-center gap-1.5">
-            <CheckmarkFilled size={12} className="text-green-500 shrink-0" />
-            <span className="font-black text-sm leading-none text-green-500">Import Complete</span>
-          </div>
-          <button
-            onClick={onImport}
-            className="mt-2 w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-[10px] font-semibold"
-          >
-            <Upload size={10} className="shrink-0 text-muted-foreground" />
-            <span className="flex-1 text-left">Import New Book</span>
-            <ChevronRight size={10} className="text-muted-foreground shrink-0" />
-          </button>
-        </div>
-
-        {/* Track Analysis */}
-        {showAnalysis && (
-          <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 px-3 py-2.5">
-            <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1">
-              Track Analysis
-            </p>
-            <div className="flex items-center gap-1.5">
-              <WarningAlt
-                size={12}
-                className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'}
-              />
-              <span
-                className={cn(
-                  'font-black text-sm leading-none',
-                  isAmber ? 'text-amber-400' : 'text-red-400',
-                )}
-              >
-                {ANALYSIS_TITLES[analysisStatus] ?? 'Analysis Issue'}
-              </span>
-            </div>
-            {isActionable && onResumeAnalysis && (
-              <button
-                onClick={() => onResumeAnalysis(latestImport.id)}
-                className="mt-2 w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-[10px] font-semibold"
-              >
-                <Renew size={10} className="shrink-0 text-muted-foreground" />
-                <span className="flex-1 text-left">Resume Analysis</span>
-                <ChevronRight size={10} className="text-muted-foreground shrink-0" />
-              </button>
-            )}
-          </div>
-        )}
-
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[var(--color-border-faint)]">
-        {[
-          {
-            icon: Music,
-            value:
-              latestImport.track_count >= 1000
-                ? `${(latestImport.track_count / 1000).toFixed(1)}k`
-                : String(latestImport.track_count),
-            label: 'Tracks',
-          },
-          { icon: Music, value: String(latestImport.playlist_count), label: 'Playlists' },
-          { icon: Calendar, value: shortDate, label: 'Last Import' },
-        ].map(({ icon: Icon, value, label }) => (
-          <div key={label} className="text-center">
-            <Icon size={11} className="text-muted-foreground mx-auto mb-0.5" />
-            <p className="text-sm font-black tabular-nums leading-tight">{value}</p>
-            <p className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">
-              {label}
-            </p>
-          </div>
-        ))}
-        <p className="col-span-3 text-[10px] text-muted-foreground font-mono mt-1">
-          Imported from {latestImport.device_name ?? volumeName ?? latestImport.source_filename}
+      <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 px-3 py-3">
+        <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">
+          USB Import
         </p>
+        <div className="flex items-center gap-2">
+          <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
+          <span className="font-black text-sm leading-none text-emerald-500">Import Complete</span>
+        </div>
+        <button
+          onClick={onImport}
+          className="mt-3 w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-[10px] font-semibold"
+        >
+          <Upload size={11} className="shrink-0 text-muted-foreground" />
+          <span className="flex-1 text-left">Import New Library</span>
+          <ChevronRight size={11} className="text-muted-foreground shrink-0" />
+        </button>
       </div>
 
-      {/* Book Snapshot */}
-      <div className="pt-2 border-t border-[var(--color-border-faint)]">
+      {showAnalysis && (
+        <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 px-3 py-3">
+          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">
+            Track Analysis
+          </p>
+          <div className="flex items-center gap-2">
+            <WarningAlt
+              size={13}
+              className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'}
+            />
+            <span
+              className={cn(
+                'font-black text-sm leading-none',
+                isAmber ? 'text-amber-400' : 'text-red-400',
+              )}
+            >
+              {ANALYSIS_TITLES[analysisStatus] ?? 'Analysis Issue'}
+            </span>
+          </div>
+          {isActionable && onResumeAnalysis && (
+            <button
+              onClick={() => onResumeAnalysis(latestImport.id)}
+              className="mt-3 w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-[10px] font-semibold"
+            >
+              <Renew size={11} className="shrink-0 text-muted-foreground" />
+              <span className="flex-1 text-left">Resume Analysis</span>
+              <ChevronRight size={11} className="text-muted-foreground shrink-0" />
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-3 pt-1">
         {statsLoading ? (
           <CircleDash size={14} className="animate-spin text-muted-foreground" />
         ) : (
-          <div className="space-y-2">
-            {[
-              {
-                icon: ChartBar,
-                label: 'Most common BPM',
-                value: mostCommonBpm != null ? String(mostCommonBpm) : '—',
-              },
-              {
-                icon: Music,
-                label: 'Most common key',
-                value: mostCommonKey ? formatKey(mostCommonKey) : '—',
-              },
-              {
-                icon: FolderOpen,
-                label: 'Largest playlist',
-                value: largestPlaylistName ?? '—',
-              },
-            ].map(({ icon: Icon, label, value }) => (
-              <div key={label} className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Icon size={11} className="text-muted-foreground shrink-0" />
-                  <span className="text-[11px] text-muted-foreground truncate">{label}</span>
-                </div>
-                <span className="text-[11px] font-bold font-mono shrink-0">{value}</span>
+          [
+            {
+              icon: ChartBar,
+              label: 'Most common BPM',
+              value: mostCommonBpm != null ? String(mostCommonBpm) : '—',
+            },
+            {
+              icon: Music,
+              label: 'Most common key',
+              value: mostCommonKey ? formatKey(mostCommonKey) : '—',
+            },
+            {
+              icon: FolderOpen,
+              label: 'Largest playlist',
+              value: largestPlaylistName ?? '—',
+            },
+            {
+              icon: Calendar,
+              label: 'Last import',
+              value: fullDate,
+            },
+          ].map(({ icon: Icon, label, value }) => (
+            <div key={label} className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Icon size={13} className="text-muted-foreground shrink-0" />
+                <span className="text-[11px] text-muted-foreground truncate">{label}</span>
               </div>
-            ))}
-          </div>
+              <span className="text-[11px] font-bold font-mono shrink-0 max-w-[45%] truncate" title={value}>
+                {value}
+              </span>
+            </div>
+          ))
         )}
       </div>
     </div>
@@ -540,7 +528,7 @@ function SidebarSection({ icon: Icon, title, children }: {
   );
 }
 
-// ── Compact playlist card for Overview horizontal scroll ──────────────────────
+// ── Compact playlist card for Overview reference grid ─────────────────────────
 
 function OverviewPlaylistCard({
   playlist,
@@ -555,24 +543,233 @@ function OverviewPlaylistCard({
   return (
     <button
       onClick={onClick}
-      className="shrink-0 w-52 text-left rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:border-primary/30 hover:bg-[var(--color-surface-hover)] transition-all p-4 group"
+      className="w-full min-w-0 text-left rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:border-primary/30 hover:bg-[var(--color-surface-hover)] transition-all px-4 py-3 group"
     >
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <div className={cn(
-          'w-9 h-9 rounded-xl flex items-center justify-center shrink-0',
-          playlist.is_folder ? 'bg-primary/15 text-primary' : 'bg-secondary/15 text-secondary',
-        )}>
-          {playlist.is_folder ? <FolderOpen size={16} /> : <Music size={16} />}
+      <div className="flex items-center gap-4">
+        <div
+          className={cn(
+            'w-16 h-16 rounded-xl flex items-center justify-center shrink-0 border border-primary/10 shadow-inner',
+            playlist.is_folder ? 'bg-primary/15 text-primary' : 'bg-primary/10 text-primary',
+          )}
+        >
+          {playlist.is_folder ? <FolderOpen size={26} /> : <Music size={26} />}
         </div>
-        <ArrowUpRight size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="font-bold text-base leading-snug truncate group-hover:text-primary transition-colors">
+            {label}
+          </p>
+          <p className="text-[11px] text-muted-foreground font-mono mt-1">
+            {playlist.track_count.toLocaleString()} tracks
+          </p>
+        </div>
+        <div className="w-9 h-9 rounded-full border border-[var(--color-border-subtle)] flex items-center justify-center text-muted-foreground group-hover:text-primary group-hover:border-primary/30 transition-colors shrink-0">
+          <ArrowUpRight size={15} />
+        </div>
       </div>
-      <p className="font-bold text-sm leading-snug line-clamp-2 mb-1 group-hover:text-primary transition-colors">
-        {label}
-      </p>
-      <p className="text-[10px] text-muted-foreground font-mono">
-        {playlist.track_count} tracks
-      </p>
     </button>
+  );
+}
+
+// ── Reference-layout dashboard pieces ─────────────────────────────────────────
+
+const HERO_BARS = [28, 46, 36, 72, 58, 88, 49, 79, 62, 94, 70, 84, 54, 76, 98, 64];
+const RECENT_BARS = [18, 30, 24, 42, 34, 58, 48, 72, 54, 82, 66, 92, 76, 64, 88, 98];
+
+function DesktopLibraryHero({
+  latestImport,
+  profile,
+  topGenres,
+  onImport,
+}: {
+  latestImport: RekordboxImport;
+  profile: UserProfile | null;
+  topGenres: readonly (readonly [string, number])[];
+  onImport: () => void;
+}) {
+  const libraryName = profile?.display_name?.toUpperCase() ?? 'MY LIBRARY';
+  const lastImport = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const visibleGenres = topGenres.slice(0, 5);
+  const extraGenreCount = Math.max(0, topGenres.length - visibleGenres.length);
+
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-[var(--color-border-subtle)] min-h-[218px] bg-[linear-gradient(105deg,rgba(2,12,25,0.98)_0%,rgba(3,25,52,0.95)_50%,rgba(2,11,24,0.98)_100%)]">
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_58%_20%,rgba(16,103,220,0.42),transparent_34%),radial-gradient(circle_at_82%_38%,rgba(24,94,190,0.20),transparent_30%),linear-gradient(to_top,rgba(1,7,17,0.92),transparent_58%)]" />
+      <div className="absolute -bottom-12 left-[35%] h-36 w-[52%] rounded-[50%] bg-black/30 blur-2xl pointer-events-none" />
+
+      <div className="relative z-10 flex min-h-[218px]">
+        <div className="flex-1 min-w-0 px-8 py-7 flex flex-col justify-center">
+          <h1 className="text-4xl xl:text-5xl font-black uppercase tracking-tight leading-none">
+            {libraryName}
+          </h1>
+          <p className="mt-3 text-sm text-muted-foreground font-semibold">
+            {latestImport.track_count.toLocaleString()} tracks&nbsp;&nbsp;•&nbsp;&nbsp;{latestImport.playlist_count} playlists
+          </p>
+
+          {visibleGenres.length > 0 && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {visibleGenres.map(([genre]) => (
+                <span
+                  key={genre}
+                  className="rounded-full border border-white/15 bg-black/20 px-3 py-1 text-[10px] font-semibold text-foreground/90 backdrop-blur-sm"
+                >
+                  {genre}
+                </span>
+              ))}
+              {extraGenreCount > 0 && (
+                <span className="rounded-full border border-white/15 bg-black/20 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground backdrop-blur-sm">
+                  +{extraGenreCount}
+                </span>
+              )}
+            </div>
+          )}
+
+          <button
+            onClick={onImport}
+            className="mt-5 inline-flex w-fit items-center gap-2 rounded-lg border border-primary/70 bg-primary/80 px-4 py-2.5 text-xs font-bold text-white shadow-[0_8px_26px_rgba(0,112,255,0.22)] transition-colors hover:bg-primary"
+          >
+            <Upload size={14} />
+            Import New Library
+          </button>
+        </div>
+
+        <div className="hidden xl:flex w-[260px] shrink-0 border-l border-white/10 px-7 py-6 flex-col justify-center relative">
+          <div>
+            <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground font-bold">Total Tracks</p>
+            <p className="mt-1 text-2xl font-black text-primary tabular-nums">
+              {latestImport.track_count >= 1000
+                ? `${(latestImport.track_count / 1000).toFixed(1)}k`
+                : latestImport.track_count.toLocaleString()}
+            </p>
+          </div>
+          <div className="mt-5">
+            <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground font-bold">Last Import</p>
+            <p className="mt-1 text-sm font-bold">{lastImport}</p>
+          </div>
+          <div className="absolute right-5 bottom-6 h-28 w-28 flex items-end gap-[3px] opacity-80 pointer-events-none">
+            {HERO_BARS.map((height, index) => (
+              <span
+                key={index}
+                className={cn('flex-1 rounded-t-full', index < 11 ? 'bg-primary/80' : 'bg-secondary/75')}
+                style={{ height: `${height}%` }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function OverviewSummaryCards({
+  latestImport,
+  playlists,
+  recentTracks,
+  mostCommonBpm,
+  mostCommonKey,
+}: {
+  latestImport: RekordboxImport;
+  playlists: PlaylistWithCount[];
+  recentTracks: RekordboxTrack[];
+  mostCommonBpm: number | null;
+  mostCommonKey: string | null;
+}) {
+  const playlistCount = playlists.filter((playlist) => !playlist.is_folder).length;
+  const playlistTrackCount = latestImport.playlist_track_count || playlists.reduce(
+    (total, playlist) => total + (playlist.is_folder ? 0 : playlist.track_count),
+    0,
+  );
+  const analysisTotal = latestImport.analysis_expected_track_count || latestImport.track_count;
+  const analysisParsed = latestImport.analysis_parsed_track_count || 0;
+  const analysisPercent = latestImport.analysis_status === 'completed'
+    ? 100
+    : analysisTotal > 0
+      ? Math.max(0, Math.min(100, Math.round((analysisParsed / analysisTotal) * 100)))
+      : 0;
+  const lastImport = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="glass rounded-xl border border-[var(--color-border-subtle)] p-4 min-h-[150px] relative overflow-hidden">
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-bold">
+          <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <Music size={14} />
+          </div>
+          Playlists
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-5 max-w-[65%]">
+          <div>
+            <p className="text-xl font-black tabular-nums">{playlistCount}</p>
+            <p className="text-[9px] text-muted-foreground mt-1">Total Playlists</p>
+          </div>
+          <div>
+            <p className="text-xl font-black tabular-nums">{playlistTrackCount.toLocaleString()}</p>
+            <p className="text-[9px] text-muted-foreground mt-1">Total Tracks</p>
+          </div>
+        </div>
+        <div className="absolute right-5 bottom-4 w-16 h-16 rounded-xl bg-primary/10 border border-primary/10 flex items-center justify-center text-primary shadow-[0_10px_32px_rgba(0,112,255,0.12)]">
+          <Music size={28} />
+        </div>
+      </div>
+
+      <div className="glass rounded-xl border border-[var(--color-border-subtle)] p-4 min-h-[150px] relative overflow-hidden">
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-bold">
+          <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <ChartBar size={14} />
+          </div>
+          Library Stats
+        </div>
+        <div className="mt-4 pr-20">
+          <p className="text-2xl font-black tabular-nums">{latestImport.track_count.toLocaleString()}</p>
+          <p className="text-[9px] text-muted-foreground mt-0.5">Total Tracks</p>
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm font-black font-mono">{mostCommonBpm ?? '—'}</p>
+              <p className="text-[8px] text-muted-foreground mt-0.5">Most Common BPM</p>
+            </div>
+            <div>
+              <p className="text-sm font-black font-mono">{mostCommonKey ? formatKey(mostCommonKey) : '—'}</p>
+              <p className="text-[8px] text-muted-foreground mt-0.5">Most Common Key</p>
+            </div>
+          </div>
+        </div>
+        <div className="absolute right-5 top-1/2 -translate-y-1/2 w-16 h-16 rounded-full border-[7px] border-primary flex flex-col items-center justify-center shadow-[0_0_20px_rgba(0,112,255,0.18)]">
+          <span className="text-sm font-black tabular-nums">{analysisPercent}%</span>
+          <span className="text-[7px] text-muted-foreground">Analyzed</span>
+        </div>
+      </div>
+
+      <div className="glass rounded-xl border border-[var(--color-border-subtle)] p-4 min-h-[150px] relative overflow-hidden">
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-bold">
+          <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <Calendar size={14} />
+          </div>
+          Recently Added
+        </div>
+        <div className="mt-5 relative z-10">
+          <p className="text-xl font-black tabular-nums">{recentTracks.length}</p>
+          <p className="text-[9px] text-muted-foreground mt-0.5">Tracks Added</p>
+          <p className="mt-4 text-sm font-bold">{lastImport}</p>
+          <p className="text-[8px] text-muted-foreground mt-0.5">Last Import</p>
+        </div>
+        <div className="absolute right-4 bottom-3 h-24 w-[46%] flex items-end gap-[2px] opacity-55 pointer-events-none">
+          {RECENT_BARS.map((height, index) => (
+            <span
+              key={index}
+              className={cn('flex-1 rounded-t-full', index < 10 ? 'bg-primary/55' : 'bg-secondary/65')}
+              style={{ height: `${height}%` }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -685,21 +882,6 @@ export function LibraryView({
 
   return (
     <div className="space-y-5 md:max-w-7xl md:mx-auto">
-      {/* Search */}
-      <div className="lib-search-wrapper">
-        <Search
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none z-10"
-          size={16}
-        />
-        <input
-          type="text"
-          placeholder="Search tracks, artists, genres…"
-          value={searchQuery}
-          onChange={(e) => onSearchQueryChange(e.target.value)}
-          className="lib-search-input"
-        />
-      </div>
-
       <AnimatePresence mode="wait">
         {showSearch ? (
           <motion.div
@@ -709,19 +891,35 @@ export function LibraryView({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
           >
-            <LibrarySearchResults
-              query={searchQuery.trim()}
-              results={searchResults}
-              total={searchTotal}
-              loading={searchLoading}
-              loadingMore={searchLoadingMore}
-              hasMore={searchHasMore}
-              importId={importId}
-              onTrackClick={onTrackClick}
-              onLoadMore={() => { void loadMoreSearchResults(); }}
-              waveformStates={waveformStates}
-              onRetryWaveform={(trackId) => retryWaveform([trackId])}
-            />
+            <div className="space-y-4">
+              <div className="relative max-w-md ml-auto">
+                <Search
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                  size={15}
+                />
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Search library…"
+                  value={searchQuery}
+                  onChange={(e) => onSearchQueryChange(e.target.value)}
+                  className="w-full h-10 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] pl-9 pr-3 text-xs font-medium text-foreground outline-none transition-colors focus:border-primary/50 focus:bg-[var(--color-surface-hover)]"
+                />
+              </div>
+              <LibrarySearchResults
+                query={searchQuery.trim()}
+                results={searchResults}
+                total={searchTotal}
+                loading={searchLoading}
+                loadingMore={searchLoadingMore}
+                hasMore={searchHasMore}
+                importId={importId}
+                onTrackClick={onTrackClick}
+                onLoadMore={() => { void loadMoreSearchResults(); }}
+                waveformStates={waveformStates}
+                onRetryWaveform={(trackId) => retryWaveform([trackId])}
+              />
+            </div>
           </motion.div>
         ) : (
           <motion.div
@@ -752,7 +950,7 @@ export function LibraryView({
               <div className="flex gap-5 items-start">
 
                 {/* ── Left column (desktop only) ── */}
-                <div className="hidden lg:flex flex-col gap-4 w-64 xl:w-72 shrink-0">
+                <div className="hidden lg:flex flex-col gap-4 w-[250px] xl:w-[268px] shrink-0">
                   <ArtistProfileCard profile={profile} latestImport={latestImport} />
 
                   <DesktopLibraryInfoCard
@@ -766,27 +964,39 @@ export function LibraryView({
                   />
 
                   {/* Top Genres */}
-                  <SidebarSection icon={Tag} title="Top Genres">
-                    {statsLoading ? (
-                      <CircleDash size={14} className="animate-spin text-muted-foreground" />
-                    ) : topGenres.length === 0 ? (
-                      <p className="text-xs text-muted-foreground italic">No genre data</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {topGenres.map(([genre]) => (
-                          <span key={genre} className="library-genre-badge" title={genre}>
-                            <span className="truncate">{genre}</span>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </SidebarSection>
+                  <div className="min-h-[300px]">
+                    <SidebarSection icon={Tag} title="Top Genres">
+                      {statsLoading ? (
+                        <CircleDash size={14} className="animate-spin text-muted-foreground" />
+                      ) : topGenres.length === 0 ? (
+                        <p className="text-xs text-muted-foreground italic">No genre data</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {topGenres.map(([genre]) => (
+                            <span key={genre} className="library-genre-badge" title={genre}>
+                              <span className="truncate">{genre}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </SidebarSection>
+                  </div>
                 </div>
 
                 {/* ── Right column ── */}
                 <div className="flex-1 min-w-0 space-y-4">
 
-                  {/* Mobile: full hero (hidden on desktop) */}
+                  {/* Desktop hero mirrors the reference artist-dashboard structure. */}
+                  <div className="hidden lg:block">
+                    <DesktopLibraryHero
+                      latestImport={latestImport}
+                      profile={profile}
+                      topGenres={topGenres}
+                      onImport={onImport}
+                    />
+                  </div>
+
+                  {/* Mobile: retain the existing compact hero. */}
                   <div className="lg:hidden">
                     <LibraryHero
                       latestImport={latestImport}
@@ -796,22 +1006,37 @@ export function LibraryView({
                     />
                   </div>
 
-                  {/* Tab bar */}
-                  <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none border-b border-[var(--color-border-subtle)]">
-                    {TABS.map((tab) => (
-                      <button
-                        key={tab.id}
-                        onClick={() => onActiveTabChange(tab.id)}
-                        className={cn(
-                          'shrink-0 px-4 py-2.5 text-sm font-bold transition-all border-b-2 -mb-px',
-                          activeTab === tab.id
-                            ? 'text-primary border-primary'
-                            : 'text-muted-foreground border-transparent hover:text-foreground',
-                        )}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
+                  {/* Tabs and search share one row, matching the reference layout. */}
+                  <div className="flex flex-col xl:flex-row xl:items-end gap-3 border-b border-[var(--color-border-subtle)]">
+                    <div className="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto scrollbar-none">
+                      {TABS.map((tab) => (
+                        <button
+                          key={tab.id}
+                          onClick={() => onActiveTabChange(tab.id)}
+                          className={cn(
+                            'shrink-0 px-4 py-2.5 text-sm font-bold transition-all border-b-2 -mb-px',
+                            activeTab === tab.id
+                              ? 'text-primary border-primary'
+                              : 'text-muted-foreground border-transparent hover:text-foreground',
+                          )}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="relative w-full xl:w-72 shrink-0 pb-1.5">
+                      <Search
+                        className="absolute left-3 top-4 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                        size={15}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Search library…"
+                        value={searchQuery}
+                        onChange={(e) => onSearchQueryChange(e.target.value)}
+                        className="w-full h-9 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] pl-9 pr-3 text-xs font-medium text-foreground outline-none transition-colors focus:border-primary/50 focus:bg-[var(--color-surface-hover)]"
+                      />
+                    </div>
                   </div>
 
                   {/* Tab content */}
@@ -826,9 +1051,17 @@ export function LibraryView({
 
                       {/* ── OVERVIEW ── */}
                       {activeTab === 'overview' && (
-                        <div className="space-y-6">
+                        <div className="space-y-5">
 
-                          {/* Playlists horizontal scroll */}
+                          <OverviewSummaryCards
+                            latestImport={latestImport}
+                            playlists={playlists}
+                            recentTracks={recentTracks}
+                            mostCommonBpm={mostCommonBpm}
+                            mostCommonKey={mostCommonKey}
+                          />
+
+                          {/* Playlists */}
                           <section className="space-y-3">
                             <div className="flex items-center justify-between">
                               <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
@@ -846,10 +1079,10 @@ export function LibraryView({
                                 <CircleDash className="animate-spin text-muted-foreground" size={20} />
                               </div>
                             ) : (
-                              <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-thin">
+                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                                 {playlists
                                   .filter((p) => !p.is_folder)
-                                  .slice(0, 10)
+                                  .slice(0, 2)
                                   .map((playlist) => (
                                     <OverviewPlaylistCard
                                       key={playlist.id}
