@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import {
   Search, Music, Settings, Loader2, CheckCircle2, AlertTriangle,
-  XCircle, ChevronRight, Database, User, FileUp, Radio, TrendingUp, Layers,
+  XCircle, ChevronRight, Database, User, FileUp, Radio, TrendingUp,
+  Layers, Zap, Sparkles, ArrowRight, Play, Pause, SkipForward,
+  Heart, Share2, MoreHorizontal, Bell, Lock, Eye, EyeOff,
+  ChevronDown, Star, Flame, Clock,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { TrackAnalysisStatusBadge } from '../library/TrackAnalysisStatusBadge';
@@ -83,728 +86,873 @@ const MOCK_PLAYLIST_FOLDER: PlaylistWithCount = {
   track_count: 312,
 };
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+const WAVEFORM_LOADING: WaveformLoadState = { status: 'loading', trackId: 'demo' };
+const WAVEFORM_UNAVAILABLE: WaveformLoadState = { status: 'unavailable', trackId: 'demo' };
+const WAVEFORM_ERROR: WaveformLoadState = { status: 'error', trackId: 'demo', error: 'Network timeout', retryable: true };
 
-function Cell({ label, children }: { label: string; children: React.ReactNode }) {
+// ── layout primitives ─────────────────────────────────────────────────────────
+
+function SectionHeader({ index, label, description }: { index: string; label: string; description?: string }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 p-5">
-      <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
-      <div className="flex flex-col gap-2">{children}</div>
+    <div className="flex items-start gap-5 mb-8">
+      <span className="mt-1 font-mono text-[10px] font-bold text-muted-foreground/40 w-6 shrink-0 pt-0.5">{index}</span>
+      <div className="flex-1 border-t border-[var(--color-border-subtle)] pt-4">
+        <h2 className="text-xs font-black uppercase tracking-[0.22em] text-muted-foreground">{label}</h2>
+        {description && <p className="mt-1 text-xs text-muted-foreground/60">{description}</p>}
+      </div>
     </div>
   );
 }
 
-// ── mock waveform states ───────────────────────────────────────────────────────
-
-const MOCK_SEED = 'reusable-components-demo-seed';
-
-const MOCK_WAVEFORM_LOADING: WaveformLoadState = { status: 'loading', trackId: 'demo' };
-const MOCK_WAVEFORM_UNAVAILABLE: WaveformLoadState = { status: 'unavailable', trackId: 'demo' };
-const MOCK_WAVEFORM_ERROR: WaveformLoadState = {
-  status: 'error', trackId: 'demo', error: 'Network timeout', retryable: true,
-};
-const MOCK_WAVEFORM_INVALID: WaveformLoadState = {
-  status: 'invalid', trackId: 'demo',
-  error: 'Unsupported waveform format', reason: 'unsupported', retryable: false,
-};
-
-// ── sub-sections ──────────────────────────────────────────────────────────────
-
-function ButtonsSection() {
+function Tile({ label, span, children, className }: { label: string; span?: 'full' | 2; children: React.ReactNode; className?: string }) {
   return (
-    <>
-      <Cell label="Primary Button">
-        <button className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white hover:bg-primary/90 transition-colors">
-          Import Library
-        </button>
-        <button className="rounded-xl bg-secondary px-4 py-2 text-sm font-bold text-white hover:bg-secondary/90 transition-colors">
-          Open Drop Lab
-        </button>
-      </Cell>
-
-      <Cell label="Secondary Button">
-        <button className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-2 text-sm font-bold hover:bg-[var(--color-surface-hover)] transition-colors">
-          Cancel
-        </button>
-        <button className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-2 text-sm font-bold hover:bg-[var(--color-surface-hover)] transition-colors flex items-center gap-2">
-          <Settings size={14} /> Settings
-        </button>
-      </Cell>
-
-      <Cell label="Danger / Ghost Button">
-        <button className="rounded-xl px-4 py-2 text-sm font-bold text-red-400 border border-red-500/20 bg-red-500/10 hover:bg-red-500/15 transition-colors">
-          Delete Library
-        </button>
-        <button className="rounded-xl px-4 py-2 text-sm font-bold text-primary hover:text-primary/80 transition-colors">
-          View status →
-        </button>
-      </Cell>
-
-      <Cell label="Icon Button">
-        <div className="flex items-center gap-2 flex-wrap">
-          <button className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2.5 text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all">
-            <Music size={16} />
-          </button>
-          <button className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2.5 text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all">
-            <Search size={16} />
-          </button>
-          <button className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2.5 text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all">
-            <Settings size={16} />
-          </button>
-          <button className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-all">
-            <XCircle size={16} />
-          </button>
-        </div>
-      </Cell>
-
-      <Cell label="Action Row Button">
-        <button className="flex items-center gap-2 rounded-xl border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface-hover)] transition-colors w-full">
-          <FileUp size={12} className="text-muted-foreground" />
-          <span className="flex-1 text-left">Import New Library</span>
-          <ChevronRight size={12} className="text-muted-foreground" />
-        </button>
-        <button className="flex items-center gap-2 rounded-xl border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/15 transition-colors w-full">
-          <Database size={12} />
-          <span className="flex-1 text-left">View status</span>
-          <ChevronRight size={12} />
-        </button>
-      </Cell>
-
-      <Cell label="Disabled Button">
-        <button disabled className="rounded-xl bg-primary/40 px-4 py-2 text-sm font-bold text-white cursor-not-allowed opacity-50">
-          Processing…
-        </button>
-        <button disabled className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold text-muted-foreground cursor-not-allowed opacity-50 flex items-center gap-2">
-          <Loader2 size={14} className="animate-spin" /> Connecting…
-        </button>
-      </Cell>
-    </>
+    <div className={cn(
+      'flex flex-col gap-4 rounded-3xl p-6',
+      'border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/50 backdrop-blur-sm',
+      span === 'full' && 'col-span-3',
+      span === 2 && 'col-span-2',
+      className,
+    )}>
+      <p className="text-[9px] font-black uppercase tracking-[0.22em] text-muted-foreground/50">{label}</p>
+      <div className="flex flex-col gap-3">{children}</div>
+    </div>
   );
 }
 
-function InputsSection() {
-  const [text, setText] = useState('');
-  const [search, setSearch] = useState('');
+// ── 01 · COLOR SYSTEM ────────────────────────────────────────────────────────
 
+const PALETTE = [
+  { label: 'Brand Primary', swatch: 'bg-primary', text: 'text-primary', token: '--color-brand-primary' },
+  { label: 'Brand Secondary', swatch: 'bg-secondary', text: 'text-secondary', token: '--color-brand-secondary' },
+  { label: 'Surface', swatch: 'bg-[var(--color-surface)]', text: 'text-foreground', token: '--color-surface', border: true },
+  { label: 'Surface Hover', swatch: 'bg-[var(--color-surface-hover)]', text: 'text-foreground', token: '--color-surface-hover', border: true },
+  { label: 'Border Subtle', swatch: 'bg-[var(--color-border-subtle)]', text: 'text-foreground', token: '--color-border-subtle' },
+  { label: 'Emerald', swatch: 'bg-emerald-500', text: 'text-emerald-400', token: 'emerald-500' },
+  { label: 'Amber', swatch: 'bg-amber-400', text: 'text-amber-400', token: 'amber-400' },
+  { label: 'Red', swatch: 'bg-red-500', text: 'text-red-400', token: 'red-500' },
+  { label: 'Cyan', swatch: 'bg-cyan-400', text: 'text-cyan-400', token: 'cyan-400' },
+];
+
+function ColorSection() {
   return (
-    <>
-      <Cell label="Text Input">
-        <input
-          type="text"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Display name"
-          className="w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
-        />
-        <input
-          type="email"
-          placeholder="Email address"
-          className="w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
-        />
-      </Cell>
-
-      <Cell label="Search Input">
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tracks, artists…"
-            className="w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] pl-9 pr-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
-          />
-        </div>
-      </Cell>
-
-      <Cell label="Textarea">
-        <textarea
-          placeholder="Add a description for this playlist…"
-          rows={3}
-          className="w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all resize-none"
-        />
-      </Cell>
-    </>
-  );
-}
-
-function BadgesSection() {
-  return (
-    <>
-      <Cell label="Status Badge">
-        <div className="flex flex-wrap gap-2">
-          <span className="inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-emerald-300">
-            Active
-          </span>
-          <span className="inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-blue-300">
-            Processing
-          </span>
-          <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-amber-300">
-            Warning
-          </span>
-          <span className="inline-flex rounded-full border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-red-300">
-            Failed
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-widest text-primary">
-            73%
-          </span>
-          <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-primary/10 text-primary rounded">
-            Active
-          </span>
-        </div>
-      </Cell>
-
-      <Cell label="Analysis Status Badge">
-        <div className="flex flex-wrap gap-1.5">
-          <TrackAnalysisStatusBadge status="completed" />
-          <TrackAnalysisStatusBadge status="parsing" />
-          <TrackAnalysisStatusBadge status="failed" />
-          <TrackAnalysisStatusBadge status="partial" />
-          <TrackAnalysisStatusBadge status="not_requested" />
-          <TrackAnalysisStatusBadge status="reused" />
-          <TrackAnalysisStatusBadge status="skipped" />
-          <TrackAnalysisStatusBadge status="missing_required" />
-        </div>
-      </Cell>
-
-      <Cell label="Status Dot">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-green-500" />
-            <span className="text-xs text-muted-foreground">Connected</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            <span className="text-xs text-muted-foreground">Warning</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
-            <span className="text-xs text-muted-foreground">Error</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-cyan-400" />
-            <span className="text-xs text-muted-foreground">Released</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-            <span className="text-xs text-muted-foreground">Connecting</span>
-          </div>
-        </div>
-      </Cell>
-    </>
-  );
-}
-
-function FeedbackSection() {
-  return (
-    <>
-      <Cell label="Progress Bar">
-        <div>
-          <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
-            <span>Parsing tracks</span>
-            <span className="font-mono font-bold">73%</span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-[var(--color-surface)]">
-            <div className="h-full w-[73%] rounded-full bg-primary transition-[width] duration-500" />
-          </div>
-        </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-surface)]">
-          <div className="h-full w-[42%] rounded-full bg-secondary" />
-        </div>
-        <div className="h-1 overflow-hidden rounded-full bg-[var(--color-surface)]">
-          <div className="h-full w-[91%] rounded-full bg-emerald-500" />
-        </div>
-      </Cell>
-
-      <Cell label="Spinner / Loader">
-        <div className="flex items-center gap-4">
-          <Loader2 size={16} className="animate-spin text-primary" />
-          <Loader2 size={20} className="animate-spin text-secondary" />
-          <Loader2 size={28} className="animate-spin text-muted-foreground" />
-        </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 size={14} className="animate-spin" />
-          <span>Loading tracks…</span>
-        </div>
-      </Cell>
-
-      <Cell label="Toast / Notification">
-        <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-950/60 p-3 text-emerald-50">
-          <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+    <div className="grid grid-cols-3 md:grid-cols-9 gap-3">
+      {PALETTE.map(({ label, swatch, token, border }) => (
+        <div key={token} className="flex flex-col gap-2">
+          <div className={cn('h-14 rounded-2xl shadow-sm', swatch, border && 'border border-[var(--color-border-subtle)]')} />
           <div>
-            <p className="text-xs font-black">Library is ready</p>
-            <p className="mt-0.5 text-[10px] opacity-80">exportLibrary.db finished processing.</p>
+            <p className="text-[9px] font-bold leading-tight">{label}</p>
+            <p className="text-[8px] font-mono text-muted-foreground/60 truncate">{token}</p>
           </div>
         </div>
-        <div className="flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-950/60 p-3 text-amber-50">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-400" />
-          <div>
-            <p className="text-xs font-black">Analysis incomplete</p>
-            <p className="mt-0.5 text-[10px] opacity-80">12 tracks could not be parsed.</p>
-          </div>
-        </div>
-      </Cell>
-
-      <Cell label="Import Activity Banner (parsing)">
-        <ImportActivityBanner
-          item={MOCK_IMPORT_PARSING}
-          activeImport={MOCK_IMPORT_PARSING}
-          onViewStatus={() => {}}
-        />
-      </Cell>
-
-      <Cell label="Import Activity Banner (queued)">
-        <ImportActivityBanner
-          item={MOCK_IMPORT_QUEUED}
-          activeImport={null}
-          onViewStatus={() => {}}
-        />
-      </Cell>
-
-      <Cell label="Error / Empty State">
-        <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-3">
-          <p className="text-sm font-bold text-red-400">Import failed</p>
-          <p className="mt-1 text-xs text-muted-foreground">Could not read exportLibrary.db. Check the file and try again.</p>
-          <button className="mt-2 text-xs font-bold text-primary hover:underline">Retry</button>
-        </div>
-        <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4 text-center">
-          <p className="text-sm text-muted-foreground italic">No tracks found.</p>
-        </div>
-      </Cell>
-
-      <Cell label="Warning / Alert Banner">
-        <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-400">
-          <AlertTriangle size={11} className="mt-0.5 shrink-0" />
-          <span>Select the USB root folder, not a subfolder.</span>
-        </div>
-        <div className="flex items-start gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-[10px] text-red-400">
-          <XCircle size={11} className="mt-0.5 shrink-0" />
-          <span>USB access was denied. Re-authorize to continue.</span>
-        </div>
-      </Cell>
-    </>
+      ))}
+    </div>
   );
 }
 
-function WaveformSection() {
-  return (
-    <>
-      <Cell label="Waveform — Decorative (primary)">
-        <div className="h-12 w-full">
-          <WaveformDisplay seed={MOCK_SEED} barCount={80} color="primary" showFallbackLabel={false} />
-        </div>
-      </Cell>
-
-      <Cell label="Waveform — Decorative (secondary)">
-        <div className="h-12 w-full">
-          <WaveformDisplay seed={`${MOCK_SEED}-2`} barCount={80} color="secondary" showFallbackLabel={false} />
-        </div>
-      </Cell>
-
-      <Cell label="Waveform — With visualizer label">
-        <div className="h-12 w-full">
-          <WaveformDisplay seed={`${MOCK_SEED}-3`} barCount={60} showFallbackLabel />
-        </div>
-      </Cell>
-
-      <Cell label="Rekordbox Waveform — Loading">
-        <RekordboxPreviewWaveform state={MOCK_WAVEFORM_LOADING} height={40} variant="compact" />
-      </Cell>
-
-      <Cell label="Rekordbox Waveform — Unavailable">
-        <RekordboxPreviewWaveform state={MOCK_WAVEFORM_UNAVAILABLE} height={40} variant="compact" />
-      </Cell>
-
-      <Cell label="Rekordbox Waveform — Error">
-        <RekordboxPreviewWaveform
-          state={MOCK_WAVEFORM_ERROR}
-          height={40}
-          variant="compact"
-          onRetry={() => {}}
-        />
-      </Cell>
-
-      <Cell label="Rekordbox Waveform — Invalid / Unsupported">
-        <RekordboxPreviewWaveform state={MOCK_WAVEFORM_INVALID} height={40} variant="compact" />
-      </Cell>
-    </>
-  );
-}
-
-function CardSection() {
-  return (
-    <>
-      <Cell label="Glass Card">
-        <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4">
-          <p className="text-sm font-bold">Glass surface</p>
-          <p className="text-xs text-muted-foreground mt-1">Used for panels, modals, and content containers throughout DropDex.</p>
-        </div>
-      </Cell>
-
-      <Cell label="Surface Card">
-        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4">
-          <p className="text-sm font-bold">Surface card</p>
-          <p className="text-xs text-muted-foreground mt-1">Slightly elevated from the background. Used for list items and settings rows.</p>
-        </div>
-      </Cell>
-
-      <Cell label="Hover Card / Track Row">
-        {['Deadmau5 — Strobe', 'Above & Beyond — Sun & Moon', 'Illenium — Fractures'].map((title) => (
-          <div
-            key={title}
-            className="grid grid-cols-[40px_1fr_48px] gap-3 items-center p-3 rounded-xl border border-[var(--color-border-faint)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] cursor-pointer transition-all"
-          >
-            <div className="w-10 h-10 rounded-lg bg-[var(--color-avatar-bg)] flex items-center justify-center text-[10px] font-bold text-slate-500">
-              {title.slice(0, 2).toUpperCase()}
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-bold truncate">{title.split(' — ')[1]}</p>
-              <p className="text-[10px] text-muted-foreground uppercase truncate">{title.split(' — ')[0]}</p>
-            </div>
-            <p className="text-xs font-mono font-bold text-muted-foreground text-right">128.0</p>
-          </div>
-        ))}
-      </Cell>
-
-      <Cell label="Active Track Row">
-        <div className="grid grid-cols-[40px_1fr_48px] gap-3 items-center p-3 rounded-xl border border-primary/40 bg-[var(--color-surface-hover)] shadow-primary-selection cursor-pointer">
-          <div className="w-10 h-10 rounded-lg brand-gradient flex items-center justify-center text-[10px] font-bold text-white">
-            DE
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold truncate text-foreground">Strobe</p>
-            <p className="text-[10px] text-muted-foreground uppercase truncate">Deadmau5</p>
-          </div>
-          <p className="text-xs font-mono font-bold text-primary neon-text-blue text-right">128.0</p>
-        </div>
-      </Cell>
-
-      <Cell label="Stat Tile / KPI">
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { icon: Music, value: '2.4k', label: 'Tracks' },
-            { icon: TrendingUp, value: '47', label: 'Playlists' },
-            { icon: Radio, value: '128', label: 'Avg BPM' },
-          ].map(({ icon: Icon, value, label }) => (
-            <div key={label} className="flex flex-col items-center gap-1 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3">
-              <Icon size={14} className="text-muted-foreground" />
-              <span className="text-lg font-black tabular-nums leading-none">{value}</span>
-              <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold">{label}</span>
-            </div>
-          ))}
-        </div>
-      </Cell>
-
-      <Cell label="Playlist Card">
-        <div className="grid grid-cols-2 gap-3">
-          <PlaylistOverviewCard
-            playlist={MOCK_PLAYLIST_REGULAR}
-            onClick={() => {}}
-            onEdit={() => {}}
-          />
-          <PlaylistOverviewCard
-            playlist={MOCK_PLAYLIST_FOLDER}
-            onClick={() => {}}
-          />
-        </div>
-      </Cell>
-    </>
-  );
-}
-
-function AvatarSection() {
-  return (
-    <>
-      <Cell label="Avatar — Initials">
-        <div className="flex items-center gap-3">
-          {[
-            { initials: 'KR', size: 'w-8 h-8 text-sm' },
-            { initials: 'DV', size: 'w-12 h-12 text-base' },
-            { initials: 'AB', size: 'w-16 h-16 text-lg' },
-            { initials: 'MX', size: 'w-20 h-20 text-xl' },
-          ].map(({ initials, size }) => (
-            <div
-              key={initials}
-              className={cn(
-                'rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border-2 border-primary/20 flex items-center justify-center font-black text-primary shadow-lg',
-                size,
-              )}
-            >
-              {initials}
-            </div>
-          ))}
-        </div>
-      </Cell>
-
-      <Cell label="Avatar — Icon Fallback">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border-2 border-primary/20 flex items-center justify-center">
-            <User size={28} className="text-primary/70" />
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-[var(--color-avatar-bg)] flex items-center justify-center">
-            <User size={18} className="text-slate-500" />
-          </div>
-        </div>
-      </Cell>
-
-      <Cell label="Avatar with ring">
-        <div className="relative w-20 h-20 mx-auto">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border-2 border-primary/20 flex items-center justify-center">
-            <span className="text-2xl font-black text-primary">KR</span>
-          </div>
-          <div className="absolute inset-[-6px] rounded-full border border-primary/10 pointer-events-none" />
-          <div className="absolute inset-[-13px] rounded-full border border-primary/5 pointer-events-none" />
-        </div>
-      </Cell>
-    </>
-  );
-}
+// ── 02 · TYPOGRAPHY ───────────────────────────────────────────────────────────
 
 function TypographySection() {
   return (
-    <>
-      <Cell label="Headings">
-        <h1 className="text-3xl font-black italic leading-tight">H1 — Drop Lab</h1>
-        <h2 className="text-2xl font-black italic">H2 — My Library</h2>
-        <h3 className="text-xl font-black">H3 — Peak Hour Rollers</h3>
-        <h4 className="text-base font-bold">H4 — Track Intelligence</h4>
-      </Cell>
-
-      <Cell label="Body & Muted Text">
-        <p className="text-sm text-foreground">Body — Standard foreground text used for track titles and primary content.</p>
-        <p className="text-sm text-muted-foreground">Muted — Secondary content: subtitles, descriptions, metadata.</p>
-        <p className="text-xs text-muted-foreground">Small muted — Timestamps, import dates, file sizes.</p>
-        <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold">Label — Section headers and data labels.</p>
-      </Cell>
-
-      <Cell label="Mono / Code Text">
-        <p className="font-mono text-sm font-bold tabular-nums">174.2 BPM</p>
-        <p className="font-mono text-xs text-muted-foreground">8f591f3e-4c2d-…</p>
-        <p className="font-mono text-[10px] text-muted-foreground">Imported from PIONEER USB</p>
-        <span className="font-mono text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-primary/10 text-primary rounded">
-          2.0.0
-        </span>
-      </Cell>
-
-      <Cell label="Brand / Accent Text">
-        <p className="text-primary font-bold neon-text-blue">Primary accent — neon blue</p>
-        <p className="text-secondary font-bold neon-text-purple">Secondary accent — neon purple</p>
-        <p className="text-green-400 font-bold">Success green</p>
-        <p className="text-amber-400 font-bold">Warning amber</p>
-        <p className="text-red-400 font-bold">Danger red</p>
-      </Cell>
-
-      <Cell label="Brand Gradient Text">
-        <p className="text-2xl font-black uppercase leading-none">
-          Drop<span className="text-[var(--color-brand-primary)]">Dex</span>
-        </p>
-        <div className="h-px w-full bg-gradient-to-r from-primary/60 via-secondary/40 to-transparent" />
-        <div className="h-px w-full bg-[var(--color-border-subtle)]" />
-      </Cell>
-
-      <Cell label="Divider">
-        <div className="h-px w-full bg-[var(--color-border-subtle)]" />
-        <div className="h-px w-full bg-[var(--color-border-faint)]" />
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
-          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">or</span>
-          <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
+    <div className="grid grid-cols-3 gap-6">
+      <Tile label="Type Scale" span={2}>
+        <div className="space-y-1">
+          {[
+            { size: 'text-4xl', weight: 'font-black', label: '36 / Black', sample: 'Drop Lab' },
+            { size: 'text-2xl', weight: 'font-black italic', label: '24 / Black Italic', sample: 'My Library' },
+            { size: 'text-xl', weight: 'font-bold', label: '20 / Bold', sample: 'Peak Hour Rollers' },
+            { size: 'text-base', weight: 'font-semibold', label: '16 / Semibold', sample: 'Track Intelligence' },
+            { size: 'text-sm', weight: 'font-medium', label: '14 / Medium', sample: 'Above & Beyond · Sun & Moon' },
+            { size: 'text-xs', weight: 'font-normal text-muted-foreground', label: '12 / Regular Muted', sample: 'Imported from PIONEER USB · 498 tracks' },
+            { size: 'text-[10px]', weight: 'font-bold uppercase tracking-[0.18em] text-muted-foreground', label: '10 / Label', sample: 'Analysis Status' },
+          ].map(({ size, weight, label, sample }) => (
+            <div key={label} className="flex items-baseline gap-4 py-1.5 border-b border-[var(--color-border-faint)] last:border-0">
+              <span className="w-28 shrink-0 font-mono text-[8px] text-muted-foreground/50 self-center">{label}</span>
+              <span className={cn(size, weight, 'leading-tight truncate')}>{sample}</span>
+            </div>
+          ))}
         </div>
-        <div className="w-px self-stretch bg-[var(--color-border-subtle)] mx-auto h-10" />
-      </Cell>
-    </>
+      </Tile>
+
+      <div className="flex flex-col gap-6">
+        <Tile label="Mono / Data">
+          <p className="font-mono text-2xl font-black tabular-nums text-primary neon-text-blue">174.2</p>
+          <p className="font-mono text-xs text-muted-foreground">BPM · Key · Duration</p>
+          <div className="flex flex-wrap gap-1.5">
+            <span className="font-mono text-[9px] font-bold uppercase tracking-widest px-2 py-1 bg-primary/10 text-primary rounded-lg">128 BPM</span>
+            <span className="font-mono text-[9px] font-bold uppercase tracking-widest px-2 py-1 bg-secondary/10 text-secondary rounded-lg">8A · Dm</span>
+            <span className="font-mono text-[9px] font-bold uppercase tracking-widest px-2 py-1 bg-[var(--color-surface-hover)] text-muted-foreground rounded-lg">7:32</span>
+          </div>
+        </Tile>
+        <Tile label="Brand Gradient">
+          <p className="text-3xl font-black">
+            Drop<span className="text-primary neon-text-blue">Dex</span>
+          </p>
+          <div className="h-px w-full bg-gradient-to-r from-primary via-secondary to-transparent" />
+          <p className="text-xs text-muted-foreground">The sonic intelligence layer for DJs who play sets, not just songs.</p>
+        </Tile>
+      </div>
+    </div>
   );
 }
 
-function NavigationSection() {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [activeNav, setActiveNav] = useState('home');
+// ── 03 · BUTTONS ─────────────────────────────────────────────────────────────
 
-  const tabs = ['overview', 'playlists', 'tracks', 'genres'];
+function ButtonsSection() {
+  const [loading, setLoading] = useState(false);
+
+  return (
+    <div className="grid grid-cols-3 gap-6">
+      <Tile label="Primary">
+        <button className="group relative overflow-hidden rounded-2xl bg-primary px-5 py-3 text-sm font-black text-white transition-all hover:bg-primary/90 hover:shadow-[0_0_24px_rgba(var(--color-brand-primary-rgb)/0.45)] active:scale-[0.98]">
+          <span className="relative z-10 flex items-center justify-center gap-2">
+            <Zap size={15} />
+            Import Library
+          </span>
+        </button>
+        <button className="rounded-2xl bg-secondary px-5 py-3 text-sm font-black text-white transition-all hover:bg-secondary/90 hover:shadow-[0_0_24px_rgba(var(--color-brand-secondary-rgb)/0.35)] active:scale-[0.98]">
+          <span className="flex items-center justify-center gap-2"><Sparkles size={15} /> Open Drop Lab</span>
+        </button>
+        <button className="brand-gradient rounded-2xl px-5 py-3 text-sm font-black text-white transition-all hover:opacity-90 hover:shadow-lg active:scale-[0.98]">
+          <span className="flex items-center justify-center gap-2"><Flame size={15} /> Start Analysis</span>
+        </button>
+      </Tile>
+
+      <Tile label="Secondary & Ghost">
+        <button className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-5 py-3 text-sm font-bold transition-all hover:border-primary/30 hover:bg-[var(--color-surface-hover)] hover:text-primary active:scale-[0.98]">
+          <span className="flex items-center justify-center gap-2"><Settings size={15} className="text-muted-foreground" /> Settings</span>
+        </button>
+        <button className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-5 py-3 text-sm font-bold transition-all hover:border-primary/30 hover:bg-[var(--color-surface-hover)] active:scale-[0.98]">
+          <span className="flex items-center justify-center gap-2">Cancel</span>
+        </button>
+        <button className="rounded-2xl px-5 py-3 text-sm font-bold text-primary transition-all hover:bg-primary/8 active:scale-[0.98] flex items-center justify-center gap-1.5">
+          View full report <ArrowRight size={14} />
+        </button>
+      </Tile>
+
+      <Tile label="Danger & States">
+        <button className="rounded-2xl border border-red-500/25 bg-red-500/10 px-5 py-3 text-sm font-bold text-red-400 transition-all hover:bg-red-500/15 hover:border-red-500/40 active:scale-[0.98]">
+          <span className="flex items-center justify-center gap-2"><XCircle size={15} /> Delete Library</span>
+        </button>
+        <button
+          onClick={() => { setLoading(true); setTimeout(() => setLoading(false), 2000); }}
+          disabled={loading}
+          className="rounded-2xl bg-primary/20 border border-primary/25 px-5 py-3 text-sm font-bold text-primary transition-all hover:bg-primary/25 disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
+        >
+          <span className="flex items-center justify-center gap-2">
+            {loading ? <><Loader2 size={15} className="animate-spin" /> Processing…</> : <><CheckCircle2 size={15} /> Confirm</>}
+          </span>
+        </button>
+        <div className="flex gap-2">
+          {[Heart, Share2, MoreHorizontal, Bell].map((Icon, i) => (
+            <button key={i} className="flex-1 flex items-center justify-center rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2.5 text-muted-foreground transition-all hover:text-primary hover:border-primary/30 hover:bg-primary/8 active:scale-95">
+              <Icon size={15} />
+            </button>
+          ))}
+        </div>
+      </Tile>
+    </div>
+  );
+}
+
+// ── 04 · INPUTS ──────────────────────────────────────────────────────────────
+
+function InputsSection() {
+  const [text, setText] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <div className="grid grid-cols-3 gap-6">
+      <Tile label="Text Input">
+        <div className="relative">
+          <User size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground/50 pointer-events-none" />
+          <input
+            type="text"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder="Display name"
+            className="w-full rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] pl-10 pr-4 py-3 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all"
+          />
+        </div>
+        <div className="relative">
+          <Lock size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground/50 pointer-events-none" />
+          <input
+            type={showPass ? 'text' : 'password'}
+            placeholder="Password"
+            className="w-full rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] pl-10 pr-10 py-3 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all"
+          />
+          <button onClick={() => setShowPass(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+            {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </div>
+        <div className="rounded-2xl border border-red-500/30 bg-[var(--color-surface)]">
+          <input
+            type="email"
+            defaultValue="invalid-email"
+            className="w-full rounded-2xl px-4 py-3 text-sm text-red-400 bg-transparent focus:outline-none"
+          />
+        </div>
+        <p className="text-[10px] text-red-400 -mt-1 px-1">Please enter a valid email address.</p>
+      </Tile>
+
+      <Tile label="Search">
+        <div className={cn(
+          'flex items-center gap-3 rounded-2xl border px-4 py-3 transition-all',
+          focused
+            ? 'border-primary/50 ring-2 ring-primary/20 bg-[var(--color-surface)]'
+            : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)]',
+        )}>
+          <Search size={15} className={cn('shrink-0 transition-colors', focused ? 'text-primary' : 'text-muted-foreground/50')} />
+          <input
+            type="search"
+            placeholder="Search tracks, artists, keys…"
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/40 focus:outline-none"
+          />
+          <kbd className="hidden md:inline-flex h-5 items-center gap-1 rounded border border-[var(--color-border-subtle)] px-1.5 font-mono text-[9px] text-muted-foreground/40">⌘K</kbd>
+        </div>
+        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] overflow-hidden">
+          {['Strobe — Deadmau5', 'Sun & Moon — Above & Beyond', 'Fractures — Illenium'].map((r, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--color-surface-hover)] cursor-pointer transition-colors border-b border-[var(--color-border-faint)] last:border-0">
+              <Music size={12} className="text-muted-foreground/40 shrink-0" />
+              <span className="text-sm">{r}</span>
+            </div>
+          ))}
+        </div>
+      </Tile>
+
+      <Tile label="Select / Dropdown">
+        <div className="relative">
+          <select className="w-full appearance-none rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all cursor-pointer">
+            <option>DropDex Dark</option>
+            <option>DropDex Light</option>
+            <option>CDJ Performance</option>
+          </select>
+          <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground/50 pointer-events-none" />
+        </div>
+        <div className="relative">
+          <select className="w-full appearance-none rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-3 pr-10 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all cursor-pointer">
+            <option value="" disabled selected>Select key…</option>
+            <option>1A · F♯m</option>
+            <option>8A · Dm</option>
+            <option>10B · C</option>
+          </select>
+          <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground/50 pointer-events-none" />
+        </div>
+        <textarea
+          placeholder="Add a note about this playlist…"
+          rows={3}
+          className="w-full rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-3 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all resize-none"
+        />
+      </Tile>
+    </div>
+  );
+}
+
+// ── 05 · BADGES & PILLS ──────────────────────────────────────────────────────
+
+function BadgesSection() {
+  return (
+    <div className="grid grid-cols-3 gap-6">
+      <Tile label="Status Pills">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: 'Active', color: 'bg-emerald-500/12 text-emerald-400 border-emerald-500/25' },
+            { label: 'Processing', color: 'bg-blue-500/12 text-blue-400 border-blue-500/25' },
+            { label: 'Queued', color: 'bg-primary/12 text-primary border-primary/25' },
+            { label: 'Warning', color: 'bg-amber-500/12 text-amber-400 border-amber-500/25' },
+            { label: 'Failed', color: 'bg-red-500/12 text-red-400 border-red-500/25' },
+            { label: 'Paused', color: 'bg-muted/20 text-muted-foreground border-[var(--color-border-subtle)]' },
+          ].map(({ label, color }) => (
+            <span key={label} className={cn('inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold', color)}>
+              {label}
+            </span>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: '174.2 BPM', color: 'bg-primary/10 text-primary' },
+            { label: '8A · Dm', color: 'bg-secondary/10 text-secondary' },
+            { label: 'PRO', color: 'brand-gradient text-white' },
+            { label: 'NEW', color: 'bg-emerald-500/15 text-emerald-400' },
+          ].map(({ label, color }) => (
+            <span key={label} className={cn('font-mono text-[9px] font-black uppercase tracking-widest rounded-lg px-2 py-1', color)}>
+              {label}
+            </span>
+          ))}
+        </div>
+      </Tile>
+
+      <Tile label="Analysis Status Badge">
+        <div className="flex flex-wrap gap-1.5">
+          {(['completed', 'parsing', 'failed', 'partial', 'not_requested', 'reused', 'skipped', 'missing_required', 'queued'] as const).map(s => (
+            <TrackAnalysisStatusBadge key={s} status={s} />
+          ))}
+        </div>
+      </Tile>
+
+      <Tile label="Status Dot Indicators">
+        <div className="space-y-3">
+          {[
+            { label: 'Connected', dot: 'bg-green-500', extra: 'animate-none' },
+            { label: 'Connecting', dot: 'bg-primary animate-pulse' },
+            { label: 'Warning', dot: 'bg-amber-400' },
+            { label: 'Error', dot: 'bg-red-500' },
+            { label: 'Released', dot: 'bg-cyan-400' },
+            { label: 'Offline', dot: 'bg-[var(--color-border-subtle)]' },
+          ].map(({ label, dot, extra }) => (
+            <div key={label} className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className={cn('w-2 h-2 rounded-full shrink-0', dot, extra)} />
+                <span className="text-sm text-muted-foreground">{label}</span>
+              </div>
+              <span className="font-mono text-[9px] text-muted-foreground/40 uppercase tracking-widest">{dot.includes('green') ? 'OK' : dot.includes('amber') ? 'WARN' : dot.includes('red') ? 'ERR' : dot.includes('cyan') ? 'IDLE' : dot.includes('primary') ? 'INIT' : 'OFF'}</span>
+            </div>
+          ))}
+        </div>
+      </Tile>
+    </div>
+  );
+}
+
+// ── 06 · FEEDBACK ─────────────────────────────────────────────────────────────
+
+function FeedbackSection() {
+  return (
+    <div className="grid grid-cols-3 gap-6">
+      <Tile label="Progress Bar">
+        {[
+          { label: 'Parsing ANLZ files', pct: 73, color: 'bg-primary', thick: 'h-2.5' },
+          { label: 'Uploading library', pct: 42, color: 'bg-secondary', thick: 'h-1.5' },
+          { label: 'Analysis complete', pct: 100, color: 'bg-emerald-500', thick: 'h-1.5' },
+          { label: 'Indexing metadata', pct: 18, color: 'bg-amber-400', thick: 'h-1' },
+        ].map(({ label, pct, color, thick }) => (
+          <div key={label} className="space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+              <span>{label}</span>
+              <span className="font-mono font-bold tabular-nums">{pct}%</span>
+            </div>
+            <div className={cn('w-full overflow-hidden rounded-full bg-[var(--color-surface)]', thick)}>
+              <div
+                className={cn('h-full rounded-full transition-[width] duration-700', color)}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </Tile>
+
+      <Tile label="Toast Notifications">
+        <div className="space-y-2">
+          {[
+            { icon: CheckCircle2, title: 'Library is ready', body: 'exportLibrary.db finished processing.', border: 'border-emerald-500/20 bg-emerald-950/50', icon_: 'text-emerald-400', title_: 'text-emerald-50' },
+            { icon: AlertTriangle, title: 'Analysis incomplete', body: '12 tracks could not be parsed.', border: 'border-amber-500/20 bg-amber-950/50', icon_: 'text-amber-400', title_: 'text-amber-50' },
+            { icon: XCircle, title: 'Import failed', body: 'Could not read exportLibrary.db.', border: 'border-red-500/20 bg-red-950/50', icon_: 'text-red-400', title_: 'text-red-50' },
+          ].map(({ icon: Icon, title, body, border, icon_, title_ }) => (
+            <div key={title} className={cn('flex items-start gap-3 rounded-2xl border px-4 py-3', border)}>
+              <Icon size={15} className={cn('mt-0.5 shrink-0', icon_)} />
+              <div className="min-w-0">
+                <p className={cn('text-xs font-bold', title_)}>{title}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{body}</p>
+              </div>
+              <button className="shrink-0 ml-auto text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+                <XCircle size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </Tile>
+
+      <Tile label="Loader / Spinner">
+        <div className="flex items-end gap-6 justify-center py-2">
+          {[14, 20, 28, 36].map(s => (
+            <Loader2 key={s} size={s} className="animate-spin text-primary" />
+          ))}
+        </div>
+        <div className="space-y-2">
+          {['Connecting to Supabase', 'Loading waveform data', 'Syncing library'].map(label => (
+            <div key={label} className="flex items-center gap-3 rounded-xl border border-[var(--color-border-faint)] bg-[var(--color-surface)] px-4 py-2.5">
+              <Loader2 size={13} className="animate-spin text-primary shrink-0" />
+              <span className="text-xs text-muted-foreground">{label}…</span>
+            </div>
+          ))}
+        </div>
+      </Tile>
+
+      <Tile label="Import Banner — Parsing" span={2}>
+        <ImportActivityBanner item={MOCK_IMPORT_PARSING} activeImport={MOCK_IMPORT_PARSING} onViewStatus={() => {}} />
+      </Tile>
+
+      <Tile label="Import Banner — Queued">
+        <ImportActivityBanner item={MOCK_IMPORT_QUEUED} activeImport={null} onViewStatus={() => {}} />
+      </Tile>
+
+      <Tile label="Warning / Alert Banners" span={'full'}>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { icon: AlertTriangle, msg: 'Select the USB root folder, not PIONEER or a subfolder.', color: 'border-amber-500/20 bg-amber-500/8 text-amber-400' },
+            { icon: XCircle, msg: 'USB access was denied. Re-authorize to continue.', color: 'border-red-500/20 bg-red-500/8 text-red-400' },
+            { icon: Bell, msg: 'A new version of DropDex is available. Update now.', color: 'border-primary/20 bg-primary/8 text-primary' },
+          ].map(({ icon: Icon, msg, color }) => (
+            <div key={msg} className={cn('flex items-start gap-2.5 rounded-2xl border px-4 py-3 text-[11px] font-medium leading-relaxed', color)}>
+              <Icon size={13} className="mt-0.5 shrink-0" />
+              <span>{msg}</span>
+            </div>
+          ))}
+        </div>
+      </Tile>
+    </div>
+  );
+}
+
+// ── 07 · WAVEFORM ─────────────────────────────────────────────────────────────
+
+function WaveformSection() {
+  return (
+    <div className="grid grid-cols-3 gap-6">
+      <Tile label="Decorative Waveform — Primary">
+        <div className="h-14 w-full">
+          <WaveformDisplay seed="dropdex-seed-1" barCount={90} color="primary" showFallbackLabel={false} />
+        </div>
+        <div className="h-8 w-full">
+          <WaveformDisplay seed="dropdex-seed-1b" barCount={60} color="primary" showFallbackLabel />
+        </div>
+      </Tile>
+
+      <Tile label="Decorative Waveform — Secondary">
+        <div className="h-14 w-full">
+          <WaveformDisplay seed="dropdex-seed-2" barCount={90} color="secondary" showFallbackLabel={false} />
+        </div>
+        <div className="h-8 w-full">
+          <WaveformDisplay seed="dropdex-seed-2b" barCount={60} color="secondary" showFallbackLabel />
+        </div>
+      </Tile>
+
+      <Tile label="Empty States">
+        <RekordboxPreviewWaveform state={WAVEFORM_LOADING} height={44} variant="compact" />
+        <RekordboxPreviewWaveform state={WAVEFORM_UNAVAILABLE} height={44} variant="compact" />
+        <RekordboxPreviewWaveform state={WAVEFORM_ERROR} height={44} variant="compact" onRetry={() => {}} />
+      </Tile>
+    </div>
+  );
+}
+
+// ── 08 · DATA DISPLAY ─────────────────────────────────────────────────────────
+
+const TRACKS = [
+  { title: 'Strobe', artist: 'Deadmau5', bpm: '128.0', key: '7B', dur: '10:32', active: true },
+  { title: 'Sun & Moon', artist: 'Above & Beyond', bpm: '138.0', key: '8A', dur: '9:47', active: false },
+  { title: 'Fractures', artist: 'Illenium', bpm: '150.0', key: '4A', dur: '5:12', active: false },
+  { title: 'Lose Yourself', artist: 'Eminem', bpm: '171.0', key: '2B', dur: '5:26', active: false },
+];
+
+function DataSection() {
+  const [playing, setPlaying] = useState<string | null>('Strobe');
+
+  return (
+    <div className="grid grid-cols-3 gap-6">
+      <Tile label="Track Row" span={2}>
+        <div className="rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
+          {TRACKS.map(({ title, artist, bpm, key: k, dur, active }, i) => (
+            <div
+              key={title}
+              onClick={() => setPlaying(title)}
+              className={cn(
+                'group grid items-center gap-3 px-4 py-3 cursor-pointer transition-all border-b border-[var(--color-border-faint)] last:border-0',
+                playing === title
+                  ? 'bg-primary/8 border-l-2 border-l-primary'
+                  : 'hover:bg-[var(--color-surface-hover)]',
+              )}
+              style={{ gridTemplateColumns: '28px 1fr 60px 44px 44px 36px' }}
+            >
+              <div className="flex items-center justify-center">
+                {playing === title ? (
+                  <button onClick={e => { e.stopPropagation(); setPlaying(null); }} className="text-primary">
+                    <Pause size={13} />
+                  </button>
+                ) : (
+                  <span className="text-[10px] font-mono text-muted-foreground/40 group-hover:hidden">{String(i + 1).padStart(2, '0')}</span>
+                )}
+                {playing !== title && <button onClick={e => { e.stopPropagation(); setPlaying(title); }} className="hidden group-hover:block text-muted-foreground hover:text-primary transition-colors"><Play size={13} /></button>}
+              </div>
+              <div className="min-w-0">
+                <p className={cn('text-sm font-bold truncate', playing === title && 'text-primary neon-text-blue')}>{title}</p>
+                <p className="text-[10px] text-muted-foreground uppercase truncate">{artist}</p>
+              </div>
+              <span className="font-mono text-xs tabular-nums text-right text-muted-foreground">{bpm}</span>
+              <span className="font-mono text-[10px] text-secondary text-center font-bold">{k}</span>
+              <span className="font-mono text-xs tabular-nums text-right text-muted-foreground">{dur}</span>
+              <button className="flex items-center justify-center text-muted-foreground/30 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100">
+                <MoreHorizontal size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </Tile>
+
+      <div className="flex flex-col gap-6">
+        <Tile label="KPI Stat Tiles">
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { icon: Music, val: '2.4k', sub: 'Tracks', color: 'text-primary', bg: 'bg-primary/10' },
+              { icon: TrendingUp, val: '47', sub: 'Playlists', color: 'text-secondary', bg: 'bg-secondary/10' },
+              { icon: Radio, val: '174', sub: 'Avg BPM', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+              { icon: Star, val: '4.9', sub: 'Mix Score', color: 'text-amber-400', bg: 'bg-amber-500/10' },
+            ].map(({ icon: Icon, val, sub, color, bg }) => (
+              <div key={sub} className="flex flex-col items-center gap-2 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4">
+                <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center', bg)}>
+                  <Icon size={16} className={color} />
+                </div>
+                <span className={cn('text-2xl font-black tabular-nums leading-none', color)}>{val}</span>
+                <span className="text-[8px] font-bold uppercase tracking-[0.18em] text-muted-foreground">{sub}</span>
+              </div>
+            ))}
+          </div>
+        </Tile>
+
+        <Tile label="Empty / Error State">
+          <div className="rounded-2xl border border-dashed border-[var(--color-border-subtle)] flex flex-col items-center gap-3 py-8 px-4 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-[var(--color-surface)] flex items-center justify-center">
+              <Music size={20} className="text-muted-foreground/30" />
+            </div>
+            <div>
+              <p className="text-sm font-bold">No tracks found</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Import a Rekordbox library to get started.</p>
+            </div>
+            <button className="rounded-xl border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs font-bold hover:bg-[var(--color-surface-hover)] transition-colors flex items-center gap-1.5">
+              <FileUp size={12} /> Import Library
+            </button>
+          </div>
+        </Tile>
+      </div>
+
+      <Tile label="Playlist Cards" span={'full'}>
+        <div className="grid grid-cols-4 gap-4">
+          <PlaylistOverviewCard playlist={MOCK_PLAYLIST_REGULAR} onClick={() => {}} onEdit={() => {}} />
+          <PlaylistOverviewCard playlist={MOCK_PLAYLIST_FOLDER} onClick={() => {}} />
+          <PlaylistOverviewCard playlist={{ ...MOCK_PLAYLIST_REGULAR, id: 'p3', name: 'Warm Up Selectors', track_count: 34 }} onClick={() => {}} onEdit={() => {}} />
+          <PlaylistOverviewCard playlist={{ ...MOCK_PLAYLIST_FOLDER, id: 'p4', name: 'Hard Techno', track_count: 198 }} onClick={() => {}} />
+        </div>
+      </Tile>
+    </div>
+  );
+}
+
+// ── 09 · NAVIGATION ───────────────────────────────────────────────────────────
+
+function NavigationSection() {
+  const [tab, setTab] = useState('overview');
+  const [seg, setSeg] = useState('dropdex');
+
+  const tabs = ['overview', 'playlists', 'tracks', 'genres', 'artists'];
   const navItems = [
     { id: 'home', icon: Music, label: 'My Library' },
     { id: 'review', icon: TrendingUp, label: 'Review' },
     { id: 'discover', icon: Radio, label: 'Discover' },
-    { id: 'components', icon: Layers, label: 'Reusable' },
+    { id: 'droplab', icon: Flame, label: 'Drop Lab' },
+    { id: 'components', icon: Layers, label: 'Reusable', active: true },
     { id: 'settings', icon: Settings, label: 'Settings' },
   ];
 
   return (
-    <>
-      <Cell label="Sidebar Nav Items">
-        <div className="flex flex-col gap-1">
-          {navItems.map(({ id, icon: Icon, label }) => (
+    <div className="grid grid-cols-3 gap-6">
+      <Tile label="Sidebar Navigation">
+        <nav className="space-y-0.5">
+          {navItems.map(({ id, icon: Icon, label, active: isActive }) => (
             <button
               key={id}
-              onClick={() => setActiveNav(id)}
               className={cn(
-                'flex items-center gap-3 px-4 py-2.5 rounded-xl font-bold text-sm transition-all border w-full text-left',
-                activeNav === id
+                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all border',
+                isActive
                   ? 'text-primary neon-text-blue bg-primary/10 border-primary/20'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent',
               )}
             >
               <Icon size={16} />
               {label}
+              {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
             </button>
           ))}
-        </div>
-      </Cell>
+        </nav>
+      </Tile>
 
-      <Cell label="Tab Navigation">
-        <div className="flex gap-1 overflow-x-auto">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all border',
-                activeTab === tab
-                  ? 'bg-primary/10 border-primary/20 text-primary'
-                  : 'text-muted-foreground hover:text-foreground border-transparent hover:bg-[var(--color-surface)]',
-              )}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-      </Cell>
+      <div className="flex flex-col gap-6">
+        <Tile label="Tab Navigation">
+          <div className="flex gap-1 p-1 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
+            {tabs.map(t => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={cn(
+                  'flex-1 rounded-xl py-1.5 text-[10px] font-bold capitalize transition-all',
+                  tab === t
+                    ? 'bg-primary/15 text-primary shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </Tile>
 
-      <Cell label="Back Button / Breadcrumb">
-        <div className="flex items-center gap-2">
-          <button className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all">
-            <ChevronRight size={20} className="rotate-180" />
-          </button>
-          <h2 className="text-xl font-black italic">Track Intelligence</h2>
-        </div>
-        <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Deep Scan Results</p>
-      </Cell>
+        <Tile label="Segmented Control">
+          <div className="flex gap-1 p-1 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
+            {['DropDex', 'Rekordbox'].map(s => (
+              <button
+                key={s}
+                onClick={() => setSeg(s.toLowerCase())}
+                className={cn(
+                  'flex-1 rounded-xl py-2 text-xs font-bold transition-all',
+                  seg === s.toLowerCase()
+                    ? 'bg-secondary/15 text-secondary shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1 p-1 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
+            {['4 bars', '8 bars', '16 bars'].map((s, i) => (
+              <button
+                key={s}
+                className={cn(
+                  'flex-1 rounded-xl py-1.5 text-[10px] font-bold transition-all',
+                  i === 1 ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </Tile>
 
-      <Cell label="USB Connection Button">
-        <UsbConnectionButton />
-      </Cell>
+        <Tile label="Settings Row">
+          <div className="rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden">
+            {[
+              { label: 'Version', value: '2.0.0', mono: true },
+              { label: 'Library Source', value: 'Supabase', mono: false },
+              { label: 'Import ID', value: '8f591f3e', mono: true },
+              { label: 'Tracks', value: '2,412', mono: true },
+            ].map(({ label, value, mono }) => (
+              <div key={label} className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-faint)] last:border-0 hover:bg-[var(--color-surface-hover)] transition-colors">
+                <span className="text-sm text-muted-foreground">{label}</span>
+                <span className={cn('text-sm font-bold', mono && 'font-mono')}>{value}</span>
+              </div>
+            ))}
+          </div>
+        </Tile>
+      </div>
 
-      <Cell label="Settings Row">
-        <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
-          {[
-            { label: 'Version', value: '2.0.0' },
-            { label: 'Library Source', value: 'Supabase' },
-            { label: 'Import ID', value: '8f591f3e' },
-          ].map(({ label, value }) => (
-            <div key={label} className="px-4 py-3 flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">{label}</p>
-              <p className="text-sm font-mono font-bold">{value}</p>
+      <div className="flex flex-col gap-6">
+        <Tile label="USB Connection">
+          <UsbConnectionButton />
+        </Tile>
+
+        <Tile label="Back / Breadcrumb">
+          <div>
+            <div className="flex items-center gap-1.5">
+              <button className="flex items-center justify-center w-8 h-8 rounded-xl border border-[var(--color-border-subtle)] text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all">
+                <ChevronRight size={18} className="rotate-180" />
+              </button>
+              <h3 className="text-xl font-black">Track Intelligence</h3>
             </div>
-          ))}
-        </div>
-      </Cell>
+            <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground mt-1.5 pl-1">Deep Scan Results · Strobe by Deadmau5</p>
+          </div>
+        </Tile>
 
-      <Cell label="Segmented / Toggle Row">
-        <div className="flex rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-1 gap-1">
-          {['4 bars', '8 bars', '16 bars'].map((label, i) => (
-            <button
-              key={label}
-              className={cn(
-                'flex-1 rounded-lg px-3 py-1.5 text-xs font-bold transition-all',
-                i === 1
-                  ? 'bg-primary/15 text-primary border border-primary/20'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="flex rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-1 gap-1">
-          {['DropDex', 'Rekordbox'].map((label, i) => (
-            <button
-              key={label}
-              className={cn(
-                'flex-1 rounded-lg px-3 py-1.5 text-xs font-bold transition-all',
-                i === 0
-                  ? 'bg-secondary/15 text-secondary border border-secondary/20'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </Cell>
-    </>
+        <Tile label="Now Playing Mini">
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl brand-gradient flex items-center justify-center shrink-0">
+                <Music size={16} className="text-white" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold truncate text-primary neon-text-blue">Strobe</p>
+                <p className="text-[10px] text-muted-foreground uppercase">Deadmau5</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <button className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-colors"><SkipForward size={14} className="rotate-180" /></button>
+                <button className="p-2 rounded-xl bg-primary/15 text-primary hover:bg-primary/25 transition-colors"><Pause size={14} /></button>
+                <button className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-colors"><SkipForward size={14} /></button>
+              </div>
+            </div>
+            <div className="mt-3 h-1 rounded-full bg-[var(--color-surface)]">
+              <div className="h-full w-[38%] rounded-full bg-primary" />
+            </div>
+            <div className="flex justify-between mt-1 font-mono text-[9px] text-muted-foreground">
+              <span>3:58</span><span>10:32</span>
+            </div>
+          </div>
+        </Tile>
+      </div>
+    </div>
   );
 }
 
-// ── main view ─────────────────────────────────────────────────────────────────
+// ── 10 · AVATAR ───────────────────────────────────────────────────────────────
+
+function AvatarSection() {
+  return (
+    <div className="grid grid-cols-3 gap-6">
+      <Tile label="Avatar Sizes">
+        <div className="flex items-end gap-4 py-2">
+          {[
+            { initials: 'KR', size: 'w-8 h-8 text-xs' },
+            { initials: 'AB', size: 'w-10 h-10 text-sm' },
+            { initials: 'DV', size: 'w-12 h-12 text-base' },
+            { initials: 'MX', size: 'w-16 h-16 text-lg' },
+            { initials: 'JD', size: 'w-20 h-20 text-xl' },
+          ].map(({ initials, size }) => (
+            <div key={initials} className={cn('rounded-full bg-gradient-to-br from-primary/30 to-primary/8 border-2 border-primary/20 flex items-center justify-center font-black text-primary shrink-0', size)}>
+              {initials}
+            </div>
+          ))}
+        </div>
+      </Tile>
+
+      <Tile label="Avatar with Ring">
+        <div className="flex items-center gap-6 justify-center py-4">
+          <div className="relative">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/30 to-primary/8 border-2 border-primary/20 flex items-center justify-center">
+              <span className="text-2xl font-black text-primary">KR</span>
+            </div>
+            <div className="absolute inset-[-5px] rounded-full border border-primary/15 pointer-events-none" />
+            <div className="absolute inset-[-11px] rounded-full border border-primary/7 pointer-events-none" />
+            <div className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-full bg-emerald-500 border-2 border-background" />
+          </div>
+          <div className="relative">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-secondary/30 to-secondary/8 border-2 border-secondary/20 flex items-center justify-center">
+              <User size={28} className="text-secondary/70" />
+            </div>
+            <div className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-full bg-amber-400 border-2 border-background" />
+          </div>
+        </div>
+      </Tile>
+
+      <Tile label="Profile Card">
+        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] overflow-hidden">
+          <div className="h-16 brand-gradient" />
+          <div className="px-5 pb-5 -mt-8">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/30 to-primary/8 border-4 border-[var(--color-surface)] flex items-center justify-center font-black text-primary text-xl mb-3">
+              KR
+            </div>
+            <p className="font-black text-base">Kody Robinson</p>
+            <p className="text-xs text-muted-foreground">kodyrobinson02@gmail.com</p>
+            <div className="flex gap-4 mt-4">
+              {[{ v: '2.4k', l: 'Tracks' }, { v: '47', l: 'Playlists' }, { v: '12', l: 'Imports' }].map(({ v, l }) => (
+                <div key={l} className="text-center">
+                  <p className="font-black font-mono text-sm">{v}</p>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider">{l}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Tile>
+    </div>
+  );
+}
+
+// ── 11 · GLASS & ELEVATION ────────────────────────────────────────────────────
+
+function ElevationSection() {
+  return (
+    <div className="grid grid-cols-3 gap-6">
+      <Tile label="Glass Surfaces">
+        <div className="relative rounded-2xl overflow-hidden h-32">
+          <div className="absolute inset-0 brand-gradient opacity-30" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="glass rounded-2xl border border-white/10 px-6 py-4 text-center backdrop-blur-xl">
+              <p className="font-black text-sm">Glass Surface</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">backdrop-blur · bg/opacity</p>
+            </div>
+          </div>
+        </div>
+      </Tile>
+
+      <Tile label="Dividers">
+        <div className="space-y-4 py-2">
+          <div className="h-px bg-[var(--color-border-subtle)]" />
+          <div className="h-px bg-gradient-to-r from-primary/60 via-secondary/30 to-transparent" />
+          <div className="h-px bg-gradient-to-r from-transparent via-[var(--color-border-subtle)] to-transparent" />
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
+            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">OR</span>
+            <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
+          </div>
+        </div>
+      </Tile>
+
+      <Tile label="Glow / Neon Effects">
+        <div className="space-y-3">
+          <p className="text-xl font-black neon-text-blue text-primary">Neon Blue Primary</p>
+          <p className="text-xl font-black neon-text-purple text-secondary">Neon Purple Secondary</p>
+          <button className="w-full rounded-2xl bg-primary px-4 py-2.5 text-sm font-black text-white shadow-primary-selection hover:shadow-[0_0_32px_rgba(var(--color-brand-primary-rgb)/0.6)] transition-all">
+            Primary Glow Button
+          </button>
+          <div className="rounded-2xl border border-primary/25 bg-primary/8 px-4 py-3 shadow-primary-banner">
+            <p className="text-sm font-bold text-primary">Primary Banner Shadow</p>
+          </div>
+        </div>
+      </Tile>
+    </div>
+  );
+}
+
+// ── page ──────────────────────────────────────────────────────────────────────
 
 export function ReusableComponentsView() {
+  const sections = [
+    { index: '01', label: 'Color System', desc: 'Design tokens, palette, and semantic colors', content: <ColorSection /> },
+    { index: '02', label: 'Typography', desc: 'Type scale, weights, and text treatments', content: <TypographySection /> },
+    { index: '03', label: 'Buttons', desc: 'Primary, secondary, ghost, icon, and state variants', content: <ButtonsSection /> },
+    { index: '04', label: 'Inputs & Forms', desc: 'Text, search, select, textarea, and validation states', content: <InputsSection /> },
+    { index: '05', label: 'Badges & Indicators', desc: 'Status pills, analysis badges, and dot indicators', content: <BadgesSection /> },
+    { index: '06', label: 'Feedback & Status', desc: 'Progress, toasts, loaders, banners, and alerts', content: <FeedbackSection /> },
+    { index: '07', label: 'Waveform', desc: 'Decorative and canvas-rendered waveform components', content: <WaveformSection /> },
+    { index: '08', label: 'Data Display', desc: 'Track rows, stat tiles, playlist cards, and empty states', content: <DataSection /> },
+    { index: '09', label: 'Navigation', desc: 'Sidebar, tabs, segmented controls, and USB connection', content: <NavigationSection /> },
+    { index: '10', label: 'Avatar', desc: 'Initials, icons, rings, and profile cards', content: <AvatarSection /> },
+    { index: '11', label: 'Glass & Elevation', desc: 'Surfaces, dividers, shadows, and neon effects', content: <ElevationSection /> },
+  ];
+
   return (
-    <div className="space-y-10 pt-2 pb-8 md:max-w-6xl md:mx-auto">
-
-      <section className="space-y-3">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Buttons</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <ButtonsSection />
+    <div className="pb-16 space-y-16">
+      {/* Hero */}
+      <div className="relative rounded-3xl overflow-hidden border border-[var(--color-border-subtle)]">
+        <div className="absolute inset-0 brand-gradient opacity-20" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-secondary/10 via-transparent to-transparent" />
+        <div className="relative px-8 py-10 flex items-end justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="font-mono text-[9px] font-bold uppercase tracking-[0.22em] text-muted-foreground/60">Design System</span>
+              <span className="h-px w-8 bg-[var(--color-border-subtle)]" />
+              <span className="font-mono text-[9px] font-bold uppercase tracking-[0.22em] text-primary/60">v2.0</span>
+            </div>
+            <h1 className="text-4xl font-black">
+              Drop<span className="text-primary neon-text-blue">Dex</span>
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground max-w-xs">
+              A living reference of every UI component, token, and pattern used across the application.
+            </p>
+          </div>
+          <div className="hidden md:flex flex-col items-end gap-1 text-right">
+            <p className="font-mono text-[9px] text-muted-foreground/50 uppercase tracking-widest">{sections.length} sections</p>
+            <p className="font-mono text-[9px] text-muted-foreground/50 uppercase tracking-widest">Live components</p>
+          </div>
         </div>
-      </section>
+      </div>
 
-      <section className="space-y-3">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Inputs</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <InputsSection />
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Badges & Indicators</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <BadgesSection />
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Feedback & Status</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <FeedbackSection />
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Waveform</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <WaveformSection />
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Cards & Data Display</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <CardSection />
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Avatar</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <AvatarSection />
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Typography</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <TypographySection />
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Navigation & Layout</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <NavigationSection />
-        </div>
-      </section>
-
+      {/* Sections */}
+      {sections.map(({ index, label, desc, content }) => (
+        <section key={index}>
+          <SectionHeader index={index} label={label} description={desc} />
+          {content}
+        </section>
+      ))}
     </div>
   );
 }
