@@ -54,6 +54,31 @@
   --color-waveform-border: rgba(240, 237, 233, 0.07);
   --color-genre-badge-bg: rgba(240, 237, 233, 0.055);
   --color-genre-badge-border: rgba(240, 237, 233, 0.12);
+
+  /* Reusable control foundation — Stage 1. Dark hardware surfaces are intentional
+     across appearance themes; semantic app surfaces above remain theme-aware. */
+  --color-control-surface: #0d1219;
+  --color-control-surface-raised: #121923;
+  --color-control-surface-hover: #18212d;
+  --color-control-border: #27313d;
+  --color-control-border-soft: #1c2530;
+  --color-control-text: #f6f8fb;
+  --color-control-muted: #9ba5b2;
+  --color-control-blue: #1f7dff;
+  --color-control-cyan: #12bfe0;
+  --color-control-teal: #14b89a;
+  --color-control-purple: #9a42df;
+  --color-control-magenta: #ef4dd0;
+  --color-control-green: #23d98b;
+  --color-control-lime: #72e20b;
+  --color-control-amber: #ffbd13;
+  --color-control-orange: #ff8b13;
+  --color-control-red: #ff3647;
+  --color-control-disabled: #e0e3e8;
+  --color-control-disabled-text: #a8adb5;
+  --color-control-focus: #8f42e8;
+  --radius-control: 7px;
+  --shadow-control: 0 5px 10px rgb(10 15 22 / 0.25), inset 0 1px 0 rgb(255 255 255 / 0.055);
 }
 
 /* ── Light mode ── */

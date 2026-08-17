@@ -8,19 +8,19 @@ interface UsbConnectionButtonProps {
 
 function StatusDot({ status }: { status: UsbStatus }) {
   if (status === 'connected') {
-    return <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-green-500" />;
+    return <span className="w-2 h-2 shrink-0 rounded-full bg-green-400 shadow-[0_0_7px_rgb(74_222_128_/_0.55)]" aria-hidden="true" />;
   }
   if (status === 'released') {
-    return <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-cyan-400" />;
+    return <span className="w-2 h-2 shrink-0 rounded-full bg-cyan-400" aria-hidden="true" />;
   }
   if (status === 'permission-required' || status === 'wrong_root') {
-    return <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400" />;
+    return <span className="w-2 h-2 shrink-0 rounded-full bg-amber-400" aria-hidden="true" />;
   }
   if (status === 'unavailable') {
-    return <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400" />;
+    return <span className="w-2 h-2 shrink-0 rounded-full bg-amber-400" aria-hidden="true" />;
   }
   if (status === 'error') {
-    return <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-500" />;
+    return <span className="w-2 h-2 shrink-0 rounded-full bg-red-500" aria-hidden="true" />;
   }
   return null;
 }
@@ -97,23 +97,19 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
   }
 
   const primaryButtonStyle = cn(
-    'relative flex items-center rounded-xl font-bold text-sm transition-all border',
-    collapsed ? 'justify-center py-2.5 px-0 w-full' : 'gap-3 px-4 py-2.5 flex-1 min-w-0',
+    'relative flex items-center rounded-lg font-bold text-sm transition-all border border-[#27313d] bg-gradient-to-b from-[#121923] to-[#090d12] shadow-[0_5px_10px_rgb(10_15_22_/_0.25),inset_0_1px_0_rgb(255_255_255_/_0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8f42e8] focus-visible:ring-offset-2',
+    collapsed ? 'justify-center py-2.5 px-0 w-full' : 'gap-3 px-4 py-3 flex-1 min-w-0',
     status === 'connected'
-      ? 'text-green-400 bg-green-500/10 border-green-500/20 hover:bg-green-500/15'
+      ? 'text-slate-100 hover:border-green-500/50 hover:from-[#15221f]'
       : status === 'released'
-      ? 'text-cyan-300 bg-cyan-500/10 border-cyan-500/20 hover:bg-cyan-500/15 cursor-pointer'
-      : status === 'permission-required'
-      ? 'text-amber-400 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/15 cursor-pointer'
-      : status === 'wrong_root'
-      ? 'text-amber-400 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/15 cursor-pointer'
-      : status === 'unavailable'
-      ? 'text-amber-400 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/15 cursor-pointer'
+      ? 'text-cyan-300 hover:border-cyan-500/50 cursor-pointer'
+      : status === 'permission-required' || status === 'wrong_root' || status === 'unavailable'
+      ? 'text-amber-300 hover:border-amber-500/50 cursor-pointer'
       : status === 'error'
-      ? 'text-red-400 bg-red-500/10 border-red-500/20 hover:bg-red-500/15 cursor-pointer'
+      ? 'text-red-300 hover:border-red-500/50 cursor-pointer'
       : isConnecting
-      ? 'text-muted-foreground border-transparent cursor-wait'
-      : 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent cursor-pointer',
+      ? 'text-slate-400 cursor-wait'
+      : 'text-slate-100 hover:text-white hover:border-[#3c4857] hover:from-[#18222e] cursor-pointer',
   );
 
   return (
