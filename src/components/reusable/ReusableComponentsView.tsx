@@ -1,14 +1,87 @@
 import { useState } from 'react';
 import {
   Search, Music, Settings, Loader2, CheckCircle2, AlertTriangle,
-  XCircle, Usb, ChevronRight, Database, User, FileUp, Radio, TrendingUp,
-  Layers,
+  XCircle, ChevronRight, Database, User, FileUp, Radio, TrendingUp, Layers,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { TrackAnalysisStatusBadge } from '../library/TrackAnalysisStatusBadge';
 import { WaveformDisplay } from '../library/WaveformDisplay';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
+import { ImportActivityBanner } from '../imports/ImportActivityBanner';
+import { UsbConnectionButton } from '../usb/UsbConnectionButton';
+import { PlaylistOverviewCard } from '../library/PlaylistOverviewCard';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
+import type { RekordboxImport } from '../../types';
+import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
+
+// ── mock data ─────────────────────────────────────────────────────────────────
+
+const MOCK_IMPORT_PARSING: RekordboxImport = {
+  id: 'demo-import-parsing',
+  user_id: 'demo',
+  source_filename: 'exportLibrary.db',
+  source_type: 'file',
+  database_version: null,
+  device_name: 'PIONEER USB',
+  rekordbox_created_date: null,
+  track_count: 498,
+  playlist_count: 12,
+  playlist_track_count: 364,
+  status: 'running',
+  error_message: null,
+  imported_at: new Date().toISOString(),
+  source_bundle_type: 'usb_folder',
+  analysis_status: 'parsing',
+  analysis_expected_track_count: 498,
+  analysis_matched_track_count: 498,
+  analysis_parsed_track_count: 364,
+  analysis_failed_track_count: 0,
+  analysis_asset_count: 0,
+  analysis_parser_version: null,
+  analysis_completed_at: null,
+  analysis_warnings: [],
+  analysis_progress_processed_track_count: 364,
+  analysis_progress_total_track_count: 498,
+  analysis_current_track_id: null,
+  analysis_current_track_title: 'Strobe',
+  analysis_current_track_artist: 'Deadmau5',
+  analysis_current_track_label: null,
+  analysis_progress_updated_at: null,
+};
+
+const MOCK_IMPORT_QUEUED: RekordboxImport = {
+  ...MOCK_IMPORT_PARSING,
+  id: 'demo-import-queued',
+  status: 'queued',
+  analysis_status: 'queued',
+  analysis_parsed_track_count: 0,
+  analysis_progress_processed_track_count: 0,
+  analysis_current_track_title: null,
+};
+
+const MOCK_PLAYLIST_REGULAR: PlaylistWithCount = {
+  id: 'demo-playlist-1',
+  import_id: 'demo-import',
+  rekordbox_playlist_id: 'rp-1',
+  name: 'Peak Hour Rollers',
+  parent_playlist_id: null,
+  sort_order: 0,
+  is_folder: false,
+  created_at: new Date().toISOString(),
+  track_count: 84,
+};
+
+const MOCK_PLAYLIST_FOLDER: PlaylistWithCount = {
+  id: 'demo-playlist-2',
+  import_id: 'demo-import',
+  rekordbox_playlist_id: 'rp-2',
+  name: 'DNB Collection',
+  parent_playlist_id: null,
+  sort_order: 1,
+  is_folder: true,
+  created_at: new Date().toISOString(),
+  track_count: 312,
+};
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -273,24 +346,20 @@ function FeedbackSection() {
         </div>
       </Cell>
 
-      <Cell label="Import Activity Banner">
-        <section className="overflow-hidden rounded-2xl border border-primary/25 bg-primary/5">
-          <div className="flex items-start gap-3 p-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Loader2 size={15} className="animate-spin" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p className="text-xs font-black">Parsing ANLZ files</p>
-                <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[9px] font-bold text-primary">73%</span>
-              </div>
-              <p className="mt-0.5 text-[10px] text-muted-foreground truncate">exportLibrary.db · 364 / 498 tracks</p>
-            </div>
-          </div>
-          <div className="h-1.5 bg-[var(--color-surface)]">
-            <div className="h-full w-[73%] bg-primary transition-[width] duration-500" />
-          </div>
-        </section>
+      <Cell label="Import Activity Banner (parsing)">
+        <ImportActivityBanner
+          item={MOCK_IMPORT_PARSING}
+          activeImport={MOCK_IMPORT_PARSING}
+          onViewStatus={() => {}}
+        />
+      </Cell>
+
+      <Cell label="Import Activity Banner (queued)">
+        <ImportActivityBanner
+          item={MOCK_IMPORT_QUEUED}
+          activeImport={null}
+          onViewStatus={() => {}}
+        />
       </Cell>
 
       <Cell label="Error / Empty State">
@@ -428,24 +497,16 @@ function CardSection() {
       </Cell>
 
       <Cell label="Playlist Card">
-        <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4 relative overflow-hidden">
-          <TrendingUp className="absolute -right-3 -bottom-3 text-primary/10 w-16 h-16" />
-          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground mb-1">Playlist</p>
-          <p className="text-xl font-black truncate">Peak Hour Rollers</p>
-          <div className="flex gap-4 mt-3">
-            <div>
-              <span className="text-[10px] text-muted-foreground uppercase block">Tracks</span>
-              <span className="font-bold font-mono">84</span>
-            </div>
-            <div>
-              <span className="text-[10px] text-muted-foreground uppercase block">Avg BPM</span>
-              <span className="font-bold font-mono">174.2</span>
-            </div>
-            <div>
-              <span className="text-[10px] text-muted-foreground uppercase block">Top Key</span>
-              <span className="font-bold font-mono text-secondary">8A</span>
-            </div>
-          </div>
+        <div className="grid grid-cols-2 gap-3">
+          <PlaylistOverviewCard
+            playlist={MOCK_PLAYLIST_REGULAR}
+            onClick={() => {}}
+            onEdit={() => {}}
+          />
+          <PlaylistOverviewCard
+            playlist={MOCK_PLAYLIST_FOLDER}
+            onClick={() => {}}
+          />
         </div>
       </Cell>
     </>
@@ -621,22 +682,7 @@ function NavigationSection() {
       </Cell>
 
       <Cell label="USB Connection Button">
-        <div className="flex flex-col gap-2">
-          <button className="relative flex items-center gap-3 px-4 py-2.5 rounded-xl font-bold text-sm text-green-400 bg-green-500/10 border border-green-500/20 hover:bg-green-500/15 transition-all w-full">
-            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-green-500" />
-            <Usb size={16} />
-            PIONEER USB
-          </button>
-          <button className="relative flex items-center gap-3 px-4 py-2.5 rounded-xl font-bold text-sm text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/15 transition-all w-full">
-            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <Usb size={16} />
-            Re-authorize USB
-          </button>
-          <button className="relative flex items-center gap-3 px-4 py-2.5 rounded-xl font-bold text-sm text-muted-foreground border border-transparent hover:text-foreground hover:bg-[var(--color-surface)] transition-all w-full">
-            <Usb size={16} />
-            Connect USB
-          </button>
-        </div>
+        <UsbConnectionButton />
       </Cell>
 
       <Cell label="Settings Row">
