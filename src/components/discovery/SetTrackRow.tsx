@@ -1,6 +1,6 @@
-import { ExternalLink } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { DiscoverySetTrack } from '../../types';
+import { Launch } from '@carbon/icons-react';
 
 interface SetTrackRowProps {
   track: DiscoverySetTrack;
@@ -78,7 +78,7 @@ export function SetTrackRow({ track, isTimedSet, displayNumber }: SetTrackRowPro
           className="shrink-0 p-1 rounded text-muted-foreground hover:text-primary transition-colors"
           title="View on source"
         >
-          <ExternalLink size={11} />
+          <Launch size={11} />
         </a>
       ) : (
         <div className="shrink-0 w-5" />

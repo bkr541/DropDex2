@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { TrendingUp, Loader2 } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import type { RekordboxTrack, SimilarTrackResult } from '../../types';
 import { useSimilarTracks } from '../../hooks/useSimilarTracks';
@@ -10,6 +9,7 @@ import {
   CUSTOM_TOLERANCE_MAX,
   type BpmPreset,
 } from '../../hooks/useSimilarTrackSettings';
+import { CircleDash, Growth } from '@carbon/icons-react';
 
 interface SimilarVibesSectionProps {
   track: RekordboxTrack;
@@ -44,10 +44,10 @@ export function SimilarVibesSection({ track, importId, onTrackClick }: SimilarVi
       {/* Heading + loading indicator */}
       <div className="flex items-center justify-between gap-2 px-1">
         <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-          <TrendingUp size={14} />
+          <Growth size={14} />
           Similar Vibes
         </h3>
-        {loading && <Loader2 size={14} className="text-muted-foreground animate-spin shrink-0" />}
+        {loading && <CircleDash size={14} className="text-muted-foreground animate-spin shrink-0" />}
       </div>
 
       {/* BPM tolerance preset buttons */}

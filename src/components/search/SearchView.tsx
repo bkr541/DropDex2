@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, X, Loader2, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { useArtistsByGenre } from '../../hooks/useArtistsByGenre';
 import { ArtistCard, artistAvatarColor } from './ArtistCard';
 import type { SearchArtist } from '../../types';
+import { CircleDash, Close, Group, Search } from '@carbon/icons-react';
 
 const GENRES = ['Melodic Dubstep', 'Future Bass'];
 
@@ -75,7 +75,7 @@ export function SearchView() {
             }}
             className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
           >
-            <X size={16} />
+            <Close size={16} />
           </button>
         )}
 
@@ -92,7 +92,7 @@ export function SearchView() {
             >
               {filteredArtists.length === 0 ? (
                 <div className="flex items-center gap-3 px-5 py-5 text-muted-foreground">
-                  <Users size={16} />
+                  <Group size={16} />
                   <p className="text-sm">No matching artists</p>
                 </div>
               ) : (
@@ -129,7 +129,7 @@ export function SearchView() {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-            <Users size={12} />
+            <Group size={12} />
             Melodic Dubstep &amp; Future Bass
           </h3>
           {!loading && !error && (
@@ -141,7 +141,7 @@ export function SearchView() {
 
         {loading && (
           <div className="flex items-center justify-center py-16">
-            <Loader2 className="animate-spin text-primary" size={28} />
+            <CircleDash className="animate-spin text-primary" size={28} />
           </div>
         )}
 
@@ -154,7 +154,7 @@ export function SearchView() {
 
         {!loading && !error && artists.length === 0 && (
           <div className="text-center py-16 border-2 border-dashed border-[var(--color-border-subtle)] rounded-3xl space-y-3">
-            <Users size={32} className="mx-auto text-muted-foreground opacity-40" />
+            <Group size={32} className="mx-auto text-muted-foreground opacity-40" />
             <div>
               <p className="text-sm font-bold text-muted-foreground">No artists yet</p>
               <p className="text-xs text-muted-foreground mt-1">

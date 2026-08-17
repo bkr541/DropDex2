@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Calendar, Music2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../../lib/utils';
 import type { DiscoverySetlistResult } from '../../types';
+import { Calendar, Music } from '@carbon/icons-react';
 
 interface SetlistFeedCardProps {
   setlist: DiscoverySetlistResult;
@@ -25,7 +25,7 @@ function ArtworkImage({ url, title }: { url: string; title: string }) {
 function FallbackArtwork() {
   return (
     <div className="w-full h-full flex items-center justify-center bg-primary/5">
-      <Music2 size={24} className="text-primary/20" />
+      <Music size={24} className="text-primary/20" />
     </div>
   );
 }

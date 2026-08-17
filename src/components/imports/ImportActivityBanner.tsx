@@ -1,8 +1,8 @@
-import { Database } from 'lucide-react';
 import type { RekordboxImport } from '../../types';
 import { cn } from '../../lib/utils';
 import { describeAnalysisStatus, getImportProgress } from '../../lib/rekordbox/importLifecycle';
 import { ImportActivityBanner as FeedbackImportActivityBanner } from '../ui/DropDexFeedback';
+import { DataBase } from '@carbon/icons-react';
 
 interface Props {
   item: RekordboxImport;
@@ -32,7 +32,7 @@ export function ImportActivityBanner({ item, activeImport, onViewStatus, classNa
         viewLabel="VIEW STATUS"
       />
       <p className="mt-2 flex items-start gap-2 px-1 text-[10px] leading-relaxed text-muted-foreground">
-        <Database size={12} className="mt-0.5 shrink-0" />
+        <DataBase size={12} className="mt-0.5 shrink-0" />
         {activeImport && activeImport.id !== item.id
           ? `You are viewing the active library “${activeLabel}” until this snapshot finishes. DropDex will switch automatically.`
           : 'DropDex will activate this library automatically when processing finishes.'}

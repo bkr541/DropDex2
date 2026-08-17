@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { isChunkLoadError } from '../../navigation/lazyWithRecovery';
+import { RotateCounterclockwise, WarningAlt } from '@carbon/icons-react';
 
 interface ApplicationErrorBoundaryProps {
   children: ReactNode;
@@ -66,14 +66,14 @@ export class ApplicationErrorBoundary extends Component<
           role="alert"
           aria-live="assertive"
         >
-          <AlertTriangle className="mx-auto mb-4 text-red-400" size={36} />
+          <WarningAlt className="mx-auto mb-4 text-red-400" size={36} />
           <h1 className="text-xl font-black">
             {chunkFailure ? 'This screen could not be updated' : 'DropDex hit an unexpected error'}
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             {chunkFailure
               ? 'A newer deployment may have replaced files used by this browser tab. Reload the page to fetch the current screen.'
-              : 'Your library data is safe. Retry this screen, return to the Library, or reload the application.'}
+              : 'Your library data is safe. Retry this screen, return to the Book, or reload the application.'}
           </p>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
             <button
@@ -81,7 +81,7 @@ export class ApplicationErrorBoundary extends Component<
               onClick={this.handleRetry}
               className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white"
             >
-              <RotateCcw size={15} />
+              <RotateCounterclockwise size={15} />
               {chunkFailure ? 'Reload' : 'Retry'}
             </button>
             <button
@@ -89,7 +89,7 @@ export class ApplicationErrorBoundary extends Component<
               onClick={this.handleLibrary}
               className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold"
             >
-              Return to Library
+              Return to Book
             </button>
             {!chunkFailure && (
               <button

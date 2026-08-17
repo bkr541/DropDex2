@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { FileUp, CheckCircle2, Music, ListMusic, Calendar, User, AlertTriangle, RefreshCw, ChevronRight } from 'lucide-react';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import type { RekordboxImport, UserProfile } from '../../types';
+import { Calendar, CheckmarkFilled, ChevronRight, Music, Renew, Upload, User, WarningAlt } from '@carbon/icons-react';
 
 interface LibraryHeroProps {
   latestImport: RekordboxImport;
@@ -90,18 +90,18 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
             </p>
             {/* Row 2: aligns with stat values */}
             <div className="flex items-center gap-1.5 mt-1">
-              <CheckCircle2 size={14} className="text-green-500 shrink-0" />
+              <CheckmarkFilled size={14} className="text-green-500 shrink-0" />
               <span className="font-black text-lg leading-none text-green-500">Import Complete</span>
             </div>
             {/* Row 3: spacer aligns with stat labels row */}
             <div className="mt-0.5 h-3" aria-hidden="true" />
-            {/* Row 4: Import Library button aligns with "Imported from" */}
+            {/* Row 4: Import Book button aligns with "Imported from" */}
             <button
               onClick={onImport}
               className="mt-1.5 flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-xs font-semibold"
             >
-              <FileUp size={12} className="shrink-0 text-muted-foreground" />
-              <span className="flex-1 text-left">Import New Library</span>
+              <Upload size={12} className="shrink-0 text-muted-foreground" />
+              <span className="flex-1 text-left">Import New Book</span>
               <ChevronRight size={12} className="text-muted-foreground shrink-0" />
             </button>
           </div>
@@ -118,7 +118,7 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
                 </p>
                 {/* Row 2: aligns with stat values */}
                 <div className="flex items-center gap-1.5 mt-1">
-                  <AlertTriangle size={14} className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'} />
+                  <WarningAlt size={14} className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'} />
                   <span className={`font-black text-lg leading-none ${isAmber ? 'text-amber-400' : 'text-red-400'}`}>
                     {ANALYSIS_TITLES[analysisStatus] ?? 'Analysis Issue'}
                   </span>
@@ -131,7 +131,7 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
                     onClick={() => onResumeAnalysis(latestImport.id)}
                     className="mt-1.5 flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-xs font-semibold"
                   >
-                    <RefreshCw size={12} className="shrink-0 text-muted-foreground" />
+                    <Renew size={12} className="shrink-0 text-muted-foreground" />
                     <span className="flex-1 text-left">Resume Analysis</span>
                     <ChevronRight size={12} className="text-muted-foreground shrink-0" />
                   </button>
@@ -148,7 +148,7 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
           <div className="grid grid-cols-3 gap-x-6">
             {/* Row 1: icons */}
             <Music size={12} className="text-muted-foreground" />
-            <ListMusic size={12} className="text-muted-foreground" />
+            <Music size={12} className="text-muted-foreground" />
             <Calendar size={12} className="text-muted-foreground" />
             {/* Row 2: values */}
             <span className="text-lg font-black tabular-nums leading-none mt-1">

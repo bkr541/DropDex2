@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Crosshair } from 'lucide-react';
 import {
   bucketRenderableColumns,
   toRenderableColumns,
   type WaveformSegment,
 } from '../../lib/music/waveformSegments';
+import { ArrowRight, CrossTab } from '@carbon/icons-react';
 
 interface DropLabWaveformProps {
   sourceSegment: WaveformSegment | null;
@@ -184,7 +184,7 @@ export function DropLabWaveform({
 
         <div className="pointer-events-none absolute inset-y-0 left-1/2 z-20 w-px bg-foreground/75 shadow-[0_0_18px_rgba(255,255,255,0.32)]" />
         <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-background bg-primary text-white shadow-primary-control">
-          <Crosshair size={15} />
+          <CrossTab size={15} />
         </div>
         <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2 rounded-lg border border-primary/35 bg-background/90 px-3 py-1.5 text-center backdrop-blur-sm">
           <p className="text-[9px] font-black uppercase tracking-[0.18em] text-primary">Automatic swap cue</p>

@@ -1,16 +1,4 @@
 import {
-  AlertCircle,
-  AudioWaveform,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Link,
-  Plus,
-  Search,
-  Settings,
-  X,
-} from 'lucide-react';
-import {
   useId,
   useMemo,
   useState,
@@ -23,6 +11,7 @@ import {
 } from 'react';
 import { cn } from '../../lib/utils';
 import './dropdex-controls.css';
+import { Add, ChevronDown, ChevronLeft, ChevronRight, Close, Link, Search, Settings, WarningAlt, Waveform } from '@carbon/icons-react';
 
 export type ControlButtonVariant = 'primary' | 'surface' | 'secondary' | 'danger' | 'danger-outline' | 'ghost';
 export type AccentTone = 'blue' | 'orange' | 'purple' | 'green' | 'red';
@@ -193,7 +182,7 @@ export function ClearableTextInput({
       <TextControl value={value} onChange={(event) => onValueChange(event.target.value)} {...props} />
       {value && (
         <button type="button" aria-label={clearLabel} className="dd-control-end-action" onClick={() => onValueChange('')}>
-          <X size={16} />
+          <Close size={16} />
         </button>
       )}
     </div>
@@ -267,7 +256,7 @@ export function AutocompleteControl({
   return (
     <div className="dd-autocomplete">
       <div className="dd-control-wrap">
-        <AudioWaveform size={18} className="dd-control-start-icon dd-control-start-icon--active" aria-hidden="true" />
+        <Waveform size={18} className="dd-control-start-icon dd-control-start-icon--active" aria-hidden="true" />
         <input
           role="combobox"
           aria-label={ariaLabel}
@@ -302,7 +291,7 @@ export function AutocompleteControl({
         />
         {value && (
           <button type="button" aria-label="Clear autocomplete" className="dd-control-end-action" onClick={() => { onChange(''); setOpen(true); }}>
-            <X size={16} />
+            <Close size={16} />
           </button>
         )}
       </div>
@@ -319,7 +308,7 @@ export function AutocompleteControl({
               onMouseEnter={() => setActiveIndex(index)}
               onClick={() => commit(option)}
             >
-              <AudioWaveform size={16} aria-hidden="true" />
+              <Waveform size={16} aria-hidden="true" />
               <span>{option.label}</span>
             </button>
           ))}
@@ -346,11 +335,11 @@ export function ChipMultiSelect({
         <span key={value} className={cn('dd-chip', `dd-chip--${CHIP_TONES[index % CHIP_TONES.length]}`)}>
           {value}
           <button type="button" aria-label={`Remove ${value}`} onClick={() => onChange(values.filter((item) => item !== value))}>
-            <X size={14} />
+            <Close size={14} />
           </button>
         </span>
       ))}
-      <button type="button" className="dd-chip-add"><Plus size={14} /> {addLabel}</button>
+      <button type="button" className="dd-chip-add"><Add size={14} /> {addLabel}</button>
     </div>
   );
 }
@@ -449,7 +438,7 @@ export function FormField({
       {children({ id, describedBy, invalid: Boolean(error) })}
       {(error || helperText) && (
         <p id={describedBy} className={cn('dd-form-field__message', error && 'dd-form-field__message--error')}>
-          {error && <AlertCircle size={15} aria-hidden="true" />}
+          {error && <WarningAlt size={15} aria-hidden="true" />}
           {error ?? helperText}
         </p>
       )}

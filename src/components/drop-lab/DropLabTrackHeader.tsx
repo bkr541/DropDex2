@@ -1,7 +1,7 @@
-import { Activity, Music2 } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import type { DropPoint } from '../../lib/music/dropPointResolver';
 import type { RekordboxTrack } from '../../types';
+import { Activity, Music } from '@carbon/icons-react';
 
 interface DropLabTrackHeaderProps {
   label: string;
@@ -46,7 +46,7 @@ export function DropLabTrackHeader({ label, track, dropPoint, muted }: DropLabTr
           </span>
         </div>
         <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-          <Music2 size={12} />
+          <Music size={12} />
           <span>{dropPoint ? `${dropPoint.label} · ${dropPoint.confidence}` : 'Drop point unavailable'}</span>
         </div>
       </div>

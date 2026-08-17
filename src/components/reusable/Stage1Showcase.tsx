@@ -1,22 +1,3 @@
-import {
-  AudioWaveform,
-  Bookmark,
-  Download,
-  ExternalLink,
-  Heart,
-  Info,
-  LayoutGrid,
-  Library,
-  ListMusic,
-  MoreHorizontal,
-  Play,
-  Search,
-  Settings,
-  Star,
-  Trash2,
-  Upload,
-  X,
-} from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { UsbConnectionButton } from '../usb/UsbConnectionButton';
 import {
@@ -39,6 +20,7 @@ import {
   UrlControl,
 } from '../ui/DropDexControls';
 import './stage1-showcase.css';
+import { Book, Bookmark, Close, Download, Favorite, Grid, Information, Launch, Music, OverflowMenuHorizontal, Play, Search, Settings, Star, TrashCan, Upload, Waveform } from '@carbon/icons-react';
 
 function StageCard({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
@@ -76,7 +58,7 @@ export function Stage1Showcase() {
         <StageCard label="Primary Button" className="dd-stage1-top-tall">
           <ControlButton variant="primary"><Play size={17} fill="currentColor" /> PLAY</ControlButton>
           <ControlButton><Download size={18} /> LOAD TO DECK</ControlButton>
-          <ControlButton><AudioWaveform size={19} className="dd-blue-icon" /> ANALYZE TRACK <span className="dd-button-end">⌄</span></ControlButton>
+          <ControlButton><Waveform size={19} className="dd-blue-icon" /> ANALYZE TRACK <span className="dd-button-end">⌄</span></ControlButton>
         </StageCard>
 
         <StageCard label="Secondary Button" className="dd-stage1-top-tall">
@@ -86,22 +68,22 @@ export function Stage1Showcase() {
         </StageCard>
 
         <StageCard label="Danger / Ghost Button" className="dd-stage1-top-tall">
-          <ControlButton variant="danger"><Trash2 size={17} /> DELETE</ControlButton>
-          <ControlButton variant="danger-outline"><X size={17} /> REMOVE</ControlButton>
+          <ControlButton variant="danger"><TrashCan size={17} /> DELETE</ControlButton>
+          <ControlButton variant="danger-outline"><Close size={17} /> REMOVE</ControlButton>
           <ControlButton variant="ghost">CLEAR HISTORY</ControlButton>
         </StageCard>
 
         <StageCard label="Icon Button" className="dd-stage1-top-tall">
           <div className="dd-icon-grid">
-            <IconControlButton label="Favorite" tone="red"><Heart size={21} fill="currentColor" /></IconControlButton>
+            <IconControlButton label="Favorite" tone="red"><Favorite size={21} fill="currentColor" /></IconControlButton>
             <IconControlButton label="Bookmark" tone="blue" className="dd-icon-neutral"><Bookmark size={21} /></IconControlButton>
             <IconControlButton label="Star" tone="orange" className="dd-icon-neutral"><Star size={22} /></IconControlButton>
             <IconControlButton label="Download" tone="blue"><Download size={21} /></IconControlButton>
             <IconControlButton label="Upload" tone="green"><Upload size={21} /></IconControlButton>
-            <IconControlButton label="Share" tone="purple"><ExternalLink size={20} /></IconControlButton>
-            <IconControlButton label="Information" tone="blue"><Info size={21} fill="currentColor" /></IconControlButton>
+            <IconControlButton label="Share" tone="purple"><Launch size={20} /></IconControlButton>
+            <IconControlButton label="Information" tone="blue"><Information size={21} fill="currentColor" /></IconControlButton>
             <IconControlButton label="Settings" tone="blue" className="dd-icon-neutral"><Settings size={21} /></IconControlButton>
-            <IconControlButton label="More actions" tone="blue" className="dd-icon-neutral"><MoreHorizontal size={22} /></IconControlButton>
+            <IconControlButton label="More actions" tone="blue" className="dd-icon-neutral"><OverflowMenuHorizontal size={22} /></IconControlButton>
           </div>
         </StageCard>
 
@@ -110,10 +92,10 @@ export function Stage1Showcase() {
             value={actionView}
             onChange={setActionView}
             items={[
-              { id: 'grid', label: 'GRID', icon: <LayoutGrid /> },
-              { id: 'waveform', label: 'WAVEFORM', icon: <AudioWaveform /> },
-              { id: 'library', label: 'LIBRARY', icon: <Library /> },
-              { id: 'playlists', label: 'PLAYLISTS', icon: <ListMusic /> },
+              { id: 'grid', label: 'GRID', icon: <Grid /> },
+              { id: 'waveform', label: 'WAVEFORM', icon: <Waveform /> },
+              { id: 'library', label: 'LIBRARY', icon: <Book /> },
+              { id: 'playlists', label: 'PLAYLISTS', icon: <Music /> },
               { id: 'search', label: 'SEARCH', icon: <Search /> },
             ]}
           />

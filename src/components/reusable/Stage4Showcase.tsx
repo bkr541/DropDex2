@@ -1,18 +1,3 @@
-import {
-  AudioWaveform,
-  BarChart3,
-  Disc3,
-  Grid2X2,
-  Home,
-  List,
-  ListMusic,
-  Music,
-  Play,
-  Settings,
-  SlidersHorizontal,
-  SquareStack,
-  UserRound,
-} from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { WaveformDisplay } from '../library/WaveformDisplay';
 import {
@@ -28,6 +13,7 @@ import {
   ViewModeNavigation,
 } from '../ui/DropDexDisplay';
 import './stage4-showcase.css';
+import { ChartBar, Grid, Home, Layers, List, Music, Play, RecordingFilled, Settings, UserAvatar, Waveform } from '@carbon/icons-react';
 
 function Stage4Specimen({
   label,
@@ -136,11 +122,11 @@ const FILTER_TABS = [
 ];
 
 const VIEW_MODES = [
-  { id: 'grid', label: 'Grid', icon: <Grid2X2 /> },
-  { id: 'list', label: 'List', icon: <SlidersHorizontal /> },
+  { id: 'grid', label: 'Grid', icon: <Grid /> },
+  { id: 'list', label: 'List', icon: <Settings /> },
   { id: 'compact', label: 'Compact', icon: <List /> },
-  { id: 'cards', label: 'Cards', icon: <SquareStack /> },
-  { id: 'waveform', label: 'Waveform', icon: <AudioWaveform /> },
+  { id: 'cards', label: 'Cards', icon: <Layers /> },
+  { id: 'waveform', label: 'Waveform', icon: <Waveform /> },
 ];
 
 export function Stage4Showcase() {
@@ -196,7 +182,7 @@ export function Stage4Showcase() {
             title="Tech House Grooves"
             subtitle="by Deep Motion"
             artwork={<Artwork src="/artwork/stage4-playlist-artwork.svg" alt="Tech House Grooves artwork" />}
-            metadata={<><ListMusic size={8} /> 32 TRACKS · 2h 18m</>}
+            metadata={<><Music size={8} /> 32 TRACKS · 2h 18m</>}
             actionLabel="VIEW PLAYLIST"
             items={[
               { id: 1, title: 'Innerbloom', artist: 'RÜFÜS DU SOL', meta: '7A' },
@@ -237,15 +223,15 @@ export function Stage4Showcase() {
         </Stage4Specimen>
 
         <Stage4Specimen label="Avatar — Icon Fallback" className="dd-stage4-avatar-icon">
-          <Avatar alt="User profile" size="lg" icon={<UserRound />} />
+          <Avatar alt="User profile" size="lg" icon={<UserAvatar />} />
         </Stage4Specimen>
 
         <Stage4Specimen label="Avatar With Ring" className="dd-stage4-avatar-ring">
-          <Avatar alt="Audio profile" size="lg" ring="spectrum" icon={<AudioWaveform />} />
+          <Avatar alt="Audio profile" size="lg" ring="spectrum" icon={<Waveform />} />
         </Stage4Specimen>
 
         <Stage4Specimen label="Image Avatar" className="dd-stage4-avatar-image">
-          <Avatar src="/artwork/stage4-avatar.svg" alt="DJ profile avatar" size="lg" ring="blue" icon={<UserRound />} />
+          <Avatar src="/artwork/stage4-avatar.svg" alt="DJ profile avatar" size="lg" ring="blue" icon={<UserAvatar />} />
         </Stage4Specimen>
 
         <Stage4Specimen label="Headings" className="dd-stage4-headings">
@@ -319,9 +305,9 @@ export function Stage4Showcase() {
             {[
               { id: 'collection', label: 'Collection', icon: <Home /> },
               { id: 'playlists', label: 'Playlists', icon: <Music /> },
-              { id: 'tracks', label: 'Tracks', icon: <AudioWaveform /> },
-              { id: 'crates', label: 'Crates', icon: <Disc3 /> },
-              { id: 'analytics', label: 'Analytics', icon: <BarChart3 /> },
+              { id: 'tracks', label: 'Tracks', icon: <Waveform /> },
+              { id: 'crates', label: 'Crates', icon: <RecordingFilled /> },
+              { id: 'analytics', label: 'Analytics', icon: <ChartBar /> },
               { id: 'settings', label: 'Settings', icon: <Settings /> },
             ].map((item) => (
               <SidebarNavItem
@@ -341,20 +327,20 @@ export function Stage4Showcase() {
               value={primaryTab}
               options={PRIMARY_TABS}
               onChange={setPrimaryTab}
-              ariaLabel="Library sections"
+              ariaLabel="Book sections"
             />
             <TabNavigation
               value={filterTab}
               options={FILTER_TABS}
               onChange={setFilterTab}
               variant="filter"
-              ariaLabel="Library filters"
+              ariaLabel="Book filters"
             />
             <ViewModeNavigation
               value={viewMode}
               options={VIEW_MODES}
               onChange={setViewMode}
-              ariaLabel="Library view mode"
+              ariaLabel="Book view mode"
             />
           </div>
         </Stage4Specimen>

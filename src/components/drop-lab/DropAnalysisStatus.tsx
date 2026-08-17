@@ -1,6 +1,6 @@
-import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '../../lib/utils';
+import { CheckmarkFilled, Information, WarningAlt } from '@carbon/icons-react';
 
 interface DropAnalysisStatusProps {
   kind: 'ready' | 'warning' | 'info';
@@ -8,7 +8,7 @@ interface DropAnalysisStatusProps {
 }
 
 export function DropAnalysisStatus({ kind, children }: DropAnalysisStatusProps) {
-  const Icon = kind === 'ready' ? CheckCircle2 : kind === 'warning' ? AlertCircle : Info;
+  const Icon = kind === 'ready' ? CheckmarkFilled : kind === 'warning' ? WarningAlt : Information;
   return (
     <div
       role={kind === 'warning' ? 'status' : undefined}

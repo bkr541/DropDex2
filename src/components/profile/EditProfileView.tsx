@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, type ChangeEvent } from 'react';
-import { Loader2, Upload, Check, User, X, Search } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { uploadAvatar } from '../../lib/queries/storage';
 import { upsertUserProfile } from '../../lib/queries/userProfile';
@@ -14,6 +13,7 @@ import {
   searchArtistsByName,
 } from '../../lib/queries/userPreferences';
 import type { UserProfile, UserGenrePreference, UserArtistPreference } from '../../types';
+import { Checkmark, CircleDash, Close, Search, Upload, User } from '@carbon/icons-react';
 
 // ── Preference picker (genres or artists) ────────────────────────────────────
 
@@ -142,7 +142,7 @@ function PreferencePicker({
                 className="flex items-center justify-center w-3 h-3 rounded-full hover:bg-primary/25 transition-colors"
                 aria-label={`Remove ${item.name}`}
               >
-                <X size={7} />
+                <Close size={7} />
               </button>
               {item.name}
             </span>
@@ -411,8 +411,8 @@ export function EditProfileView({
             saving && 'opacity-60 cursor-not-allowed',
           )}
         >
-          {saving ? <><Loader2 size={13} className="animate-spin" /> Saving…</>
-            : saved ? <><Check size={13} /> Saved</>
+          {saving ? <><CircleDash size={13} className="animate-spin" /> Saving…</>
+            : saved ? <><Checkmark size={13} /> Saved</>
             : 'Save Profile'}
         </button>
       </div>

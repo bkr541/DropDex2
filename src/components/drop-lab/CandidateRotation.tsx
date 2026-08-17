@@ -1,7 +1,7 @@
-import { Loader2 } from 'lucide-react';
 import { CandidateRow } from './CandidateRow';
 import type { DropLabCandidate } from '../../hooks/useDropLabCandidates';
 import type { DropLabTrackAnalysis } from '../../hooks/useDropLabAnalysis';
+import { CircleDash } from '@carbon/icons-react';
 
 interface CandidateRotationProps {
   candidates: DropLabCandidate[];
@@ -22,7 +22,7 @@ export function CandidateRotation({
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">Candidate Rotation</h3>
-        {loading && <Loader2 size={14} className="animate-spin text-muted-foreground" aria-label="Loading candidates" />}
+        {loading && <CircleDash size={14} className="animate-spin text-muted-foreground" aria-label="Loading candidates" />}
       </div>
       <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1" role="listbox" aria-label="Drop Lab candidates">
         {loading && candidates.length === 0 ? (

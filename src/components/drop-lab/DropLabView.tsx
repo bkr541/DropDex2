@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, FlaskConical } from 'lucide-react';
 import { CandidateRotation } from './CandidateRotation';
 import { DropAnalysisStatus } from './DropAnalysisStatus';
 import { DropLabControls } from './DropLabControls';
@@ -13,6 +12,7 @@ import { buildDropLabSegments, resolveTrackDurationMs, type DropLabBarCount, typ
 import { sliceWaveformSegment } from '../../lib/music/waveformSegments';
 import type { RekordboxTrack } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
+import { Chemistry, ChevronLeft } from '@carbon/icons-react';
 
 interface DropLabViewProps {
   sourceTrack: RekordboxTrack | null;
@@ -252,10 +252,10 @@ export function DropLabView({
   if (!sourceTrack) {
     return (
       <div className="md:max-w-3xl md:mx-auto py-12 text-center space-y-4">
-        <FlaskConical size={42} className="mx-auto text-muted-foreground" />
+        <Chemistry size={42} className="mx-auto text-muted-foreground" />
         <h2 className="text-2xl font-black italic">Drop Lab</h2>
         <p className="text-sm text-muted-foreground">Open Drop Lab from Track Intelligence so a source track can be fixed for comparison.</p>
-        <button onClick={onBack} className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-bold">Back to Library</button>
+        <button onClick={onBack} className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-bold">Back to Book</button>
       </div>
     );
   }

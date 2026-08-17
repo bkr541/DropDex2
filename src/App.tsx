@@ -4,27 +4,6 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
-import {
-  Search,
-  Music,
-  ChevronLeft,
-  Settings,
-  TrendingUp,
-  FileUp,
-  Moon,
-  Sun,
-  Disc3,
-  Database,
-  LogOut,
-  User,
-  Loader2,
-  Radio,
-  Pencil,
-  Usb,
-  CheckCircle2,
-  AlertTriangle,
-  Layers,
-} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatKey, formatPosition, formatPlaylistDuration } from './lib/utils';
 import { supabase } from './lib/supabase';
@@ -82,6 +61,7 @@ import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './typ
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
 import { ReusableComponentsView } from './components/reusable/ReusableComponentsView';
+import { CheckmarkFilled, ChevronLeft, CircleDash, DataBase, Edit, Growth, Layers, Logout, Moon, Music, Radio, RecordingFilled, Search, Settings, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
 
 type ThemeOption = {
   id: ThemeId;
@@ -93,7 +73,7 @@ type ThemeOption = {
 const THEME_OPTIONS: ThemeOption[] = [
   { id: 'dark', label: 'Dark', description: 'Default', icon: Moon },
   { id: 'light', label: 'Light', description: 'High contrast', icon: Sun },
-  { id: 'cdj', label: 'CDJ', description: 'Performance deck', icon: Disc3 },
+  { id: 'cdj', label: 'CDJ', description: 'Performance deck', icon: RecordingFilled },
 ];
 
 type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search' | 'edit-profile' | 'drop-lab' | 'import' | 'reusable-components' | 'not-found';
@@ -164,7 +144,7 @@ function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavPr
         onClick={() => setCurrentView('review')}
         className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'review' ? 'text-secondary neon-text-purple' : 'text-muted-foreground')}
       >
-        <TrendingUp size={20} />
+        <Growth size={20} />
         <span className="text-[8px] font-bold uppercase tracking-widest">Review</span>
       </button>
 
@@ -347,7 +327,7 @@ function ImportStatusView({
       <div className="glass rounded-3xl border border-[var(--color-border-subtle)] p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Library Import</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Book Import</p>
             <h2 className="mt-1 truncate text-2xl font-black">{item.source_filename}</h2>
             <p className="mt-1 font-mono text-xs text-muted-foreground">{item.id}</p>
           </div>
@@ -399,7 +379,7 @@ function ImportStatusView({
           <div><dt className="text-[9px] uppercase text-muted-foreground">Tracks</dt><dd className="font-mono font-bold">{item.track_count.toLocaleString()}</dd></div>
           <div><dt className="text-[9px] uppercase text-muted-foreground">Playlists</dt><dd className="font-mono font-bold">{item.playlist_count.toLocaleString()}</dd></div>
           <div><dt className="text-[9px] uppercase text-muted-foreground">Imported</dt><dd className="font-mono text-xs font-bold">{new Date(item.imported_at).toLocaleDateString()}</dd></div>
-          <div><dt className="text-[9px] uppercase text-muted-foreground">Library</dt><dd className="font-mono text-xs font-bold">{isActive ? 'Active' : inFlight ? 'Pending' : 'Snapshot'}</dd></div>
+          <div><dt className="text-[9px] uppercase text-muted-foreground">Book</dt><dd className="font-mono text-xs font-bold">{isActive ? 'Active' : inFlight ? 'Pending' : 'Snapshot'}</dd></div>
         </dl>
         {item.error_message && (
           <p className="mt-5 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-300">{item.error_message}</p>
@@ -578,8 +558,8 @@ export default function App() {
         setImportNotice({
           kind: hasWarnings ? 'warning' : 'success',
           title: hasWarnings
-            ? 'Library analysis finished with warnings'
-            : isReanalysis ? 'Library analysis is ready' : 'New library is ready',
+            ? 'Book analysis finished with warnings'
+            : isReanalysis ? 'Book analysis is ready' : 'New library is ready',
           detail: isReanalysis
             ? `${item.source_filename} finished reprocessing.`
             : `${item.source_filename} finished processing and is now being activated.`,
@@ -602,7 +582,7 @@ export default function App() {
       } else {
         setImportNotice({
           kind: 'warning',
-          title: item.status === 'cancelled' ? 'Library import cancelled' : 'Library import failed',
+          title: item.status === 'cancelled' ? 'Book import cancelled' : 'Book import failed',
           detail: item.error_message || `${item.source_filename} stopped before it could become the active library.`,
         });
       }
@@ -646,8 +626,8 @@ export default function App() {
       setImportNotice({
         kind: 'success',
         title: context.strategy === 'start_over' && context.wasActive
-          ? 'Library deleted. DropDex is ready to start over.'
-          : 'Library deleted',
+          ? 'Book deleted. DropDex is ready to start over.'
+          : 'Book deleted',
         detail: context.strategy === 'activate_next' && context.wasActive && context.fallbackFilename
           ? `${context.sourceFilename} was permanently deleted. ${context.fallbackFilename} is now your active library.`
           : `${context.sourceFilename} and its Rekordbox-imported data were permanently deleted.`,
@@ -814,7 +794,7 @@ export default function App() {
       deleteExecutorRef.current = null;
       setImportNotice({
         kind: 'warning',
-        title: 'Library is no longer available',
+        title: 'Book is no longer available',
         detail: 'DropDex could not find that import. Refresh Import History before trying another destructive action.',
       });
       refetchImportList();
@@ -986,11 +966,11 @@ export default function App() {
     });
   };
 
-  const libraryLabel = userProfile?.display_name ?? 'My Library';
+  const libraryLabel = userProfile?.display_name ?? 'My Book';
 
   const sidebarNavItems: { view: View; icon: React.ElementType; label: string; activeColor: string; activeBg: string }[] = [
     { view: 'home', icon: Music, label: libraryLabel, activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
-    { view: 'review', icon: TrendingUp, label: 'Review', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
+    { view: 'review', icon: Growth, label: 'Review', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
     { view: 'discovery', icon: Radio, label: 'Discover', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'search', icon: Search, label: 'Search', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'reusable-components', icon: Layers, label: 'Reusable Components', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
@@ -1088,7 +1068,7 @@ export default function App() {
                       onClick={() => selectedPlaylist && handleEditPlaylist(selectedPlaylist)}
                       className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-xs font-bold text-muted-foreground hover:text-foreground transition-all shrink-0"
                     >
-                      <Pencil size={12} />
+                      <Edit size={12} />
                       Edit
                     </button>
                   )}
@@ -1296,7 +1276,7 @@ export default function App() {
                 className="space-y-4 md:max-w-5xl md:mx-auto"
               >
                 <div className="glass p-6 rounded-3xl mb-6 relative overflow-hidden">
-                  <TrendingUp className="absolute -right-4 -bottom-4 text-primary/10 w-24 h-24" />
+                  <Growth className="absolute -right-4 -bottom-4 text-primary/10 w-24 h-24" />
                   <div className="flex gap-4 items-start">
                     {/* Artwork thumbnail */}
                     {currentPlaylistProfile?.artwork_url && (
@@ -1346,7 +1326,7 @@ export default function App() {
 
                 {playlistTracksLoading && (
                   <div className="flex items-center justify-center py-16">
-                    <Loader2 className="animate-spin text-primary" size={32} />
+                    <CircleDash className="animate-spin text-primary" size={32} />
                   </div>
                 )}
 
@@ -1377,7 +1357,7 @@ export default function App() {
                   >
                     {playlistTracksLoadingMore ? (
                       <span className="inline-flex items-center gap-2">
-                        <Loader2 size={13} className="animate-spin" /> Loading more…
+                        <CircleDash size={13} className="animate-spin" /> Loading more…
                       </span>
                     ) : (
                       `Load ${Math.min(200, playlistTrackTotal - playlistTracks.length).toLocaleString()} more…`
@@ -1532,7 +1512,7 @@ export default function App() {
                     </div>
                     <div className="p-4 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <LogOut size={18} className="text-muted-foreground" />
+                        <Logout size={18} className="text-muted-foreground" />
                         <p className="font-bold text-sm">Sign Out</p>
                       </div>
                       <button
@@ -1585,14 +1565,14 @@ export default function App() {
                   </div>
                 </section>
 
-                {/* Library */}
+                {/* Book */}
                 <section className="space-y-3">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Library</h2>
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Book</h2>
                   <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
                     <div className="p-4 flex items-center gap-3">
-                      <Database size={18} className="text-muted-foreground" />
+                      <DataBase size={18} className="text-muted-foreground" />
                       <div className="min-w-0">
-                        <p className="font-bold text-sm">Active Cloud Library</p>
+                        <p className="font-bold text-sm">Active Cloud Book</p>
                         <p className="text-xs text-muted-foreground">
                           {importLoading
                             ? 'Loading…'
@@ -1609,9 +1589,9 @@ export default function App() {
                     </div>
                     <div className="p-4 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <FileUp size={18} className="text-primary" />
+                        <Upload size={18} className="text-primary" />
                         <div>
-                          <p className="font-bold text-sm">Import New Library</p>
+                          <p className="font-bold text-sm">Import New Book</p>
                           <p className="text-xs text-muted-foreground">Upload exportLibrary.db from USB</p>
                         </div>
                       </div>
@@ -1625,12 +1605,12 @@ export default function App() {
                   </div>
                 </section>
 
-                {/* USB Library Snapshots */}
+                {/* USB Book Snapshots */}
                 <section className="space-y-3">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">USB Library Snapshots</h2>
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">USB Book Snapshots</h2>
                   {importsListLoading ? (
                     <div className="flex items-center justify-center py-6">
-                      <Loader2 className="animate-spin text-muted-foreground" size={20} />
+                      <CircleDash className="animate-spin text-muted-foreground" size={20} />
                     </div>
                   ) : importsListError ? (
                     <div className="glass rounded-2xl p-4 text-center space-y-2">
@@ -1747,7 +1727,7 @@ export default function App() {
                   <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
                     {[
                       { label: 'Version', value: '2.0.0' },
-                      { label: 'Library Source', value: 'Supabase (rekordbox USB)' },
+                      { label: 'Book Source', value: 'Supabase (rekordbox USB)' },
                       { label: 'Import ID', value: latestImport?.id?.slice(0, 8) ?? '—' },
                     ].map(({ label, value }) => (
                       <div key={label} className="px-4 py-3 flex items-center justify-between">
@@ -1873,8 +1853,8 @@ export default function App() {
             role="status"
           >
             {importNotice.kind === 'success'
-              ? <CheckCircle2 size={20} className="mt-0.5 shrink-0 text-emerald-400" />
-              : <AlertTriangle size={20} className="mt-0.5 shrink-0 text-amber-400" />}
+              ? <CheckmarkFilled size={20} className="mt-0.5 shrink-0 text-emerald-400" />
+              : <WarningAlt size={20} className="mt-0.5 shrink-0 text-amber-400" />}
             <div className="min-w-0">
               <p className="text-sm font-black">{importNotice.title}</p>
               <p className="mt-1 text-xs leading-relaxed opacity-80">{importNotice.detail}</p>

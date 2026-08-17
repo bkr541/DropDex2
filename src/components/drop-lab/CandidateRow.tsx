@@ -1,7 +1,7 @@
-import { CheckCircle2, Circle, AlertTriangle } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import type { DropLabCandidate } from '../../hooks/useDropLabCandidates';
 import type { DropLabTrackAnalysis } from '../../hooks/useDropLabAnalysis';
+import { CheckmarkFilled, CircleOutline, WarningAlt } from '@carbon/icons-react';
 
 interface CandidateRowProps {
   candidate: DropLabCandidate;
@@ -53,7 +53,7 @@ export function CandidateRow({ candidate, analysis, active, onSelect }: Candidat
           ))}
           {!ready && (
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400 flex items-center gap-1">
-              <AlertTriangle size={10} />
+              <WarningAlt size={10} />
               {!hasWaveform
                 ? waveformStatus === 'error'
                   ? 'Waveform failed'
@@ -68,7 +68,7 @@ export function CandidateRow({ candidate, analysis, active, onSelect }: Candidat
         </div>
       </div>
       <div className="text-primary">
-        {active ? <CheckCircle2 size={18} /> : <Circle size={18} className="text-muted-foreground" />}
+        {active ? <CheckmarkFilled size={18} /> : <CircleOutline size={18} className="text-muted-foreground" />}
       </div>
     </button>
   );

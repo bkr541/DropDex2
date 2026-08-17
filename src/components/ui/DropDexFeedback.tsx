@@ -1,24 +1,4 @@
 import {
-  AlertTriangle,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  Circle,
-  CircleDot,
-  CloudUpload,
-  FileUp,
-  FolderOpen,
-  Info,
-  Loader2,
-  Pause,
-  Search,
-  Smartphone,
-  Upload,
-  X,
-  XCircle,
-  Zap,
-} from 'lucide-react';
-import {
   useEffect,
   useId,
   useRef,
@@ -31,6 +11,7 @@ import {
 } from 'react';
 import { cn } from '../../lib/utils';
 import './dropdex-feedback.css';
+import { Checkmark, CheckmarkFilled, ChevronDown, CircleDash, CircleFilled, CircleOutline, Close, CloseFilled, CloudUpload, Flash, FolderOpen, Information, Mobile, Pause, Search, Upload, WarningAlt } from '@carbon/icons-react';
 
 export type SemanticTone = 'success' | 'online' | 'active' | 'purple' | 'pink' | 'amber' | 'warning' | 'error' | 'disabled' | 'neutral';
 
@@ -81,15 +62,15 @@ export function StatusBadge({
 export type AnalysisBadgeState = 'not-analyzed' | 'analyzing' | 'bpm' | 'waveform' | 'key' | 'complete' | 'failed' | 'partial' | 'reused';
 
 const ANALYSIS_META: Record<AnalysisBadgeState, { label: string; tone: SemanticTone; icon: ReactNode }> = {
-  'not-analyzed': { label: 'Not Analyzed', tone: 'neutral', icon: <Zap size={11} /> },
-  analyzing: { label: 'Analyzing', tone: 'active', icon: <Loader2 size={11} className="dd-spin" /> },
-  bpm: { label: 'BPM Analyzed', tone: 'online', icon: <CircleDot size={11} /> },
-  waveform: { label: 'Waveform Ready', tone: 'purple', icon: <Zap size={11} /> },
-  key: { label: 'Key Analyzed', tone: 'amber', icon: <Check size={11} /> },
-  complete: { label: 'Fully Analyzed', tone: 'success', icon: <CheckCircle2 size={11} /> },
-  failed: { label: 'Analysis Failed', tone: 'error', icon: <XCircle size={11} /> },
-  partial: { label: 'Analysis Partial', tone: 'warning', icon: <AlertTriangle size={11} /> },
-  reused: { label: 'Analysis Reused', tone: 'success', icon: <CheckCircle2 size={11} /> },
+  'not-analyzed': { label: 'Not Analyzed', tone: 'neutral', icon: <Flash size={11} /> },
+  analyzing: { label: 'Analyzing', tone: 'active', icon: <CircleDash size={11} className="dd-spin" /> },
+  bpm: { label: 'BPM Analyzed', tone: 'online', icon: <CircleFilled size={11} /> },
+  waveform: { label: 'Waveform Ready', tone: 'purple', icon: <Flash size={11} /> },
+  key: { label: 'Key Analyzed', tone: 'amber', icon: <Checkmark size={11} /> },
+  complete: { label: 'Fully Analyzed', tone: 'success', icon: <CheckmarkFilled size={11} /> },
+  failed: { label: 'Analysis Failed', tone: 'error', icon: <CloseFilled size={11} /> },
+  partial: { label: 'Analysis Partial', tone: 'warning', icon: <WarningAlt size={11} /> },
+  reused: { label: 'Analysis Reused', tone: 'success', icon: <CheckmarkFilled size={11} /> },
 };
 
 export function AnalysisStatusBadge({ state, label, className }: { state: AnalysisBadgeState; label?: string; className?: string }) {
@@ -192,12 +173,12 @@ export function ToastNotification({
   className?: string;
 }) {
   const icon = tone === 'success'
-    ? <CheckCircle2 size={18} />
+    ? <CheckmarkFilled size={18} />
     : tone === 'warning'
-      ? <AlertTriangle size={18} />
+      ? <WarningAlt size={18} />
       : tone === 'error'
-        ? <XCircle size={18} />
-        : <Info size={18} />;
+        ? <CloseFilled size={18} />
+        : <Information size={18} />;
   return (
     <div className={cn('dd-toast', `dd-toast--${tone}`, className)} role={tone === 'error' || tone === 'warning' ? 'alert' : 'status'}>
       <span className={cn('dd-toast__icon', toneClass[toastTone[tone]])}>{icon}</span>
@@ -208,7 +189,7 @@ export function ToastNotification({
       {meta && <span className="dd-toast__meta">{meta}</span>}
       {onDismiss && (
         <button type="button" className="dd-toast__close" onClick={onDismiss} aria-label={`Dismiss ${title} notification`}>
-          <X size={15} />
+          <Close size={15} />
         </button>
       )}
     </div>
@@ -265,7 +246,7 @@ export function ImportActivityBanner({
       </div>
       {remaining && <span className="dd-activity-banner__remaining">{remaining}</span>}
       {onView && <button type="button" className="dd-feedback-button dd-feedback-button--ghost" onClick={onView}>{viewLabel}</button>}
-      {onDismiss && <button type="button" className="dd-icon-dismiss" onClick={onDismiss} aria-label={`Dismiss ${title}`}><X size={15} /></button>}
+      {onDismiss && <button type="button" className="dd-icon-dismiss" onClick={onDismiss} aria-label={`Dismiss ${title}`}><Close size={15} /></button>}
     </section>
   );
 }
@@ -285,10 +266,10 @@ export function AlertBanner({
 }) {
   return (
     <section className="dd-alert-banner" role="alert">
-      <AlertTriangle size={25} aria-hidden="true" />
+      <WarningAlt size={25} aria-hidden="true" />
       <div className="dd-alert-banner__copy"><strong>{title}</strong><span>{message}</span></div>
       {actionLabel && onAction && <button type="button" className="dd-feedback-button dd-feedback-button--warning" onClick={onAction}>{actionLabel}</button>}
-      {onDismiss && <button type="button" className="dd-icon-dismiss" onClick={onDismiss} aria-label={`Dismiss ${title}`}><X size={15} /></button>}
+      {onDismiss && <button type="button" className="dd-icon-dismiss" onClick={onDismiss} aria-label={`Dismiss ${title}`}><Close size={15} /></button>}
     </section>
   );
 }
@@ -345,7 +326,7 @@ export function FloatingActivityPanel({
             <div className="dd-floating-activity__row" key={row.id}>
               <span>{row.label}</span>
               <b>{row.current} / {row.total}</b>
-              {row.complete ? <CheckCircle2 size={13} className="dd-complete-icon" aria-label="Complete" /> : <ProgressBar value={row.current} max={row.total} tone="active" label={`${row.label} progress`} />}
+              {row.complete ? <CheckmarkFilled size={13} className="dd-complete-icon" aria-label="Complete" /> : <ProgressBar value={row.current} max={row.total} tone="active" label={`${row.label} progress`} />}
             </div>
           ))}
         </div>
@@ -359,7 +340,7 @@ export function FloatingActivityPanel({
 }
 
 function PauseInline() { return <Pause size={11} aria-hidden="true" />; }
-function PlayInline() { return <Circle size={10} fill="currentColor" aria-hidden="true" />; }
+function PlayInline() { return <CircleOutline size={10} fill="currentColor" aria-hidden="true" />; }
 
 export interface ProgressMetric {
   label: string;
@@ -381,7 +362,7 @@ export function ProgressStatusPanel({
 }) {
   return (
     <section className="dd-progress-panel" aria-label={title}>
-      <header><strong>{title}</strong><X size={14} aria-hidden="true" /></header>
+      <header><strong>{title}</strong><Close size={14} aria-hidden="true" /></header>
       <div className="dd-progress-panel__body">
         <CircularProgress value={value} size={104} strokeWidth={7} tone="purple" label={`${title} progress`} />
         <dl>
@@ -411,7 +392,7 @@ export function FileUploadButton({
   multiple?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const icon = variant === 'primary' ? <Upload size={14} /> : variant === 'folder' ? <FolderOpen size={14} /> : variant === 'device' ? <Smartphone size={14} /> : <CircleDot size={13} />;
+  const icon = variant === 'primary' ? <Upload size={14} /> : variant === 'folder' ? <FolderOpen size={14} /> : variant === 'device' ? <Mobile size={14} /> : <CircleFilled size={13} />;
   const handleClick = () => {
     if (onFiles) inputRef.current?.click();
     onClick?.();
@@ -546,9 +527,9 @@ export function Dialog({
       } : undefined}
     >
       <header>
-        {destructive && <AlertTriangle size={29} aria-hidden="true" />}
+        {destructive && <WarningAlt size={29} aria-hidden="true" />}
         <strong id={titleId}>{title}</strong>
-        {onClose && <button type="button" className="dd-icon-dismiss" onClick={onClose} aria-label={`Close ${title}`}><X size={15} /></button>}
+        {onClose && <button type="button" className="dd-icon-dismiss" onClick={onClose} aria-label={`Close ${title}`}><Close size={15} /></button>}
       </header>
       <div className="dd-dialog__body">{children}</div>
       {actions && actions.length > 0 && <footer>{actions.map((action) => <button key={action.label} type="button" disabled={action.disabled} className={cn('dd-feedback-button', action.variant === 'danger' ? 'dd-feedback-button--danger' : action.variant === 'primary' ? 'dd-feedback-button--primary' : 'dd-feedback-button--ghost')} onClick={action.onClick}>{action.label}</button>)}</footer>}
@@ -580,8 +561,8 @@ export function SelectableOptionCard({
   return (
     <button type="button" role="radio" aria-checked={selected} onClick={onSelect} className={cn('dd-selectable-card', selected && 'dd-selectable-card--selected', selected && toneClass[tone])}>
       <span className="dd-selectable-card__top">
-        <span className={cn('dd-selectable-card__icon', toneClass[tone])}>{icon ?? <FileUp size={22} />}</span>
-        <span className="dd-selectable-card__radio">{selected && <Check size={11} strokeWidth={3} />}</span>
+        <span className={cn('dd-selectable-card__icon', toneClass[tone])}>{icon ?? <Upload size={22} />}</span>
+        <span className="dd-selectable-card__radio">{selected && <Checkmark size={11} strokeWidth={3} />}</span>
       </span>
       <strong>{title}</strong>
       {description && <span>{description}</span>}

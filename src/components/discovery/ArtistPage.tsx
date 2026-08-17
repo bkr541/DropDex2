@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Loader2, ListMusic, ChevronDown, Search } from 'lucide-react';
 import { ArtistHero } from './ArtistHero';
 import { ArtistStylesSidebar } from './ArtistStylesSidebar';
 import { type ArtistTabId } from './ArtistResultsTabs';
 import { ArtistResultsToolbar, type SortKey } from './ArtistResultsToolbar';
 import { ArtistSetlistCard } from './ArtistSetlistCard';
 import type { DiscoveryArtist, DiscoveryArtistDetail, DiscoverySetlistResult, DiscoveryScrapeJob } from '../../types';
+import { ChevronDown, CircleDash, Music, Search } from '@carbon/icons-react';
 
 function sortSetlists(
   setlists: DiscoverySetlistResult[],
@@ -116,7 +116,7 @@ export function ArtistPage({
         <div className="flex-1 min-w-0 space-y-4">
           {loading ? (
             <div className="flex items-center justify-center py-20">
-              <Loader2 className="animate-spin text-primary" size={28} />
+              <CircleDash className="animate-spin text-primary" size={28} />
             </div>
           ) : error ? (
             <div className="text-center py-12 space-y-2">
@@ -132,7 +132,7 @@ export function ArtistPage({
                 </>
               ) : (
                 <>
-                  <ListMusic size={36} className="mx-auto text-muted-foreground opacity-30" />
+                  <Music size={36} className="mx-auto text-muted-foreground opacity-30" />
                   <div>
                     <p className="text-sm font-bold text-muted-foreground">No setlists found yet</p>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -179,7 +179,7 @@ export function ArtistPage({
                   >
                     {loadingMore ? (
                       <>
-                        <Loader2 size={14} className="animate-spin" />
+                        <CircleDash size={14} className="animate-spin" />
                         Loading…
                       </>
                     ) : (

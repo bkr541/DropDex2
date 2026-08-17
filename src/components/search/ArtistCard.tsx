@@ -1,6 +1,6 @@
-import { ExternalLink } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { SearchArtist } from '../../types';
+import { Launch } from '@carbon/icons-react';
 
 const GENRE_PILL: Record<string, string> = {
   'Melodic Dubstep': 'bg-primary/10 text-primary',
@@ -74,7 +74,7 @@ export function ArtistCard({ artist }: ArtistCardProps) {
             rel="noopener noreferrer"
             className="mt-auto flex items-center gap-1 text-[9px] text-muted-foreground hover:text-foreground transition-colors"
           >
-            <ExternalLink size={10} />
+            <Launch size={10} />
             1001Tracklists
           </a>
         )}

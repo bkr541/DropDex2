@@ -1,6 +1,6 @@
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { DiscoveryScrapeJob } from '../../types';
+import { CheckmarkFilled, CircleDash, CloseFilled } from '@carbon/icons-react';
 
 interface DiscoveryScrapeProgressProps {
   job: DiscoveryScrapeJob;
@@ -24,13 +24,13 @@ export function DiscoveryScrapeProgress({ job }: DiscoveryScrapeProgressProps) {
     >
       <div className="shrink-0 mt-0.5">
         {(isQueued || isRunning) && (
-          <Loader2
+          <CircleDash
             className={cn('animate-spin', isRunning ? 'text-secondary' : 'text-muted-foreground')}
             size={20}
           />
         )}
-        {isCompleted && <CheckCircle2 size={20} className="text-green-500" />}
-        {isFailed && <XCircle size={20} className="text-red-400" />}
+        {isCompleted && <CheckmarkFilled size={20} className="text-green-500" />}
+        {isFailed && <CloseFilled size={20} className="text-red-400" />}
       </div>
 
       <div className="flex-1 min-w-0">

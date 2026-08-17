@@ -1,5 +1,5 @@
-import { Search, X, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { CircleDash, Close, Search } from '@carbon/icons-react';
 
 interface ArtistSearchInputProps {
   value: string;
@@ -21,7 +21,7 @@ export function ArtistSearchInput({
     // without being clipped by any ancestor overflow boundary.
     <div className="relative mx-[3px] my-[3px]">
       {loading ? (
-        <Loader2
+        <CircleDash
           className="absolute left-4 top-1/2 -translate-y-1/2 text-primary animate-spin"
           size={16}
         />
@@ -48,7 +48,7 @@ export function ArtistSearchInput({
           className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
           aria-label="Clear search"
         >
-          <X size={16} />
+          <Close size={16} />
         </button>
       )}
     </div>

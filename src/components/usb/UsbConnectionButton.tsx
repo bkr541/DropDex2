@@ -1,6 +1,6 @@
-import { Usb, Unplug, Loader2, AlertTriangle, XCircle, WifiOff, FolderX, RefreshCw } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useUsbConnection, type UsbStatus } from '../../contexts/UsbConnectionContext';
+import { CircleDash, CloseFilled, FolderOff, Renew, Unplug, Usb, WarningAlt, WifiOff } from '@carbon/icons-react';
 
 interface UsbConnectionButtonProps {
   collapsed?: boolean;
@@ -26,10 +26,10 @@ function StatusDot({ status }: { status: UsbStatus }) {
 }
 
 function StatusIcon({ status, size = 18 }: { status: UsbStatus; size?: number }) {
-  if (status === 'connecting') return <Loader2 size={size} className="animate-spin" />;
-  if (status === 'error') return <XCircle size={size} />;
+  if (status === 'connecting') return <CircleDash size={size} className="animate-spin" />;
+  if (status === 'error') return <CloseFilled size={size} />;
   if (status === 'unavailable') return <WifiOff size={size} />;
-  if (status === 'wrong_root') return <FolderX size={size} />;
+  if (status === 'wrong_root') return <FolderOff size={size} />;
   return <Usb size={size} />;
 }
 
@@ -117,7 +117,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
       {/* Structure warning badge (partial Rekordbox folders found) */}
       {!collapsed && structureWarning && status === 'connected' && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[10px] text-amber-400 leading-tight">
-          <AlertTriangle size={10} className="mt-0.5 shrink-0" />
+          <WarningAlt size={10} className="mt-0.5 shrink-0" />
           <span>{structureWarning}</span>
         </div>
       )}
@@ -125,7 +125,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
       {/* Wrong-root warning with explicit Select Again action */}
       {!collapsed && status === 'wrong_root' && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[10px] text-amber-400 leading-tight">
-          <FolderX size={10} className="mt-0.5 shrink-0" />
+          <FolderOff size={10} className="mt-0.5 shrink-0" />
           <span>Select the USB root folder, not PIONEER or a subfolder.</span>
         </div>
       )}
@@ -133,7 +133,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
       {/* Error badge */}
       {!collapsed && error && status === 'error' && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 leading-tight break-all">
-          <XCircle size={10} className="mt-0.5 shrink-0" />
+          <CloseFilled size={10} className="mt-0.5 shrink-0" />
           <span className="truncate">{error}</span>
         </div>
       )}
@@ -162,7 +162,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
             aria-label="Select a different USB drive"
             className="shrink-0 p-2.5 rounded-xl text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20 transition-all"
           >
-            <RefreshCw size={16} />
+            <Renew size={16} />
           </button>
         )}
 

@@ -1,7 +1,7 @@
-import { Loader2 } from 'lucide-react';
 import { useDiscoveryFeed } from '../../hooks/useDiscoveryFeed';
 import { ArtistFeedRow } from './ArtistFeedRow';
 import type { DiscoveryArtist, DiscoverySetlistResult, FeedArtist } from '../../types';
+import { CircleDash } from '@carbon/icons-react';
 
 interface DiscoveryHomeFeedProps {
   onSelectArtist: (artist: DiscoveryArtist) => void;
@@ -24,7 +24,7 @@ export function DiscoveryHomeFeed({ onSelectArtist, onOpenSetlist }: DiscoveryHo
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="animate-spin text-primary" size={28} />
+        <CircleDash className="animate-spin text-primary" size={28} />
       </div>
     );
   }

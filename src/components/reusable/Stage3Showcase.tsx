@@ -1,19 +1,3 @@
-import {
-  AlertTriangle,
-  ChevronUp,
-  ExternalLink,
-  Loader2,
-  MoreHorizontal,
-  Settings,
-  Square,
-  Volume2,
-  VolumeX,
-  Play,
-  Pause,
-  CircleOff,
-  ChevronsDown,
-  SlidersHorizontal,
-} from 'lucide-react';
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
@@ -32,6 +16,7 @@ import {
   createStage3WaveformState,
 } from './stage3WaveformFixture';
 import './stage3-showcase.css';
+import { ChevronDown, ChevronUp, CircleDash, Launch, OverflowMenuHorizontal, Pause, Play, Settings, Stop, Subtract, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
 
 const STAGE3_TRACK_ID = 'stage3-demo-track';
 const DEMO_DURATION_SECONDS = 220;
@@ -121,10 +106,10 @@ function WaveformStateExample({
         <RekordboxPreviewWaveform state={state} height={56} variant="compact" ariaLabel={label} />
       </div>
       <div className="dd-stage3-waveform-state__message" aria-hidden="true">
-        {kind === 'loading' && <Loader2 size={17} className="dd-stage3-spin" />}
-        {kind === 'unavailable' && <CircleOff size={18} />}
-        {kind === 'error' && <AlertTriangle size={19} />}
-        {kind === 'invalid' && <AlertTriangle size={18} />}
+        {kind === 'loading' && <CircleDash size={17} className="dd-stage3-spin" />}
+        {kind === 'unavailable' && <Subtract size={18} />}
+        {kind === 'error' && <WarningAlt size={19} />}
+        {kind === 'invalid' && <WarningAlt size={18} />}
         <span>{label}</span>
       </div>
     </div>
@@ -179,7 +164,7 @@ function MiniTrackRow({ active = false, onSelect }: { active?: boolean; onSelect
       <span className="dd-stage3-track-row__wave" aria-hidden="true">
         <DemoWaveform state={active ? DEMO_WAVEFORM_GREEN : DEMO_WAVEFORM_GRAY} height={28} />
       </span>
-      <MoreHorizontal size={16} aria-hidden="true" />
+      <OverflowMenuHorizontal size={16} aria-hidden="true" />
     </button>
   );
 }
@@ -237,13 +222,13 @@ export function Stage3Showcase() {
         </Stage3Card>
 
         <Stage3Card label="Stop Playback Button" className="dd-stage3-stop-card">
-          <div className="dd-stage3-center"><TransportButton label="Stop playback" tone="stop" onClick={handleStop}><Square size={16} fill="currentColor" /></TransportButton></div>
+          <div className="dd-stage3-center"><TransportButton label="Stop playback" tone="stop" onClick={handleStop}><Stop size={16} fill="currentColor" /></TransportButton></div>
         </Stage3Card>
 
         <Stage3Card label="Mute / Unmute Button" className="dd-stage3-mute-card">
           <div className="dd-stage3-mute-examples">
-            <TransportButton label="Mute" tone="mute" size="compact" active={muted} onClick={() => setMuted(true)}><VolumeX size={17} /></TransportButton>
-            <TransportButton label="Unmute" tone="mute" size="compact" active={!muted} onClick={() => setMuted(false)}><Volume2 size={17} /></TransportButton>
+            <TransportButton label="Mute" tone="mute" size="compact" active={muted} onClick={() => setMuted(true)}><VolumeMute size={17} /></TransportButton>
+            <TransportButton label="Unmute" tone="mute" size="compact" active={!muted} onClick={() => setMuted(false)}><VolumeUp size={17} /></TransportButton>
           </div>
         </Stage3Card>
 
@@ -356,7 +341,7 @@ export function Stage3Showcase() {
                     <td>{track.artist}</td><td>{track.bpm}</td><td className="dd-stage3-key">{track.key}</td><td>{track.time}</td>
                     <td><span className="dd-stage3-stars" aria-label={`${track.rating} out of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <i key={index} data-on={index < track.rating ? 'true' : 'false'}>★</i>)}</span></td>
                     <td>{track.genre}</td>
-                    <td><button type="button" aria-label={`Actions for ${track.title}`} onClick={(event) => { event.stopPropagation(); setStatusMessage(`Actions opened for ${track.title}`); }}><MoreHorizontal size={14} /></button></td>
+                    <td><button type="button" aria-label={`Actions for ${track.title}`} onClick={(event) => { event.stopPropagation(); setStatusMessage(`Actions opened for ${track.title}`); }}><OverflowMenuHorizontal size={14} /></button></td>
                   </tr>
                 ))}
               </tbody>
@@ -372,12 +357,12 @@ export function Stage3Showcase() {
             className="dd-stage3-load-more"
             onClick={() => { setLoadMoreCount((count) => count + 1); setStatusMessage('Load more callback invoked'); }}
           >
-            <ChevronsDown size={15} /> LOAD MORE
+            <ChevronDown size={15} /> LOAD MORE
           </ControlButton>
         </Stage3Card>
 
         <Stage3Card label="External Link Icon Action" className="dd-stage3-external-card">
-          <IconControlButton label="Open external track link" tone="blue" className="dd-stage3-external" onClick={() => setStatusMessage('External link action activated')}><ExternalLink size={18} /></IconControlButton>
+          <IconControlButton label="Open external track link" tone="blue" className="dd-stage3-external" onClick={() => setStatusMessage('External link action activated')}><Launch size={18} /></IconControlButton>
         </Stage3Card>
 
         <Stage3Card label="Sticky Action / Transport Dock" className="dd-stage3-dock-card">
@@ -398,9 +383,9 @@ export function Stage3Showcase() {
             />
             <span className="dd-stage3-dock__time">{formatTime(currentSeconds)} / 03:56</span>
             <input aria-label="Dock playback position" type="range" min="0" max="1" step="0.01" value={seekFraction} onChange={(event) => setSeekFraction(Number(event.target.value))} />
-            <button type="button" className="dd-stage3-dock__utility" aria-label="Open dock filters"><SlidersHorizontal size={15} /></button>
+            <button type="button" className="dd-stage3-dock__utility" aria-label="Open dock filters"><Settings size={15} /></button>
             <span className="dd-stage3-dock__key">8A</span>
-            <button type="button" className="dd-stage3-dock__utility" aria-label={muted ? 'Unmute dock' : 'Mute dock'} onClick={() => setMuted((value) => !value)}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>
+            <button type="button" className="dd-stage3-dock__utility" aria-label={muted ? 'Unmute dock' : 'Mute dock'} onClick={() => setMuted((value) => !value)}>{muted ? <VolumeMute size={15} /> : <VolumeUp size={15} />}</button>
             <input aria-label="Dock volume" type="range" min="0" max="1" step="0.02" value={muted ? 0 : dockVolume} onChange={(event) => { setMuted(false); setDockVolume(Number(event.target.value)); }} />
             <button type="button" className="dd-stage3-dock__utility" aria-label="Open dock settings"><Settings size={15} /></button>
             <button type="button" className="dd-stage3-dock__utility" aria-label="Collapse transport dock"><ChevronUp size={15} /></button>

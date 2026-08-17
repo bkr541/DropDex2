@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { User } from 'lucide-react';
 import type { DiscoveryArtist } from '../../types';
+import { User } from '@carbon/icons-react';
 
 interface ArtistSearchResultsProps {
   results: DiscoveryArtist[];

@@ -1,13 +1,4 @@
 import {
-  ChevronDown,
-  Pause,
-  Play,
-  SkipBack,
-  SkipForward,
-  StepBack,
-  StepForward,
-} from 'lucide-react';
-import {
   useId,
   useState,
   type ButtonHTMLAttributes,
@@ -16,6 +7,7 @@ import {
 } from 'react';
 import { cn } from '../../lib/utils';
 import './dropdex-media.css';
+import { ChevronDown, Pause, Play, SkipBack, SkipForward } from '@carbon/icons-react';
 
 export type TransportButtonTone = 'neutral' | 'play' | 'stop' | 'mute';
 export type TransportButtonSize = 'compact' | 'standard' | 'hero';
@@ -89,7 +81,7 @@ export function MediaTransportControlGroup({
         <SkipBack size={iconSize} fill="currentColor" />
       </TransportButton>
       <TransportButton label="Rewind" size={size} disabled={disabled} onClick={onRewind}>
-        <StepBack size={iconSize} fill="currentColor" />
+        <SkipBack size={iconSize} fill="currentColor" />
       </TransportButton>
       <TransportButton
         label={playing ? 'Pause' : 'Play'}
@@ -102,7 +94,7 @@ export function MediaTransportControlGroup({
         {playing ? <Pause size={compact ? 17 : 22} fill="currentColor" /> : <Play size={compact ? 17 : 22} fill="currentColor" />}
       </TransportButton>
       <TransportButton label="Fast forward" size={size} disabled={disabled} onClick={onForward}>
-        <StepForward size={iconSize} fill="currentColor" />
+        <SkipForward size={iconSize} fill="currentColor" />
       </TransportButton>
       <TransportButton label="Next track" size={size} disabled={disabled} onClick={onNext}>
         <SkipForward size={iconSize} fill="currentColor" />

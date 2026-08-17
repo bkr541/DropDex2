@@ -8,7 +8,6 @@ declare module 'react' {
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertCircle, AlertTriangle, CheckCircle2, FolderOpen, Loader2, RefreshCw, X } from 'lucide-react';
 import { useUsbConnection } from '../contexts/UsbConnectionContext';
 import { supabase } from '../lib/supabase';
 import {
@@ -25,6 +24,7 @@ import { AbortableTimerRegistry, waitForAbortableDelay } from '../lib/rekordbox/
 import { isFreshImportResponse } from '../lib/rekordbox/importRequestFreshness';
 import { runCancellableUploadQueue, UploadQueueRuntime } from '../lib/rekordbox/cancellableUploadQueue';
 import { IdempotentUsbCleanup, verifyUsbReleased } from '../lib/rekordbox/localUsbLifecycle';
+import { CheckmarkFilled, CircleDash, Close, FolderOpen, Renew, WarningAlt } from '@carbon/icons-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -492,14 +492,14 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                 onClick={handleClose}
                 className="absolute top-5 right-5 text-muted-foreground hover:text-foreground transition-colors"
               >
-                <X size={18} />
+                <Close size={18} />
               </button>
             )}
 
             {/* ── Fetching status ── */}
             {phase === 'fetching_status' && (
               <div className="text-center py-4">
-                <Loader2 className="animate-spin text-primary mx-auto mb-4" size={32} />
+                <CircleDash className="animate-spin text-primary mx-auto mb-4" size={32} />
                 <h2 className="text-lg font-bold mb-1">Checking Analysis Status</h2>
                 <p className="text-sm text-muted-foreground">Loading missing file list…</p>
               </div>
@@ -509,7 +509,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
             {phase === 'scan_prompt' && status && (
               <div className="text-center">
                 <div className="w-14 h-14 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-                  <RefreshCw className="text-amber-400" size={24} />
+                  <Renew className="text-amber-400" size={24} />
                 </div>
                 <h2 className="text-xl font-bold mb-2">Resume Analysis</h2>
 
@@ -599,12 +599,12 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                 <div className="relative w-14 h-14 mx-auto mb-5">
                   <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
                   <div className="relative w-14 h-14 bg-primary/15 rounded-full flex items-center justify-center">
-                    <Loader2 className="animate-spin text-primary" size={24} />
+                    <CircleDash className="animate-spin text-primary" size={24} />
                   </div>
                 </div>
                 <h2 className="text-lg font-bold mb-1">Uploading Missing Files</h2>
                 <div className="my-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left">
-                  <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-400" />
+                  <WarningAlt size={16} className="mt-0.5 shrink-0 text-amber-400" />
                   <p className="text-xs leading-relaxed text-amber-100">
                     DropDex is reading this Rekordbox USB. Keep Rekordbox closed and do not eject the drive until upload completes.
                   </p>
@@ -626,7 +626,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
             {/* ── Stopping local USB reads ── */}
             {phase === 'stopping_usb_reads' && (
               <div className="text-center py-4">
-                <Loader2 className="animate-spin text-amber-400 mx-auto mb-4" size={32} />
+                <CircleDash className="animate-spin text-amber-400 mx-auto mb-4" size={32} />
                 <h2 className="text-lg font-bold mb-1">Stopping USB Reads</h2>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   No new batch or retry can begin. Keep Rekordbox closed until this window closes.
@@ -640,12 +640,12 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                 <div className="relative w-14 h-14 mx-auto mb-5">
                   <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
                   <div className="relative w-14 h-14 bg-primary/15 rounded-full flex items-center justify-center">
-                    <Loader2 className="animate-spin text-primary" size={24} />
+                    <CircleDash className="animate-spin text-primary" size={24} />
                   </div>
                 </div>
                 <h2 className="text-lg font-bold mb-1">Reprocessing Analysis</h2>
                 <div className="my-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left">
-                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                  <CheckmarkFilled size={16} className="mt-0.5 shrink-0 text-emerald-400" />
                   <p className="text-xs leading-relaxed text-emerald-100">
                     USB access is released. Reprocessing uses uploaded copies only.
                   </p>
@@ -660,7 +660,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
             {phase === 'done' && completeResp && (
               <div className="text-center">
                 <div className="w-14 h-14 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-                  <CheckCircle2 className="text-emerald-400" size={26} />
+                  <CheckmarkFilled className="text-emerald-400" size={26} />
                 </div>
                 <h2 className="text-xl font-bold mb-2">Analysis Complete</h2>
                 <p className="text-sm text-muted-foreground mb-5">
@@ -690,7 +690,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
             {phase === 'done_partial' && completeResp && (
               <div className="text-center">
                 <div className="w-14 h-14 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-                  <AlertTriangle className="text-amber-400" size={26} />
+                  <WarningAlt className="text-amber-400" size={26} />
                 </div>
                 <h2 className="text-xl font-bold mb-2">Analysis Updated</h2>
                 <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
@@ -731,7 +731,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
             {phase === 'error' && (
               <div className="text-center">
                 <div className="w-14 h-14 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-                  <AlertCircle className="text-red-400" size={26} />
+                  <WarningAlt className="text-red-400" size={26} />
                 </div>
                 <h2 className="text-xl font-bold mb-2">Resume Failed</h2>
                 <p className="text-sm text-muted-foreground leading-relaxed px-2 mb-6">

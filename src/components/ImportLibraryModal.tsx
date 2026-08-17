@@ -8,17 +8,6 @@ declare module 'react' {
 
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import {
-  AlertCircle,
-  AlertTriangle,
-  CheckCircle2,
-  Database,
-  FileUp,
-  FolderOpen,
-  Loader2,
-  Package,
-  X,
-} from 'lucide-react';
 import { useUsbConnection } from '../contexts/UsbConnectionContext';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -60,6 +49,7 @@ import {
   type UsbImportPhase,
   verifyUsbReleased,
 } from '../lib/rekordbox/localUsbLifecycle';
+import { CheckmarkFilled, CircleDash, Close, DataBase, FolderOpen, Package, Upload, WarningAlt } from '@carbon/icons-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -137,8 +127,8 @@ const MODE_LABELS: Record<Mode, { label: string; icon: React.ReactNode; tip: str
     tip: 'Upload a ZIP archive containing exportLibrary.db and ANLZ files.',
   },
   database_only: {
-    label: 'Database Only',
-    icon: <Database size={14} />,
+    label: 'DataBase Only',
+    icon: <DataBase size={14} />,
     tip: 'Upload exportLibrary.db to import playlists and track metadata without analysis data.',
   },
 };
@@ -209,7 +199,7 @@ export function ImportLibraryModal({
   const [retryingCount, setRetryingCount] = useState(0);
   const [libraryMetadataReady, setLibraryMetadataReady] = useState(false);
   const [progressiveReadiness, setProgressiveReadiness] = useState<ProgressiveReadiness>({
-    stage: 'Library metadata ready',
+    stage: 'Book metadata ready',
     tracksReady: 0,
     tracksRemaining: 0,
     throughput: null,
@@ -388,7 +378,7 @@ export function ImportLibraryModal({
     setReconciliation(null);
     setRetryingCount(0);
     setProgressiveReadiness({
-      stage: 'Library metadata ready',
+      stage: 'Book metadata ready',
       tracksReady: 0,
       tracksRemaining: 0,
       throughput: null,
@@ -867,7 +857,7 @@ export function ImportLibraryModal({
     const manifestWork = summarizeManifestWork(startResp.manifest, BATCH_SIZE);
     const affectedTrackIds = manifestWork.affectedTrackIds;
     setProgressiveReadiness({
-      stage: 'Library metadata ready',
+      stage: 'Book metadata ready',
       tracksReady: startResp.tracks_already_reusable ?? 0,
       tracksRemaining: affectedTrackIds.length,
       throughput: null,
@@ -1388,7 +1378,7 @@ export function ImportLibraryModal({
                   className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 rounded-3xl p-8"
                 >
                   <div className="bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-2xl p-6 text-center max-w-xs w-full">
-                    <AlertTriangle className="mx-auto mb-3 text-amber-400" size={28} />
+                    <WarningAlt className="mx-auto mb-3 text-amber-400" size={28} />
                     <p className="font-bold text-lg mb-2">
                       {abortDialogIntent === 'pause'
                         ? 'Pause analysis?'
@@ -1435,13 +1425,13 @@ export function ImportLibraryModal({
             {(phase === 'idle' || phase === 'database_selected' || phase === 'scanning_usb') && (
               <div className="flex items-start justify-between mb-6">
                 <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0">
-                  <Database className="text-primary" size={22} />
+                  <DataBase className="text-primary" size={22} />
                 </div>
                 <button
                   onClick={handleClose}
                   className="text-muted-foreground hover:text-foreground transition-colors p-1"
                 >
-                  <X size={18} />
+                  <Close size={18} />
                 </button>
               </div>
             )}
@@ -1449,7 +1439,7 @@ export function ImportLibraryModal({
             {/* ── Mode tabs (idle / selected) ── */}
             {(phase === 'idle' || phase === 'database_selected' || phase === 'scanning_usb') && (
               <>
-                <h2 className="text-2xl font-bold mb-4">Import Rekordbox Library</h2>
+                <h2 className="text-2xl font-bold mb-4">Import Rekordbox Book</h2>
 
                 {/* Mode selector */}
                 <div className="flex gap-1.5 p-1 bg-[var(--color-surface)] rounded-xl mb-5">
@@ -1490,7 +1480,7 @@ export function ImportLibraryModal({
                         <div className="space-y-2">
                           {folderScan.dbFile ? (
                             <div className="flex items-center gap-2 text-sm">
-                              <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+                              <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
                               <span className="font-mono text-xs truncate">
                                 {folderScan.dbFile.name}
                               </span>
@@ -1500,15 +1490,15 @@ export function ImportLibraryModal({
                             </div>
                           ) : (
                             <div className="flex items-center gap-2 text-sm">
-                              <AlertCircle size={14} className="text-red-400 shrink-0" />
+                              <WarningAlt size={14} className="text-red-400 shrink-0" />
                               <span className="text-red-400 text-xs">exportLibrary.db not found</span>
                             </div>
                           )}
                           <div className="flex items-center gap-2 text-sm">
                             {folderScan.anlzFiles.length > 0 ? (
-                              <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+                              <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
                             ) : (
-                              <AlertCircle size={14} className="text-amber-400 shrink-0" />
+                              <WarningAlt size={14} className="text-amber-400 shrink-0" />
                             )}
                             <span className="text-xs">
                               {folderScan.anlzFiles.length.toLocaleString()} required DAT/EXT analysis file
@@ -1549,12 +1539,12 @@ export function ImportLibraryModal({
                       disabled={!folderScan?.dbFile}
                       className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      Import Library + Analysis
+                      Import Book + Analysis
                     </button>
                   </>
                 )}
 
-                {/* ZIP Bundle / Database Only picker */}
+                {/* ZIP Bundle / DataBase Only picker */}
                 {(mode === 'zip_bundle' || mode === 'database_only') && (
                   <>
                     <button
@@ -1575,7 +1565,7 @@ export function ImportLibraryModal({
                         </div>
                       ) : (
                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                          <FileUp size={20} />
+                          <Upload size={20} />
                           <p className="text-sm">
                             Click to select {mode === 'zip_bundle' ? '.zip bundle' : 'exportLibrary.db'}
                           </p>
@@ -1585,7 +1575,7 @@ export function ImportLibraryModal({
 
                     {unexpectedDbName && (
                       <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl mb-4">
-                        <AlertCircle size={13} className="text-amber-400 shrink-0 mt-0.5" />
+                        <WarningAlt size={13} className="text-amber-400 shrink-0 mt-0.5" />
                         <p className="text-xs text-amber-300 leading-relaxed">
                           Unexpected filename. The standard rekordbox database is named{' '}
                           <code className="font-mono">exportLibrary.db</code>. You can still try
@@ -1607,7 +1597,7 @@ export function ImportLibraryModal({
                       disabled={!selectedFile}
                       className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      {mode === 'zip_bundle' ? 'Import Bundle' : 'Import Library'}
+                      {mode === 'zip_bundle' ? 'Import Bundle' : 'Import Book'}
                     </button>
                   </>
                 )}
@@ -1625,17 +1615,17 @@ export function ImportLibraryModal({
             {phase === 'uploading_usb_data' && (
               <div className="text-center py-4">
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Loader2 className="animate-spin text-primary" size={28} />
+                  <CircleDash className="animate-spin text-primary" size={28} />
                 </div>
                 <h2 className="text-xl font-bold mb-2">
-                  {localUsbStage === 'uploading_database' && 'Uploading Rekordbox Database…'}
+                  {localUsbStage === 'uploading_database' && 'Uploading Rekordbox DataBase…'}
                   {localUsbStage === 'matching_analysis' && 'Matching Analysis Files…'}
                   {localUsbStage === 'uploading_analysis' && 'Uploading Analysis Files…'}
                   {localUsbStage === 'uploading_bundle' && 'Uploading Bundle…'}
                 </h2>
 
                 <div className="mt-4 mb-5 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left">
-                  <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-400" />
+                  <WarningAlt size={18} className="mt-0.5 shrink-0 text-amber-400" />
                   <p className="text-xs leading-relaxed text-amber-100">
                     DropDex is currently reading this Rekordbox USB. Keep Rekordbox closed and do not eject the drive until DropDex confirms that USB access has ended.
                   </p>
@@ -1680,7 +1670,7 @@ export function ImportLibraryModal({
                       onClick={handleContinueInBackground}
                       className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white transition-all active:scale-[0.99]"
                     >
-                      Browse Library in Background
+                      Browse Book in Background
                     </button>
                     <p className="text-[10px] leading-relaxed text-amber-200">
                       Keep the USB connected and Rekordbox closed until the background panel confirms USB access is released.
@@ -1701,7 +1691,7 @@ export function ImportLibraryModal({
             {phase === 'usb_released' && !cancelRequestedRef.current && (
               <div className="space-y-4 py-4 text-center">
                 <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="text-emerald-400" size={28} />
+                  <CheckmarkFilled className="text-emerald-400" size={28} />
                 </div>
                 <h2 className="text-xl font-bold">USB Access Released</h2>
                 <p className="text-sm text-muted-foreground">
@@ -1719,9 +1709,9 @@ export function ImportLibraryModal({
                 <div className="text-center">
                   <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
                     {usbReleaseConfirmed ? (
-                      <CheckCircle2 className="text-emerald-400" size={28} />
+                      <CheckmarkFilled className="text-emerald-400" size={28} />
                     ) : (
-                      <Loader2 className="animate-spin text-amber-400" size={28} />
+                      <CircleDash className="animate-spin text-amber-400" size={28} />
                     )}
                   </div>
                   <h2 className="text-xl font-bold mb-2">
@@ -1758,7 +1748,7 @@ export function ImportLibraryModal({
 
                 {!usbReleaseConfirmed && (
                   <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
-                    <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-400" />
+                    <WarningAlt size={18} className="mt-0.5 shrink-0 text-amber-400" />
                     <p className="text-xs leading-relaxed text-amber-100">
                       Keep Rekordbox closed and do not eject the drive until the USB access released step is checked.
                     </p>
@@ -1771,11 +1761,11 @@ export function ImportLibraryModal({
             {phase === 'parsing_cloud_data' && (
               <div className="text-center py-4">
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Loader2 className="animate-spin text-primary" size={28} />
+                  <CircleDash className="animate-spin text-primary" size={28} />
                 </div>
-                <h2 className="text-xl font-bold mb-2">Library Ready, Analysis Running</h2>
+                <h2 className="text-xl font-bold mb-2">Book Ready, Analysis Running</h2>
                 <div className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left">
-                  <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-400" />
+                  <CheckmarkFilled size={18} className="mt-0.5 shrink-0 text-emerald-400" />
                   <p className="text-xs leading-relaxed text-emerald-100">
                     USB reading is complete. DropDex is continuing from uploaded copies and no longer needs the USB. You may open Rekordbox or eject the drive.
                   </p>
@@ -1868,11 +1858,11 @@ export function ImportLibraryModal({
             {phase === 'paused' && (
               <div className="space-y-5 py-4 text-center">
                 <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="text-amber-300" size={28} />
+                  <CheckmarkFilled className="text-amber-300" size={28} />
                 </div>
                 <h2 className="text-xl font-bold">Analysis Paused Safely</h2>
                 <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left">
-                  <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-400" />
+                  <CheckmarkFilled size={18} className="mt-0.5 shrink-0 text-emerald-400" />
                   <p className="text-xs leading-relaxed text-emerald-100">
                     USB activity is zero. The cloud worker acknowledged that it stopped writing. Completed tracks and uploaded assets were retained for resume from Import History.
                   </p>
@@ -1891,15 +1881,15 @@ export function ImportLibraryModal({
             {phase === 'completed' && (
               <div className="text-center">
                 <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle2 className="text-emerald-400" size={28} />
+                  <CheckmarkFilled className="text-emerald-400" size={28} />
                 </div>
                 <h2 className="text-xl font-bold mb-1">
-                  {withAnalysis ? 'Library Imported with Analysis!' : 'Library Imported!'}
+                  {withAnalysis ? 'Book Imported with Analysis!' : 'Book Imported!'}
                 </h2>
 
                 {usbReleaseConfirmed && (
                   <div className="my-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left">
-                    <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                    <CheckmarkFilled size={16} className="mt-0.5 shrink-0 text-emerald-400" />
                     <p className="text-xs leading-relaxed text-emerald-100">
                       USB reading is complete. DropDex no longer needs the USB.
                     </p>
@@ -2028,12 +2018,12 @@ export function ImportLibraryModal({
             {phase === 'partial_success' && (
               <div className="text-center">
                 <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <AlertTriangle className="text-amber-400" size={28} />
+                  <WarningAlt className="text-amber-400" size={28} />
                 </div>
-                <h2 className="text-xl font-bold mb-2">Library Imported with Warnings</h2>
+                <h2 className="text-xl font-bold mb-2">Book Imported with Warnings</h2>
                 {usbReleaseConfirmed && (
                   <div className="my-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left">
-                    <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                    <CheckmarkFilled size={16} className="mt-0.5 shrink-0 text-emerald-400" />
                     <p className="text-xs leading-relaxed text-emerald-100">
                       USB reading is complete. DropDex no longer needs the USB.
                     </p>
@@ -2111,7 +2101,7 @@ export function ImportLibraryModal({
             {/* ── Cancellation ── */}
             {phase === 'cancelled' && (
               <div className="space-y-4 py-4 text-center">
-                <AlertCircle size={34} className="mx-auto text-amber-500" />
+                <WarningAlt size={34} className="mx-auto text-amber-500" />
                 <div>
                   <h3 className="font-semibold">Import deleted</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -2128,10 +2118,10 @@ export function ImportLibraryModal({
             {phase === 'failed' && (
               <div className="text-center">
                 <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <AlertCircle className="text-red-400" size={28} />
+                  <WarningAlt className="text-red-400" size={28} />
                 </div>
                 <h2 className="text-xl font-bold mb-2">
-                  {errorStructured ? 'Library Parsed, Save Failed' : 'Import Failed'}
+                  {errorStructured ? 'Book Parsed, Save Failed' : 'Import Failed'}
                 </h2>
                 <p className="text-sm text-muted-foreground leading-relaxed px-2">
                   {errorMessage}
@@ -2186,9 +2176,9 @@ function SafetyStep({
   return (
     <div className="flex items-center gap-3 text-left">
       {complete ? (
-        <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />
+        <CheckmarkFilled size={16} className="shrink-0 text-emerald-400" />
       ) : active ? (
-        <Loader2 size={16} className="shrink-0 animate-spin text-amber-400" />
+        <CircleDash size={16} className="shrink-0 animate-spin text-amber-400" />
       ) : (
         <div className="h-4 w-4 shrink-0 rounded-full border border-[var(--color-border-subtle)]" />
       )}

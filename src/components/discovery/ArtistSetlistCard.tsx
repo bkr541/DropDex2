@@ -1,16 +1,8 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import {
-  Calendar,
-  Clock,
-  Music2,
-  Eye,
-  Heart,
-  ExternalLink,
-  ChevronRight,
-} from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { DiscoverySetlistResult } from '../../types';
+import { Calendar, ChevronRight, Favorite, Launch, Music, Time, View } from '@carbon/icons-react';
 
 interface ArtistSetlistCardProps {
   setlist: DiscoverySetlistResult;
@@ -31,7 +23,7 @@ function ArtworkImage({ url, title }: { url: string; title: string }) {
   }
   return (
     <div className="w-full h-full flex items-center justify-center">
-      <Music2 size={36} className="text-primary/20" />
+      <Music size={36} className="text-primary/20" />
     </div>
   );
 }
@@ -57,7 +49,7 @@ export function ArtistSetlistCard({ setlist, onOpen }: ArtistSetlistCardProps) {
           <ArtworkImage url={setlist.artwork_url} title={title} />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Music2 size={36} className="text-primary/20" />
+            <Music size={36} className="text-primary/20" />
           </div>
         )}
 
@@ -66,13 +58,13 @@ export function ArtistSetlistCard({ setlist, onOpen }: ArtistSetlistCardProps) {
           <div className="absolute top-2 left-2 flex gap-1.5">
             {setlist.views != null && (
               <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-background/80 backdrop-blur-sm text-[9px] font-bold text-muted-foreground border border-[var(--color-border-subtle)]">
-                <Eye size={9} />
+                <View size={9} />
                 {setlist.views.toLocaleString()}
               </span>
             )}
             {setlist.likes != null && (
               <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-background/80 backdrop-blur-sm text-[9px] font-bold text-muted-foreground border border-[var(--color-border-subtle)]">
-                <Heart size={9} />
+                <Favorite size={9} />
                 {setlist.likes.toLocaleString()}
               </span>
             )}
@@ -89,7 +81,7 @@ export function ArtistSetlistCard({ setlist, onOpen }: ArtistSetlistCardProps) {
             className="absolute top-2 right-2 p-1.5 rounded-lg bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-foreground transition-colors border border-[var(--color-border-subtle)]"
             title="View on 1001Tracklists"
           >
-            <ExternalLink size={12} />
+            <Launch size={12} />
           </a>
         )}
 
@@ -129,7 +121,7 @@ export function ArtistSetlistCard({ setlist, onOpen }: ArtistSetlistCardProps) {
             )}
             {setlist.duration_text && (
               <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Clock size={10} />
+                <Time size={10} />
                 {setlist.duration_text}
               </span>
             )}

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { RekordboxImport } from '../types';
 import {
@@ -8,6 +7,7 @@ import {
   type DeleteActiveStrategy,
 } from '../lib/rekordbox/libraryDeletion';
 import { cn } from '../lib/utils';
+import { CircleDash, WarningAlt } from '@carbon/icons-react';
 
 interface DeleteLibraryModalProps {
   target: RekordboxImport | null;
@@ -50,8 +50,8 @@ export function DeleteLibraryModal({
   const baseActionLabel = isActive || persistedStrategy === 'start_over'
     ? effectiveStrategy === 'start_over'
       ? 'Delete & Start Over'
-      : 'Delete Active Library'
-    : 'Delete Library';
+      : 'Delete Active Book'
+    : 'Delete Book';
   const actionLabel = retryingPendingDelete ? `Retry ${baseActionLabel}` : baseActionLabel;
   const confirmationValid = isDeleteConfirmationValid(confirmation);
 
@@ -79,7 +79,7 @@ export function DeleteLibraryModal({
         >
           <div className="flex items-start gap-4">
             <div className="rounded-2xl bg-red-500/10 p-3 text-red-400">
-              <AlertTriangle size={24} />
+              <WarningAlt size={24} />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-400">Permanent action</p>
@@ -122,7 +122,7 @@ export function DeleteLibraryModal({
                     : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]',
                 )}
               >
-                <p className="text-sm font-bold">Delete Active Library</p>
+                <p className="text-sm font-bold">Delete Active Book</p>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                   Switch automatically to the newest remaining usable snapshot: <span className="font-mono">{nextUsableImport?.source_filename}</span>.
                 </p>
@@ -197,7 +197,7 @@ export function DeleteLibraryModal({
             >
               {deleting ? (
                 <span className="inline-flex items-center gap-2">
-                  <Loader2 size={14} className="animate-spin" />
+                  <CircleDash size={14} className="animate-spin" />
                   {deletingRetryCount > 0 ? `Cleaning up… pass ${deletingRetryCount}` : 'Deleting…'}
                 </span>
               ) : actionLabel}

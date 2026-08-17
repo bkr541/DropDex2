@@ -1,15 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  Loader2,
-  Mail,
-  RefreshCw,
-  Trash2,
-} from 'lucide-react';
 import { getSupabaseClient } from '../lib/supabase';
 import { useAuthSession } from '../hooks/useAuthSession';
 import {
@@ -18,6 +8,7 @@ import {
   submitEmailOtp,
   verifyEmailOtp,
 } from '../auth/emailOtp';
+import { ArrowLeft, ArrowRight, CheckmarkFilled, CircleDash, Email, Renew, TrashCan, WarningAlt } from '@carbon/icons-react';
 
 function AuthenticationFailure({
   error,
@@ -47,7 +38,7 @@ function AuthenticationFailure({
         className="w-full max-w-md rounded-2xl border border-red-400/30 bg-[var(--color-panel)] p-7 text-center shadow-2xl"
       >
         <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/15 text-red-400">
-          <AlertTriangle size={26} aria-hidden="true" />
+          <WarningAlt size={26} aria-hidden="true" />
         </div>
         <h1 id="authentication-failure-title" className="text-2xl font-black">
           Sign-in could not be initialized
@@ -65,7 +56,7 @@ function AuthenticationFailure({
             onClick={() => void runRecovery('retry')}
             className="inline-flex items-center justify-center gap-2 rounded-xl brand-gradient px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
           >
-            {recovering === 'retry' ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+            {recovering === 'retry' ? <CircleDash size={15} className="animate-spin" /> : <Renew size={15} />}
             Retry
           </button>
           <button
@@ -74,7 +65,7 @@ function AuthenticationFailure({
             onClick={() => void runRecovery('clear')}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-3 text-sm font-bold disabled:opacity-50"
           >
-            {recovering === 'clear' ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+            {recovering === 'clear' ? <CircleDash size={15} className="animate-spin" /> : <TrashCan size={15} />}
             Clear session
           </button>
         </div>
@@ -107,7 +98,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (auth.status === 'loading') {
     return (
       <div className="flex h-screen items-center justify-center bg-background font-sans" aria-label="Loading authentication">
-        <Loader2 className="animate-spin text-primary" size={32} />
+        <CircleDash className="animate-spin text-primary" size={32} />
       </div>
     );
   }
@@ -231,7 +222,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               className="text-center"
             >
               <div className="w-16 h-16 brand-gradient rounded-full flex items-center justify-center mx-auto mb-6 shadow-brand-hero">
-                <Mail size={28} className="text-white" />
+                <Email size={28} className="text-white" />
               </div>
               <h1 className="text-2xl font-black mb-2">Enter your sign-in code</h1>
               <p className="text-sm text-muted-foreground mb-7 leading-relaxed">
@@ -269,9 +260,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   className="w-full py-3.5 brand-gradient text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-opacity active:scale-95"
                 >
                   {verifying ? (
-                    <Loader2 size={16} className="animate-spin" />
+                    <CircleDash size={16} className="animate-spin" />
                   ) : (
-                    <CheckCircle2 size={16} />
+                    <CheckmarkFilled size={16} />
                   )}
                   {verifying ? 'Verifying…' : 'Verify and sign in'}
                 </button>
@@ -284,7 +275,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   onClick={() => void handleResendOtp()}
                   className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {sending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                  {sending ? <CircleDash size={13} className="animate-spin" /> : <Renew size={13} />}
                   {sending
                     ? 'Sending…'
                     : resendSeconds > 0
@@ -313,7 +304,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               </p>
               <form onSubmit={handleSendOtp} className="space-y-4">
                 <div className="relative">
-                  <Mail
+                  <Email
                     className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
                     size={16}
                   />
@@ -335,7 +326,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   className="w-full py-3.5 brand-gradient text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-opacity active:scale-95"
                 >
                   {sending ? (
-                    <Loader2 size={16} className="animate-spin" />
+                    <CircleDash size={16} className="animate-spin" />
                   ) : (
                     <ArrowRight size={16} />
                   )}

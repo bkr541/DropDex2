@@ -1,18 +1,3 @@
-import {
-  AudioWaveform,
-  Check,
-  Circle,
-  Crown,
-  Disc3,
-  Gauge,
-  Leaf,
-  Radio,
-  Repeat2,
-  Sparkles,
-  TriangleAlert,
-  Waves,
-  X,
-} from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import {
   AlertBanner,
@@ -37,6 +22,7 @@ import {
   type ToastTone,
 } from '../ui/DropDexFeedback';
 import './stage2-showcase.css';
+import { Checkmark, CircleOutline, Close, Dashboard, Radio, RecordingFilled, Repeat, Sprout, Star, Trophy, WarningAlt, Waveform } from '@carbon/icons-react';
 
 function Stage2Card({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
@@ -49,29 +35,29 @@ function Stage2Card({ label, children, className }: { label: string; children: R
 
 const badgeRows: Array<Array<{ label: string; tone: SemanticTone; icon: ReactNode }>> = [
   [
-    { label: 'Active', tone: 'success', icon: <Circle size={8} fill="currentColor" /> },
-    { label: 'Online', tone: 'online', icon: <Circle size={8} /> },
+    { label: 'Active', tone: 'success', icon: <CircleOutline size={8} fill="currentColor" /> },
+    { label: 'Online', tone: 'online', icon: <CircleOutline size={8} /> },
     { label: 'Synced', tone: 'active', icon: <Radio size={10} /> },
   ],
   [
-    { label: 'Analyzed', tone: 'purple', icon: <AudioWaveform size={11} /> },
-    { label: 'Hot Cue', tone: 'pink', icon: <Disc3 size={10} /> },
-    { label: 'Loop', tone: 'purple', icon: <Repeat2 size={10} /> },
+    { label: 'Analyzed', tone: 'purple', icon: <Waveform size={11} /> },
+    { label: 'Hot Cue', tone: 'pink', icon: <RecordingFilled size={10} /> },
+    { label: 'Loop', tone: 'purple', icon: <Repeat size={10} /> },
   ],
   [
-    { label: 'Master', tone: 'warning', icon: <Crown size={11} /> },
-    { label: 'Quantized', tone: 'active', icon: <Gauge size={11} /> },
-    { label: 'Rekordbox', tone: 'purple', icon: <Disc3 size={10} /> },
+    { label: 'Master', tone: 'warning', icon: <Trophy size={11} /> },
+    { label: 'Quantized', tone: 'active', icon: <Dashboard size={11} /> },
+    { label: 'Rekordbox', tone: 'purple', icon: <RecordingFilled size={10} /> },
   ],
   [
-    { label: 'Pending', tone: 'warning', icon: <Circle size={8} /> },
-    { label: 'Complete', tone: 'success', icon: <Check size={11} /> },
-    { label: 'Disabled', tone: 'disabled', icon: <X size={10} /> },
+    { label: 'Pending', tone: 'warning', icon: <CircleOutline size={8} /> },
+    { label: 'Complete', tone: 'success', icon: <Checkmark size={11} /> },
+    { label: 'Disabled', tone: 'disabled', icon: <Close size={10} /> },
   ],
   [
-    { label: 'Warning', tone: 'warning', icon: <TriangleAlert size={11} /> },
-    { label: 'Error', tone: 'error', icon: <X size={11} /> },
-    { label: 'Offline', tone: 'disabled', icon: <Circle size={8} /> },
+    { label: 'Warning', tone: 'warning', icon: <WarningAlt size={11} /> },
+    { label: 'Error', tone: 'error', icon: <Close size={11} /> },
+    { label: 'Offline', tone: 'disabled', icon: <CircleOutline size={8} /> },
   ],
 ];
 
@@ -274,10 +260,10 @@ export function Stage2Showcase() {
 
         <Stage2Card label="Selectable Option Card" className="dd-stage2-selectable">
           <div className="dd-stage2-option-grid" role="radiogroup" aria-label="Audio quality">
-            <SelectableOptionCard selected={selected === 'quality'} onSelect={() => setSelected('quality')} title="High Quality" description="Best audio quality" meta="WAV, AIFF" recommended tone="active" icon={<AudioWaveform size={24} />} />
-            <SelectableOptionCard selected={selected === 'balanced'} onSelect={() => setSelected('balanced')} title="Balanced" description="Good quality" meta="MP3 320kbps" tone="online" icon={<Waves size={24} />} />
-            <SelectableOptionCard selected={selected === 'space'} onSelect={() => setSelected('space')} title="Space Saver" description="Smaller file size" meta="MP3 128kbps" tone="success" icon={<Leaf size={24} />} />
-            <SelectableOptionCard selected={selected === 'lossless'} onSelect={() => setSelected('lossless')} title="Lossless" description="No quality loss" meta="FLAC" tone="purple" icon={<Sparkles size={24} />} />
+            <SelectableOptionCard selected={selected === 'quality'} onSelect={() => setSelected('quality')} title="High Quality" description="Best audio quality" meta="WAV, AIFF" recommended tone="active" icon={<Waveform size={24} />} />
+            <SelectableOptionCard selected={selected === 'balanced'} onSelect={() => setSelected('balanced')} title="Balanced" description="Good quality" meta="MP3 320kbps" tone="online" icon={<Waveform size={24} />} />
+            <SelectableOptionCard selected={selected === 'space'} onSelect={() => setSelected('space')} title="Space Saver" description="Smaller file size" meta="MP3 128kbps" tone="success" icon={<Sprout size={24} />} />
+            <SelectableOptionCard selected={selected === 'lossless'} onSelect={() => setSelected('lossless')} title="Lossless" description="No quality loss" meta="FLAC" tone="purple" icon={<Star size={24} />} />
           </div>
         </Stage2Card>
 

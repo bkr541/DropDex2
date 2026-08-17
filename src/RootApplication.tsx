@@ -1,5 +1,4 @@
 import { StrictMode, Suspense } from 'react';
-import { Loader2 } from 'lucide-react';
 import { AuthProvider } from './auth/AuthProvider';
 import { AuthGate } from './components/AuthGate';
 import { ApplicationErrorBoundary } from './components/errors/ApplicationErrorBoundary';
@@ -7,6 +6,7 @@ import { StartupConfigurationError } from './components/StartupConfigurationErro
 import { lazyWithRecovery } from './navigation/lazyWithRecovery';
 import { supabaseConfiguration } from './lib/supabase';
 import { ThemeProvider } from './theme/ThemeProvider';
+import { CircleDash } from '@carbon/icons-react';
 
 const App = lazyWithRecovery('application', () => import('./App.tsx'));
 
@@ -18,7 +18,7 @@ function ApplicationLoadingScreen() {
       role="status"
     >
       <div className="text-center">
-        <Loader2 className="mx-auto animate-spin text-primary" size={32} />
+        <CircleDash className="mx-auto animate-spin text-primary" size={32} />
         <p className="mt-3 text-sm font-bold text-muted-foreground">Loading DropDex…</p>
       </div>
     </div>

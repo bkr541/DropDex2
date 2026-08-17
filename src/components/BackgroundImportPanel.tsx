@@ -1,4 +1,3 @@
-import { AlertTriangle, CheckCircle2, Loader2, Pause, Play, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchRekordboxAnalysisStatus,
@@ -9,6 +8,7 @@ import {
 } from '../lib/api/rekordboxImport';
 import { announceRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
 import { ProgressBar } from './ui/DropDexFeedback';
+import { CheckmarkFilled, CircleDash, Close, Pause, Play, TrashCan, WarningAlt } from '@carbon/icons-react';
 
 const POLL_MS = 2500;
 
@@ -139,7 +139,7 @@ export function BackgroundImportPanel({
             aria-label="Hide import panel"
             className="text-muted-foreground hover:text-foreground"
           >
-            <X size={16} />
+            <Close size={16} />
           </button>
         ) : (
           <span
@@ -154,14 +154,14 @@ export function BackgroundImportPanel({
 
       {usbReleased ? (
         <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-2.5 text-xs text-emerald-100">
-          <CheckCircle2 size={15} className="shrink-0 text-emerald-400" />
+          <CheckmarkFilled size={15} className="shrink-0 text-emerald-400" />
           USB released. The library is ready to browse.
         </div>
       ) : (
         <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
           <div className="flex items-start gap-2">
-            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-400" />
-            <p>Library metadata is ready. DropDex is still reading required DAT/EXT files, so keep the USB connected and Rekordbox closed.</p>
+            <WarningAlt size={15} className="mt-0.5 shrink-0 text-amber-400" />
+            <p>Book metadata is ready. DropDex is still reading required DAT/EXT files, so keep the USB connected and Rekordbox closed.</p>
           </div>
           <button
             type="button"
@@ -210,16 +210,16 @@ export function BackgroundImportPanel({
         <div className="mt-4 grid grid-cols-2 gap-2">
           {!terminal && !paused && (
             <button type="button" disabled={action !== null} onClick={() => void runAction('pause')} className="flex items-center justify-center gap-2 rounded-xl border border-primary/30 px-3 py-2 text-xs font-bold text-primary disabled:opacity-50">
-              {action === 'pause' ? <Loader2 size={13} className="animate-spin" /> : <Pause size={13} />} Pause
+              {action === 'pause' ? <CircleDash size={13} className="animate-spin" /> : <Pause size={13} />} Pause
             </button>
           )}
           {paused && (
             <button type="button" disabled={action !== null} onClick={() => void runAction('resume')} className="flex items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-              {action === 'resume' ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Resume
+              {action === 'resume' ? <CircleDash size={13} className="animate-spin" /> : <Play size={13} />} Resume
             </button>
           )}
           <button type="button" disabled={action !== null || deletionPending} onClick={onRequestDelete} className="flex items-center justify-center gap-2 rounded-xl border border-red-500/30 px-3 py-2 text-xs font-bold text-red-300 disabled:opacity-50">
-            {deletionPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} {deletionPending ? 'Deleting…' : 'Delete Import'}
+            {deletionPending ? <CircleDash size={13} className="animate-spin" /> : <TrashCan size={13} />} {deletionPending ? 'Deleting…' : 'Delete Import'}
           </button>
         </div>
       )}

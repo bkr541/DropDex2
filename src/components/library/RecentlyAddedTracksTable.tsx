@@ -1,4 +1,3 @@
-import { History, Loader2, Play, Pause } from 'lucide-react';
 import { useCallback } from 'react';
 import { cn, formatKey } from '../../lib/utils';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
@@ -8,6 +7,7 @@ import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import { TrackAnalysisStatusBadge } from './TrackAnalysisStatusBadge';
 import type { RekordboxTrack } from '../../types';
 import { waveformStateForTrack, type WaveformLoadState } from '../../lib/queries/waveformValidation';
+import { CircleDash, Pause, Play, RecentlyViewed } from '@carbon/icons-react';
 
 interface RecentlyAddedTracksTableProps {
   tracks: RekordboxTrack[];
@@ -91,7 +91,7 @@ function TrackRowRecent({
             )}
           >
             {isLoadingThis ? (
-              <Loader2 size={13} className="animate-spin" />
+              <CircleDash size={13} className="animate-spin" />
             ) : isPlaying ? (
               <Pause size={13} />
             ) : (
@@ -148,7 +148,7 @@ function TrackRowRecent({
                 : 'bg-[var(--color-surface)] text-foreground hover:bg-primary hover:text-white',
             )}
           >
-            {isLoadingThis ? <Loader2 size={11} className="animate-spin" /> : isPlaying ? <Pause size={11} /> : <Play size={11} />}
+            {isLoadingThis ? <CircleDash size={11} className="animate-spin" /> : isPlaying ? <Pause size={11} /> : <Play size={11} />}
           </button>
           <div className="flex-1 min-w-0">
             <p className={cn(
@@ -197,13 +197,13 @@ export function RecentlyAddedTracksTable({
     <section className="space-y-3">
       {showHeader && (
         <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-          <History size={13} /> Recently Added
+          <RecentlyViewed size={13} /> Recently Added
         </h2>
       )}
 
       {loading && (
         <div className="flex items-center justify-center py-10">
-          <Loader2 className="animate-spin text-muted-foreground" size={20} />
+          <CircleDash className="animate-spin text-muted-foreground" size={20} />
         </div>
       )}
 

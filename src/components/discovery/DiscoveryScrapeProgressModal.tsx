@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { CheckCircle2, X, XCircle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { DiscoveryScrapeJob } from '../../types';
+import { CheckmarkFilled, Close, CloseFilled } from '@carbon/icons-react';
 
 interface DiscoveryScrapeProgressModalProps {
   isOpen: boolean;
@@ -79,7 +79,7 @@ export function DiscoveryScrapeProgressModal({
               className="absolute top-5 right-5 opacity-30 hover:opacity-60 transition-opacity p-1 rounded-lg"
               aria-label={isActive ? 'Run in background' : 'Close'}
             >
-              <X size={18} />
+              <Close size={18} />
             </button>
 
             {/* Header */}
@@ -111,7 +111,7 @@ export function DiscoveryScrapeProgressModal({
             >
               {!job && pollingError && (
                 <>
-                  <XCircle size={32} className="text-red-400" />
+                  <CloseFilled size={32} className="text-red-400" />
                   <div className="text-center space-y-1 px-2">
                     <p className="text-sm font-bold text-red-400">Status temporarily unavailable</p>
                     <p className="text-[10px] font-mono opacity-55 break-words leading-relaxed">
@@ -135,7 +135,7 @@ export function DiscoveryScrapeProgressModal({
 
               {isCompleted && (
                 <>
-                  <CheckCircle2 size={32} className="text-emerald-500" />
+                  <CheckmarkFilled size={32} className="text-emerald-500" />
                   <div className="text-center space-y-1">
                     <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
                       Sets Found!
@@ -152,7 +152,7 @@ export function DiscoveryScrapeProgressModal({
 
               {isFailed && (
                 <>
-                  <XCircle size={32} className="text-red-400" />
+                  <CloseFilled size={32} className="text-red-400" />
                   <div className="text-center space-y-1 px-2">
                     <p className="text-sm font-bold text-red-400">Search failed</p>
                     {job?.error_message && (

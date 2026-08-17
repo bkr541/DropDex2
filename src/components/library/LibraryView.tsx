@@ -1,24 +1,4 @@
 import { useState, useMemo, memo, useCallback } from 'react';
-import {
-  Search,
-  Loader2,
-  Disc3,
-  FileUp,
-  ListMusic,
-  Tag,
-  BarChart2,
-  ChevronRight,
-  Music,
-  FolderOpen,
-  ArrowUpRight,
-  Play,
-  Pause,
-  User,
-  CheckCircle2,
-  AlertTriangle,
-  Calendar,
-  RefreshCw,
-} from 'lucide-react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
@@ -54,6 +34,7 @@ import type {
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
+import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Upload, User, WarningAlt } from '@carbon/icons-react';
 
 const TABS: { id: LibraryTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -92,9 +73,9 @@ function EmptyLibrary({ onImport }: { onImport: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center space-y-4">
       <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center">
-        <Disc3 size={40} className="text-primary/50" />
+        <RecordingFilled size={40} className="text-primary/50" />
       </div>
-      <h2 className="text-xl font-black">No Library Imported Yet</h2>
+      <h2 className="text-xl font-black">No Book Imported Yet</h2>
       <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
         Connect your rekordbox USB drive, then import your library to get started.
       </p>
@@ -102,8 +83,8 @@ function EmptyLibrary({ onImport }: { onImport: () => void }) {
         onClick={onImport}
         className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold transition-all active:scale-95 hover:bg-primary/90"
       >
-        <FileUp size={16} />
-        Import Library
+        <Upload size={16} />
+        Import Book
       </button>
       <p className="text-[10px] text-muted-foreground max-w-xs leading-relaxed">
         Select <code className="font-mono">exportLibrary.db</code> from{' '}
@@ -167,7 +148,7 @@ function ArtistProfileCard({
   );
 }
 
-// ── Library info card (left column, desktop) ────────────────────────────────
+// ── Book info card (left column, desktop) ────────────────────────────────
 
 function DesktopLibraryInfoCard({
   latestImport,
@@ -208,7 +189,7 @@ function DesktopLibraryInfoCard({
   return (
     <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4 space-y-3">
       <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold">
-        Library Info
+        Book Info
       </p>
 
       {/* USB Import */}
@@ -217,15 +198,15 @@ function DesktopLibraryInfoCard({
             USB Import
           </p>
           <div className="flex items-center gap-1.5">
-            <CheckCircle2 size={12} className="text-green-500 shrink-0" />
+            <CheckmarkFilled size={12} className="text-green-500 shrink-0" />
             <span className="font-black text-sm leading-none text-green-500">Import Complete</span>
           </div>
           <button
             onClick={onImport}
             className="mt-2 w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-[10px] font-semibold"
           >
-            <FileUp size={10} className="shrink-0 text-muted-foreground" />
-            <span className="flex-1 text-left">Import New Library</span>
+            <Upload size={10} className="shrink-0 text-muted-foreground" />
+            <span className="flex-1 text-left">Import New Book</span>
             <ChevronRight size={10} className="text-muted-foreground shrink-0" />
           </button>
         </div>
@@ -237,7 +218,7 @@ function DesktopLibraryInfoCard({
               Track Analysis
             </p>
             <div className="flex items-center gap-1.5">
-              <AlertTriangle
+              <WarningAlt
                 size={12}
                 className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'}
               />
@@ -255,7 +236,7 @@ function DesktopLibraryInfoCard({
                 onClick={() => onResumeAnalysis(latestImport.id)}
                 className="mt-2 w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-[10px] font-semibold"
               >
-                <RefreshCw size={10} className="shrink-0 text-muted-foreground" />
+                <Renew size={10} className="shrink-0 text-muted-foreground" />
                 <span className="flex-1 text-left">Resume Analysis</span>
                 <ChevronRight size={10} className="text-muted-foreground shrink-0" />
               </button>
@@ -274,7 +255,7 @@ function DesktopLibraryInfoCard({
                 : String(latestImport.track_count),
             label: 'Tracks',
           },
-          { icon: ListMusic, value: String(latestImport.playlist_count), label: 'Playlists' },
+          { icon: Music, value: String(latestImport.playlist_count), label: 'Playlists' },
           { icon: Calendar, value: shortDate, label: 'Last Import' },
         ].map(({ icon: Icon, value, label }) => (
           <div key={label} className="text-center">
@@ -290,15 +271,15 @@ function DesktopLibraryInfoCard({
         </p>
       </div>
 
-      {/* Library Snapshot */}
+      {/* Book Snapshot */}
       <div className="pt-2 border-t border-[var(--color-border-faint)]">
         {statsLoading ? (
-          <Loader2 size={14} className="animate-spin text-muted-foreground" />
+          <CircleDash size={14} className="animate-spin text-muted-foreground" />
         ) : (
           <div className="space-y-2">
             {[
               {
-                icon: BarChart2,
+                icon: ChartBar,
                 label: 'Most common BPM',
                 value: mostCommonBpm != null ? String(mostCommonBpm) : '—',
               },
@@ -430,7 +411,7 @@ const TrackRow = memo(function TrackRow({
             )}
           >
             {isLoadingThis ? (
-              <Loader2 size={13} className="animate-spin" />
+              <CircleDash size={13} className="animate-spin" />
             ) : isPlaying ? (
               <Pause size={13} />
             ) : (
@@ -496,7 +477,7 @@ const TrackRow = memo(function TrackRow({
             )}
           >
             {isLoadingThis ? (
-              <Loader2 size={11} className="animate-spin" />
+              <CircleDash size={11} className="animate-spin" />
             ) : isPlaying ? (
               <Pause size={11} />
             ) : (
@@ -581,7 +562,7 @@ function OverviewPlaylistCard({
           'w-9 h-9 rounded-xl flex items-center justify-center shrink-0',
           playlist.is_folder ? 'bg-primary/15 text-primary' : 'bg-secondary/15 text-secondary',
         )}>
-          {playlist.is_folder ? <FolderOpen size={16} /> : <ListMusic size={16} />}
+          {playlist.is_folder ? <FolderOpen size={16} /> : <Music size={16} />}
         </div>
         <ArrowUpRight size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 shrink-0" />
       </div>
@@ -752,7 +733,7 @@ export function LibraryView({
           >
             {importLoading && (
               <div className="flex items-center justify-center py-24">
-                <Loader2 className="animate-spin text-primary" size={32} />
+                <CircleDash className="animate-spin text-primary" size={32} />
               </div>
             )}
 
@@ -787,7 +768,7 @@ export function LibraryView({
                   {/* Top Genres */}
                   <SidebarSection icon={Tag} title="Top Genres">
                     {statsLoading ? (
-                      <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                      <CircleDash size={14} className="animate-spin text-muted-foreground" />
                     ) : topGenres.length === 0 ? (
                       <p className="text-xs text-muted-foreground italic">No genre data</p>
                     ) : (
@@ -851,7 +832,7 @@ export function LibraryView({
                           <section className="space-y-3">
                             <div className="flex items-center justify-between">
                               <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                                <ListMusic size={13} /> Playlists
+                                <Music size={13} /> Playlists
                               </h2>
                               <button
                                 onClick={() => onActiveTabChange('playlists')}
@@ -862,7 +843,7 @@ export function LibraryView({
                             </div>
                             {playlistsLoading ? (
                               <div className="flex items-center justify-center py-6">
-                                <Loader2 className="animate-spin text-muted-foreground" size={20} />
+                                <CircleDash className="animate-spin text-muted-foreground" size={20} />
                               </div>
                             ) : (
                               <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-thin">
@@ -916,7 +897,7 @@ export function LibraryView({
                           </div>
                           {playlistsLoading ? (
                             <div className="flex items-center justify-center py-10">
-                              <Loader2 className="animate-spin text-muted-foreground" size={20} />
+                              <CircleDash className="animate-spin text-muted-foreground" size={20} />
                             </div>
                           ) : playlists.length === 0 ? (
                             <div className="text-center py-10 border-2 border-dashed border-[var(--color-border-subtle)] rounded-3xl">
@@ -963,7 +944,7 @@ export function LibraryView({
                           </p>
                           {tracksLoading ? (
                             <div className="flex items-center justify-center py-16">
-                              <Loader2 className="animate-spin text-primary" size={28} />
+                              <CircleDash className="animate-spin text-primary" size={28} />
                             </div>
                           ) : (
                             <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
@@ -1005,7 +986,7 @@ export function LibraryView({
                                 >
                                   {tracksLoadingMore ? (
                                     <span className="inline-flex items-center gap-2">
-                                      <Loader2 size={13} className="animate-spin" /> Loading more…
+                                      <CircleDash size={13} className="animate-spin" /> Loading more…
                                     </span>
                                   ) : (
                                     `Load ${Math.min(200, libraryTrackTotal - visibleTracks.length).toLocaleString()} more…`
@@ -1025,7 +1006,7 @@ export function LibraryView({
                           </p>
                           {statsLoading ? (
                             <div className="flex items-center justify-center py-16">
-                              <Loader2 className="animate-spin text-primary" size={28} />
+                              <CircleDash className="animate-spin text-primary" size={28} />
                             </div>
                           ) : genreStats.length === 0 ? (
                             <p className="text-center py-12 text-muted-foreground italic text-sm">No genre data in this library.</p>
@@ -1064,7 +1045,7 @@ export function LibraryView({
                           </p>
                           {statsLoading ? (
                             <div className="flex items-center justify-center py-16">
-                              <Loader2 className="animate-spin text-primary" size={28} />
+                              <CircleDash className="animate-spin text-primary" size={28} />
                             </div>
                           ) : artistStats.length === 0 ? (
                             <p className="text-center py-12 text-muted-foreground italic text-sm">No artist data in this library.</p>

@@ -1,6 +1,6 @@
 import React from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
 import type { SupabaseConfiguration } from '../lib/supabase';
+import { Renew, WarningAlt } from '@carbon/icons-react';
 
 interface StartupConfigurationErrorProps {
   configuration: Extract<SupabaseConfiguration, { status: 'missing' }>;
@@ -14,7 +14,7 @@ export function StartupConfigurationError({ configuration }: StartupConfiguratio
         className="w-full max-w-lg rounded-2xl border border-red-400/30 bg-[var(--color-panel)] p-7 shadow-2xl"
       >
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-red-500/15 text-red-400">
-          <AlertTriangle size={24} aria-hidden="true" />
+          <WarningAlt size={24} aria-hidden="true" />
         </div>
         <h1 id="startup-configuration-title" className="text-2xl font-black">
           DropDex configuration is incomplete
@@ -45,7 +45,7 @@ export function StartupConfigurationError({ configuration }: StartupConfiguratio
           onClick={() => window.location.reload()}
           className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90"
         >
-          <RefreshCw size={15} aria-hidden="true" />
+          <Renew size={15} aria-hidden="true" />
           Reload after configuration
         </button>
       </section>

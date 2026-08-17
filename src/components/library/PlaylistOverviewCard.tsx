@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { FolderOpen, ListMusic, Pencil } from 'lucide-react';
 import { cn, getDeterministicBars } from '../../lib/utils';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
+import { Edit, FolderOpen, Music } from '@carbon/icons-react';
 
 function PlaylistFallbackArt({ isFolder, seed }: { isFolder: boolean; seed: string }) {
   const bars = getDeterministicBars(seed, 28);
@@ -33,7 +33,7 @@ function PlaylistFallbackArt({ isFolder, seed }: { isFolder: boolean; seed: stri
           isFolder ? 'bg-primary/25 text-primary' : 'bg-secondary/25 text-secondary',
         )}
       >
-        {isFolder ? <FolderOpen size={20} /> : <ListMusic size={20} />}
+        {isFolder ? <FolderOpen size={20} /> : <Music size={20} />}
       </div>
     </div>
   );
@@ -99,7 +99,7 @@ export function PlaylistOverviewCard({
           title="Edit playlist"
           className="absolute top-2 right-2 p-1.5 rounded-lg bg-background/80 backdrop-blur-sm border border-[var(--color-border-subtle)] text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shadow-sm z-10"
         >
-          <Pencil size={11} />
+          <Edit size={11} />
         </button>
       )}
     </div>

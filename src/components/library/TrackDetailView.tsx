@@ -1,13 +1,3 @@
-import {
-  Info,
-  Clock,
-  Tag,
-  Disc3,
-  FolderOpen,
-  ListMusic,
-  Calendar,
-  FlaskConical,
-} from 'lucide-react';
 import { useCallback } from 'react';
 import { cn, formatDuration, formatKey, formatPosition } from '../../lib/utils';
 import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
@@ -18,6 +8,7 @@ import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import type { RekordboxTrack } from '../../types';
 import type { TrackPlaylistMembership } from '../../lib/queries/rekordbox';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
+import { Calendar, Chemistry, FolderOpen, Information, Music, RecordingFilled, Tag, Time } from '@carbon/icons-react';
 
 interface TrackDetailViewProps {
   track: RekordboxTrack;
@@ -152,7 +143,7 @@ export function TrackDetailView({
             className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/15 px-4 py-3 text-sm font-black uppercase tracking-widest text-primary transition-all hover:bg-primary/20 hover:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label={`Open ${track.title} in Drop Lab`}
           >
-            <FlaskConical size={16} />
+            <Chemistry size={16} />
             Open in Drop Lab
           </button>
         </aside>
@@ -160,7 +151,7 @@ export function TrackDetailView({
         <div className="min-w-0 space-y-6">
           <section className="space-y-2">
             <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2 px-1">
-              <Info size={14} /> DJ Comments
+              <Information size={14} /> DJ Comments
             </h3>
             <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4 text-sm leading-relaxed">
               {track.comments ||
@@ -170,14 +161,14 @@ export function TrackDetailView({
 
           <section className="space-y-2">
             <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2 px-1">
-              <Tag size={14} /> Library Metadata
+              <Tag size={14} /> Book Metadata
             </h3>
             <div className="glass rounded-2xl overflow-hidden divide-y divide-[var(--color-border-faint)]">
               {[
-                { icon: Disc3, label: 'Album', value: track.album },
+                { icon: RecordingFilled, label: 'Album', value: track.album },
                 { icon: Tag, label: 'Genre', value: track.genre },
                 { icon: Tag, label: 'Label', value: track.label },
-                { icon: Clock, label: 'Format', value: track.file_format },
+                { icon: Time, label: 'Format', value: track.file_format },
                 { icon: Calendar, label: 'Added', value: track.date_added },
               ].map(({ icon: Icon, label, value }) => (
                 <div key={label} className="px-4 py-3 flex items-center justify-between gap-4">
@@ -210,7 +201,7 @@ export function TrackDetailView({
 
           <section className="space-y-2">
             <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2 px-1">
-              <ListMusic size={14} /> Appears In
+              <Music size={14} /> Appears In
             </h3>
             {membershipsLoading ? (
               <div className="glass rounded-2xl px-4 py-3 text-xs text-muted-foreground">Loading…</div>
@@ -228,7 +219,7 @@ export function TrackDetailView({
                       className="w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-[var(--color-surface-hover)] transition-colors text-left"
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <ListMusic size={11} className="text-muted-foreground shrink-0" />
+                        <Music size={11} className="text-muted-foreground shrink-0" />
                         <p className="text-xs font-bold truncate">{playlist.name}</p>
                       </div>
                       <span className="text-[10px] font-mono text-primary shrink-0">

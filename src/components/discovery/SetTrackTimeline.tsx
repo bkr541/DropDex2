@@ -1,5 +1,5 @@
-import { ExternalLink } from 'lucide-react';
 import type { DiscoverySetTrack } from '../../types';
+import { Launch } from '@carbon/icons-react';
 
 export interface SetTrackTimelineProps {
   tracks: DiscoverySetTrack[];
@@ -85,7 +85,7 @@ function PrimaryCard({ g }: { g: TimelineGroup }) {
               className="text-muted-foreground hover:text-primary transition-colors"
               title="View on source"
             >
-              <ExternalLink size={10} />
+              <Launch size={10} />
             </a>
           )}
         </div>
@@ -129,7 +129,7 @@ function LayeredCards({ tracks }: { tracks: DiscoverySetTrack[] }) {
                   rel="noopener noreferrer"
                   className="text-muted-foreground hover:text-primary transition-colors shrink-0"
                 >
-                  <ExternalLink size={9} />
+                  <Launch size={9} />
                 </a>
               )}
             </div>

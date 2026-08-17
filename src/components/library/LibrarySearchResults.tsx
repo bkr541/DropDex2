@@ -1,4 +1,3 @@
-import { Search, Loader2, Play, Pause } from 'lucide-react';
 import { useCallback } from 'react';
 import { cn, formatKey } from '../../lib/utils';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
@@ -7,6 +6,7 @@ import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import type { RekordboxTrack } from '../../types';
 import { waveformStateForTrack, type WaveformLoadState } from '../../lib/queries/waveformValidation';
+import { CircleDash, Pause, Play, Search } from '@carbon/icons-react';
 
 interface LibrarySearchResultsProps {
   query: string;
@@ -95,7 +95,7 @@ function TrackRowSearch({
             )}
           >
             {isLoadingThis ? (
-              <Loader2 size={13} className="animate-spin" />
+              <CircleDash size={13} className="animate-spin" />
             ) : isPlaying ? (
               <Pause size={13} />
             ) : (
@@ -146,7 +146,7 @@ function TrackRowSearch({
                 : 'bg-[var(--color-surface)] text-foreground hover:bg-primary hover:text-white',
             )}
           >
-            {isLoadingThis ? <Loader2 size={11} className="animate-spin" /> : isPlaying ? <Pause size={11} /> : <Play size={11} />}
+            {isLoadingThis ? <CircleDash size={11} className="animate-spin" /> : isPlaying ? <Pause size={11} /> : <Play size={11} />}
           </button>
           <div className="flex-1 min-w-0">
             <p className={cn(
@@ -208,7 +208,7 @@ export function LibrarySearchResults({
 
       {loading && (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="animate-spin text-primary" size={26} />
+          <CircleDash className="animate-spin text-primary" size={26} />
         </div>
       )}
 
@@ -260,7 +260,7 @@ export function LibrarySearchResults({
             >
               {loadingMore ? (
                 <span className="inline-flex items-center gap-2">
-                  <Loader2 size={13} className="animate-spin" /> Loading more…
+                  <CircleDash size={13} className="animate-spin" /> Loading more…
                 </span>
               ) : (
                 `Load ${Math.min(200, total - results.length).toLocaleString()} more…`

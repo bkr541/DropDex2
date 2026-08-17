@@ -1,11 +1,10 @@
 /**
  * ReviewView — renders a compact Set Review list with authentic Rekordbox
- * waveform data. Cards share the same cache and renderer as Library and Track
+ * waveform data. Cards share the same cache and renderer as Book and Track
  * Intelligence, while keeping enough visual density for low-light set prep.
  */
 
 import { memo, useCallback, useMemo } from 'react';
-import { Music, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn, formatKey } from '../../lib/utils';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
@@ -14,6 +13,7 @@ import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import { waveformStateForTrack, type WaveformLoadState } from '../../lib/queries/waveformValidation';
 import type { RekordboxTrack } from '../../types';
+import { CircleDash, Music } from '@carbon/icons-react';
 
 interface ReviewCardProps {
   track: RekordboxTrack;
@@ -135,7 +135,7 @@ export function ReviewView({ importId, tracks, loading, onTrackClick }: ReviewVi
   if (loading || (tracks.length === 0 && importId)) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="animate-spin text-primary" size={32} />
+        <CircleDash className="animate-spin text-primary" size={32} />
       </div>
     );
   }

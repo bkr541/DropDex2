@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react';
-import { ChevronRight, User } from 'lucide-react';
 import { MusicNote01Icon } from 'hugeicons-react';
 import { SetlistFeedCard } from './SetlistFeedCard';
 import type { FeedArtist, DiscoverySetlistResult } from '../../types';
+import { ChevronRight, User } from '@carbon/icons-react';
 
 interface ArtistFeedRowProps {
   artist: FeedArtist;

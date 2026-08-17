@@ -1,10 +1,10 @@
 import { useState, useRef, type ChangeEvent } from 'react';
-import { Loader2, Upload, RefreshCw, Check, FolderOpen, ListMusic } from 'lucide-react';
 import { cn, formatPlaylistDuration, getDeterministicBars } from '../../lib/utils';
 import { uploadPlaylistArtwork } from '../../lib/queries/storage';
 import { upsertPlaylistProfile, buildPlaylistIdentityKey } from '../../lib/queries/userPlaylists';
 import type { RekordboxImport, UserPlaylistProfile } from '../../types';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
+import { Checkmark, CircleDash, FolderOpen, Music, Renew, Upload } from '@carbon/icons-react';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ACCEPTED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
@@ -37,7 +37,7 @@ function PlaylistFallbackArt({ isFolder, seed }: { isFolder: boolean; seed: stri
           isFolder ? 'bg-primary/25 text-primary' : 'bg-secondary/25 text-secondary',
         )}
       >
-        {isFolder ? <FolderOpen size={26} /> : <ListMusic size={26} />}
+        {isFolder ? <FolderOpen size={26} /> : <Music size={26} />}
       </div>
     </div>
   );
@@ -135,7 +135,7 @@ export function PlaylistEditView({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <RefreshCw size={15} className="text-primary shrink-0" />
+              <Renew size={15} className="text-primary shrink-0" />
               <h3 className="font-black text-sm">Rescan Device</h3>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
@@ -148,7 +148,7 @@ export function PlaylistEditView({
             onClick={onImport}
             className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary/90 transition-all active:scale-95 shrink-0 shadow-sm"
           >
-            <RefreshCw size={13} />
+            <Renew size={13} />
             Rescan Device
           </button>
         </div>
@@ -278,9 +278,9 @@ export function PlaylistEditView({
             )}
           >
             {saving ? (
-              <><Loader2 size={13} className="animate-spin" /> Saving…</>
+              <><CircleDash size={13} className="animate-spin" /> Saving…</>
             ) : saved ? (
-              <><Check size={13} /> Saved</>
+              <><Checkmark size={13} /> Saved</>
             ) : (
               'Save Changes'
             )}

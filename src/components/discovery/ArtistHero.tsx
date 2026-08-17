@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { User, RefreshCw, Loader2, Activity, Search, ExternalLink } from 'lucide-react';
 import { MusicNote01Icon } from 'hugeicons-react';
 import { cn } from '../../lib/utils';
 import { formatRelativeTime } from '../../lib/utils';
 import type { DiscoveryArtist, DiscoveryArtistDetail, DiscoveryScrapeJob } from '../../types';
+import { Activity, CircleDash, Launch, Renew, Search, User } from '@carbon/icons-react';
 
 interface ArtistHeroProps {
   artist: DiscoveryArtist;
@@ -64,7 +64,7 @@ export function ArtistHero({
         >
           {scrapeStarting ? (
             <>
-              <Loader2 size={11} className="animate-spin" />
+              <CircleDash size={11} className="animate-spin" />
               Starting…
             </>
           ) : isJobActive ? (
@@ -74,7 +74,7 @@ export function ArtistHero({
             </>
           ) : hasSetlists ? (
             <>
-              <RefreshCw size={11} />
+              <Renew size={11} />
               Refresh Results
             </>
           ) : (
@@ -164,7 +164,7 @@ export function ArtistHero({
                     className="flex items-center gap-0.5 text-primary hover:underline font-semibold"
                   >
                     1001Tracklists
-                    <ExternalLink size={9} className="ml-0.5" />
+                    <Launch size={9} className="ml-0.5" />
                   </a>
                 </>
               )}

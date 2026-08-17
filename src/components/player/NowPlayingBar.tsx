@@ -1,21 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  Play,
-  Pause,
-  Square,
-  Volume2,
-  VolumeX,
-  Loader2,
-  AlertTriangle,
-  X,
-  Usb,
-} from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { computeProgress } from '../../lib/rekordbox/waveformRenderer';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
+import { CircleDash, Close, Pause, Play, Stop, Usb, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
 
 // ── Time formatting ───────────────────────────────────────────────────────────
 
@@ -131,7 +121,7 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
       {/* Error state */}
       {isError && (
         <>
-          <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+          <WarningAlt size={16} className="text-amber-400 shrink-0" />
           <p className="flex-1 min-w-0 text-xs text-amber-400 truncate">
             {error}
           </p>
@@ -149,7 +139,7 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
             aria-label="Dismiss error"
             className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all"
           >
-            <X size={16} />
+            <Close size={16} />
           </button>
         </>
       )}
@@ -175,7 +165,7 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
             className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-white hover:bg-primary/90 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait"
           >
             {isLoading || isBuffering ? (
-              <Loader2 size={14} className="animate-spin" />
+              <CircleDash size={14} className="animate-spin" />
             ) : isPlaying ? (
               <Pause size={14} />
             ) : (
@@ -219,7 +209,7 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
               aria-label={muted ? 'Unmute' : 'Mute'}
               className="p-1 text-muted-foreground hover:text-foreground transition-colors rounded"
             >
-              {muted || volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              {muted || volume === 0 ? <VolumeMute size={14} /> : <VolumeUp size={14} />}
             </button>
             <input
               type="range"
@@ -247,7 +237,7 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
             aria-label="Stop playback"
             className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all"
           >
-            <Square size={14} />
+            <Stop size={14} />
           </button>
         </>
       )}

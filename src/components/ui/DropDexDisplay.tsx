@@ -6,9 +6,9 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import { DiscAlbum, UserRound } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import './dropdex-display.css';
+import { MusicAdd, UserAvatar } from '@carbon/icons-react';
 
 export type SurfaceCardVariant = 'glass' | 'surface';
 
@@ -191,7 +191,7 @@ export function Artwork({
       ) : (
         <div className="dd-artwork__fallback" role="img" aria-label={alt}>
           <span className="dd-artwork__fallback-icon" aria-hidden="true">
-            {fallbackIcon ?? <DiscAlbum size={30} />}
+            {fallbackIcon ?? <MusicAdd size={30} />}
           </span>
           {fallbackTitle && <strong>{fallbackTitle}</strong>}
           {fallbackDescription && <small>{fallbackDescription}</small>}
@@ -245,7 +245,7 @@ export function Avatar({
           <span className="dd-avatar__fallback" role="img" aria-label={fallbackLabel}>
             {initials
               ? <strong>{initials}</strong>
-              : <span aria-hidden="true">{icon ?? <UserRound />}</span>}
+              : <span aria-hidden="true">{icon ?? <UserAvatar />}</span>}
           </span>
         )}
       </span>

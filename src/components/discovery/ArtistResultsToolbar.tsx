@@ -1,6 +1,6 @@
-import { ChevronDown, Search } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { ArtistTabId } from './ArtistResultsTabs';
+import { ChevronDown, Search } from '@carbon/icons-react';
 
 export type SortKey = 'date_desc' | 'date_asc' | 'most_viewed' | 'highest_completion';
 

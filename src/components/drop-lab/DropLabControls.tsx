@@ -1,16 +1,9 @@
-import {
-  ArrowRight,
-  FileText,
-  Loader2,
-  Play,
-  RotateCcw,
-  Square,
-} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 import type { DropPoint } from '../../lib/music/dropPointResolver';
 import type { DropLabPreviewPhase } from '../../hooks/useDropLabPreview';
 import type { DropLabBarCount, DropLabBeatOffset } from '../../lib/music/dropLabSegments';
+import { ArrowRight, CircleDash, Document, Play, RotateCounterclockwise, Stop } from '@carbon/icons-react';
 
 interface DropLabControlsProps {
   beatOffset: DropLabBeatOffset;
@@ -240,11 +233,11 @@ export function DropLabControls({
             )}
           >
             {previewLoading ? (
-              <Loader2 size={18} className="animate-spin" />
+              <CircleDash size={18} className="animate-spin" />
             ) : previewPlaying ? (
-              <Square size={17} fill="currentColor" />
+              <Stop size={17} fill="currentColor" />
             ) : previewError ? (
-              <RotateCcw size={18} />
+              <RotateCounterclockwise size={18} />
             ) : (
               <Play size={19} fill="currentColor" />
             )}
@@ -260,7 +253,7 @@ export function DropLabControls({
               disabled={trackDetailsDisabled}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2.5 py-1.5 text-[10px] font-bold text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <FileText size={12} />
+              <Document size={12} />
               Candidate details
             </button>
           </div>
