@@ -35,4 +35,15 @@ describe('Rekordbox hard-delete production UI contract', () => {
     expect(modal).toContain('disabled={deleting || !confirmationValid}');
     expect(decisions).toContain("return value === 'DELETE';");
   });
+  it('bounds automatic destructive retries and preserves structured cleanup diagnostics', () => {
+    const app = readFileSync('src/App.tsx', 'utf8');
+
+    expect(app).toContain('const MAX_AUTOMATIC_DELETE_RETRIES = 3;');
+    expect(app).toContain("err.structured.error_code === 'DELETE_CLEANUP_FAILED'");
+    expect(app).toContain("err.structured.error_code === 'DELETE_FINALIZE_FAILED'");
+    expect(app).toContain('err.structured?.retryable === true');
+    expect(app).toContain('err.structured?.diagnostic');
+    expect(app).not.toContain('const MAX_RETRIES = 200;');
+  });
+
 });

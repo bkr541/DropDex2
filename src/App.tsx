@@ -863,21 +863,23 @@ export default function App() {
         const token = session?.access_token;
         if (!token) throw new Error('Your session expired. Sign in again before deleting a library.');
 
-        // The backend deletes storage files incrementally and writes checkpoints.
-        // A 503 means the worker was killed mid-pass; retrying continues from the
-        // last checkpoint. Retry up to 20 times with a 3 s pause between attempts.
-        const MAX_RETRIES = 200;
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        // A cleanup/finalization 503 can be transient, but blindly retrying every
+        // 503 hundreds of times hides persistent Storage/DB faults and floods the
+        // API. Make a small bounded retry attempt, then surface the structured
+        // backend diagnostic so the user can retry after the actual fault is fixed.
+        const MAX_AUTOMATIC_DELETE_RETRIES = 3;
+        for (let attempt = 0; attempt <= MAX_AUTOMATIC_DELETE_RETRIES; attempt++) {
           try {
             result = await deleteRekordboxImport(imp.id, token, undefined, activeStrategy);
             setDeleteLibraryRetryCount(0);
             break;
           } catch (err) {
-            if (
-              err instanceof RekordboxImportError &&
-              err.status === 503 &&
-              attempt < MAX_RETRIES
-            ) {
+            const retryableDelete503 = err instanceof RekordboxImportError
+              && err.status === 503
+              && err.structured?.retryable === true
+              && (err.structured.error_code === 'DELETE_CLEANUP_FAILED'
+                || err.structured.error_code === 'DELETE_FINALIZE_FAILED');
+            if (retryableDelete503 && attempt < MAX_AUTOMATIC_DELETE_RETRIES) {
               setDeleteLibraryRetryCount(attempt + 1);
               await new Promise<void>((resolve) => setTimeout(resolve, 3000));
               continue;
@@ -903,9 +905,14 @@ export default function App() {
       if (isActive || activeStrategy === 'start_over') refetchImport();
       refetchImportList();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'DropDex could not delete this library. Please retry.';
+      const baseMessage = err instanceof Error ? err.message : 'DropDex could not delete this library. Please retry.';
+      const developerDiagnostic = import.meta.env.DEV
+        && err instanceof RekordboxImportError
+        && err.structured?.diagnostic
+        ? ` (${err.structured.stage ?? 'cleanup'}: ${err.structured.diagnostic})`
+        : '';
       console.error('Failed to delete import:', err);
-      setDeleteLibraryError(message);
+      setDeleteLibraryError(`${baseMessage}${developerDiagnostic}`);
       setDeleteLibraryRetryCount(0);
       pendingDeletionContextsRef.current.delete(imp.id);
       setPendingDeletionIds(new Set(pendingDeletionContextsRef.current.keys()));

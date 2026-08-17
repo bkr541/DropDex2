@@ -1009,6 +1009,8 @@ def test_delete_cleanup_failure_remains_retryable_and_idempotent(monkeypatch):
         import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
 
     assert exc.value.status_code == 503
+    assert exc.value.detail["error_code"] == "DELETE_CLEANUP_FAILED"
+    assert exc.value.detail["diagnostic"] == "storage unavailable"
     row = client.tables["rekordbox_imports"][0]
     assert row["status"] == "deleting"
     assert row["error_code"] == "DELETE_CLEANUP_FAILED"

@@ -102,3 +102,29 @@ def test_dependency_rpcs_are_service_role_only():
     ):
         assert f"revoke all on function public.{signature} from public, anon, authenticated" in sql
         assert f"grant execute on function public.{signature} to service_role" in sql
+
+_REFERENCE_RELEASE_MIGRATION = (
+    _REPO_ROOT
+    / "supabase"
+    / "migrations"
+    / "20260817090000_rekordbox_hard_delete_reference_release.sql"
+)
+
+
+def test_hard_delete_reference_release_keeps_terminal_write_barrier_narrow():
+    sql = re.sub(
+        r"\s+",
+        " ",
+        _REFERENCE_RELEASE_MIGRATION.read_text(encoding="utf-8").lower(),
+    ).strip()
+
+    assert "create or replace function public.reject_terminal_rekordbox_import_write" in sql
+    assert "parent_status is null or parent_status not in ('deleting', 'cancelled', 'failed')" in sql
+    assert "tg_op = 'update'" in sql
+    assert "analysis_reused_from_track_id" in sql
+    assert "retained_from_asset_id" in sql
+    assert "source_asset_id" in sql
+    assert "source_dat_asset_id" in sql
+    assert "source_ext_asset_id" in sql
+    assert "source_2ex_asset_id" in sql
+    assert "raise exception 'import % is %'" in sql

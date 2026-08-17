@@ -123,6 +123,37 @@ class ImportCancelledError(RuntimeError):
     pass
 
 
+class ImportCleanupError(RuntimeError):
+    """A hard-delete cleanup failure with a stable stage identifier."""
+
+    def __init__(self, stage: str, message: str):
+        super().__init__(message)
+        self.stage = stage
+
+
+def _delete_failure_payload(
+    *,
+    error_code: str,
+    detail: str,
+    retryable: bool,
+    exc: Exception,
+    stage: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "error_code": error_code,
+        "detail": detail,
+        "retryable": retryable,
+    }
+    resolved_stage = stage or getattr(exc, "stage", None)
+    if resolved_stage:
+        payload["stage"] = str(resolved_stage)
+    # Local/development builds need enough information to identify a persistent
+    # cleanup fault. Production keeps the same safe user-facing message.
+    if settings.environment.strip().lower() != "production":
+        payload["diagnostic"] = str(exc)[:1000]
+    return payload
+
+
 def _create_supabase():
     import supabase as _sb  # noqa: PLC0415
 
@@ -476,8 +507,9 @@ def cleanup_partial_import(
         storage_objects = _enumerate_import_storage_objects(client, import_id)
     except Exception as exc:
         logger.exception("Could not enumerate storage paths for import %s", import_id)
-        raise RuntimeError(
-            f"Import cleanup is incomplete: could not enumerate cloud assets: {exc}"
+        raise ImportCleanupError(
+            "storage_enumeration",
+            f"Import cleanup is incomplete: could not enumerate cloud assets: {exc}",
         ) from exc
 
     # Remove every discovered cloud object before deleting any metadata. If a
@@ -488,18 +520,27 @@ def cleanup_partial_import(
             _remove_storage_objects(client, storage_objects)
         except Exception as exc:
             logger.exception("Storage cleanup failed for cancelled import %s", import_id)
-            raise RuntimeError(f"Import cleanup is incomplete: storage: {exc}") from exc
+            raise ImportCleanupError(
+                "storage_delete",
+                f"Import cleanup is incomplete: storage: {exc}",
+            ) from exc
 
     errors = _delete_import_children(client, import_id)
     if errors:
-        raise RuntimeError("Import cleanup is incomplete: " + "; ".join(errors))
+        raise ImportCleanupError(
+            "database_children",
+            "Import cleanup is incomplete: " + "; ".join(errors),
+        )
     try:
         from .analysis_staging import remove_import_staging
 
         remove_import_staging(import_id, settings.analysis_staging_root)
     except Exception as exc:
         logger.exception("Staging cleanup failed for cancelled import %s", import_id)
-        raise RuntimeError(f"Import cleanup is incomplete: staging: {exc}") from exc
+        raise ImportCleanupError(
+            "staging_delete",
+            f"Import cleanup is incomplete: staging: {exc}",
+        ) from exc
 
 
 def _update_import_row(
@@ -881,11 +922,12 @@ def _cleanup_after_worker_ack(
         )
         raise HTTPException(
             status_code=503,
-            detail={
-                "error_code": "DELETE_CLEANUP_FAILED",
-                "detail": "The worker stopped, but cloud cleanup is incomplete. Retry Delete Import.",
-                "retryable": True,
-            },
+            detail=_delete_failure_payload(
+                error_code="DELETE_CLEANUP_FAILED",
+                detail="The worker stopped, but cloud cleanup is incomplete. Retry Delete Import.",
+                retryable=True,
+                exc=exc,
+            ),
         ) from exc
 
     deleted_response = {
@@ -931,11 +973,13 @@ def _cleanup_after_worker_ack(
             logger.exception("Could not persist hard-delete finalization failure for %s", import_id)
         raise HTTPException(
             status_code=503,
-            detail={
-                "error_code": "DELETE_FINALIZE_FAILED",
-                "detail": "Library data was cleaned, but DropDex could not finalize deletion. Retry Delete Import.",
-                "retryable": True,
-            },
+            detail=_delete_failure_payload(
+                error_code="DELETE_FINALIZE_FAILED",
+                detail="Library data was cleaned, but DropDex could not finalize deletion. Retry Delete Import.",
+                retryable=True,
+                exc=exc,
+                stage="database_finalize",
+            ),
         ) from exc
     return deleted_response
 
