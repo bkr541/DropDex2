@@ -66,6 +66,11 @@ from .models import (
     TrackCompleteStatus,
 )
 from .rekordbox_parser import parse_library
+from .retained_analysis_dependencies import (
+    RetainedAnalysisSourceUnavailable,
+    release_retained_analysis_dependencies,
+    replace_retained_analysis_dependencies,
+)
 from .rescan_service import (
     copy_normalized_data_for_track,
     copy_normalized_data_for_tracks_bulk,
@@ -873,21 +878,91 @@ async def start_analysis_import(
                 tracks_by_id.get(entry.track_id, {}), entry
             )
 
+        # Persist every cross-import dependency before reading/copying source-owned
+        # normalized data or retained DAT/EXT bytes. The RPC shares the source
+        # import's per-user advisory lock with hard-delete start, closing the race
+        # where deletion could begin after rescan matching but before materialization.
+        dependency_entries = [
+            entry
+            for entry in manifest
+            if entry.reused_from_track_id
+            and entry.manifest_status in {"reused", "metadata_only", "reparse_from_retained"}
+        ]
+        dependency_rows = [
+            {
+                "source_track_id": str(entry.reused_from_track_id),
+                "dependent_track_id": entry.track_id,
+            }
+            for entry in dependency_entries
+        ]
+        try:
+            if dependency_rows:
+                await run_in_threadpool(
+                    replace_retained_analysis_dependencies,
+                    sb,
+                    import_id,
+                    dependency_rows,
+                )
+        except RetainedAnalysisSourceUnavailable:
+            # The source import won the deletion lock. Do not retain a dangling
+            # reference; conservatively request fresh analysis from the USB.
+            logger.info(
+                "Retained source became unavailable during manifest planning for import %s; "
+                "requesting fresh analysis assets",
+                import_id,
+            )
+            fallback_targets = {entry.track_id for entry in dependency_entries}
+            tracks_reused = max(
+                0,
+                tracks_reused
+                - sum(
+                    1
+                    for entry in dependency_entries
+                    if entry.manifest_status == "reused"
+                ),
+            )
+            tracks_metadata_only = max(
+                0,
+                tracks_metadata_only
+                - sum(
+                    1
+                    for entry in dependency_entries
+                    if entry.manifest_status == "metadata_only"
+                ),
+            )
+            tracks_reparse_from_retained = max(
+                0,
+                tracks_reparse_from_retained
+                - sum(
+                    1
+                    for entry in dependency_entries
+                    if entry.manifest_status == "reparse_from_retained"
+                ),
+            )
+            for entry in dependency_entries:
+                entry.manifest_status = "needs_dat"
+                entry.reused_from_track_id = None
+                entry.reuse_reason = None
+                _apply_manifest_work_rules(entry)
+            tracks_needing_upload += len(fallback_targets)
+            reuse_mappings = [
+                mapping for mapping in reuse_mappings if mapping[1] not in fallback_targets
+            ]
+            await run_in_threadpool(
+                replace_retained_analysis_dependencies,
+                sb,
+                import_id,
+                [],
+            )
+
         if reuse_mappings:
+            normalized_targets = [target for _, target, _ in reuse_mappings]
             try:
                 reuse_metrics = await run_in_threadpool(
                     copy_normalized_data_for_tracks_bulk,
                     sb,
                     import_id,
                     reuse_mappings,
-                )
-                logger.info(
-                    "Incremental reuse import=%s tracks=%d read_batches=%d write_batches=%d rows=%d",
-                    import_id,
-                    len(reuse_mappings),
-                    reuse_metrics.get("read_batches", 0),
-                    reuse_metrics.get("write_batches", 0),
-                    reuse_metrics.get("rows_copied", 0),
                 )
             except Exception as exc:
                 logger.warning(
@@ -905,6 +980,31 @@ async def start_analysis_import(
                         entry.reuse_reason = None
                         _apply_manifest_work_rules(entry)
                 tracks_needing_upload += len(fallback_targets)
+                await run_in_threadpool(
+                    release_retained_analysis_dependencies,
+                    sb,
+                    import_id,
+                    list(fallback_targets),
+                )
+            else:
+                # Normalized rows are now owned by the dependent import. Waveform
+                # detail blobs may still share a path, and delete cleanup protects
+                # those paths by checking surviving waveform references. A failed
+                # release is fatal here so the safety guard is never silently lost.
+                await run_in_threadpool(
+                    release_retained_analysis_dependencies,
+                    sb,
+                    import_id,
+                    normalized_targets,
+                )
+                logger.info(
+                    "Incremental reuse import=%s tracks=%d read_batches=%d write_batches=%d rows=%d",
+                    import_id,
+                    len(reuse_mappings),
+                    reuse_metrics.get("read_batches", 0),
+                    reuse_metrics.get("write_batches", 0),
+                    reuse_metrics.get("rows_copied", 0),
+                )
 
         required_analysis_file_count = sum(
             len(entry.required_asset_types) for entry in manifest

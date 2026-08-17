@@ -45,7 +45,11 @@ import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { BackgroundImportPanel } from './components/BackgroundImportPanel';
 import { DeleteLibraryModal } from './components/DeleteLibraryModal';
 import { getImportHistoryPresentation } from './lib/rekordbox/importHistoryPresentation';
-import { getNextUsableLibrarySnapshot, type DeleteActiveStrategy } from './lib/rekordbox/libraryDeletion';
+import {
+  getNextUsableLibrarySnapshot,
+  isUsableLibrarySnapshot,
+  type DeleteActiveStrategy,
+} from './lib/rekordbox/libraryDeletion';
 import { getImportProgress, getInFlightImport, isImportInFlight, isImportStalled } from './lib/rekordbox/importLifecycle';
 import { ResumeAnalysisModal } from './components/ResumeAnalysisModal';
 import { ImportActivityBanner } from './components/imports/ImportActivityBanner';
@@ -397,7 +401,7 @@ function ImportStatusView({
           <p className="mt-5 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-300">{item.error_message}</p>
         )}
         <div className="mt-6 flex flex-wrap gap-2">
-          {!isActive && !inFlight && !stalled && presentation.canActivate && (
+          {!isActive && !inFlight && !stalled && isUsableLibrarySnapshot(item) && presentation.canActivate && (
             <button type="button" onClick={onMakeActive} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white">Make Active</button>
           )}
           {analysisCanResume && (
@@ -1539,7 +1543,7 @@ export default function App() {
                               )}
                             </div>
                             <div className="flex items-center gap-3 shrink-0 pt-0.5">
-                              {!isActive && !importInFlight && !importStalled && importPresentation.canActivate && (
+                              {!isActive && !importInFlight && !importStalled && isUsableLibrarySnapshot(imp) && importPresentation.canActivate && (
                                 <button
                                   onClick={() => handleSetActiveImport(imp.id)}
                                   className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"

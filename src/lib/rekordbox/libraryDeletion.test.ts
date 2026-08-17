@@ -6,7 +6,11 @@ import {
   isUsableLibrarySnapshot,
 } from './libraryDeletion';
 
-function snapshot(id: string, status: RekordboxImport['status']): RekordboxImport {
+function snapshot(
+  id: string,
+  status: RekordboxImport['status'],
+  libraryReady = true,
+): RekordboxImport {
   return {
     id,
     user_id: 'user-1',
@@ -19,6 +23,7 @@ function snapshot(id: string, status: RekordboxImport['status']): RekordboxImpor
     status,
     error_message: null,
     retryable: false,
+    library_ready_at: libraryReady ? '2026-08-16T12:01:00Z' : null,
   } as RekordboxImport;
 }
 
@@ -36,12 +41,17 @@ describe('library deletion decisions', () => {
     expect(isUsableLibrarySnapshot(snapshot('interrupted', 'interrupted'))).toBe(true);
     expect(isUsableLibrarySnapshot(snapshot('failed', 'failed'))).toBe(false);
     expect(isUsableLibrarySnapshot(snapshot('cancelled', 'cancelled'))).toBe(false);
+    expect(isUsableLibrarySnapshot(snapshot('stopping', 'stopping'))).toBe(false);
+    expect(isUsableLibrarySnapshot(snapshot('deleting', 'deleting'))).toBe(false);
     expect(isUsableLibrarySnapshot(snapshot('processing', 'processing'))).toBe(false);
+    expect(isUsableLibrarySnapshot(snapshot('pre-ready-paused', 'paused', false))).toBe(false);
+    expect(isUsableLibrarySnapshot(snapshot('pre-ready-interrupted', 'interrupted', false))).toBe(false);
   });
 
   it('selects the newest remaining usable snapshot from the already date-sorted import list', () => {
     const imports = [
       snapshot('active', 'completed'),
+      snapshot('pre-ready-interrupted', 'interrupted', false),
       snapshot('failed-newer', 'failed'),
       snapshot('fallback', 'paused'),
       snapshot('older', 'completed'),

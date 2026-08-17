@@ -13,6 +13,11 @@ from fastapi import HTTPException
 from .analysis_worker_lease import get_worker_lease, lease_row_is_active
 from .config import settings
 from .import_worker_registry import worker_registry
+from .retained_analysis_dependencies import (
+    begin_rekordbox_hard_delete,
+    reconcile_retained_analysis_dependencies,
+)
+from .supabase_pagination import fetch_all_rows
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +43,10 @@ TERMINAL_IMPORT_STATES = frozenset({"cancelled", "completed", "failed"})
 IMMUTABLE_IMPORT_STATES = frozenset({"cancelled"})
 CANCELLATION_STATES = frozenset({"cancel_requested", "stopping", "deleting", "cancelled"})
 DELETE_ACTIVE_STRATEGIES = frozenset({"activate_next", "start_over"})
+
+_ANALYSIS_STORAGE_BUCKET = "rekordbox-analysis-assets"
+_STORAGE_DELETE_BATCH_SIZE = 100
+_STORAGE_REFERENCE_QUERY_CHUNK = 200
 
 
 _ACTIVE_ANALYSIS_STATES = frozenset({"awaiting_upload", "uploading", "uploaded", "parsing", "pause_requested", "stopping"})
@@ -327,6 +336,120 @@ def _delete_import_children(sb, import_id: str) -> list[str]:
     return errors
 
 
+def _storage_object(bucket: Any, path: Any) -> tuple[str, str] | None:
+    normalized_path = str(path or "").strip().strip("/")
+    if not normalized_path:
+        return None
+    normalized_bucket = str(bucket or _ANALYSIS_STORAGE_BUCKET).strip() or _ANALYSIS_STORAGE_BUCKET
+    return normalized_bucket, normalized_path
+
+
+def _external_waveform_storage_references(
+    sb,
+    import_id: str,
+    candidates: set[tuple[str, str]],
+) -> set[tuple[str, str]]:
+    """Return detail objects that another snapshot still references.
+
+    Incremental normalized-waveform reuse historically copied the detail path
+    verbatim. Preserve such an object until its final referencing snapshot is
+    deleted rather than breaking the surviving waveform row.
+    """
+    if not candidates:
+        return set()
+    candidate_paths = sorted({path for _bucket, path in candidates})
+    referenced: set[tuple[str, str]] = set()
+    for offset in range(0, len(candidate_paths), _STORAGE_REFERENCE_QUERY_CHUNK):
+        chunk = candidate_paths[offset : offset + _STORAGE_REFERENCE_QUERY_CHUNK]
+        rows = fetch_all_rows(
+            lambda paths=chunk: (
+                sb.table("rekordbox_track_waveforms")
+                .select("id, import_id, detail_storage_bucket, detail_storage_path")
+                .neq("import_id", import_id)
+                .in_("detail_storage_path", paths)
+            ),
+            order_column="id",
+        )
+        for row in rows:
+            obj = _storage_object(
+                row.get("detail_storage_bucket"),
+                row.get("detail_storage_path"),
+            )
+            if obj in candidates:
+                referenced.add(obj)
+    return referenced
+
+
+def _enumerate_import_storage_objects(sb, import_id: str) -> set[tuple[str, str]]:
+    """Discover every Storage object whose metadata belongs to one import.
+
+    Both source queries are fully paginated before any metadata or cloud object
+    is deleted. This preserves the complete retry map even when PostgREST clamps
+    an individual response below the requested page size.
+    """
+    asset_rows = fetch_all_rows(
+        lambda: (
+            sb.table("rekordbox_analysis_assets")
+            .select(
+                "id, storage_bucket, storage_path, "
+                "archive_storage_bucket, archive_storage_path"
+            )
+            .eq("import_id", import_id)
+        ),
+        order_column="id",
+    )
+    waveform_rows = fetch_all_rows(
+        lambda: (
+            sb.table("rekordbox_track_waveforms")
+            .select("id, detail_storage_bucket, detail_storage_path")
+            .eq("import_id", import_id)
+        ),
+        order_column="id",
+    )
+
+    objects: set[tuple[str, str]] = set()
+    for row in asset_rows:
+        for bucket_key, path_key in (
+            ("storage_bucket", "storage_path"),
+            ("archive_storage_bucket", "archive_storage_path"),
+        ):
+            obj = _storage_object(row.get(bucket_key), row.get(path_key))
+            if obj:
+                objects.add(obj)
+
+    waveform_objects: set[tuple[str, str]] = set()
+    for row in waveform_rows:
+        obj = _storage_object(
+            row.get("detail_storage_bucket"),
+            row.get("detail_storage_path"),
+        )
+        if obj:
+            waveform_objects.add(obj)
+            objects.add(obj)
+
+    shared_waveform_objects = _external_waveform_storage_references(
+        sb, import_id, waveform_objects
+    )
+    if shared_waveform_objects:
+        logger.info(
+            "Preserving %d waveform detail object(s) still referenced by another import",
+            len(shared_waveform_objects),
+        )
+        objects.difference_update(shared_waveform_objects)
+    return objects
+
+
+def _remove_storage_objects(sb, objects: set[tuple[str, str]]) -> None:
+    by_bucket: dict[str, list[str]] = {}
+    for bucket, path in sorted(objects):
+        by_bucket.setdefault(bucket, []).append(path)
+
+    for bucket, paths in by_bucket.items():
+        for offset in range(0, len(paths), _STORAGE_DELETE_BATCH_SIZE):
+            batch = paths[offset : offset + _STORAGE_DELETE_BATCH_SIZE]
+            sb.storage.from_(bucket).remove(batch)
+
+
 def cleanup_partial_import(
     import_id: str,
     user_id: str,
@@ -335,7 +458,7 @@ def cleanup_partial_import(
     require_worker_ack: bool = False,
 ) -> None:
     client = sb or _create_supabase()
-    row = get_import_job(import_id, user_id, sb=client)
+    get_import_job(import_id, user_id, sb=client)
     if require_worker_ack:
         live = worker_registry.snapshot(import_id)
         active_kinds = [
@@ -348,31 +471,21 @@ def cleanup_partial_import(
                 "Refusing cleanup while import workers still hold ownership: "
                 + ", ".join(active_kinds or ["local analysis worker"])
             )
-    paths: list[str] = []
+
     try:
-        response = (
-            client.table("rekordbox_analysis_assets")
-            .select("storage_path, archive_storage_path")
-            .eq("import_id", import_id)
-            .execute()
-        )
-        paths = sorted({
-            str(path)
-            for item in (response.data or [])
-            for path in (item.get("storage_path"), item.get("archive_storage_path"))
-            if path
-        })
+        storage_objects = _enumerate_import_storage_objects(client, import_id)
     except Exception as exc:
         logger.exception("Could not enumerate storage paths for import %s", import_id)
         raise RuntimeError(
             f"Import cleanup is incomplete: could not enumerate cloud assets: {exc}"
         ) from exc
-    # Remove cloud objects before deleting their metadata. If storage is
-    # temporarily unavailable, retaining the asset rows preserves the exact
-    # paths needed for an idempotent retry instead of orphaning objects.
-    if paths:
+
+    # Remove every discovered cloud object before deleting any metadata. If a
+    # later batch fails, all database rows remain intact, including paths for
+    # objects already removed and paths still pending, so retry stays idempotent.
+    if storage_objects:
         try:
-            client.storage.from_("rekordbox-analysis-assets").remove(paths)
+            _remove_storage_objects(client, storage_objects)
         except Exception as exc:
             logger.exception("Storage cleanup failed for cancelled import %s", import_id)
             raise RuntimeError(f"Import cleanup is incomplete: storage: {exc}") from exc
@@ -382,6 +495,7 @@ def cleanup_partial_import(
         raise RuntimeError("Import cleanup is incomplete: " + "; ".join(errors))
     try:
         from .analysis_staging import remove_import_staging
+
         remove_import_staging(import_id, settings.analysis_staging_root)
     except Exception as exc:
         logger.exception("Staging cleanup failed for cancelled import %s", import_id)
@@ -682,14 +796,70 @@ def _cleanup_after_worker_ack(
             },
         )
 
+    try:
+        dependency_gate_closed = begin_rekordbox_hard_delete(sb, import_id, user_id)
+    except Exception as exc:
+        logger.exception("Could not begin hard-delete cleanup for import %s", import_id)
+        _update_import_row(
+            sb,
+            import_id,
+            user_id,
+            {
+                "analysis_worker_error": str(exc)[:2000],
+                "error_code": "DELETE_CLEANUP_FAILED",
+                "error_message": "DropDex could not verify retained-analysis dependencies. Retry Delete Import.",
+                "retryable": True,
+            },
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error_code": "DELETE_CLEANUP_FAILED",
+                "detail": "DropDex could not verify retained-analysis dependencies. Retry Delete Import.",
+                "retryable": True,
+            },
+        ) from exc
+
+    if not dependency_gate_closed:
+        _update_import_row(
+            sb,
+            import_id,
+            user_id,
+            {
+                "analysis_worker_status": "stopped",
+                "analysis_worker_stopped_acknowledged": True,
+                "analysis_worker_stopped_at": row.get("analysis_worker_stopped_at") or _now(),
+                "analysis_worker_error": None,
+                "error_code": "DELETE_DEPENDENCY_ACTIVE",
+                "error_message": (
+                    "Another Rekordbox import still needs retained analysis from this library. "
+                    "Let that import finish materializing analysis, or delete it, then retry."
+                ),
+                "retryable": True,
+            },
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "DELETE_DEPENDENCY_ACTIVE",
+                "detail": (
+                    "Another Rekordbox import still needs retained analysis from this library. "
+                    "Let that import finish materializing analysis, or delete it, then retry."
+                ),
+                "retryable": True,
+            },
+        )
+
     _update_import_row(
         sb,
         import_id,
         user_id,
         {
-            "status": "deleting",
             "analysis_status": "stopping",
             "analysis_worker_status": "deleting",
+            "analysis_worker_error": None,
+            "error_code": None,
+            "error_message": None,
         },
     )
     try:
@@ -972,6 +1142,15 @@ def recover_interrupted_import_jobs() -> int:
                 # Another API process/container still owns this import. Startup
                 # recovery must never rewrite live work owned elsewhere.
                 continue
+            try:
+                reconcile_retained_analysis_dependencies(sb, import_id)
+            except Exception:
+                # Preserving a stale dependency is fail-safe: it can delay source
+                # deletion but cannot make a source disappear too early.
+                logger.exception(
+                    "Could not reconcile retained-analysis dependencies for import %s",
+                    import_id,
+                )
             # A process restart proves the old in-process thread no longer exists,
             # but never proves that destructive cleanup should occur.
             delete_intent = state in {"cancel_requested", "deleting"} or (

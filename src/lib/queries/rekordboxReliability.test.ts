@@ -30,6 +30,7 @@ vi.mock('../supabase', () => ({
 import {
   fetchActiveImport,
   fetchAllImports,
+  fetchLatestImport,
   fetchTrackPlaylists,
   fetchTracksByIds,
 } from './rekordbox';
@@ -69,6 +70,38 @@ describe('large-library query reliability', () => {
     const imports = await fetchAllImports('user-1');
 
     expect(imports.map((item) => item.id)).toEqual(['usable']);
+  });
+
+  it('requires the library-ready milestone when selecting the automatic latest fallback', async () => {
+    const latestBuilder = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      in: vi.fn(),
+      not: vi.fn(),
+      order: vi.fn(),
+      limit: vi.fn(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: 'ready-import', status: 'interrupted', library_ready_at: '2026-08-16T12:00:00Z' },
+        error: null,
+      }),
+    };
+    latestBuilder.select.mockReturnValue(latestBuilder);
+    latestBuilder.eq.mockReturnValue(latestBuilder);
+    latestBuilder.in.mockReturnValue(latestBuilder);
+    latestBuilder.not.mockReturnValue(latestBuilder);
+    latestBuilder.order.mockReturnValue(latestBuilder);
+    latestBuilder.limit.mockReturnValue(latestBuilder);
+    fromMock.mockReturnValueOnce(latestBuilder as never);
+
+    const latest = await fetchLatestImport('user-1');
+
+    expect(latest?.id).toBe('ready-import');
+    expect(latestBuilder.in).toHaveBeenCalledWith('status', [
+      'completed',
+      'paused',
+      'interrupted',
+    ]);
+    expect(latestBuilder.not).toHaveBeenCalledWith('library_ready_at', 'is', null);
   });
 
   it('treats an explicit null active_import_id as the Start Over empty state', async () => {

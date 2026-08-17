@@ -2,8 +2,11 @@ import type { RekordboxImport } from '../../types';
 
 export type DeleteActiveStrategy = 'activate_next' | 'start_over';
 
+export const USABLE_LIBRARY_STATUSES = ['completed', 'paused', 'interrupted'] as const;
+
 export function isUsableLibrarySnapshot(item: RekordboxImport): boolean {
-  return item.status === 'completed' || item.status === 'paused' || item.status === 'interrupted';
+  return Boolean(item.library_ready_at)
+    && USABLE_LIBRARY_STATUSES.some((status) => status === item.status);
 }
 
 export function getNextUsableLibrarySnapshot(

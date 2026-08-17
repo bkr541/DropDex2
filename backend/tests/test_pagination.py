@@ -26,9 +26,16 @@ from app.supabase_pagination import fetch_all_rows
 class _PagedFakeQuery:
     """Fake PostgREST query with filters, ordering, and range pagination."""
 
-    def __init__(self, data: List[dict], filters: list[tuple[str, str, Any]] | None = None):
+    def __init__(
+        self,
+        data: List[dict],
+        filters: list[tuple[str, str, Any]] | None = None,
+        *,
+        server_max_rows: int | None = None,
+    ):
         self._data = data
         self._filters = list(filters or [])
+        self._server_max_rows = server_max_rows
         self._start: Optional[int] = None
         self._end: Optional[int] = None
         self._order_column: str | None = None
@@ -48,7 +55,11 @@ class _PagedFakeQuery:
         return self
 
     def range(self, start: int, end: int):
-        q = _PagedFakeQuery(self._data, self._filters)
+        q = _PagedFakeQuery(
+            self._data,
+            self._filters,
+            server_max_rows=self._server_max_rows,
+        )
         q._start = start
         q._end = end
         q._order_column = self._order_column
@@ -69,6 +80,8 @@ class _PagedFakeQuery:
             rows.sort(key=lambda row: str(row.get(self._order_column) or ""))
         if self._start is not None and self._end is not None:
             rows = rows[self._start:self._end + 1]
+            if self._server_max_rows is not None:
+                rows = rows[: self._server_max_rows]
         return SimpleNamespace(data=rows)
 
 
@@ -77,9 +90,9 @@ def _make_rows(n: int, *, id_prefix: str = "") -> List[dict]:
     return [{"id": f"{id_prefix}{i:04d}", "value": i} for i in range(n)]
 
 
-def _factory(rows: List[dict]):
+def _factory(rows: List[dict], *, server_max_rows: int | None = None):
     """Return a no-arg factory that yields a fresh _PagedFakeQuery each call."""
-    return lambda: _PagedFakeQuery(rows)
+    return lambda: _PagedFakeQuery(rows, server_max_rows=server_max_rows)
 
 
 # ── Unit tests for fetch_all_rows ─────────────────────────────────────────────
@@ -144,8 +157,30 @@ class TestFetchAllRowsBoundaries:
             return _PagedFakeQuery(rows)
 
         fetch_all_rows(factory, page_size=1000)
-        # 1500 rows → page 0 returns 1000 (full), page 1 returns 500 (<1000, terminates) = 2 calls
-        assert call_count == 2
+        # Stop only after an empty page so a server-side max_rows clamp cannot
+        # masquerade as the final page.
+        assert call_count == 3
+
+    def test_repeated_page_fails_closed_instead_of_looping_or_truncating(self):
+        rows = _make_rows(3)
+
+        class IgnoredRangeQuery(_PagedFakeQuery):
+            def range(self, _start: int, _end: int):
+                return self
+
+        with pytest.raises(RuntimeError, match="no forward progress"):
+            fetch_all_rows(lambda: IgnoredRangeQuery(rows), page_size=1000)
+
+    @pytest.mark.parametrize("server_max_rows", [1, 250, 999])
+    def test_server_cap_smaller_than_requested_page_size_does_not_truncate(
+        self, server_max_rows: int
+    ):
+        rows = _make_rows(2001)
+        result = fetch_all_rows(
+            _factory(rows, server_max_rows=server_max_rows),
+            page_size=1000,
+        )
+        assert result == rows
 
     def test_query_factory_called_once_for_zero_rows(self):
         call_count = 0

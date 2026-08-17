@@ -87,6 +87,43 @@ def test_retained_asset_is_checkpointed_into_new_import_staging(tmp_path, monkey
     assert prepared[0]["import_id"] == "new-import"
     assert prepared[0]["retained_from_asset_id"] == "source-asset"
     assert Path(prepared[0]["_local_path"]).read_bytes() == b"retained DAT"
+    sb.rpc.assert_called_with(
+        "release_rekordbox_retained_analysis_dependencies",
+        {
+            "p_import_id": "new-import",
+            "p_track_ids": ["new-track"],
+        },
+    )
+
+
+def test_resume_releases_stale_dependency_for_already_owned_staged_dat(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "analysis_staging_root", str(tmp_path / "staging"))
+    key = build_staging_key("new-import", "new-track", "DAT", "c" * 64)
+    write_staged_bytes(key, b"already independent", str(tmp_path / "staging"))
+    asset = {
+        "id": "new-asset",
+        "import_id": "new-import",
+        "track_id": "new-track",
+        "asset_type": "DAT",
+        "staging_key": key,
+    }
+    sb = MagicMock()
+
+    prepared = fast._materialize_asset_sources(
+        sb,
+        [asset],
+        str(tmp_path / "temp"),
+        import_id="new-import",
+    )
+
+    assert prepared[0]["_local_path"]
+    sb.rpc.assert_called_once_with(
+        "release_rekordbox_retained_analysis_dependencies",
+        {
+            "p_import_id": "new-import",
+            "p_track_ids": ["new-track"],
+        },
+    )
 
 
 def test_reparse_from_retained_loads_prior_assets_as_read_only_sources(monkeypatch):

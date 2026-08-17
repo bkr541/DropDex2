@@ -30,6 +30,9 @@ from .analysis_staging import (
     staged_file_exists,
 )
 from .config import settings
+from .retained_analysis_dependencies import (
+    release_retained_analysis_dependencies,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -345,6 +348,26 @@ def _materialize_asset_sources(
                     "_temporary_path": row.get("_temporary_path"),
                     "_retained_from_asset_id": row.get("_retained_from_asset_id"),
                 }
+
+    # DAT is the parser's authoritative retained source. Once a target-owned
+    # DAT has been durably staged and its asset row persisted, the dependent
+    # import can survive source deletion and its persistent guard can be
+    # released. Include already-target-owned DAT rows so a process crash after
+    # the asset upsert but before dependency release self-heals on resume.
+    # EXT-only materialization intentionally does not release the guard.
+    independent_track_ids = {
+        str(row.get("track_id"))
+        for row in prepared
+        if row.get("_local_path")
+        and str(row.get("asset_type") or "").upper() == "DAT"
+        and str(row.get("import_id") or "") == str(import_id)
+    }
+    if independent_track_ids and import_id:
+        release_retained_analysis_dependencies(
+            sb,
+            import_id,
+            independent_track_ids,
+        )
     return prepared
 
 

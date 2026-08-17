@@ -6,6 +6,18 @@ from app.rescan_service import (
     TrackIdentity, ReuseDecision, decide_reuse, match_tracks_to_prior_import
 )
 
+
+def _set_paginated_rows(query, rows):
+    ordered = query.order.return_value
+
+    def range_page(start, end):
+        page = MagicMock()
+        page.execute.return_value.data = rows[start : end + 1]
+        return page
+
+    ordered.range.side_effect = range_page
+
+
 def make_identity(**kwargs):
     defaults = dict(
         track_id="t1", import_id="imp1",
@@ -162,7 +174,7 @@ class TestMatchTracksToPriorImport:
         sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value = imports_chain
         # Chain mocks for rekordbox_tracks query — fetch_all_rows appends .order().range()
         tracks_chain = MagicMock()
-        tracks_chain.order.return_value.range.return_value.execute.return_value.data = prior_tracks
+        _set_paginated_rows(tracks_chain, prior_tracks)
         sb.table.return_value.select.return_value.in_.return_value = tracks_chain
         return sb
 
@@ -187,7 +199,10 @@ class TestMatchTracksToPriorImport:
             "analysis_parse_status": "completed",
         }]
         sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
-        sb.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = prior_tracks_data
+        _set_paginated_rows(
+            sb.table.return_value.select.return_value.in_.return_value,
+            prior_tracks_data,
+        )
 
         new_tracks = [{
             "id": "new-t1", "import_id": "new-imp",
@@ -217,7 +232,10 @@ class TestMatchTracksToPriorImport:
             "analysis_parse_status": "completed",
         }]
         sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
-        sb.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = prior_tracks_data
+        _set_paginated_rows(
+            sb.table.return_value.select.return_value.in_.return_value,
+            prior_tracks_data,
+        )
 
         new_tracks = [{
             "id": "new-t2", "import_id": "new-imp",
@@ -262,7 +280,10 @@ class TestMatchTracksToPriorImport:
             "analysis_parse_status": "completed",
         }]
         sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
-        sb.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = prior_tracks_data
+        _set_paginated_rows(
+            sb.table.return_value.select.return_value.in_.return_value,
+            prior_tracks_data,
+        )
 
         # This new track has different identity — should not match
         new_tracks = [{
@@ -300,7 +321,10 @@ class TestMatchTracksToPriorImport:
             "analysis_parse_status": "completed",
         }]
         sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
-        sb.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = prior_tracks_data
+        _set_paginated_rows(
+            sb.table.return_value.select.return_value.in_.return_value,
+            prior_tracks_data,
+        )
 
         new_tracks = [{
             "id": "new-t1",

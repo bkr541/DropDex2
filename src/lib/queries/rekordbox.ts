@@ -13,6 +13,7 @@ import {
   shouldUseBpm,
 } from '../music/similarVibes';
 import { getCompatibleCamelotKeys } from '../music/camelot';
+import { USABLE_LIBRARY_STATUSES } from '../rekordbox/libraryDeletion';
 
 export interface PlaylistWithCount extends RekordboxPlaylist {
   track_count: number;
@@ -133,7 +134,8 @@ export async function fetchLatestImport(userId: string): Promise<RekordboxImport
     .from('rekordbox_imports')
     .select('*')
     .eq('user_id', userId)
-    .in('status', ['completed', 'paused', 'interrupted'])
+    .in('status', [...USABLE_LIBRARY_STATUSES])
+    .not('library_ready_at', 'is', null)
     .order('imported_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -161,7 +163,8 @@ export async function fetchActiveImport(userId: string): Promise<RekordboxImport
       .from('rekordbox_imports')
       .select('*')
       .eq('id', activeId)
-      .in('status', ['completed', 'paused', 'interrupted'])
+      .in('status', [...USABLE_LIBRARY_STATUSES])
+      .not('library_ready_at', 'is', null)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (imp) return imp as RekordboxImport;

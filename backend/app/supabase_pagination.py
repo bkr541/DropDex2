@@ -31,8 +31,8 @@ def fetch_all_rows(
             Must be stable across pages — ``"id"`` is the right choice for
             every table that has a UUID/bigint primary key.
         page_size: Rows to request per page.  The server caps responses at its
-            own ``max_rows`` setting; values above the cap result in a shorter
-            page, which correctly terminates the loop.
+            own ``max_rows`` setting. The helper advances by the number of rows
+            actually returned, so a smaller server cap does not truncate results.
 
     Returns:
         Combined list of all matching rows in ``order_column`` order.
@@ -40,6 +40,8 @@ def fetch_all_rows(
     """
     all_rows: List[dict] = []
     start = 0
+    request_count = 0
+    previous_last_order_value: Any = object()
 
     while True:
         resp = (
@@ -48,21 +50,31 @@ def fetch_all_rows(
             .range(start, start + page_size - 1)
             .execute()
         )
+        request_count += 1
         page: List[dict] = resp.data or []
+        if page:
+            last_order_value = page[-1].get(order_column)
+            if request_count > 1 and last_order_value == previous_last_order_value:
+                raise RuntimeError(
+                    "Supabase pagination made no forward progress; refusing a potentially "
+                    "truncated result set"
+                )
+            previous_last_order_value = last_order_value
         all_rows.extend(page)
 
-        # A page shorter than page_size means we've reached the last page.
-        # This handles: 0 rows, partial final page, and exact multiples of page_size
-        # (where the *next* page will be empty and terminate the loop).
-        if len(page) < page_size:
+        # Do not treat a short page as terminal. PostgREST may clamp a requested
+        # range to a server-side max_rows value smaller than page_size. Advancing
+        # by the number actually returned and stopping only on an empty page keeps
+        # pagination correct for both default and custom server caps.
+        if not page:
             break
 
-        start += page_size
+        start += len(page)
 
     logger.debug(
         "fetch_all_rows: %d rows in %d request(s) (page_size=%d, order=%s)",
         len(all_rows),
-        max(1, start // page_size + 1),
+        request_count,
         page_size,
         order_column,
     )
