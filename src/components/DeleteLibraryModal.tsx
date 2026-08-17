@@ -14,6 +14,7 @@ interface DeleteLibraryModalProps {
   isActive: boolean;
   nextUsableImport: RekordboxImport | null;
   deleting: boolean;
+  deletingRetryCount?: number;
   error: string | null;
   onClose: () => void;
   onConfirm: (strategy: DeleteActiveStrategy) => void;
@@ -24,6 +25,7 @@ export function DeleteLibraryModal({
   isActive,
   nextUsableImport,
   deleting,
+  deletingRetryCount = 0,
   error,
   onClose,
   onConfirm,
@@ -194,7 +196,10 @@ export function DeleteLibraryModal({
               className="flex-1 rounded-xl bg-red-500 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {deleting ? (
-                <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Deleting…</span>
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 size={14} className="animate-spin" />
+                  {deletingRetryCount > 0 ? `Cleaning up… (pass ${deletingRetryCount})` : 'Deleting…'}
+                </span>
               ) : actionLabel}
             </button>
           </div>

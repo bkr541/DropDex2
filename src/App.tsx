@@ -40,7 +40,7 @@ import { useTrackPlaylists } from './hooks/useTrackPlaylists';
 import { useImportList } from './hooks/useImportList';
 import { useTrackPreviewWaveforms } from './hooks/useTrackPreviewWaveforms';
 import { fetchImportById, fetchReviewTracks, setActiveImport } from './lib/queries/rekordbox';
-import { deleteRekordboxImport } from './lib/api/rekordboxImport';
+import { deleteRekordboxImport, RekordboxImportError } from './lib/api/rekordboxImport';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { BackgroundImportPanel } from './components/BackgroundImportPanel';
 import { DeleteLibraryModal } from './components/DeleteLibraryModal';
@@ -447,6 +447,7 @@ export default function App() {
   );
   const [importNotice, setImportNotice] = useState<ImportNotice | null>(null);
   const [deleteLibraryTarget, setDeleteLibraryTarget] = useState<RekordboxImport | null>(null);
+  const [deleteLibraryRetryCount, setDeleteLibraryRetryCount] = useState(0);
   const [deleteLibrarySubmitting, setDeleteLibrarySubmitting] = useState(false);
   const deleteLibrarySubmittingRef = useRef(false);
   const [deleteLibraryError, setDeleteLibraryError] = useState<string | null>(null);
@@ -861,7 +862,29 @@ export default function App() {
       } else {
         const token = session?.access_token;
         if (!token) throw new Error('Your session expired. Sign in again before deleting a library.');
-        result = await deleteRekordboxImport(imp.id, token, undefined, activeStrategy);
+
+        // The backend deletes storage files incrementally and writes checkpoints.
+        // A 503 means the worker was killed mid-pass; retrying continues from the
+        // last checkpoint. Retry up to 20 times with a 3 s pause between attempts.
+        const MAX_RETRIES = 20;
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            result = await deleteRekordboxImport(imp.id, token, undefined, activeStrategy);
+            setDeleteLibraryRetryCount(0);
+            break;
+          } catch (err) {
+            if (
+              err instanceof RekordboxImportError &&
+              err.status === 503 &&
+              attempt < MAX_RETRIES
+            ) {
+              setDeleteLibraryRetryCount(attempt + 1);
+              await new Promise<void>((resolve) => setTimeout(resolve, 3000));
+              continue;
+            }
+            throw err;
+          }
+        }
       }
 
       deleteExecutorRef.current = null;
@@ -883,6 +906,7 @@ export default function App() {
       const message = err instanceof Error ? err.message : 'DropDex could not delete this library. Please retry.';
       console.error('Failed to delete import:', err);
       setDeleteLibraryError(message);
+      setDeleteLibraryRetryCount(0);
       pendingDeletionContextsRef.current.delete(imp.id);
       setPendingDeletionIds(new Set(pendingDeletionContextsRef.current.keys()));
       // If the backend had already entered a retryable pending-delete state, the
@@ -1816,6 +1840,7 @@ export default function App() {
           ))}
           nextUsableImport={deleteLibraryTarget ? getNextUsableLibrarySnapshot(allImports, deleteLibraryTarget.id) : null}
           deleting={deleteLibrarySubmitting}
+          deletingRetryCount={deleteLibraryRetryCount}
           error={deleteLibraryError}
           onClose={() => {
             if (deleteLibrarySubmitting) return;
