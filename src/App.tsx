@@ -866,7 +866,7 @@ export default function App() {
         // The backend deletes storage files incrementally and writes checkpoints.
         // A 503 means the worker was killed mid-pass; retrying continues from the
         // last checkpoint. Retry up to 20 times with a 3 s pause between attempts.
-        const MAX_RETRIES = 20;
+        const MAX_RETRIES = 200;
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
           try {
             result = await deleteRekordboxImport(imp.id, token, undefined, activeStrategy);

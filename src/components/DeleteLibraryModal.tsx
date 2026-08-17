@@ -198,7 +198,7 @@ export function DeleteLibraryModal({
               {deleting ? (
                 <span className="inline-flex items-center gap-2">
                   <Loader2 size={14} className="animate-spin" />
-                  {deletingRetryCount > 0 ? `Cleaning up… (pass ${deletingRetryCount})` : 'Deleting…'}
+                  {deletingRetryCount > 0 ? `Cleaning up… pass ${deletingRetryCount}` : 'Deleting…'}
                 </span>
               ) : actionLabel}
             </button>
