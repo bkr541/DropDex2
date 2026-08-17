@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
-  Music, Settings, Loader2, AlertTriangle, XCircle,
-  ChevronRight, ChevronLeft, ChevronDown, User, TrendingUp,
+  Music, Settings,
+  ChevronRight, ChevronLeft, User, TrendingUp,
   Layers, Play, Pause, Square, Volume2, VolumeX, SkipBack, SkipForward,
-  Info, X, Check, ListMusic, ExternalLink, Shuffle, Repeat2,
+  ListMusic, ExternalLink, Shuffle, Repeat2,
   Star, MoreHorizontal, LayoutGrid, Library, AudioWaveform, DiscAlbum,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -12,6 +12,7 @@ import { WaveformDisplay } from '../library/WaveformDisplay';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { Stage1Showcase } from './Stage1Showcase';
+import { Stage2Showcase } from './Stage2Showcase';
 
 // ── waveform mock states ───────────────────────────────────────────────────────
 
@@ -44,319 +45,16 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ── STATUS BADGES ─────────────────────────────────────────────────────────────
-
-function StatusBadge({ label, color }: { label: string; color: string }) {
-  const colors: Record<string, string> = {
-    green:   'bg-emerald-500/15 border-emerald-500/30 text-emerald-400',
-    cyan:    'bg-cyan-500/15 border-cyan-500/30 text-cyan-400',
-    blue:    'bg-blue-500/15 border-blue-500/30 text-blue-400',
-    purple:  'bg-purple-500/15 border-purple-500/30 text-purple-400',
-    pink:    'bg-pink-500/15 border-pink-500/30 text-pink-400',
-    yellow:  'bg-yellow-500/15 border-yellow-500/30 text-yellow-400',
-    orange:  'bg-orange-500/15 border-orange-500/30 text-orange-400',
-    red:     'bg-red-500/15 border-red-500/30 text-red-400',
-    gray:    'bg-slate-500/15 border-slate-500/30 text-slate-400',
-  };
-  return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider', colors[color])}>
-      {label}
-    </span>
-  );
-}
-
-// ── Skeleton primitives ────────────────────────────────────────────────────────
-
-function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse rounded bg-[var(--color-border-subtle)]', className)} />;
-}
-
 // ── STAGE 1 — INPUTS, BUTTONS & FORM CONTROLS ────────────────────────────────
 
 function StageOneSection() {
   return <Stage1Showcase />;
 }
 
-// ── BADGES & STATUS ───────────────────────────────────────────────────────────
+// ── STAGE 2 — STATUS, FEEDBACK, PROGRESS, UPLOADS & MODALS ───────────────────
 
-function BadgesSection() {
-  return (
-    <>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Cell label="Status Badge" className="md:col-span-2">
-          <div className="flex flex-wrap gap-2">
-            <StatusBadge label="● Active"     color="green"  />
-            <StatusBadge label="● Online"     color="cyan"   />
-            <StatusBadge label="● Synced"     color="blue"   />
-            <StatusBadge label="◈ Analyzed"   color="purple" />
-            <StatusBadge label="♥ Hot Cue"    color="pink"   />
-            <StatusBadge label="↻ Loop"       color="cyan"   />
-            <StatusBadge label="♛ Master"     color="yellow" />
-            <StatusBadge label="Q Quantized"  color="cyan"   />
-            <StatusBadge label="⬡ Rekordbox"  color="purple" />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <StatusBadge label="◔ Pending"    color="orange" />
-            <StatusBadge label="✓ Complete"   color="green"  />
-            <StatusBadge label="— Disabled"   color="gray"   />
-            <StatusBadge label="⚠ Warning"    color="orange" />
-            <StatusBadge label="✕ Error"      color="red"    />
-            <StatusBadge label="○ Offline"    color="gray"   />
-          </div>
-        </Cell>
-
-        <Cell label="Analysis Status Badge">
-          <div className="flex flex-col gap-1.5">
-            <TrackAnalysisStatusBadge status="not_requested" />
-            <TrackAnalysisStatusBadge status="parsing" />
-            <TrackAnalysisStatusBadge status="partial" />
-            <TrackAnalysisStatusBadge status="completed" />
-            <TrackAnalysisStatusBadge status="failed" />
-            <TrackAnalysisStatusBadge status="reused" />
-          </div>
-        </Cell>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Cell label="Status Dot">
-          {[
-            { label: 'Online',     dot: 'bg-blue-500',    pulse: false },
-            { label: 'Active',     dot: 'bg-blue-400',    pulse: true  },
-            { label: 'Processing', dot: 'bg-blue-400',    pulse: true  },
-            { label: 'Pending',    dot: 'bg-orange-400',  pulse: false },
-            { label: 'Warning',    dot: 'bg-orange-400',  pulse: false },
-            { label: 'Error',      dot: 'bg-red-500',     pulse: false },
-            { label: 'Offline',    dot: 'bg-slate-500',   pulse: false },
-          ].map(({ label, dot, pulse }) => (
-            <div key={label} className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">{label}</span>
-              <span className={cn('w-2 h-2 rounded-full', dot, pulse && 'animate-pulse')} />
-            </div>
-          ))}
-        </Cell>
-
-        <Cell label="Progress Bar">
-          {[
-            { label: 'Online',     pct: 20,  cls: 'bg-blue-500'    },
-            { label: 'Active',     pct: 45,  cls: 'bg-blue-500'    },
-            { label: 'Processing', pct: 68,  cls: 'bg-blue-500'    },
-            { label: 'Pending',    pct: 100, cls: 'bg-emerald-500' },
-            { label: 'Warning',    pct: 67,  cls: 'bg-orange-400'  },
-            { label: 'Error',      pct: 32,  cls: 'bg-red-500'     },
-            { label: 'Offline',    pct: 15,  cls: 'bg-slate-500'   },
-          ].map(({ label, pct, cls }) => (
-            <div key={label} className="flex items-center gap-2">
-              <span className="text-[9px] text-muted-foreground w-16 shrink-0">{label}</span>
-              <div className="flex-1 h-1 rounded-full bg-[var(--color-surface)] overflow-hidden">
-                <div className={cn('h-full rounded-full transition-all', cls)} style={{ width: `${pct}%` }} />
-              </div>
-              <span className="text-[9px] font-mono text-muted-foreground w-7 text-right shrink-0">{pct}%</span>
-            </div>
-          ))}
-        </Cell>
-
-        <Cell label="Spinner / Loader">
-          <div className="grid grid-cols-3 gap-3 items-center justify-items-center">
-            <div className="flex flex-col items-center gap-1">
-              <Loader2 size={20} className="animate-spin text-primary" />
-              <span className="text-[8px] text-muted-foreground">Spinner</span>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <div className="w-5 h-5 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
-              <span className="text-[8px] text-muted-foreground">Ring</span>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <div className="w-5 h-5 rounded-full bg-primary/20 animate-pulse" />
-              <span className="text-[8px] text-muted-foreground">Pulse</span>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <div className="flex items-end gap-0.5 h-5">
-                {[0.4, 0.7, 1, 0.7, 0.4].map((h, i) => (
-                  <div key={i} className="w-1 bg-primary rounded-full animate-bounce" style={{ height: `${h * 20}px`, animationDelay: `${i * 0.1}s` }} />
-                ))}
-              </div>
-              <span className="text-[8px] text-muted-foreground">Bars</span>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <div className="flex items-center gap-1">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-                ))}
-              </div>
-              <span className="text-[8px] text-muted-foreground">Dots</span>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <div className="relative w-5 h-5">
-                <div className="absolute inset-0 rounded-full border-2 border-primary/30 animate-ping" />
-                <div className="absolute inset-1 rounded-full bg-primary/60" />
-              </div>
-              <span className="text-[8px] text-muted-foreground">Ping</span>
-            </div>
-          </div>
-        </Cell>
-
-        <Cell label="Toast / Notification">
-          {[
-            { icon: Check, cls: 'border-emerald-500/25 bg-emerald-950/50 text-emerald-50', icn: 'text-emerald-400', title: 'Track imported successfully', sub: 'Halcyon (Original Mix)', t: '2s' },
-            { icon: Info,  cls: 'border-blue-500/25 bg-blue-950/50 text-blue-50',          icn: 'text-blue-400',    title: 'Analysis complete',           sub: '128 tracks analyzed',    t: '3s' },
-            { icon: AlertTriangle, cls: 'border-orange-500/25 bg-orange-950/50 text-orange-50', icn: 'text-orange-400', title: 'Missing artwork',          sub: '12 tracks missing',      t: '4s' },
-            { icon: XCircle,      cls: 'border-red-500/25 bg-red-950/50 text-red-50',      icn: 'text-red-400',     title: 'Import failed',               sub: '3 files could not be read', t: '5s' },
-          ].map(({ icon: Icon, cls, icn, title, sub, t }) => (
-            <div key={title} className={cn('flex items-center gap-2 rounded-lg border px-3 py-2', cls)}>
-              <Icon size={13} className={cn('shrink-0', icn)} />
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-bold truncate">{title}</p>
-                <p className="text-[9px] opacity-70 truncate">{sub}</p>
-              </div>
-              <span className="text-[8px] opacity-50 shrink-0">{t}</span>
-              <button className="opacity-50 hover:opacity-100"><X size={10} /></button>
-            </div>
-          ))}
-        </Cell>
-      </div>
-    </>
-  );
-}
-
-// ── FEEDBACK ──────────────────────────────────────────────────────────────────
-
-function FeedbackSection() {
-  return (
-    <>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Cell label="Import Activity Banner">
-          <div className="rounded-xl border border-primary/25 bg-primary/5 overflow-hidden">
-            <div className="flex items-center gap-3 p-3">
-              <div className="relative w-10 h-10 shrink-0">
-                <svg viewBox="0 0 36 36" className="w-10 h-10 -rotate-90">
-                  <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3" className="text-primary/20" />
-                  <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray={`${0.72 * 2 * Math.PI * 15} ${2 * Math.PI * 15}`} className="text-primary" strokeLinecap="round" />
-                </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-[9px] font-black text-primary">72%</span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-black">Importing 128 tracks</p>
-                <p className="text-[10px] text-primary/80 truncate">From Tech House Collection</p>
-                <p className="text-[10px] text-muted-foreground">93 of 128 imported</p>
-              </div>
-              <div className="flex flex-col items-end gap-1 shrink-0">
-                <button className="text-[9px] font-bold border border-[var(--color-border-subtle)] rounded px-2 py-0.5 hover:bg-[var(--color-surface)] transition-colors">VIEW</button>
-                <p className="text-[9px] text-muted-foreground">2m 15s remaining</p>
-              </div>
-            </div>
-            <div className="h-1 bg-primary/20">
-              <div className="h-full w-[72%] bg-primary" />
-            </div>
-          </div>
-        </Cell>
-
-        <Cell label="Warning / Alert Banner">
-          <div className="flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-950/40 p-3">
-            <AlertTriangle size={14} className="shrink-0 text-amber-400 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-amber-100">Storage space running low</p>
-              <p className="text-[10px] text-amber-200/70">You have 1.2 GB left on your drive</p>
-            </div>
-            <button className="text-[9px] font-bold border border-amber-500/40 rounded px-2 py-0.5 text-amber-400 hover:bg-amber-500/10 transition-colors shrink-0">MANAGE</button>
-          </div>
-        </Cell>
-
-        <Cell label="Error / Empty State">
-          <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 flex flex-col items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-400">
-              <DiscAlbum size={18} />
-            </div>
-            <p className="text-xs font-bold text-center">No tracks found</p>
-            <p className="text-[9px] text-muted-foreground text-center">Try adjusting your search or import new tracks.</p>
-            <button className="mt-1 rounded-lg bg-primary px-3 py-1.5 text-[10px] font-bold text-white hover:bg-primary/90 transition-colors">
-              IMPORT TRACKS
-            </button>
-          </div>
-        </Cell>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Cell label="Background Import Panel">
-          <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border-faint)]">
-              <div className="flex items-center gap-2">
-                <AudioWaveform size={12} className="text-primary" />
-                <span className="text-[10px] font-bold">Importing 256 Tracks</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] font-bold text-primary">72%</span>
-                <button className="text-muted-foreground hover:text-foreground"><ChevronDown size={12} /></button>
-              </div>
-            </div>
-            {[
-              { name: 'Tech House Collection', a: 128, b: 128, done: true  },
-              { name: 'Redrum Essentials',     a: 96,  b: 128, done: false },
-              { name: 'Underground Grooves',   a: 32,  b: 64,  done: false },
-            ].map(({ name, a, b, done }) => (
-              <div key={name} className="px-3 py-2 flex items-center gap-2 border-b border-[var(--color-border-faint)] last:border-0">
-                <span className="text-[9px] text-muted-foreground flex-1 truncate">{name}</span>
-                <span className="text-[9px] font-mono shrink-0">{a} / {b}</span>
-                {done ? <Check size={10} className="text-emerald-400 shrink-0" /> : <div className="w-8 h-1 rounded-full bg-[var(--color-surface-hover)] overflow-hidden shrink-0"><div className="h-full bg-primary" style={{ width: `${(a/b)*100}%` }} /></div>}
-              </div>
-            ))}
-            <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-[9px] text-muted-foreground">2m 15s remaining</span>
-              <button className="text-[9px] font-bold border border-[var(--color-border-subtle)] rounded px-2 py-0.5 hover:bg-[var(--color-surface-hover)] transition-colors">PAUSE</button>
-            </div>
-          </div>
-        </Cell>
-
-        <Cell label="Selectable Option Card">
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: 'High Quality',  sub: 'WAV, AIFF',   rec: true,  active: true  },
-              { label: 'Balanced',      sub: 'MP3 320kbps', rec: false, active: false },
-              { label: 'Space Saver',   sub: 'MP3 128kbps', rec: false, active: false },
-              { label: 'Lossless',      sub: 'FLAC',        rec: false, active: false },
-            ].map(({ label, sub, rec, active }) => (
-              <div key={label} className={cn('rounded-xl border p-3 cursor-pointer transition-all relative', active ? 'border-primary/50 bg-primary/8' : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:border-primary/20')}>
-                <div className="flex items-center justify-between mb-1">
-                  <AudioWaveform size={12} className={active ? 'text-primary' : 'text-muted-foreground'} />
-                  <div className={cn('w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center', active ? 'border-primary bg-primary' : 'border-muted-foreground/40')}>
-                    {active && <Check size={8} strokeWidth={3} className="text-white" />}
-                  </div>
-                </div>
-                <p className="text-[10px] font-bold">{label}</p>
-                <p className="text-[8px] text-muted-foreground">{sub}</p>
-                {rec && <span className="text-[7px] font-bold text-primary mt-1 block">RECOMMENDED</span>}
-              </div>
-            ))}
-          </div>
-        </Cell>
-
-        <Cell label="Skeleton States">
-          <div className="space-y-2">
-            <p className="text-[8px] text-muted-foreground/50 uppercase tracking-wider font-semibold">Skeleton Row</p>
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-2 rounded-lg border border-[var(--color-border-faint)] bg-[var(--color-surface)] p-2">
-                <Skeleton className="w-8 h-8 rounded-lg shrink-0" />
-                <div className="flex-1 space-y-1">
-                  <Skeleton className="h-2 w-3/4" />
-                  <Skeleton className="h-1.5 w-1/2" />
-                </div>
-                <Skeleton className="w-8 h-2 shrink-0" />
-              </div>
-            ))}
-            <p className="text-[8px] text-muted-foreground/50 uppercase tracking-wider font-semibold mt-2">Skeleton Card</p>
-            <div className="grid grid-cols-3 gap-2">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="rounded-xl border border-[var(--color-border-faint)] bg-[var(--color-surface)] p-3 space-y-2">
-                  <Skeleton className="h-12 w-full rounded-lg" />
-                  <Skeleton className="h-2 w-3/4" />
-                  <Skeleton className="h-1.5 w-1/2" />
-                </div>
-              ))}
-            </div>
-          </div>
-        </Cell>
-      </div>
-    </>
-  );
+function StageTwoSection() {
+  return <Stage2Showcase />;
 }
 
 // ── WAVEFORM & TRANSPORT ──────────────────────────────────────────────────────
@@ -968,13 +666,8 @@ export function ReusableComponentsView() {
       </section>
 
       <section className="space-y-3">
-        <SectionHeader>Badges & Status Indicators</SectionHeader>
-        <BadgesSection />
-      </section>
-
-      <section className="space-y-3">
-        <SectionHeader>Feedback & Activity</SectionHeader>
-        <FeedbackSection />
+        <SectionHeader>Status, Feedback, Progress, Uploads & Modals</SectionHeader>
+        <StageTwoSection />
       </section>
 
       <section className="space-y-3">

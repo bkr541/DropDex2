@@ -8,6 +8,7 @@ import {
   type AnalysisStatusResponse,
 } from '../lib/api/rekordboxImport';
 import { announceRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
+import { ProgressBar } from './ui/DropDexFeedback';
 
 const POLL_MS = 2500;
 
@@ -172,9 +173,7 @@ export function BackgroundImportPanel({
         </div>
       )}
 
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--color-surface)]">
-        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} />
-      </div>
+      <ProgressBar className="mt-4" value={progress} tone="active" label="Rekordbox import progress" />
       <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
         <div className="rounded-lg bg-[var(--color-surface)] p-2">
           <p className="text-muted-foreground">Tracks ready</p>

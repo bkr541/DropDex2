@@ -1,0 +1,121 @@
+.dd-stage2-board {
+  width: 100%;
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid #e6e9ee;
+  border-radius: 18px;
+  background: #fff;
+  color: #111722;
+  box-shadow: 0 16px 44px rgb(15 23 42 / .11);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.dd-stage2-grid { display: grid; gap: 14px; min-width: 0; align-items: stretch; }
+.dd-stage2-grid--top { grid-template-columns: 2.5fr 1.35fr 1fr 1.8fr 1fr 2fr; }
+.dd-stage2-grid--middle { grid-template-columns: 2.3fr 1.85fr 1.25fr 1.95fr; }
+.dd-stage2-grid--lower { grid-template-columns: repeat(12, minmax(0, 1fr)); align-items: start; }
+
+.dd-stage2-card { min-width: 0; display: flex; flex-direction: column; gap: 13px; }
+.dd-stage2-card > h3 { margin: 0; color: #0b0f15; font-size: 11px; font-weight: 800; line-height: 1.15; letter-spacing: .055em; text-transform: uppercase; }
+.dd-stage2-card__content { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 8px; }
+
+.dd-stage2-badge-matrix { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px 10px; }
+.dd-stage2-badge-matrix .dd-status-badge { min-width: 0; }
+.dd-stage2-analysis-list { display: grid; gap: 8px; }
+.dd-stage2-analysis-list .dd-status-badge { justify-self: start; min-width: 134px; }
+.dd-stage2-dot-list { display: grid; gap: 12px; padding: 4px 6px; }
+.dd-stage2-dot-list .dd-status-dot-wrap { justify-content: space-between; flex-direction: row-reverse; color: #151b23; }
+.dd-stage2-dot-list .dd-status-dot__label { min-width: 68px; }
+.dd-stage2-progress-list { display: grid; gap: 13px; padding-top: 3px; }
+.dd-stage2-progress-card .dd-progress__track { background: #858b91; }
+.dd-stage2-progress-card .dd-progress__value { color: #161c24; }
+.dd-stage2-loader-list { display: grid; gap: 9px; }
+.dd-stage2-loader-list > div { min-height: 25px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #131920; font-size: 10px; }
+.dd-stage2-toast-stack { display: grid; gap: 8px; }
+
+.dd-stage2-import-banner { grid-column: span 1; }
+.dd-stage2-warning-banner { grid-column: span 1; }
+.dd-stage2-empty { grid-column: span 1; }
+.dd-stage2-floating { grid-column: span 1; }
+.dd-stage2-empty .dd-empty-state { flex: 1; }
+.dd-stage2-floating .dd-floating-activity { margin-top: 4px; }
+
+.dd-stage2-progress-modal { grid-column: 1 / span 3; }
+.dd-stage2-upload-buttons { grid-column: 4 / span 2; }
+.dd-stage2-dropzone { grid-column: 6 / span 2; }
+.dd-stage2-dialog-card { grid-column: 8 / span 2; }
+.dd-stage2-destructive-card { grid-column: 10 / span 3; }
+.dd-stage2-selectable { grid-column: 1 / span 4; }
+.dd-stage2-skeleton-row { grid-column: 5 / span 3; }
+.dd-stage2-skeleton-card { grid-column: 8 / span 3; }
+.dd-stage2-skeleton-chip { grid-column: 11 / span 2; }
+
+.dd-stage2-upload-buttons .dd-stage2-card__content { gap: 9px; }
+.dd-stage2-dialog-card .dd-dialog,
+.dd-stage2-destructive-card .dd-dialog { min-height: 208px; }
+.dd-stage2-destructive-card .dd-dialog { min-height: 198px; }
+.dd-stage2-option-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
+.dd-stage2-skeleton-stack { display: grid; gap: 5px; }
+.dd-stage2-skeleton-card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.dd-stage2-chip-grid { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding-top: 8px; }
+.dd-stage2-restore { min-height: 42px; border: 1px dashed #aeb6c0; border-radius: 6px; color: #4b5562; font-size: 10px; font-weight: 700; }
+.dd-stage2-restore:hover { background: #f4f6f8; }
+.dd-stage2-action-result { color: #59636f; font-size: 9px; }
+
+@media (max-width: 1400px) {
+  .dd-stage2-grid--top { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dd-stage2-status-badges { grid-column: span 2; }
+  .dd-stage2-toast-card { grid-column: span 2; }
+  .dd-stage2-grid--middle { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dd-stage2-grid--lower { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .dd-stage2-progress-modal { grid-column: span 2; }
+  .dd-stage2-upload-buttons { grid-column: span 2; }
+  .dd-stage2-dropzone { grid-column: span 2; }
+  .dd-stage2-dialog-card { grid-column: span 3; }
+  .dd-stage2-destructive-card { grid-column: span 3; }
+  .dd-stage2-selectable { grid-column: span 6; }
+  .dd-stage2-skeleton-row { grid-column: span 3; }
+  .dd-stage2-skeleton-card { grid-column: span 3; }
+  .dd-stage2-skeleton-chip { grid-column: span 3; }
+}
+
+@media (max-width: 860px) {
+  .dd-stage2-board { padding: 14px; }
+  .dd-stage2-grid--top,
+  .dd-stage2-grid--middle,
+  .dd-stage2-grid--lower { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dd-stage2-status-badges,
+  .dd-stage2-toast-card,
+  .dd-stage2-progress-modal,
+  .dd-stage2-selectable,
+  .dd-stage2-skeleton-row,
+  .dd-stage2-skeleton-card,
+  .dd-stage2-skeleton-chip { grid-column: span 2; }
+  .dd-stage2-upload-buttons,
+  .dd-stage2-dropzone,
+  .dd-stage2-dialog-card,
+  .dd-stage2-destructive-card { grid-column: span 1; }
+  .dd-stage2-option-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dd-activity-banner { flex-wrap: wrap; }
+  .dd-activity-banner__copy { min-width: 160px; }
+}
+
+@media (max-width: 560px) {
+  .dd-stage2-grid--top,
+  .dd-stage2-grid--middle,
+  .dd-stage2-grid--lower { grid-template-columns: minmax(0, 1fr); }
+  .dd-stage2-status-badges,
+  .dd-stage2-toast-card,
+  .dd-stage2-progress-modal,
+  .dd-stage2-upload-buttons,
+  .dd-stage2-dropzone,
+  .dd-stage2-dialog-card,
+  .dd-stage2-destructive-card,
+  .dd-stage2-selectable,
+  .dd-stage2-skeleton-row,
+  .dd-stage2-skeleton-card,
+  .dd-stage2-skeleton-chip { grid-column: span 1; }
+  .dd-stage2-badge-matrix { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dd-stage2-option-grid { grid-template-columns: minmax(0, 1fr); }
+  .dd-stage2-skeleton-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

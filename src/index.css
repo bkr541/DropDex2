@@ -77,8 +77,20 @@
   --color-control-disabled: #e0e3e8;
   --color-control-disabled-text: #a8adb5;
   --color-control-focus: #8f42e8;
+  --color-control-blue-rgb: 31 125 255;
+  --color-control-cyan-rgb: 18 191 224;
+  --color-control-purple-rgb: 154 66 223;
+  --color-control-magenta-rgb: 239 77 208;
+  --color-control-green-rgb: 35 217 139;
+  --color-control-amber-rgb: 255 189 19;
+  --color-control-orange-rgb: 255 139 19;
+  --color-control-red-rgb: 255 54 71;
+  --color-feedback-surface: #090e14;
+  --color-feedback-surface-raised: #10171f;
+  --color-feedback-border: #26313c;
   --radius-control: 7px;
   --shadow-control: 0 5px 10px rgb(10 15 22 / 0.25), inset 0 1px 0 rgb(255 255 255 / 0.055);
+  --shadow-feedback: 0 6px 14px rgb(0 0 0 / 0.28), inset 0 1px 0 rgb(255 255 255 / 0.035);
 }
 
 /* ── Light mode ── */
