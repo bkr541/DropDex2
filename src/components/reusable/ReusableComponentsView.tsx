@@ -1,724 +1,764 @@
 import { useState } from 'react';
 import {
   Search, Music, Settings, Loader2, CheckCircle2, AlertTriangle,
-  XCircle, ChevronRight, User, FileUp, TrendingUp, Layers,
-  Zap, Play, Pause, SkipForward, Heart, MoreHorizontal,
-  Eye, EyeOff, Lock, ChevronDown, Bell, Star, Radio, Flame,
-  FolderOpen,
+  XCircle, Usb, ChevronRight, Database, User, FileUp, Radio, TrendingUp,
+  Layers,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { TrackAnalysisStatusBadge } from '../library/TrackAnalysisStatusBadge';
 import { WaveformDisplay } from '../library/WaveformDisplay';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
-import { ImportActivityBanner } from '../imports/ImportActivityBanner';
-import { UsbConnectionButton } from '../usb/UsbConnectionButton';
-import { PlaylistOverviewCard } from '../library/PlaylistOverviewCard';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import type { RekordboxImport } from '../../types';
-import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 
-// ── mock data ─────────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 
-const MOCK_IMPORT: RekordboxImport = {
-  id: 'demo',
-  user_id: 'demo',
-  source_filename: 'exportLibrary.db',
-  source_type: 'file',
-  database_version: null,
-  device_name: 'PIONEER USB',
-  rekordbox_created_date: null,
-  track_count: 498,
-  playlist_count: 12,
-  playlist_track_count: 364,
-  status: 'running',
-  error_message: null,
-  imported_at: new Date().toISOString(),
-  source_bundle_type: 'usb_folder',
-  analysis_status: 'parsing',
-  analysis_expected_track_count: 498,
-  analysis_matched_track_count: 498,
-  analysis_parsed_track_count: 364,
-  analysis_failed_track_count: 0,
-  analysis_asset_count: 0,
-  analysis_parser_version: null,
-  analysis_completed_at: null,
-  analysis_warnings: [],
-  analysis_progress_processed_track_count: 364,
-  analysis_progress_total_track_count: 498,
-  analysis_current_track_id: null,
-  analysis_current_track_title: 'Strobe',
-  analysis_current_track_artist: 'Deadmau5',
-  analysis_current_track_label: null,
-  analysis_progress_updated_at: null,
+function Cell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 p-5">
+      <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
+      <div className="flex flex-col gap-2">{children}</div>
+    </div>
+  );
+}
+
+// ── mock waveform states ───────────────────────────────────────────────────────
+
+const MOCK_SEED = 'reusable-components-demo-seed';
+
+const MOCK_WAVEFORM_LOADING: WaveformLoadState = { status: 'loading', trackId: 'demo' };
+const MOCK_WAVEFORM_UNAVAILABLE: WaveformLoadState = { status: 'unavailable', trackId: 'demo' };
+const MOCK_WAVEFORM_ERROR: WaveformLoadState = {
+  status: 'error', trackId: 'demo', error: 'Network timeout', retryable: true,
+};
+const MOCK_WAVEFORM_INVALID: WaveformLoadState = {
+  status: 'invalid', trackId: 'demo',
+  error: 'Unsupported waveform format', reason: 'unsupported', retryable: false,
 };
 
-const PLAYLISTS: PlaylistWithCount[] = [
-  { id: 'p1', import_id: 'x', rekordbox_playlist_id: 'rp1', name: 'Peak Hour Rollers', parent_playlist_id: null, sort_order: 0, is_folder: false, created_at: '', track_count: 84 },
-  { id: 'p2', import_id: 'x', rekordbox_playlist_id: 'rp2', name: 'DNB Collection', parent_playlist_id: null, sort_order: 1, is_folder: true, created_at: '', track_count: 312 },
-  { id: 'p3', import_id: 'x', rekordbox_playlist_id: 'rp3', name: 'Warm Up Selects', parent_playlist_id: null, sort_order: 2, is_folder: false, created_at: '', track_count: 34 },
-  { id: 'p4', import_id: 'x', rekordbox_playlist_id: 'rp4', name: 'Hard Techno', parent_playlist_id: null, sort_order: 3, is_folder: true, created_at: '', track_count: 198 },
-];
-
-const WAVEFORM_LOADING: WaveformLoadState = { status: 'loading', trackId: 'demo' };
-const WAVEFORM_UNAVAILABLE: WaveformLoadState = { status: 'unavailable', trackId: 'demo' };
-const WAVEFORM_ERROR: WaveformLoadState = { status: 'error', trackId: 'demo', error: 'Network timeout', retryable: true };
-
-// ── section header ────────────────────────────────────────────────────────────
-
-function Divider({ n, title }: { n: string; title: string }) {
-  return (
-    <div className="flex items-center gap-5 select-none">
-      <span className="font-mono text-[10px] font-bold tracking-[0.3em] text-muted-foreground/30">{n}</span>
-      <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
-      <span className="font-mono text-[10px] font-bold tracking-[0.3em] text-muted-foreground/30 uppercase">{title}</span>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 01 · FOUNDATIONS
-// ─────────────────────────────────────────────────────────────────────────────
-
-const COLORS = [
-  { name: 'Brand Primary', cls: 'bg-primary', hex: '#cf6b65' },
-  { name: 'Brand Secondary', cls: 'bg-secondary', hex: '#e8937e' },
-  { name: 'Emerald', cls: 'bg-emerald-500', hex: '#10b981' },
-  { name: 'Amber', cls: 'bg-amber-400', hex: '#fbbf24' },
-  { name: 'Red', cls: 'bg-red-500', hex: '#ef4444' },
-  { name: 'Cyan', cls: 'bg-cyan-400', hex: '#22d3ee' },
-];
-
-function FoundationsSection() {
-  return (
-    <div className="flex gap-0 overflow-hidden rounded-2xl border border-[var(--color-border-subtle)]">
-      {/* Color bars */}
-      {COLORS.map(({ name, cls, hex }) => (
-        <div key={name} className={cn('group relative flex-1 h-52 flex flex-col justify-end p-4', cls)}>
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 space-y-0.5">
-            <p className="text-[9px] font-black uppercase tracking-widest text-white/90">{name}</p>
-            <p className="font-mono text-[9px] text-white/60">{hex}</p>
-          </div>
-        </div>
-      ))}
-      {/* Type specimen */}
-      <div className="flex-[2.5] bg-[var(--color-surface)]/60 p-8 flex flex-col justify-between border-l border-[var(--color-border-subtle)]">
-        <div className="space-y-1">
-          <p className="text-[48px] font-black leading-none tracking-tight">Strobe</p>
-          <p className="text-2xl font-black italic text-muted-foreground">Deadmau5</p>
-          <p className="text-base font-semibold text-muted-foreground/70">Progressive House · 2011</p>
-          <p className="text-sm text-muted-foreground/50">128.0 BPM · 10A · 10:35 · exportLibrary.db</p>
-          <p className="text-xs text-muted-foreground/30 uppercase tracking-[0.2em]">Analysis Status · Completed</p>
-          <p className="font-mono text-[9px] text-muted-foreground/20 tracking-wider">8f591f3e-4c2d-4b7a-9c3d-1a2b3c4d5e6f</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-3xl font-black tabular-nums text-primary neon-text-blue">174.2</span>
-          <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">BPM</span>
-          <div className="h-8 w-px bg-[var(--color-border-subtle)] mx-2" />
-          <span className="font-mono text-3xl font-black tabular-nums text-secondary">8A</span>
-          <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">Key</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 02 · BUTTONS
-// ─────────────────────────────────────────────────────────────────────────────
+// ── sub-sections ──────────────────────────────────────────────────────────────
 
 function ButtonsSection() {
-  const [loading, setLoading] = useState(false);
-
   return (
-    <div className="space-y-3">
-      {/* Hero row */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-primary/5 p-10 flex items-center justify-center">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(var(--color-brand-primary-rgb)/0.15)_0%,_transparent_70%)]" />
-          <button className="relative z-10 rounded-2xl bg-primary px-8 py-4 text-base font-black text-white shadow-primary-selection transition-all hover:bg-primary/90 hover:shadow-[0_0_40px_rgba(var(--color-brand-primary-rgb)/0.6)] active:scale-[0.97]">
-            <span className="flex items-center gap-2.5"><Zap size={16} />Import Library</span>
-          </button>
-        </div>
-        <div className="relative overflow-hidden rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/40 p-10 flex items-center justify-center">
-          <button className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-8 py-4 text-base font-bold transition-all hover:border-primary/30 hover:bg-[var(--color-surface-hover)] active:scale-[0.97]">
-            Cancel
-          </button>
-        </div>
-        <div className="relative overflow-hidden rounded-2xl border border-red-500/15 bg-red-500/5 p-10 flex items-center justify-center">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(239,68,68,0.1)_0%,_transparent_70%)]" />
-          <button className="relative z-10 rounded-2xl border border-red-500/30 bg-red-500/10 px-8 py-4 text-base font-bold text-red-400 transition-all hover:bg-red-500/15 hover:border-red-500/50 active:scale-[0.97]">
-            <span className="flex items-center gap-2.5"><XCircle size={16} />Delete Library</span>
-          </button>
-        </div>
-      </div>
+    <>
+      <Cell label="Primary Button">
+        <button className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white hover:bg-primary/90 transition-colors">
+          Import Library
+        </button>
+        <button className="rounded-xl bg-secondary px-4 py-2 text-sm font-bold text-white hover:bg-secondary/90 transition-colors">
+          Open Drop Lab
+        </button>
+      </Cell>
 
-      {/* Utility row */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex items-center justify-between rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 px-6 py-5">
-          <div className="flex gap-2">
-            {[Heart, Star, Flame, Bell, MoreHorizontal].map((Icon, i) => (
-              <button key={i} className="w-10 h-10 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] flex items-center justify-center text-muted-foreground/50 hover:text-primary hover:border-primary/30 hover:bg-primary/8 transition-all active:scale-90">
-                <Icon size={15} />
-              </button>
-            ))}
-          </div>
-          <span className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground/30 uppercase">Icon Buttons</span>
+      <Cell label="Secondary Button">
+        <button className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-2 text-sm font-bold hover:bg-[var(--color-surface-hover)] transition-colors">
+          Cancel
+        </button>
+        <button className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-2 text-sm font-bold hover:bg-[var(--color-surface-hover)] transition-colors flex items-center gap-2">
+          <Settings size={14} /> Settings
+        </button>
+      </Cell>
+
+      <Cell label="Danger / Ghost Button">
+        <button className="rounded-xl px-4 py-2 text-sm font-bold text-red-400 border border-red-500/20 bg-red-500/10 hover:bg-red-500/15 transition-colors">
+          Delete Library
+        </button>
+        <button className="rounded-xl px-4 py-2 text-sm font-bold text-primary hover:text-primary/80 transition-colors">
+          View status →
+        </button>
+      </Cell>
+
+      <Cell label="Icon Button">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2.5 text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all">
+            <Music size={16} />
+          </button>
+          <button className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2.5 text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all">
+            <Search size={16} />
+          </button>
+          <button className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2.5 text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all">
+            <Settings size={16} />
+          </button>
+          <button className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-all">
+            <XCircle size={16} />
+          </button>
         </div>
-        <div className="flex items-center justify-between rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 px-6 py-5">
-          <button
-            onClick={() => { setLoading(true); setTimeout(() => setLoading(false), 2000); }}
-            disabled={loading}
-            className="rounded-2xl bg-primary/15 border border-primary/25 px-6 py-3 text-sm font-bold text-primary transition-all hover:bg-primary/25 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97]"
-          >
-            <span className="flex items-center gap-2">
-              {loading ? <><Loader2 size={14} className="animate-spin" /> Processing…</> : <><CheckCircle2 size={14} /> Confirm</>}
-            </span>
-          </button>
-          <button className="rounded-2xl px-6 py-3 text-sm font-bold text-primary hover:bg-primary/8 transition-all flex items-center gap-1.5 active:scale-[0.97]">
-            View full report <ChevronRight size={14} />
-          </button>
-          <button className="brand-gradient rounded-2xl px-6 py-3 text-sm font-black text-white hover:opacity-90 transition-all active:scale-[0.97]">
-            <span className="flex items-center gap-2"><Flame size={14} />Start Analysis</span>
-          </button>
-        </div>
-      </div>
-    </div>
+      </Cell>
+
+      <Cell label="Action Row Button">
+        <button className="flex items-center gap-2 rounded-xl border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface-hover)] transition-colors w-full">
+          <FileUp size={12} className="text-muted-foreground" />
+          <span className="flex-1 text-left">Import New Library</span>
+          <ChevronRight size={12} className="text-muted-foreground" />
+        </button>
+        <button className="flex items-center gap-2 rounded-xl border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/15 transition-colors w-full">
+          <Database size={12} />
+          <span className="flex-1 text-left">View status</span>
+          <ChevronRight size={12} />
+        </button>
+      </Cell>
+
+      <Cell label="Disabled Button">
+        <button disabled className="rounded-xl bg-primary/40 px-4 py-2 text-sm font-bold text-white cursor-not-allowed opacity-50">
+          Processing…
+        </button>
+        <button disabled className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold text-muted-foreground cursor-not-allowed opacity-50 flex items-center gap-2">
+          <Loader2 size={14} className="animate-spin" /> Connecting…
+        </button>
+      </Cell>
+    </>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 03 · INPUTS
-// ─────────────────────────────────────────────────────────────────────────────
 
 function InputsSection() {
-  const [showPass, setShowPass] = useState(false);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchVal, setSearchVal] = useState('');
-  const SUGGESTIONS = ['Strobe — Deadmau5', 'Sun & Moon — Above & Beyond', 'Fractures — Illenium'];
+  const [text, setText] = useState('');
+  const [search, setSearch] = useState('');
 
   return (
-    <div className="grid grid-cols-5 gap-3">
-      {/* Search — large left column */}
-      <div className="col-span-3 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/40 p-8 space-y-3">
-        <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase mb-5">Search</p>
-        <div className={cn(
-          'flex items-center gap-3 rounded-2xl border px-5 py-4 transition-all duration-200',
-          searchFocused ? 'border-primary/50 ring-2 ring-primary/15 bg-[var(--color-surface)]' : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60',
-        )}>
-          <Search size={16} className={cn('shrink-0 transition-colors', searchFocused ? 'text-primary' : 'text-muted-foreground/40')} />
+    <>
+      <Cell label="Text Input">
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Display name"
+          className="w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
+        />
+        <input
+          type="email"
+          placeholder="Email address"
+          className="w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
+        />
+      </Cell>
+
+      <Cell label="Search Input">
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <input
             type="search"
-            value={searchVal}
-            onChange={e => setSearchVal(e.target.value)}
-            placeholder="Search tracks, artists, keys…"
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
-            className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/30 focus:outline-none"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tracks, artists…"
+            className="w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] pl-9 pr-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
           />
-          <kbd className="hidden sm:flex h-5 items-center gap-0.5 rounded border border-[var(--color-border-subtle)] px-1.5 font-mono text-[9px] text-muted-foreground/30 shrink-0">⌘K</kbd>
         </div>
-        <div className={cn(
-          'rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden transition-all duration-200',
-          searchFocused ? 'opacity-100' : 'opacity-40',
-        )}>
-          {SUGGESTIONS.map((r, i) => (
-            <div
-              key={i}
-              onMouseDown={() => setSearchVal(r)}
-              className="flex items-center gap-3 px-5 py-3.5 cursor-pointer border-b border-[var(--color-border-faint)] last:border-0 hover:bg-[var(--color-surface-hover)] transition-colors"
-            >
-              <Music size={12} className="text-muted-foreground/30 shrink-0" />
-              <span className="text-sm">{r}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      </Cell>
 
-      {/* Form inputs — right column */}
-      <div className="col-span-2 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/40 p-8 space-y-3">
-        <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase mb-5">Form Inputs</p>
-        <div className="relative">
-          <User size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground/30 pointer-events-none" />
-          <input type="text" placeholder="Display name" className="w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] pl-10 pr-4 py-3 text-sm placeholder:text-muted-foreground/30 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all" />
-        </div>
-        <div className="relative">
-          <Lock size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground/30 pointer-events-none" />
-          <input type={showPass ? 'text' : 'password'} placeholder="Password" className="w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] pl-10 pr-10 py-3 text-sm placeholder:text-muted-foreground/30 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all" />
-          <button onClick={() => setShowPass(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted-foreground/30 hover:text-muted-foreground transition-colors">
-            {showPass ? <EyeOff size={13} /> : <Eye size={13} />}
-          </button>
-        </div>
-        <div className="relative">
-          <select className="w-full appearance-none rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-3 pr-9 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all cursor-pointer">
-            <option>DropDex Dark</option>
-            <option>DropDex Light</option>
-            <option>CDJ Performance</option>
-          </select>
-          <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/30 pointer-events-none" />
-        </div>
-        <div className="space-y-1">
-          <input type="email" defaultValue="invalid@" className="w-full rounded-xl border border-red-500/40 bg-red-500/5 px-4 py-3 text-sm text-red-400 focus:outline-none transition-all" />
-          <p className="text-[10px] text-red-400/80 pl-1">Please enter a valid email address.</p>
-        </div>
-      </div>
-    </div>
+      <Cell label="Textarea">
+        <textarea
+          placeholder="Add a description for this playlist…"
+          rows={3}
+          className="w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all resize-none"
+        />
+      </Cell>
+    </>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 04 · STATUS & BADGES
-// ─────────────────────────────────────────────────────────────────────────────
-
-function StatusSection() {
-  const ANALYSIS_STATUSES = ['completed', 'parsing', 'queued', 'failed', 'partial', 'not_requested', 'reused', 'skipped', 'missing_required'] as const;
-  const STATUS_DOTS = [
-    { label: 'Connected', dot: 'bg-green-500', note: 'USB active' },
-    { label: 'Connecting', dot: 'bg-primary animate-pulse', note: 'Handshake' },
-    { label: 'Permission Required', dot: 'bg-amber-400', note: 'Re-authorize' },
-    { label: 'Error', dot: 'bg-red-500', note: 'Retry' },
-    { label: 'Released', dot: 'bg-cyan-400', note: 'Idle' },
-    { label: 'Unavailable', dot: 'bg-[var(--color-border-subtle)]', note: 'No drive' },
-  ];
-
+function BadgesSection() {
   return (
-    <div className="space-y-3">
-      {/* Analysis badges — full width strip */}
-      <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 px-8 py-6">
-        <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase mb-5">Analysis Status Badge · All States</p>
+    <>
+      <Cell label="Status Badge">
         <div className="flex flex-wrap gap-2">
-          {ANALYSIS_STATUSES.map(s => <TrackAnalysisStatusBadge key={s} status={s} />)}
+          <span className="inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-emerald-300">
+            Active
+          </span>
+          <span className="inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-blue-300">
+            Processing
+          </span>
+          <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-amber-300">
+            Warning
+          </span>
+          <span className="inline-flex rounded-full border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-red-300">
+            Failed
+          </span>
         </div>
-      </div>
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-widest text-primary">
+            73%
+          </span>
+          <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-primary/10 text-primary rounded">
+            Active
+          </span>
+        </div>
+      </Cell>
 
-      <div className="grid grid-cols-2 gap-3">
-        {/* Pills */}
-        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 px-8 py-6">
-          <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase mb-5">Status Pills</p>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { l: 'Active', c: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-              { l: 'Processing', c: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
-              { l: 'Queued', c: 'bg-primary/10 text-primary border-primary/20' },
-              { l: 'Warning', c: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
-              { l: 'Failed', c: 'bg-red-500/10 text-red-400 border-red-500/20' },
-              { l: 'Paused', c: 'bg-[var(--color-surface-hover)] text-muted-foreground border-[var(--color-border-subtle)]' },
-              { l: '174.2 BPM', c: 'bg-primary/10 text-primary border-primary/20 font-mono' },
-              { l: '8A · Dm', c: 'bg-secondary/10 text-secondary border-secondary/20 font-mono' },
-              { l: 'PRO', c: 'brand-gradient text-white border-transparent' },
-            ].map(({ l, c }) => (
-              <span key={l} className={cn('inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold', c)}>{l}</span>
-            ))}
+      <Cell label="Analysis Status Badge">
+        <div className="flex flex-wrap gap-1.5">
+          <TrackAnalysisStatusBadge status="completed" />
+          <TrackAnalysisStatusBadge status="parsing" />
+          <TrackAnalysisStatusBadge status="failed" />
+          <TrackAnalysisStatusBadge status="partial" />
+          <TrackAnalysisStatusBadge status="not_requested" />
+          <TrackAnalysisStatusBadge status="reused" />
+          <TrackAnalysisStatusBadge status="skipped" />
+          <TrackAnalysisStatusBadge status="missing_required" />
+        </div>
+      </Cell>
+
+      <Cell label="Status Dot">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="text-xs text-muted-foreground">Connected</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span className="text-xs text-muted-foreground">Warning</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span className="text-xs text-muted-foreground">Error</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-cyan-400" />
+            <span className="text-xs text-muted-foreground">Released</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+            <span className="text-xs text-muted-foreground">Connecting</span>
           </div>
         </div>
-
-        {/* Status dots */}
-        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 px-8 py-6">
-          <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase mb-5">Status Dot Indicators</p>
-          <div className="space-y-3">
-            {STATUS_DOTS.map(({ label, dot, note }) => (
-              <div key={label} className="flex items-center gap-3">
-                <span className={cn('w-2 h-2 rounded-full shrink-0', dot)} />
-                <span className="text-sm flex-1">{label}</span>
-                <span className="font-mono text-[9px] text-muted-foreground/35 uppercase tracking-widest">{note}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
+      </Cell>
+    </>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 05 · FEEDBACK
-// ─────────────────────────────────────────────────────────────────────────────
 
 function FeedbackSection() {
-  const BARS = [
-    { label: 'Parsing ANLZ files', pct: 73, color: 'bg-primary', h: 'h-2.5' },
-    { label: 'Uploading library', pct: 42, color: 'bg-secondary', h: 'h-2' },
-    { label: 'Indexing complete', pct: 100, color: 'bg-emerald-500', h: 'h-1.5' },
-    { label: 'Queued', pct: 18, color: 'bg-amber-400', h: 'h-1' },
-  ];
-
   return (
-    <div className="space-y-3">
-      {/* Import banner + progress — top row */}
-      <div className="grid grid-cols-5 gap-3">
-        <div className="col-span-3 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 p-8 space-y-5">
-          <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase">Progress</p>
-          {BARS.map(({ label, pct, color, h }) => (
-            <div key={label} className="space-y-2">
-              <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>{label}</span>
-                <span className="font-mono font-bold tabular-nums">{pct}%</span>
-              </div>
-              <div className={cn('w-full overflow-hidden rounded-full bg-[var(--color-surface)]', h)}>
-                <div className={cn('h-full rounded-full transition-[width] duration-700', color)} style={{ width: `${pct}%` }} />
-              </div>
+    <>
+      <Cell label="Progress Bar">
+        <div>
+          <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+            <span>Parsing tracks</span>
+            <span className="font-mono font-bold">73%</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-[var(--color-surface)]">
+            <div className="h-full w-[73%] rounded-full bg-primary transition-[width] duration-500" />
+          </div>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-surface)]">
+          <div className="h-full w-[42%] rounded-full bg-secondary" />
+        </div>
+        <div className="h-1 overflow-hidden rounded-full bg-[var(--color-surface)]">
+          <div className="h-full w-[91%] rounded-full bg-emerald-500" />
+        </div>
+      </Cell>
+
+      <Cell label="Spinner / Loader">
+        <div className="flex items-center gap-4">
+          <Loader2 size={16} className="animate-spin text-primary" />
+          <Loader2 size={20} className="animate-spin text-secondary" />
+          <Loader2 size={28} className="animate-spin text-muted-foreground" />
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 size={14} className="animate-spin" />
+          <span>Loading tracks…</span>
+        </div>
+      </Cell>
+
+      <Cell label="Toast / Notification">
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-950/60 p-3 text-emerald-50">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+          <div>
+            <p className="text-xs font-black">Library is ready</p>
+            <p className="mt-0.5 text-[10px] opacity-80">exportLibrary.db finished processing.</p>
+          </div>
+        </div>
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-950/60 p-3 text-amber-50">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-400" />
+          <div>
+            <p className="text-xs font-black">Analysis incomplete</p>
+            <p className="mt-0.5 text-[10px] opacity-80">12 tracks could not be parsed.</p>
+          </div>
+        </div>
+      </Cell>
+
+      <Cell label="Import Activity Banner">
+        <section className="overflow-hidden rounded-2xl border border-primary/25 bg-primary/5">
+          <div className="flex items-start gap-3 p-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Loader2 size={15} className="animate-spin" />
             </div>
-          ))}
-        </div>
-
-        <div className="col-span-2 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 p-8 space-y-3">
-          <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase mb-5">Toast Notifications</p>
-          {[
-            { Icon: CheckCircle2, title: 'Library is ready', body: 'exportLibrary.db finished processing.', wrap: 'border-emerald-500/20 bg-emerald-950/40', ic: 'text-emerald-400', tc: 'text-emerald-100' },
-            { Icon: AlertTriangle, title: 'Analysis incomplete', body: '12 tracks could not be parsed.', wrap: 'border-amber-500/20 bg-amber-950/40', ic: 'text-amber-400', tc: 'text-amber-100' },
-            { Icon: XCircle, title: 'Import failed', body: 'Could not read exportLibrary.db.', wrap: 'border-red-500/20 bg-red-950/40', ic: 'text-red-400', tc: 'text-red-100' },
-          ].map(({ Icon, title, body, wrap, ic, tc }) => (
-            <div key={title} className={cn('flex items-start gap-3 rounded-2xl border px-4 py-3', wrap)}>
-              <Icon size={15} className={cn('mt-0.5 shrink-0', ic)} />
-              <div className="min-w-0 flex-1">
-                <p className={cn('text-xs font-bold', tc)}>{title}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{body}</p>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-black">Parsing ANLZ files</p>
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[9px] font-bold text-primary">73%</span>
               </div>
-              <button className="text-muted-foreground/30 hover:text-muted-foreground transition-colors shrink-0"><XCircle size={12} /></button>
+              <p className="mt-0.5 text-[10px] text-muted-foreground truncate">exportLibrary.db · 364 / 498 tracks</p>
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
+          <div className="h-1.5 bg-[var(--color-surface)]">
+            <div className="h-full w-[73%] bg-primary transition-[width] duration-500" />
+          </div>
+        </section>
+      </Cell>
 
-      {/* Import banner — full width */}
-      <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 p-8 space-y-4">
-        <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase">Import Activity Banner</p>
-        <ImportActivityBanner item={MOCK_IMPORT} activeImport={MOCK_IMPORT} onViewStatus={() => {}} />
-      </div>
+      <Cell label="Error / Empty State">
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-3">
+          <p className="text-sm font-bold text-red-400">Import failed</p>
+          <p className="mt-1 text-xs text-muted-foreground">Could not read exportLibrary.db. Check the file and try again.</p>
+          <button className="mt-2 text-xs font-bold text-primary hover:underline">Retry</button>
+        </div>
+        <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4 text-center">
+          <p className="text-sm text-muted-foreground italic">No tracks found.</p>
+        </div>
+      </Cell>
 
-      {/* Warning banners + loaders */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 px-8 py-6 space-y-3">
-          <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase mb-3">Alert Banners</p>
-          <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3 text-[11px] text-amber-400 font-medium">
-            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-            Select the USB root folder, not PIONEER or a subfolder.
-          </div>
-          <div className="flex items-start gap-2.5 rounded-xl border border-red-500/20 bg-red-500/8 px-4 py-3 text-[11px] text-red-400 font-medium">
-            <XCircle size={13} className="mt-0.5 shrink-0" />
-            USB access was denied. Re-authorize to continue.
-          </div>
-          <div className="flex items-start gap-2.5 rounded-xl border border-primary/20 bg-primary/8 px-4 py-3 text-[11px] text-primary font-medium">
-            <Bell size={13} className="mt-0.5 shrink-0" />
-            A new version of DropDex is available.
-          </div>
+      <Cell label="Warning / Alert Banner">
+        <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-400">
+          <AlertTriangle size={11} className="mt-0.5 shrink-0" />
+          <span>Select the USB root folder, not a subfolder.</span>
         </div>
-        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 px-8 py-6">
-          <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase mb-5">Loaders</p>
-          <div className="flex items-end gap-8 mb-6">
-            {[14, 20, 28, 40].map(s => <Loader2 key={s} size={s} className="animate-spin text-primary" />)}
-          </div>
-          <div className="space-y-2">
-            {['Loading waveform data', 'Syncing library', 'Connecting to Supabase'].map(l => (
-              <div key={l} className="flex items-center gap-3 rounded-xl border border-[var(--color-border-faint)] bg-[var(--color-surface)] px-4 py-2.5">
-                <Loader2 size={12} className="animate-spin text-primary shrink-0" />
-                <span className="text-xs text-muted-foreground">{l}…</span>
-              </div>
-            ))}
-          </div>
+        <div className="flex items-start gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-[10px] text-red-400">
+          <XCircle size={11} className="mt-0.5 shrink-0" />
+          <span>USB access was denied. Re-authorize to continue.</span>
         </div>
-      </div>
-    </div>
+      </Cell>
+    </>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 06 · WAVEFORM
-// ─────────────────────────────────────────────────────────────────────────────
 
 function WaveformSection() {
   return (
-    <div className="space-y-3">
-      {/* Full-width waveform */}
-      <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 px-8 py-8 space-y-6">
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <p className="font-black">Strobe</p>
-            <p className="text-xs text-muted-foreground uppercase">Deadmau5</p>
-          </div>
-          <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
-            <span className="text-primary neon-text-blue font-bold">3:58</span>
-            <span>/</span>
-            <span>10:32</span>
-          </div>
+    <>
+      <Cell label="Waveform — Decorative (primary)">
+        <div className="h-12 w-full">
+          <WaveformDisplay seed={MOCK_SEED} barCount={80} color="primary" showFallbackLabel={false} />
         </div>
-        <div className="h-16">
-          <WaveformDisplay seed="dropdex-primary-demo" barCount={120} color="primary" showFallbackLabel={false} />
-        </div>
-        <div className="h-10">
-          <WaveformDisplay seed="dropdex-secondary-demo" barCount={120} color="secondary" showFallbackLabel />
-        </div>
-      </div>
+      </Cell>
 
-      {/* Empty states */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: 'Loading', state: WAVEFORM_LOADING },
-          { label: 'Unavailable', state: WAVEFORM_UNAVAILABLE },
-          { label: 'Error', state: WAVEFORM_ERROR },
-        ].map(({ label, state }) => (
-          <div key={label} className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 px-6 py-6 space-y-3">
-            <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase">{label}</p>
-            <RekordboxPreviewWaveform state={state} height={48} variant="compact" onRetry={state.status === 'error' ? () => {} : undefined} />
-          </div>
-        ))}
-      </div>
-    </div>
+      <Cell label="Waveform — Decorative (secondary)">
+        <div className="h-12 w-full">
+          <WaveformDisplay seed={`${MOCK_SEED}-2`} barCount={80} color="secondary" showFallbackLabel={false} />
+        </div>
+      </Cell>
+
+      <Cell label="Waveform — With visualizer label">
+        <div className="h-12 w-full">
+          <WaveformDisplay seed={`${MOCK_SEED}-3`} barCount={60} showFallbackLabel />
+        </div>
+      </Cell>
+
+      <Cell label="Rekordbox Waveform — Loading">
+        <RekordboxPreviewWaveform state={MOCK_WAVEFORM_LOADING} height={40} variant="compact" />
+      </Cell>
+
+      <Cell label="Rekordbox Waveform — Unavailable">
+        <RekordboxPreviewWaveform state={MOCK_WAVEFORM_UNAVAILABLE} height={40} variant="compact" />
+      </Cell>
+
+      <Cell label="Rekordbox Waveform — Error">
+        <RekordboxPreviewWaveform
+          state={MOCK_WAVEFORM_ERROR}
+          height={40}
+          variant="compact"
+          onRetry={() => {}}
+        />
+      </Cell>
+
+      <Cell label="Rekordbox Waveform — Invalid / Unsupported">
+        <RekordboxPreviewWaveform state={MOCK_WAVEFORM_INVALID} height={40} variant="compact" />
+      </Cell>
+    </>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 07 · LIBRARY / DATA
-// ─────────────────────────────────────────────────────────────────────────────
-
-const TRACKS = [
-  { title: 'Strobe', artist: 'Deadmau5', bpm: '128.0', key: '7B', dur: '10:32' },
-  { title: 'Sun & Moon', artist: 'Above & Beyond', bpm: '138.0', key: '8A', dur: '9:47' },
-  { title: 'Fractures', artist: 'Illenium', bpm: '150.0', key: '4A', dur: '5:12' },
-  { title: 'Lose Yourself (To Dance)', artist: 'Daft Punk', bpm: '100.5', key: '2B', dur: '5:53' },
-  { title: 'Coming Home', artist: 'Sigma', bpm: '174.0', key: '9A', dur: '4:11' },
-];
-
-function LibrarySection() {
-  const [playing, setPlaying] = useState<string | null>('Strobe');
-
+function CardSection() {
   return (
-    <div className="space-y-3">
-      {/* Track table */}
-      <div className="rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden">
-        <div className="grid px-6 py-3 border-b border-[var(--color-border-faint)]" style={{ gridTemplateColumns: '32px 1fr 80px 56px 60px 36px' }}>
-          {['#', 'Track', 'BPM', 'Key', 'Time', ''].map((h, i) => (
-            <span key={i} className="font-mono text-[9px] font-bold tracking-[0.2em] text-muted-foreground/30 uppercase">{h}</span>
-          ))}
+    <>
+      <Cell label="Glass Card">
+        <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4">
+          <p className="text-sm font-bold">Glass surface</p>
+          <p className="text-xs text-muted-foreground mt-1">Used for panels, modals, and content containers throughout DropDex.</p>
         </div>
-        {TRACKS.map(({ title, artist, bpm, key: k, dur }, i) => (
+      </Cell>
+
+      <Cell label="Surface Card">
+        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4">
+          <p className="text-sm font-bold">Surface card</p>
+          <p className="text-xs text-muted-foreground mt-1">Slightly elevated from the background. Used for list items and settings rows.</p>
+        </div>
+      </Cell>
+
+      <Cell label="Hover Card / Track Row">
+        {['Deadmau5 — Strobe', 'Above & Beyond — Sun & Moon', 'Illenium — Fractures'].map((title) => (
           <div
             key={title}
-            onClick={() => setPlaying(title)}
-            className={cn(
-              'group grid items-center gap-0 px-6 py-3.5 cursor-pointer transition-all border-b border-[var(--color-border-faint)] last:border-0',
-              playing === title ? 'bg-primary/8' : 'hover:bg-[var(--color-surface-hover)]',
-            )}
-            style={{ gridTemplateColumns: '32px 1fr 80px 56px 60px 36px' }}
+            className="grid grid-cols-[40px_1fr_48px] gap-3 items-center p-3 rounded-xl border border-[var(--color-border-faint)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] cursor-pointer transition-all"
           >
-            <div className="flex items-center justify-center w-6">
-              {playing === title
-                ? <button onClick={e => { e.stopPropagation(); setPlaying(null); }} className="text-primary"><Pause size={12} /></button>
-                : <><span className="text-[10px] font-mono text-muted-foreground/30 group-hover:hidden">{String(i + 1).padStart(2, '0')}</span><button onClick={() => setPlaying(title)} className="hidden group-hover:block text-muted-foreground hover:text-primary transition-colors"><Play size={12} /></button></>
-              }
+            <div className="w-10 h-10 rounded-lg bg-[var(--color-avatar-bg)] flex items-center justify-center text-[10px] font-bold text-slate-500">
+              {title.slice(0, 2).toUpperCase()}
             </div>
-            <div className="min-w-0 pr-4">
-              <p className={cn('text-sm font-bold truncate', playing === title && 'text-primary neon-text-blue')}>{title}</p>
-              <p className="text-[10px] text-muted-foreground uppercase truncate">{artist}</p>
+            <div className="min-w-0">
+              <p className="text-sm font-bold truncate">{title.split(' — ')[1]}</p>
+              <p className="text-[10px] text-muted-foreground uppercase truncate">{title.split(' — ')[0]}</p>
             </div>
-            <span className="font-mono text-xs tabular-nums text-muted-foreground">{bpm}</span>
-            <span className={cn('font-mono text-xs font-bold', playing === title ? 'text-secondary' : 'text-muted-foreground/60')}>{k}</span>
-            <span className="font-mono text-xs tabular-nums text-muted-foreground">{dur}</span>
-            <button className="text-muted-foreground/20 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100"><MoreHorizontal size={14} /></button>
+            <p className="text-xs font-mono font-bold text-muted-foreground text-right">128.0</p>
           </div>
         ))}
-      </div>
+      </Cell>
 
-      {/* KPIs + playlist cards */}
-      <div className="grid grid-cols-4 gap-3">
-        {[
-          { icon: Music, val: '2.4k', sub: 'Tracks', color: 'text-primary', bg: 'bg-primary/10' },
-          { icon: TrendingUp, val: '47', sub: 'Playlists', color: 'text-secondary', bg: 'bg-secondary/10' },
-          { icon: Radio, val: '174', sub: 'Avg BPM', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-          { icon: Star, val: '4.9', sub: 'Mix Score', color: 'text-amber-400', bg: 'bg-amber-500/10' },
-        ].map(({ icon: Icon, val, sub, color, bg }) => (
-          <div key={sub} className="flex items-center gap-4 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 px-6 py-5">
-            <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', bg)}>
-              <Icon size={18} className={color} />
+      <Cell label="Active Track Row">
+        <div className="grid grid-cols-[40px_1fr_48px] gap-3 items-center p-3 rounded-xl border border-primary/40 bg-[var(--color-surface-hover)] shadow-primary-selection cursor-pointer">
+          <div className="w-10 h-10 rounded-lg brand-gradient flex items-center justify-center text-[10px] font-bold text-white">
+            DE
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold truncate text-foreground">Strobe</p>
+            <p className="text-[10px] text-muted-foreground uppercase truncate">Deadmau5</p>
+          </div>
+          <p className="text-xs font-mono font-bold text-primary neon-text-blue text-right">128.0</p>
+        </div>
+      </Cell>
+
+      <Cell label="Stat Tile / KPI">
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { icon: Music, value: '2.4k', label: 'Tracks' },
+            { icon: TrendingUp, value: '47', label: 'Playlists' },
+            { icon: Radio, value: '128', label: 'Avg BPM' },
+          ].map(({ icon: Icon, value, label }) => (
+            <div key={label} className="flex flex-col items-center gap-1 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3">
+              <Icon size={14} className="text-muted-foreground" />
+              <span className="text-lg font-black tabular-nums leading-none">{value}</span>
+              <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold">{label}</span>
+            </div>
+          ))}
+        </div>
+      </Cell>
+
+      <Cell label="Playlist Card">
+        <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4 relative overflow-hidden">
+          <TrendingUp className="absolute -right-3 -bottom-3 text-primary/10 w-16 h-16" />
+          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground mb-1">Playlist</p>
+          <p className="text-xl font-black truncate">Peak Hour Rollers</p>
+          <div className="flex gap-4 mt-3">
+            <div>
+              <span className="text-[10px] text-muted-foreground uppercase block">Tracks</span>
+              <span className="font-bold font-mono">84</span>
             </div>
             <div>
-              <p className={cn('text-2xl font-black tabular-nums leading-none', color)}>{val}</p>
-              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground mt-0.5">{sub}</p>
+              <span className="text-[10px] text-muted-foreground uppercase block">Avg BPM</span>
+              <span className="font-bold font-mono">174.2</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-muted-foreground uppercase block">Top Key</span>
+              <span className="font-bold font-mono text-secondary">8A</span>
             </div>
           </div>
-        ))}
-      </div>
-
-      {/* Playlist cards */}
-      <div className="grid grid-cols-4 gap-3">
-        {PLAYLISTS.map(p => (
-          <PlaylistOverviewCard key={p.id} playlist={p} onClick={() => {}} onEdit={p.is_folder ? undefined : () => {}} />
-        ))}
-      </div>
-    </div>
+        </div>
+      </Cell>
+    </>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 08 · NAVIGATION
-// ─────────────────────────────────────────────────────────────────────────────
+function AvatarSection() {
+  return (
+    <>
+      <Cell label="Avatar — Initials">
+        <div className="flex items-center gap-3">
+          {[
+            { initials: 'KR', size: 'w-8 h-8 text-sm' },
+            { initials: 'DV', size: 'w-12 h-12 text-base' },
+            { initials: 'AB', size: 'w-16 h-16 text-lg' },
+            { initials: 'MX', size: 'w-20 h-20 text-xl' },
+          ].map(({ initials, size }) => (
+            <div
+              key={initials}
+              className={cn(
+                'rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border-2 border-primary/20 flex items-center justify-center font-black text-primary shadow-lg',
+                size,
+              )}
+            >
+              {initials}
+            </div>
+          ))}
+        </div>
+      </Cell>
+
+      <Cell label="Avatar — Icon Fallback">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border-2 border-primary/20 flex items-center justify-center">
+            <User size={28} className="text-primary/70" />
+          </div>
+          <div className="w-10 h-10 rounded-lg bg-[var(--color-avatar-bg)] flex items-center justify-center">
+            <User size={18} className="text-slate-500" />
+          </div>
+        </div>
+      </Cell>
+
+      <Cell label="Avatar with ring">
+        <div className="relative w-20 h-20 mx-auto">
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border-2 border-primary/20 flex items-center justify-center">
+            <span className="text-2xl font-black text-primary">KR</span>
+          </div>
+          <div className="absolute inset-[-6px] rounded-full border border-primary/10 pointer-events-none" />
+          <div className="absolute inset-[-13px] rounded-full border border-primary/5 pointer-events-none" />
+        </div>
+      </Cell>
+    </>
+  );
+}
+
+function TypographySection() {
+  return (
+    <>
+      <Cell label="Headings">
+        <h1 className="text-3xl font-black italic leading-tight">H1 — Drop Lab</h1>
+        <h2 className="text-2xl font-black italic">H2 — My Library</h2>
+        <h3 className="text-xl font-black">H3 — Peak Hour Rollers</h3>
+        <h4 className="text-base font-bold">H4 — Track Intelligence</h4>
+      </Cell>
+
+      <Cell label="Body & Muted Text">
+        <p className="text-sm text-foreground">Body — Standard foreground text used for track titles and primary content.</p>
+        <p className="text-sm text-muted-foreground">Muted — Secondary content: subtitles, descriptions, metadata.</p>
+        <p className="text-xs text-muted-foreground">Small muted — Timestamps, import dates, file sizes.</p>
+        <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold">Label — Section headers and data labels.</p>
+      </Cell>
+
+      <Cell label="Mono / Code Text">
+        <p className="font-mono text-sm font-bold tabular-nums">174.2 BPM</p>
+        <p className="font-mono text-xs text-muted-foreground">8f591f3e-4c2d-…</p>
+        <p className="font-mono text-[10px] text-muted-foreground">Imported from PIONEER USB</p>
+        <span className="font-mono text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-primary/10 text-primary rounded">
+          2.0.0
+        </span>
+      </Cell>
+
+      <Cell label="Brand / Accent Text">
+        <p className="text-primary font-bold neon-text-blue">Primary accent — neon blue</p>
+        <p className="text-secondary font-bold neon-text-purple">Secondary accent — neon purple</p>
+        <p className="text-green-400 font-bold">Success green</p>
+        <p className="text-amber-400 font-bold">Warning amber</p>
+        <p className="text-red-400 font-bold">Danger red</p>
+      </Cell>
+
+      <Cell label="Brand Gradient Text">
+        <p className="text-2xl font-black uppercase leading-none">
+          Drop<span className="text-[var(--color-brand-primary)]">Dex</span>
+        </p>
+        <div className="h-px w-full bg-gradient-to-r from-primary/60 via-secondary/40 to-transparent" />
+        <div className="h-px w-full bg-[var(--color-border-subtle)]" />
+      </Cell>
+
+      <Cell label="Divider">
+        <div className="h-px w-full bg-[var(--color-border-subtle)]" />
+        <div className="h-px w-full bg-[var(--color-border-faint)]" />
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">or</span>
+          <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
+        </div>
+        <div className="w-px self-stretch bg-[var(--color-border-subtle)] mx-auto h-10" />
+      </Cell>
+    </>
+  );
+}
 
 function NavigationSection() {
-  const [tab, setTab] = useState('overview');
-  const [seg, setSeg] = useState('dropdex');
+  const [activeTab, setActiveTab] = useState('overview');
+  const [activeNav, setActiveNav] = useState('home');
 
-  const NAV = [
-    { id: 'home', Icon: Music, label: 'My Library' },
-    { id: 'review', Icon: TrendingUp, label: 'Review' },
-    { id: 'discover', Icon: Radio, label: 'Discover' },
-    { id: 'droplab', Icon: Flame, label: 'Drop Lab' },
-    { id: 'components', Icon: Layers, label: 'Reusable', active: true },
-    { id: 'settings', Icon: Settings, label: 'Settings' },
+  const tabs = ['overview', 'playlists', 'tracks', 'genres'];
+  const navItems = [
+    { id: 'home', icon: Music, label: 'My Library' },
+    { id: 'review', icon: TrendingUp, label: 'Review' },
+    { id: 'discover', icon: Radio, label: 'Discover' },
+    { id: 'components', icon: Layers, label: 'Reusable' },
+    { id: 'settings', icon: Settings, label: 'Settings' },
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-3">
-      {/* Sidebar */}
-      <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 p-6">
-        <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase mb-5">Sidebar Navigation</p>
-        <nav className="space-y-0.5">
-          {NAV.map(({ id, Icon, label, active }) => (
-            <button key={id} className={cn(
-              'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all border',
-              active ? 'text-primary neon-text-blue bg-primary/10 border-primary/20' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] border-transparent',
-            )}>
-              <Icon size={15} />
+    <>
+      <Cell label="Sidebar Nav Items">
+        <div className="flex flex-col gap-1">
+          {navItems.map(({ id, icon: Icon, label }) => (
+            <button
+              key={id}
+              onClick={() => setActiveNav(id)}
+              className={cn(
+                'flex items-center gap-3 px-4 py-2.5 rounded-xl font-bold text-sm transition-all border w-full text-left',
+                activeNav === id
+                  ? 'text-primary neon-text-blue bg-primary/10 border-primary/20'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent',
+              )}
+            >
+              <Icon size={16} />
               {label}
-              {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
             </button>
           ))}
-        </nav>
-      </div>
-
-      {/* Controls */}
-      <div className="flex flex-col gap-3">
-        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 p-6 space-y-3">
-          <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase">Tabs</p>
-          <div className="flex gap-1 p-1 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
-            {['overview', 'playlists', 'tracks', 'artists'].map(t => (
-              <button key={t} onClick={() => setTab(t)} className={cn('flex-1 rounded-lg py-1.5 text-[9px] font-bold capitalize transition-all', tab === t ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground')}>
-                {t}
-              </button>
-            ))}
-          </div>
-          <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase">Segmented Control</p>
-          <div className="flex gap-1 p-1 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
-            {['DropDex', 'Rekordbox'].map(s => (
-              <button key={s} onClick={() => setSeg(s.toLowerCase())} className={cn('flex-1 rounded-lg py-2 text-xs font-bold transition-all', seg === s.toLowerCase() ? 'bg-secondary/15 text-secondary' : 'text-muted-foreground hover:text-foreground')}>
-                {s}
-              </button>
-            ))}
-          </div>
         </div>
-        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 p-6 space-y-2 flex-1">
-          <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase mb-3">Settings Row</p>
-          {[['Version', '2.0.0'], ['Source', 'Supabase'], ['Tracks', '2,412'], ['Import ID', '8f591f3e']].map(([k, v]) => (
-            <div key={k} className="flex items-center justify-between rounded-xl border border-[var(--color-border-faint)] bg-[var(--color-surface)] px-4 py-2.5">
-              <span className="text-xs text-muted-foreground">{k}</span>
-              <span className="font-mono text-xs font-bold">{v}</span>
-            </div>
+      </Cell>
+
+      <Cell label="Tab Navigation">
+        <div className="flex gap-1 overflow-x-auto">
+          {tabs.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all border',
+                activeTab === tab
+                  ? 'bg-primary/10 border-primary/20 text-primary'
+                  : 'text-muted-foreground hover:text-foreground border-transparent hover:bg-[var(--color-surface)]',
+              )}
+            >
+              {tab}
+            </button>
           ))}
         </div>
-      </div>
+      </Cell>
 
-      {/* USB + player */}
-      <div className="flex flex-col gap-3">
-        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 p-6 space-y-3">
-          <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase">USB Connection</p>
-          <UsbConnectionButton />
+      <Cell label="Back Button / Breadcrumb">
+        <div className="flex items-center gap-2">
+          <button className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all">
+            <ChevronRight size={20} className="rotate-180" />
+          </button>
+          <h2 className="text-xl font-black italic">Track Intelligence</h2>
         </div>
-        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-6 flex-1">
-          <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase mb-4">Now Playing</p>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-xl brand-gradient flex items-center justify-center shrink-0"><Music size={16} className="text-white" /></div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold truncate text-primary neon-text-blue">Strobe</p>
-              <p className="text-[10px] text-muted-foreground uppercase">Deadmau5</p>
-            </div>
-            <Heart size={14} className="text-muted-foreground/30 shrink-0" />
-          </div>
-          <div className="flex items-center justify-center gap-4 mb-4">
-            <button className="text-muted-foreground/40 hover:text-foreground transition-colors"><SkipForward size={14} className="rotate-180" /></button>
-            <button className="w-9 h-9 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center text-primary hover:bg-primary/25 transition-colors"><Pause size={14} /></button>
-            <button className="text-muted-foreground/40 hover:text-foreground transition-colors"><SkipForward size={14} /></button>
-          </div>
-          <div className="h-1 rounded-full bg-[var(--color-surface)] mb-1">
-            <div className="h-full w-[38%] rounded-full bg-primary" />
-          </div>
-          <div className="flex justify-between font-mono text-[9px] text-muted-foreground/40"><span>3:58</span><span>10:32</span></div>
+        <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Deep Scan Results</p>
+      </Cell>
+
+      <Cell label="USB Connection Button">
+        <div className="flex flex-col gap-2">
+          <button className="relative flex items-center gap-3 px-4 py-2.5 rounded-xl font-bold text-sm text-green-400 bg-green-500/10 border border-green-500/20 hover:bg-green-500/15 transition-all w-full">
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-green-500" />
+            <Usb size={16} />
+            PIONEER USB
+          </button>
+          <button className="relative flex items-center gap-3 px-4 py-2.5 rounded-xl font-bold text-sm text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/15 transition-all w-full">
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400" />
+            <Usb size={16} />
+            Re-authorize USB
+          </button>
+          <button className="relative flex items-center gap-3 px-4 py-2.5 rounded-xl font-bold text-sm text-muted-foreground border border-transparent hover:text-foreground hover:bg-[var(--color-surface)] transition-all w-full">
+            <Usb size={16} />
+            Connect USB
+          </button>
         </div>
-      </div>
-    </div>
-  );
-}
+      </Cell>
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 09 · IDENTITY
-// ─────────────────────────────────────────────────────────────────────────────
-
-function IdentitySection() {
-  return (
-    <div className="grid grid-cols-3 gap-3">
-      <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/30 px-8 py-8">
-        <p className="font-mono text-[9px] tracking-[0.25em] text-muted-foreground/35 uppercase mb-8">Avatar Scale</p>
-        <div className="flex items-end gap-5">
+      <Cell label="Settings Row">
+        <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
           {[
-            { i: 'KR', s: 'w-8 h-8 text-xs border' },
-            { i: 'KR', s: 'w-10 h-10 text-sm border' },
-            { i: 'KR', s: 'w-12 h-12 text-base border-2' },
-            { i: 'KR', s: 'w-16 h-16 text-lg border-2' },
-            { i: 'KR', s: 'w-20 h-20 text-xl border-2' },
-          ].map(({ i, s }, idx) => (
-            <div key={idx} className={cn('rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border-primary/20 flex items-center justify-center font-black text-primary shrink-0', s)}>{i}</div>
+            { label: 'Version', value: '2.0.0' },
+            { label: 'Library Source', value: 'Supabase' },
+            { label: 'Import ID', value: '8f591f3e' },
+          ].map(({ label, value }) => (
+            <div key={label} className="px-4 py-3 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">{label}</p>
+              <p className="text-sm font-mono font-bold">{value}</p>
+            </div>
           ))}
         </div>
-      </div>
+      </Cell>
 
-      <div className="col-span-2 rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden bg-[var(--color-surface)]/30">
-        <div className="h-24 brand-gradient relative">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(255,255,255,0.1),_transparent)]" />
+      <Cell label="Segmented / Toggle Row">
+        <div className="flex rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-1 gap-1">
+          {['4 bars', '8 bars', '16 bars'].map((label, i) => (
+            <button
+              key={label}
+              className={cn(
+                'flex-1 rounded-lg px-3 py-1.5 text-xs font-bold transition-all',
+                i === 1
+                  ? 'bg-primary/15 text-primary border border-primary/20'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        <div className="px-8 pb-8 -mt-10">
-          <div className="relative w-20 h-20 mb-4">
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/30 to-primary/8 border-4 border-background flex items-center justify-center font-black text-primary text-xl">KR</div>
-            <div className="absolute inset-[-5px] rounded-full border border-primary/15 pointer-events-none" />
-            <div className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-background" />
-          </div>
-          <p className="text-xl font-black">Kody Robinson</p>
-          <p className="text-sm text-muted-foreground">kodyrobinson02@gmail.com</p>
-          <div className="flex gap-8 mt-5 pt-5 border-t border-[var(--color-border-subtle)]">
-            {[['2.4k', 'Tracks'], ['47', 'Playlists'], ['12', 'Imports']].map(([v, l]) => (
-              <div key={l}>
-                <p className="font-black font-mono text-base">{v}</p>
-                <p className="text-[9px] text-muted-foreground uppercase tracking-widest mt-0.5">{l}</p>
-              </div>
-            ))}
-          </div>
+        <div className="flex rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-1 gap-1">
+          {['DropDex', 'Rekordbox'].map((label, i) => (
+            <button
+              key={label}
+              className={cn(
+                'flex-1 rounded-lg px-3 py-1.5 text-xs font-bold transition-all',
+                i === 0
+                  ? 'bg-secondary/15 text-secondary border border-secondary/20'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-      </div>
-    </div>
+      </Cell>
+    </>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// page
-// ─────────────────────────────────────────────────────────────────────────────
-
-const SECTIONS = [
-  { n: '01', title: 'Foundations', content: <FoundationsSection /> },
-  { n: '02', title: 'Buttons', content: <ButtonsSection /> },
-  { n: '03', title: 'Inputs', content: <InputsSection /> },
-  { n: '04', title: 'Status & Badges', content: <StatusSection /> },
-  { n: '05', title: 'Feedback', content: <FeedbackSection /> },
-  { n: '06', title: 'Waveform', content: <WaveformSection /> },
-  { n: '07', title: 'Library & Data', content: <LibrarySection /> },
-  { n: '08', title: 'Navigation', content: <NavigationSection /> },
-  { n: '09', title: 'Identity', content: <IdentitySection /> },
-];
+// ── main view ─────────────────────────────────────────────────────────────────
 
 export function ReusableComponentsView() {
   return (
-    <div className="pb-20 space-y-16">
-      {SECTIONS.map(({ n, title, content }) => (
-        <section key={n} className="space-y-6">
-          <Divider n={n} title={title} />
-          {content}
-        </section>
-      ))}
+    <div className="space-y-10 pt-2 pb-8 md:max-w-6xl md:mx-auto">
+
+      <section className="space-y-3">
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Buttons</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <ButtonsSection />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Inputs</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <InputsSection />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Badges & Indicators</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <BadgesSection />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Feedback & Status</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <FeedbackSection />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Waveform</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <WaveformSection />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Cards & Data Display</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <CardSection />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Avatar</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <AvatarSection />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Typography</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <TypographySection />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-1">Navigation & Layout</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <NavigationSection />
+        </div>
+      </section>
+
     </div>
   );
 }
