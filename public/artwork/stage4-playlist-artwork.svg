@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" role="img" aria-labelledby="title">
+<title id="title">Tech House Grooves artwork</title>
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0d6cff"/><stop offset=".45" stop-color="#7638ed"/><stop offset="1" stop-color="#f047c8"/></linearGradient></defs>
+<rect width="300" height="300" fill="#08101c"/>
+<path d="M10 246 103 35l54 96 41-73 92 188z" fill="url(#g)" opacity=".95"/>
+<path d="M37 246 120 95l33 60 46-47 65 138z" fill="#10254c" opacity=".7"/>
+<path d="M0 243h300v57H0z" fill="#07101c" opacity=".78"/>
+</svg>

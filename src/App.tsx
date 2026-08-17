@@ -1036,6 +1036,7 @@ export default function App() {
               key={label}
               onClick={() => setCurrentView(view)}
               title={sidebarCollapsed ? label : undefined}
+              aria-current={currentView === view ? 'page' : undefined}
               className={cn(
                 'flex items-center rounded-xl font-bold text-sm transition-all border w-full',
                 sidebarCollapsed ? 'justify-center py-3 px-0' : 'gap-3 px-4 py-3 text-left',

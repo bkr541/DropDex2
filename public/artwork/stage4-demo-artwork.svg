@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-labelledby="title desc">
+<title id="title">Neon mountain artwork</title>
+<desc id="desc">Abstract neon triangle mountain reflected over water.</desc>
+<defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071126"/><stop offset=".55" stop-color="#1e1648"/><stop offset="1" stop-color="#2e0d40"/></linearGradient>
+  <linearGradient id="neon" x1=".1" y1=".2" x2=".9" y2=".9"><stop stop-color="#3cc9ff"/><stop offset=".45" stop-color="#9857ff"/><stop offset="1" stop-color="#ff4cd8"/></linearGradient>
+  <linearGradient id="water" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#10183d"/><stop offset="1" stop-color="#050812"/></linearGradient>
+  <filter id="glow"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<rect width="600" height="600" fill="url(#sky)"/>
+<circle cx="90" cy="110" r="2" fill="#bdeaff"/><circle cx="480" cy="90" r="2" fill="#fff"/><circle cx="530" cy="180" r="1.8" fill="#dbbfff"/>
+<path d="M0 360 92 290l58 28 77-101 64 67 58-58 77 88 60-48 114 94v73H0z" fill="#111936"/>
+<path d="M132 376 302 116l170 260" fill="none" stroke="url(#neon)" stroke-width="16" filter="url(#glow)"/>
+<path d="M177 376 302 181l126 195z" fill="#0a1026" stroke="#522e8e" stroke-width="4"/>
+<path d="M236 376 302 230l57 146z" fill="#161034"/>
+<rect y="378" width="600" height="222" fill="url(#water)"/>
+<g opacity=".8">
+  <path d="M55 412h490M95 438h410M25 468h550M78 505h455M18 548h560" stroke="#272354" stroke-width="3"/>
+  <path d="M189 398 302 566 420 398" fill="none" stroke="url(#neon)" stroke-width="8" opacity=".55" filter="url(#glow)"/>
+</g>
+</svg>

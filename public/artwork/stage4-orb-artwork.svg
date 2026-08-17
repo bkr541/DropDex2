@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" role="img" aria-labelledby="title">
+<title id="title">Solaris neon orb</title>
+<defs>
+<radialGradient id="orb"><stop offset=".18" stop-color="#040918"/><stop offset=".48" stop-color="#17105b"/><stop offset=".7" stop-color="#6730d7"/><stop offset=".82" stop-color="#13bfff"/><stop offset="1" stop-color="#06111f"/></radialGradient>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#17072b"/><stop offset="1" stop-color="#040a14"/></linearGradient>
+<filter id="g"><feGaussianBlur stdDeviation="7"/></filter>
+</defs>
+<rect width="300" height="300" fill="url(#bg)"/>
+<circle cx="150" cy="150" r="97" fill="none" stroke="#a833ff" stroke-width="20" opacity=".55" filter="url(#g)"/>
+<circle cx="150" cy="150" r="88" fill="url(#orb)"/>
+<path d="M54 176c48 30 145 36 196-7" fill="none" stroke="#35d7ff" stroke-width="8" opacity=".75"/>
+</svg>
