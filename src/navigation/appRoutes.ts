@@ -24,6 +24,7 @@ export type AppRoute =
   | { name: 'search' }
   | { name: 'profile' }
   | { name: 'settings' }
+  | { name: 'reusable-components' }
   | { name: 'not-found'; pathname: string };
 
 const LIBRARY_TAB_PATHS: Record<LibraryTab, string> = {
@@ -122,6 +123,7 @@ export function parseAppRoute(pathname: string, search = ''): AppRoute {
     case '/search': return { name: 'search' };
     case '/profile': return { name: 'profile' };
     case '/settings': return { name: 'settings' };
+    case '/reusable-components': return { name: 'reusable-components' };
     default: return { name: 'not-found', pathname: normalizedPath };
   }
 }
@@ -155,6 +157,7 @@ export function routeToUrl(route: AppRoute): string {
     case 'search': return '/search';
     case 'profile': return '/profile';
     case 'settings': return '/settings';
+    case 'reusable-components': return '/reusable-components';
     case 'not-found': return route.pathname;
   }
 }
@@ -174,6 +177,7 @@ export function routeBackFallback(route: AppRoute): AppRoute {
     case 'search':
     case 'profile':
     case 'settings':
+    case 'reusable-components':
     case 'import':
     case 'not-found':
       return { name: 'library', tab: 'overview', search: '' };

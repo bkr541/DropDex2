@@ -23,6 +23,7 @@ import {
   Usb,
   CheckCircle2,
   AlertTriangle,
+  Layers,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatKey, formatPosition, formatPlaylistDuration } from './lib/utils';
@@ -74,6 +75,7 @@ import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
+import { ReusableComponentsView } from './components/reusable/ReusableComponentsView';
 
 type ThemeOption = {
   id: ThemeId;
@@ -88,7 +90,7 @@ const THEME_OPTIONS: ThemeOption[] = [
   { id: 'cdj', label: 'CDJ', description: 'Performance deck', icon: Disc3 },
 ];
 
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search' | 'edit-profile' | 'drop-lab' | 'import' | 'not-found';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'settings' | 'discovery' | 'search' | 'edit-profile' | 'drop-lab' | 'import' | 'reusable-components' | 'not-found';
 
 type ImportNotice = {
   kind: 'success' | 'warning';
@@ -109,6 +111,7 @@ function viewForRoute(route: AppRoute): View {
     case 'search': return 'search';
     case 'profile': return 'edit-profile';
     case 'settings': return 'settings';
+    case 'reusable-components': return 'reusable-components';
     case 'not-found': return 'not-found';
   }
 }
@@ -674,6 +677,7 @@ export default function App() {
       case 'discovery': navigate({ name: 'discovery' }); break;
       case 'search': navigate({ name: 'search' }); break;
       case 'edit-profile': navigate({ name: 'profile' }); break;
+      case 'reusable-components': navigate({ name: 'reusable-components' }); break;
       default: break;
     }
   };
@@ -827,6 +831,7 @@ export default function App() {
     { view: 'review', icon: TrendingUp, label: 'Review', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
     { view: 'discovery', icon: Radio, label: 'Discover', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'search', icon: Search, label: 'Search', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
+    { view: 'reusable-components', icon: Layers, label: 'Reusable Components', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
   ];
 
   return (
@@ -1033,6 +1038,16 @@ export default function App() {
                   <h2 className="text-2xl font-black italic">Edit Profile</h2>
                 </div>
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Your Artist Identity</p>
+              </div>
+            )}
+            {currentView === 'reusable-components' && (
+              <div>
+                <div className="flex items-center gap-2">
+                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                    <ChevronLeft size={20} />
+                  </button>
+                  <h2 className="text-2xl font-black italic">Reusable Components</h2>
+                </div>
               </div>
             )}
           </div>
@@ -1581,6 +1596,19 @@ export default function App() {
                     ))}
                   </div>
                 </section>
+              </motion.div>
+            )}
+
+            {/* ── Reusable Components ── */}
+            {!routeBlocked && currentView === 'reusable-components' && (
+              <motion.div
+                key="reusable-components"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                className="pt-6"
+              >
+                <ReusableComponentsView />
               </motion.div>
             )}
 
