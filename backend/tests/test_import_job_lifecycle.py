@@ -889,6 +889,85 @@ def test_storage_enumeration_is_complete_when_postgrest_clamps_pages(monkeypatch
     assert client.tables["rekordbox_track_waveforms"] == []
 
 
+def test_shared_waveform_reference_lookup_splits_oversized_postgrest_filters():
+    import_id = "job-uri-limited-storage"
+    shared_path = f"u/{import_id}/waveform/track-0000/detail.json.gz"
+    attempted_batch_sizes: list[int] = []
+
+    class UriTooLargeError(RuntimeError):
+        code = 400
+
+        def __str__(self):
+            return (
+                "{'message': 'JSON could not be generated', 'code': 400, "
+                "'hint': 'Refer to full message for details', 'details': \"b'Bad Request'\"}"
+            )
+
+    class UriLimitedQuery(FakeQuery):
+        def execute(self):
+            path_filter = next(
+                (
+                    values
+                    for operation, key, values in self.filters
+                    if operation == "in" and key == "detail_storage_path"
+                ),
+                None,
+            )
+            if path_filter is not None:
+                attempted_batch_sizes.append(len(path_filter))
+                if len(path_filter) > 2:
+                    raise UriTooLargeError()
+            return super().execute()
+
+    class UriLimitedClient(FakeClient):
+        def table(self, name):
+            return UriLimitedQuery(self, name)
+
+    client = UriLimitedClient(
+        [
+            {
+                "id": import_id,
+                "user_id": "u",
+                "status": "deleting",
+                "analysis_worker_stopped_acknowledged": True,
+            }
+        ]
+    )
+    paths = [
+        f"u/{import_id}/waveform/track-{index:04d}/detail.json.gz"
+        for index in range(25)
+    ]
+    client.tables["rekordbox_track_waveforms"] = [
+        {
+            "id": f"wave-{index:04d}",
+            "import_id": import_id,
+            "detail_storage_bucket": "rekordbox-analysis-assets",
+            "detail_storage_path": path,
+        }
+        for index, path in enumerate(paths)
+    ]
+    client.tables["rekordbox_track_waveforms"].append(
+        {
+            "id": "wave-shared-by-newer-import",
+            "import_id": "newer-import",
+            "detail_storage_bucket": "rekordbox-analysis-assets",
+            "detail_storage_path": shared_path,
+        }
+    )
+
+    objects = import_jobs._enumerate_import_storage_objects(client, import_id)
+
+    assert attempted_batch_sizes[0] == import_jobs._STORAGE_REFERENCE_QUERY_CHUNK == 20
+    assert any(size > 2 for size in attempted_batch_sizes)
+    assert any(size <= 2 for size in attempted_batch_sizes)
+    assert ("rekordbox-analysis-assets", shared_path) not in objects
+    assert objects == {
+        ("rekordbox-analysis-assets", path)
+        for path in paths
+        if path != shared_path
+    }
+
+
 def test_intermediate_storage_batch_failure_keeps_all_cloud_metadata(monkeypatch):
     import_id = "job-storage-mid-batch"
     client = FakeClient([

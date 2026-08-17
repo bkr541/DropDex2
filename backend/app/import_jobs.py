@@ -46,7 +46,7 @@ DELETE_ACTIVE_STRATEGIES = frozenset({"activate_next", "start_over"})
 
 _ANALYSIS_STORAGE_BUCKET = "rekordbox-analysis-assets"
 _STORAGE_DELETE_BATCH_SIZE = 100
-_STORAGE_REFERENCE_QUERY_CHUNK = 200
+_STORAGE_REFERENCE_QUERY_CHUNK = 20
 
 
 _ACTIVE_ANALYSIS_STATES = frozenset({"awaiting_upload", "uploading", "uploaded", "parsing", "pause_requested", "stopping"})
@@ -375,6 +375,61 @@ def _storage_object(bucket: Any, path: Any) -> tuple[str, str] | None:
     return normalized_bucket, normalized_path
 
 
+def _is_postgrest_filter_uri_error(exc: Exception) -> bool:
+    """Return True when PostgREST rejected an oversized GET filter URI.
+
+    ``postgrest-py`` serializes ``in_`` filters into the request URL. Supabase
+    gateways can report an oversized predicate as either 414 URI Too Long or
+    a generic 400 Bad Request whose response body is not JSON.
+    """
+    code = getattr(exc, "code", None)
+    text = str(exc).lower()
+    return (
+        code in {400, 414, "400", "414"}
+        or "'code': 400" in text
+        or '"code": 400' in text
+        or "'code': 414" in text
+        or '"code": 414' in text
+    ) and (
+        "json could not be generated" in text
+        or "uri too long" in text
+        or "bad request" in text
+    )
+
+
+def _fetch_external_waveform_reference_rows(
+    sb,
+    import_id: str,
+    paths: list[str],
+) -> list[dict]:
+    """Fetch shared-waveform references without allowing ``in_`` URLs to grow unbounded."""
+    try:
+        return fetch_all_rows(
+            lambda: (
+                sb.table("rekordbox_track_waveforms")
+                .select("id, import_id, detail_storage_bucket, detail_storage_path")
+                .neq("import_id", import_id)
+                .in_("detail_storage_path", paths)
+            ),
+            order_column="id",
+        )
+    except Exception as exc:
+        # postgrest-py sends filters as GET query parameters. If a gateway has a
+        # smaller request-line limit than expected, split the predicate until it
+        # fits instead of making the entire destructive cleanup permanently fail.
+        if len(paths) <= 1 or not _is_postgrest_filter_uri_error(exc):
+            raise
+        midpoint = len(paths) // 2
+        logger.warning(
+            "PostgREST rejected waveform reference filter for %d path(s); retrying smaller batches",
+            len(paths),
+        )
+        return (
+            _fetch_external_waveform_reference_rows(sb, import_id, paths[:midpoint])
+            + _fetch_external_waveform_reference_rows(sb, import_id, paths[midpoint:])
+        )
+
+
 def _external_waveform_storage_references(
     sb,
     import_id: str,
@@ -392,15 +447,7 @@ def _external_waveform_storage_references(
     referenced: set[tuple[str, str]] = set()
     for offset in range(0, len(candidate_paths), _STORAGE_REFERENCE_QUERY_CHUNK):
         chunk = candidate_paths[offset : offset + _STORAGE_REFERENCE_QUERY_CHUNK]
-        rows = fetch_all_rows(
-            lambda paths=chunk: (
-                sb.table("rekordbox_track_waveforms")
-                .select("id, import_id, detail_storage_bucket, detail_storage_path")
-                .neq("import_id", import_id)
-                .in_("detail_storage_path", paths)
-            ),
-            order_column="id",
-        )
+        rows = _fetch_external_waveform_reference_rows(sb, import_id, chunk)
         for row in rows:
             obj = _storage_object(
                 row.get("detail_storage_bucket"),
