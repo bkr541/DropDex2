@@ -1233,7 +1233,6 @@ export default function App() {
                   </button>
                   <h2 className="text-2xl font-black italic">Settings</h2>
                 </div>
-                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">App Configuration</p>
                 <div className="flex gap-1 mt-4 border-b border-[var(--color-border-faint)]">
                   {(['account', 'appearance', 'library', 'about'] as const).map((tab) => (
                     <button
@@ -1677,49 +1676,61 @@ export default function App() {
                 {/* ── Library tab ── */}
                 {settingsTab === 'library' && (
                   <>
-                    {/* Active book + import */}
+                    {/* Library stat cards */}
                     <section className="space-y-3">
-                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Book</h2>
-                      <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
-                        <div className="p-4 flex items-center gap-3">
-                          <DataBase size={18} className="text-muted-foreground" />
-                          <div className="min-w-0">
-                            <p className="font-bold text-sm">Active Cloud Book</p>
-                            <p className="text-xs text-muted-foreground">
-                              {importLoading
-                                ? 'Loading…'
-                                : latestImport
-                                ? `${latestImport.track_count.toLocaleString()} tracks · ${latestImport.playlist_count} playlists`
-                                : 'No import found'}
-                            </p>
-                            {latestImport && (
-                              <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                                {latestImport.device_name ?? latestImport.source_filename} · {new Date(latestImport.imported_at).toLocaleDateString()}
-                              </p>
-                            )}
-                          </div>
+                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><DataBase size={11} />Library</h2>
+                      {latestImport && (
+                      <div className="grid grid-cols-3 gap-3">
+                        {/* USB */}
+                        <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
+                          <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="7" width="14" height="10" rx="1" transform="translate(20 24) rotate(180)" style={{fill: '#348dff', opacity: 0.35}} />
+                            <polyline points="8 12 10 13 10 11 12 12" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+                            <path d="M17,15V9h4v6ZM4,17H16a1,1,0,0,0,1-1V8a1,1,0,0,0-1-1H4A1,1,0,0,0,3,8v8A1,1,0,0,0,4,17Z" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+                          </svg>
+                          <p className="mt-2 text-2xl font-black leading-none truncate w-full text-center">
+                            {latestImport.device_name ?? latestImport.source_filename}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {new Date(latestImport.imported_at).toLocaleDateString()}
+                          </p>
                         </div>
-                        <div className="p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <Upload size={18} className="text-primary" />
-                            <div>
-                              <p className="font-bold text-sm">Import New Book</p>
-                              <p className="text-xs text-muted-foreground">Upload exportLibrary.db from USB</p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => setIsImportModalOpen(true)}
-                            className="text-xs font-bold text-primary hover:text-primary/80 transition-colors"
-                          >
-                            Import
-                          </button>
+
+                        {/* Tracks */}
+                        <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
+                          <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M7,19a2,2,0,1,1-2-2A2,2,0,0,1,7,19ZM9,7l2,2h8V4a1,1,0,0,0-1-1H6A1,1,0,0,0,5,4V7Z" style={{fill: '#348dff', opacity: 0.35}} />
+                            <path d="M10,16a2.9,2.9,0,0,0-3-3v6" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+                            <path d="M3,13V8A1,1,0,0,1,4,7H9l2,2h9a1,1,0,0,1,1,1V20a1,1,0,0,1-1,1H11" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+                            <path d="M7,19a2,2,0,1,1-2-2A2,2,0,0,1,7,19ZM9,7l2,2h8V4a1,1,0,0,0-1-1H6A1,1,0,0,0,5,4V7Z" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+                          </svg>
+                          <p className="mt-2 text-2xl font-black tabular-nums leading-none">
+                            {latestImport.track_count >= 1000
+                              ? `${(latestImport.track_count / 1000).toFixed(1)}k`
+                              : latestImport.track_count.toLocaleString()}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Tracks</p>
+                        </div>
+
+                        {/* Playlists */}
+                        <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
+                          <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M18,4H4A1,1,0,0,0,3,5V19a1,1,0,0,0,1,1H18a1,1,0,0,0,1-1V5A1,1,0,0,0,18,4ZM9,16a2,2,0,1,1,2-2A2,2,0,0,1,9,16Z" style={{fill: '#348dff', opacity: 0.35}} />
+                            <path d="M11,14V8a2.9,2.9,0,0,1,3,3" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+                            <path d="M11,14a2,2,0,1,1-2-2A2,2,0,0,1,11,14Zm8,5V5a1,1,0,0,0-1-1H4A1,1,0,0,0,3,5V19a1,1,0,0,0,1,1H18A1,1,0,0,0,19,19Zm2-7a5,5,0,0,1-2,4V8A5,5,0,0,1,21,12Z" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+                          </svg>
+                          <p className="mt-2 text-2xl font-black tabular-nums leading-none">
+                            {latestImport.playlist_count}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Playlists</p>
                         </div>
                       </div>
+                    )}
                     </section>
 
                     {/* Snapshots */}
                     <section className="space-y-3">
-                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">USB Book Snapshots</h2>
+                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><Layers size={11} />USB Library Snapshots</h2>
                       {importsListLoading ? (
                         <div className="flex items-center justify-center py-6">
                           <CircleDash className="animate-spin text-muted-foreground" size={20} />
@@ -1835,7 +1846,7 @@ export default function App() {
 
                     {/* Danger zone */}
                     <section className="space-y-3">
-                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Library Reset</h2>
+                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><WarningAlt size={11} />Library Reset</h2>
                       <div className="glass rounded-2xl p-4 flex items-center justify-between gap-4 border border-red-500/10">
                         <div className="flex items-start gap-3 min-w-0">
                           <WarningAlt size={18} className="mt-0.5 shrink-0 text-red-400" />
