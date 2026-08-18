@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import type { RekordboxImport, UserProfile } from '../../types';
-import { Calendar, CheckmarkFilled, ChevronRight, Music, Renew, Upload, User, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, ChevronRight, Music, Renew, Upload, User, WarningAlt } from '@carbon/icons-react';
 
 interface LibraryHeroProps {
   latestImport: RekordboxImport;
@@ -30,10 +30,6 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
   const initials = profile?.display_name
     ? profile.display_name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
     : null;
-
-  const shortDate = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric',
-  });
 
   const analysisStatus = latestImport.analysis_status;
   const showAnalysis = analysisStatus && analysisStatus !== 'not_requested' && analysisStatus !== 'completed';
@@ -144,26 +140,12 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
             </>
           )}
 
-          {/* Stats — per-row layout so rows align with the status column */}
-          <div className="grid grid-cols-3 gap-x-6">
-            {/* Row 1: icons */}
+          {/* Stats */}
+          <div className="flex flex-col">
             <Music size={12} className="text-muted-foreground" />
-            <Music size={12} className="text-muted-foreground" />
-            <Calendar size={12} className="text-muted-foreground" />
-            {/* Row 2: values */}
-            <span className="text-lg font-black tabular-nums leading-none mt-1">
-              {latestImport.track_count >= 1000
-                ? `${(latestImport.track_count / 1000).toFixed(1)}k`
-                : latestImport.track_count}
-            </span>
             <span className="text-lg font-black tabular-nums leading-none mt-1">{latestImport.playlist_count}</span>
-            <span className="text-base font-black leading-none mt-1">{shortDate}</span>
-            {/* Row 3: labels */}
-            <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">Tracks</span>
             <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">Playlists</span>
-            <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">Last Import</span>
-            {/* Row 4: filename */}
-            <p className="col-span-3 text-[10px] text-muted-foreground font-mono mt-1.5">
+            <p className="text-[10px] text-muted-foreground font-mono mt-1.5">
               Imported from {latestImport.device_name ?? volumeName ?? latestImport.source_filename}
             </p>
           </div>

@@ -598,7 +598,6 @@ function OverviewPlaylistCard({
 
 // ── Reference-layout dashboard pieces ─────────────────────────────────────────
 
-const HERO_BARS = [28, 46, 36, 72, 58, 88, 49, 79, 62, 94, 70, 84, 54, 76, 98, 64];
 const RECENT_BARS = [18, 30, 24, 42, 34, 58, 48, 72, 54, 82, 66, 92, 76, 64, 88, 98];
 
 function DesktopLibraryHero({
@@ -613,11 +612,6 @@ function DesktopLibraryHero({
   onImport: () => void;
 }) {
   const libraryName = profile?.display_name?.toUpperCase() ?? 'MY LIBRARY';
-  const lastImport = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
   const visibleGenres = topGenres.slice(0, 5);
   const extraGenreCount = Math.max(0, topGenres.length - visibleGenres.length);
 
@@ -662,29 +656,6 @@ function DesktopLibraryHero({
           </button>
         </div>
 
-        <div className="hidden xl:flex w-[260px] shrink-0 border-l border-white/10 px-7 py-6 flex-col justify-center relative">
-          <div>
-            <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground font-bold">Total Tracks</p>
-            <p className="mt-1 text-2xl font-black text-primary tabular-nums">
-              {latestImport.track_count >= 1000
-                ? `${(latestImport.track_count / 1000).toFixed(1)}k`
-                : latestImport.track_count.toLocaleString()}
-            </p>
-          </div>
-          <div className="mt-5">
-            <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground font-bold">Last Import</p>
-            <p className="mt-1 text-sm font-bold">{lastImport}</p>
-          </div>
-          <div className="absolute right-5 bottom-6 h-28 w-28 flex items-end gap-[3px] opacity-80 pointer-events-none">
-            {HERO_BARS.map((height, index) => (
-              <span
-                key={index}
-                className={cn('flex-1 rounded-t-full', index < 11 ? 'bg-primary/80' : 'bg-secondary/75')}
-                style={{ height: `${height}%` }}
-              />
-            ))}
-          </div>
-        </div>
       </div>
     </section>
   );
