@@ -32,15 +32,22 @@ class _PagedFakeQuery:
         filters: list[tuple[str, str, Any]] | None = None,
         *,
         server_max_rows: int | None = None,
+        selected_columns: list[str] | None = None,
     ):
         self._data = data
         self._filters = list(filters or [])
         self._server_max_rows = server_max_rows
+        self._selected_columns = list(selected_columns) if selected_columns is not None else None
         self._start: Optional[int] = None
         self._end: Optional[int] = None
         self._order_column: str | None = None
 
-    def select(self, *a, **k): return self
+    def select(self, *args, **_kwargs):
+        if args and isinstance(args[0], str) and args[0].strip() != "*":
+            self._selected_columns = [
+                column.strip() for column in args[0].split(",") if column.strip()
+            ]
+        return self
 
     def eq(self, column, value):
         self._filters.append(("eq", column, value))
@@ -59,6 +66,7 @@ class _PagedFakeQuery:
             self._data,
             self._filters,
             server_max_rows=self._server_max_rows,
+            selected_columns=self._selected_columns,
         )
         q._start = start
         q._end = end
@@ -82,6 +90,11 @@ class _PagedFakeQuery:
             rows = rows[self._start:self._end + 1]
             if self._server_max_rows is not None:
                 rows = rows[: self._server_max_rows]
+        if self._selected_columns is not None:
+            rows = [
+                {column: row.get(column) for column in self._selected_columns}
+                for row in rows
+            ]
         return SimpleNamespace(data=rows)
 
 
@@ -171,6 +184,16 @@ class TestFetchAllRowsBoundaries:
         with pytest.raises(RuntimeError, match="no forward progress"):
             fetch_all_rows(lambda: IgnoredRangeQuery(rows), page_size=1000)
 
+    def test_order_column_must_be_present_in_projected_response(self):
+        rows = _make_rows(3)
+
+        with pytest.raises(RuntimeError, match="include it in the SELECT projection"):
+            fetch_all_rows(
+                lambda: _PagedFakeQuery(rows).select("value"),
+                order_column="id",
+                page_size=2,
+            )
+
     @pytest.mark.parametrize("server_max_rows", [1, 250, 999])
     def test_server_cap_smaller_than_requested_page_size_does_not_truncate(
         self, server_max_rows: int
@@ -253,6 +276,53 @@ class TestGetTracksWithPathsIntegration:
         sb = self._FakeSb(tracks)
         result = _get_tracks_with_paths(sb, "x")
         assert [r["id"] for r in result] == ["a"]
+
+
+# ── Integration: analysis-status asset projection crosses 1,000 rows ─────────
+
+
+class TestAnalysisStatusAssetPagination:
+    class _FakeSb:
+        def __init__(self, assets: List[dict]):
+            self._assets = assets
+
+        def table(self, name: str):
+            if name == "rekordbox_analysis_assets":
+                return _PagedFakeQuery(self._assets)
+            return _PagedFakeQuery([])
+
+    def test_status_query_selects_pagination_id_for_large_libraries(self, monkeypatch):
+        import app.analysis_import_service as import_service
+
+        assets = [
+            {
+                "id": f"asset-{i:04d}",
+                "import_id": "imp-1",
+                "relative_path": f"PIONEER/USBANLZ/P{i:04d}/ANLZ0000.DAT",
+                "asset_type": "DAT",
+                "upload_status": "staged",
+            }
+            for i in range(1001)
+        ]
+        sb = self._FakeSb(assets)
+        import_row = {
+            "analysis_status": "queued",
+            "analysis_expected_track_count": 0,
+            "status": "processing",
+            "library_ready_at": "2026-08-18T00:00:00+00:00",
+            "readiness_stage": "library_metadata_ready",
+        }
+
+        monkeypatch.setattr(import_service, "_create_supabase", lambda: sb)
+        monkeypatch.setattr(import_service, "_require_import_for_user", lambda *_: import_row)
+        monkeypatch.setattr(import_service, "_get_tracks_for_analysis_status", lambda *_: [])
+        monkeypatch.setattr(import_service.worker_registry, "snapshot", lambda *_: {})
+        monkeypatch.setattr(import_service, "get_worker_lease", lambda *_: None)
+
+        status = import_service._get_analysis_status_sync("imp-1", "u1")
+
+        assert status.analysis_status == "queued"
+        assert status.missing_required_count == 0
 
 
 # ── Integration: complete_analysis_import assets query ────────────────────────

@@ -1939,6 +1939,7 @@ export default function App() {
 
       <AnimatePresence>
         <DeleteAllLibrariesModal
+          key="delete-all-libraries"
           open={deleteAllLibrariesOpen}
           visibleSnapshotCount={allImports.length}
           deleting={deleteAllLibrariesSubmitting}
@@ -1954,6 +1955,7 @@ export default function App() {
         />
 
         <DeleteLibraryModal
+          key="delete-library"
           target={deleteLibraryTarget}
           isActive={Boolean(deleteLibraryTarget && (
             deleteLibraryTarget.id === latestImport?.id
@@ -1974,6 +1976,7 @@ export default function App() {
 
         {importNotice && (
           <motion.div
+            key="import-notice"
             initial={{ opacity: 0, y: -12, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.98 }}

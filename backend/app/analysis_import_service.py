@@ -2669,6 +2669,7 @@ def _run_fast_analysis_import_sync(
                 "analysis_worker_status": "failed",
                 "analysis_worker_stage": "failed",
                 "analysis_worker_stopped_acknowledged": True,
+                "analysis_worker_error": str(exc)[:2000],
                 "error_code": "ANALYSIS_WORKER_FAILED",
                 "error_message": "Background analysis stopped unexpectedly. Resume is available.",
                 "retryable": True,
@@ -2960,7 +2961,7 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
     uploaded_assets_status = fetch_all_rows(
         lambda: (
             sb.table("rekordbox_analysis_assets")
-            .select("relative_path, asset_type, upload_status")
+            .select("id, relative_path, asset_type, upload_status")
             .eq("import_id", import_id)
         ),
         order_column="id",

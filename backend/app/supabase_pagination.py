@@ -53,6 +53,11 @@ def fetch_all_rows(
         request_count += 1
         page: List[dict] = resp.data or []
         if page:
+            if order_column not in page[-1]:
+                raise RuntimeError(
+                    f"Supabase pagination order column '{order_column}' is missing from "
+                    "the response; include it in the SELECT projection"
+                )
             last_order_value = page[-1].get(order_column)
             if request_count > 1 and last_order_value == previous_last_order_value:
                 raise RuntimeError(

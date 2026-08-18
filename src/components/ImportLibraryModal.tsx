@@ -113,6 +113,7 @@ const BATCH_SIZE = 50;
 const MAX_BYTES_PER_BATCH = 50 * 1024 * 1024; // 50 MB
 const MAX_CONCURRENT = 3;
 const PARSE_STATUS_POLL_MS = 2500;
+const PARSE_STATUS_MAX_TRANSIENT_FAILURES = 3;
 const CLOUD_CANCEL_POLL_MS = 1000;
 const CLOUD_CANCEL_MAX_POLLS = 30;
 
@@ -148,6 +149,18 @@ function extractError(err: unknown): { message: string; structured: ImportWriteE
   }
   const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
   return { message, structured: null };
+}
+
+function isTransientAnalysisStatusPollError(error: unknown): boolean {
+  if (error instanceof RekordboxImportError) {
+    return error.status === 408
+      || error.status === 429
+      || (error.status !== null && error.status >= 500);
+  }
+  // Browser fetch() reports connection resets, DNS failures, and similar
+  // transport problems as TypeError. These should not turn a successfully
+  // queued import into a failed import after a single status-poll hiccup.
+  return error instanceof TypeError;
 }
 
 function clampPct(value: number): number {
@@ -1098,19 +1111,40 @@ export function ImportLibraryModal({
         return;
       }
 
+      let consecutiveStatusPollFailures = 0;
       while (
         !backgroundedRef.current &&
         !cloudController.signal.aborted &&
         operation === operationRef.current
       ) {
-        const status = await requestWithAuthRetry(
-          (token) => fetchRekordboxAnalysisStatus(
-            context.importId,
-            token,
-            cloudController.signal,
-          ),
-          fallbackToken,
-        );
+        let status: Awaited<ReturnType<typeof fetchRekordboxAnalysisStatus>>;
+        try {
+          status = await requestWithAuthRetry(
+            (token) => fetchRekordboxAnalysisStatus(
+              context.importId,
+              token,
+              cloudController.signal,
+            ),
+            fallbackToken,
+          );
+          consecutiveStatusPollFailures = 0;
+        } catch (error) {
+          if (isAbortError(error) || operation !== operationRef.current || backgroundedRef.current) {
+            throw error;
+          }
+          if (isTransientAnalysisStatusPollError(error)) {
+            consecutiveStatusPollFailures += 1;
+            if (consecutiveStatusPollFailures <= PARSE_STATUS_MAX_TRANSIENT_FAILURES) {
+              await waitForAbortableDelay(
+                PARSE_STATUS_POLL_MS,
+                cloudController.signal,
+                pollTimers,
+              );
+              continue;
+            }
+          }
+          throw error;
+        }
         if (operation !== operationRef.current || backgroundedRef.current) return;
 
         const totalTracks = status.expected_track_count || context.expectedTrackCount;
