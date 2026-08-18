@@ -12,7 +12,7 @@ import {
   TabNavigation,
   Typography,
   ViewModeNavigation,
-} from '../ui/DropDexDisplay';
+} from '../ui/display';
 import { Stage4Showcase } from './Stage4Showcase';
 
 function render(element: React.ReactElement): string {

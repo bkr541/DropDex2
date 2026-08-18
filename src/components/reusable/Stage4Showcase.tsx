@@ -11,7 +11,7 @@ import {
   TabNavigation,
   Typography,
   ViewModeNavigation,
-} from '../ui/DropDexDisplay';
+} from '../ui/display';
 import './stage4-showcase.css';
 import { ChartBar, Grid, Home, Layers, List, Music, Play, RecordingFilled, Settings, UserAvatar, Waveform } from '@carbon/icons-react';
 
