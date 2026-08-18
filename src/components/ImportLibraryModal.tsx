@@ -2146,17 +2146,15 @@ export function ImportLibraryModal({
                     )}
                   </div>
                 )}
-                <div className="flex gap-3 mt-6">
+                <div className="flex gap-3 mt-6 justify-center">
                   <ControlButton variant="primary" onClick={reset}>
                     <Renew size={16} />
-                    Try Again
+                    Retry
                   </ControlButton>
-                  <button
-                    onClick={() => { reset(); onClose(); }}
-                    className="flex-1 py-3 glass rounded-xl font-bold text-muted-foreground hover:text-foreground transition-colors"
-                  >
+                  <ControlButton variant="neutral" onClick={() => { reset(); onClose(); }}>
+                    <Close size={16} />
                     Cancel
-                  </button>
+                  </ControlButton>
                 </div>
               </div>
             )}

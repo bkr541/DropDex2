@@ -26,7 +26,7 @@
   background: linear-gradient(180deg, #121922 0%, #090d12 100%);
   box-shadow: var(--shadow-control);
   font-size: 15px;
-  font-weight: 760;
+  font-weight: 500;
   line-height: 1;
   letter-spacing: .025em;
   transition: transform 120ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, color 140ms ease;
@@ -55,6 +55,8 @@
 .dd-control-button--primary.dd-control-button--ready:hover:not(:disabled) { background: rgb(34 197 94 / .08); border-color: #4ade80; color: #4ade80; }
 @keyframes dd-icon-pop { 0% { transform: scale(0.4); opacity: 0; } 65% { transform: scale(1.25); } 100% { transform: scale(1); opacity: 1; } }
 .dd-icon-pop { display: inline-flex; animation: dd-icon-pop 280ms cubic-bezier(.34,1.56,.64,1) forwards; }
+.dd-control-button--neutral { border-radius: 9999px; border-color: #3a3f47; border-width: 2px; background: transparent; box-shadow: none; color: #6b7280; width: fit-content; }
+.dd-control-button--neutral:hover:not(:disabled) { background: rgb(107 114 128 / .08); border-color: #6b7280; color: #9ca3af; }
 .dd-control-button--secondary { background: #fff; box-shadow: none; color: var(--color-control-blue); border-color: currentColor; }
 .dd-accent--orange.dd-control-button--secondary { color: #f46b09; }
 .dd-accent--purple.dd-control-button--secondary { color: #a332d0; }

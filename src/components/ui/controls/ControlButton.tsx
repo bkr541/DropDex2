@@ -3,7 +3,7 @@ import { cn } from '../../../lib/utils';
 import '../dropdex-controls.css';
 import type { AccentTone } from './types';
 
-export type ControlButtonVariant = 'primary' | 'surface' | 'secondary' | 'danger' | 'danger-outline' | 'ghost';
+export type ControlButtonVariant = 'primary' | 'neutral' | 'surface' | 'secondary' | 'danger' | 'danger-outline' | 'ghost';
 
 export function ControlButton({
   variant = 'surface',
