@@ -9,6 +9,7 @@ import {
 import { announceRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
 import { ProgressBar } from './ui/feedback';
 import { CheckmarkFilled, CircleDash, Close, Pause, Play, TrashCan, WarningAlt } from '@carbon/icons-react';
+import { ControlButton } from './ui/controls';
 
 const POLL_MS = 2500;
 
@@ -214,9 +215,9 @@ export function BackgroundImportPanel({
             </button>
           )}
           {paused && (
-            <button type="button" disabled={action !== null} onClick={() => void runAction('resume')} className="flex items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+            <ControlButton type="button" variant="primary" disabled={action !== null} onClick={() => void runAction('resume')} className="w-auto px-3 py-2 text-xs min-h-0">
               {action === 'resume' ? <CircleDash size={13} className="animate-spin" /> : <Play size={13} />} Resume
-            </button>
+            </ControlButton>
           )}
           <button type="button" disabled={action !== null || deletionPending} onClick={onRequestDelete} className="flex items-center justify-center gap-2 rounded-xl border border-red-500/30 px-3 py-2 text-xs font-bold text-red-300 disabled:opacity-50">
             {deletionPending ? <CircleDash size={13} className="animate-spin" /> : <TrashCan size={13} />} {deletionPending ? 'Deleting…' : 'Delete Import'}

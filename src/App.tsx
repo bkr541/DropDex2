@@ -63,6 +63,7 @@ import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
 import { ReusableComponentsView } from './components/reusable/ReusableComponentsView';
 import { CheckmarkFilled, ChevronLeft, CircleDash, DataBase, Edit, Growth, Layers, Logout, Moon, Music, Radio, RecordingFilled, Search, Settings, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
+import { ControlButton } from './components/ui/controls';
 
 type ThemeOption = {
   id: ThemeId;
@@ -387,7 +388,7 @@ function ImportStatusView({
         )}
         <div className="mt-6 flex flex-wrap gap-2">
           {!isActive && !inFlight && !stalled && isUsableLibrarySnapshot(item) && presentation.canActivate && (
-            <button type="button" onClick={onMakeActive} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white">Make Active</button>
+            <ControlButton type="button" variant="primary" onClick={onMakeActive} className="w-auto px-4 py-2 text-sm min-h-0">Make Active</ControlButton>
           )}
           {analysisCanResume && (
             <button type="button" onClick={onResume} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Resume Analysis</button>
@@ -396,7 +397,7 @@ function ImportStatusView({
             <button type="button" onClick={onRetryImport} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Retry Import</button>
           )}
           {isPendingHardDelete(item) && onRetryDelete && (
-            <button type="button" onClick={onRetryDelete} className="rounded-xl border border-red-500/25 bg-red-500/8 px-4 py-2 text-sm font-bold text-red-400 hover:bg-red-500/15 transition-colors">Retry Delete</button>
+            <ControlButton type="button" variant="danger-outline" onClick={onRetryDelete} className="w-auto px-4 py-2 text-sm min-h-0">Retry Delete</ControlButton>
           )}
         </div>
       </div>

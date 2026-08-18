@@ -5,6 +5,7 @@ import { upsertPlaylistProfile, buildPlaylistIdentityKey } from '../../lib/queri
 import type { RekordboxImport, UserPlaylistProfile } from '../../types';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import { Checkmark, CircleDash, FolderOpen, Music, Renew, Upload } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ACCEPTED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
@@ -144,13 +145,10 @@ export function PlaylistEditView({
               rescan automatically.
             </p>
           </div>
-          <button
-            onClick={onImport}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary/90 transition-all active:scale-95 shrink-0 shadow-sm"
-          >
+          <ControlButton variant="primary" onClick={onImport} className="w-auto px-4 py-2 text-xs min-h-0 shrink-0">
             <Renew size={13} />
             Rescan Device
-          </button>
+          </ControlButton>
         </div>
       </div>
 

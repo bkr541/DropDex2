@@ -25,6 +25,7 @@ import { isFreshImportResponse } from '../lib/rekordbox/importRequestFreshness';
 import { runCancellableUploadQueue, UploadQueueRuntime } from '../lib/rekordbox/cancellableUploadQueue';
 import { IdempotentUsbCleanup, verifyUsbReleased } from '../lib/rekordbox/localUsbLifecycle';
 import { CheckmarkFilled, CircleDash, Close, FolderOpen, Renew, WarningAlt } from '@carbon/icons-react';
+import { ControlButton } from './ui/controls';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -584,13 +585,13 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   className="hidden"
                   onChange={handleFolderChange}
                 />
-                <button
+                <ControlButton
+                  variant="primary"
                   onClick={() => folderInputRef.current?.click()}
-                  className="w-full py-3.5 bg-primary text-white rounded-xl font-bold transition-all active:scale-95 hover:bg-primary/90 flex items-center justify-center gap-2"
                 >
                   <FolderOpen size={16} />
                   {wrongDrive ? 'Select Different Folder' : 'Select PIONEER Folder on USB'}
-                </button>
+                </ControlButton>
                 <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
                   Only the {pluralFiles(targets.length)} listed as missing will be uploaded. Your music files are not read.
                 </p>
@@ -683,12 +684,9 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                     </div>
                   ))}
                 </div>
-                <button
-                  onClick={handleDone}
-                  className="w-full py-3 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
-                >
+                <ControlButton variant="primary" onClick={handleDone}>
                   Done
-                </button>
+                </ControlButton>
               </div>
             )}
 
@@ -725,12 +723,9 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                     Reconnect the USB and run Resume Analysis again to retry the {completeResp.missing_required_count.toLocaleString()} track{completeResp.missing_required_count !== 1 ? 's' : ''} still missing DAT files.
                   </p>
                 )}
-                <button
-                  onClick={handleDone}
-                  className="w-full py-3 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
-                >
+                <ControlButton variant="primary" onClick={handleDone}>
                   Done
-                </button>
+                </ControlButton>
               </div>
             )}
 
@@ -747,15 +742,15 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   </div>
                 </div>
                 <div className="flex gap-3">
-                  <button
+                  <ControlButton
+                    variant="primary"
                     onClick={() => {
                       setPhase('fetching_status');
                       setErrorMessage('');
                     }}
-                    className="flex-1 py-2.5 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
                   >
                     Retry
-                  </button>
+                  </ControlButton>
                   <button
                     onClick={handleClose}
                     className="flex-1 py-2.5 glass rounded-xl font-bold text-muted-foreground hover:text-foreground transition-colors"

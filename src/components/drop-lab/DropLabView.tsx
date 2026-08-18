@@ -13,6 +13,7 @@ import { sliceWaveformSegment } from '../../lib/music/waveformSegments';
 import type { RekordboxTrack } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { Chemistry, ChevronLeft } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface DropLabViewProps {
   sourceTrack: RekordboxTrack | null;
@@ -255,7 +256,7 @@ export function DropLabView({
         <Chemistry size={42} className="mx-auto text-muted-foreground" />
         <h2 className="text-2xl font-black italic">Drop Lab</h2>
         <p className="text-sm text-muted-foreground">Open Drop Lab from Track Intelligence so a source track can be fixed for comparison.</p>
-        <button onClick={onBack} className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-bold">Back to Book</button>
+        <ControlButton variant="primary" onClick={onBack} className="w-auto px-4 py-2 text-sm min-h-0">Back to Book</ControlButton>
       </div>
     );
   }

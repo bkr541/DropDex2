@@ -50,6 +50,7 @@ import {
   verifyUsbReleased,
 } from '../lib/rekordbox/localUsbLifecycle';
 import { CheckmarkFilled, CircleDash, Close, DataBase, FolderOpen, Package, Upload, WarningAlt } from '@carbon/icons-react';
+import { ControlButton } from './ui/controls';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1534,13 +1535,13 @@ export function ImportLibraryModal({
                       onChange={handleFolderChange}
                     />
 
-                    <button
+                    <ControlButton
+                      variant="primary"
                       onClick={handleImport}
                       disabled={!folderScan?.dbFile}
-                      className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       Import Book + Analysis
-                    </button>
+                    </ControlButton>
                   </>
                 )}
 
@@ -1592,13 +1593,13 @@ export function ImportLibraryModal({
                       accept={mode === 'zip_bundle' ? '.zip' : '.db'}
                     />
 
-                    <button
+                    <ControlButton
+                      variant="primary"
                       onClick={handleImport}
                       disabled={!selectedFile}
-                      className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {mode === 'zip_bundle' ? 'Import Bundle' : 'Import Book'}
-                    </button>
+                    </ControlButton>
                   </>
                 )}
 
@@ -1665,13 +1666,13 @@ export function ImportLibraryModal({
 
                 {mode === 'usb_folder' && libraryMetadataReady && (
                   <div className="mt-6 space-y-2">
-                    <button
+                    <ControlButton
                       type="button"
+                      variant="primary"
                       onClick={handleContinueInBackground}
-                      className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white transition-all active:scale-[0.99]"
                     >
                       Browse Book in Background
-                    </button>
+                    </ControlButton>
                     <p className="text-[10px] leading-relaxed text-amber-200">
                       Keep the USB connected and Rekordbox closed until the background panel confirms USB access is released.
                     </p>
@@ -1827,20 +1828,20 @@ export function ImportLibraryModal({
                   </p>
                 </div>
                 <div className="mt-6 grid gap-2 sm:grid-cols-2">
-                  <button
+                  <ControlButton
                     type="button"
+                    variant="primary"
                     onClick={handleContinueInBackground}
-                    className="rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white transition-all active:scale-[0.99]"
                   >
                     Continue in Background
-                  </button>
-                  <button
+                  </ControlButton>
+                  <ControlButton
                     type="button"
+                    variant="secondary"
                     onClick={() => openAbortDialog('pause')}
-                    className="rounded-xl border border-primary/40 px-4 py-3 text-sm font-bold text-primary transition-colors hover:bg-primary/10"
                   >
                     Pause Analysis
-                  </button>
+                  </ControlButton>
                   <button
                     type="button"
                     onClick={() => openAbortDialog('delete')}
@@ -1867,13 +1868,9 @@ export function ImportLibraryModal({
                     USB activity is zero. The cloud worker acknowledged that it stopped writing. Completed tracks and uploaded assets were retained for resume from Import History.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleDone}
-                  className="w-full rounded-xl bg-primary px-4 py-3 font-bold text-white"
-                >
+                <ControlButton type="button" variant="primary" onClick={handleDone}>
                   Done
-                </button>
+                </ControlButton>
               </div>
             )}
 
@@ -2005,12 +2002,9 @@ export function ImportLibraryModal({
                   </>
                 )}
 
-                <button
-                  onClick={handleDone}
-                  className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
-                >
+                <ControlButton variant="primary" onClick={handleDone}>
                   Done
-                </button>
+                </ControlButton>
               </div>
             )}
 
@@ -2089,12 +2083,9 @@ export function ImportLibraryModal({
                     </>
                 )}
 
-                <button
-                  onClick={handleDone}
-                  className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
-                >
+                <ControlButton variant="primary" onClick={handleDone}>
                   Done
-                </button>
+                </ControlButton>
               </div>
             )}
 
@@ -2141,12 +2132,9 @@ export function ImportLibraryModal({
                   </div>
                 )}
                 <div className="flex gap-3 mt-6">
-                  <button
-                    onClick={reset}
-                    className="flex-1 py-3 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
-                  >
+                  <ControlButton variant="primary" onClick={reset}>
                     Try Again
-                  </button>
+                  </ControlButton>
                   <button
                     onClick={() => { reset(); onClose(); }}
                     className="flex-1 py-3 glass rounded-xl font-bold text-muted-foreground hover:text-foreground transition-colors"
