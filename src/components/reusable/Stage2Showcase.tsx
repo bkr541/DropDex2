@@ -20,7 +20,7 @@ import {
   UploadDropzone,
   type SemanticTone,
   type ToastTone,
-} from '../ui/DropDexFeedback';
+} from '../ui/feedback';
 import './stage2-showcase.css';
 import { Checkmark, CircleOutline, Close, Dashboard, Radio, RecordingFilled, Repeat, Sprout, Star, Trophy, WarningAlt, Waveform } from '@carbon/icons-react';
 

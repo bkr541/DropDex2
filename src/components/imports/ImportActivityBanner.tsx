@@ -1,7 +1,7 @@
 import type { RekordboxImport } from '../../types';
 import { cn } from '../../lib/utils';
 import { describeAnalysisStatus, getImportProgress } from '../../lib/rekordbox/importLifecycle';
-import { ImportActivityBanner as FeedbackImportActivityBanner } from '../ui/DropDexFeedback';
+import { ImportActivityBanner as FeedbackImportActivityBanner } from '../ui/feedback';
 import { DataBase } from '@carbon/icons-react';
 
 interface Props {

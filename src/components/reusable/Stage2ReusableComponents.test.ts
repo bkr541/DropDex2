@@ -9,7 +9,7 @@ import {
   StatusLoader,
   clampProgress,
   progressPercent,
-} from '../ui/DropDexFeedback';
+} from '../ui/feedback';
 import { Stage2Showcase } from './Stage2Showcase';
 
 function render(element: React.ReactElement): string {

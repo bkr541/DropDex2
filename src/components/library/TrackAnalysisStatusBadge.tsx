@@ -1,5 +1,5 @@
 import type { RekordboxTrackParseStatus } from '../../types';
-import { AnalysisStatusBadge, type AnalysisBadgeState } from '../ui/DropDexFeedback';
+import { AnalysisStatusBadge, type AnalysisBadgeState } from '../ui/feedback';
 
 const LABELS: Record<RekordboxTrackParseStatus, string> = {
   not_requested: 'Metadata ready',

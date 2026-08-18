@@ -7,7 +7,7 @@ import {
   type AnalysisStatusResponse,
 } from '../lib/api/rekordboxImport';
 import { announceRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
-import { ProgressBar } from './ui/DropDexFeedback';
+import { ProgressBar } from './ui/feedback';
 import { CheckmarkFilled, CircleDash, Close, Pause, Play, TrashCan, WarningAlt } from '@carbon/icons-react';
 
 const POLL_MS = 2500;
