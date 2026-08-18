@@ -90,20 +90,6 @@ export function PlaylistOverviewCard({
         </div>
       </motion.button>
 
-      {/* Edit overlay — only shown for non-folder playlists */}
-      {!playlist.is_folder && onEdit && (
-        <ControlButton
-          variant="ghost"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          title="Edit playlist"
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 z-10"
-        >
-          <Edit size={11} />
-        </ControlButton>
-      )}
     </div>
   );
 }

@@ -21,6 +21,7 @@ import {
 
 export interface PlaylistWithCount extends RekordboxPlaylist {
   track_count: number;
+  top_genres: string[];
 }
 
 export interface PlaylistTrackItem {
@@ -313,7 +314,7 @@ export async function fetchPlaylistById(playlistId: string): Promise<PlaylistWit
 
   if (error) throw new Error(error.message);
   if (!data) return null;
-  return { ...(data as RekordboxPlaylist), track_count: 0 };
+  return { ...(data as RekordboxPlaylist), track_count: 0, top_genres: [] };
 }
 
 export async function fetchImportById(importId: string): Promise<RekordboxImport | null> {

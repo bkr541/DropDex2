@@ -34,7 +34,7 @@ import type {
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
-import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Upload, User, WarningAlt, Waveform } from '@carbon/icons-react';
+import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
 import { ControlButton } from '../ui/controls';
 
 const TABS: { id: LibraryTab; label: string }[] = [
@@ -164,25 +164,25 @@ function ArtistProfileCard({
 
       <h1 className="text-2xl font-black uppercase leading-tight tracking-tight">{libraryName}</h1>
 
-      {latestImport && (
-        <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center">
-          <div className="flex flex-col items-center gap-1">
-            <div className="flex items-center gap-2">
-              <Music size={16} className="text-muted-foreground" />
-              <span className="text-lg font-black tabular-nums">{latestImport.track_count.toLocaleString()}</span>
-            </div>
-            <span className="text-[10px] text-muted-foreground font-semibold">Tracks</span>
+      {(() => {
+        const links = [
+          profile?.spotify_url ? { href: profile.spotify_url, label: 'Spotify', icon: <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.516 17.313a.748.748 0 0 1-1.031.25c-2.822-1.724-6.375-2.114-10.561-1.158a.749.749 0 1 1-.333-1.462c4.579-1.045 8.507-.596 11.675 1.339a.75.75 0 0 1 .25 1.031zm1.472-3.274a.937.937 0 0 1-1.288.308c-3.226-1.983-8.143-2.558-11.963-1.4a.937.937 0 1 1-.544-1.791c4.361-1.323 9.782-.682 13.487 1.596a.937.937 0 0 1 .308 1.287zm.126-3.409c-3.868-2.297-10.249-2.509-13.944-1.388a1.124 1.124 0 1 1-.652-2.15c4.243-1.288 11.298-1.039 15.749 1.607a1.125 1.125 0 0 1-1.153 1.931z"/></svg> } : null,
+          profile?.soundcloud_url ? { href: profile.soundcloud_url, label: 'SoundCloud', icon: <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M1.175 12.225c-.015.132-.024.265-.024.4 0 .135.009.268.024.4l-.024-.4.024.4c.133 1.162 1.11 2.063 2.3 2.063 1.276 0 2.312-1.036 2.312-2.312V8.1a.387.387 0 0 0-.387-.387.387.387 0 0 0-.387.387v4.275a1.538 1.538 0 0 1-1.538 1.538 1.538 1.538 0 0 1-1.538-1.538 1.538 1.538 0 0 1 1.538-1.538c.283 0 .549.077.775.213V8.1A2.887 2.887 0 0 0 1.364 9.9c-.13.382-.189.78-.189 1.187v1.138zm5.1 2.463V7.762a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v6.926a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55.387V8.475a.387.387 0 0 1 .387-.388.387.387 0 0 1 .388.388v6.6a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55 0V8.1a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v6.975a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55.225V7.762a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v7.538a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55-.225V8.1a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v6.975a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm2.1-.3c0 .98.795 1.775 1.775 1.775a1.776 1.776 0 0 0 1.725-1.375 3.526 3.526 0 0 0 .3.013 3.525 3.525 0 0 0 3.525-3.525A3.525 3.525 0 0 0 18.375 8.1a3.51 3.51 0 0 0-1.85.525 5.026 5.026 0 0 0-4.6-3.05 5.025 5.025 0 0 0-4.3 2.437v6.763c0 .98.795 1.775 1.775 1.775s1.775-.795 1.775-1.775V8.1a.387.387 0 0 1 .775 0v6.675z"/></svg> } : null,
+          profile?.instagram_url ? { href: profile.instagram_url, label: 'Instagram', icon: <LogoInstagram size={16} /> } : null,
+          profile?.youtube_url ? { href: profile.youtube_url, label: 'YouTube', icon: <LogoYoutube size={16} /> } : null,
+          profile?.website_url ? { href: profile.website_url, label: 'Website', icon: <Globe size={16} /> } : null,
+        ].filter(Boolean) as { href: string; label: string; icon: ReactNode }[];
+        return links.length > 0 ? (
+          <div className="mt-3 flex items-center justify-center gap-3">
+            {links.map(({ href, label, icon }) => (
+              <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label} title={label} className="text-muted-foreground hover:text-foreground transition-colors">
+                {icon}
+              </a>
+            ))}
           </div>
-          <div className="h-10 w-px bg-[var(--color-border-subtle)]" />
-          <div className="flex flex-col items-center gap-1">
-            <div className="flex items-center gap-2">
-              <FolderOpen size={16} className="text-muted-foreground" />
-              <span className="text-lg font-black tabular-nums">{latestImport.playlist_count}</span>
-            </div>
-            <span className="text-[10px] text-muted-foreground font-semibold">Playlists</span>
-          </div>
-        </div>
-      )}
+        ) : null;
+      })()}
+
     </div>
   );
 }
@@ -227,8 +227,8 @@ function DesktopLibraryInfoCard({
 
   return (
     <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4 space-y-4">
-      <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold">
-        Library Health
+      <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold flex items-center gap-1.5">
+        <ChartBar size={11} /> Library Health
       </p>
 
       <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 px-3 py-3">
@@ -577,9 +577,20 @@ function OverviewPlaylistCard({
           <p className="text-[11px] text-muted-foreground font-mono mt-1">
             {playlist.track_count.toLocaleString()} tracks
           </p>
-        </div>
-        <div className="w-9 h-9 rounded-full border border-[var(--color-border-subtle)] flex items-center justify-center text-muted-foreground group-hover:text-primary group-hover:border-primary/30 transition-colors shrink-0">
-          <ArrowUpRight size={15} />
+          {playlist.top_genres?.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+              {playlist.top_genres.slice(0, 3).map((genre) => (
+                <span key={genre} className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-semibold text-muted-foreground">
+                  {genre}
+                </span>
+              ))}
+              {playlist.top_genres.length > 3 && (
+                <span className="text-[9px] text-muted-foreground font-semibold">
+                  +{playlist.top_genres.length - 3}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </button>
@@ -594,46 +605,45 @@ function DesktopLibraryHero({
   latestImport,
   profile,
   topGenres,
+  mostCommonBpm,
+  mostCommonKey,
+  largestPlaylistName,
   onImport,
 }: {
   latestImport: RekordboxImport;
   profile: UserProfile | null;
   topGenres: readonly (readonly [string, number])[];
+  mostCommonBpm: number | null;
+  mostCommonKey: string | null;
+  largestPlaylistName: string | null;
   onImport: () => void;
 }) {
   const libraryName = profile?.display_name?.toUpperCase() ?? 'MY LIBRARY';
+  const { volumeName } = useUsbConnection();
+  const lastImport = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
 
-  const socialLinks = [
-    profile?.spotify_url ? {
-      href: profile.spotify_url,
-      label: 'Spotify',
-      icon: (
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-          <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.516 17.313a.748.748 0 0 1-1.031.25c-2.822-1.724-6.375-2.114-10.561-1.158a.749.749 0 1 1-.333-1.462c4.579-1.045 8.507-.596 11.675 1.339a.75.75 0 0 1 .25 1.031zm1.472-3.274a.937.937 0 0 1-1.288.308c-3.226-1.983-8.143-2.558-11.963-1.4a.937.937 0 1 1-.544-1.791c4.361-1.323 9.782-.682 13.487 1.596a.937.937 0 0 1 .308 1.287zm.126-3.409c-3.868-2.297-10.249-2.509-13.944-1.388a1.124 1.124 0 1 1-.652-2.15c4.243-1.288 11.298-1.039 15.749 1.607a1.125 1.125 0 0 1-1.153 1.931z"/>
-        </svg>
-      ),
-    } : null,
-    profile?.soundcloud_url ? {
-      href: profile.soundcloud_url,
-      label: 'SoundCloud',
-      icon: (
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-          <path d="M1.175 12.225c-.015.132-.024.265-.024.4 0 .135.009.268.024.4l-.024-.4.024.4c.133 1.162 1.11 2.063 2.3 2.063 1.276 0 2.312-1.036 2.312-2.312V8.1a.387.387 0 0 0-.387-.387.387.387 0 0 0-.387.387v4.275a1.538 1.538 0 0 1-1.538 1.538 1.538 1.538 0 0 1-1.538-1.538 1.538 1.538 0 0 1 1.538-1.538c.283 0 .549.077.775.213V8.1A2.887 2.887 0 0 0 1.364 9.9c-.13.382-.189.78-.189 1.187v1.138zm5.1 2.463V7.762a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v6.926a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55.387V8.475a.387.387 0 0 1 .387-.388.387.387 0 0 1 .388.388v6.6a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55 0V8.1a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v6.975a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55.225V7.762a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v7.538a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55-.225V8.1a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v6.975a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm2.1-.3c0 .98.795 1.775 1.775 1.775a1.776 1.776 0 0 0 1.725-1.375 3.526 3.526 0 0 0 .3.013 3.525 3.525 0 0 0 3.525-3.525A3.525 3.525 0 0 0 18.375 8.1a3.51 3.51 0 0 0-1.85.525 5.026 5.026 0 0 0-4.6-3.05 5.025 5.025 0 0 0-4.3 2.437v6.763c0 .98.795 1.775 1.775 1.775s1.775-.795 1.775-1.775V8.1a.387.387 0 0 1 .775 0v6.675z"/>
-        </svg>
-      ),
-    } : null,
-    profile?.instagram_url ? { href: profile.instagram_url, label: 'Instagram', icon: <LogoInstagram size={18} /> } : null,
-    profile?.youtube_url ? { href: profile.youtube_url, label: 'YouTube', icon: <LogoYoutube size={18} /> } : null,
-    profile?.website_url ? { href: profile.website_url, label: 'Website', icon: <Globe size={18} /> } : null,
-  ].filter(Boolean) as { href: string; label: string; icon: ReactNode }[];
+  const analysisTotal = latestImport.analysis_expected_track_count || latestImport.track_count;
+  const analysisParsed = latestImport.analysis_parsed_track_count || 0;
+  const analysisPercent = latestImport.analysis_status === 'completed'
+    ? 100
+    : analysisTotal > 0
+      ? Math.max(0, Math.min(100, Math.round((analysisParsed / analysisTotal) * 100)))
+      : 0;
+  const ringR = 34;
+  const ringC = 2 * Math.PI * ringR;
+
 
   return (
     <section className="relative overflow-hidden rounded-2xl border border-[var(--color-border-subtle)] min-h-[218px] bg-[linear-gradient(105deg,rgba(2,12,25,0.98)_0%,rgba(3,25,52,0.95)_50%,rgba(2,11,24,0.98)_100%)]">
       <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_58%_20%,rgba(16,103,220,0.42),transparent_34%),radial-gradient(circle_at_82%_38%,rgba(24,94,190,0.20),transparent_30%),linear-gradient(to_top,rgba(1,7,17,0.92),transparent_58%)]" />
       <div className="absolute -bottom-12 left-[35%] h-36 w-[52%] rounded-[50%] bg-black/30 blur-2xl pointer-events-none" />
 
-      <div className="relative z-10 flex min-h-[218px]">
-        <div className="flex-1 min-w-0 px-8 py-7 flex flex-col justify-center">
+      <div className="relative z-10 grid min-h-[218px]" style={{ gridTemplateColumns: '40% 30% 30%' }}>
+
+        {/* Left column — identity + actions */}
+        <div className="min-w-0 px-8 py-7 flex flex-col justify-center">
           <h1 className="text-4xl xl:text-5xl font-black uppercase tracking-tight leading-none">
             {libraryName}
           </h1>
@@ -641,28 +651,44 @@ function DesktopLibraryHero({
             {latestImport.track_count.toLocaleString()} tracks&nbsp;&nbsp;•&nbsp;&nbsp;{latestImport.playlist_count} playlists
           </p>
 
-          {socialLinks.length > 0 && (
-            <div className="mt-4 flex items-center gap-3">
-              {socialLinks.map(({ href, label, icon }) => (
-                <a
-                  key={label}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={label}
-                  title={label}
-                  className="text-white/50 hover:text-white/90 transition-colors"
-                >
-                  {icon}
-                </a>
-              ))}
-            </div>
-          )}
-
           <div className="mt-4">
             <ControlButton variant="primary" onClick={onImport}>
               <Upload size={14} /> Import New Library
             </ControlButton>
+          </div>
+        </div>
+
+        {/* Middle column — empty */}
+        <div className="relative">
+          <div className="absolute left-0 top-6 bottom-6 w-px bg-white/[0.07]" />
+          <div className="absolute right-0 top-6 bottom-6 w-px bg-white/[0.07]" />
+        </div>
+
+        {/* Right column — USB + stats */}
+        <div className="px-6 py-7 flex flex-col justify-center gap-4">
+          {/* USB name */}
+          {volumeName && (
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
+              <Usb size={11} />
+              <span className="truncate">{volumeName}</span>
+            </div>
+          )}
+
+          {/* Stats grid 2×3 */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 min-w-0">
+            {[
+              { label: 'Total Tracks', value: latestImport.track_count.toLocaleString() },
+              { label: 'Common BPM', value: mostCommonBpm != null ? `${mostCommonBpm}` : '—' },
+              { label: 'Common Key', value: mostCommonKey ? formatKey(mostCommonKey) : '—' },
+              { label: 'Common Genre', value: topGenres[0]?.[0] ?? '—' },
+              { label: 'Largest Playlist', value: largestPlaylistName ?? '—' },
+              { label: 'Last Import', value: lastImport },
+            ].map(({ label, value }) => (
+              <div key={label} className="min-w-0">
+                <p className="text-lg font-black tabular-nums leading-none truncate">{value}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{label}</p>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -1035,6 +1061,9 @@ export function LibraryView({
                       latestImport={latestImport}
                       profile={profile}
                       topGenres={topGenres}
+                      mostCommonBpm={mostCommonBpm}
+                      mostCommonKey={mostCommonKey}
+                      largestPlaylistName={largestPlaylist?.name ?? null}
                       onImport={onImport}
                     />
                   </div>}
@@ -1096,14 +1125,6 @@ export function LibraryView({
                       {activeTab === 'overview' && (
                         <div className="space-y-5">
 
-                          <OverviewSummaryCards
-                            latestImport={latestImport}
-                            playlists={playlists}
-                            recentTracks={recentTracks}
-                            mostCommonBpm={mostCommonBpm}
-                            mostCommonKey={mostCommonKey}
-                          />
-
                           {/* Playlists */}
                           <section className="space-y-3">
                             <div className="flex items-center justify-between">
@@ -1119,17 +1140,18 @@ export function LibraryView({
                                 <CircleDash className="animate-spin text-muted-foreground" size={20} />
                               </div>
                             ) : (
-                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                              <div className="flex flex-wrap gap-3">
                                 {playlists
                                   .filter((p) => !p.is_folder)
                                   .slice(0, 2)
                                   .map((playlist) => (
-                                    <OverviewPlaylistCard
-                                      key={playlist.id}
-                                      playlist={playlist}
-                                      profile={playlistProfilesByRbId.get(playlist.rekordbox_playlist_id)}
-                                      onClick={() => onPlaylistClick(playlist)}
-                                    />
+                                    <div key={playlist.id} className="w-[240px]">
+                                      <OverviewPlaylistCard
+                                        playlist={playlist}
+                                        profile={playlistProfilesByRbId.get(playlist.rekordbox_playlist_id)}
+                                        onClick={() => onPlaylistClick(playlist)}
+                                      />
+                                    </div>
                                   ))}
                               </div>
                             )}
@@ -1174,18 +1196,19 @@ export function LibraryView({
                               <p className="text-muted-foreground text-sm">No playlists in this import.</p>
                             </div>
                           ) : (
-                            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                            <div className="flex flex-wrap gap-3">
                               {playlists.map((playlist) => {
                                 const prof = playlistProfilesByRbId.get(playlist.rekordbox_playlist_id);
                                 return (
-                                  <PlaylistOverviewCard
-                                    key={playlist.id}
-                                    playlist={playlist}
-                                    artworkUrl={prof?.artwork_url}
-                                    displayName={prof?.display_name}
-                                    onClick={() => onPlaylistClick(playlist)}
-                                    onEdit={() => onEditPlaylist(playlist)}
-                                  />
+                                  <div key={playlist.id} className="w-[240px]">
+                                    <PlaylistOverviewCard
+                                      playlist={playlist}
+                                      artworkUrl={prof?.artwork_url}
+                                      displayName={prof?.display_name}
+                                      onClick={() => onPlaylistClick(playlist)}
+                                      onEdit={() => onEditPlaylist(playlist)}
+                                    />
+                                  </div>
                                 );
                               })}
                             </div>
