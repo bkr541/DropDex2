@@ -120,7 +120,7 @@ const MODE_LABELS: Record<Mode, { label: string; icon: React.ReactNode; tip: str
   usb_folder: {
     label: 'USB Folder',
     icon: <FolderOpen size={14} />,
-    tip: 'Select your USB drive root (e.g. "LUMA"), not the PIONEER subfolder. DropDex will find exportLibrary.db automatically, then upload only the matching analysis files. Your music files are not uploaded.',
+    tip: 'Select your USB drive root (e.g. "My USB"). DropDex will find exportLibrary.db automatically. Your music files are not uploaded.',
   },
   zip_bundle: {
     label: 'ZIP Bundle',
@@ -1422,25 +1422,23 @@ export function ImportLibraryModal({
               )}
             </AnimatePresence>
 
-            {/* ── Header ── */}
-            {(phase === 'idle' || phase === 'database_selected' || phase === 'scanning_usb') && (
-              <div className="flex items-start justify-between mb-6">
-                <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0">
-                  <DataBase className="text-primary" size={22} />
-                </div>
-                <button
-                  onClick={handleClose}
-                  className="text-muted-foreground hover:text-foreground transition-colors p-1"
-                >
-                  <Close size={18} />
-                </button>
-              </div>
-            )}
-
-            {/* ── Mode tabs (idle / selected) ── */}
+            {/* ── Header + Mode tabs (idle / selected) ── */}
             {(phase === 'idle' || phase === 'database_selected' || phase === 'scanning_usb') && (
               <>
-                <h2 className="text-2xl font-bold mb-4">Import Rekordbox Book</h2>
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+                      <DataBase className="text-primary" size={20} />
+                    </div>
+                    <h2 className="text-xl font-bold">Import Rekordbox Library</h2>
+                  </div>
+                  <button
+                    onClick={handleClose}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                  >
+                    <Close size={18} />
+                  </button>
+                </div>
 
                 {/* Mode selector */}
                 <div className="flex gap-1.5 p-1 bg-[var(--color-surface)] rounded-xl mb-5">
@@ -1457,18 +1455,15 @@ export function ImportLibraryModal({
                     >
                       {MODE_LABELS[m].icon}
                       {MODE_LABELS[m].label}
-                      {m === 'usb_folder' && (
-                        <span className="text-[9px] bg-white/20 rounded px-1 leading-4">
-                          REC
-                        </span>
-                      )}
                     </button>
                   ))}
                 </div>
 
-                <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
-                  {MODE_LABELS[mode].tip}
-                </p>
+                <div className="h-[4.5rem] mb-5 overflow-hidden">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {MODE_LABELS[mode].tip}
+                  </p>
+                </div>
 
                 {/* USB Folder picker */}
                 {mode === 'usb_folder' && (
@@ -1535,13 +1530,15 @@ export function ImportLibraryModal({
                       onChange={handleFolderChange}
                     />
 
-                    <ControlButton
-                      variant="primary"
-                      onClick={handleImport}
-                      disabled={!folderScan?.dbFile}
-                    >
-                      Import Book + Analysis
-                    </ControlButton>
+                    <div className="flex justify-center">
+                      <ControlButton
+                        variant="primary"
+                        onClick={handleImport}
+                        disabled={!folderScan?.dbFile}
+                      >
+                        Import
+                      </ControlButton>
+                    </div>
                   </>
                 )}
 
@@ -1593,13 +1590,15 @@ export function ImportLibraryModal({
                       accept={mode === 'zip_bundle' ? '.zip' : '.db'}
                     />
 
-                    <ControlButton
-                      variant="primary"
-                      onClick={handleImport}
-                      disabled={!selectedFile}
-                    >
-                      {mode === 'zip_bundle' ? 'Import Bundle' : 'Import Book'}
-                    </ControlButton>
+                    <div className="flex justify-center">
+                      <ControlButton
+                        variant="primary"
+                        onClick={handleImport}
+                        disabled={!selectedFile}
+                      >
+                        Import
+                      </ControlButton>
+                    </div>
                   </>
                 )}
 

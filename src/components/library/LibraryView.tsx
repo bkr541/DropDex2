@@ -106,18 +106,14 @@ function EmptyLibrary({ onImport, profile }: { onImport: () => void; profile: Us
       <div className="w-16 h-px bg-[var(--color-border-subtle)]" />
 
       {/* Empty state */}
-      <h2 className="text-lg font-bold">No Book Imported Yet</h2>
+      <h2 className="text-lg font-bold">No Rekordbox Library Imported Yet</h2>
       <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
         Connect your rekordbox USB drive, then import your library to get started.
       </p>
       <ControlButton variant="primary" onClick={onImport} className="w-auto">
         <Upload size={16} />
-        Import Book
+        Import Rekordbox Library
       </ControlButton>
-      <p className="text-[10px] text-muted-foreground max-w-xs leading-relaxed">
-        Select <code className="font-mono">exportLibrary.db</code> from{' '}
-        <code className="font-mono">PIONEER/rekordbox</code> on your USB drive.
-      </p>
     </div>
   );
 }

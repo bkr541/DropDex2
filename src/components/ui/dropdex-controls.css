@@ -48,7 +48,7 @@
   outline: 2px solid var(--color-control-focus);
   outline-offset: 2px;
 }
-.dd-control-button--primary { border-radius: 9999px; border-color: #348dff; border-width: 2px; background: transparent; box-shadow: none; color: #348dff; }
+.dd-control-button--primary { border-radius: 9999px; border-color: #348dff; border-width: 2px; background: transparent; box-shadow: none; color: #348dff; width: fit-content; }
 .dd-control-button--primary:hover:not(:disabled) { background: rgb(52 141 255 / .08); border-color: #68adff; color: #68adff; }
 .dd-control-button--secondary { background: #fff; box-shadow: none; color: var(--color-control-blue); border-color: currentColor; }
 .dd-accent--orange.dd-control-button--secondary { color: #f46b09; }
