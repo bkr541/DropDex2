@@ -48,8 +48,8 @@
   outline: 2px solid var(--color-control-focus);
   outline-offset: 2px;
 }
-.dd-control-button--primary { border-color: #348dff; background: linear-gradient(180deg, #2f90ff 0%, #1464e8 100%); box-shadow: 0 7px 13px rgb(26 110 236 / .28), inset 0 1px 0 rgb(255 255 255 / .22); }
-.dd-control-button--primary:hover:not(:disabled) { background: linear-gradient(180deg, #47a0ff 0%, #1a71f3 100%); border-color: #68adff; }
+.dd-control-button--primary { border-radius: 9999px; border-color: #348dff; border-width: 2px; background: transparent; box-shadow: none; color: #348dff; }
+.dd-control-button--primary:hover:not(:disabled) { background: rgb(52 141 255 / .08); border-color: #68adff; color: #68adff; }
 .dd-control-button--secondary { background: #fff; box-shadow: none; color: var(--color-control-blue); border-color: currentColor; }
 .dd-accent--orange.dd-control-button--secondary { color: #f46b09; }
 .dd-accent--purple.dd-control-button--secondary { color: #a332d0; }

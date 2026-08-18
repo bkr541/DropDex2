@@ -35,6 +35,7 @@ import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
 import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Upload, User, WarningAlt, Waveform } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 const TABS: { id: LibraryTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -69,23 +70,50 @@ interface LibraryViewProps {
   onSearchQueryChange: (query: string) => void;
 }
 
-function EmptyLibrary({ onImport }: { onImport: () => void }) {
+function EmptyLibrary({ onImport, profile }: { onImport: () => void; profile: UserProfile | null }) {
+  const [imgError, setImgError] = useState(false);
+  const libraryName = profile?.display_name?.toUpperCase() ?? 'MY LIBRARY';
+  const avatarUrl = profile?.avatar_url ?? null;
+  const initials = profile?.display_name
+    ? profile.display_name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+    : null;
+
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center space-y-4">
-      <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center">
-        <RecordingFilled size={40} className="text-primary/50" />
+      {/* Profile */}
+      <div className="relative inline-block">
+        <div className="absolute inset-[-5px] rounded-full border-2 border-primary shadow-[0_0_24px_rgba(10,145,255,0.34)] pointer-events-none" />
+        {avatarUrl && !imgError ? (
+          <img
+            src={avatarUrl}
+            alt={profile?.display_name ?? 'Profile'}
+            onError={() => setImgError(true)}
+            className="w-24 h-24 rounded-full object-cover"
+          />
+        ) : (
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border border-primary/30 flex items-center justify-center shadow-lg">
+            {initials ? (
+              <span className="text-2xl font-black text-primary">{initials}</span>
+            ) : (
+              <User size={34} className="text-primary/70" />
+            )}
+          </div>
+        )}
       </div>
-      <h2 className="text-xl font-black">No Book Imported Yet</h2>
+      <h1 className="text-2xl font-black uppercase leading-tight tracking-tight">{libraryName}</h1>
+
+      {/* Divider */}
+      <div className="w-16 h-px bg-[var(--color-border-subtle)]" />
+
+      {/* Empty state */}
+      <h2 className="text-lg font-bold">No Book Imported Yet</h2>
       <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
         Connect your rekordbox USB drive, then import your library to get started.
       </p>
-      <button
-        onClick={onImport}
-        className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold transition-all active:scale-95 hover:bg-primary/90"
-      >
+      <ControlButton variant="primary" onClick={onImport} className="w-auto">
         <Upload size={16} />
         Import Book
-      </button>
+      </ControlButton>
       <p className="text-[10px] text-muted-foreground max-w-xs leading-relaxed">
         Select <code className="font-mono">exportLibrary.db</code> from{' '}
         <code className="font-mono">PIONEER/rekordbox</code> on your USB drive.
@@ -101,7 +129,7 @@ function ArtistProfileCard({
   latestImport,
 }: {
   profile: UserProfile | null;
-  latestImport: RekordboxImport;
+  latestImport: RekordboxImport | null;
 }) {
   const [imgError, setImgError] = useState(false);
   const libraryName = profile?.display_name?.toUpperCase() ?? 'MY LIBRARY';
@@ -140,23 +168,25 @@ function ArtistProfileCard({
 
       <h1 className="text-2xl font-black uppercase leading-tight tracking-tight">{libraryName}</h1>
 
-      <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center">
-        <div className="flex flex-col items-center gap-1">
-          <div className="flex items-center gap-2">
-            <Music size={16} className="text-muted-foreground" />
-            <span className="text-lg font-black tabular-nums">{latestImport.track_count.toLocaleString()}</span>
+      {latestImport && (
+        <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center">
+          <div className="flex flex-col items-center gap-1">
+            <div className="flex items-center gap-2">
+              <Music size={16} className="text-muted-foreground" />
+              <span className="text-lg font-black tabular-nums">{latestImport.track_count.toLocaleString()}</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground font-semibold">Tracks</span>
           </div>
-          <span className="text-[10px] text-muted-foreground font-semibold">Tracks</span>
-        </div>
-        <div className="h-10 w-px bg-[var(--color-border-subtle)]" />
-        <div className="flex flex-col items-center gap-1">
-          <div className="flex items-center gap-2">
-            <FolderOpen size={16} className="text-muted-foreground" />
-            <span className="text-lg font-black tabular-nums">{latestImport.playlist_count}</span>
+          <div className="h-10 w-px bg-[var(--color-border-subtle)]" />
+          <div className="flex flex-col items-center gap-1">
+            <div className="flex items-center gap-2">
+              <FolderOpen size={16} className="text-muted-foreground" />
+              <span className="text-lg font-black tabular-nums">{latestImport.playlist_count}</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground font-semibold">Playlists</span>
           </div>
-          <span className="text-[10px] text-muted-foreground font-semibold">Playlists</span>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1029,72 +1059,76 @@ export function LibraryView({
               </div>
             )}
 
-            {!importLoading && !importError && !latestImport && (
-              <EmptyLibrary onImport={onImport} />
-            )}
-
-            {!importLoading && !importError && latestImport && (
+            {!importLoading && !importError && (
               <div className="flex gap-5 items-start">
 
-                {/* ── Left column (desktop only) ── */}
-                <div className="hidden lg:flex flex-col gap-4 w-[250px] xl:w-[268px] shrink-0">
+                {/* ── Left column (desktop only, library loaded) ── */}
+                {latestImport && <div className="hidden lg:flex flex-col gap-4 w-[250px] xl:w-[268px] shrink-0">
                   <ArtistProfileCard profile={profile} latestImport={latestImport} />
 
-                  <DesktopLibraryInfoCard
-                    latestImport={latestImport}
-                    mostCommonBpm={mostCommonBpm}
-                    mostCommonKey={mostCommonKey}
-                    largestPlaylistName={largestPlaylist?.name ?? null}
-                    statsLoading={statsLoading}
-                    onImport={onImport}
-                    onResumeAnalysis={onResumeAnalysis}
-                  />
+                  {latestImport && (
+                    <>
+                      <DesktopLibraryInfoCard
+                        latestImport={latestImport}
+                        mostCommonBpm={mostCommonBpm}
+                        mostCommonKey={mostCommonKey}
+                        largestPlaylistName={largestPlaylist?.name ?? null}
+                        statsLoading={statsLoading}
+                        onImport={onImport}
+                        onResumeAnalysis={onResumeAnalysis}
+                      />
 
-                  {/* Top Genres */}
-                  <div className="min-h-[300px]">
-                    <SidebarSection icon={Tag} title="Top Genres">
-                      {statsLoading ? (
-                        <CircleDash size={14} className="animate-spin text-muted-foreground" />
-                      ) : topGenres.length === 0 ? (
-                        <p className="text-xs text-muted-foreground italic">No genre data</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {topGenres.map(([genre]) => (
-                            <span key={genre} className="library-genre-badge" title={genre}>
-                              <span className="truncate">{genre}</span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </SidebarSection>
-                  </div>
-                </div>
+                      {/* Top Genres */}
+                      <div className="min-h-[300px]">
+                        <SidebarSection icon={Tag} title="Top Genres">
+                          {statsLoading ? (
+                            <CircleDash size={14} className="animate-spin text-muted-foreground" />
+                          ) : topGenres.length === 0 ? (
+                            <p className="text-xs text-muted-foreground italic">No genre data</p>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              {topGenres.map(([genre]) => (
+                                <span key={genre} className="library-genre-badge" title={genre}>
+                                  <span className="truncate">{genre}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </SidebarSection>
+                      </div>
+                    </>
+                  )}
+                </div>}
 
                 {/* ── Right column ── */}
                 <div className="flex-1 min-w-0 space-y-4">
 
+                  {!latestImport && (
+                    <EmptyLibrary onImport={onImport} profile={profile} />
+                  )}
+
                   {/* Desktop hero mirrors the reference artist-dashboard structure. */}
-                  <div className="hidden lg:block">
+                  {latestImport && <div className="hidden lg:block">
                     <DesktopLibraryHero
                       latestImport={latestImport}
                       profile={profile}
                       topGenres={topGenres}
                       onImport={onImport}
                     />
-                  </div>
+                  </div>}
 
                   {/* Mobile: retain the existing compact hero. */}
-                  <div className="lg:hidden">
+                  {latestImport && <div className="lg:hidden">
                     <LibraryHero
                       latestImport={latestImport}
                       profile={profile}
                       onImport={onImport}
                       onResumeAnalysis={onResumeAnalysis}
                     />
-                  </div>
+                  </div>}
 
                   {/* Tabs and search share one row, matching the reference layout. */}
-                  <div className="flex flex-col xl:flex-row xl:items-end gap-3 border-b border-[var(--color-border-subtle)]">
+                  {latestImport && <div className="flex flex-col xl:flex-row xl:items-end gap-3 border-b border-[var(--color-border-subtle)]">
                     <div className="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto scrollbar-none">
                       {TABS.map((tab) => (
                         <button
@@ -1124,10 +1158,10 @@ export function LibraryView({
                         className="w-full h-9 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] pl-9 pr-3 text-xs font-medium text-foreground outline-none transition-colors focus:border-primary/50 focus:bg-[var(--color-surface-hover)]"
                       />
                     </div>
-                  </div>
+                  </div>}
 
                   {/* Tab content */}
-                  <AnimatePresence mode="wait">
+                  {latestImport && <AnimatePresence mode="wait">
                     <motion.div
                       key={activeTab}
                       initial={{ opacity: 0, y: 8 }}
@@ -1402,7 +1436,7 @@ export function LibraryView({
                       )}
 
                     </motion.div>
-                  </AnimatePresence>
+                  </AnimatePresence>}
                 </div>
               </div>
             )}
