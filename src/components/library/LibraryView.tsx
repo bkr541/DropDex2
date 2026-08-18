@@ -1,4 +1,4 @@
-import { useState, useMemo, memo, useCallback } from 'react';
+import { useState, useMemo, memo, useCallback, type ReactNode } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
@@ -34,7 +34,7 @@ import type {
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
-import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Upload, User, WarningAlt, Waveform } from '@carbon/icons-react';
+import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Upload, User, WarningAlt, Waveform } from '@carbon/icons-react';
 import { ControlButton } from '../ui/controls';
 
 const TABS: { id: LibraryTab; label: string }[] = [
@@ -602,8 +602,30 @@ function DesktopLibraryHero({
   onImport: () => void;
 }) {
   const libraryName = profile?.display_name?.toUpperCase() ?? 'MY LIBRARY';
-  const visibleGenres = topGenres.slice(0, 5);
-  const extraGenreCount = Math.max(0, topGenres.length - visibleGenres.length);
+
+  const socialLinks = [
+    profile?.spotify_url ? {
+      href: profile.spotify_url,
+      label: 'Spotify',
+      icon: (
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+          <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.516 17.313a.748.748 0 0 1-1.031.25c-2.822-1.724-6.375-2.114-10.561-1.158a.749.749 0 1 1-.333-1.462c4.579-1.045 8.507-.596 11.675 1.339a.75.75 0 0 1 .25 1.031zm1.472-3.274a.937.937 0 0 1-1.288.308c-3.226-1.983-8.143-2.558-11.963-1.4a.937.937 0 1 1-.544-1.791c4.361-1.323 9.782-.682 13.487 1.596a.937.937 0 0 1 .308 1.287zm.126-3.409c-3.868-2.297-10.249-2.509-13.944-1.388a1.124 1.124 0 1 1-.652-2.15c4.243-1.288 11.298-1.039 15.749 1.607a1.125 1.125 0 0 1-1.153 1.931z"/>
+        </svg>
+      ),
+    } : null,
+    profile?.soundcloud_url ? {
+      href: profile.soundcloud_url,
+      label: 'SoundCloud',
+      icon: (
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+          <path d="M1.175 12.225c-.015.132-.024.265-.024.4 0 .135.009.268.024.4l-.024-.4.024.4c.133 1.162 1.11 2.063 2.3 2.063 1.276 0 2.312-1.036 2.312-2.312V8.1a.387.387 0 0 0-.387-.387.387.387 0 0 0-.387.387v4.275a1.538 1.538 0 0 1-1.538 1.538 1.538 1.538 0 0 1-1.538-1.538 1.538 1.538 0 0 1 1.538-1.538c.283 0 .549.077.775.213V8.1A2.887 2.887 0 0 0 1.364 9.9c-.13.382-.189.78-.189 1.187v1.138zm5.1 2.463V7.762a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v6.926a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55.387V8.475a.387.387 0 0 1 .387-.388.387.387 0 0 1 .388.388v6.6a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55 0V8.1a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v6.975a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55.225V7.762a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v7.538a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55-.225V8.1a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v6.975a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm2.1-.3c0 .98.795 1.775 1.775 1.775a1.776 1.776 0 0 0 1.725-1.375 3.526 3.526 0 0 0 .3.013 3.525 3.525 0 0 0 3.525-3.525A3.525 3.525 0 0 0 18.375 8.1a3.51 3.51 0 0 0-1.85.525 5.026 5.026 0 0 0-4.6-3.05 5.025 5.025 0 0 0-4.3 2.437v6.763c0 .98.795 1.775 1.775 1.775s1.775-.795 1.775-1.775V8.1a.387.387 0 0 1 .775 0v6.675z"/>
+        </svg>
+      ),
+    } : null,
+    profile?.instagram_url ? { href: profile.instagram_url, label: 'Instagram', icon: <LogoInstagram size={18} /> } : null,
+    profile?.youtube_url ? { href: profile.youtube_url, label: 'YouTube', icon: <LogoYoutube size={18} /> } : null,
+    profile?.website_url ? { href: profile.website_url, label: 'Website', icon: <Globe size={18} /> } : null,
+  ].filter(Boolean) as { href: string; label: string; icon: ReactNode }[];
 
   return (
     <section className="relative overflow-hidden rounded-2xl border border-[var(--color-border-subtle)] min-h-[218px] bg-[linear-gradient(105deg,rgba(2,12,25,0.98)_0%,rgba(3,25,52,0.95)_50%,rgba(2,11,24,0.98)_100%)]">
@@ -619,25 +641,25 @@ function DesktopLibraryHero({
             {latestImport.track_count.toLocaleString()} tracks&nbsp;&nbsp;•&nbsp;&nbsp;{latestImport.playlist_count} playlists
           </p>
 
-          {visibleGenres.length > 0 && (
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              {visibleGenres.map(([genre]) => (
-                <span
-                  key={genre}
-                  className="rounded-full border border-white/15 bg-black/20 px-3 py-1 text-[10px] font-semibold text-foreground/90 backdrop-blur-sm"
+          {socialLinks.length > 0 && (
+            <div className="mt-4 flex items-center gap-3">
+              {socialLinks.map(({ href, label, icon }) => (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={label}
+                  title={label}
+                  className="text-white/50 hover:text-white/90 transition-colors"
                 >
-                  {genre}
-                </span>
+                  {icon}
+                </a>
               ))}
-              {extraGenreCount > 0 && (
-                <span className="rounded-full border border-white/15 bg-black/20 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground backdrop-blur-sm">
-                  +{extraGenreCount}
-                </span>
-              )}
             </div>
           )}
 
-          <div className="mt-5">
+          <div className="mt-4">
             <ControlButton variant="primary" onClick={onImport}>
               <Upload size={14} /> Import New Library
             </ControlButton>
