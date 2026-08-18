@@ -1769,13 +1769,13 @@ export default function App() {
                                       {imp.source_filename}
                                     </button>
                                     {isActive && (
-                                      <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-primary/10 text-primary rounded shrink-0">
+                                      <span className="text-[9px] font-bold capitalize tracking-widest px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 rounded-full shrink-0">
                                         Active
                                       </span>
                                     )}
                                     {showStatusBadge && (
                                       <span className={cn(
-                                        "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded shrink-0",
+                                        "text-[9px] font-bold capitalize tracking-widest px-1.5 py-0.5 rounded-full shrink-0",
                                         importPresentation.tone === 'error' ? "bg-red-500/10 text-red-400" :
                                         (importPresentation.tone === 'warning' || importStalled) ? "bg-amber-500/10 text-amber-400" :
                                         "bg-blue-500/10 text-blue-400",

@@ -713,144 +713,89 @@ function OverviewSummaryCards({
   const ringR = 38;
   const ringC = 2 * Math.PI * ringR;
 
-  const CARD = 'rounded-[20px] border border-[var(--color-border-subtle)] p-5 overflow-hidden bg-[var(--color-surface)]';
-  const RULE = { background: 'rgba(255,255,255,0.08)' };
+  const DIVIDER = { background: 'rgba(255,255,255,0.08)' };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
       {/* ── Playlists ── */}
-      <div className={CARD}>
-        <p className="text-[13px] font-bold">Playlists</p>
-        <div className="mt-1.5 h-px" style={RULE} />
-        <div className="mt-4 flex items-center gap-4">
-          <div className="relative shrink-0">
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-10 h-4 rounded-full blur-lg pointer-events-none" style={{ background: 'rgba(120,30,220,0.75)' }} />
-            <svg width="76" height="76" viewBox="0 0 32 32" aria-hidden="true">
-              <defs>
-                <linearGradient id="ov-note-grad" x1="0.3" y1="0" x2="0.7" y2="1">
-                  <stop offset="0%" stopColor="#ff6b9d" />
-                  <stop offset="50%" stopColor="#cc44ff" />
-                  <stop offset="100%" stopColor="#4f46e5" />
-                </linearGradient>
-              </defs>
-              <path fill="url(#ov-note-grad)" d="M27 6L11 10v13c-1-.7-2.2-1-3-1-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4V14.1l14-3.8V18c-1-.7-2.2-1-3-1-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4V6z" />
-            </svg>
-          </div>
-          <div className="space-y-4 flex-1 min-w-0">
-            <div className="flex items-center gap-4">
-              <div className="w-[2px] h-9 rounded-full shrink-0" style={{ background: 'rgba(255,255,255,0.3)' }} />
-              <div>
-                <p className="text-2xl font-black tabular-nums leading-none">{playlistCount}</p>
-                <p className="text-[9px] text-muted-foreground mt-0.5">Total Playlists</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="w-[2px] h-9 rounded-full shrink-0" style={{ background: 'rgba(255,255,255,0.3)' }} />
-              <div>
-                <p className="text-2xl font-black tabular-nums leading-none">{playlistTrackCount.toLocaleString()}</p>
-                <p className="text-[9px] text-muted-foreground mt-0.5">Total Tracks</p>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
+        <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18,4H4A1,1,0,0,0,3,5V19a1,1,0,0,0,1,1H18a1,1,0,0,0,1-1V5A1,1,0,0,0,18,4ZM9,16a2,2,0,1,1,2-2A2,2,0,0,1,9,16Z" style={{fill: '#348dff', opacity: 0.35}} />
+          <path d="M11,14V8a2.9,2.9,0,0,1,3,3" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+          <path d="M11,14a2,2,0,1,1-2-2A2,2,0,0,1,11,14Zm8,5V5a1,1,0,0,0-1-1H4A1,1,0,0,0,3,5V19a1,1,0,0,0,1,1H18A1,1,0,0,0,19,19Zm2-7a5,5,0,0,1-2,4V8A5,5,0,0,1,21,12Z" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+        </svg>
+        <p className="mt-2 text-2xl font-black tabular-nums leading-none">{playlistCount}</p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">Playlists</p>
+        <div className="mt-3 w-full h-px" style={DIVIDER} />
+        <p className="mt-3 text-2xl font-black tabular-nums leading-none">{playlistTrackCount.toLocaleString()}</p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">Total Tracks</p>
       </div>
 
       {/* ── Library Stats ── */}
-      <div className={CARD}>
-        <p className="text-[13px] font-bold">Library Stats</p>
-        <div className="mt-1.5 h-px" style={RULE} />
-        <div className="mt-4 flex items-center gap-4">
-          <div className="relative shrink-0 w-[88px] h-[88px]">
-            <svg viewBox="0 0 100 100" width={88} height={88}>
-              <circle cx="50" cy="50" r={ringR} fill="none" stroke="#27272a" strokeWidth="9" />
-              <circle
-                cx="50" cy="50" r={ringR}
-                fill="none"
-                stroke="#22c55e"
-                strokeWidth="9"
-                strokeLinecap="round"
-                strokeDasharray={`${ringC * analysisPercent / 100} ${ringC}`}
-                transform="rotate(-90 50 50)"
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-base font-black leading-none tabular-nums">{analysisPercent}%</span>
-              <span className="text-[8px] text-muted-foreground mt-0.5">Analyzed</span>
-            </div>
+      <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
+        <div className="relative w-[68px] h-[68px] shrink-0">
+          <svg viewBox="0 0 100 100" width={68} height={68}>
+            <circle cx="50" cy="50" r={ringR} fill="none" stroke="#27272a" strokeWidth="9" />
+            <circle
+              cx="50" cy="50" r={ringR}
+              fill="none"
+              stroke="#22c55e"
+              strokeWidth="9"
+              strokeLinecap="round"
+              strokeDasharray={`${ringC * analysisPercent / 100} ${ringC}`}
+              transform="rotate(-90 50 50)"
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-base font-black leading-none tabular-nums">{analysisPercent}%</span>
+            <span className="text-[8px] text-muted-foreground mt-0.5">Analyzed</span>
           </div>
-          <div className="flex-1 space-y-3 min-w-0">
-            {([
-              { bg: 'rgba(160,30,30,0.55)', color: '#f87171', label: 'Total Tracks', value: latestImport.track_count.toLocaleString(), Icon: Music },
-              { bg: 'rgba(90,30,170,0.55)', color: '#a78bfa', label: 'Most Common BPM', value: mostCommonBpm != null ? `${mostCommonBpm} BPM` : '—', Icon: Waveform },
-              { bg: 'rgba(15,75,60,0.55)', color: '#34d399', label: 'Most Common Key', value: mostCommonKey ? formatKey(mostCommonKey) : '—', Icon: Tag },
-            ] as const).map(({ bg, color, label, value, Icon }) => (
-              <div key={label} className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0" style={{ background: bg }}>
-                  <Icon size={12} style={{ color }} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[12px] font-black leading-none truncate">{value}</p>
-                  <p className="text-[8px] text-muted-foreground mt-0.5">{label}</p>
-                </div>
+        </div>
+        <div className="mt-3 w-full h-px" style={DIVIDER} />
+        <div className="mt-3 w-full space-y-2">
+          {([
+            { label: 'Total Tracks', value: latestImport.track_count.toLocaleString(), Icon: Music },
+            { label: 'Most Common BPM', value: mostCommonBpm != null ? `${mostCommonBpm} BPM` : '—', Icon: Waveform },
+            { label: 'Most Common Key', value: mostCommonKey ? formatKey(mostCommonKey) : '—', Icon: Tag },
+          ] as const).map(({ label, value, Icon }) => (
+            <div key={label} className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Icon size={11} className="text-muted-foreground shrink-0" />
+                <p className="text-[10px] text-muted-foreground truncate">{label}</p>
               </div>
-            ))}
-          </div>
+              <p className="text-[11px] font-black leading-none shrink-0">{value}</p>
+            </div>
+          ))}
         </div>
       </div>
 
       {/* ── Recently Added ── */}
-      <div className={CARD}>
-        <p className="text-[13px] font-bold">Recently Added</p>
-        <div className="mt-1.5 h-px" style={RULE} />
-        <div className="mt-4 flex items-start gap-2">
-          <div className="flex items-center gap-2">
-            <div className="w-[3px] h-10 rounded-full shrink-0" style={{ background: '#ef4444' }} />
-            <div>
-              <p className="text-2xl font-black tabular-nums leading-none">{recentTracks.length}</p>
-              <p className="text-[9px] text-muted-foreground mt-0.5">Tracks Added</p>
-            </div>
-          </div>
-          <div className="mx-1.5 h-10 w-px self-center" style={RULE} />
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-[3px] h-10 rounded-full shrink-0" style={{ background: '#818cf8' }} />
-            <div className="min-w-0">
-              <p className="text-xs font-black leading-none truncate">{lastImport}</p>
-              <p className="text-[9px] text-muted-foreground mt-0.5">Last Import</p>
-            </div>
-          </div>
-        </div>
-        <div className="mt-4">
-          <div className="relative flex gap-1 h-[64px]">
-            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-              <div className="h-px w-full" style={RULE} />
-              <div className="h-px w-full" style={RULE} />
-              <div className="h-px w-full" style={RULE} />
-            </div>
-            {dailyBars.map((bar, i) => {
-              const pct = bar.count / yMax;
-              const t = i / Math.max(dailyBars.length - 1, 1);
-              const r = Math.round(99 + (236 - 99) * t);
-              const g = Math.round(102 + (72 - 102) * t);
-              const b = Math.round(241 + (153 - 241) * t);
-              return (
-                <div key={i} className="flex-1 flex items-end">
-                  <div
-                    className="w-full rounded-t-sm"
-                    style={{ height: `${Math.max(4, pct * 100)}%`, background: `rgb(${r},${g},${b})` }}
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex mt-1">
-            {dailyBars.map((bar, i) => (
-              <div key={i} className="flex-1 text-center">
-                {i % 2 === 0 && <span className="text-[8px] text-muted-foreground">{bar.label}</span>}
+      <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
+        <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M7,19a2,2,0,1,1-2-2A2,2,0,0,1,7,19ZM9,7l2,2h8V4a1,1,0,0,0-1-1H6A1,1,0,0,0,5,4V7Z" style={{fill: '#348dff', opacity: 0.35}} />
+          <path d="M10,16a2.9,2.9,0,0,0-3-3v6" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+          <path d="M3,13V8A1,1,0,0,1,4,7H9l2,2h9a1,1,0,0,1,1,1V20a1,1,0,0,1-1,1H11" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+          <path d="M7,19a2,2,0,1,1-2-2A2,2,0,0,1,7,19ZM9,7l2,2h8V4a1,1,0,0,0-1-1H6A1,1,0,0,0,5,4V7Z" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+        </svg>
+        <p className="mt-2 text-2xl font-black tabular-nums leading-none">{recentTracks.length}</p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">Tracks Added</p>
+        <div className="mt-3 w-full h-px" style={DIVIDER} />
+        <div className="mt-3 w-full relative flex gap-1 h-[56px]">
+          {dailyBars.map((bar, i) => {
+            const pct = bar.count / yMax;
+            const t = i / Math.max(dailyBars.length - 1, 1);
+            const r = Math.round(99 + (236 - 99) * t);
+            const g = Math.round(102 + (72 - 102) * t);
+            const b = Math.round(241 + (153 - 241) * t);
+            return (
+              <div key={i} className="flex-1 flex items-end">
+                <div className="w-full rounded-t-sm" style={{ height: `${Math.max(4, pct * 100)}%`, background: `rgb(${r},${g},${b})` }} />
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
+        <p className="mt-1.5 text-[10px] text-muted-foreground">{lastImport}</p>
       </div>
 
     </div>

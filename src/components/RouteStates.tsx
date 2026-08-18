@@ -1,4 +1,4 @@
-import { CircleDash, Renew, SearchLocate, WarningAlt } from '@carbon/icons-react';
+import { ChevronLeft, CircleDash, Renew, SearchLocate, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from './ui/controls';
 
 export function RouteLoadingState({ label = 'Loading screen…' }: { label?: string }) {
@@ -27,13 +27,11 @@ export function RouteNotFoundState({
         <SearchLocate className="mx-auto text-muted-foreground" size={42} />
         <h2 className="mt-4 text-2xl font-black">{title}</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{message}</p>
-        <button
-          type="button"
-          onClick={onReturnToLibrary}
-          className="mt-5 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white"
-        >
-          Return to Book
-        </button>
+        <div className="mt-5 flex justify-center">
+          <ControlButton type="button" variant="primary" onClick={onReturnToLibrary}>
+            <ChevronLeft size={16} /> Return to Library
+          </ControlButton>
+        </div>
       </section>
     </div>
   );
@@ -47,8 +45,8 @@ export function RouteLoadErrorState({ message, onRetry, onReturnToLibrary }: { m
         <h2 className="mt-4 text-2xl font-black">This screen could not be loaded</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{message}</p>
         <div className="mt-5 flex items-center justify-center gap-2">
-          <ControlButton type="button" variant="primary" onClick={onRetry} className="w-auto px-4 py-2 text-sm min-h-0"><Renew size={14} /> Retry</ControlButton>
-          <button type="button" onClick={onReturnToLibrary} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Return to Book</button>
+          <ControlButton type="button" variant="primary" onClick={onRetry}><Renew size={16} /> Retry</ControlButton>
+          <ControlButton type="button" variant="neutral" onClick={onReturnToLibrary}><ChevronLeft size={16} /> Return to Library</ControlButton>
         </div>
       </section>
     </div>

@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { isChunkLoadError } from '../../navigation/lazyWithRecovery';
-import { RotateCounterclockwise, WarningAlt } from '@carbon/icons-react';
+import { ChevronLeft, Renew, RotateCounterclockwise, WarningAlt } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface ApplicationErrorBoundaryProps {
   children: ReactNode;
@@ -73,32 +74,22 @@ export class ApplicationErrorBoundary extends Component<
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             {chunkFailure
               ? 'A newer deployment may have replaced files used by this browser tab. Reload the page to fetch the current screen.'
-              : 'Your library data is safe. Retry this screen, return to the Book, or reload the application.'}
+              : 'Your library data is safe. Retry this screen, return to the library, or reload the application.'}
           </p>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={this.handleRetry}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white"
-            >
-              <RotateCounterclockwise size={15} />
+            <ControlButton type="button" variant="primary" onClick={this.handleRetry}>
+              <RotateCounterclockwise size={16} />
               {chunkFailure ? 'Reload' : 'Retry'}
-            </button>
-            <button
-              type="button"
-              onClick={this.handleLibrary}
-              className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold"
-            >
-              Return to Book
-            </button>
+            </ControlButton>
+            <ControlButton type="button" variant="neutral" onClick={this.handleLibrary}>
+              <ChevronLeft size={16} />
+              Return to Library
+            </ControlButton>
             {!chunkFailure && (
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="rounded-xl px-4 py-2 text-sm font-bold text-muted-foreground hover:text-foreground"
-              >
+              <ControlButton type="button" variant="neutral" onClick={() => window.location.reload()}>
+                <Renew size={16} />
                 Reload
-              </button>
+              </ControlButton>
             )}
           </div>
         </section>
