@@ -22,6 +22,12 @@ describe('app routes', () => {
     }
   });
 
+  it('round trips the cue workspace route', () => {
+    expect(parseAppRoute('/cues')).toEqual({ name: 'cues' });
+    expect(routeToUrl({ name: 'cues' })).toBe('/cues');
+    expect(routeBackFallback({ name: 'cues' })).toEqual({ name: 'library', tab: 'overview', search: '' });
+  });
+
   it('maps library tabs and search to canonical URLs', () => {
     expect(parseAppRoute('/library/recent', '?q=night+drive')).toEqual({
       name: 'library',
