@@ -66,7 +66,7 @@
 .dd-control-button--danger-outline { background: transparent; box-shadow: none; color: var(--color-control-red); border-color: var(--color-control-red); }
 .dd-control-button--ghost { background: transparent; box-shadow: none; color: var(--color-text-muted, #8b9ab0); border-color: transparent; }
 .dd-control-button--ghost:hover:not(:disabled) { background: var(--color-surface-hover, rgba(255,255,255,0.06)); color: var(--color-text-primary, #d8dee7); border-color: transparent; }
-.dd-control-button:disabled { cursor: not-allowed; color: var(--color-control-disabled-text); border-color: transparent; background: linear-gradient(180deg, #e5e7eb 0%, #d9dce1 100%); box-shadow: inset 0 1px 0 rgb(255 255 255 / .8); transform: none; }
+.dd-control-button:disabled { cursor: not-allowed; color: #3a4251; border-color: #272e38; background: transparent; box-shadow: none; transform: none; }
 
 .dd-icon-button { width: 48px; height: 48px; display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 7px; border: 1px solid var(--color-control-border); background: linear-gradient(180deg, #121923, #090d12); color: #d8dee7; box-shadow: var(--shadow-control); transition: 140ms ease; }
 .dd-icon-button:hover { transform: translateY(-1px); border-color: #435063; background: #151f2b; }
