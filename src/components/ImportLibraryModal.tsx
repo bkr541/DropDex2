@@ -7,6 +7,7 @@ declare module 'react' {
 }
 
 import React, { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useUsbConnection } from '../contexts/UsbConnectionContext';
 import { cn } from '../lib/utils';
@@ -788,11 +789,12 @@ export function ImportLibraryModal({
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
 
-    setPhase('scanning_usb');
+    // Force React to commit the scanning state to the DOM before the main
+    // thread is blocked by Array.from on a large FileList. flushSync bypasses
+    // React's scheduler so the spinner is visible immediately, then setTimeout
+    // defers the blocking work to the next macrotask to allow a browser paint.
+    flushSync(() => setPhase('scanning_usb'));
 
-    // Defer the heavy Array.from scan to the next task so the scanning_usb
-    // state renders before the main thread is blocked enumerating thousands
-    // of File handles (React 18 batches same-tick updates).
     setTimeout(() => {
       const files = Array.from(fileList);
       const dbFile = findDatabaseFile(files);
