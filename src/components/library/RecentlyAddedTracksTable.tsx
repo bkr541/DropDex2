@@ -1,5 +1,28 @@
 import { useCallback } from 'react';
+import type React from 'react';
 import { cn, formatKey } from '../../lib/utils';
+
+const CAMELOT_COLORS: Record<string, string> = {
+  '1A':  '#81C784', '1B':  '#4CAF6E',
+  '2A':  '#AED581', '2B':  '#8BC34A',
+  '3A':  '#DCE775', '3B':  '#C6D63B',
+  '4A':  '#FFD54F', '4B':  '#FFC107',
+  '5A':  '#FFB74D', '5B':  '#FF9800',
+  '6A':  '#FF8A65', '6B':  '#FF6D3A',
+  '7A':  '#EF9A9A', '7B':  '#E53935',
+  '8A':  '#F48FB1', '8B':  '#D81B6C',
+  '9A':  '#CE93D8', '9B':  '#8E24AA',
+  '10A': '#9FA8DA', '10B': '#5C6BC0',
+  '11A': '#90CAF9', '11B': '#42A5F5',
+  '12A': '#80DEEA', '12B': '#26C6DA',
+};
+
+function camelotCellStyle(camelotKey: string | null | undefined): React.CSSProperties | undefined {
+  if (!camelotKey) return undefined;
+  const color = CAMELOT_COLORS[camelotKey.toUpperCase()];
+  if (!color) return undefined;
+  return { background: color, color: '#111' };
+}
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
@@ -18,7 +41,7 @@ interface RecentlyAddedTracksTableProps {
   showHeader?: boolean;
 }
 
-const HEADERS = ['Title', 'Status', 'Artist', 'BPM', 'Key', 'Added'] as const;
+const HEADERS = ['Title', 'Status', 'Artist', 'Preview', 'BPM', 'Key'] as const;
 
 function TrackRowRecent({
   track,
@@ -73,8 +96,8 @@ function TrackRowRecent({
       )}
     >
       {/* Desktop */}
-      <div className="hidden sm:grid grid-cols-[1fr_96px_1fr_56px_56px_88px] items-center gap-x-2 gap-y-2">
-        {/* Title + overlaid play button */}
+      <div className="hidden sm:grid grid-cols-[1fr_96px_130px_1fr_56px_56px] items-center gap-x-2">
+        {/* Title + inline play button */}
         <div className="relative min-w-0 flex items-center gap-2 pr-2">
           <button
             onClick={handlePlayClick}
@@ -113,16 +136,10 @@ function TrackRowRecent({
           )}
         </div>
 
-        <p className="text-xs text-muted-foreground truncate pr-4">{track.artist ?? '—'}</p>
-        <p className="text-xs font-mono text-primary text-center tabular-nums">
-          {track.bpm != null ? track.bpm.toFixed(1) : '—'}
-        </p>
-        <p className="text-xs font-mono text-secondary text-center">{formatKey(track.musical_key)}</p>
-        <p className="text-[10px] text-muted-foreground text-right tabular-nums">
-          {track.date_added?.slice(0, 10) ?? '—'}
-        </p>
+        <p className="text-xs text-muted-foreground truncate">{track.artist ?? '—'}</p>
 
-        <div className="col-span-full">
+        {/* Waveform column */}
+        <div className="flex items-center">
           <RekordboxPreviewWaveform
             state={waveformState}
             height={30}
@@ -133,6 +150,16 @@ function TrackRowRecent({
             ariaLabel=""
           />
         </div>
+
+        <p className="text-xs font-mono text-primary text-center tabular-nums">
+          {track.bpm != null ? track.bpm.toFixed(1) : '—'}
+        </p>
+        <p
+          className="text-xs font-mono font-bold text-center rounded-md px-1 py-0.5"
+          style={camelotCellStyle(track.camelot_key) ?? { color: 'var(--color-secondary)' }}
+        >
+          {formatKey(track.musical_key)}
+        </p>
       </div>
 
       {/* Mobile */}
@@ -215,14 +242,13 @@ export function RecentlyAddedTracksTable({
 
       {!loading && tracks.length > 0 && (
         <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
-          <div className="hidden sm:grid grid-cols-[1fr_96px_1fr_56px_56px_88px] px-4 py-2.5 border-b border-[var(--color-border-faint)] gap-x-2">
+          <div className="hidden sm:grid grid-cols-[1fr_96px_130px_1fr_56px_56px] px-4 py-2.5 border-b border-[var(--color-border-faint)] gap-x-2">
             {HEADERS.map((col, i) => (
               <p
                 key={i}
                 className={cn(
                   'text-[9px] uppercase tracking-widest text-muted-foreground font-bold',
-                  i === 3 || i === 4 ? 'text-center' : '',
-                  i === 5 ? 'text-right' : '',
+                  i === 4 || i === 5 ? 'text-center' : '',
                 )}
               >
                 {col}

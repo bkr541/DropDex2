@@ -1716,7 +1716,8 @@ export function ImportLibraryModal({
                       variant="primary"
                       onClick={handleContinueInBackground}
                     >
-                      Browse Book in Background
+                      <ArrowRight size={16} />
+                      Browse in Background
                     </ControlButton>
                     <p className="text-[10px] leading-relaxed text-amber-200">
                       Keep the USB connected and Rekordbox closed until the background panel confirms USB access is released.
@@ -2058,83 +2059,81 @@ export function ImportLibraryModal({
 
             {/* ── Partial success ── */}
             {phase === 'partial_success' && (
-              <div className="text-center">
-                <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <WarningAlt className="text-amber-400" size={28} />
+              <div>
+                {/* Header */}
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center shrink-0">
+                      <WarningAlt className="text-amber-400" size={20} />
+                    </div>
+                    <h2 className="text-xl font-bold">Imported with Warnings</h2>
+                  </div>
+                  <button onClick={handleDone} className="text-muted-foreground hover:text-foreground transition-colors p-1">
+                    <Close size={18} />
+                  </button>
                 </div>
-                <h2 className="text-xl font-bold mb-2">Book Imported with Warnings</h2>
+
                 {usbReleaseConfirmed && (
-                  <div className="my-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left">
+                  <div className="mb-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
                     <CheckmarkFilled size={16} className="mt-0.5 shrink-0 text-emerald-400" />
                     <p className="text-xs leading-relaxed text-emerald-100">
                       USB reading is complete. DropDex no longer needs the USB.
                     </p>
                   </div>
                 )}
+
                 {withAnalysis && (
-                    <>
-                      <p className="text-sm text-muted-foreground mb-5">
-                        {withAnalysis.completed_count.toLocaleString()} tracks fully parsed ·{' '}
-                        {(
-                          withAnalysis.partial_count +
-                          withAnalysis.failed_count +
-                          withAnalysis.missing_required_count
-                        ).toLocaleString()}{' '}
-                        with issues
-                      </p>
+                  <>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {withAnalysis.completed_count.toLocaleString()} tracks fully parsed ·{' '}
+                      {(
+                        withAnalysis.partial_count +
+                        withAnalysis.failed_count +
+                        withAnalysis.missing_required_count
+                      ).toLocaleString()}{' '}
+                      with issues
+                    </p>
 
-                      {/* Track-level counts */}
-                      <div className="grid grid-cols-2 gap-2 mb-4">
-                        {[
-                          { label: 'Parsed', value: withAnalysis.completed_count.toLocaleString() },
-                          { label: 'Partial parse', value: withAnalysis.partial_count.toLocaleString() },
-                          { label: 'Parse failed', value: withAnalysis.failed_count.toLocaleString() },
-                          { label: 'Missing DAT', value: withAnalysis.missing_required_count.toLocaleString() },
-                        ].map(({ label, value }) => (
-                          <div key={label} className="glass rounded-xl p-3">
-                            <p className="text-lg font-black font-mono">{value}</p>
-                            <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">
-                              {label}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* File-level upload summary from reconciliation */}
-                      {reconciliation && (reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0 || withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
-                        <div className="mb-4 p-3 rounded-xl bg-amber-500/8 border border-amber-500/20 text-left">
-                          <p className="text-[9px] uppercase tracking-widest text-amber-400/80 font-bold mb-2">
-                            File Summary
-                          </p>
-                          <div className="space-y-1">
-                            <SummaryRow label="Uploaded" value={reconciliation.successfullyUploadedFiles} />
-                            {reconciliation.failedFiles > 0 && (
-                              <SummaryRow label="Failed after retries" value={reconciliation.failedFiles} warn />
-                            )}
-                            {reconciliation.missingFiles > 0 && (
-                              <SummaryRow label="Not found on USB" value={reconciliation.missingFiles} warn />
-                            )}
-                            {withAnalysis.missing_optional_ext_count > 0 && (
-                              <SummaryRow label="Missing color waveform (EXT)" value={withAnalysis.missing_optional_ext_count} />
-                            )}
-                            {withAnalysis.missing_optional_2ex_count > 0 && (
-                              <SummaryRow label="Optional .2EX not archived" value={withAnalysis.missing_optional_2ex_count} />
-                            )}
-                          </div>
-                          {(reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0) && (
-                            <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
-                              Re-import from the same USB to retry — already-uploaded files are skipped.
-                            </p>
-                          )}
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                      {[
+                        { label: 'Parsed', value: withAnalysis.completed_count.toLocaleString() },
+                        { label: 'Partial parse', value: withAnalysis.partial_count.toLocaleString() },
+                        { label: 'Parse failed', value: withAnalysis.failed_count.toLocaleString() },
+                        { label: 'Missing DAT', value: withAnalysis.missing_required_count.toLocaleString() },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="glass rounded-xl p-3">
+                          <p className="text-lg font-black font-mono">{value}</p>
+                          <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">{label}</p>
                         </div>
-                      )}
-                    </>
+                      ))}
+                    </div>
+
+                    {reconciliation && (reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0 || withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
+                      <div className="mb-4 p-3 rounded-xl bg-amber-500/8 border border-amber-500/20">
+                        <p className="text-[9px] uppercase tracking-widest text-amber-400/80 font-bold mb-2">File Summary</p>
+                        <div className="space-y-1">
+                          <SummaryRow label="Uploaded" value={reconciliation.successfullyUploadedFiles} />
+                          {reconciliation.failedFiles > 0 && <SummaryRow label="Failed after retries" value={reconciliation.failedFiles} warn />}
+                          {reconciliation.missingFiles > 0 && <SummaryRow label="Not found on USB" value={reconciliation.missingFiles} warn />}
+                          {withAnalysis.missing_optional_ext_count > 0 && <SummaryRow label="Missing color waveform (EXT)" value={withAnalysis.missing_optional_ext_count} />}
+                          {withAnalysis.missing_optional_2ex_count > 0 && <SummaryRow label="Optional .2EX not archived" value={withAnalysis.missing_optional_2ex_count} />}
+                        </div>
+                        {(reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0) && (
+                          <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
+                            Re-import from the same USB to retry — already-uploaded files are skipped.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
 
-                <ControlButton variant="primary" onClick={handleDone}>
-                  <CheckmarkFilled size={16} />
-                  Done
-                </ControlButton>
+                <div className="flex justify-center mt-2">
+                  <ControlButton variant="primary" onClick={handleDone}>
+                    <CheckmarkFilled size={16} />
+                    Done
+                  </ControlButton>
+                </div>
               </div>
             )}
 

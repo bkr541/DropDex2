@@ -62,7 +62,7 @@ import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './typ
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
 import { ReusableComponentsView } from './components/reusable/ReusableComponentsView';
-import { CheckmarkFilled, ChevronLeft, CircleDash, DataBase, Edit, Growth, Layers, Logout, Moon, Music, Radio, RecordingFilled, Search, Settings, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, ChevronLeft, CircleDash, Close, DataBase, Edit, Growth, Layers, Logout, Moon, Music, Radio, RecordingFilled, Renew, Search, Settings, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from './components/ui/controls';
 
 type ThemeOption = {
@@ -301,6 +301,7 @@ function ImportStatusView({
   onRetryImport,
   onMakeActive,
   onRetryDelete,
+  onBack,
 }: {
   item: RekordboxImport;
   isActive: boolean;
@@ -308,6 +309,7 @@ function ImportStatusView({
   onRetryImport: () => void;
   onMakeActive: () => void;
   onRetryDelete?: () => void;
+  onBack?: () => void;
 }) {
   const presentation = getImportHistoryPresentation(
     item.status,
@@ -327,25 +329,37 @@ function ImportStatusView({
   return (
     <section className="mx-auto max-w-2xl space-y-5 pt-4" data-testid="import-status-screen">
       <div className="glass rounded-3xl border border-[var(--color-border-subtle)] p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Book Import</p>
-            <h2 className="mt-1 truncate text-2xl font-black">{item.source_filename}</h2>
-            <p className="mt-1 font-mono text-xs text-muted-foreground">{item.id}</p>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+              <DataBase className="text-primary" size={20} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold truncate">{item.source_filename}</h2>
+              <p className="font-mono text-xs text-muted-foreground truncate">{item.id}</p>
+            </div>
           </div>
-          <span className={cn(
-            'rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest',
-            statusTone === 'error' ? 'bg-red-500/10 text-red-400' :
-            statusTone === 'warning' ? 'bg-amber-500/10 text-amber-400' :
-            statusTone === 'success' ? 'bg-emerald-500/10 text-emerald-400' :
-            'bg-blue-500/10 text-blue-400',
-          )}>
-            {statusLabel}
-          </span>
+          <div className="flex items-center gap-2 shrink-0 ml-3">
+            <span className={cn(
+              'rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest',
+              statusTone === 'error' ? 'bg-red-500/10 text-red-400' :
+              statusTone === 'warning' ? 'bg-amber-500/10 text-amber-400' :
+              statusTone === 'success' ? 'bg-emerald-500/10 text-emerald-400' :
+              'bg-blue-500/10 text-blue-400',
+            )}>
+              {statusLabel}
+            </span>
+            {onBack && (
+              <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors p-1">
+                <Close size={18} />
+              </button>
+            )}
+          </div>
         </div>
 
         {stalled && (
-          <div className="mt-6 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+          <div className="mb-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
             <p className="text-sm font-bold text-amber-300">This import stopped reporting progress</p>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
               DropDex will no longer treat this historical job as active. Retry the import, or resume analysis when the metadata snapshot is complete.
@@ -354,7 +368,7 @@ function ImportStatusView({
         )}
 
         {inFlight && (
-          <div className="mt-6 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <div className="mb-5 rounded-2xl border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-bold">Analysis is continuing in the background</p>
               <span className="font-mono text-xs font-bold text-primary">{progress.percent}%</span>
@@ -377,27 +391,37 @@ function ImportStatusView({
           </div>
         )}
 
-        <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <div><dt className="text-[9px] uppercase text-muted-foreground">Tracks</dt><dd className="font-mono font-bold">{item.track_count.toLocaleString()}</dd></div>
           <div><dt className="text-[9px] uppercase text-muted-foreground">Playlists</dt><dd className="font-mono font-bold">{item.playlist_count.toLocaleString()}</dd></div>
           <div><dt className="text-[9px] uppercase text-muted-foreground">Imported</dt><dd className="font-mono text-xs font-bold">{new Date(item.imported_at).toLocaleDateString()}</dd></div>
           <div><dt className="text-[9px] uppercase text-muted-foreground">Book</dt><dd className="font-mono text-xs font-bold">{isActive ? 'Active' : inFlight ? 'Pending' : 'Snapshot'}</dd></div>
         </dl>
+
         {item.error_message && (
           <p className="mt-5 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-300">{item.error_message}</p>
         )}
-        <div className="mt-6 flex flex-wrap gap-2">
+
+        <div className="mt-6 flex justify-center gap-3">
           {!isActive && !inFlight && !stalled && isUsableLibrarySnapshot(item) && presentation.canActivate && (
-            <ControlButton type="button" variant="primary" onClick={onMakeActive} className="w-auto px-4 py-2 text-sm min-h-0">Make Active</ControlButton>
+            <ControlButton type="button" variant="primary" onClick={onMakeActive}>
+              <CheckmarkFilled size={16} /> Make Active
+            </ControlButton>
           )}
           {analysisCanResume && (
-            <button type="button" onClick={onResume} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Resume Analysis</button>
+            <ControlButton type="button" variant="primary" onClick={onResume}>
+              <Renew size={16} /> Resume Analysis
+            </ControlButton>
           )}
           {(presentation.canRetry || stalled) && !analysisCanResume && (
-            <button type="button" onClick={onRetryImport} className="rounded-xl border border-[var(--color-border-subtle)] px-4 py-2 text-sm font-bold">Retry Import</button>
+            <ControlButton type="button" variant="primary" onClick={onRetryImport}>
+              <Upload size={16} /> Retry Import
+            </ControlButton>
           )}
           {isPendingHardDelete(item) && onRetryDelete && (
-            <ControlButton type="button" variant="danger-outline" onClick={onRetryDelete} className="w-auto px-4 py-2 text-sm min-h-0">Retry Delete</ControlButton>
+            <ControlButton type="button" variant="danger-outline" onClick={onRetryDelete}>
+              Retry Delete
+            </ControlButton>
           )}
         </div>
       </div>
@@ -1542,6 +1566,7 @@ export default function App() {
                   onResume={() => navigate({ name: 'import', importId: selectedImport.id, resume: true }, { replace: true })}
                   onRetryImport={() => setIsImportModalOpen(true)}
                   onRetryDelete={() => handleDeleteImport(selectedImport)}
+                  onBack={returnToLibrary}
                 />
               </motion.div>
             )}
