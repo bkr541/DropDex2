@@ -75,88 +75,95 @@ export function DeleteLibraryModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-library-title"
-          className="w-full max-w-lg rounded-3xl border border-red-500/20 bg-[var(--color-panel)] p-6 shadow-2xl"
+          className="w-full max-w-2xl rounded-3xl border border-red-500/20 bg-[var(--color-panel)] p-6 shadow-2xl"
         >
-          <div className="flex items-start gap-4">
-            <div className="rounded-2xl bg-red-500/10 p-3 text-red-400">
-              <WarningAlt size={24} />
+          {/* Top row: icon + title + body  |  contextual warning */}
+          <div className="flex gap-6">
+            <div className="flex min-w-0 flex-1 items-start gap-4">
+              <div className="shrink-0 rounded-2xl bg-red-500/10 p-3 text-red-400">
+                <WarningAlt size={22} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-400">Permanent action</p>
+                <h2 id="delete-library-title" className="mt-1 text-xl font-black">
+                  {isActive ? 'Delete active Rekordbox library?' : 'Delete Rekordbox library?'}
+                </h2>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  DropDex will permanently delete this snapshot&apos;s imported tracks, playlists, cues, beat grids,
+                  phrase analysis, waveforms, recommendation data, retained analysis assets, cloud analysis objects,
+                  and staging files. Your DropDex account and app preferences are not affected.
+                </p>
+                <p className="mt-1.5 truncate font-mono text-xs text-muted-foreground" title={target.source_filename}>
+                  {target.source_filename}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-400">Permanent action</p>
-              <h2 id="delete-library-title" className="mt-1 text-xl font-black">
-                {isActive ? 'Delete active Rekordbox library?' : 'Delete Rekordbox library?'}
-              </h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                DropDex will permanently delete this snapshot&apos;s imported tracks, playlists, cues, beat grids,
-                phrase analysis, waveforms, recommendation data, retained analysis assets, cloud analysis objects,
-                and staging files. Your DropDex account and app preferences are not affected.
-              </p>
-              <p className="mt-2 truncate font-mono text-xs text-muted-foreground" title={target.source_filename}>
-                {target.source_filename}
-              </p>
-            </div>
+
+            {/* Right: conditional context panel */}
+            {retryingPendingDelete && (
+              <div className="w-52 shrink-0 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+                <p className="text-sm font-bold text-amber-300">Deletion is already pending.</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                  Retry will continue the original confirmed action: <span className="font-bold">{baseActionLabel}</span>.
+                  The strategy cannot change while this hard delete is in progress.
+                </p>
+              </div>
+            )}
+            {isActive && !nextUsableImport && !retryingPendingDelete && (
+              <div className="w-52 shrink-0 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+                <p className="text-sm font-bold text-amber-300">This is your only usable library.</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                  Deleting it will return DropDex to the same empty state shown before the first Rekordbox import.
+                </p>
+              </div>
+            )}
           </div>
 
-          {retryingPendingDelete && (
-            <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
-              <p className="text-sm font-bold text-amber-300">Deletion is already pending.</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Retry will continue the original confirmed action: <span className="font-bold">{baseActionLabel}</span>.
-                The strategy cannot change while this hard delete is in progress.
-              </p>
-            </div>
-          )}
-
           {canChooseFallback && (
-            <div className="mt-5 space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">After deletion</p>
-              <button
-                type="button"
-                disabled={deleting}
-                aria-pressed={strategy === 'activate_next'}
-                onClick={() => setStrategy('activate_next')}
-                className={cn(
-                  'w-full rounded-2xl border p-4 text-left transition-colors',
-                  strategy === 'activate_next'
-                    ? 'border-primary bg-primary/10'
-                    : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]',
-                )}
-              >
-                <p className="text-sm font-bold">Delete Active Book</p>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Switch automatically to the newest remaining usable snapshot: <span className="font-mono">{nextUsableImport?.source_filename}</span>.
-                </p>
-              </button>
-              <button
-                type="button"
-                disabled={deleting}
-                aria-pressed={strategy === 'start_over'}
-                onClick={() => setStrategy('start_over')}
-                className={cn(
-                  'w-full rounded-2xl border p-4 text-left transition-colors',
-                  strategy === 'start_over'
-                    ? 'border-red-500/50 bg-red-500/10'
-                    : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]',
-                )}
-              >
-                <p className="text-sm font-bold">Delete &amp; Start Over</p>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Leave DropDex with no active library and return to the initial import experience. Other snapshots remain in Settings and can be activated later.
-                </p>
-              </button>
+            <div className="mt-4 flex gap-3">
+              <div className="shrink-0 pt-0.5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">After deletion</p>
+              </div>
+              <div className="flex flex-1 gap-3">
+                <button
+                  type="button"
+                  disabled={deleting}
+                  aria-pressed={strategy === 'activate_next'}
+                  onClick={() => setStrategy('activate_next')}
+                  className={cn(
+                    'flex-1 rounded-2xl border p-3 text-left transition-colors',
+                    strategy === 'activate_next'
+                      ? 'border-primary bg-primary/10'
+                      : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]',
+                  )}
+                >
+                  <p className="text-sm font-bold">Delete Active Book</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Switch to the newest remaining snapshot: <span className="font-mono">{nextUsableImport?.source_filename}</span>.
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  aria-pressed={strategy === 'start_over'}
+                  onClick={() => setStrategy('start_over')}
+                  className={cn(
+                    'flex-1 rounded-2xl border p-3 text-left transition-colors',
+                    strategy === 'start_over'
+                      ? 'border-red-500/50 bg-red-500/10'
+                      : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]',
+                  )}
+                >
+                  <p className="text-sm font-bold">Delete &amp; Start Over</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Leave DropDex with no active library. Other snapshots can be activated later in Settings.
+                  </p>
+                </button>
+              </div>
             </div>
           )}
 
-          {isActive && !nextUsableImport && !retryingPendingDelete && (
-            <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
-              <p className="text-sm font-bold text-amber-300">This is your only usable library.</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Deleting it will return DropDex to the same empty state shown before the first Rekordbox import.
-              </p>
-            </div>
-          )}
-
-          <div className="mt-5">
+          <div className="mt-4">
             <label htmlFor="delete-library-confirmation" className="text-xs font-bold">
               Type <span className="font-mono text-red-400">DELETE</span> exactly to confirm
             </label>
@@ -168,24 +175,24 @@ export function DeleteLibraryModal({
               onChange={(event) => setConfirmation(event.target.value)}
               autoComplete="off"
               spellCheck={false}
-              className="mt-2 w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-3 font-mono text-sm outline-none transition-colors focus:border-red-500/60"
+              className="mt-2 w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-2.5 font-mono text-sm outline-none transition-colors focus:border-red-500/60"
               placeholder="DELETE"
             />
             <p className="mt-1 text-[10px] text-muted-foreground">Confirmation is case-sensitive.</p>
           </div>
 
           {error && (
-            <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs leading-relaxed text-red-300">
+            <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs leading-relaxed text-red-300">
               {error}
             </div>
           )}
 
-          <div className="mt-6 flex gap-3">
+          <div className="mt-4 flex gap-3">
             <button
               type="button"
               disabled={deleting}
               onClick={onClose}
-              className="flex-1 rounded-xl border border-[var(--color-border-subtle)] px-4 py-3 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              className="flex-1 rounded-xl border border-[var(--color-border-subtle)] px-4 py-2.5 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
             >
               Cancel
             </button>
@@ -193,7 +200,7 @@ export function DeleteLibraryModal({
               type="button"
               disabled={deleting || !confirmationValid}
               onClick={() => onConfirm(effectiveStrategy)}
-              className="flex-1 rounded-xl bg-red-500 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex-1 rounded-xl bg-red-500 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {deleting ? (
                 <span className="inline-flex items-center gap-2">

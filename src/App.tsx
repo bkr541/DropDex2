@@ -438,6 +438,7 @@ export default function App() {
   const [deleteAllLibrariesError, setDeleteAllLibrariesError] = useState<string | null>(null);
   const [deleteAllLibrariesPass, setDeleteAllLibrariesPass] = useState(0);
   const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(() => new Set());
+  const [settingsTab, setSettingsTab] = useState<'account' | 'appearance' | 'library' | 'about'>('account');
   const deleteExecutorRef = useRef<ConfirmedDeleteExecutor | null>(null);
   const pendingDeletionContextsRef = useRef<Map<string, PendingDeletionContext>>(new Map());
   const importStatusRef = useRef<Map<string, {
@@ -1208,6 +1209,23 @@ export default function App() {
                   <h2 className="text-2xl font-black italic">Settings</h2>
                 </div>
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">App Configuration</p>
+                <div className="flex gap-1 mt-4 border-b border-[var(--color-border-faint)]">
+                  {(['account', 'appearance', 'library', 'about'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setSettingsTab(tab)}
+                      className={cn(
+                        'px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px capitalize',
+                        settingsTab === tab
+                          ? 'border-primary text-primary'
+                          : 'border-transparent text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {!routeBlocked && currentView === 'discovery' && (
@@ -1269,14 +1287,6 @@ export default function App() {
 
         {/* Scrollable content */}
         <main className={cn('flex-1 overflow-y-auto px-4 md:px-8 pb-32 md:pb-8', currentView === 'home' && 'pt-6')}>
-          {inFlightImport && (
-            <ImportActivityBanner
-              item={inFlightImport}
-              activeImport={latestImport}
-              onViewStatus={() => navigate({ name: 'import', importId: inFlightImport.id, resume: false })}
-              className={currentView === 'home' ? undefined : 'mt-4'}
-            />
-          )}
           <ApplicationErrorBoundary level="feature" resetKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
           <RouteFailureProbe />
           <AnimatePresence mode="wait">
@@ -1568,274 +1578,282 @@ export default function App() {
                 exit={{ opacity: 0, y: 16 }}
                 className="space-y-8 pt-6 md:max-w-2xl md:mx-auto pb-8"
               >
-                {/* Account */}
-                <section className="space-y-3">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Account</h2>
-                  <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
-                    <div className="p-4 flex items-center gap-3">
-                      <User size={18} className="text-muted-foreground shrink-0" />
-                      <div className="min-w-0">
-                        <p className="font-bold text-sm">Signed in as</p>
-                        <p className="text-xs text-muted-foreground font-mono truncate">
-                          {session?.user?.email ?? '—'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Logout size={18} className="text-muted-foreground" />
-                        <p className="font-bold text-sm">Sign Out</p>
-                      </div>
-                      <button
-                        onClick={() => supabase.auth.signOut()}
-                        className="text-xs font-bold text-primary hover:text-primary/80 transition-colors"
-                      >
-                        Sign Out
-                      </button>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Appearance */}
-                <section className="space-y-3">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Appearance</h2>
-                  <div className="glass rounded-2xl p-5 space-y-4">
-                    <div>
-                      <p className="font-bold text-sm mb-0.5">Theme</p>
-                      <p className="text-xs text-muted-foreground">Choose your preferred color scheme</p>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {THEME_OPTIONS.map((option) => {
-                        const Icon = option.icon;
-                        const isActive = theme === option.id;
-                        return (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => setTheme(option.id)}
-                            aria-pressed={isActive}
-                            className={cn(
-                              'flex flex-col items-start gap-3 p-4 rounded-xl border-2 transition-all text-left',
-                              isActive
-                                ? 'border-primary bg-primary/10'
-                                : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]'
-                            )}
-                          >
-                            <Icon size={22} className={isActive ? 'text-primary' : 'text-muted-foreground'} />
-                            <div>
-                              <p className="font-bold text-sm">{option.label}</p>
-                              <p className="text-xs text-muted-foreground">{option.description}</p>
-                            </div>
-                            {isActive && (
-                              <span className="text-[9px] font-bold uppercase tracking-widest text-primary">Active</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </section>
-
-                {/* Book */}
-                <section className="space-y-3">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Book</h2>
-                  <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
-                    <div className="p-4 flex items-center gap-3">
-                      <DataBase size={18} className="text-muted-foreground" />
-                      <div className="min-w-0">
-                        <p className="font-bold text-sm">Active Cloud Book</p>
-                        <p className="text-xs text-muted-foreground">
-                          {importLoading
-                            ? 'Loading…'
-                            : latestImport
-                            ? `${latestImport.track_count.toLocaleString()} tracks · ${latestImport.playlist_count} playlists`
-                            : 'No import found'}
-                        </p>
-                        {latestImport && (
-                          <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                            {latestImport.device_name ?? latestImport.source_filename} · {new Date(latestImport.imported_at).toLocaleDateString()}
+                {/* ── Account tab ── */}
+                {settingsTab === 'account' && (
+                  <section className="space-y-3">
+                    <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
+                      <div className="p-4 flex items-center gap-3">
+                        <User size={18} className="text-muted-foreground shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-bold text-sm">Signed in as</p>
+                          <p className="text-xs text-muted-foreground font-mono truncate">
+                            {session?.user?.email ?? '—'}
                           </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Upload size={18} className="text-primary" />
-                        <div>
-                          <p className="font-bold text-sm">Import New Book</p>
-                          <p className="text-xs text-muted-foreground">Upload exportLibrary.db from USB</p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => setIsImportModalOpen(true)}
-                        className="text-xs font-bold text-primary hover:text-primary/80 transition-colors"
-                      >
-                        Import
-                      </button>
+                      <div className="p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Logout size={18} className="text-muted-foreground" />
+                          <p className="font-bold text-sm">Sign Out</p>
+                        </div>
+                        <button
+                          onClick={() => supabase.auth.signOut()}
+                          className="text-xs font-bold text-primary hover:text-primary/80 transition-colors"
+                        >
+                          Sign Out
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </section>
+                  </section>
+                )}
 
-                {/* USB Book Snapshots */}
-                <section className="space-y-3">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">USB Book Snapshots</h2>
-                  {importsListLoading ? (
-                    <div className="flex items-center justify-center py-6">
-                      <CircleDash className="animate-spin text-muted-foreground" size={20} />
-                    </div>
-                  ) : importsListError ? (
-                    <div className="glass rounded-2xl p-4 text-center space-y-2">
-                      <p className="text-sm text-red-400">{importsListError}</p>
-                      <button onClick={refetchImportList} className="text-xs font-bold text-primary">Retry</button>
-                    </div>
-                  ) : allImports.length === 0 ? (
-                    <div className="glass rounded-2xl p-4 text-center">
-                      <p className="text-sm text-muted-foreground italic">No imports yet.</p>
-                    </div>
-                  ) : (
-                    <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
-                      {allImports.map((imp) => {
-                        const isActive = imp.id === latestImport?.id;
-                        const importPresentation = getImportHistoryPresentation(
-                          imp.status, Boolean(imp.retryable), imp.analysis_status,
-                        );
-                        const importProgress = getImportProgress(imp);
-                        const importInFlight = isImportInFlight(imp);
-                        const importStalled = isImportStalled(imp);
-                        const showStatusBadge = imp.status !== 'completed'
-                          || (imp.analysis_status !== 'completed' && imp.analysis_status !== 'not_requested');
-                        return (
-                          <div key={imp.id} data-testid={`import-history-row-${imp.id}`} className="p-4 flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <button
-                                  type="button"
-                                  onClick={() => navigate({ name: 'import', importId: imp.id, resume: false })}
-                                  className="max-w-full truncate text-left font-mono text-sm font-bold hover:text-primary"
-                                  aria-label={`Open import ${imp.source_filename}`}
-                                >
-                                  {imp.source_filename}
-                                </button>
-                                {isActive && (
-                                  <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-primary/10 text-primary rounded shrink-0">
-                                    Active
-                                  </span>
-                                )}
-                                {showStatusBadge && (
-                                  <span className={cn(
-                                    "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded shrink-0",
-                                    importPresentation.tone === 'error' ? "bg-red-500/10 text-red-400" :
-                                    (importPresentation.tone === 'warning' || importStalled) ? "bg-amber-500/10 text-amber-400" :
-                                    "bg-blue-500/10 text-blue-400",
-                                  )}>
-                                    {importStalled ? 'Interrupted' : importPresentation.label}
-                                  </span>
-                                )}
+                {/* ── Appearance tab ── */}
+                {settingsTab === 'appearance' && (
+                  <section className="space-y-3">
+                    <div className="glass rounded-2xl p-5 space-y-4">
+                      <div>
+                        <p className="font-bold text-sm mb-0.5">Theme</p>
+                        <p className="text-xs text-muted-foreground">Choose your preferred color scheme</p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {THEME_OPTIONS.map((option) => {
+                          const Icon = option.icon;
+                          const isActive = theme === option.id;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => setTheme(option.id)}
+                              aria-pressed={isActive}
+                              className={cn(
+                                'flex flex-col items-start gap-3 p-4 rounded-xl border-2 transition-all text-left',
+                                isActive
+                                  ? 'border-primary bg-primary/10'
+                                  : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]'
+                              )}
+                            >
+                              <Icon size={22} className={isActive ? 'text-primary' : 'text-muted-foreground'} />
+                              <div>
+                                <p className="font-bold text-sm">{option.label}</p>
+                                <p className="text-xs text-muted-foreground">{option.description}</p>
                               </div>
+                              {isActive && (
+                                <span className="text-[9px] font-bold uppercase tracking-widest text-primary">Active</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* ── Library tab ── */}
+                {settingsTab === 'library' && (
+                  <>
+                    {/* Active book + import */}
+                    <section className="space-y-3">
+                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Book</h2>
+                      <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
+                        <div className="p-4 flex items-center gap-3">
+                          <DataBase size={18} className="text-muted-foreground" />
+                          <div className="min-w-0">
+                            <p className="font-bold text-sm">Active Cloud Book</p>
+                            <p className="text-xs text-muted-foreground">
+                              {importLoading
+                                ? 'Loading…'
+                                : latestImport
+                                ? `${latestImport.track_count.toLocaleString()} tracks · ${latestImport.playlist_count} playlists`
+                                : 'No import found'}
+                            </p>
+                            {latestImport && (
                               <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                                {new Date(imp.imported_at).toLocaleDateString()} · {imp.track_count.toLocaleString()} tracks · {imp.playlist_count} playlists
+                                {latestImport.device_name ?? latestImport.source_filename} · {new Date(latestImport.imported_at).toLocaleDateString()}
                               </p>
-                              {imp.device_name && (
-                                <p className="text-[10px] text-muted-foreground font-mono">{imp.device_name}</p>
-                              )}
-                              {importInFlight && (
-                                <div className="mt-2 max-w-md">
-                                  <div className="flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
-                                    <span className="truncate">{importProgress.currentTrackLabel || 'Preparing current track…'}</span>
-                                    <span className="shrink-0 font-mono">{importProgress.percent}%</span>
-                                  </div>
-                                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface)]">
-                                    <div className="h-full rounded-full bg-primary" style={{ width: `${importProgress.percent}%` }} />
-                                  </div>
-                                </div>
-                              )}
-                              {(imp.status === 'failed' || imp.status === 'cancelled') && imp.error_message && (
-                                <p className="text-[10px] text-red-400 mt-1">{imp.error_message}</p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 shrink-0 pt-0.5">
-                              {!isActive && !importInFlight && !importStalled && isUsableLibrarySnapshot(imp) && importPresentation.canActivate && (
-                                <button
-                                  onClick={() => handleSetActiveImport(imp.id)}
-                                  className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
-                                >
-                                  Make Active
-                                </button>
-                              )}
-                              {(importPresentation.canRetry || importStalled) && (
-                                <button
-                                  onClick={() => {
-                                    if (imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted') {
-                                      navigate({ name: 'import', importId: imp.id, resume: true });
-                                    } else {
-                                      setIsImportModalOpen(true);
-                                    }
-                                  }}
-                                  className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
-                                >
-                                  {imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted' ? 'Resume' : 'Retry'}
-                                </button>
-                              )}
-                              {(!importInFlight || imp.retryable || isPendingHardDelete(imp)) && (
-                                <button
-                                  onClick={() => handleDeleteImport(imp)}
-                                  className="text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors"
-                                >
-                                  {isPendingHardDelete(imp) ? 'Retry Delete' : 'Delete'}
-                                </button>
-                              )}
+                            )}
+                          </div>
+                        </div>
+                        <div className="p-4 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <Upload size={18} className="text-primary" />
+                            <div>
+                              <p className="font-bold text-sm">Import New Book</p>
+                              <p className="text-xs text-muted-foreground">Upload exportLibrary.db from USB</p>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </section>
-
-                {/* Library Reset */}
-                <section className="space-y-3">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Library Reset</h2>
-                  <div className="glass rounded-2xl p-4 flex items-center justify-between gap-4 border border-red-500/10">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <WarningAlt size={18} className="mt-0.5 shrink-0 text-red-400" />
-                      <div className="min-w-0">
-                        <p className="font-bold text-sm">Delete All Rekordbox Data</p>
-                        <p className="text-xs leading-relaxed text-muted-foreground">
-                          Permanently remove every library snapshot and all imported Rekordbox data for this account.
-                        </p>
+                          <button
+                            onClick={() => setIsImportModalOpen(true)}
+                            className="text-xs font-bold text-primary hover:text-primary/80 transition-colors"
+                          >
+                            Import
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={deleteAllLibrariesSubmitting}
-                      onClick={() => {
-                        setDeleteAllLibrariesError(null);
-                        setDeleteAllLibrariesPass(0);
-                        setDeleteAllLibrariesOpen(true);
-                      }}
-                      className="shrink-0 text-xs font-bold text-red-400 transition-colors hover:text-red-300 disabled:opacity-50"
-                    >
-                      Delete All
-                    </button>
-                  </div>
-                </section>
+                    </section>
 
-                {/* About */}
-                <section className="space-y-3">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">About</h2>
-                  <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
-                    {[
-                      { label: 'Version', value: '2.0.0' },
-                      { label: 'Book Source', value: 'Supabase (rekordbox USB)' },
-                      { label: 'Import ID', value: latestImport?.id?.slice(0, 8) ?? '—' },
-                    ].map(({ label, value }) => (
-                      <div key={label} className="px-4 py-3 flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground">{label}</p>
-                        <p className="text-sm font-mono font-bold">{value}</p>
+                    {/* Snapshots */}
+                    <section className="space-y-3">
+                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">USB Book Snapshots</h2>
+                      {importsListLoading ? (
+                        <div className="flex items-center justify-center py-6">
+                          <CircleDash className="animate-spin text-muted-foreground" size={20} />
+                        </div>
+                      ) : importsListError ? (
+                        <div className="glass rounded-2xl p-4 text-center space-y-2">
+                          <p className="text-sm text-red-400">{importsListError}</p>
+                          <button onClick={refetchImportList} className="text-xs font-bold text-primary">Retry</button>
+                        </div>
+                      ) : allImports.length === 0 ? (
+                        <div className="glass rounded-2xl p-4 text-center">
+                          <p className="text-sm text-muted-foreground italic">No imports yet.</p>
+                        </div>
+                      ) : (
+                        <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
+                          {allImports.map((imp) => {
+                            const isActive = imp.id === latestImport?.id;
+                            const importPresentation = getImportHistoryPresentation(
+                              imp.status, Boolean(imp.retryable), imp.analysis_status,
+                            );
+                            const importProgress = getImportProgress(imp);
+                            const importInFlight = isImportInFlight(imp);
+                            const importStalled = isImportStalled(imp);
+                            const showStatusBadge = imp.status !== 'completed'
+                              || (imp.analysis_status !== 'completed' && imp.analysis_status !== 'not_requested');
+                            return (
+                              <div key={imp.id} data-testid={`import-history-row-${imp.id}`} className="p-4 flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <button
+                                      type="button"
+                                      onClick={() => navigate({ name: 'import', importId: imp.id, resume: false })}
+                                      className="max-w-full truncate text-left font-mono text-sm font-bold hover:text-primary"
+                                      aria-label={`Open import ${imp.source_filename}`}
+                                    >
+                                      {imp.source_filename}
+                                    </button>
+                                    {isActive && (
+                                      <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-primary/10 text-primary rounded shrink-0">
+                                        Active
+                                      </span>
+                                    )}
+                                    {showStatusBadge && (
+                                      <span className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded shrink-0",
+                                        importPresentation.tone === 'error' ? "bg-red-500/10 text-red-400" :
+                                        (importPresentation.tone === 'warning' || importStalled) ? "bg-amber-500/10 text-amber-400" :
+                                        "bg-blue-500/10 text-blue-400",
+                                      )}>
+                                        {importStalled ? 'Interrupted' : importPresentation.label}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                                    {new Date(imp.imported_at).toLocaleDateString()} · {imp.track_count.toLocaleString()} tracks · {imp.playlist_count} playlists
+                                  </p>
+                                  {imp.device_name && (
+                                    <p className="text-[10px] text-muted-foreground font-mono">{imp.device_name}</p>
+                                  )}
+                                  {importInFlight && (
+                                    <div className="mt-2 max-w-md">
+                                      <div className="flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
+                                        <span className="truncate">{importProgress.currentTrackLabel || 'Preparing current track…'}</span>
+                                        <span className="shrink-0 font-mono">{importProgress.percent}%</span>
+                                      </div>
+                                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface)]">
+                                        <div className="h-full rounded-full bg-primary" style={{ width: `${importProgress.percent}%` }} />
+                                      </div>
+                                    </div>
+                                  )}
+                                  {(imp.status === 'failed' || imp.status === 'cancelled') && imp.error_message && (
+                                    <p className="text-[10px] text-red-400 mt-1">{imp.error_message}</p>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 shrink-0 pt-0.5">
+                                  {!isActive && !importInFlight && !importStalled && isUsableLibrarySnapshot(imp) && importPresentation.canActivate && (
+                                    <button
+                                      onClick={() => handleSetActiveImport(imp.id)}
+                                      className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
+                                    >
+                                      Make Active
+                                    </button>
+                                  )}
+                                  {(importPresentation.canRetry || importStalled) && (
+                                    <button
+                                      onClick={() => {
+                                        if (imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted') {
+                                          navigate({ name: 'import', importId: imp.id, resume: true });
+                                        } else {
+                                          setIsImportModalOpen(true);
+                                        }
+                                      }}
+                                      className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
+                                    >
+                                      {imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted' ? 'Resume' : 'Retry'}
+                                    </button>
+                                  )}
+                                  {(!importInFlight || imp.retryable || isPendingHardDelete(imp)) && (
+                                    <button
+                                      onClick={() => handleDeleteImport(imp)}
+                                      className="text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors"
+                                    >
+                                      {isPendingHardDelete(imp) ? 'Retry Delete' : 'Delete'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+
+                    {/* Danger zone */}
+                    <section className="space-y-3">
+                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Library Reset</h2>
+                      <div className="glass rounded-2xl p-4 flex items-center justify-between gap-4 border border-red-500/10">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <WarningAlt size={18} className="mt-0.5 shrink-0 text-red-400" />
+                          <div className="min-w-0">
+                            <p className="font-bold text-sm">Delete All Rekordbox Data</p>
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                              Permanently remove every library snapshot and all imported Rekordbox data for this account.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={deleteAllLibrariesSubmitting}
+                          onClick={() => {
+                            setDeleteAllLibrariesError(null);
+                            setDeleteAllLibrariesPass(0);
+                            setDeleteAllLibrariesOpen(true);
+                          }}
+                          className="shrink-0 text-xs font-bold text-red-400 transition-colors hover:text-red-300 disabled:opacity-50"
+                        >
+                          Delete All
+                        </button>
                       </div>
-                    ))}
-                  </div>
-                </section>
+                    </section>
+                  </>
+                )}
+
+                {/* ── About tab ── */}
+                {settingsTab === 'about' && (
+                  <section className="space-y-3">
+                    <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
+                      {[
+                        { label: 'Version', value: '2.0.0' },
+                        { label: 'Book Source', value: 'Supabase (rekordbox USB)' },
+                        { label: 'Import ID', value: latestImport?.id?.slice(0, 8) ?? '—' },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="px-4 py-3 flex items-center justify-between">
+                          <p className="text-sm text-muted-foreground">{label}</p>
+                          <p className="text-sm font-mono font-bold">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
               </motion.div>
             )}
 

@@ -484,7 +484,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-            className="relative z-10 w-full max-w-sm glass rounded-3xl p-7 shadow-2xl border border-[var(--color-border-subtle)]"
+            className="relative z-10 w-full max-w-2xl glass rounded-3xl p-6 shadow-2xl border border-[var(--color-border-subtle)]"
           >
             {/* Close button */}
             {(phase === 'scan_prompt' || phase === 'error' || phase === 'done_partial') && (
@@ -498,20 +498,24 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
             {/* ── Fetching status ── */}
             {phase === 'fetching_status' && (
-              <div className="text-center py-4">
-                <CircleDash className="animate-spin text-primary mx-auto mb-4" size={32} />
-                <h2 className="text-lg font-bold mb-1">Checking Analysis Status</h2>
-                <p className="text-sm text-muted-foreground">Loading missing file list…</p>
+              <div className="flex items-center gap-5 py-3">
+                <CircleDash className="animate-spin text-primary shrink-0" size={32} />
+                <div>
+                  <h2 className="text-lg font-bold">Checking Analysis Status</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">Loading missing file list…</p>
+                </div>
               </div>
             )}
 
             {/* ── Scan prompt ── */}
             {phase === 'scan_prompt' && status && (
-              <div className="text-center">
-                <div className="w-14 h-14 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-                  <Renew className="text-amber-400" size={24} />
+              <div>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center shrink-0">
+                    <Renew className="text-amber-400" size={22} />
+                  </div>
+                  <h2 className="text-xl font-bold">Resume Analysis</h2>
                 </div>
-                <h2 className="text-xl font-bold mb-2">Resume Analysis</h2>
 
                 {/* Grouped status summary */}
                 {statusSummary && (
@@ -595,78 +599,80 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
             {/* ── Uploading ── */}
             {phase === 'uploading' && (
-              <div className="text-center py-4">
-                <div className="relative w-14 h-14 mx-auto mb-5">
+              <div className="flex items-start gap-5 py-2">
+                <div className="relative w-12 h-12 shrink-0">
                   <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-                  <div className="relative w-14 h-14 bg-primary/15 rounded-full flex items-center justify-center">
-                    <CircleDash className="animate-spin text-primary" size={24} />
+                  <div className="relative w-12 h-12 bg-primary/15 rounded-full flex items-center justify-center">
+                    <CircleDash className="animate-spin text-primary" size={22} />
                   </div>
                 </div>
-                <h2 className="text-lg font-bold mb-1">Uploading Missing Files</h2>
-                <div className="my-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left">
-                  <WarningAlt size={16} className="mt-0.5 shrink-0 text-amber-400" />
-                  <p className="text-xs leading-relaxed text-amber-100">
-                    DropDex is reading this Rekordbox USB. Keep Rekordbox closed and do not eject the drive until upload completes.
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-lg font-bold">Uploading Missing Files</h2>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {progress.filesUploaded.toLocaleString()} / {progress.filesTotal.toLocaleString()} files
+                    {progress.bytesTotal > 0 && (
+                      <> · {fmtBytes(progress.bytesUploaded)} / {fmtBytes(progress.bytesTotal)}</>
+                    )}
                   </p>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {progress.filesUploaded.toLocaleString()} / {progress.filesTotal.toLocaleString()} files
-                  {progress.bytesTotal > 0 && (
-                    <> · {fmtBytes(progress.bytesUploaded)} / {fmtBytes(progress.bytesTotal)}</>
+                  {retryingCount > 0 && (
+                    <p className="text-xs text-amber-400 mt-1">
+                      Retrying {retryingCount} failed file{retryingCount !== 1 ? 's' : ''}…
+                    </p>
                   )}
-                </p>
-                {retryingCount > 0 && (
-                  <p className="text-xs text-amber-400 mt-1">
-                    Retrying {retryingCount} failed file{retryingCount !== 1 ? 's' : ''}…
-                  </p>
-                )}
+                  <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                    <WarningAlt size={14} className="mt-0.5 shrink-0 text-amber-400" />
+                    <p className="text-xs leading-relaxed text-amber-100">
+                      Keep Rekordbox closed and do not eject the drive until upload completes.
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
             {/* ── Stopping local USB reads ── */}
             {phase === 'stopping_usb_reads' && (
-              <div className="text-center py-4">
-                <CircleDash className="animate-spin text-amber-400 mx-auto mb-4" size={32} />
-                <h2 className="text-lg font-bold mb-1">Stopping USB Reads</h2>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  No new batch or retry can begin. Keep Rekordbox closed until this window closes.
-                </p>
+              <div className="flex items-center gap-5 py-3">
+                <CircleDash className="animate-spin text-amber-400 shrink-0" size={30} />
+                <div>
+                  <h2 className="text-lg font-bold">Stopping USB Reads</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">Keep Rekordbox closed until this window closes.</p>
+                </div>
               </div>
             )}
 
             {/* ── Parsing ── */}
             {phase === 'parsing' && (
-              <div className="text-center py-4">
-                <div className="relative w-14 h-14 mx-auto mb-5">
+              <div className="flex items-start gap-5 py-2">
+                <div className="relative w-12 h-12 shrink-0">
                   <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-                  <div className="relative w-14 h-14 bg-primary/15 rounded-full flex items-center justify-center">
-                    <CircleDash className="animate-spin text-primary" size={24} />
+                  <div className="relative w-12 h-12 bg-primary/15 rounded-full flex items-center justify-center">
+                    <CircleDash className="animate-spin text-primary" size={22} />
                   </div>
                 </div>
-                <h2 className="text-lg font-bold mb-1">Reprocessing Analysis</h2>
-                <div className="my-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left">
-                  <CheckmarkFilled size={16} className="mt-0.5 shrink-0 text-emerald-400" />
-                  <p className="text-xs leading-relaxed text-emerald-100">
-                    USB access is released. Reprocessing uses uploaded copies only.
-                  </p>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-lg font-bold">Reprocessing Analysis</h2>
+                  <p className="text-xs text-muted-foreground mt-1">Parsing waveform, cue, and beat data for affected tracks…</p>
+                  <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                    <CheckmarkFilled size={14} className="shrink-0 text-emerald-400" />
+                    <p className="text-xs text-emerald-100">USB released — reprocessing uses uploaded copies only.</p>
+                  </div>
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Parsing waveform, cue, and beat data for affected tracks…
-                </p>
               </div>
             )}
 
             {/* ── Done (completed) ── */}
             {phase === 'done' && completeResp && (
-              <div className="text-center">
-                <div className="w-14 h-14 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-                  <CheckmarkFilled className="text-emerald-400" size={26} />
+              <div>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 bg-emerald-500/10 rounded-full flex items-center justify-center shrink-0">
+                    <CheckmarkFilled className="text-emerald-400" size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Analysis Complete</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">{completeResp.completed_count.toLocaleString()} tracks fully parsed.</p>
+                  </div>
                 </div>
-                <h2 className="text-xl font-bold mb-2">Analysis Complete</h2>
-                <p className="text-sm text-muted-foreground mb-5">
-                  {completeResp.completed_count.toLocaleString()} tracks fully parsed.
-                </p>
-                <div className="grid grid-cols-2 gap-2 mb-5">
+                <div className="grid grid-cols-2 gap-2 mb-4">
                   {[
                     { label: 'Tracks', value: completeResp.total_tracks.toLocaleString() },
                     { label: 'Parsed', value: completeResp.completed_count.toLocaleString() },
@@ -679,7 +685,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                 </div>
                 <button
                   onClick={handleDone}
-                  className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
+                  className="w-full py-3 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
                 >
                   Done
                 </button>
@@ -688,17 +694,20 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
             {/* ── Done partial ── */}
             {phase === 'done_partial' && completeResp && (
-              <div className="text-center">
-                <div className="w-14 h-14 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-                  <WarningAlt className="text-amber-400" size={26} />
+              <div>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center shrink-0">
+                    <WarningAlt className="text-amber-400" size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Analysis Updated</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {completeResp.completed_count.toLocaleString()} fully parsed
+                      {completeResp.missing_required_count > 0 && ` · ${completeResp.missing_required_count.toLocaleString()} still missing required files`}.
+                    </p>
+                  </div>
                 </div>
-                <h2 className="text-xl font-bold mb-2">Analysis Updated</h2>
-                <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
-                  {completeResp.completed_count.toLocaleString()} tracks fully parsed
-                  {completeResp.missing_required_count > 0 && ` · ${completeResp.missing_required_count.toLocaleString()} still missing required files`}.
-                </p>
-
-                <div className="grid grid-cols-2 gap-2 mb-4">
+                <div className="grid grid-cols-4 gap-2 mb-4">
                   {[
                     { label: 'Parsed', value: completeResp.completed_count.toLocaleString() },
                     { label: 'Partial', value: completeResp.partial_count.toLocaleString() },
@@ -711,16 +720,14 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                     </div>
                   ))}
                 </div>
-
                 {completeResp.missing_required_count > 0 && (
                   <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-                    {completeResp.missing_required_count.toLocaleString()} track{completeResp.missing_required_count !== 1 ? 's' : ''} still lack required DAT files. Reconnect the USB and run Resume Analysis again to retry.
+                    Reconnect the USB and run Resume Analysis again to retry the {completeResp.missing_required_count.toLocaleString()} track{completeResp.missing_required_count !== 1 ? 's' : ''} still missing DAT files.
                   </p>
                 )}
-
                 <button
                   onClick={handleDone}
-                  className="w-full py-4 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
+                  className="w-full py-3 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
                 >
                   Done
                 </button>
@@ -729,27 +736,29 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
             {/* ── Error ── */}
             {phase === 'error' && (
-              <div className="text-center">
-                <div className="w-14 h-14 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-                  <WarningAlt className="text-red-400" size={26} />
+              <div>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center shrink-0">
+                    <WarningAlt className="text-red-400" size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Resume Failed</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{errorMessage}</p>
+                  </div>
                 </div>
-                <h2 className="text-xl font-bold mb-2">Resume Failed</h2>
-                <p className="text-sm text-muted-foreground leading-relaxed px-2 mb-6">
-                  {errorMessage}
-                </p>
                 <div className="flex gap-3">
                   <button
                     onClick={() => {
                       setPhase('fetching_status');
                       setErrorMessage('');
                     }}
-                    className="flex-1 py-3 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
+                    className="flex-1 py-2.5 bg-primary text-white rounded-xl font-bold transition-all active:scale-95"
                   >
                     Retry
                   </button>
                   <button
                     onClick={handleClose}
-                    className="flex-1 py-3 glass rounded-xl font-bold text-muted-foreground hover:text-foreground transition-colors"
+                    className="flex-1 py-2.5 glass rounded-xl font-bold text-muted-foreground hover:text-foreground transition-colors"
                   >
                     Cancel
                   </button>
