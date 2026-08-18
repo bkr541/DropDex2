@@ -7,7 +7,7 @@ import {
   MediaTransportControlGroup,
   SelectableOptionRow,
   TransportButton,
-} from '../ui/DropDexMedia';
+} from '../ui/media';
 import {
   STAGE3_GRAY_PALETTE,
   STAGE3_GREEN_PALETTE,
