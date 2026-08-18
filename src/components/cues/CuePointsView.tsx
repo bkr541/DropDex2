@@ -3,8 +3,10 @@ import { CircleDash, Music, Upload, WarningAlt } from '@carbon/icons-react';
 import { cn, formatKey } from '../../lib/utils';
 import { useLibraryStats, useLibraryTracks } from '../../hooks/useRekordboxTracks';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
+import { useRouteImport } from '../../hooks/useRouteEntities';
 import {
   fetchTrackBeatGrid,
+  fetchTrackCues,
   fetchTracksCues,
   type BeatEntry,
   type BeatGridRow,
@@ -132,47 +134,51 @@ function CueWaveformPanel({
 
   return (
     <section className="overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] shadow-sm">
-      <div className="flex flex-col gap-4 border-b border-[var(--color-border-subtle)] px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md border border-primary/25 bg-primary/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-primary">
-              Selected track
-            </span>
-            <span className="rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              Read only
-            </span>
+      <div className="flex flex-col gap-4 border-b border-[var(--color-border-subtle)] px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
+          <h1 className="mt-1 truncate text-xl font-black tracking-tight md:text-2xl">{track.title}</h1>
+          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+            {[
+              ['Beats', beatGridLoading ? '…' : beatGrid ? String(beatGrid.beat_count ?? beatGrid.beats.length) : '—'],
+              ['Bars', beatGridLoading ? '…' : beatGrid ? String(beatGrid.bar_count ?? '—') : '—'],
+              ['First Beat', beatGridLoading ? '…' : formatTime(beatGrid?.first_beat_ms ?? null)],
+              ['First Downbeat', beatGridLoading ? '…' : formatTime(beatGrid?.first_downbeat_ms ?? null)],
+            ].map(([label, value]) => (
+              <span key={label} className="inline-flex items-baseline gap-1.5">
+                <span className="text-[8px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</span>
+                <strong className="font-mono text-[11px] font-black tabular-nums">{value}</strong>
+              </span>
+            ))}
           </div>
-          <h1 className="mt-2 truncate text-xl font-black tracking-tight md:text-2xl">{track.title}</h1>
-          <p className="mt-1 truncate text-sm text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[
-            ['BPM', bpmDisplay],
-            ['Key', keyDisplay],
-            ['Duration', durationDisplay],
-            ['Cues', cueLoading ? '…' : String(cues.length)],
-          ].map(([label, value]) => (
-            <div key={label} className="min-w-[88px] rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
-              <span className="block text-[8px] font-bold uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
-              <span className="mt-1 block font-mono text-sm font-black tabular-nums">{value}</span>
-            </div>
-          ))}
+        <div className="flex flex-wrap items-stretch gap-2 xl:justify-end">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[
+              ['BPM', bpmDisplay],
+              ['Key', keyDisplay],
+              ['Duration', durationDisplay],
+              ['Cues', cueLoading ? '…' : String(cues.length)],
+            ].map(([label, value]) => (
+              <div key={label} className="min-w-[88px] rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
+                <span className="block text-[8px] font-bold uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
+                <span className="mt-1 block font-mono text-sm font-black tabular-nums">{value}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <ControlButton variant="surface" disabled>Auto Cue</ControlButton>
+            <ControlButton variant="ghost" disabled>Discard</ControlButton>
+            <ControlButton variant="surface" disabled>Save changes</ControlButton>
+            <ControlButton variant="primary" disabled title="Cue export will be enabled in the functional integration stage">
+              Export to Rekordbox
+            </ControlButton>
+          </div>
         </div>
       </div>
 
       <div className="px-4 pb-4 pt-3 md:px-5 md:pb-5">
-        <div className="mb-2 flex min-h-5 items-center justify-between gap-4 text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-          <span>
-            {beatGridLoading
-              ? 'Loading Rekordbox beat grid…'
-              : beatGrid
-                ? `${beatGrid.beat_count ?? beatGrid.beats.length} beats · ${beatGrid.bar_count ?? '—'} bars · First beat ${formatTime(beatGrid.first_beat_ms)} · First downbeat ${formatTime(beatGrid.first_downbeat_ms)}${beatGrid.is_variable_tempo ? ' · Variable tempo' : ''}`
-                : 'Beat grid unavailable'}
-          </span>
-          <span>{beatGrid?.source_tag ? `Source ${beatGrid.source_tag}` : 'Rekordbox analysis'}</span>
-        </div>
-
         <div className="relative overflow-hidden rounded-2xl border border-[var(--color-border-subtle)] bg-black/20">
           <RekordboxPreviewWaveform
             state={waveformState}
@@ -237,41 +243,28 @@ function CueWaveformPanel({
           ))}
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          {cueLoading ? (
-            <span className="text-xs text-muted-foreground">Loading imported cue points…</span>
-          ) : cues.length === 0 ? (
-            <span className="rounded-lg border border-dashed border-[var(--color-border-subtle)] px-3 py-2 text-xs text-muted-foreground">
-              No imported Rekordbox cues for this track.
-            </span>
-          ) : (
-            cues.map((cue) => (
-              <span
-                key={cue.id}
-                className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs"
-                title={cue.comment ?? undefined}
-              >
+        {(cueLoading || cues.length > 0) && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {cueLoading ? (
+              <span className="text-xs text-muted-foreground">Loading imported cue points…</span>
+            ) : (
+              cues.map((cue) => (
                 <span
-                  className="h-2.5 w-2.5 rounded-sm border border-white/20"
-                  style={{ backgroundColor: cue.color_hex || (cue.cue_family === 'hot' ? '#28d7ff' : '#b788ff') }}
-                />
-                <strong className="font-mono">{cueDisplayName(cue)}</strong>
-                <span className="font-mono text-muted-foreground">{formatTime(cue.start_ms)}</span>
-              </span>
-            ))
-          )}
-        </div>
-
-        <div className="mt-4 flex flex-col gap-3 border-t border-[var(--color-border-faint)] pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">
-            Editing controls are shown for layout only and will be activated in the cue-engine stage.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <ControlButton variant="surface" disabled>Auto Cue</ControlButton>
-            <ControlButton variant="ghost" disabled>Discard</ControlButton>
-            <ControlButton variant="primary" disabled>Save changes</ControlButton>
+                  key={cue.id}
+                  className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs"
+                  title={cue.comment ?? undefined}
+                >
+                  <span
+                    className="h-2.5 w-2.5 rounded-sm border border-white/20"
+                    style={{ backgroundColor: cue.color_hex || (cue.cue_family === 'hot' ? '#28d7ff' : '#b788ff') }}
+                  />
+                  <strong className="font-mono">{cueDisplayName(cue)}</strong>
+                  <span className="font-mono text-muted-foreground">{formatTime(cue.start_ms)}</span>
+                </span>
+              ))
+            )}
           </div>
-        </div>
+        )}
       </div>
     </section>
   );
@@ -282,13 +275,18 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [genre, setGenre] = useState('');
   const [cueFilter, setCueFilter] = useState<CueFilter>('all');
   const [analysisFilter, setAnalysisFilter] = useState<AnalysisFilter>('all');
-  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
+  const [selectedCues, setSelectedCues] = useState<CueRow[]>([]);
+  const [selectedCueLoading, setSelectedCueLoading] = useState(false);
   const [cueRowsByTrackId, setCueRowsByTrackId] = useState<Map<string, CueRow[]>>(new Map());
   const [cueSummaryLoading, setCueSummaryLoading] = useState(false);
   const [beatGrid, setBeatGrid] = useState<BeatGridRow | null>(null);
   const [beatGridLoading, setBeatGridLoading] = useState(false);
 
+  const selectedTrackId = selectedTrack?.id ?? null;
   const { stats } = useLibraryStats(importId);
+  const { data: routeImport } = useRouteImport(importId);
+  const usbName = routeImport?.device_name?.trim() || 'USB';
   const {
     tracks,
     total,
@@ -341,17 +339,36 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   }), [analysisFilter, cueFilter, cueRowsByTrackId, tracks]);
 
   useEffect(() => {
-    setSelectedTrackId((current) => {
-      if (current && filteredTracks.some((track) => track.id === current)) return current;
-      return filteredTracks[0]?.id ?? null;
-    });
-  }, [filteredTracks]);
+    setSelectedTrack(null);
+    setSelectedCues([]);
+    setSelectedCueLoading(false);
+  }, [importId]);
 
-  const selectedTrack = useMemo(
-    () => filteredTracks.find((track) => track.id === selectedTrackId) ?? null,
-    [filteredTracks, selectedTrackId],
-  );
-  const selectedCues = selectedTrack ? cueRowsByTrackId.get(selectedTrack.id) ?? [] : [];
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedTrackId) {
+      setSelectedCues([]);
+      setSelectedCueLoading(false);
+      return;
+    }
+
+    setSelectedCues([]);
+    setSelectedCueLoading(true);
+    void fetchTrackCues(selectedTrackId)
+      .then((next) => {
+        if (!cancelled) setSelectedCues(next);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedCues([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSelectedCueLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTrackId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -403,23 +420,11 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 pb-10">
-      <div className="flex flex-col gap-3 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] px-4 py-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm font-black">Cue workspace</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Layout preview using the active Rekordbox snapshot. Editing and export are intentionally disabled in this stage.
-          </p>
-        </div>
-        <ControlButton variant="primary" disabled title="Cue export will be enabled in the functional integration stage">
-          Export to Rekordbox
-        </ControlButton>
-      </div>
-
       <CueWaveformPanel
         track={selectedTrack}
         beatGrid={beatGrid}
         cues={selectedCues}
-        cueLoading={cueSummaryLoading}
+        cueLoading={selectedCueLoading}
         beatGridLoading={beatGridLoading}
         waveformState={waveformState}
         onRetryWaveform={() => selectedTrackId && retryWaveform([selectedTrackId])}
@@ -430,12 +435,11 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black">Library Tracks</h2>
+                <h2 className="text-lg font-black">{usbName}&apos;s Tracks</h2>
                 <span className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
                   {total.toLocaleString()}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">Select a track to load its imported Rekordbox analysis above.</p>
             </div>
 
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_180px_170px_180px]">
@@ -503,11 +507,11 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                         key={track.id}
                         tabIndex={0}
                         aria-selected={selected}
-                        onClick={() => setSelectedTrackId(track.id)}
+                        onClick={() => setSelectedTrack(track)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            setSelectedTrackId(track.id);
+                            setSelectedTrack(track);
                           }
                         }}
                         className={cn(
