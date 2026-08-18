@@ -18,7 +18,7 @@ import {
   TextareaControl,
   TextControl,
   UrlControl,
-} from '../ui/DropDexControls';
+} from '../ui/controls';
 import './stage1-showcase.css';
 import { Book, Bookmark, Close, Download, Favorite, Grid, Information, Launch, Music, OverflowMenuHorizontal, Play, Search, Settings, Star, TrashCan, Upload, Waveform } from '@carbon/icons-react';
 

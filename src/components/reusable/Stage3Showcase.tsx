@@ -2,7 +2,7 @@ import { useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
-import { ControlButton, IconControlButton } from '../ui/DropDexControls';
+import { ControlButton, IconControlButton } from '../ui/controls';
 import {
   MediaTransportControlGroup,
   SelectableOptionRow,
