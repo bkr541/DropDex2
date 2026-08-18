@@ -1,6 +1,7 @@
 import React from 'react';
 import type { SupabaseConfiguration } from '../lib/supabase';
 import { Renew, WarningAlt } from '@carbon/icons-react';
+import { ControlButton } from './ui/controls';
 
 interface StartupConfigurationErrorProps {
   configuration: Extract<SupabaseConfiguration, { status: 'missing' }>;
@@ -40,14 +41,11 @@ export function StartupConfigurationError({ configuration }: StartupConfiguratio
         <p className="mt-5 text-sm leading-relaxed text-muted-foreground">
           Add the variables to the deployment environment or local .env file, then reload the application. No configured values are displayed on this screen.
         </p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90"
-        >
-          <Renew size={15} aria-hidden="true" />
-          Reload after configuration
-        </button>
+        <div className="mt-6">
+          <ControlButton type="button" variant="primary" onClick={() => window.location.reload()}>
+            <Renew size={15} /> Reload after configuration
+          </ControlButton>
+        </div>
       </section>
     </main>
   );

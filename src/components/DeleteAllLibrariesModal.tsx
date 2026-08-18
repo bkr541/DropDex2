@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CircleDash, WarningAlt } from '@carbon/icons-react';
+import { CircleDash, Close, TrashCan, WarningAlt } from '@carbon/icons-react';
+import { ControlButton } from './ui/controls';
 
 interface DeleteAllLibrariesModalProps {
   open: boolean;
@@ -94,27 +95,25 @@ export function DeleteAllLibrariesModal({
           )}
 
           <div className="mt-4 flex gap-3">
-            <button
+            <ControlButton type="button" variant="neutral" disabled={deleting} onClick={onClose} className="flex-1">
+              <Close size={16} /> Cancel
+            </ControlButton>
+            <ControlButton
               type="button"
-              disabled={deleting}
-              onClick={onClose}
-              className="flex-1 rounded-xl border border-[var(--color-border-subtle)] px-4 py-2.5 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
+              variant="danger"
               disabled={deleting || !confirmationValid}
               onClick={onConfirm}
-              className="flex-1 rounded-xl bg-red-500 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex-1"
             >
               {deleting ? (
-                <span className="inline-flex items-center gap-2">
-                  <CircleDash size={14} className="animate-spin" />
+                <>
+                  <CircleDash size={16} className="animate-spin" />
                   {cleanupPass > 0 ? `Deleting all… pass ${cleanupPass}` : 'Deleting all…'}
-                </span>
-              ) : 'Delete All'}
-            </button>
+                </>
+              ) : (
+                <><TrashCan size={16} /> Delete All</>
+              )}
+            </ControlButton>
           </div>
         </motion.div>
       </motion.div>

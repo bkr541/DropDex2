@@ -8,7 +8,7 @@ import {
 } from '../lib/api/rekordboxImport';
 import { announceRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
 import { ProgressBar } from './ui/feedback';
-import { CheckmarkFilled, CircleDash, Close, Pause, Play, TrashCan, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, CircleDash, Close, Pause, Play, TrashCan, Upload, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from './ui/controls';
 
 const POLL_MS = 2500;
@@ -138,14 +138,9 @@ export function BackgroundImportPanel({
           </p>
         </div>
         {usbReleased ? (
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Hide import panel"
-            className="text-muted-foreground hover:text-foreground"
-          >
+          <ControlButton type="button" variant="ghost" onClick={onClose} aria-label="Hide import panel">
             <Close size={16} />
-          </button>
+          </ControlButton>
         ) : (
           <span
             role="status"
@@ -168,13 +163,9 @@ export function BackgroundImportPanel({
             <WarningAlt size={15} className="mt-0.5 shrink-0 text-amber-400" />
             <p>Book metadata is ready. DropDex is still reading required DAT/EXT files, so keep the USB connected and Rekordbox closed.</p>
           </div>
-          <button
-            type="button"
-            onClick={onManageLocalUpload}
-            className="mt-3 w-full rounded-lg border border-amber-400/30 px-3 py-2 font-bold text-amber-100 hover:bg-amber-400/10"
-          >
-            Manage USB Upload
-          </button>
+          <ControlButton type="button" variant="neutral" onClick={onManageLocalUpload} className="mt-3 w-full">
+            <Upload size={14} /> Manage USB Upload
+          </ControlButton>
         </div>
       )}
 
@@ -214,18 +205,18 @@ export function BackgroundImportPanel({
       {usbReleased && (
         <div className="mt-4 grid grid-cols-2 gap-2">
           {!terminal && !resumable && (
-            <button type="button" disabled={action !== null} onClick={() => void runAction('pause')} className="flex items-center justify-center gap-2 rounded-xl border border-primary/30 px-3 py-2 text-xs font-bold text-primary disabled:opacity-50">
+            <ControlButton type="button" variant="neutral" disabled={action !== null} onClick={() => void runAction('pause')}>
               {action === 'pause' ? <CircleDash size={13} className="animate-spin" /> : <Pause size={13} />} Pause
-            </button>
+            </ControlButton>
           )}
           {resumable && (
             <ControlButton type="button" variant="primary" disabled={action !== null} onClick={() => void runAction('resume')} className="w-auto px-3 py-2 text-xs min-h-0">
               {action === 'resume' ? <CircleDash size={13} className="animate-spin" /> : <Play size={13} />} Resume
             </ControlButton>
           )}
-          <button type="button" disabled={action !== null || deletionPending} onClick={onRequestDelete} className="flex items-center justify-center gap-2 rounded-xl border border-red-500/30 px-3 py-2 text-xs font-bold text-red-300 disabled:opacity-50">
+          <ControlButton type="button" variant="danger-outline" disabled={action !== null || deletionPending} onClick={onRequestDelete}>
             {deletionPending ? <CircleDash size={13} className="animate-spin" /> : <TrashCan size={13} />} {deletionPending ? 'Deleting…' : 'Delete Import'}
-          </button>
+          </ControlButton>
         </div>
       )}
     </aside>
