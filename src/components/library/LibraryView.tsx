@@ -579,11 +579,18 @@ function OverviewPlaylistCard({
           </p>
           {playlist.top_genres?.length > 0 && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1">
-              {playlist.top_genres.slice(0, 3).map((genre) => (
-                <span key={genre} className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-semibold text-muted-foreground">
-                  {genre}
-                </span>
-              ))}
+              {playlist.top_genres.slice(0, 3).map((genre, i) => {
+                const colors = [
+                  'bg-blue-500/15 border-blue-500/25 text-blue-300',
+                  'bg-violet-500/15 border-violet-500/25 text-violet-300',
+                  'bg-emerald-500/15 border-emerald-500/25 text-emerald-300',
+                ];
+                return (
+                  <span key={genre} className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold ${colors[i % colors.length]}`}>
+                    {genre}
+                  </span>
+                );
+              })}
               {playlist.top_genres.length > 3 && (
                 <span className="text-[9px] text-muted-foreground font-semibold">
                   +{playlist.top_genres.length - 3}
@@ -678,9 +685,9 @@ function DesktopLibraryHero({
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 min-w-0">
             {[
               { label: 'Total Tracks', value: latestImport.track_count.toLocaleString() },
-              { label: 'Common BPM', value: mostCommonBpm != null ? `${mostCommonBpm}` : '—' },
-              { label: 'Common Key', value: mostCommonKey ? formatKey(mostCommonKey) : '—' },
-              { label: 'Common Genre', value: topGenres[0]?.[0] ?? '—' },
+              { label: 'Main BPM', value: mostCommonBpm != null ? `${mostCommonBpm}` : '—' },
+              { label: 'Main Key', value: mostCommonKey ? formatKey(mostCommonKey) : '—' },
+              { label: 'Main Genre', value: topGenres[0]?.[0] ?? '—' },
               { label: 'Largest Playlist', value: largestPlaylistName ?? '—' },
               { label: 'Last Import', value: lastImport },
             ].map(({ label, value }) => (
@@ -1145,7 +1152,7 @@ export function LibraryView({
                                   .filter((p) => !p.is_folder)
                                   .slice(0, 2)
                                   .map((playlist) => (
-                                    <div key={playlist.id} className="w-[240px]">
+                                    <div key={playlist.id} className="w-[304px]">
                                       <OverviewPlaylistCard
                                         playlist={playlist}
                                         profile={playlistProfilesByRbId.get(playlist.rekordbox_playlist_id)}
@@ -1200,7 +1207,7 @@ export function LibraryView({
                               {playlists.map((playlist) => {
                                 const prof = playlistProfilesByRbId.get(playlist.rekordbox_playlist_id);
                                 return (
-                                  <div key={playlist.id} className="w-[240px]">
+                                  <div key={playlist.id} className="w-[304px]">
                                     <PlaylistOverviewCard
                                       playlist={playlist}
                                       artworkUrl={prof?.artwork_url}
