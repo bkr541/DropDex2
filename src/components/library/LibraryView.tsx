@@ -34,7 +34,7 @@ import type {
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
-import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Upload, User, WarningAlt } from '@carbon/icons-react';
+import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Upload, User, WarningAlt, Waveform } from '@carbon/icons-react';
 
 const TABS: { id: LibraryTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -677,10 +677,9 @@ function OverviewSummaryCards({
   mostCommonBpm: number | null;
   mostCommonKey: string | null;
 }) {
-  const playlistCount = playlists.filter((playlist) => !playlist.is_folder).length;
+  const playlistCount = playlists.filter((p) => !p.is_folder).length;
   const playlistTrackCount = latestImport.playlist_track_count || playlists.reduce(
-    (total, playlist) => total + (playlist.is_folder ? 0 : playlist.track_count),
-    0,
+    (total, p) => total + (p.is_folder ? 0 : p.track_count), 0,
   );
   const analysisTotal = latestImport.analysis_expected_track_count || latestImport.track_count;
   const analysisParsed = latestImport.analysis_parsed_track_count || 0;
@@ -690,85 +689,174 @@ function OverviewSummaryCards({
       ? Math.max(0, Math.min(100, Math.round((analysisParsed / analysisTotal) * 100)))
       : 0;
   const lastImport = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+    month: 'short', day: 'numeric', year: 'numeric',
   });
 
+  const dailyBars = useMemo(() => {
+    const counts = new Map<string, number>();
+    recentTracks.forEach((t) => {
+      const d = t.date_added?.slice(0, 10);
+      if (d) counts.set(d, (counts.get(d) ?? 0) + 1);
+    });
+    const bars: { label: string; count: number }[] = [];
+    for (let i = 7; i >= 0; i--) {
+      const date = new Date(latestImport.imported_at);
+      date.setDate(date.getDate() - i);
+      const key = date.toISOString().slice(0, 10);
+      bars.push({
+        label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        count: counts.get(key) ?? 0,
+      });
+    }
+    return bars;
+  }, [recentTracks, latestImport.imported_at]);
+
+  const maxBarCount = Math.max(...dailyBars.map((b) => b.count), 1);
+  const yMax = Math.ceil(maxBarCount / 5) * 5 || 10;
+  const ringR = 38;
+  const ringC = 2 * Math.PI * ringR;
+
+  const CARD = 'rounded-[20px] border border-white/[0.07] p-5 overflow-hidden';
+  const CARD_BG = { background: 'var(--color-panel, #161618)' };
+  const RULE = { background: 'rgba(255,255,255,0.08)' };
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-      <div className="glass rounded-xl border border-[var(--color-border-subtle)] p-4 min-h-[150px] relative overflow-hidden">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-bold">
-          <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-            <Music size={14} />
-          </div>
-          Playlists
-        </div>
-        <div className="mt-5 grid grid-cols-2 gap-5 max-w-[65%]">
-          <div>
-            <p className="text-xl font-black tabular-nums">{playlistCount}</p>
-            <p className="text-[9px] text-muted-foreground mt-1">Total Playlists</p>
-          </div>
-          <div>
-            <p className="text-xl font-black tabular-nums">{playlistTrackCount.toLocaleString()}</p>
-            <p className="text-[9px] text-muted-foreground mt-1">Total Tracks</p>
-          </div>
-        </div>
-        <div className="absolute right-5 bottom-4 w-16 h-16 rounded-xl bg-primary/10 border border-primary/10 flex items-center justify-center text-primary shadow-[0_10px_32px_rgba(0,112,255,0.12)]">
-          <Music size={28} />
-        </div>
-      </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-      <div className="glass rounded-xl border border-[var(--color-border-subtle)] p-4 min-h-[150px] relative overflow-hidden">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-bold">
-          <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-            <ChartBar size={14} />
+      {/* ── Playlists ── */}
+      <div className={CARD} style={CARD_BG}>
+        <p className="text-[13px] font-bold">Playlists</p>
+        <div className="mt-1.5 h-px" style={RULE} />
+        <div className="mt-4 flex items-center gap-4">
+          <div className="relative shrink-0">
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-10 h-4 rounded-full blur-lg pointer-events-none" style={{ background: 'rgba(120,30,220,0.75)' }} />
+            <svg width="76" height="76" viewBox="0 0 32 32" aria-hidden="true">
+              <defs>
+                <linearGradient id="ov-note-grad" x1="0.3" y1="0" x2="0.7" y2="1">
+                  <stop offset="0%" stopColor="#ff6b9d" />
+                  <stop offset="50%" stopColor="#cc44ff" />
+                  <stop offset="100%" stopColor="#4f46e5" />
+                </linearGradient>
+              </defs>
+              <path fill="url(#ov-note-grad)" d="M27 6L11 10v13c-1-.7-2.2-1-3-1-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4V14.1l14-3.8V18c-1-.7-2.2-1-3-1-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4V6z" />
+            </svg>
           </div>
-          Library Stats
-        </div>
-        <div className="mt-4 pr-20">
-          <p className="text-2xl font-black tabular-nums">{latestImport.track_count.toLocaleString()}</p>
-          <p className="text-[9px] text-muted-foreground mt-0.5">Total Tracks</p>
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm font-black font-mono">{mostCommonBpm ?? '—'}</p>
-              <p className="text-[8px] text-muted-foreground mt-0.5">Most Common BPM</p>
+          <div className="space-y-4 flex-1 min-w-0">
+            <div className="flex items-center gap-4">
+              <div className="w-[2px] h-9 rounded-full shrink-0" style={{ background: 'rgba(255,255,255,0.3)' }} />
+              <div>
+                <p className="text-2xl font-black tabular-nums leading-none">{playlistCount}</p>
+                <p className="text-[9px] text-muted-foreground mt-0.5">Total Playlists</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-black font-mono">{mostCommonKey ? formatKey(mostCommonKey) : '—'}</p>
-              <p className="text-[8px] text-muted-foreground mt-0.5">Most Common Key</p>
+            <div className="flex items-center gap-4">
+              <div className="w-[2px] h-9 rounded-full shrink-0" style={{ background: 'rgba(255,255,255,0.3)' }} />
+              <div>
+                <p className="text-2xl font-black tabular-nums leading-none">{playlistTrackCount.toLocaleString()}</p>
+                <p className="text-[9px] text-muted-foreground mt-0.5">Total Tracks</p>
+              </div>
             </div>
           </div>
         </div>
-        <div className="absolute right-5 top-1/2 -translate-y-1/2 w-16 h-16 rounded-full border-[7px] border-primary flex flex-col items-center justify-center shadow-[0_0_20px_rgba(0,112,255,0.18)]">
-          <span className="text-sm font-black tabular-nums">{analysisPercent}%</span>
-          <span className="text-[7px] text-muted-foreground">Analyzed</span>
+      </div>
+
+      {/* ── Library Stats ── */}
+      <div className={CARD} style={CARD_BG}>
+        <p className="text-[13px] font-bold">Library Stats</p>
+        <div className="mt-1.5 h-px" style={RULE} />
+        <div className="mt-4 flex items-center gap-4">
+          <div className="relative shrink-0 w-[88px] h-[88px]">
+            <svg viewBox="0 0 100 100" width={88} height={88}>
+              <circle cx="50" cy="50" r={ringR} fill="none" stroke="#27272a" strokeWidth="9" />
+              <circle
+                cx="50" cy="50" r={ringR}
+                fill="none"
+                stroke="#22c55e"
+                strokeWidth="9"
+                strokeLinecap="round"
+                strokeDasharray={`${ringC * analysisPercent / 100} ${ringC}`}
+                transform="rotate(-90 50 50)"
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-base font-black leading-none tabular-nums">{analysisPercent}%</span>
+              <span className="text-[8px] text-muted-foreground mt-0.5">Analyzed</span>
+            </div>
+          </div>
+          <div className="flex-1 space-y-3 min-w-0">
+            {([
+              { bg: 'rgba(160,30,30,0.55)', color: '#f87171', label: 'Total Tracks', value: latestImport.track_count.toLocaleString(), Icon: Music },
+              { bg: 'rgba(90,30,170,0.55)', color: '#a78bfa', label: 'Most Common BPM', value: mostCommonBpm != null ? `${mostCommonBpm} BPM` : '—', Icon: Waveform },
+              { bg: 'rgba(15,75,60,0.55)', color: '#34d399', label: 'Most Common Key', value: mostCommonKey ? formatKey(mostCommonKey) : '—', Icon: Tag },
+            ] as const).map(({ bg, color, label, value, Icon }) => (
+              <div key={label} className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0" style={{ background: bg }}>
+                  <Icon size={12} style={{ color }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[12px] font-black leading-none truncate">{value}</p>
+                  <p className="text-[8px] text-muted-foreground mt-0.5">{label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="glass rounded-xl border border-[var(--color-border-subtle)] p-4 min-h-[150px] relative overflow-hidden">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-bold">
-          <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-            <Calendar size={14} />
+      {/* ── Recently Added ── */}
+      <div className={CARD} style={CARD_BG}>
+        <p className="text-[13px] font-bold">Recently Added</p>
+        <div className="mt-1.5 h-px" style={RULE} />
+        <div className="mt-4 flex items-start gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-[3px] h-10 rounded-full shrink-0" style={{ background: '#ef4444' }} />
+            <div>
+              <p className="text-2xl font-black tabular-nums leading-none">{recentTracks.length}</p>
+              <p className="text-[9px] text-muted-foreground mt-0.5">Tracks Added</p>
+            </div>
           </div>
-          Recently Added
+          <div className="mx-1.5 h-10 w-px self-center" style={RULE} />
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-[3px] h-10 rounded-full shrink-0" style={{ background: '#818cf8' }} />
+            <div className="min-w-0">
+              <p className="text-xs font-black leading-none truncate">{lastImport}</p>
+              <p className="text-[9px] text-muted-foreground mt-0.5">Last Import</p>
+            </div>
+          </div>
         </div>
-        <div className="mt-5 relative z-10">
-          <p className="text-xl font-black tabular-nums">{recentTracks.length}</p>
-          <p className="text-[9px] text-muted-foreground mt-0.5">Tracks Added</p>
-          <p className="mt-4 text-sm font-bold">{lastImport}</p>
-          <p className="text-[8px] text-muted-foreground mt-0.5">Last Import</p>
-        </div>
-        <div className="absolute right-4 bottom-3 h-24 w-[46%] flex items-end gap-[2px] opacity-55 pointer-events-none">
-          {RECENT_BARS.map((height, index) => (
-            <span
-              key={index}
-              className={cn('flex-1 rounded-t-full', index < 10 ? 'bg-primary/55' : 'bg-secondary/65')}
-              style={{ height: `${height}%` }}
-            />
-          ))}
+        <div className="mt-4">
+          <div className="relative flex gap-1 h-[64px]">
+            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+              <div className="h-px w-full" style={RULE} />
+              <div className="h-px w-full" style={RULE} />
+              <div className="h-px w-full" style={RULE} />
+            </div>
+            {dailyBars.map((bar, i) => {
+              const pct = bar.count / yMax;
+              const t = i / Math.max(dailyBars.length - 1, 1);
+              const r = Math.round(99 + (236 - 99) * t);
+              const g = Math.round(102 + (72 - 102) * t);
+              const b = Math.round(241 + (153 - 241) * t);
+              return (
+                <div key={i} className="flex-1 flex items-end">
+                  <div
+                    className="w-full rounded-t-sm"
+                    style={{ height: `${Math.max(4, pct * 100)}%`, background: `rgb(${r},${g},${b})` }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex mt-1">
+            {dailyBars.map((bar, i) => (
+              <div key={i} className="flex-1 text-center">
+                {i % 2 === 0 && <span className="text-[8px] text-muted-foreground">{bar.label}</span>}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+
     </div>
   );
 }
