@@ -7,7 +7,6 @@ declare module 'react' {
 }
 
 import React, { useEffect, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useUsbConnection } from '../contexts/UsbConnectionContext';
 import { cn } from '../lib/utils';
@@ -787,28 +786,23 @@ export function ImportLibraryModal({
 
   const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
-    if (!fileList || fileList.length === 0) return;
+    if (!fileList || fileList.length === 0) {
+      setPhase('idle');
+      return;
+    }
 
-    // Force React to commit the scanning state to the DOM before the main
-    // thread is blocked by Array.from on a large FileList. flushSync bypasses
-    // React's scheduler so the spinner is visible immediately, then setTimeout
-    // defers the blocking work to the next macrotask to allow a browser paint.
-    flushSync(() => setPhase('scanning_usb'));
+    const files = Array.from(fileList);
+    const dbFile = findDatabaseFile(files);
+    // Do not retain thousands of optional .2EX File handles in React state.
+    // DAT/EXT are the only assets in the blocking fast path. Archival can be
+    // performed later without delaying USB release or library readiness.
+    const anlzFiles = files.filter(isBlockingAnlzFile);
+    const folderName =
+      (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath
+        ?.split('/')[0] ?? 'Selected folder';
 
-    setTimeout(() => {
-      const files = Array.from(fileList);
-      const dbFile = findDatabaseFile(files);
-      // Do not retain thousands of optional .2EX File handles in React state.
-      // DAT/EXT are the only assets in the blocking fast path. Archival can be
-      // performed later without delaying USB release or library readiness.
-      const anlzFiles = files.filter(isBlockingAnlzFile);
-      const folderName =
-        (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath
-          ?.split('/')[0] ?? 'Selected folder';
-
-      setFolderScanResource({ dbFile, anlzFiles, folderName });
-      setPhase('database_selected');
-    }, 0);
+    setFolderScanResource({ dbFile, anlzFiles, folderName });
+    setPhase('database_selected');
   };
 
   // ── ZIP / DB file mode ───────────────────────────────────────────────────────
@@ -1516,7 +1510,7 @@ export function ImportLibraryModal({
                           </div>
                         </div>
                         <button
-                          onClick={() => folderInputRef.current?.click()}
+                          onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
                           className="mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
                           ← Choose different folder
@@ -1524,7 +1518,7 @@ export function ImportLibraryModal({
                       </div>
                     ) : (
                       <button
-                        onClick={() => folderInputRef.current?.click()}
+                        onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
                         className="w-full py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5 transition-all mb-4 text-center"
                       >
                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
