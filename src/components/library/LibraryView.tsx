@@ -716,15 +716,14 @@ function OverviewSummaryCards({
   const ringR = 38;
   const ringC = 2 * Math.PI * ringR;
 
-  const CARD = 'rounded-[20px] border border-white/[0.07] p-5 overflow-hidden';
-  const CARD_BG = { background: 'var(--color-panel, #161618)' };
+  const CARD = 'rounded-[20px] border border-[var(--color-border-subtle)] p-5 overflow-hidden bg-[var(--color-surface)]';
   const RULE = { background: 'rgba(255,255,255,0.08)' };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
       {/* ── Playlists ── */}
-      <div className={CARD} style={CARD_BG}>
+      <div className={CARD}>
         <p className="text-[13px] font-bold">Playlists</p>
         <div className="mt-1.5 h-px" style={RULE} />
         <div className="mt-4 flex items-center gap-4">
@@ -761,7 +760,7 @@ function OverviewSummaryCards({
       </div>
 
       {/* ── Library Stats ── */}
-      <div className={CARD} style={CARD_BG}>
+      <div className={CARD}>
         <p className="text-[13px] font-bold">Library Stats</p>
         <div className="mt-1.5 h-px" style={RULE} />
         <div className="mt-4 flex items-center gap-4">
@@ -804,7 +803,7 @@ function OverviewSummaryCards({
       </div>
 
       {/* ── Recently Added ── */}
-      <div className={CARD} style={CARD_BG}>
+      <div className={CARD}>
         <p className="text-[13px] font-bold">Recently Added</p>
         <div className="mt-1.5 h-px" style={RULE} />
         <div className="mt-4 flex items-start gap-2">
