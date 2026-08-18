@@ -345,6 +345,34 @@ def mark_import_failed(
         logger.exception("Could not mark import %s failed", import_id)
 
 
+def _is_missing_cleanup_relation(exc: Exception, table: str) -> bool:
+    """Return True when a cleanup target does not exist in PostgREST/Postgres.
+
+    Rekordbox child tables have changed over the lifetime of DropDex. Older or
+    partially-migrated projects can legitimately lack a historical child table
+    (notably ``rekordbox_analysis_asset_references``). A missing relation means
+    there are no rows in that relation to delete, so destructive cleanup should
+    treat it as already clean rather than trapping the import in ``deleting``
+    forever. Other database errors (timeouts, permissions, connectivity, etc.)
+    remain fatal and retryable.
+    """
+    code = str(getattr(exc, "code", "") or "").upper()
+    text = str(exc).lower()
+    table_name = table.lower()
+
+    if code in {"PGRST205", "42P01"}:
+        return True
+
+    has_missing_relation_message = (
+        "could not find the table" in text
+        or "relation" in text and "does not exist" in text
+        or "schema cache" in text and "could not find" in text
+    )
+    return has_missing_relation_message and (
+        f"public.{table_name}" in text or table_name in text
+    )
+
+
 def _delete_import_children(sb, import_id: str) -> list[str]:
     errors: list[str] = []
     for table in (
@@ -362,6 +390,13 @@ def _delete_import_children(sb, import_id: str) -> list[str]:
         try:
             sb.table(table).delete().eq("import_id", import_id).execute()
         except Exception as exc:
+            if _is_missing_cleanup_relation(exc, table):
+                logger.warning(
+                    "Cleanup target %s is absent for import %s; treating it as already clean",
+                    table,
+                    import_id,
+                )
+                continue
             logger.exception("Cleanup failed for %s on import %s", table, import_id)
             errors.append(f"{table}: {exc}")
     return errors

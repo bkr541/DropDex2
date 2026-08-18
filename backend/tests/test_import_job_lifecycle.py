@@ -1101,6 +1101,91 @@ def test_delete_cleanup_failure_remains_retryable_and_idempotent(monkeypatch):
     assert client.tables["rekordbox_imports"] == []
 
 
+def test_cleanup_skips_missing_postgrest_child_table_and_finishes_delete(monkeypatch):
+    import_id = "job-missing-legacy-child"
+
+    class MissingTableError(RuntimeError):
+        code = "PGRST205"
+
+        def __str__(self):
+            return (
+                "Could not find the table "
+                "'public.rekordbox_analysis_asset_references' in the schema cache"
+            )
+
+    class MissingLegacyQuery(FakeQuery):
+        def execute(self):
+            if self.table == "rekordbox_analysis_asset_references":
+                raise MissingTableError()
+            return super().execute()
+
+    class MissingLegacyClient(FakeClient):
+        def table(self, name):
+            return MissingLegacyQuery(self, name)
+
+    client = MissingLegacyClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "completed",
+            "analysis_status": "completed",
+            "library_ready_at": "2026-08-17T12:00:00Z",
+        }
+    ])
+    client.tables["rekordbox_tracks"] = [
+        {"id": "track-1", "import_id": import_id}
+    ]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    result = import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
+
+    assert result["status"] == "cancelled"
+    assert client.tables["rekordbox_tracks"] == []
+    assert client.tables["rekordbox_imports"] == []
+
+
+def test_cleanup_does_not_hide_non_missing_child_table_errors(monkeypatch):
+    import_id = "job-child-timeout"
+
+    class StatementTimeoutError(RuntimeError):
+        code = "57014"
+
+        def __str__(self):
+            return "canceling statement due to statement timeout"
+
+    class TimeoutQuery(FakeQuery):
+        def execute(self):
+            if self.table == "rekordbox_analysis_asset_references":
+                raise StatementTimeoutError()
+            return super().execute()
+
+    class TimeoutClient(FakeClient):
+        def table(self, name):
+            return TimeoutQuery(self, name)
+
+    client = TimeoutClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "deleting",
+            "analysis_worker_stopped_acknowledged": True,
+        }
+    ])
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+    import_jobs.worker_registry.acknowledge_stopped(import_id, status="stopped")
+
+    with pytest.raises(import_jobs.ImportCleanupError) as exc:
+        import_jobs.cleanup_partial_import(
+            import_id,
+            "u",
+            sb=client,
+            require_worker_ack=True,
+        )
+
+    assert exc.value.stage == "database_children"
+    assert "statement timeout" in str(exc.value)
+
+
 def test_delete_removes_associated_analysis_children_before_parent_hard_delete(monkeypatch):
     import_id = "job-analysis-delete"
     client = FakeClient([{"id": import_id, "user_id": "u", "status": "completed"}])
