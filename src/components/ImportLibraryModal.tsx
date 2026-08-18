@@ -789,18 +789,24 @@ export function ImportLibraryModal({
     if (!fileList || fileList.length === 0) return;
 
     setPhase('scanning_usb');
-    const files = Array.from(fileList);
-    const dbFile = findDatabaseFile(files);
-    // Do not retain thousands of optional .2EX File handles in React state.
-    // DAT/EXT are the only assets in the blocking fast path. Archival can be
-    // performed later without delaying USB release or library readiness.
-    const anlzFiles = files.filter(isBlockingAnlzFile);
-    const folderName =
-      (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath
-        ?.split('/')[0] ?? 'Selected folder';
 
-    setFolderScanResource({ dbFile, anlzFiles, folderName });
-    setPhase('database_selected');
+    // Defer the heavy Array.from scan to the next task so the scanning_usb
+    // state renders before the main thread is blocked enumerating thousands
+    // of File handles (React 18 batches same-tick updates).
+    setTimeout(() => {
+      const files = Array.from(fileList);
+      const dbFile = findDatabaseFile(files);
+      // Do not retain thousands of optional .2EX File handles in React state.
+      // DAT/EXT are the only assets in the blocking fast path. Archival can be
+      // performed later without delaying USB release or library readiness.
+      const anlzFiles = files.filter(isBlockingAnlzFile);
+      const folderName =
+        (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath
+          ?.split('/')[0] ?? 'Selected folder';
+
+      setFolderScanResource({ dbFile, anlzFiles, folderName });
+      setPhase('database_selected');
+    }, 0);
   };
 
   // ── ZIP / DB file mode ───────────────────────────────────────────────────────
@@ -1468,7 +1474,12 @@ export function ImportLibraryModal({
                 {/* USB Folder picker */}
                 {mode === 'usb_folder' && (
                   <>
-                    {phase === 'database_selected' && folderScan ? (
+                    {phase === 'scanning_usb' ? (
+                      <div className="w-full py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] mb-4 flex flex-col items-center gap-2 text-muted-foreground">
+                        <CircleDash size={20} className="animate-spin text-primary" />
+                        <p className="text-sm">Scanning folder…</p>
+                      </div>
+                    ) : phase === 'database_selected' && folderScan ? (
                       <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4 mb-4">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                           {folderScan.folderName}
