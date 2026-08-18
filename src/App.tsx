@@ -1797,13 +1797,15 @@ export default function App() {
                                 </div>
                                 <div className="flex items-center gap-3 shrink-0 pt-0.5">
                                   {!isActive && !importInFlight && !importStalled && isUsableLibrarySnapshot(imp) && importPresentation.canActivate && (
-                                    <ControlButton variant="ghost" onClick={() => handleSetActiveImport(imp.id)} className="text-[10px]">
-                                      <CheckmarkFilled size={12} /> Make Active
-                                    </ControlButton>
+                                    <button
+                                      onClick={() => handleSetActiveImport(imp.id)}
+                                      className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
+                                    >
+                                      Make Active
+                                    </button>
                                   )}
                                   {(importPresentation.canRetry || importStalled) && (
-                                    <ControlButton
-                                      variant="ghost"
+                                    <button
                                       onClick={() => {
                                         if (imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted') {
                                           navigate({ name: 'import', importId: imp.id, resume: true });
@@ -1811,15 +1813,18 @@ export default function App() {
                                           setIsImportModalOpen(true);
                                         }
                                       }}
-                                      className="text-[10px]"
+                                      className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
                                     >
-                                      <Renew size={12} /> {imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted' ? 'Resume' : 'Retry'}
-                                    </ControlButton>
+                                      {imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted' ? 'Resume' : 'Retry'}
+                                    </button>
                                   )}
                                   {(!importInFlight || imp.retryable || isPendingHardDelete(imp)) && (
-                                    <ControlButton variant="ghost" onClick={() => handleDeleteImport(imp)} className="text-[10px] text-red-400">
-                                      <Close size={12} /> {isPendingHardDelete(imp) ? 'Retry Delete' : 'Delete'}
-                                    </ControlButton>
+                                    <button
+                                      onClick={() => handleDeleteImport(imp)}
+                                      className="text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors"
+                                    >
+                                      {isPendingHardDelete(imp) ? 'Retry Delete' : 'Delete'}
+                                    </button>
                                   )}
                                 </div>
                               </div>
@@ -1831,7 +1836,7 @@ export default function App() {
 
                     {/* Danger zone */}
                     <section className="space-y-3">
-                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><WarningAlt size={11} />Library Reset</h2>
+                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Library Reset</h2>
                       <div className="glass rounded-2xl p-4 flex items-center justify-between gap-4 border border-red-500/10">
                         <div className="flex items-start gap-3 min-w-0">
                           <WarningAlt size={18} className="mt-0.5 shrink-0 text-red-400" />
@@ -1842,19 +1847,18 @@ export default function App() {
                             </p>
                           </div>
                         </div>
-                        <ControlButton
+                        <button
                           type="button"
-                          variant="danger-outline"
                           disabled={deleteAllLibrariesSubmitting}
                           onClick={() => {
                             setDeleteAllLibrariesError(null);
                             setDeleteAllLibrariesPass(0);
                             setDeleteAllLibrariesOpen(true);
                           }}
-                          className="shrink-0 text-xs"
+                          className="shrink-0 text-xs font-bold text-red-400 transition-colors hover:text-red-300 disabled:opacity-50"
                         >
-                          <WarningAlt size={14} /> Delete All
-                        </ControlButton>
+                          Delete All
+                        </button>
                       </div>
                     </section>
                   </>
