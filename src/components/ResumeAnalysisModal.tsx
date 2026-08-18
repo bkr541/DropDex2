@@ -685,6 +685,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   ))}
                 </div>
                 <ControlButton variant="primary" onClick={handleDone}>
+                  <CheckmarkFilled size={16} />
                   Done
                 </ControlButton>
               </div>
@@ -724,6 +725,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   </p>
                 )}
                 <ControlButton variant="primary" onClick={handleDone}>
+                  <CheckmarkFilled size={16} />
                   Done
                 </ControlButton>
               </div>
@@ -749,6 +751,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                       setErrorMessage('');
                     }}
                   >
+                    <Renew size={16} />
                     Retry
                   </ControlButton>
                   <button

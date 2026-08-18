@@ -49,7 +49,7 @@ import {
   type UsbImportPhase,
   verifyUsbReleased,
 } from '../lib/rekordbox/localUsbLifecycle';
-import { CheckmarkFilled, CircleDash, Close, DataBase, FolderOpen, Package, Upload, WarningAlt } from '@carbon/icons-react';
+import { ArrowRight, CheckmarkFilled, CircleDash, Close, DataBase, FolderOpen, Package, Renew, Upload, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from './ui/controls';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1547,6 +1547,7 @@ export function ImportLibraryModal({
                         onClick={handleImport}
                         disabled={!folderScan?.dbFile}
                       >
+                        <Upload size={16} />
                         Import
                       </ControlButton>
                     </div>
@@ -1607,6 +1608,7 @@ export function ImportLibraryModal({
                         onClick={handleImport}
                         disabled={!selectedFile}
                       >
+                        <Upload size={16} />
                         Import
                       </ControlButton>
                     </div>
@@ -1843,6 +1845,7 @@ export function ImportLibraryModal({
                     variant="primary"
                     onClick={handleContinueInBackground}
                   >
+                    <ArrowRight size={16} />
                     Continue in Background
                   </ControlButton>
                   <ControlButton
@@ -1879,6 +1882,7 @@ export function ImportLibraryModal({
                   </p>
                 </div>
                 <ControlButton type="button" variant="primary" onClick={handleDone}>
+                  <CheckmarkFilled size={16} />
                   Done
                 </ControlButton>
               </div>
@@ -2013,6 +2017,7 @@ export function ImportLibraryModal({
                 )}
 
                 <ControlButton variant="primary" onClick={handleDone}>
+                  <CheckmarkFilled size={16} />
                   Done
                 </ControlButton>
               </div>
@@ -2094,6 +2099,7 @@ export function ImportLibraryModal({
                 )}
 
                 <ControlButton variant="primary" onClick={handleDone}>
+                  <CheckmarkFilled size={16} />
                   Done
                 </ControlButton>
               </div>
@@ -2143,6 +2149,7 @@ export function ImportLibraryModal({
                 )}
                 <div className="flex gap-3 mt-6">
                   <ControlButton variant="primary" onClick={reset}>
+                    <Renew size={16} />
                     Try Again
                   </ControlButton>
                   <button
