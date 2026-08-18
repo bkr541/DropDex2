@@ -7,15 +7,15 @@ import type { SemanticTone } from './types';
 export type AnalysisBadgeState = 'not-analyzed' | 'analyzing' | 'bpm' | 'waveform' | 'key' | 'complete' | 'failed' | 'partial' | 'reused';
 
 const ANALYSIS_META: Record<AnalysisBadgeState, { label: string; tone: SemanticTone; icon: ReactNode }> = {
-  'not-analyzed': { label: 'Not Analyzed', tone: 'neutral', icon: <Flash size={11} /> },
-  analyzing: { label: 'Analyzing', tone: 'active', icon: <CircleDash size={11} className="dd-spin" /> },
-  bpm: { label: 'BPM Analyzed', tone: 'online', icon: <CircleFilled size={11} /> },
-  waveform: { label: 'Waveform Ready', tone: 'purple', icon: <Flash size={11} /> },
-  key: { label: 'Key Analyzed', tone: 'amber', icon: <Checkmark size={11} /> },
-  complete: { label: 'Fully Analyzed', tone: 'success', icon: <CheckmarkFilled size={11} /> },
-  failed: { label: 'Analysis Failed', tone: 'error', icon: <CloseFilled size={11} /> },
-  partial: { label: 'Analysis Partial', tone: 'warning', icon: <WarningAlt size={11} /> },
-  reused: { label: 'Analysis Reused', tone: 'success', icon: <CheckmarkFilled size={11} /> },
+  'not-analyzed': { label: 'Not Analyzed', tone: 'neutral', icon: <Flash size={9} /> },
+  analyzing: { label: 'Analyzing', tone: 'active', icon: <CircleDash size={9} className="dd-spin" /> },
+  bpm: { label: 'BPM Analyzed', tone: 'online', icon: <CircleFilled size={9} /> },
+  waveform: { label: 'Waveform Ready', tone: 'purple', icon: <Flash size={9} /> },
+  key: { label: 'Key Analyzed', tone: 'amber', icon: <Checkmark size={9} /> },
+  complete: { label: 'Fully Analyzed', tone: 'success', icon: <CheckmarkFilled size={9} /> },
+  failed: { label: 'Analysis Failed', tone: 'error', icon: <CloseFilled size={9} /> },
+  partial: { label: 'Analysis Partial', tone: 'warning', icon: <WarningAlt size={9} /> },
+  reused: { label: 'Analysis Reused', tone: 'success', icon: <CheckmarkFilled size={9} /> },
 };
 
 export function AnalysisStatusBadge({ state, label, className }: { state: AnalysisBadgeState; label?: string; className?: string }) {

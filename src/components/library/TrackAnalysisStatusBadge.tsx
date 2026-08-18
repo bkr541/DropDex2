@@ -2,15 +2,15 @@ import type { RekordboxTrackParseStatus } from '../../types';
 import { AnalysisStatusBadge, type AnalysisBadgeState } from '../ui/feedback';
 
 const LABELS: Record<RekordboxTrackParseStatus, string> = {
-  not_requested: 'Metadata ready',
-  queued: 'Analysis queued',
-  parsing: 'Analysis running',
-  completed: 'Analysis complete',
-  partial: 'Analysis partial',
-  failed: 'Analysis failed',
-  missing_required: 'Source file missing',
-  skipped: 'Analysis skipped',
-  reused: 'Analysis reused',
+  not_requested: 'Metadata',
+  queued: 'Queued',
+  parsing: 'Running',
+  completed: 'Complete',
+  partial: 'Partial',
+  failed: 'Failed',
+  missing_required: 'Missing',
+  skipped: 'Skipped',
+  reused: 'Reused',
 };
 
 const STATE_MAP: Record<RekordboxTrackParseStatus, AnalysisBadgeState> = {
