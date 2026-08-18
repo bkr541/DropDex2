@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import type { RekordboxImport, UserProfile } from '../../types';
 import { CheckmarkFilled, ChevronRight, Music, Renew, Upload, User, WarningAlt } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface LibraryHeroProps {
   latestImport: RekordboxImport;
@@ -92,14 +93,9 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
             {/* Row 3: spacer aligns with stat labels row */}
             <div className="mt-0.5 h-3" aria-hidden="true" />
             {/* Row 4: Import Book button aligns with "Imported from" */}
-            <button
-              onClick={onImport}
-              className="mt-1.5 flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-xs font-semibold"
-            >
-              <Upload size={12} className="shrink-0 text-muted-foreground" />
-              <span className="flex-1 text-left">Import New Book</span>
-              <ChevronRight size={12} className="text-muted-foreground shrink-0" />
-            </button>
+            <ControlButton variant="neutral" onClick={onImport} className="mt-1.5 text-xs">
+              <Upload size={12} /> Import New Book
+            </ControlButton>
           </div>
 
           <div className="w-px self-stretch bg-[var(--color-border-subtle)]" />
@@ -123,14 +119,9 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
                 <div className="mt-0.5 h-3" aria-hidden="true" />
                 {/* Row 4: resume button aligns with "Imported from" */}
                 {isActionable && onResumeAnalysis ? (
-                  <button
-                    onClick={() => onResumeAnalysis(latestImport.id)}
-                    className="mt-1.5 flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-xs font-semibold"
-                  >
-                    <Renew size={12} className="shrink-0 text-muted-foreground" />
-                    <span className="flex-1 text-left">Resume Analysis</span>
-                    <ChevronRight size={12} className="text-muted-foreground shrink-0" />
-                  </button>
+                  <ControlButton variant="neutral" onClick={() => onResumeAnalysis(latestImport.id)} className="mt-1.5 text-xs">
+                    <Renew size={12} /> Resume Analysis
+                  </ControlButton>
                 ) : (
                   <div className="mt-1.5 h-3" aria-hidden="true" />
                 )}

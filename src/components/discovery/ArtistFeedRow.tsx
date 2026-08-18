@@ -3,6 +3,7 @@ import { MusicNote01Icon } from 'hugeicons-react';
 import { SetlistFeedCard } from './SetlistFeedCard';
 import type { FeedArtist, DiscoverySetlistResult } from '../../types';
 import { ChevronRight, User } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface ArtistFeedRowProps {
   artist: FeedArtist;
@@ -77,13 +78,9 @@ export function ArtistFeedRow({
         </div>
 
         {/* See All */}
-        <button
-          onClick={onSeeAll}
-          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors shrink-0"
-        >
-          See All
-          <ChevronRight size={13} />
-        </button>
+        <ControlButton variant="ghost" onClick={onSeeAll} className="shrink-0 text-[11px]">
+          See All <ChevronRight size={13} />
+        </ControlButton>
       </div>
 
       {/* Horizontal scroll row */}

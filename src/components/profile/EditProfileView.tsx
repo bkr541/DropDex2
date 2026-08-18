@@ -14,6 +14,7 @@ import {
 } from '../../lib/queries/userPreferences';
 import type { UserProfile, UserGenrePreference, UserArtistPreference } from '../../types';
 import { Checkmark, CircleDash, Close, Search, Upload, User } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 // ── Preference picker (genres or artists) ────────────────────────────────────
 
@@ -400,21 +401,16 @@ export function EditProfileView({
       {/* ── Save ── */}
       <div className="flex items-center gap-3">
         {saveError && <p className="text-xs text-red-400 font-medium">{saveError}</p>}
-        <button
+        <ControlButton
           onClick={handleSave}
           disabled={saving}
-          className={cn(
-            'flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all active:scale-95 ml-auto',
-            saved
-              ? 'bg-green-500/15 text-green-400 border border-green-500/30'
-              : 'bg-primary text-white hover:bg-primary/90 shadow-sm',
-            saving && 'opacity-60 cursor-not-allowed',
-          )}
+          variant={saved ? 'surface' : 'primary'}
+          className="ml-auto"
         >
           {saving ? <><CircleDash size={13} className="animate-spin" /> Saving…</>
             : saved ? <><Checkmark size={13} /> Saved</>
-            : 'Save Profile'}
-        </button>
+            : <><Upload size={13} /> Save Profile</>}
+        </ControlButton>
       </div>
     </div>
   );

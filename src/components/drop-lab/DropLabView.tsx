@@ -46,14 +46,9 @@ function waveformMessageForPanel(
 
 function RetryButton({ onClick, label }: { onClick: () => void; label: string }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="ml-2 shrink-0 rounded-lg border border-current/30 px-2 py-1 text-[10px] font-bold uppercase tracking-wider hover:bg-current/10"
-      aria-label={label}
-    >
+    <ControlButton type="button" variant="ghost" onClick={onClick} aria-label={label} className="ml-2 shrink-0 text-[10px]">
       Retry
-    </button>
+    </ControlButton>
   );
 }
 
@@ -266,9 +261,9 @@ export function DropLabView({
       <header className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <button onClick={onBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0" aria-label="Back to Track Intelligence">
+            <ControlButton variant="ghost" onClick={onBack} aria-label="Back to Track Intelligence">
               <ChevronLeft size={20} />
-            </button>
+            </ControlButton>
             <h2 className="text-2xl md:text-3xl font-black italic">Drop Lab</h2>
           </div>
           <p className="text-[10px] md:text-xs text-muted-foreground uppercase tracking-[0.2em] pl-7">

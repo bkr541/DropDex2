@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { cn, getDeterministicBars } from '../../lib/utils';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import { Edit, FolderOpen, Music } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 function PlaylistFallbackArt({ isFolder, seed }: { isFolder: boolean; seed: string }) {
   const bars = getDeterministicBars(seed, 28);
@@ -91,16 +92,17 @@ export function PlaylistOverviewCard({
 
       {/* Edit overlay — only shown for non-folder playlists */}
       {!playlist.is_folder && onEdit && (
-        <button
+        <ControlButton
+          variant="ghost"
           onClick={(e) => {
             e.stopPropagation();
             onEdit();
           }}
           title="Edit playlist"
-          className="absolute top-2 right-2 p-1.5 rounded-lg bg-background/80 backdrop-blur-sm border border-[var(--color-border-subtle)] text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shadow-sm z-10"
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 z-10"
         >
           <Edit size={11} />
-        </button>
+        </ControlButton>
       )}
     </div>
   );

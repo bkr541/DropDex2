@@ -351,9 +351,9 @@ function ImportStatusView({
               {statusLabel}
             </span>
             {onBack && (
-              <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors p-1">
+              <ControlButton variant="ghost" onClick={onBack}>
                 <Close size={18} />
-              </button>
+              </ControlButton>
             )}
           </div>
         </div>
@@ -1156,18 +1156,14 @@ export default function App() {
             {!routeBlocked && currentView === 'playlist' && (
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                  <ControlButton variant="ghost" onClick={goBack}>
                     <ChevronLeft size={20} />
-                  </button>
+                  </ControlButton>
                   <h2 className="text-2xl font-black italic truncate">{selectedPlaylist?.name}</h2>
                   {selectedPlaylist && !selectedPlaylist.is_folder && (
-                    <button
-                      onClick={() => selectedPlaylist && handleEditPlaylist(selectedPlaylist)}
-                      className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-xs font-bold text-muted-foreground hover:text-foreground transition-all shrink-0"
-                    >
-                      <Edit size={12} />
-                      Edit
-                    </button>
+                    <ControlButton variant="neutral" onClick={() => selectedPlaylist && handleEditPlaylist(selectedPlaylist)} className="ml-auto text-xs">
+                      <Edit size={12} /> Edit
+                    </ControlButton>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1195,9 +1191,9 @@ export default function App() {
             {currentView === 'playlist-edit' && editingPlaylist && (
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                  <ControlButton variant="ghost" onClick={goBack}>
                     <ChevronLeft size={20} />
-                  </button>
+                  </ControlButton>
                   <h2 className="text-2xl font-black italic truncate">{editingPlaylist.name}</h2>
                 </div>
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Edit Playlist</p>
@@ -1206,9 +1202,9 @@ export default function App() {
             {!routeBlocked && currentView === 'track' && (
               <div>
                 <div className="flex items-center gap-2">
-                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                  <ControlButton variant="ghost" onClick={goBack}>
                     <ChevronLeft size={20} />
-                  </button>
+                  </ControlButton>
                   <h2 className="text-2xl font-black italic">Track Intelligence</h2>
                 </div>
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Deep Scan Results</p>
@@ -1217,9 +1213,9 @@ export default function App() {
             {!routeBlocked && currentView === 'review' && (
               <div>
                 <div className="flex items-center gap-2">
-                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                  <ControlButton variant="ghost" onClick={goBack}>
                     <ChevronLeft size={20} />
-                  </button>
+                  </ControlButton>
                   <h2 className="text-2xl font-black italic">Set Review Mode</h2>
                 </div>
                 <p className="text-[8px] text-secondary uppercase tracking-[0.2em] font-bold pl-7">Optimized for low-light</p>
@@ -1228,9 +1224,9 @@ export default function App() {
             {!routeBlocked && currentView === 'settings' && (
               <div>
                 <div className="flex items-center gap-2">
-                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                  <ControlButton variant="ghost" onClick={goBack}>
                     <ChevronLeft size={20} />
-                  </button>
+                  </ControlButton>
                   <h2 className="text-2xl font-black italic">Settings</h2>
                 </div>
                 <div className="flex gap-1 mt-4 border-b border-[var(--color-border-faint)]">
@@ -1255,9 +1251,9 @@ export default function App() {
             {!routeBlocked && currentView === 'discovery' && (
               <div>
                 <div className="flex items-center gap-2">
-                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                  <ControlButton variant="ghost" onClick={goBack}>
                     <ChevronLeft size={20} />
-                  </button>
+                  </ControlButton>
                   <h2 className="text-2xl font-black italic">Artist Discovery</h2>
                 </div>
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Setlists via 1001Tracklists</p>
@@ -1266,9 +1262,9 @@ export default function App() {
             {!routeBlocked && currentView === 'search' && (
               <div>
                 <div className="flex items-center gap-2">
-                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                  <ControlButton variant="ghost" onClick={goBack}>
                     <ChevronLeft size={20} />
-                  </button>
+                  </ControlButton>
                   <h2 className="text-2xl font-black italic">Artist Search</h2>
                 </div>
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Melodic Dubstep &amp; Future Bass</p>
@@ -1277,9 +1273,9 @@ export default function App() {
             {currentView === 'import' && (
               <div>
                 <div className="flex items-center gap-2">
-                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                  <ControlButton variant="ghost" onClick={goBack}>
                     <ChevronLeft size={20} />
-                  </button>
+                  </ControlButton>
                   <h2 className="text-2xl font-black italic">Import Status</h2>
                 </div>
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Durable import details</p>
@@ -1288,9 +1284,9 @@ export default function App() {
             {!routeBlocked && currentView === 'edit-profile' && (
               <div>
                 <div className="flex items-center gap-2">
-                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                  <ControlButton variant="ghost" onClick={goBack}>
                     <ChevronLeft size={20} />
-                  </button>
+                  </ControlButton>
                   <h2 className="text-2xl font-black italic">Edit Profile</h2>
                 </div>
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Your Artist Identity</p>
@@ -1299,9 +1295,9 @@ export default function App() {
             {currentView === 'reusable-components' && (
               <div>
                 <div className="flex items-center gap-2">
-                  <button onClick={goBack} className="p-1 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all shrink-0">
+                  <ControlButton variant="ghost" onClick={goBack}>
                     <ChevronLeft size={20} />
-                  </button>
+                  </ControlButton>
                   <h2 className="text-2xl font-black italic">Reusable Components</h2>
                 </div>
               </div>
@@ -1455,19 +1451,15 @@ export default function App() {
                 )}
 
                 {!playlistTracksLoading && playlistTracksHaveMore && (
-                  <button
-                    onClick={() => { void loadMorePlaylistTracks(); }}
-                    disabled={playlistTracksLoadingMore}
-                    className="w-full py-3 rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] border border-[var(--color-border-faint)] transition-colors disabled:opacity-60"
-                  >
-                    {playlistTracksLoadingMore ? (
-                      <span className="inline-flex items-center gap-2">
-                        <CircleDash size={13} className="animate-spin" /> Loading more…
-                      </span>
-                    ) : (
-                      `Load ${Math.min(200, playlistTrackTotal - playlistTracks.length).toLocaleString()} more…`
-                    )}
-                  </button>
+                  <div className="flex justify-center">
+                    <ControlButton variant="neutral" onClick={() => { void loadMorePlaylistTracks(); }} disabled={playlistTracksLoadingMore}>
+                      {playlistTracksLoadingMore ? (
+                        <><CircleDash size={13} className="animate-spin" /> Loading more…</>
+                      ) : (
+                        `Load ${Math.min(200, playlistTrackTotal - playlistTracks.length).toLocaleString()} more…`
+                      )}
+                    </ControlButton>
+                  </div>
                 )}
               </motion.div>
             )}
@@ -1621,12 +1613,9 @@ export default function App() {
                           <Logout size={18} className="text-muted-foreground" />
                           <p className="font-bold text-sm">Sign Out</p>
                         </div>
-                        <button
-                          onClick={() => supabase.auth.signOut()}
-                          className="text-xs font-bold text-primary hover:text-primary/80 transition-colors"
-                        >
-                          Sign Out
-                        </button>
+                        <ControlButton variant="ghost" onClick={() => supabase.auth.signOut()} className="text-xs">
+                          <Logout size={14} /> Sign Out
+                        </ControlButton>
                       </div>
                     </div>
                   </section>
@@ -1738,7 +1727,7 @@ export default function App() {
                       ) : importsListError ? (
                         <div className="glass rounded-2xl p-4 text-center space-y-2">
                           <p className="text-sm text-red-400">{importsListError}</p>
-                          <button onClick={refetchImportList} className="text-xs font-bold text-primary">Retry</button>
+                          <ControlButton variant="ghost" onClick={refetchImportList} className="text-xs"><Renew size={13} /> Retry</ControlButton>
                         </div>
                       ) : allImports.length === 0 ? (
                         <div className="glass rounded-2xl p-4 text-center">
@@ -1760,14 +1749,15 @@ export default function App() {
                               <div key={imp.id} data-testid={`import-history-row-${imp.id}`} className="p-4 flex items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <button
+                                    <ControlButton
                                       type="button"
+                                      variant="ghost"
                                       onClick={() => navigate({ name: 'import', importId: imp.id, resume: false })}
-                                      className="max-w-full truncate text-left font-mono text-sm font-bold hover:text-primary"
                                       aria-label={`Open import ${imp.source_filename}`}
+                                      className="max-w-full text-left font-mono text-sm font-bold"
                                     >
                                       {imp.source_filename}
-                                    </button>
+                                    </ControlButton>
                                     {isActive && (
                                       <span className="text-[9px] font-bold capitalize tracking-widest px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 rounded-full shrink-0">
                                         Active
@@ -1807,15 +1797,13 @@ export default function App() {
                                 </div>
                                 <div className="flex items-center gap-3 shrink-0 pt-0.5">
                                   {!isActive && !importInFlight && !importStalled && isUsableLibrarySnapshot(imp) && importPresentation.canActivate && (
-                                    <button
-                                      onClick={() => handleSetActiveImport(imp.id)}
-                                      className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
-                                    >
-                                      Make Active
-                                    </button>
+                                    <ControlButton variant="ghost" onClick={() => handleSetActiveImport(imp.id)} className="text-[10px]">
+                                      <CheckmarkFilled size={12} /> Make Active
+                                    </ControlButton>
                                   )}
                                   {(importPresentation.canRetry || importStalled) && (
-                                    <button
+                                    <ControlButton
+                                      variant="ghost"
                                       onClick={() => {
                                         if (imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted') {
                                           navigate({ name: 'import', importId: imp.id, resume: true });
@@ -1823,18 +1811,15 @@ export default function App() {
                                           setIsImportModalOpen(true);
                                         }
                                       }}
-                                      className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
+                                      className="text-[10px]"
                                     >
-                                      {imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted' ? 'Resume' : 'Retry'}
-                                    </button>
+                                      <Renew size={12} /> {imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted' ? 'Resume' : 'Retry'}
+                                    </ControlButton>
                                   )}
                                   {(!importInFlight || imp.retryable || isPendingHardDelete(imp)) && (
-                                    <button
-                                      onClick={() => handleDeleteImport(imp)}
-                                      className="text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors"
-                                    >
-                                      {isPendingHardDelete(imp) ? 'Retry Delete' : 'Delete'}
-                                    </button>
+                                    <ControlButton variant="ghost" onClick={() => handleDeleteImport(imp)} className="text-[10px] text-red-400">
+                                      <Close size={12} /> {isPendingHardDelete(imp) ? 'Retry Delete' : 'Delete'}
+                                    </ControlButton>
                                   )}
                                 </div>
                               </div>
@@ -1857,18 +1842,19 @@ export default function App() {
                             </p>
                           </div>
                         </div>
-                        <button
+                        <ControlButton
                           type="button"
+                          variant="danger-outline"
                           disabled={deleteAllLibrariesSubmitting}
                           onClick={() => {
                             setDeleteAllLibrariesError(null);
                             setDeleteAllLibrariesPass(0);
                             setDeleteAllLibrariesOpen(true);
                           }}
-                          className="shrink-0 text-xs font-bold text-red-400 transition-colors hover:text-red-300 disabled:opacity-50"
+                          className="shrink-0 text-xs"
                         >
-                          Delete All
-                        </button>
+                          <WarningAlt size={14} /> Delete All
+                        </ControlButton>
                       </div>
                     </section>
                   </>

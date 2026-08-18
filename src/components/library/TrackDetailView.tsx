@@ -9,6 +9,7 @@ import type { RekordboxTrack } from '../../types';
 import type { TrackPlaylistMembership } from '../../lib/queries/rekordbox';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { Calendar, Chemistry, FolderOpen, Information, Music, RecordingFilled, Tag, Time } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface TrackDetailViewProps {
   track: RekordboxTrack;
@@ -137,15 +138,15 @@ export function TrackDetailView({
             </div>
           </div>
 
-          <button
+          <ControlButton
             type="button"
+            variant="primary"
             onClick={() => onOpenDropLab(track)}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/15 px-4 py-3 text-sm font-black uppercase tracking-widest text-primary transition-all hover:bg-primary/20 hover:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full"
             aria-label={`Open ${track.title} in Drop Lab`}
           >
-            <Chemistry size={16} />
-            Open in Drop Lab
-          </button>
+            <Chemistry size={16} /> Open in Drop Lab
+          </ControlButton>
         </aside>
 
         <div className="min-w-0 space-y-6">

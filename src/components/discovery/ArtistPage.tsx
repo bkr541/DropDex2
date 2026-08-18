@@ -6,6 +6,7 @@ import { ArtistResultsToolbar, type SortKey } from './ArtistResultsToolbar';
 import { ArtistSetlistCard } from './ArtistSetlistCard';
 import type { DiscoveryArtist, DiscoveryArtistDetail, DiscoverySetlistResult, DiscoveryScrapeJob } from '../../types';
 import { ChevronDown, CircleDash, Music, Search } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 function sortSetlists(
   setlists: DiscoverySetlistResult[],
@@ -172,23 +173,13 @@ export function ArtistPage({
                       Could not load more setlists: {loadMoreError}
                     </p>
                   )}
-                  <button
-                    onClick={onLoadMore}
-                    disabled={loadingMore}
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-xs font-bold uppercase tracking-widest hover:bg-[var(--color-surface-hover)] transition-all disabled:opacity-50"
-                  >
+                  <ControlButton variant="neutral" onClick={onLoadMore} disabled={loadingMore}>
                     {loadingMore ? (
-                      <>
-                        <CircleDash size={14} className="animate-spin" />
-                        Loading…
-                      </>
+                      <><CircleDash size={14} className="animate-spin" /> Loading…</>
                     ) : (
-                      <>
-                        <ChevronDown size={14} />
-                        {loadMoreError ? 'Retry Load More' : 'Load More'}
-                      </>
+                      <><ChevronDown size={14} /> {loadMoreError ? 'Retry Load More' : 'Load More'}</>
                     )}
-                  </button>
+                  </ControlButton>
                 </div>
               )}
             </>

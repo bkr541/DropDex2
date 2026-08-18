@@ -1,6 +1,7 @@
 import { cn } from '../../lib/utils';
 import { useUsbConnection, type UsbStatus } from '../../contexts/UsbConnectionContext';
 import { CircleDash, CloseFilled, FolderOff, Renew, Unplug, Usb, WarningAlt, WifiOff } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface UsbConnectionButtonProps {
   collapsed?: boolean;
@@ -140,7 +141,8 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
 
       <div className={cn('flex items-center gap-1', collapsed && 'justify-center')}>
         {/* Main action button */}
-        <button
+        <ControlButton
+          variant="ghost"
           onClick={handlePrimaryClick}
           disabled={isConnecting}
           title={collapsed ? statusTitle(status, volumeName) : undefined}
@@ -152,30 +154,32 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
           {!collapsed && (
             <span className="truncate">{statusLabel(status, volumeName)}</span>
           )}
-        </button>
+        </ControlButton>
 
         {/* "Select USB Again" secondary action — shown when unavailable (after reconnect attempt) */}
         {!collapsed && status === 'unavailable' && (
-          <button
+          <ControlButton
+            variant="ghost"
             onClick={() => void selectNewUsb()}
             title="Select a different USB drive"
             aria-label="Select a different USB drive"
-            className="shrink-0 p-2.5 rounded-xl text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20 transition-all"
+            className="shrink-0 text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20"
           >
             <Renew size={16} />
-          </button>
+          </ControlButton>
         )}
 
         {/* Disconnect button — only shown when connected, expanded */}
         {!collapsed && status === 'connected' && (
-          <button
+          <ControlButton
+            variant="ghost"
             onClick={() => void disconnect()}
             title="Disconnect USB"
             aria-label="Disconnect USB drive"
-            className="shrink-0 p-2.5 rounded-xl text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all"
+            className="shrink-0 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20"
           >
             <Unplug size={16} />
-          </button>
+          </ControlButton>
         )}
       </div>
     </div>

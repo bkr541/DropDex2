@@ -7,6 +7,7 @@ import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import type { RekordboxTrack } from '../../types';
 import { waveformStateForTrack, type WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { CircleDash, Pause, Play, Search } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface LibrarySearchResultsProps {
   query: string;
@@ -253,19 +254,15 @@ export function LibrarySearchResults({
             ))}
           </div>
           {hasMore && (
-            <button
-              onClick={onLoadMore}
-              disabled={loadingMore}
-              className="w-full py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] border-t border-[var(--color-border-faint)] transition-colors disabled:opacity-60"
-            >
-              {loadingMore ? (
-                <span className="inline-flex items-center gap-2">
-                  <CircleDash size={13} className="animate-spin" /> Loading more…
-                </span>
-              ) : (
-                `Load ${Math.min(200, total - results.length).toLocaleString()} more…`
-              )}
-            </button>
+            <div className="border-t border-[var(--color-border-faint)] pt-2 flex justify-center">
+              <ControlButton variant="neutral" onClick={onLoadMore} disabled={loadingMore}>
+                {loadingMore ? (
+                  <><CircleDash size={13} className="animate-spin" /> Loading more…</>
+                ) : (
+                  `Load ${Math.min(200, total - results.length).toLocaleString()} more…`
+                )}
+              </ControlButton>
+            </div>
           )}
         </div>
       )}

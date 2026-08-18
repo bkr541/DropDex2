@@ -239,14 +239,9 @@ function DesktopLibraryInfoCard({
           <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
           <span className="font-black text-sm leading-none text-emerald-500">Import Complete</span>
         </div>
-        <button
-          onClick={onImport}
-          className="mt-3 w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-[10px] font-semibold"
-        >
-          <Upload size={11} className="shrink-0 text-muted-foreground" />
-          <span className="flex-1 text-left">Import New Library</span>
-          <ChevronRight size={11} className="text-muted-foreground shrink-0" />
-        </button>
+        <ControlButton variant="neutral" onClick={onImport} className="mt-3 w-full text-[10px]">
+          <Upload size={11} /> Import New Library
+        </ControlButton>
       </div>
 
       {showAnalysis && (
@@ -269,14 +264,9 @@ function DesktopLibraryInfoCard({
             </span>
           </div>
           {isActionable && onResumeAnalysis && (
-            <button
-              onClick={() => onResumeAnalysis(latestImport.id)}
-              className="mt-3 w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors text-[10px] font-semibold"
-            >
-              <Renew size={11} className="shrink-0 text-muted-foreground" />
-              <span className="flex-1 text-left">Resume Analysis</span>
-              <ChevronRight size={11} className="text-muted-foreground shrink-0" />
-            </button>
+            <ControlButton variant="neutral" onClick={() => onResumeAnalysis(latestImport.id)} className="mt-3 w-full text-[10px]">
+              <Renew size={11} /> Resume Analysis
+            </ControlButton>
           )}
         </div>
       )}
@@ -647,13 +637,11 @@ function DesktopLibraryHero({
             </div>
           )}
 
-          <button
-            onClick={onImport}
-            className="mt-5 inline-flex w-fit items-center gap-2 rounded-lg border border-primary/70 bg-primary/80 px-4 py-2.5 text-xs font-bold text-white shadow-[0_8px_26px_rgba(0,112,255,0.22)] transition-colors hover:bg-primary"
-          >
-            <Upload size={14} />
-            Import New Library
-          </button>
+          <div className="mt-5">
+            <ControlButton variant="primary" onClick={onImport}>
+              <Upload size={14} /> Import New Library
+            </ControlButton>
+          </div>
         </div>
 
       </div>
@@ -1100,12 +1088,9 @@ export function LibraryView({
                               <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                                 <Music size={13} /> Playlists
                               </h2>
-                              <button
-                                onClick={() => onActiveTabChange('playlists')}
-                                className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
-                              >
+                              <ControlButton variant="ghost" onClick={() => onActiveTabChange('playlists')} className="text-[10px]">
                                 View all <ChevronRight size={12} />
-                              </button>
+                              </ControlButton>
                             </div>
                             {playlistsLoading ? (
                               <div className="flex items-center justify-center py-6">
@@ -1134,12 +1119,9 @@ export function LibraryView({
                               <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                                 <Music size={13} /> Recently Added Tracks
                               </h2>
-                              <button
-                                onClick={() => onActiveTabChange('recently-added')}
-                                className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
-                              >
+                              <ControlButton variant="ghost" onClick={() => onActiveTabChange('recently-added')} className="text-[10px]">
                                 View all <ChevronRight size={12} />
-                              </button>
+                              </ControlButton>
                             </div>
                             <RecentlyAddedTracksTable
                               tracks={recentTracks}
@@ -1245,19 +1227,19 @@ export function LibraryView({
                                 ))}
                               </div>
                               {tracksHaveMore && (
-                                <button
-                                  onClick={() => { void loadMoreLibraryTracks(); }}
-                                  disabled={tracksLoadingMore}
-                                  className="w-full py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] border-t border-[var(--color-border-faint)] transition-colors disabled:opacity-60"
-                                >
-                                  {tracksLoadingMore ? (
-                                    <span className="inline-flex items-center gap-2">
-                                      <CircleDash size={13} className="animate-spin" /> Loading more…
-                                    </span>
-                                  ) : (
-                                    `Load ${Math.min(200, libraryTrackTotal - visibleTracks.length).toLocaleString()} more…`
-                                  )}
-                                </button>
+                                <div className="border-t border-[var(--color-border-faint)] pt-2 flex justify-center">
+                                  <ControlButton
+                                    variant="neutral"
+                                    onClick={() => { void loadMoreLibraryTracks(); }}
+                                    disabled={tracksLoadingMore}
+                                  >
+                                    {tracksLoadingMore ? (
+                                      <><CircleDash size={13} className="animate-spin" /> Loading more…</>
+                                    ) : (
+                                      `Load ${Math.min(200, libraryTrackTotal - visibleTracks.length).toLocaleString()} more…`
+                                    )}
+                                  </ControlButton>
+                                </div>
                               )}
                             </div>
                           )}

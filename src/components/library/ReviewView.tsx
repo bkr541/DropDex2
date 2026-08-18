@@ -13,7 +13,8 @@ import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import { waveformStateForTrack, type WaveformLoadState } from '../../lib/queries/waveformValidation';
 import type { RekordboxTrack } from '../../types';
-import { CircleDash, Music } from '@carbon/icons-react';
+import { CircleDash, Music, Upload } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface ReviewCardProps {
   track: RekordboxTrack;
@@ -162,18 +163,14 @@ export function ReviewEmptyState({ onImport }: { onImport?: () => void }) {
       <h2 className="text-2xl font-black mb-2">Review Mode</h2>
       <p className="text-muted-foreground text-sm">
         Import a library to start reviewing your collection.
-        {onImport && (
-          <>
-            {' '}
-            <button
-              onClick={onImport}
-              className="text-primary hover:text-primary/80 underline transition-colors"
-            >
-              Import now
-            </button>
-          </>
-        )}
       </p>
+      {onImport && (
+        <div className="mt-3">
+          <ControlButton variant="primary" onClick={onImport}>
+            <Upload size={16} /> Import now
+          </ControlButton>
+        </div>
+      )}
     </div>
   );
 }

@@ -489,12 +489,9 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
           >
             {/* Close button */}
             {(phase === 'scan_prompt' || phase === 'error' || phase === 'done_partial') && (
-              <button
-                onClick={handleClose}
-                className="absolute top-5 right-5 text-muted-foreground hover:text-foreground transition-colors"
-              >
+              <ControlButton variant="ghost" onClick={handleClose} className="absolute top-5 right-5">
                 <Close size={18} />
-              </button>
+              </ControlButton>
             )}
 
             {/* ── Fetching status ── */}
@@ -754,12 +751,9 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                     <Renew size={16} />
                     Retry
                   </ControlButton>
-                  <button
-                    onClick={handleClose}
-                    className="flex-1 py-2.5 glass rounded-xl font-bold text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Cancel
-                  </button>
+                  <ControlButton variant="neutral" onClick={handleClose} className="flex-1">
+                    <Close size={16} /> Cancel
+                  </ControlButton>
                 </div>
               </div>
             )}

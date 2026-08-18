@@ -5,7 +5,8 @@ import { useSetlistTracks } from '../../hooks/useSetlistTracks';
 import { SetTrackRow } from './SetTrackRow';
 import { SetTrackTimeline } from './SetTrackTimeline';
 import type { DiscoverySetlistResult } from '../../types';
-import { Branch, Calendar, ChevronLeft, CircleDash, Document, Launch, Music, Playlist, Renew, RotateCounterclockwise, Time, Timer, WarningAlt } from '@carbon/icons-react';
+import { Branch, Calendar, ChevronLeft, CircleDash, Close, Document, Launch, Music, Playlist, Renew, RotateCounterclockwise, Time, Timer, Upload, WarningAlt } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 type ViewMode = 'list' | 'timeline';
 
@@ -139,22 +140,14 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
       <div className="glass rounded-3xl border border-[var(--color-border-subtle)] overflow-hidden">
         {/* Back nav + Refresh */}
         <div className="px-5 pt-4 pb-3 border-b border-[var(--color-border-faint)] flex items-center justify-between gap-4">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ChevronLeft size={15} />
-            Back to Artist
-          </button>
-          <button
+          <ControlButton variant="ghost" onClick={onBack} className="text-xs">
+            <ChevronLeft size={15} /> Back to Artist
+          </ControlButton>
+          <ControlButton
+            variant="neutral"
             onClick={refresh}
             disabled={scraping || loading}
-            className={cn(
-              'flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 shrink-0',
-              scraping || loading
-                ? 'bg-[var(--color-surface)] text-muted-foreground cursor-not-allowed opacity-50'
-                : 'bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-foreground hover:bg-[var(--color-surface-hover)]',
-            )}
+            className="shrink-0 text-[10px]"
           >
             {scraping && hasTracks ? (
               <>
@@ -167,7 +160,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
                 Refresh
               </>
             )}
-          </button>
+          </ControlButton>
         </div>
 
         {/* Set identity */}
@@ -268,14 +261,9 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={retry}
-              disabled={scraping}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all active:scale-95 disabled:opacity-50"
-            >
-              <RotateCounterclockwise size={12} />
-              Retry Scrape
-            </button>
+            <ControlButton variant="danger-outline" onClick={retry} disabled={scraping} className="text-xs">
+              <RotateCounterclockwise size={12} /> Retry Scrape
+            </ControlButton>
             {isChallengeMsg(error) && sourceUrl && (
               <>
                 <a
@@ -287,14 +275,9 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
                   <Launch size={12} />
                   Open Source Page
                 </a>
-                <button
-                  onClick={() => { setShowImportPanel(true); setImportError(null); }}
-                  disabled={scraping}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-foreground hover:bg-[var(--color-surface-hover)] transition-all active:scale-95 disabled:opacity-50"
-                >
-                  <Document size={12} />
-                  Import HTML
-                </button>
+                <ControlButton variant="neutral" onClick={() => { setShowImportPanel(true); setImportError(null); }} disabled={scraping} className="text-xs">
+                  <Document size={12} /> Import HTML
+                </ControlButton>
               </>
             )}
           </div>
@@ -373,12 +356,9 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
               <Document size={14} className="text-primary" />
               <p className="text-sm font-bold">Import Tracklist HTML</p>
             </div>
-            <button
-              onClick={() => { setShowImportPanel(false); setImportError(null); setImportHtmlText(''); }}
-              className="text-muted-foreground hover:text-foreground transition-colors text-xs"
-            >
-              ✕
-            </button>
+            <ControlButton variant="ghost" onClick={() => { setShowImportPanel(false); setImportError(null); setImportHtmlText(''); }}>
+              <Close size={14} />
+            </ControlButton>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
             Open the source page in your browser, right-click and choose{' '}
@@ -396,27 +376,16 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
             <p className="text-xs text-red-400 font-mono leading-relaxed">{importError}</p>
           )}
           <div className="flex gap-2 justify-end">
-            <button
-              onClick={() => { setShowImportPanel(false); setImportError(null); setImportHtmlText(''); }}
-              disabled={scraping}
-              className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-[var(--color-surface)] border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-all active:scale-95 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleImport}
-              disabled={!importHtmlText.trim() || scraping}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-primary text-primary-foreground hover:opacity-90 transition-all active:scale-95 disabled:opacity-50"
-            >
+            <ControlButton variant="neutral" onClick={() => { setShowImportPanel(false); setImportError(null); setImportHtmlText(''); }} disabled={scraping} className="text-xs">
+              <Close size={12} /> Cancel
+            </ControlButton>
+            <ControlButton variant="primary" onClick={handleImport} disabled={!importHtmlText.trim() || scraping} className="text-xs">
               {scraping ? (
-                <>
-                  <CircleDash size={10} className="animate-spin" />
-                  Importing…
-                </>
+                <><CircleDash size={10} className="animate-spin" /> Importing…</>
               ) : (
-                'Import Tracklist'
+                <><Upload size={10} /> Import Tracklist</>
               )}
-            </button>
+            </ControlButton>
           </div>
         </div>
       )}
@@ -433,13 +402,9 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
                 : 'No individual track rows could be parsed from this setlist page. The source page may not list individual tracks.'}
             </p>
           </div>
-          <button
-            onClick={retry}
-            className="mx-auto flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-[var(--color-surface)] border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-all"
-          >
-            <Renew size={12} />
-            Try Again
-          </button>
+          <ControlButton variant="neutral" onClick={retry} className="mx-auto text-xs">
+            <Renew size={12} /> Try Again
+          </ControlButton>
         </div>
       )}
 
@@ -454,14 +419,9 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
             </p>
           </div>
           <div className="flex flex-wrap gap-2 justify-center">
-            <button
-              onClick={retry}
-              disabled={scraping}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all"
-            >
-              <RotateCounterclockwise size={12} />
-              Retry Scrape
-            </button>
+            <ControlButton variant="danger-outline" onClick={retry} disabled={scraping} className="text-xs">
+              <RotateCounterclockwise size={12} /> Retry Scrape
+            </ControlButton>
             {isChallengeMsg(detail?.setlist.detail_scrape_error) && sourceUrl && (
               <>
                 <a
@@ -473,14 +433,9 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
                   <Launch size={12} />
                   Open Source Page
                 </a>
-                <button
-                  onClick={() => { setShowImportPanel(true); setImportError(null); }}
-                  disabled={scraping}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-foreground hover:bg-[var(--color-surface-hover)] transition-all active:scale-95 disabled:opacity-50"
-                >
-                  <Document size={12} />
-                  Import HTML
-                </button>
+                <ControlButton variant="neutral" onClick={() => { setShowImportPanel(true); setImportError(null); }} disabled={scraping} className="text-xs">
+                  <Document size={12} /> Import HTML
+                </ControlButton>
               </>
             )}
           </div>

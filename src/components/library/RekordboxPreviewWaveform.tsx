@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/utils';
+import { ControlButton } from '../ui/controls';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import {
   buildDisplayBuckets,
@@ -503,20 +504,18 @@ function WaveformEmptyState({ state, height, onRetry }: WaveformEmptyStateProps)
         {message}
       </span>
       {state.status === 'error' && onRetry && (
-        <button
+        <ControlButton
           type="button"
+          variant="ghost"
           onClick={(event) => {
             event.stopPropagation();
             onRetry();
           }}
-          className={cn(
-            'shrink-0 font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm',
-            compact ? 'text-[9px]' : 'text-xs',
-          )}
+          className={cn('shrink-0 font-bold text-primary hover:underline', compact ? 'text-[9px]' : 'text-xs')}
           aria-label="Retry waveform"
         >
           Retry
-        </button>
+        </ControlButton>
       )}
     </div>
   );

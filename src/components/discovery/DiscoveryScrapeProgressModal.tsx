@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { cn } from '../../lib/utils';
 import type { DiscoveryScrapeJob } from '../../types';
-import { CheckmarkFilled, Close, CloseFilled } from '@carbon/icons-react';
+import { ArrowRight, CheckmarkFilled, Close, CloseFilled } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface DiscoveryScrapeProgressModalProps {
   isOpen: boolean;
@@ -74,13 +75,9 @@ export function DiscoveryScrapeProgressModal({
             className="bg-[var(--color-card)] text-[var(--color-card-foreground)] w-full max-w-lg rounded-3xl p-6 relative shadow-2xl"
           >
             {/* Close / background button */}
-            <button
-              onClick={onClose}
-              className="absolute top-4 right-4 opacity-30 hover:opacity-60 transition-opacity p-1 rounded-lg"
-              aria-label={isActive ? 'Run in background' : 'Close'}
-            >
+            <ControlButton variant="ghost" onClick={onClose} aria-label={isActive ? 'Run in background' : 'Close'} className="absolute top-4 right-4 opacity-30 hover:opacity-60">
               <Close size={18} />
-            </button>
+            </ControlButton>
 
             <div className="flex gap-5 items-start">
               {/* Header */}
@@ -163,19 +160,13 @@ export function DiscoveryScrapeProgressModal({
             </div>
 
             {/* Footer button */}
-            <button
+            <ControlButton
               onClick={onClose}
-              className={cn(
-                'w-full mt-5 py-3 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] transition-all active:scale-[0.98]',
-                isActive
-                  ? 'bg-[var(--color-avatar-bg)] text-[var(--color-text-subdued)] hover:opacity-80'
-                  : isCompleted
-                  ? 'bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25'
-                  : 'bg-red-500/10 text-red-400 hover:bg-red-500/20',
-              )}
+              variant={isActive ? 'neutral' : isCompleted ? 'primary' : 'danger-outline'}
+              className="w-full mt-5"
             >
-              {isActive ? 'Run in Background' : 'Close'}
-            </button>
+              {isActive ? <><ArrowRight size={16} /> Run in Background</> : <><Close size={16} /> Close</>}
+            </ControlButton>
           </motion.div>
         </motion.div>
       )}

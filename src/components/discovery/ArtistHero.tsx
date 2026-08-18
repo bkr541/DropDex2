@@ -4,6 +4,7 @@ import { cn } from '../../lib/utils';
 import { formatRelativeTime } from '../../lib/utils';
 import type { DiscoveryArtist, DiscoveryArtistDetail, DiscoveryScrapeJob } from '../../types';
 import { Activity, CircleDash, Launch, Renew, Search, User } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface ArtistHeroProps {
   artist: DiscoveryArtist;
@@ -48,42 +49,21 @@ export function ArtistHero({
 
       {/* Refresh / Find button — top right */}
       <div className="absolute top-4 right-4 sm:top-5 sm:right-5 z-10">
-        <button
+        <ControlButton
           onClick={isJobActive ? onViewProgress : onRefresh}
           disabled={scrapeStarting}
-          className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 shadow-sm',
-            scrapeStarting
-              ? 'bg-[var(--color-surface)] text-muted-foreground cursor-not-allowed'
-              : isJobActive
-              ? 'bg-secondary/10 text-secondary border border-secondary/25 hover:bg-secondary/20'
-              : hasSetlists
-              ? 'bg-[var(--color-surface)] text-foreground border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)]'
-              : 'bg-primary text-white hover:bg-primary/90',
-          )}
+          variant={isJobActive ? 'secondary' : hasSetlists ? 'neutral' : 'primary'}
         >
           {scrapeStarting ? (
-            <>
-              <CircleDash size={11} className="animate-spin" />
-              Starting…
-            </>
+            <><CircleDash size={11} className="animate-spin" /> Starting…</>
           ) : isJobActive ? (
-            <>
-              <Activity size={11} className="animate-pulse" />
-              View Progress
-            </>
+            <><Activity size={11} className="animate-pulse" /> View Progress</>
           ) : hasSetlists ? (
-            <>
-              <Renew size={11} />
-              Refresh Results
-            </>
+            <><Renew size={11} /> Refresh Results</>
           ) : (
-            <>
-              <Search size={11} />
-              Retry Search
-            </>
+            <><Search size={11} /> Retry Search</>
           )}
-        </button>
+        </ControlButton>
       </div>
 
       <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-6">

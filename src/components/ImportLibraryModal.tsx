@@ -49,7 +49,7 @@ import {
   type UsbImportPhase,
   verifyUsbReleased,
 } from '../lib/rekordbox/localUsbLifecycle';
-import { ArrowRight, CheckmarkFilled, CircleDash, Close, DataBase, FolderOpen, Package, Renew, Upload, WarningAlt } from '@carbon/icons-react';
+import { ArrowRight, CheckmarkFilled, CircleDash, Close, DataBase, FolderOpen, Package, Pause, Renew, TrashCan, Upload, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from './ui/controls';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1445,27 +1445,24 @@ export function ImportLibraryModal({
                           : 'This permanently deletes the DropDex import, uploaded analysis assets, and parsed records after the worker acknowledges it has stopped writing.'}
                     </p>
                     <div className="flex gap-3">
-                      <button
+                      <ControlButton
                         onClick={confirmAbort}
-                        className={cn(
-                          'flex-1 py-3 text-white rounded-xl font-bold transition-colors',
-                          abortDialogIntent === 'pause'
-                            ? 'bg-primary hover:bg-primary/90'
-                            : 'bg-red-500 hover:bg-red-600',
+                        variant={abortDialogIntent === 'pause' ? 'primary' : 'danger'}
+                        className="flex-1"
+                      >
+                        {abortDialogIntent === 'pause' ? (
+                          <><Pause size={16} /> Pause Analysis</>
+                        ) : (
+                          <><TrashCan size={16} /> {abortDialogIntent === 'close' ? 'Stop and delete' : 'Delete Import and Data'}</>
                         )}
-                      >
-                        {abortDialogIntent === 'pause'
-                          ? 'Pause Analysis'
-                          : abortDialogIntent === 'close'
-                            ? 'Stop and delete'
-                            : 'Delete Import and Data'}
-                      </button>
-                      <button
+                      </ControlButton>
+                      <ControlButton
                         onClick={() => setShowAbortDialog(false)}
-                        className="flex-1 py-3 glass rounded-xl font-bold text-muted-foreground hover:text-foreground transition-colors"
+                        variant="neutral"
+                        className="flex-1"
                       >
-                        Keep going
-                      </button>
+                        <ArrowRight size={16} /> Keep going
+                      </ControlButton>
                     </div>
                   </div>
                 </motion.div>
@@ -1482,12 +1479,9 @@ export function ImportLibraryModal({
                     </div>
                     <h2 className="text-xl font-bold">Import Rekordbox Library</h2>
                   </div>
-                  <button
-                    onClick={handleClose}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-1"
-                  >
+                  <ControlButton variant="ghost" onClick={handleClose}>
                     <Close size={18} />
-                  </button>
+                  </ControlButton>
                 </div>
 
                 {/* Mode selector */}
@@ -1525,12 +1519,9 @@ export function ImportLibraryModal({
                       </div>
                     ) : phase === 'database_selected' && folderScan ? (
                       <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4 mb-4">
-                        <button
-                          onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
-                          className="text-xs text-muted-foreground hover:text-foreground transition-colors mb-2 block"
-                        >
-                          ← Choose different folder
-                        </button>
+                        <ControlButton variant="ghost" onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }} className="mb-2 text-xs">
+                          <ArrowRight size={12} className="rotate-180" /> Choose different folder
+                        </ControlButton>
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                           {folderScan.folderName}
                         </p>
@@ -1662,12 +1653,11 @@ export function ImportLibraryModal({
                   </>
                 )}
 
-                <button
-                  onClick={handleClose}
-                  className="mt-3 w-full text-muted-foreground text-sm hover:text-foreground transition-colors py-2"
-                >
-                  Cancel
-                </button>
+                <div className="mt-3 flex justify-center">
+                  <ControlButton variant="ghost" onClick={handleClose}>
+                    <Close size={16} /> Cancel
+                  </ControlButton>
+                </div>
               </>
             )}
 
@@ -1739,12 +1729,11 @@ export function ImportLibraryModal({
                   </div>
                 )}
 
-                <button
-                  onClick={() => openAbortDialog('delete')}
-                  className="mt-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Cancel import
-                </button>
+                <div className="mt-4 flex justify-center">
+                  <ControlButton variant="ghost" onClick={() => openAbortDialog('delete')}>
+                    <Close size={16} /> Cancel import
+                  </ControlButton>
+                </div>
               </div>
             )}
 
@@ -1903,13 +1892,14 @@ export function ImportLibraryModal({
                   >
                     Pause Analysis
                   </ControlButton>
-                  <button
+                  <ControlButton
                     type="button"
+                    variant="danger-outline"
                     onClick={() => openAbortDialog('delete')}
-                    className="sm:col-span-2 rounded-xl border border-red-500/30 px-4 py-2.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/10"
+                    className="sm:col-span-2"
                   >
-                    Delete Import and Cloud Data
-                  </button>
+                    <TrashCan size={16} /> Delete Import and Cloud Data
+                  </ControlButton>
                 </div>
                 <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
                   Pause keeps completed work and retained uploads for resume. Delete waits for worker shutdown before removing cloud data. Neither action needs the USB.
@@ -2100,9 +2090,9 @@ export function ImportLibraryModal({
                     </div>
                     <h2 className="text-xl font-bold">Imported with Warnings</h2>
                   </div>
-                  <button onClick={handleDone} className="text-muted-foreground hover:text-foreground transition-colors p-1">
+                  <ControlButton variant="ghost" onClick={handleDone}>
                     <Close size={18} />
-                  </button>
+                  </ControlButton>
                 </div>
 
                 {usbReleaseConfirmed && (
@@ -2180,9 +2170,9 @@ export function ImportLibraryModal({
                   </p>
                   {errorMessage && <p className="mt-2 text-sm text-destructive">{errorMessage}</p>}
                 </div>
-                <button type="button" onClick={reset} className="rounded-md border px-4 py-2 text-sm">
-                  Start another import
-                </button>
+                <ControlButton type="button" variant="neutral" onClick={reset}>
+                  <Renew size={16} /> Start another import
+                </ControlButton>
               </div>
             )}
 

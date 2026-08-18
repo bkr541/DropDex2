@@ -1,5 +1,6 @@
 import { cn } from '../../lib/utils';
 import { CircleDash, Close, Search } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface ArtistSearchInputProps {
   value: string;
@@ -43,13 +44,9 @@ export function ArtistSearchInput({
         )}
       />
       {value && (
-        <button
-          onClick={onClear}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Clear search"
-        >
+        <ControlButton variant="ghost" onClick={onClear} aria-label="Clear search" className="absolute right-4 top-1/2 -translate-y-1/2">
           <Close size={16} />
-        </button>
+        </ControlButton>
       )}
     </div>
   );

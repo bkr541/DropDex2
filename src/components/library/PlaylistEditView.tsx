@@ -264,25 +264,19 @@ export function PlaylistEditView({
           )}
 
           {/* Save action */}
-          <button
+          <ControlButton
             onClick={handleSave}
             disabled={saving}
-            className={cn(
-              'flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all active:scale-95',
-              saved
-                ? 'bg-green-500/15 text-green-400 border border-green-500/30'
-                : 'bg-primary text-white hover:bg-primary/90 shadow-sm',
-              saving && 'opacity-60 cursor-not-allowed',
-            )}
+            variant={saved ? 'surface' : 'primary'}
           >
             {saving ? (
               <><CircleDash size={13} className="animate-spin" /> Saving…</>
             ) : saved ? (
               <><Checkmark size={13} /> Saved</>
             ) : (
-              'Save Changes'
+              <><Upload size={13} /> Save Changes</>
             )}
-          </button>
+          </ControlButton>
         </div>
       </div>
     </div>

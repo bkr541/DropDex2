@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { cn } from '../../lib/utils';
 import type { DiscoverySetlistResult } from '../../types';
 import { Calendar, ChevronRight, Favorite, Launch, Music, Time, View } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface ArtistSetlistCardProps {
   setlist: DiscoverySetlistResult;
@@ -130,16 +131,16 @@ export function ArtistSetlistCard({ setlist, onOpen }: ArtistSetlistCardProps) {
 
         {/* Footer */}
         <div className="mt-auto pt-2">
-          <button
+          <ControlButton
+            variant="surface"
             onClick={(e) => {
               e.stopPropagation();
               onOpen(setlist);
             }}
-            className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95 bg-primary/10 text-primary hover:bg-primary/20"
+            className="w-full text-xs"
           >
-            View Tracks
-            <ChevronRight size={12} />
-          </button>
+            View Tracks <ChevronRight size={12} />
+          </ControlButton>
         </div>
       </div>
     </motion.div>

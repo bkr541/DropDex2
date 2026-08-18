@@ -4,6 +4,7 @@ import type { DropPoint } from '../../lib/music/dropPointResolver';
 import type { DropLabPreviewPhase } from '../../hooks/useDropLabPreview';
 import type { DropLabBarCount, DropLabBeatOffset } from '../../lib/music/dropLabSegments';
 import { ArrowRight, CircleDash, Document, Play, RotateCounterclockwise, Stop } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 interface DropLabControlsProps {
   beatOffset: DropLabBeatOffset;
@@ -218,19 +219,13 @@ export function DropLabControls({
         </div>
 
         <div className="space-y-2">
-          <button
+          <ControlButton
             type="button"
+            variant={previewError ? 'neutral' : 'primary'}
             onClick={onPreview}
             disabled={previewDisabled}
             title={disabledReason ?? undefined}
-            className={cn(
-              'flex min-h-14 w-full items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-black uppercase tracking-[0.12em] transition-all focus:outline-none focus:ring-2 focus:ring-primary/50',
-              previewDisabled
-                ? 'cursor-not-allowed border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-muted-foreground opacity-70'
-                : previewError
-                  ? 'border-amber-400/45 bg-amber-400/10 text-amber-300 hover:bg-amber-400/15'
-                  : 'border-primary bg-primary text-white shadow-primary-control hover:brightness-110 active:scale-[0.99]',
-            )}
+            className="w-full min-h-14"
           >
             {previewLoading ? (
               <CircleDash size={18} className="animate-spin" />
@@ -242,20 +237,14 @@ export function DropLabControls({
               <Play size={19} fill="currentColor" />
             )}
             {previewLabel}
-          </button>
+          </ControlButton>
           <div className="flex items-center justify-between gap-2">
             <p className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground" title={disabledReason ?? undefined}>
               {disabledReason ?? 'Press play to hear the build, then the automatic swap into the candidate drop.'}
             </p>
-            <button
-              type="button"
-              onClick={onTrackDetails}
-              disabled={trackDetailsDisabled}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2.5 py-1.5 text-[10px] font-bold text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Document size={12} />
-              Candidate details
-            </button>
+            <ControlButton type="button" variant="neutral" onClick={onTrackDetails} disabled={trackDetailsDisabled} className="shrink-0 text-[10px]">
+              <Document size={12} /> Candidate details
+            </ControlButton>
           </div>
         </div>
       </div>

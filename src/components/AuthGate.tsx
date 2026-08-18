@@ -9,6 +9,7 @@ import {
   verifyEmailOtp,
 } from '../auth/emailOtp';
 import { ArrowLeft, ArrowRight, CheckmarkFilled, CircleDash, Email, Renew, TrashCan, WarningAlt } from '@carbon/icons-react';
+import { ControlButton } from './ui/controls';
 
 function AuthenticationFailure({
   error,
@@ -50,24 +51,14 @@ function AuthenticationFailure({
           Retry the session check, or clear the local session and return to the sign-in screen if the saved session is damaged.
         </p>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            disabled={recovering !== null}
-            onClick={() => void runRecovery('retry')}
-            className="inline-flex items-center justify-center gap-2 rounded-xl brand-gradient px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
-          >
+          <ControlButton type="button" variant="primary" disabled={recovering !== null} onClick={() => void runRecovery('retry')}>
             {recovering === 'retry' ? <CircleDash size={15} className="animate-spin" /> : <Renew size={15} />}
             Retry
-          </button>
-          <button
-            type="button"
-            disabled={recovering !== null}
-            onClick={() => void runRecovery('clear')}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-3 text-sm font-bold disabled:opacity-50"
-          >
+          </ControlButton>
+          <ControlButton type="button" variant="neutral" disabled={recovering !== null} onClick={() => void runRecovery('clear')}>
             {recovering === 'clear' ? <CircleDash size={15} className="animate-spin" /> : <TrashCan size={15} />}
             Clear session
-          </button>
+          </ControlButton>
         </div>
       </section>
     </main>
@@ -254,41 +245,20 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   </p>
                 )}
 
-                <button
-                  type="submit"
-                  disabled={verifying || otp.length !== EMAIL_OTP_LENGTH}
-                  className="w-full py-3.5 brand-gradient text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-opacity active:scale-95"
-                >
-                  {verifying ? (
-                    <CircleDash size={16} className="animate-spin" />
-                  ) : (
-                    <CheckmarkFilled size={16} />
-                  )}
+                <ControlButton type="submit" variant="primary" disabled={verifying || otp.length !== EMAIL_OTP_LENGTH} className="w-full">
+                  {verifying ? <CircleDash size={16} className="animate-spin" /> : <CheckmarkFilled size={16} />}
                   {verifying ? 'Verifying…' : 'Verify and sign in'}
-                </button>
+                </ControlButton>
               </form>
 
               <div className="mt-6 flex flex-col items-center gap-3 text-sm">
-                <button
-                  type="button"
-                  disabled={sending || resendSeconds > 0}
-                  onClick={() => void handleResendOtp()}
-                  className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                >
+                <ControlButton type="button" variant="ghost" disabled={sending || resendSeconds > 0} onClick={() => void handleResendOtp()}>
                   {sending ? <CircleDash size={13} className="animate-spin" /> : <Renew size={13} />}
-                  {sending
-                    ? 'Sending…'
-                    : resendSeconds > 0
-                      ? `Resend code in ${resendSeconds}s`
-                      : 'Resend code'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleChangeEmail}
-                  className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
-                >
+                  {sending ? 'Sending…' : resendSeconds > 0 ? `Resend code in ${resendSeconds}s` : 'Resend code'}
+                </ControlButton>
+                <ControlButton type="button" variant="ghost" onClick={handleChangeEmail}>
                   <ArrowLeft size={13} /> Use a different email
-                </button>
+                </ControlButton>
               </div>
             </motion.div>
           ) : (
@@ -320,18 +290,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   />
                 </div>
                 {error && <p className="text-red-400 text-xs" role="alert">{error}</p>}
-                <button
-                  type="submit"
-                  disabled={sending}
-                  className="w-full py-3.5 brand-gradient text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-opacity active:scale-95"
-                >
-                  {sending ? (
-                    <CircleDash size={16} className="animate-spin" />
-                  ) : (
-                    <ArrowRight size={16} />
-                  )}
+                <ControlButton type="submit" variant="primary" disabled={sending} className="w-full">
+                  {sending ? <CircleDash size={16} className="animate-spin" /> : <ArrowRight size={16} />}
                   {sending ? 'Sending…' : 'Continue'}
-                </button>
+                </ControlButton>
               </form>
             </motion.div>
           )}

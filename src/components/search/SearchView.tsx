@@ -5,6 +5,7 @@ import { useArtistsByGenre } from '../../hooks/useArtistsByGenre';
 import { ArtistCard, artistAvatarColor } from './ArtistCard';
 import type { SearchArtist } from '../../types';
 import { CircleDash, Close, Group, Search } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 
 const GENRES = ['Melodic Dubstep', 'Future Bass'];
 
@@ -68,15 +69,13 @@ export function SearchView() {
           className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-2xl py-4 pl-12 pr-12 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-medium text-foreground placeholder:text-muted-foreground"
         />
         {query && (
-          <button
-            onClick={() => {
-              setQuery('');
-              inputRef.current?.focus();
-            }}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+          <ControlButton
+            variant="ghost"
+            onClick={() => { setQuery(''); inputRef.current?.focus(); }}
+            className="absolute right-4 top-1/2 -translate-y-1/2"
           >
             <Close size={16} />
-          </button>
+          </ControlButton>
         )}
 
         {/* Dropdown */}
