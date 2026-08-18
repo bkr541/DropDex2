@@ -1477,6 +1477,12 @@ export function ImportLibraryModal({
                       </div>
                     ) : phase === 'database_selected' && folderScan ? (
                       <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4 mb-4">
+                        <button
+                          onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors mb-2 block"
+                        >
+                          ← Choose different folder
+                        </button>
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                           {folderScan.folderName}
                         </p>
@@ -1509,12 +1515,6 @@ export function ImportLibraryModal({
                             </span>
                           </div>
                         </div>
-                        <button
-                          onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
-                          className="mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          ← Choose different folder
-                        </button>
                       </div>
                     ) : (
                       <button
@@ -1542,8 +1542,11 @@ export function ImportLibraryModal({
                         variant="primary"
                         onClick={handleImport}
                         disabled={!folderScan?.dbFile}
+                        className={folderScan?.dbFile ? 'dd-control-button--ready' : ''}
                       >
-                        <Upload size={16} />
+                        <span key={folderScan?.dbFile ? 'ready' : 'idle'} className="dd-icon-pop">
+                          {folderScan?.dbFile ? <CheckmarkFilled size={16} /> : <Upload size={16} />}
+                        </span>
                         Import
                       </ControlButton>
                     </div>
