@@ -18,7 +18,7 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  width: 100%;
+  width: fit-content;
   padding: 0 18px;
   border: 1px solid var(--color-control-border);
   border-radius: var(--radius-control);
@@ -57,15 +57,15 @@
 .dd-icon-pop { display: inline-flex; animation: dd-icon-pop 280ms cubic-bezier(.34,1.56,.64,1) forwards; }
 .dd-control-button--neutral { border-radius: 9999px; border-color: #3a3f47; border-width: 2px; background: transparent; box-shadow: none; color: #6b7280; width: fit-content; }
 .dd-control-button--neutral:hover:not(:disabled) { background: rgb(107 114 128 / .08); border-color: #6b7280; color: #9ca3af; }
-.dd-control-button--secondary { background: #fff; box-shadow: none; color: var(--color-control-blue); border-color: currentColor; }
+.dd-control-button--secondary { background: transparent; box-shadow: none; color: var(--color-control-blue); border-color: currentColor; }
 .dd-accent--orange.dd-control-button--secondary { color: #f46b09; }
 .dd-accent--purple.dd-control-button--secondary { color: #a332d0; }
 .dd-accent--green.dd-control-button--secondary { color: #0ea66d; }
 .dd-control-button--danger { background: linear-gradient(180deg, #f2191f 0%, #bf0d12 100%); border-color: #ed252a; box-shadow: 0 7px 13px rgb(210 22 28 / .24), inset 0 1px 0 rgb(255 255 255 / .18); }
 .dd-control-button--danger:hover:not(:disabled) { background: linear-gradient(180deg, #ff2b31 0%, #cf1117 100%); }
-.dd-control-button--danger-outline,
-.dd-control-button--ghost { background: #fff; box-shadow: none; color: var(--color-control-red); border-color: var(--color-control-red); }
-.dd-control-button--ghost { border-color: #ff6d79; }
+.dd-control-button--danger-outline { background: transparent; box-shadow: none; color: var(--color-control-red); border-color: var(--color-control-red); }
+.dd-control-button--ghost { background: transparent; box-shadow: none; color: var(--color-text-muted, #8b9ab0); border-color: transparent; }
+.dd-control-button--ghost:hover:not(:disabled) { background: var(--color-surface-hover, rgba(255,255,255,0.06)); color: var(--color-text-primary, #d8dee7); border-color: transparent; }
 .dd-control-button:disabled { cursor: not-allowed; color: var(--color-control-disabled-text); border-color: transparent; background: linear-gradient(180deg, #e5e7eb 0%, #d9dce1 100%); box-shadow: inset 0 1px 0 rgb(255 255 255 / .8); transform: none; }
 
 .dd-icon-button { width: 48px; height: 48px; display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 7px; border: 1px solid var(--color-control-border); background: linear-gradient(180deg, #121923, #090d12); color: #d8dee7; box-shadow: var(--shadow-control); transition: 140ms ease; }

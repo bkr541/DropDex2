@@ -141,8 +141,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
 
       <div className={cn('flex items-center gap-1', collapsed && 'justify-center')}>
         {/* Main action button */}
-        <ControlButton
-          variant="ghost"
+        <button
           onClick={handlePrimaryClick}
           disabled={isConnecting}
           title={collapsed ? statusTitle(status, volumeName) : undefined}
@@ -154,7 +153,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
           {!collapsed && (
             <span className="truncate">{statusLabel(status, volumeName)}</span>
           )}
-        </ControlButton>
+        </button>
 
         {/* "Select USB Again" secondary action — shown when unavailable (after reconnect attempt) */}
         {!collapsed && status === 'unavailable' && (
