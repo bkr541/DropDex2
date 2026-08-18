@@ -18,7 +18,7 @@ interface RecentlyAddedTracksTableProps {
   showHeader?: boolean;
 }
 
-const HEADERS = ['', 'Title', 'Status', 'Artist', 'BPM', 'Key', 'Added'] as const;
+const HEADERS = ['Title', 'Status', 'Artist', 'BPM', 'Key', 'Added'] as const;
 
 function TrackRowRecent({
   track,
@@ -73,9 +73,9 @@ function TrackRowRecent({
       )}
     >
       {/* Desktop */}
-      <div className="hidden sm:grid grid-cols-[36px_1fr_96px_1fr_56px_56px_88px] items-center gap-x-2 gap-y-2">
-        {/* Play button */}
-        <div className="flex items-center justify-center">
+      <div className="hidden sm:grid grid-cols-[1fr_96px_1fr_56px_56px_88px] items-center gap-x-2 gap-y-2">
+        {/* Title + overlaid play button */}
+        <div className="relative min-w-0 flex items-center gap-2 pr-2">
           <button
             onClick={handlePlayClick}
             aria-label={isPlaying ? `Pause ${track.title}` : `Play ${track.title}`}
@@ -98,12 +98,8 @@ function TrackRowRecent({
               <Play size={13} />
             )}
           </button>
-        </div>
-
-        {/* Title */}
-        <div className="min-w-0 pr-2">
           <p className={cn(
-            'text-sm font-semibold truncate transition-colors leading-tight',
+            'text-sm font-semibold truncate transition-colors leading-tight min-w-0',
             isActiveRow ? 'text-primary' : 'group-hover:text-primary',
           )}>
             {track.title}
@@ -219,14 +215,14 @@ export function RecentlyAddedTracksTable({
 
       {!loading && tracks.length > 0 && (
         <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
-          <div className="hidden sm:grid grid-cols-[36px_1fr_96px_1fr_56px_56px_88px] px-4 py-2.5 border-b border-[var(--color-border-faint)] gap-x-2">
+          <div className="hidden sm:grid grid-cols-[1fr_96px_1fr_56px_56px_88px] px-4 py-2.5 border-b border-[var(--color-border-faint)] gap-x-2">
             {HEADERS.map((col, i) => (
               <p
                 key={i}
                 className={cn(
                   'text-[9px] uppercase tracking-widest text-muted-foreground font-bold',
-                  i === 4 || i === 5 ? 'text-center' : '',
-                  i === 6 ? 'text-right' : '',
+                  i === 3 || i === 4 ? 'text-center' : '',
+                  i === 5 ? 'text-right' : '',
                 )}
               >
                 {col}
