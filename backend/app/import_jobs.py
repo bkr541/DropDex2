@@ -1350,38 +1350,45 @@ def complete_import_job(
 def recover_interrupted_import_jobs() -> int:
     """Convert stale in-process work into resumable, non-destructive states."""
     sb = _create_supabase()
-    job_response = (
-        sb.table("rekordbox_imports")
-        .select("*")
-        .in_(
-            "status",
-            [
-                "created",
-                "uploading",
-                "queued",
-                "processing",
-                "running",
-                "pause_requested",
-                "stopping",
-                "cancel_requested",
-                "deleting",
-            ],
-        )
-        .execute()
+    # Startup recovery is service-wide, not user-scoped. A production deployment
+    # can easily accumulate more rows than PostgREST's response cap, so recovery
+    # itself must paginate rather than silently ignoring imports after row 1,000.
+    job_rows = fetch_all_rows(
+        lambda: (
+            sb.table("rekordbox_imports")
+            .select("*")
+            .in_(
+                "status",
+                [
+                    "created",
+                    "uploading",
+                    "queued",
+                    "processing",
+                    "running",
+                    "pause_requested",
+                    "stopping",
+                    "cancel_requested",
+                    "deleting",
+                ],
+            )
+        ),
+        order_column="id",
     )
-    analysis_response = (
-        sb.table("rekordbox_imports")
-        .select("*")
-        .eq("status", "completed")
-        .in_(
-            "analysis_status",
-            ["parsing", "pause_requested", "stopping"],
-        )
-        .execute()
+    analysis_rows = fetch_all_rows(
+        lambda: (
+            sb.table("rekordbox_imports")
+            .select("*")
+            .eq("status", "completed")
+            .in_(
+                "analysis_status",
+                ["parsing", "pause_requested", "stopping"],
+            )
+        ),
+        order_column="id",
     )
 
-    rows_by_id = {str(row["id"]): row for row in (job_response.data or [])}
-    rows_by_id.update({str(row["id"]): row for row in (analysis_response.data or [])})
+    rows_by_id = {str(row["id"]): row for row in job_rows}
+    rows_by_id.update({str(row["id"]): row for row in analysis_rows})
 
     recovered = 0
     for row in rows_by_id.values():

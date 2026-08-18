@@ -612,3 +612,205 @@ def test_upload_path_map_is_constructed_once_for_concurrent_batches(monkeypatch)
     assert len(results) == 3
     assert sum(1 for _sb, _map, built, _row in results if built) == 1
     assert all(result[1] is results[0][1] for result in results)
+
+
+def test_load_tracks_chunks_real_usb_scale_affected_filter(monkeypatch):
+    """2,213 selective IDs must never become one PostgREST query URL."""
+    affected = [f"track-{index:04d}" for index in range(2_213)]
+    seen_chunks: list[list[str]] = []
+
+    class Query:
+        def __init__(self):
+            self.ids: list[str] = []
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def in_(self, column, values):
+            assert column == "id"
+            self.ids = list(values)
+            return self
+
+    class Supabase:
+        def table(self, table_name):
+            assert table_name == "rekordbox_tracks"
+            return Query()
+
+    def load_all(factory, order_column="id"):
+        assert order_column == "id"
+        query = factory()
+        seen_chunks.append(query.ids)
+        return [
+            {
+                "id": track_id,
+                "analysis_parse_status": "queued",
+                "analysis_manifest_status": "needs_analysis",
+            }
+            for track_id in query.ids
+        ]
+
+    monkeypatch.setattr(fast, "_load_all", load_all)
+
+    rows = fast._load_tracks(Supabase(), "import-1", affected)
+
+    assert [row["id"] for row in rows] == affected
+    assert len(seen_chunks) == math.ceil(len(affected) / 100)
+    assert max(map(len, seen_chunks)) <= 100
+    assert [track_id for chunk in seen_chunks for track_id in chunk] == affected
+
+
+def test_bulk_track_status_bounds_real_usb_scale_rpc_payloads():
+    rows = [{"track_id": f"track-{index}", "analysis_parse_status": "queued"} for index in range(2_213)]
+    sb = MagicMock()
+    sb.rpc.return_value.execute.return_value.data = None
+
+    fast._bulk_track_status(sb, "import-1", rows)
+
+    rpc_rows = [call.args[1]["p_rows"] for call in sb.rpc.call_args_list]
+    assert len(rpc_rows) == math.ceil(2_213 / 250)
+    assert max(map(len, rpc_rows)) <= 250
+    assert sum(map(len, rpc_rows)) == 2_213
+
+
+def test_manifest_persistence_bounds_real_usb_scale_rpc_payloads():
+    entries = [
+        SimpleNamespace(
+            track_id=f"track-{index}",
+            manifest_status="needs_dat",
+            reused_from_track_id=None,
+            source_fingerprint=f"fingerprint-{index}",
+            reuse_reason=None,
+        )
+        for index in range(2_213)
+    ]
+    sb = MagicMock()
+    sb.rpc.return_value.execute.return_value.data = None
+
+    import_service._persist_track_manifest_state(sb, "import-1", entries)
+
+    rpc_rows = [call.args[1]["p_rows"] for call in sb.rpc.call_args_list]
+    assert len(rpc_rows) == math.ceil(2_213 / 250)
+    assert max(map(len, rpc_rows)) <= 250
+    assert sum(map(len, rpc_rows)) == 2_213
+
+
+def test_release_retained_dependencies_bounds_large_parser_upgrade_payloads():
+    from app.retained_analysis_dependencies import release_retained_analysis_dependencies
+
+    track_ids = [f"track-{index}" for index in range(751)]
+    sb = MagicMock()
+    sb.rpc.return_value.execute.return_value.data = 0
+
+    release_retained_analysis_dependencies(sb, "import-1", track_ids)
+
+    rpc_ids = [call.args[1]["p_track_ids"] for call in sb.rpc.call_args_list]
+    assert len(rpc_ids) == math.ceil(751 / 250)
+    assert max(map(len, rpc_ids)) <= 250
+    assert sum(map(len, rpc_ids)) == 751
+
+
+@pytest.mark.asyncio
+async def test_full_complete_derives_2213_pending_tracks_server_side(monkeypatch):
+    """Full imports must not pass the browser's 2,213-ID list into the worker."""
+    sb = MagicMock()
+    sb.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+    pending = [f"track-{index}" for index in range(2_213)]
+    started_with: list[object] = []
+
+    monkeypatch.setattr(import_service, "_create_supabase", lambda: sb)
+    monkeypatch.setattr(
+        import_service,
+        "_require_import_for_user",
+        lambda *_: {
+            "analysis_expected_track_count": 2_213,
+            "analysis_parsed_track_count": 0,
+            "analysis_failed_track_count": 0,
+            "optional_archival_status": "skipped",
+            "raw_archival_status": "skipped",
+        },
+    )
+    monkeypatch.setattr(import_service, "_pending_analysis_track_ids", lambda *_: pending)
+    monkeypatch.setattr(
+        import_service,
+        "_start_background_analysis",
+        lambda _import_id, _user_id, affected: started_with.append(affected) or True,
+    )
+
+    result = await import_service.complete_analysis_import(
+        "import-1",
+        "user-1",
+        affected_track_ids=None,
+        background=True,
+    )
+
+    assert result.queued_track_count == 2_213
+    assert result.background_started is True
+    assert started_with == [None]
+
+
+@pytest.mark.asyncio
+async def test_zero_pending_resume_durably_finalizes_parent_import(monkeypatch):
+    """A crash after the last track checkpoint must self-heal on resume."""
+    sb = MagicMock()
+    sb.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+    finalized: list[tuple[str, str]] = []
+    activated: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(import_service, "_create_supabase", lambda: sb)
+    monkeypatch.setattr(
+        import_service,
+        "_require_import_for_user",
+        lambda *_: {
+            "status": "processing",
+            "analysis_expected_track_count": 2_213,
+            "analysis_parsed_track_count": 2_212,
+            "analysis_failed_track_count": 0,
+            "optional_archival_file_count": 0,
+            "optional_archival_status": "skipped",
+            "raw_archival_status": "skipped",
+        },
+    )
+    monkeypatch.setattr(import_service, "_pending_analysis_track_ids", lambda *_: [])
+    monkeypatch.setattr(
+        import_service,
+        "_summarize_track_states",
+        lambda *_: {"completed": 2_212, "partial": 1, "total": 2_213},
+    )
+    monkeypatch.setattr(
+        import_service, "_resolve_optional_archival_status", lambda *_: "skipped"
+    )
+    monkeypatch.setattr(
+        import_service,
+        "complete_import_job",
+        lambda import_id, user_id: finalized.append((import_id, user_id)) or {},
+    )
+    monkeypatch.setattr(
+        import_service,
+        "upsert_active_import",
+        lambda _url, _key, user_id, import_id: activated.append((user_id, import_id)),
+    )
+
+    result = await import_service.complete_analysis_import(
+        "import-1",
+        "user-1",
+        background=True,
+    )
+
+    assert result.analysis_status == "partial"
+    assert result.total_tracks == 2_213
+    assert result.completed_count == 2_212
+    assert result.partial_count == 1
+    assert result.queued_track_count == 0
+    assert result.background_started is False
+    assert finalized == [("import-1", "user-1")]
+    assert activated == [("user-1", "import-1")]
+
+    updates = sb.table.return_value.update.call_args.args[0]
+    assert updates["analysis_status"] == "partial"
+    assert updates["analysis_queue_track_count"] == 0
+    assert updates["analysis_running_track_count"] == 0
+    assert updates["analysis_worker_status"] == "completed"
+    assert updates["analysis_worker_stopped_acknowledged"] is True

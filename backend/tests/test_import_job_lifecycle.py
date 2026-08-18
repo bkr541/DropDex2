@@ -2071,3 +2071,30 @@ def test_delete_all_import_jobs_purges_hidden_cancelled_parent(monkeypatch):
     assert client.tables["rekordbox_imports"] == []
     assert client.tables["rekordbox_tracks"] == []
     assert client.tables["rekordbox_user_settings"] == []
+
+
+def test_restart_recovery_paginates_beyond_postgrest_row_cap(monkeypatch):
+    rows = [
+        {
+            "id": f"job-recovery-{index:04d}",
+            "user_id": "u",
+            "status": "processing",
+            "analysis_status": "parsing",
+        }
+        for index in range(1_001)
+    ]
+    client = FakeClient(rows, postgrest_max_rows=137)
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+    monkeypatch.setattr(import_jobs, "_worker_kind_active", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        import_jobs,
+        "reconcile_retained_analysis_dependencies",
+        lambda *_a, **_k: 0,
+    )
+
+    assert import_jobs.recover_interrupted_import_jobs() == 1_001
+    assert all(row["status"] == "interrupted" for row in client.tables["rekordbox_imports"])
+    assert all(
+        row["analysis_status"] == "interrupted"
+        for row in client.tables["rekordbox_imports"]
+    )

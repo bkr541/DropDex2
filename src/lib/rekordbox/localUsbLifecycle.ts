@@ -8,6 +8,7 @@ export type UsbImportPhase =
   | 'parsing_cloud_data'
   | 'pausing_cloud_work'
   | 'paused'
+  | 'interrupted'
   | 'deleting_import'
   | 'cancelling_cloud_work'
   | 'cancelled'

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fetchRekordboxAnalysisStatus,
   isExpectedHardDeleteNotFound,
@@ -68,7 +68,7 @@ export function BackgroundImportPanel({
         announceRekordboxAnalysisProgress({ importId, tracksReady: readyCount });
       }
       if (
-        ['completed', 'partial', 'failed', 'paused'].includes(next.analysis_status) &&
+        ['completed', 'partial', 'failed', 'paused', 'interrupted'].includes(next.analysis_status) &&
         lastNotifiedStatus.current !== next.analysis_status
       ) {
         lastNotifiedStatus.current = next.analysis_status;
@@ -99,11 +99,15 @@ export function BackgroundImportPanel({
     // The access token can rotate during a long import; restart polling with it.
   }, [load]);
 
-  const affectedTrackIds = useMemo(
-    () => Array.from(new Set(status?.unresolved_targets.map((target) => target.track_id) ?? [])),
-    [status],
-  );
   const paused = status?.analysis_status === 'paused' || status?.job_status === 'paused';
+  const interrupted = Boolean(
+    status && (
+      status.analysis_status === 'interrupted' ||
+      status.job_status === 'interrupted' ||
+      (status.worker_status === 'failed' && status.worker_active === false)
+    ),
+  );
+  const resumable = paused || interrupted;
   const terminal = status ? ['completed', 'partial', 'failed'].includes(status.analysis_status) : false;
   const progress = status?.progress_percent ?? 0;
 
@@ -113,7 +117,7 @@ export function BackgroundImportPanel({
     try {
       if (nextAction === 'pause') await pauseRekordboxAnalysis(importId, accessToken);
       if (nextAction === 'resume') {
-        await resumeRekordboxAnalysis(importId, accessToken, { affectedTrackIds });
+        await resumeRekordboxAnalysis(importId, accessToken);
       }
       await load();
       onChanged();
@@ -209,12 +213,12 @@ export function BackgroundImportPanel({
 
       {usbReleased && (
         <div className="mt-4 grid grid-cols-2 gap-2">
-          {!terminal && !paused && (
+          {!terminal && !resumable && (
             <button type="button" disabled={action !== null} onClick={() => void runAction('pause')} className="flex items-center justify-center gap-2 rounded-xl border border-primary/30 px-3 py-2 text-xs font-bold text-primary disabled:opacity-50">
               {action === 'pause' ? <CircleDash size={13} className="animate-spin" /> : <Pause size={13} />} Pause
             </button>
           )}
-          {paused && (
+          {resumable && (
             <ControlButton type="button" variant="primary" disabled={action !== null} onClick={() => void runAction('resume')} className="w-auto px-3 py-2 text-xs min-h-0">
               {action === 'resume' ? <CircleDash size={13} className="animate-spin" /> : <Play size={13} />} Resume
             </ControlButton>

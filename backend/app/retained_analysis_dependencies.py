@@ -78,19 +78,25 @@ def release_retained_analysis_dependencies(
     unique_ids = sorted({str(track_id) for track_id in track_ids if track_id})
     if not unique_ids:
         return 0
-    response = sb.rpc(
-        "release_rekordbox_retained_analysis_dependencies",
-        {
-            "p_import_id": import_id,
-            "p_track_ids": unique_ids,
-        },
-    ).execute()
-    data = response.data if response is not None else None
-    if isinstance(data, int):
-        return data
-    if isinstance(data, list) and len(data) == 1 and isinstance(data[0], int):
-        return data[0]
-    return 0
+    released = 0
+    # This RPC is safe to invoke incrementally because each call only deletes
+    # dependencies for the supplied tracks. Keep payloads bounded for parser-
+    # version upgrades where an entire large library may materialize retained DAT.
+    for offset in range(0, len(unique_ids), 250):
+        chunk = unique_ids[offset : offset + 250]
+        response = sb.rpc(
+            "release_rekordbox_retained_analysis_dependencies",
+            {
+                "p_import_id": import_id,
+                "p_track_ids": chunk,
+            },
+        ).execute()
+        data = response.data if response is not None else None
+        if isinstance(data, int):
+            released += data
+        elif isinstance(data, list) and len(data) == 1 and isinstance(data[0], int):
+            released += data[0]
+    return released
 
 
 def reconcile_retained_analysis_dependencies(sb: Any, import_id: str) -> int:

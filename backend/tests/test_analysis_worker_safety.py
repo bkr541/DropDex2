@@ -190,3 +190,155 @@ def test_fast_background_pause_finalizes_after_durable_lease_release(monkeypatch
     )
 
     assert events == ["released", "finalized"]
+
+
+@pytest.mark.asyncio
+async def test_resume_recovers_pre_hardening_processing_failed_worker(monkeypatch):
+    """The exact state from the second HAR must be resumable without a reset."""
+    import_id = _job_id("stranded-worker")
+    sb = __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock()
+    row = {
+        "id": import_id,
+        "user_id": "user",
+        "status": "processing",
+        "analysis_status": "partial",
+        "analysis_worker_status": "failed",
+        "analysis_worker_stopped_acknowledged": True,
+        "analysis_worker_error": "URL component 'query' too long",
+    }
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(analysis_import_service, "_create_supabase", lambda: sb)
+    monkeypatch.setattr(analysis_import_service, "_require_import_for_user", lambda *_: row)
+    monkeypatch.setattr(analysis_import_service, "get_worker_lease", lambda *_: None)
+
+    async def complete(import_id_arg, user_id_arg, affected_track_ids=None, **kwargs):
+        captured.update(
+            import_id=import_id_arg,
+            user_id=user_id_arg,
+            affected_track_ids=affected_track_ids,
+            background=kwargs.get("background"),
+        )
+        return "resumed"
+
+    monkeypatch.setattr(analysis_import_service, "complete_analysis_import", complete)
+
+    result = await analysis_import_service.resume_analysis_import(
+        import_id,
+        "user",
+        background=True,
+    )
+
+    assert result == "resumed"
+    payload = sb.table.return_value.update.call_args.args[0]
+    assert payload["status"] == "processing"
+    assert payload["analysis_status"] == "queued"
+    assert payload["analysis_worker_error"] is None
+    assert captured["affected_track_ids"] is None
+    assert captured["background"] is True
+
+
+def test_fast_worker_failure_recounts_and_persists_interrupted_state(monkeypatch):
+    from app import analysis_fast_pipeline as fast
+    from unittest.mock import MagicMock
+
+    import_id = _job_id("fast-worker-failure")
+    sb = MagicMock()
+    sb.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+    monkeypatch.setattr(analysis_import_service, "_create_supabase", lambda: sb)
+    monkeypatch.setattr(
+        analysis_import_service,
+        "_require_import_for_user",
+        lambda *_: {"analysis_queue_track_count": 2_213},
+    )
+    monkeypatch.setattr(analysis_import_service, "publish_worker_state", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        analysis_import_service,
+        "_pending_analysis_track_ids",
+        lambda *_: [f"track-{index}" for index in range(2_213)],
+    )
+    monkeypatch.setattr(
+        fast,
+        "run_fast_analysis_import",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("synthetic worker failure")),
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic worker failure"):
+        analysis_import_service._run_fast_analysis_import_sync(import_id, "user")
+
+    payloads = [call.args[0] for call in sb.table.return_value.update.call_args_list]
+    failure = next(payload for payload in payloads if payload.get("error_code") == "ANALYSIS_WORKER_FAILED")
+    assert failure["status"] == "interrupted"
+    assert failure["analysis_status"] == "interrupted"
+    assert failure["analysis_queue_track_count"] == 2_213
+    assert failure["analysis_running_track_count"] == 0
+    assert failure["analysis_worker_error"] == "synthetic worker failure"
+
+
+def test_startup_recovery_requeues_interrupted_job_before_start(monkeypatch):
+    from app import supabase_pagination
+    from unittest.mock import MagicMock
+
+    sb = MagicMock()
+    sb.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+    row = {
+        "id": "import-recover",
+        "user_id": "user",
+        "status": "interrupted",
+        "analysis_status": "interrupted",
+        "analysis_worker_status": "failed",
+        "analysis_worker_stopped_acknowledged": True,
+    }
+    started: list[tuple[str, str, object]] = []
+
+    monkeypatch.setattr(analysis_import_service, "_create_supabase", lambda: sb)
+    monkeypatch.setattr(supabase_pagination, "fetch_all_rows", lambda *_a, **_k: [row])
+    monkeypatch.setattr(analysis_import_service, "get_worker_lease", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        analysis_import_service,
+        "_start_background_analysis",
+        lambda import_id, user_id, affected: started.append((import_id, user_id, affected)) or True,
+    )
+
+    count = analysis_import_service.resume_recoverable_analysis_imports()
+
+    assert count == 1
+    assert started == [("import-recover", "user", None)]
+    payload = sb.table.return_value.update.call_args.args[0]
+    assert payload["status"] == "processing"
+    assert payload["analysis_status"] == "queued"
+    assert payload["analysis_worker_stage"] == "startup_resume_queued"
+    assert payload["analysis_worker_error"] is None
+
+
+def test_startup_recovery_does_not_stomp_an_active_durable_worker(monkeypatch):
+    from app import supabase_pagination
+    from unittest.mock import MagicMock
+
+    sb = MagicMock()
+    row = {
+        "id": "import-owned-elsewhere",
+        "user_id": "user",
+        "status": "interrupted",
+        "analysis_status": "interrupted",
+        "analysis_worker_status": "failed",
+        "analysis_worker_stopped_acknowledged": True,
+    }
+    started: list[str] = []
+
+    monkeypatch.setattr(analysis_import_service, "_create_supabase", lambda: sb)
+    monkeypatch.setattr(supabase_pagination, "fetch_all_rows", lambda *_a, **_k: [row])
+    monkeypatch.setattr(
+        analysis_import_service,
+        "get_worker_lease",
+        lambda *_a, **_k: {"lease_expires_at": "2999-01-01T00:00:00+00:00"},
+    )
+    monkeypatch.setattr(
+        analysis_import_service,
+        "_start_background_analysis",
+        lambda *_a, **_k: started.append("started") or True,
+    )
+
+    assert analysis_import_service.resume_recoverable_analysis_imports() == 0
+    assert started == []
+    assert sb.table.return_value.update.call_count == 0

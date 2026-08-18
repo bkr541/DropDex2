@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 _FINAL_TRACK_STATUSES = frozenset({"completed", "partial", "reused", "skipped"})
 _REQUIRED_ASSET_TYPES = frozenset({"DAT", "EXT"})
+_POSTGREST_IN_FILTER_CHUNK_SIZE = 100
+_BULK_WRITE_CHUNK_SIZE = 250
 
 
 @dataclass
@@ -80,8 +82,8 @@ def _load_all(query_factory: Callable[[], Any], order_column: str = "id") -> lis
 
 
 def _load_tracks(sb: Any, import_id: str, affected_track_ids: Sequence[str] | None) -> list[dict[str, Any]]:
-    def factory():
-        query = (
+    def base_query():
+        return (
             sb.table("rekordbox_tracks")
             .select(
                 "id, rekordbox_content_id, title, artist, analysis_data_file_path, "
@@ -90,11 +92,21 @@ def _load_tracks(sb: Any, import_id: str, affected_track_ids: Sequence[str] | No
             )
             .eq("import_id", import_id)
         )
-        if affected_track_ids:
-            query = query.in_("id", list(dict.fromkeys(affected_track_ids)))
-        return query
 
-    rows = _load_all(factory)
+    if affected_track_ids:
+        # PostgREST serializes .in_(...) filters into the request URL. Real USB
+        # libraries routinely contain thousands of tracks, so never put the full
+        # client selection into one query string. This is defense-in-depth even
+        # though full imports now let the backend derive work from persisted state.
+        unique_ids = list(dict.fromkeys(str(track_id) for track_id in affected_track_ids if track_id))
+        rows: list[dict[str, Any]] = []
+        for track_chunk in _chunks(unique_ids, _POSTGREST_IN_FILTER_CHUNK_SIZE):
+            def factory(chunk=track_chunk):
+                return base_query().in_("id", list(chunk))
+
+            rows.extend(_load_all(factory))
+    else:
+        rows = _load_all(base_query)
     return [
         row
         for row in rows
@@ -115,7 +127,7 @@ def _load_assets(
 
     rows: list[dict[str, Any]] = []
     # Keep URL/query sizes bounded for large imports.
-    for track_chunk in _chunks(list(track_ids), 250):
+    for track_chunk in _chunks(list(track_ids), _POSTGREST_IN_FILTER_CHUNK_SIZE):
         def factory(chunk=track_chunk):
             return (
                 sb.table("rekordbox_analysis_assets")
@@ -143,7 +155,7 @@ def _load_assets(
             (str(row.get("track_id")), str(row.get("asset_type"))) for row in rows
         }
         source_ids = list(retained_targets)
-        for source_chunk in _chunks(source_ids, 250):
+        for source_chunk in _chunks(source_ids, _POSTGREST_IN_FILTER_CHUNK_SIZE):
             def retained_factory(chunk=source_chunk):
                 return (
                     sb.table("rekordbox_analysis_assets")
@@ -319,20 +331,34 @@ def _materialize_asset_sources(
         prepared.append(row)
 
     if retained_rows:
-        response = sb.table("rekordbox_analysis_assets").upsert(
-            retained_rows,
-            on_conflict="import_id,relative_path",
-        ).execute()
-        persisted = list(response.data or []) if response is not None else []
-        if not persisted:
-            response = (
-                sb.table("rekordbox_analysis_assets")
-                .select("*")
-                .eq("import_id", import_id)
-                .in_("relative_path", [row["relative_path"] for row in retained_rows])
-                .execute()
-            )
-            persisted = list(response.data or [])
+        persisted: list[dict[str, Any]] = []
+        # Retained reparses can be as large as a full library after a parser or
+        # feature-schema upgrade. Keep both POST bodies and fallback URL filters
+        # bounded instead of assuming incremental work is always small.
+        for retained_chunk in _chunks(retained_rows, _BULK_WRITE_CHUNK_SIZE):
+            response = sb.table("rekordbox_analysis_assets").upsert(
+                list(retained_chunk),
+                on_conflict="import_id,relative_path",
+            ).execute()
+            chunk_persisted = list(response.data or []) if response is not None else []
+            if not chunk_persisted:
+                relative_paths = [
+                    str(row.get("relative_path") or "")
+                    for row in retained_chunk
+                    if row.get("relative_path")
+                ]
+                for path_chunk in _chunks(
+                    relative_paths, _POSTGREST_IN_FILTER_CHUNK_SIZE
+                ):
+                    response = (
+                        sb.table("rekordbox_analysis_assets")
+                        .select("*")
+                        .eq("import_id", import_id)
+                        .in_("relative_path", list(path_chunk))
+                        .execute()
+                    )
+                    chunk_persisted.extend(list(response.data or []))
+            persisted.extend(chunk_persisted)
         by_path = {
             str(row.get("relative_path") or "").lower(): row for row in persisted
         }
@@ -620,18 +646,30 @@ def _reconcile_cues_bulk(sb: Any, import_id: str, parsed_batch: Sequence[ParsedT
 def _bulk_track_status(sb: Any, import_id: str, rows: list[dict[str, Any]]) -> None:
     if not rows:
         return
-    try:
-        sb.rpc(
-            "bulk_update_rekordbox_track_analysis",
-            {"p_import_id": import_id, "p_rows": rows},
-        ).execute()
-        return
-    except Exception as exc:
-        logger.warning("Bulk track status RPC unavailable, using compatibility fallback: %s", exc)
-    for row in rows:
-        payload = dict(row)
-        track_id = payload.pop("track_id")
-        sb.table("rekordbox_tracks").update(payload).eq("id", track_id).eq("import_id", import_id).execute()
+    # Queue/parsing transitions touch every selected track at once. Bound RPC
+    # payloads so large USB libraries do not replace the old query-string limit
+    # with a new oversized request-body failure. A failed chunk falls back only
+    # for that chunk, preserving successful bulk updates from earlier chunks.
+    for row_chunk in _chunks(rows, _BULK_WRITE_CHUNK_SIZE):
+        chunk = list(row_chunk)
+        try:
+            sb.rpc(
+                "bulk_update_rekordbox_track_analysis",
+                {"p_import_id": import_id, "p_rows": chunk},
+            ).execute()
+            continue
+        except Exception as exc:
+            logger.warning(
+                "Bulk track status RPC unavailable for %d rows, using compatibility fallback: %s",
+                len(chunk),
+                exc,
+            )
+        for row in chunk:
+            payload = dict(row)
+            track_id = payload.pop("track_id")
+            sb.table("rekordbox_tracks").update(payload).eq("id", track_id).eq(
+                "import_id", import_id
+            ).execute()
 
 
 def _write_batch(

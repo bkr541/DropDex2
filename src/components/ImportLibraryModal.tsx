@@ -1083,7 +1083,10 @@ export function ImportLibraryModal({
           context.importId,
           token,
           {
-            affectedTrackIds: context.affectedTrackIds,
+            // A full USB import is server-authoritative. The backend already
+            // persisted the manifest and knows which tracks remain pending, so
+            // do not echo thousands of UUIDs back through /complete. Selective
+            // track IDs remain supported by the dedicated resume workflow.
             clientMetrics: context.clientMetrics,
             signal: cloudController.signal,
           },
@@ -1167,6 +1170,17 @@ export function ImportLibraryModal({
           optionalArchivalStatus: status.optional_archival_status ?? 'skipped',
           rawArchivalStatus: status.raw_archival_status ?? 'skipped',
         });
+
+        if (
+          status.analysis_status === 'interrupted' ||
+          (status.worker_status === 'failed' && status.worker_active === false)
+        ) {
+          setErrorMessage(
+            'Background analysis stopped unexpectedly. Your imported library and staged analysis files were kept, and analysis can be resumed without re-reading the USB.',
+          );
+          setPhase('interrupted');
+          return;
+        }
 
         if (['completed', 'partial', 'failed'].includes(status.analysis_status)) {
           const completeResponse: CompleteResponse = {
@@ -1913,6 +1927,24 @@ export function ImportLibraryModal({
                   <CheckmarkFilled size={18} className="mt-0.5 shrink-0 text-emerald-400" />
                   <p className="text-xs leading-relaxed text-emerald-100">
                     USB activity is zero. The cloud worker acknowledged that it stopped writing. Completed tracks and uploaded assets were retained for resume from Import History.
+                  </p>
+                </div>
+                <ControlButton type="button" variant="primary" onClick={handleDone}>
+                  <CheckmarkFilled size={16} />
+                  Done
+                </ControlButton>
+              </div>
+            )}
+
+            {phase === 'interrupted' && (
+              <div className="space-y-5 py-4 text-center">
+                <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto">
+                  <WarningAlt className="text-amber-400" size={28} />
+                </div>
+                <h2 className="text-xl font-bold">Analysis Interrupted</h2>
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left">
+                  <p className="text-xs leading-relaxed text-amber-100">
+                    {errorMessage ?? 'Background analysis stopped unexpectedly.'} Open Import History or the background import panel and choose Resume. Completed work will not be repeated.
                   </p>
                 </div>
                 <ControlButton type="button" variant="primary" onClick={handleDone}>

@@ -360,6 +360,19 @@ def _select_tracks_for_analysis(
     ]
 
 
+def _pending_analysis_track_ids(
+    sb,
+    import_id: str,
+    affected_track_ids: Optional[List[str]] = None,
+) -> List[str]:
+    """Resolve pending work from durable track state, never stale UI counters."""
+    tracks = _select_tracks_for_analysis(
+        _get_tracks_for_analysis_status(sb, import_id),
+        affected_track_ids,
+    )
+    return [str(track["id"]) for track in tracks if track.get("id")]
+
+
 def _get_tracks_for_rescan(sb, import_id: str) -> List[dict]:
     """Return ALL tracks for this import with full identity fields for rescan matching.
 
@@ -443,16 +456,23 @@ def _persist_track_manifest_state(sb, import_id: str, entries: Sequence[Manifest
     ]
     if not rows:
         return
-    try:
-        sb.rpc(
-            "bulk_update_rekordbox_track_analysis",
-            {"p_import_id": import_id, "p_rows": rows},
-        ).execute()
-        return
-    except Exception as exc:
-        logger.warning("Bulk manifest status RPC unavailable, using bounded fallback: %s", exc)
-    for offset in range(0, len(rows), 200):
-        for row in rows[offset : offset + 200]:
+    # Initial manifest planning can touch every track in a USB library. Keep the
+    # JSON RPC body bounded and degrade only a failed chunk to row-wise writes.
+    for offset in range(0, len(rows), 250):
+        chunk = rows[offset : offset + 250]
+        try:
+            sb.rpc(
+                "bulk_update_rekordbox_track_analysis",
+                {"p_import_id": import_id, "p_rows": chunk},
+            ).execute()
+            continue
+        except Exception as exc:
+            logger.warning(
+                "Bulk manifest status RPC unavailable for %d rows, using bounded fallback: %s",
+                len(chunk),
+                exc,
+            )
+        for row in chunk:
             track_id = row["track_id"]
             payload = {key: value for key, value in row.items() if key != "track_id"}
             sb.table("rekordbox_tracks").update(payload).eq("id", track_id).eq(
@@ -1155,8 +1175,8 @@ def _fetch_existing_assets_for_paths(
         return {}
     rows: List[dict] = []
     unique_paths = list(dict.fromkeys(path.lower() for path in relative_paths))
-    for offset in range(0, len(unique_paths), 250):
-        chunk = unique_paths[offset : offset + 250]
+    for offset in range(0, len(unique_paths), 100):
+        chunk = unique_paths[offset : offset + 100]
         response = (
             sb.table("rekordbox_analysis_assets")
             .select("*")
@@ -2375,6 +2395,54 @@ def _summarize_track_states(sb, import_id: str) -> dict[str, int]:
     return counts
 
 
+def _terminal_analysis_summary(
+    import_row: dict[str, Any],
+    state_counts: dict[str, int],
+) -> dict[str, Any]:
+    """Derive one authoritative terminal summary from durable per-track state."""
+    completed_count = state_counts.get("completed", 0) + state_counts.get("reused", 0)
+    partial_count = state_counts.get("partial", 0)
+    failed_count = state_counts.get("failed", 0)
+    missing_required_count = state_counts.get("missing_required", 0)
+    skipped_count = state_counts.get("skipped", 0)
+    total_tracks = int(import_row.get("analysis_expected_track_count") or state_counts.get("total", 0))
+    finalized = (
+        completed_count
+        + partial_count
+        + failed_count
+        + missing_required_count
+        + skipped_count
+    )
+    if total_tracks == 0:
+        final_status = "completed"
+    elif (
+        completed_count == 0
+        and partial_count == 0
+        and failed_count + missing_required_count >= total_tracks
+    ):
+        final_status = "failed"
+    elif (
+        failed_count
+        or missing_required_count
+        or partial_count
+        or finalized < total_tracks
+    ):
+        final_status = "partial"
+    else:
+        final_status = "completed"
+
+    return {
+        "final_status": final_status,
+        "total_tracks": total_tracks,
+        "completed_count": completed_count,
+        "partial_count": partial_count,
+        "failed_count": failed_count,
+        "missing_required_count": missing_required_count,
+        "skipped_count": skipped_count,
+        "finalized_count": finalized,
+    }
+
+
 def _resolve_optional_archival_status(
     sb,
     import_id: str,
@@ -2449,14 +2517,18 @@ def _run_fast_analysis_import_sync(
             analysis_status="parsing",
         )
         total_queued = max(0, int(import_row.get("analysis_queue_track_count") or 0))
-        running_now = min(max(1, settings.analysis_parser_workers), total_queued)
+        # Do not reserve parser slots before track selection succeeds. The old
+        # accounting subtracted worker_count up front, which left a false 2209
+        # queued count when a 2213-track import crashed during its first query.
+        # run_fast_analysis_import() publishes the real running/queued split as
+        # soon as durable track selection has completed.
         sb.table("rekordbox_imports").update({
             "analysis_status": "parsing",
             "readiness_stage": "analysis_processing",
             "analysis_worker_status": "running",
             "analysis_worker_stage": "loading_staged_assets",
-            "analysis_running_track_count": running_now,
-            "analysis_queue_track_count": max(0, total_queued - running_now),
+            "analysis_running_track_count": 0,
+            "analysis_queue_track_count": total_queued,
             "updated_at": _now_iso(),
         }).eq("id", import_id).eq("user_id", user_id).execute()
 
@@ -2529,21 +2601,13 @@ def _run_fast_analysis_import_sync(
         if worker_lease is not None:
             worker_lease.checkpoint("finalizing_import", force=True)
         state_counts = _summarize_track_states(sb, import_id)
-        completed_count = state_counts.get("completed", 0) + state_counts.get("reused", 0)
-        partial_count = state_counts.get("partial", 0)
-        failed_count = state_counts.get("failed", 0)
-        missing_required_count = state_counts.get("missing_required", 0)
-        skipped_count = state_counts.get("skipped", 0)
-        total_tracks = int(import_row.get("analysis_expected_track_count") or state_counts["total"])
-        finalized = completed_count + partial_count + failed_count + missing_required_count + skipped_count
-        if total_tracks == 0:
-            final_status = "completed"
-        elif completed_count == 0 and partial_count == 0 and failed_count + missing_required_count >= total_tracks:
-            final_status = "failed"
-        elif failed_count or missing_required_count or partial_count or finalized < total_tracks:
-            final_status = "partial"
-        else:
-            final_status = "completed"
+        terminal = _terminal_analysis_summary(import_row, state_counts)
+        completed_count = terminal["completed_count"]
+        partial_count = terminal["partial_count"]
+        failed_count = terminal["failed_count"]
+        missing_required_count = terminal["missing_required_count"]
+        total_tracks = terminal["total_tracks"]
+        final_status = terminal["final_status"]
 
         archival_status = _resolve_optional_archival_status(
             sb,
@@ -2661,20 +2725,38 @@ def _run_fast_analysis_import_sync(
         raise
     except Exception as exc:
         logger.exception("Fast analysis worker failed for import %s", import_id)
+        remaining_count: int | None = None
         try:
-            sb.table("rekordbox_imports").update({
-                "analysis_status": "partial",
+            # Final per-track checkpoints are authoritative. Recount instead of
+            # preserving queue/running counters that may have been mid-batch.
+            remaining_count = len(_pending_analysis_track_ids(sb, import_id))
+        except Exception:
+            logger.exception(
+                "Could not recount pending tracks after worker failure for %s", import_id
+            )
+        try:
+            failure_updates: dict[str, Any] = {
+                "status": "interrupted",
+                "analysis_status": "interrupted",
                 "readiness_stage": "analysis_partial",
                 "analysis_running_track_count": 0,
+                "analysis_estimated_seconds_remaining": None,
                 "analysis_worker_status": "failed",
                 "analysis_worker_stage": "failed",
+                "analysis_worker_current_track_id": None,
+                "analysis_worker_stopped_at": _now_iso(),
                 "analysis_worker_stopped_acknowledged": True,
                 "analysis_worker_error": str(exc)[:2000],
                 "error_code": "ANALYSIS_WORKER_FAILED",
                 "error_message": "Background analysis stopped unexpectedly. Resume is available.",
                 "retryable": True,
                 "updated_at": _now_iso(),
-            }).eq("id", import_id).eq("user_id", user_id).execute()
+            }
+            if remaining_count is not None:
+                failure_updates["analysis_queue_track_count"] = remaining_count
+            sb.table("rekordbox_imports").update(failure_updates).eq(
+                "id", import_id
+            ).eq("user_id", user_id).execute()
         except Exception:
             logger.exception("Could not persist fast worker failure for %s", import_id)
         worker_registry.acknowledge_stopped(import_id, status="failed", error=str(exc))
@@ -2765,21 +2847,89 @@ def _start_background_analysis(
 
 
 def resume_recoverable_analysis_imports() -> int:
-    """Restart only jobs interrupted by process shutdown, never user-paused jobs."""
+    """Restart crash-interrupted jobs, including rows stranded by older workers."""
+    from .supabase_pagination import fetch_all_rows
+
     sb = _create_supabase()
-    response = (
-        sb.table("rekordbox_imports")
-        .select("id, user_id")
-        .eq("status", "interrupted")
-        .in_("analysis_status", ["queued", "uploading", "parsing", "partial", "interrupted"])
-        .execute()
+    rows = fetch_all_rows(
+        lambda: (
+            sb.table("rekordbox_imports")
+            .select(
+                "id, user_id, status, analysis_status, analysis_worker_status, "
+                "analysis_worker_stopped_acknowledged"
+            )
+            .in_("status", ["interrupted", "processing"])
+            .in_(
+                "analysis_status",
+                ["queued", "uploading", "parsing", "partial", "failed", "interrupted"],
+            )
+        ),
+        order_column="id",
     )
     started = 0
-    for row in response.data or []:
+    for row in rows:
+        status = str(row.get("status") or "")
+        if status == "processing" and not (
+            str(row.get("analysis_worker_status") or "")
+            in {"failed", "interrupted", "stopped"}
+            and bool(row.get("analysis_worker_stopped_acknowledged"))
+        ):
+            # A live/ordinary processing row is not startup-recovery work. If it
+            # really is still owned elsewhere the durable lease would reject the
+            # claim too, but filtering here avoids needless claim attempts.
+            continue
         import_id = str(row.get("id") or "")
         user_id = str(row.get("user_id") or "")
-        if import_id and user_id and _start_background_analysis(import_id, user_id, None):
-            started += 1
+        if not import_id or not user_id:
+            continue
+        try:
+            if lease_row_is_active(get_worker_lease(sb, import_id, "analysis")):
+                # Another process, or a still-valid crash lease, owns the right
+                # to recover this row. Do not overwrite its durable worker state.
+                continue
+        except Exception:
+            # Ownership checks are fail-closed. Leaving the row interrupted is
+            # safer than launching a duplicate parser when Supabase is degraded.
+            logger.exception(
+                "Could not verify analysis ownership during startup recovery for %s",
+                import_id,
+            )
+            continue
+        # A recovered worker must re-enter the normal processing state before it
+        # starts. Otherwise complete_import_job() cannot transition the import to
+        # completed and a successful restart can remain permanently interrupted.
+        sb.table("rekordbox_imports").update({
+            "status": "processing",
+            "analysis_status": "queued",
+            "analysis_worker_status": "queued",
+            "analysis_worker_stage": "startup_resume_queued",
+            "analysis_worker_current_track_id": None,
+            "analysis_worker_stopped_acknowledged": False,
+            "analysis_worker_stopped_at": None,
+            "analysis_worker_error": None,
+            "error_code": None,
+            "error_message": None,
+            "retryable": False,
+            "updated_at": _now_iso(),
+        }).eq("id", import_id).eq("user_id", user_id).execute()
+        try:
+            if _start_background_analysis(import_id, user_id, None):
+                started += 1
+        except Exception as exc:
+            logger.exception("Could not restart recoverable analysis %s", import_id)
+            sb.table("rekordbox_imports").update({
+                "status": "interrupted",
+                "analysis_status": "interrupted",
+                "analysis_worker_status": "failed",
+                "analysis_worker_stage": "startup_resume_failed",
+                "analysis_worker_stopped_acknowledged": True,
+                "analysis_worker_stopped_at": _now_iso(),
+                "analysis_worker_error": str(exc)[:2000],
+                "error_code": "ANALYSIS_WORKER_START_FAILED",
+                "error_message": "Background analysis could not restart. Resume is available.",
+                "retryable": True,
+                "updated_at": _now_iso(),
+            }).eq("id", import_id).eq("user_id", user_id).execute()
     return started
 
 
@@ -2810,23 +2960,100 @@ async def complete_analysis_import(
             await run_in_threadpool(
                 merge_import_metrics, sb, import_id, safe_client_metrics
             )
-    queued_count = len(set(affected_track_ids or [])) or int(
-        row.get("analysis_queue_track_count") or row.get("analysis_expected_track_count") or 0
+    # Durable per-track state is the authority for work selection. Client IDs
+    # are only a selective-resume filter; queue counters are display telemetry
+    # and may be stale after a process crash.
+    pending_track_ids = await run_in_threadpool(
+        _pending_analysis_track_ids, sb, import_id, affected_track_ids
     )
+    queued_count = len(pending_track_ids)
+    worker_track_filter = pending_track_ids if affected_track_ids else None
     if queued_count == 0:
+        # A prior worker may have checkpointed every track and then died before
+        # finalizing the parent import. Zero pending work is therefore a durable
+        # finalization signal, not merely a response shortcut. Rebuild terminal
+        # counts from per-track state and commit the parent state here.
+        state_counts = await run_in_threadpool(_summarize_track_states, sb, import_id)
+        terminal = _terminal_analysis_summary(row, state_counts)
+        final_status = terminal["final_status"]
+        total_tracks = terminal["total_tracks"]
+        completed_count = terminal["completed_count"]
+        partial_count = terminal["partial_count"]
+        failed_count = terminal["failed_count"]
+        missing_required_count = terminal["missing_required_count"]
+        archival_status = await run_in_threadpool(
+            _resolve_optional_archival_status,
+            sb,
+            import_id,
+            int(row.get("optional_archival_file_count") or 0),
+        )
+        await run_in_threadpool(
+            lambda: sb.table("rekordbox_imports").update({
+                "analysis_status": final_status,
+                "readiness_stage": (
+                    "analysis_complete" if final_status == "completed" else "analysis_partial"
+                ),
+                "analysis_matched_track_count": min(
+                    total_tracks, completed_count + partial_count + failed_count
+                ),
+                "analysis_parsed_track_count": completed_count + partial_count,
+                "analysis_failed_track_count": failed_count + missing_required_count,
+                "analysis_parser_version": _PARSER_VERSION,
+                "analysis_completed_at": _now_iso(),
+                "analysis_queue_track_count": 0,
+                "analysis_running_track_count": 0,
+                "analysis_estimated_seconds_remaining": 0,
+                "optional_archival_status": archival_status,
+                "analysis_worker_status": "completed",
+                "analysis_worker_stage": "completed",
+                "analysis_worker_current_track_id": None,
+                "analysis_worker_heartbeat_at": _now_iso(),
+                "analysis_worker_stopped_at": _now_iso(),
+                "analysis_worker_stopped_acknowledged": True,
+                "analysis_worker_error": None,
+                "error_code": None,
+                "error_message": None,
+                "retryable": False,
+                "updated_at": _now_iso(),
+            }).eq("id", import_id).eq("user_id", user_id).execute()
+        )
+        if str(row.get("status") or "") == "processing":
+            try:
+                await run_in_threadpool(complete_import_job, import_id, user_id)
+            except HTTPException:
+                # A concurrent finalizer may have completed the parent first.
+                pass
+        try:
+            await run_in_threadpool(
+                upsert_active_import,
+                settings.supabase_url,
+                settings.supabase_secret_key,
+                user_id,
+                import_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Could not refresh active import pointer for zero-pending %s: %s",
+                import_id,
+                exc,
+            )
         return CompleteResponse(
             import_id=import_id,
-            analysis_status="completed",
-            total_tracks=int(row.get("analysis_expected_track_count") or 0),
-            completed_count=int(row.get("analysis_parsed_track_count") or 0),
-            partial_count=0,
-            failed_count=int(row.get("analysis_failed_track_count") or 0),
-            missing_required_count=0,
+            analysis_status=final_status,
+            total_tracks=total_tracks,
+            completed_count=completed_count,
+            partial_count=partial_count,
+            failed_count=failed_count,
+            missing_required_count=missing_required_count,
             parser_version=_PARSER_VERSION,
             tracks=[],
+            background_started=False,
             library_ready=True,
-            readiness_stage="analysis_complete",
-            optional_archival_status=str(row.get("optional_archival_status") or "skipped"),
+            readiness_stage=(
+                "analysis_complete" if final_status == "completed" else "analysis_partial"
+            ),
+            queued_track_count=0,
+            optional_archival_status=archival_status,
             raw_archival_status=str(row.get("raw_archival_status") or "skipped"),
         )
     await run_in_threadpool(
@@ -2840,9 +3067,38 @@ async def complete_analysis_import(
             "updated_at": _now_iso(),
         }).eq("id", import_id).eq("user_id", user_id).execute()
     )
-    started = await run_in_threadpool(
-        _start_background_analysis, import_id, user_id, affected_track_ids
-    )
+    try:
+        started = await run_in_threadpool(
+            _start_background_analysis, import_id, user_id, worker_track_filter
+        )
+    except Exception as exc:
+        logger.exception("Could not start background analysis worker for %s", import_id)
+        await run_in_threadpool(
+            lambda: sb.table("rekordbox_imports").update({
+                "status": "interrupted",
+                "analysis_status": "interrupted",
+                "readiness_stage": "analysis_partial",
+                "analysis_running_track_count": 0,
+                "analysis_worker_status": "failed",
+                "analysis_worker_stage": "start_failed",
+                "analysis_worker_current_track_id": None,
+                "analysis_worker_stopped_at": _now_iso(),
+                "analysis_worker_stopped_acknowledged": True,
+                "analysis_worker_error": str(exc)[:2000],
+                "error_code": "ANALYSIS_WORKER_START_FAILED",
+                "error_message": "Background analysis could not start. Resume is available.",
+                "retryable": True,
+                "updated_at": _now_iso(),
+            }).eq("id", import_id).eq("user_id", user_id).execute()
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error_code": "ANALYSIS_WORKER_START_FAILED",
+                "detail": "Background analysis could not start. Resume is available.",
+                "retryable": True,
+            },
+        ) from exc
     return CompleteResponse(
         import_id=import_id,
         analysis_status="queued",
@@ -2882,6 +3138,7 @@ async def resume_analysis_import(
                 "retryable": False,
             },
         )
+
     snapshot = worker_registry.snapshot(import_id)
     if snapshot.get("active"):
         raise HTTPException(
@@ -2894,6 +3151,8 @@ async def resume_analysis_import(
         )
     job_status = str(row.get("status") or "")
     analysis_status = str(row.get("analysis_status") or "")
+    worker_status = str(row.get("analysis_worker_status") or "")
+    stopped_acknowledged = bool(row.get("analysis_worker_stopped_acknowledged"))
     if job_status in {"pause_requested", "stopping", "cancel_requested"} or analysis_status in {
         "pause_requested",
         "stopping",
@@ -2906,7 +3165,40 @@ async def resume_analysis_import(
                 "retryable": True,
             },
         )
-    if job_status not in {"paused", "interrupted", "completed"}:
+
+    try:
+        durable_lease = get_worker_lease(sb, import_id, "analysis")
+    except Exception as exc:
+        logger.exception("Could not verify durable analysis ownership for %s", import_id)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error_code": "ANALYSIS_OWNERSHIP_UNAVAILABLE",
+                "detail": "DropDex could not verify that the prior analysis worker stopped. Try resume again.",
+                "retryable": True,
+            },
+        ) from exc
+    if lease_row_is_active(durable_lease):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "ANALYSIS_ALREADY_RUNNING",
+                "detail": "Analysis is already running on another worker.",
+                "retryable": True,
+            },
+        )
+
+    # Backward-recovery rule for rows produced by the pre-hardening worker: it
+    # could fail, acknowledge shutdown, and still leave the import as processing.
+    # Only accept that stranded state after both local and durable ownership are
+    # inactive and the persisted worker explicitly acknowledged it stopped.
+    stranded_failed_worker = (
+        job_status == "processing"
+        and worker_status in {"failed", "interrupted", "stopped"}
+        and stopped_acknowledged
+        and analysis_status in {"queued", "parsing", "partial", "failed", "interrupted"}
+    )
+    if job_status not in {"paused", "interrupted", "completed"} and not stranded_failed_worker:
         raise HTTPException(
             status_code=409,
             detail={
@@ -2915,21 +3207,22 @@ async def resume_analysis_import(
                 "retryable": False,
             },
         )
+
     worker_registry.clear_stop_requests(import_id)
     updates = {
-        "analysis_status": "parsing",
+        "status": "processing",
+        "analysis_status": "queued",
         "analysis_worker_status": "queued",
         "analysis_worker_stage": "resume_queued",
         "analysis_worker_current_track_id": None,
         "analysis_worker_stopped_acknowledged": False,
         "analysis_worker_stopped_at": None,
+        "analysis_worker_error": None,
         "error_code": None,
         "error_message": None,
         "retryable": False,
         "updated_at": _now_iso(),
     }
-    if job_status in {"paused", "interrupted"}:
-        updates["status"] = "processing"
     sb.table("rekordbox_imports").update(updates).eq("id", import_id).eq(
         "user_id", user_id
     ).execute()
@@ -3160,7 +3453,15 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
     )
 
     worker_snapshot = worker_registry.snapshot(import_id)
-    durable_lease = get_worker_lease(sb, import_id, "analysis")
+    try:
+        durable_lease = get_worker_lease(sb, import_id, "analysis")
+    except Exception as exc:
+        logger.warning(
+            "Could not read durable analysis lease while polling %s: %s",
+            import_id,
+            exc,
+        )
+        durable_lease = None
     durable_worker_active = lease_row_is_active(durable_lease)
     return AnalysisStatusResponse(
         import_id=import_id,
