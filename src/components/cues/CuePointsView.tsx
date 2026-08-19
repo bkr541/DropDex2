@@ -29,9 +29,9 @@ type CueFilter = 'all' | 'with-cues' | 'without-cues';
 type AnalysisFilter = 'all' | 'ready' | 'incomplete';
 
 const CUE_PAGE_SIZE = 100;
-const MAX_TIMELINE_GRID_LINES = 120;
-const MAX_BEAT_RULER_TICKS = 480;
-const MAX_BAR_LABELS = 20;
+const MAX_TIMELINE_GRID_LINES = 640;
+const MAX_BEAT_RULER_TICKS = 640;
+const MAX_BAR_LABELS = 24;
 
 interface TimelineSection {
   id: string;
@@ -49,25 +49,43 @@ function durationMsForTrack(
   phrases: PhraseRow[] = [],
 ): number | null {
   if (!track) return null;
-  if (typeof track.duration_ms === 'number' && Number.isFinite(track.duration_ms) && track.duration_ms > 0) {
-    return track.duration_ms;
-  }
-  if (typeof track.duration_seconds === 'number' && Number.isFinite(track.duration_seconds) && track.duration_seconds > 0) {
-    return track.duration_seconds * 1000;
-  }
 
-  const candidates: number[] = [];
+  // Do not blindly trust one duration field. Some Rekordbox exports contain a
+  // suspiciously small CONTENT length while PQTZ still contains a complete
+  // multi-minute beat grid. The timeline must use the longest trustworthy
+  // track/beat extent or every beat collapses against the right edge.
+  const trackCandidates = [
+    typeof track.duration_ms === 'number' && Number.isFinite(track.duration_ms) && track.duration_ms > 0
+      ? track.duration_ms
+      : null,
+    typeof track.duration_seconds === 'number' && Number.isFinite(track.duration_seconds) && track.duration_seconds > 0
+      ? track.duration_seconds * 1000
+      : null,
+  ].filter((value): value is number => value != null);
+
   const beats = beatGrid?.beats ?? [];
   const lastBeat = beats[beats.length - 1];
-  if (lastBeat && Number.isFinite(lastBeat.ms)) {
-    const beatLength = lastBeat.bpm > 0 ? 60_000 / lastBeat.bpm : 500;
-    candidates.push(lastBeat.ms + beatLength);
+  const beatGridDuration = lastBeat && Number.isFinite(lastBeat.ms)
+    ? lastBeat.ms + (lastBeat.bpm > 0 ? 60_000 / lastBeat.bpm : 500)
+    : null;
+
+  const authoritativeCandidates = [
+    ...trackCandidates,
+    beatGridDuration != null && Number.isFinite(beatGridDuration) && beatGridDuration > 0
+      ? beatGridDuration
+      : null,
+  ].filter((value): value is number => value != null);
+
+  if (authoritativeCandidates.length > 0) {
+    return Math.max(...authoritativeCandidates);
   }
-  for (const phrase of phrases) {
-    if (phrase.end_ms != null && Number.isFinite(phrase.end_ms)) candidates.push(phrase.end_ms);
-    else if (phrase.start_ms != null && Number.isFinite(phrase.start_ms)) candidates.push(phrase.start_ms);
-  }
-  return candidates.length > 0 ? Math.max(...candidates) : null;
+
+  const phraseCandidates = phrases.flatMap((phrase) => {
+    if (phrase.end_ms != null && Number.isFinite(phrase.end_ms) && phrase.end_ms > 0) return [phrase.end_ms];
+    if (phrase.start_ms != null && Number.isFinite(phrase.start_ms) && phrase.start_ms > 0) return [phrase.start_ms];
+    return [];
+  });
+  return phraseCandidates.length > 0 ? Math.max(...phraseCandidates) : null;
 }
 
 function formatTime(milliseconds: number | null): string {
@@ -113,10 +131,13 @@ function analysisLabel(track: RekordboxTrack): string {
 }
 
 function timelineGridLines(beats: BeatEntry[]): BeatEntry[] {
-  const downbeats = beats.filter((beat) => beat.isDownbeat);
-  if (downbeats.length <= MAX_TIMELINE_GRID_LINES) return downbeats;
-  const step = Math.ceil(downbeats.length / MAX_TIMELINE_GRID_LINES);
-  return downbeats.filter((_, index) => index % step === 0);
+  if (beats.length <= MAX_TIMELINE_GRID_LINES) return beats;
+  const step = Math.ceil(beats.length / MAX_TIMELINE_GRID_LINES);
+  const sampled = new Map<number, BeatEntry>();
+  beats.forEach((beat, index) => {
+    if (beat.isDownbeat || index % step === 0) sampled.set(beat.seq, beat);
+  });
+  return [...sampled.values()].sort((a, b) => a.ms - b.ms);
 }
 
 function beatRulerTicks(beats: BeatEntry[]): BeatEntry[] {
@@ -216,10 +237,10 @@ function beatPositionLabel(beat: BeatEntry | undefined): string {
 
 function TimelineLaneLabel({ icon, label, children }: { icon: ReactNode; label: string; children?: ReactNode }) {
   return (
-    <div className="flex h-full items-center gap-3 rounded-lg border border-[#25303a] bg-[#111820] px-4 text-[#d7dce2] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
-      <span className="shrink-0 text-[#aab3bd]" aria-hidden="true">{icon}</span>
+    <div className="flex h-full items-center gap-3.5 rounded-[8px] border border-[#26313a] bg-[#11181e] px-[18px] text-[#d9dde1] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
+      <span className="shrink-0 text-[#aeb7bf]" aria-hidden="true">{icon}</span>
       <div className="min-w-0">
-        <p className="truncate text-sm font-semibold tracking-[-0.01em]">{label}</p>
+        <p className="truncate text-[14px] font-semibold tracking-[-0.015em]">{label}</p>
         {children}
       </div>
     </div>
@@ -335,59 +356,71 @@ function CueWaveformPanel({
         </div>
       </div>
 
-      <div className="px-3 pb-4 pt-3 md:px-4 md:pb-4">
-        <div className="overflow-x-auto rounded-2xl">
-          <div className="min-w-[920px] rounded-2xl border border-[#29343e] bg-[#080d12] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.025),0_8px_30px_rgba(0,0,0,0.16)]">
-            <div className="grid grid-cols-[168px_minmax(0,1fr)] gap-1.5">
-              <div className="h-[58px]">
-                <TimelineLaneLabel icon={<List size={19} strokeWidth={2.2} />} label="Sections" />
+      <div className="px-3 pb-4 pt-3 md:px-4">
+        <div className="overflow-x-auto rounded-[18px]">
+          <div className="min-w-[980px] rounded-[18px] border border-[#2a353e] bg-[#090e13] p-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
+            <div className="grid grid-cols-[174px_minmax(0,1fr)] gap-x-[5px] gap-y-[5px]">
+              <div className="h-[54px]">
+                <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Sections" />
               </div>
-              <div className="relative h-[58px] overflow-hidden rounded-lg border border-[#25303a] bg-[#0d1319]">
+              <div className="relative h-[54px] overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0d1318]">
                 {phraseLoading ? (
-                  <div className="flex h-full items-center justify-center text-xs font-medium text-[#7f8994]">Loading track sections…</div>
+                  <div className="flex h-full items-center px-5 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
                 ) : sections.length === 0 ? (
-                  <div className="flex h-full items-center justify-center text-xs font-medium text-[#7f8994]">No Rekordbox section data</div>
+                  <div className="absolute inset-0 flex items-center px-5">
+                    <div className="h-[30px] w-full rounded-[5px] border border-white/[0.035] bg-white/[0.015]" />
+                    <span className="absolute left-8 text-[10px] font-medium uppercase tracking-[0.12em] text-[#66717b]">
+                      Sections unavailable
+                    </span>
+                  </div>
                 ) : (
                   sections.map((section, index) => {
                     const left = percentageAt(section.startMs, durationMs ?? 1);
                     const right = percentageAt(section.endMs, durationMs ?? 1);
+                    const nextOverlap = index < sections.length - 1 ? 0.35 : 0;
                     return (
                       <div
                         key={section.id}
-                        className="absolute bottom-0 top-0 flex items-center justify-center border-x-2 border-[#080d12] px-3 text-center text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                        className="absolute bottom-[3px] top-[3px] flex items-center justify-center px-4 text-center text-[14px] font-semibold tracking-[-0.015em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-1px_0_rgba(0,0,0,0.24)]"
                         style={{
                           left: `${left}%`,
-                          width: `${Math.max(0.6, right - left)}%`,
+                          width: `${Math.max(0.75, right - left + nextOverlap)}%`,
                           backgroundColor: section.panelColor,
+                          backgroundImage: `linear-gradient(180deg, ${section.waveformColor}24 0%, transparent 58%)`,
                           clipPath: index === 0
-                            ? 'polygon(0 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 0 100%)'
-                            : 'polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%)',
+                            ? 'polygon(0 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 0 100%)'
+                            : 'polygon(7px 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 7px 100%, 0 50%)',
                         }}
                         title={`${section.label} · ${formatTime(section.startMs)}–${formatTime(section.endMs)} · source ${section.sourceLabel}`}
                       >
-                        <span className="truncate">{section.label}</span>
+                        <span className="truncate drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)]">{section.label}</span>
                       </div>
                     );
                   })
                 )}
               </div>
 
-              <div className="h-[82px]">
-                <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.1} />} label="Cues" />
+              <div className="h-[72px]">
+                <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.25} />} label="Cues" />
               </div>
-              <div className="relative h-[82px] overflow-hidden rounded-lg border border-[#25303a] bg-[#0d1319]">
+              <div className="relative h-[72px] overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0d1318]">
                 {durationMs != null && durationMs > 0 && gridLines.map((beat) => (
                   <span
                     key={`cue-grid-${beat.seq}`}
-                    className="pointer-events-none absolute bottom-0 top-0 border-l border-dashed border-white/[0.075]"
+                    className={cn(
+                      'pointer-events-none absolute bottom-0 top-0 border-l border-dashed',
+                      beat.isDownbeat ? 'border-white/[0.105]' : 'border-white/[0.045]',
+                    )}
                     style={{ left: `${percentageAt(beat.ms, durationMs)}%` }}
                     aria-hidden="true"
                   />
                 ))}
                 {cueLoading ? (
-                  <div className="flex h-full items-center justify-center text-xs font-medium text-[#7f8994]">Loading cue points…</div>
+                  <div className="flex h-full items-center px-5 text-[11px] font-medium text-[#707b85]">Loading cue points…</div>
                 ) : positionedCues.length === 0 ? (
-                  <div className="flex h-full items-center justify-center text-xs font-medium text-[#7f8994]">No imported cue points</div>
+                  <div className="flex h-full items-center px-5 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">
+                    No cue points
+                  </div>
                 ) : (
                   positionedCues.map((cue, index) => {
                     const left = percentageAt(cue.start_ms ?? 0, durationMs ?? 1);
@@ -396,13 +429,13 @@ function CueWaveformPanel({
                     return (
                       <div
                         key={cue.id}
-                        className="absolute top-[20px] z-10 -translate-x-1/2"
+                        className="absolute top-[16px] z-10 -translate-x-1/2"
                         style={{ left: `${left}%` }}
                         title={`${cueDisplayName(cue)} · ${formatTime(cue.start_ms)}`}
                       >
                         <div
-                          className="whitespace-nowrap rounded-md border px-2 py-1 text-[11px] font-semibold leading-none text-white shadow-[0_4px_12px_rgba(0,0,0,0.35)]"
-                          style={{ backgroundColor: markerColor, borderColor: markerColor }}
+                          className="whitespace-nowrap rounded-[5px] border border-white/10 px-[8px] py-[5px] text-[10px] font-semibold leading-none text-white shadow-[0_3px_9px_rgba(0,0,0,0.42)]"
+                          style={{ backgroundColor: markerColor }}
                         >
                           {cueTimelineLabel(cue, memoryIndex)}
                         </div>
@@ -412,7 +445,7 @@ function CueWaveformPanel({
                           aria-hidden="true"
                         />
                         <span
-                          className="absolute left-1/2 top-[31px] h-[31px] w-px -translate-x-1/2 opacity-75"
+                          className="absolute left-1/2 top-[29px] h-[28px] w-px -translate-x-1/2 opacity-80"
                           style={{ backgroundColor: markerColor }}
                           aria-hidden="true"
                         />
@@ -422,15 +455,16 @@ function CueWaveformPanel({
                 )}
               </div>
 
-              <div className="h-[170px]">
-                <TimelineLaneLabel icon={<AudioWaveform size={20} strokeWidth={2.2} />} label="Waveform" />
+              <div className="h-[160px]">
+                <TimelineLaneLabel icon={<AudioWaveform size={20} strokeWidth={2.25} />} label="Waveform" />
               </div>
-              <div className="relative h-[170px] overflow-hidden rounded-lg border border-[#25303a] bg-[#0b1117]">
+              <div className="relative h-[160px] overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0b1116]">
                 <RekordboxPreviewWaveform
                   state={waveformState}
-                  height={168}
+                  height={158}
                   variant="detail"
                   appearance="rekordbox"
+                  renderMode="area"
                   showCenterLine={false}
                   surface={false}
                   colorSegments={waveformColorSegments}
@@ -443,14 +477,17 @@ function CueWaveformPanel({
                     {gridLines.map((beat) => (
                       <span
                         key={`wave-grid-${beat.seq}`}
-                        className="absolute bottom-0 top-0 border-l border-dashed border-white/[0.09]"
+                        className={cn(
+                          'absolute bottom-0 top-0 border-l border-dashed',
+                          beat.isDownbeat ? 'border-white/[0.10]' : 'border-white/[0.035]',
+                        )}
                         style={{ left: `${percentageAt(beat.ms, durationMs)}%` }}
                       />
                     ))}
                     {sections.slice(1).map((section) => (
                       <span
                         key={`section-boundary-${section.id}`}
-                        className="absolute bottom-0 top-0 w-px bg-white/[0.13]"
+                        className="absolute bottom-0 top-0 w-px bg-white/[0.16]"
                         style={{ left: `${percentageAt(section.startMs, durationMs)}%` }}
                       />
                     ))}
@@ -459,8 +496,12 @@ function CueWaveformPanel({
                       return (
                         <span
                           key={`wave-cue-${cue.id}`}
-                          className="absolute bottom-0 top-0 w-px opacity-65"
-                          style={{ left: `${percentageAt(cue.start_ms ?? 0, durationMs)}%`, backgroundColor: markerColor }}
+                          className="absolute bottom-0 top-0 w-px opacity-75"
+                          style={{
+                            left: `${percentageAt(cue.start_ms ?? 0, durationMs)}%`,
+                            backgroundColor: markerColor,
+                            boxShadow: `0 0 5px ${markerColor}55`,
+                          }}
                         />
                       );
                     })}
@@ -468,27 +509,32 @@ function CueWaveformPanel({
                 )}
               </div>
 
-              <div className="h-[112px]">
-                <TimelineLaneLabel icon={<Grip size={19} strokeWidth={2.5} />} label="Beats & Bars">
-                  <div className="mt-2 space-y-0.5 font-mono text-[11px] leading-tight text-[#8d98a4]">
+              <div className="h-[122px]">
+                <TimelineLaneLabel icon={<Grip size={19} strokeWidth={2.55} />} label="Beats & Bars">
+                  <div className="mt-2 space-y-1 font-mono text-[10px] leading-none text-[#8f99a3]">
                     <p>{beatPositionLabel(firstBeat)}</p>
                     <p>{formatTime(firstBeat?.ms ?? null)}</p>
                   </div>
                 </TimelineLaneLabel>
               </div>
-              <div className="relative h-[112px] overflow-hidden rounded-lg border border-[#25303a] bg-[#0d1319]">
+              <div className="relative h-[122px] overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0d1318]">
                 {beatGridLoading ? (
-                  <div className="flex h-full items-center justify-center text-xs font-medium text-[#7f8994]">Loading beat grid…</div>
+                  <div className="flex h-full items-center px-5 text-[11px] font-medium text-[#707b85]">Loading beat grid…</div>
                 ) : durationMs == null || rulerTicks.length === 0 ? (
-                  <div className="flex h-full items-center justify-center text-xs font-medium text-[#7f8994]">No beat grid available</div>
+                  <div className="flex h-full items-center px-5 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">
+                    No beat grid
+                  </div>
                 ) : (
                   <>
+                    <div className="absolute inset-x-0 top-[39px] h-px bg-white/[0.035]" aria-hidden="true" />
                     {rulerTicks.map((beat) => (
                       <span
                         key={`ruler-${beat.seq}`}
                         className={cn(
-                          'absolute top-[28px] -translate-x-1/2 rounded-full bg-[#e7ebef]',
-                          beat.isDownbeat ? 'h-8 w-[3px]' : 'h-[18px] w-[2px] opacity-90',
+                          'absolute -translate-x-1/2 rounded-full bg-[#f1f3f5]',
+                          beat.isDownbeat
+                            ? 'top-[27px] h-[32px] w-[3px]'
+                            : 'top-[31px] h-[19px] w-[2px] opacity-90',
                         )}
                         style={{ left: `${percentageAt(beat.ms, durationMs)}%` }}
                         title={`Bar ${beat.bar}, beat ${beat.beatInBar} · ${formatTime(beat.ms)}`}
@@ -497,7 +543,7 @@ function CueWaveformPanel({
                     {rulerLabels.map((beat) => (
                       <span
                         key={`bar-label-${beat.seq}`}
-                        className="absolute bottom-[19px] -translate-x-1/2 font-mono text-[12px] font-medium tabular-nums text-[#9ea7b1]"
+                        className="absolute bottom-[18px] -translate-x-1/2 font-mono text-[12px] font-medium tabular-nums text-[#9ca5ae]"
                         style={{ left: `${percentageAt(beat.ms, durationMs)}%` }}
                       >
                         {beat.bar}

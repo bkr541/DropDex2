@@ -26,6 +26,7 @@ import { useTheme } from '../../theme/ThemeProvider';
 
 export type WaveformVariant = 'compact' | 'detail' | 'transport';
 export type WaveformAppearance = 'dropdex' | 'rekordbox';
+export type WaveformRenderMode = 'bars' | 'area';
 
 export interface WaveformColorSegment {
   startFraction: number;
@@ -45,6 +46,8 @@ export interface RekordboxPreviewWaveformProps {
   seekStep?: number;
   variant?: WaveformVariant;
   appearance?: WaveformAppearance;
+  /** Bar renderer for lists/transports, or a dense mirrored area for timeline editors. */
+  renderMode?: WaveformRenderMode;
   showCenterLine?: boolean;
   /** Keep the transport seekable even when waveform analysis is unavailable. */
   allowTimelineSeek?: boolean;
@@ -296,6 +299,142 @@ function drawRekordboxWaveform(
   );
 }
 
+
+function waveformColumnColor(column: NormalizedCol, monoColor: RgbColor): RgbColor {
+  if ('r' in column) {
+    const source = column as NormalizedColorCol;
+    return blendRgb([source.r, source.g, source.b], monoColor, 0.06);
+  }
+  return monoColor;
+}
+
+function addClampedGradientStop(
+  gradient: CanvasGradient,
+  offset: number,
+  color: RgbColor,
+  alpha = 1,
+) {
+  gradient.addColorStop(Math.max(0, Math.min(1, offset)), rgba(color, alpha));
+}
+
+function buildTimelineWaveformGradient(
+  context: CanvasRenderingContext2D,
+  buckets: NormalizedCol[],
+  width: number,
+  monoColor: RgbColor,
+  colorSegments: ResolvedWaveformColorSegment[],
+): CanvasGradient {
+  const gradient = context.createLinearGradient(0, 0, width, 0);
+
+  if (colorSegments.length > 0) {
+    colorSegments.forEach((segment, index) => {
+      const previous = colorSegments[index - 1];
+      const next = colorSegments[index + 1];
+      const blendWidth = Math.min(0.012, Math.max(0.0025, (segment.endFraction - segment.startFraction) * 0.08));
+
+      if (!previous) addClampedGradientStop(gradient, 0, segment.color);
+      addClampedGradientStop(gradient, segment.startFraction, segment.color);
+      addClampedGradientStop(gradient, Math.max(segment.startFraction, segment.endFraction - blendWidth), segment.color);
+      if (next) addClampedGradientStop(gradient, segment.endFraction, next.color);
+      else addClampedGradientStop(gradient, 1, segment.color);
+    });
+    return gradient;
+  }
+
+  // When phrase colors are unavailable, preserve Rekordbox's own spectral
+  // information, but sample it into a smooth horizontal paint instead of
+  // drawing hundreds of isolated neon sticks.
+  const sampleCount = Math.max(2, Math.min(36, buckets.length));
+  for (let sample = 0; sample < sampleCount; sample += 1) {
+    const fraction = sample / (sampleCount - 1);
+    const index = Math.min(buckets.length - 1, Math.round(fraction * (buckets.length - 1)));
+    addClampedGradientStop(gradient, fraction, waveformColumnColor(buckets[index], monoColor), 0.98);
+  }
+  return gradient;
+}
+
+function traceMirroredWaveformArea(
+  context: CanvasRenderingContext2D,
+  buckets: NormalizedCol[],
+  width: number,
+  height: number,
+  amplitudeScale: number,
+) {
+  const center = height / 2;
+  const denominator = Math.max(1, buckets.length - 1);
+  const xAt = (index: number) => (index / denominator) * width;
+  const halfHeightAt = (index: number) => Math.max(1.25, buckets[index].h * center * amplitudeScale);
+
+  context.beginPath();
+  context.moveTo(0, center);
+  for (let index = 0; index < buckets.length; index += 1) {
+    context.lineTo(xAt(index), center - halfHeightAt(index));
+  }
+  for (let index = buckets.length - 1; index >= 0; index -= 1) {
+    context.lineTo(xAt(index), center + halfHeightAt(index));
+  }
+  context.closePath();
+}
+
+function drawTimelineAreaWaveform(
+  context: CanvasRenderingContext2D,
+  buckets: NormalizedCol[],
+  width: number,
+  height: number,
+  options: {
+    dimmed: boolean;
+    progress: number | null;
+    hover: number | null;
+    showCenterLine: boolean;
+    monoColor: RgbColor;
+    gridColor: RgbColor;
+    playheadColor: RgbColor;
+    colorSegments: ResolvedWaveformColorSegment[];
+  },
+) {
+  const center = height / 2;
+  const alphaScale = options.dimmed ? 0.42 : 1;
+  const gradient = buildTimelineWaveformGradient(
+    context,
+    buckets,
+    width,
+    options.monoColor,
+    options.colorSegments,
+  );
+
+  if (options.showCenterLine) {
+    drawGuideLine(context, width, center, options.gridColor, 0.22);
+  }
+
+  context.save();
+  traceMirroredWaveformArea(context, buckets, width, height, 0.88);
+  context.fillStyle = gradient;
+  context.globalAlpha = 0.92 * alphaScale;
+  context.shadowBlur = 8;
+  context.shadowColor = rgba(options.monoColor, 0.18 * alphaScale);
+  context.fill();
+  context.restore();
+
+  // A second, tighter body creates the dense Rekordbox/CDJ silhouette from the
+  // reference without turning the waveform into separated vertical bars.
+  context.save();
+  traceMirroredWaveformArea(context, buckets, width, height, 0.73);
+  context.fillStyle = gradient;
+  context.globalAlpha = 0.68 * alphaScale;
+  context.fill();
+  context.restore();
+
+  drawPointerLines(
+    context,
+    width,
+    height,
+    options.progress,
+    options.hover,
+    options.monoColor,
+    options.playheadColor,
+  );
+}
+
 export function RekordboxPreviewWaveform({
   state,
   height = 40,
@@ -308,6 +447,7 @@ export function RekordboxPreviewWaveform({
   seekStep = 0.01,
   variant = 'compact',
   appearance,
+  renderMode = 'bars',
   showCenterLine = true,
   allowTimelineSeek = false,
   colorSegments,
@@ -384,6 +524,17 @@ export function RekordboxPreviewWaveform({
         gridColor,
         playheadColor,
       });
+    } else if (renderMode === 'area') {
+      drawTimelineAreaWaveform(context, buckets, width, height, {
+        dimmed,
+        progress,
+        hover: onSeek ? hoverFraction : null,
+        showCenterLine,
+        monoColor: primaryColor,
+        gridColor,
+        playheadColor,
+        colorSegments: resolvedColorSegments,
+      });
     } else {
       drawRekordboxWaveform(context, buckets, width, height, {
         dimmed,
@@ -398,7 +549,7 @@ export function RekordboxPreviewWaveform({
       });
     }
     context.restore();
-  }, [buckets, containerWidth, dimmed, dpr, height, hoverFraction, normalized, onSeek, progress, resolvedAppearance, resolvedColorSegments, showCenterLine, theme, variant]);
+  }, [buckets, containerWidth, dimmed, dpr, height, hoverFraction, normalized, onSeek, progress, renderMode, resolvedAppearance, resolvedColorSegments, showCenterLine, theme, variant]);
 
   function seekFractionFromPointer(clientX: number, element: HTMLDivElement): number {
     const rect = element.getBoundingClientRect();
