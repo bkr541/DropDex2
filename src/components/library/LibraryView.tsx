@@ -579,21 +579,23 @@ function OverviewPlaylistCard({
           </p>
           {playlist.top_genres?.length > 0 && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1">
-              {playlist.top_genres.slice(0, 3).map((genre, i) => {
+              {playlist.top_genres.slice(0, 2).map((genre, i) => {
                 const colors = [
                   'bg-blue-500/15 border-blue-500/25 text-blue-300',
                   'bg-violet-500/15 border-violet-500/25 text-violet-300',
                   'bg-emerald-500/15 border-emerald-500/25 text-emerald-300',
                 ];
+                const dots = ['bg-blue-300', 'bg-violet-300', 'bg-emerald-300'];
                 return (
-                  <span key={genre} className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold ${colors[i % colors.length]}`}>
+                  <span key={genre} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold ${colors[i % colors.length]}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dots[i % dots.length]}`} />
                     {genre}
                   </span>
                 );
               })}
-              {playlist.top_genres.length > 3 && (
+              {playlist.top_genres.length > 2 && (
                 <span className="text-[9px] text-muted-foreground font-semibold">
-                  +{playlist.top_genres.length - 3}
+                  +{playlist.top_genres.length - 2}
                 </span>
               )}
             </div>
@@ -1036,8 +1038,10 @@ export function LibraryView({
                                   'bg-violet-500/15 border-violet-500/25 text-violet-300',
                                   'bg-emerald-500/15 border-emerald-500/25 text-emerald-300',
                                 ];
+                                const dots = ['bg-blue-300', 'bg-violet-300', 'bg-emerald-300'];
                                 return (
-                                  <span key={genre} className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold ${colors[i % colors.length]}`} title={genre}>
+                                  <span key={genre} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold ${colors[i % colors.length]}`} title={genre}>
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dots[i % dots.length]}`} />
                                     <span className="truncate">{genre}</span>
                                   </span>
                                 );
