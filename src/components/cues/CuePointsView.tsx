@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CircleDash, Music, Upload, WarningAlt } from '@carbon/icons-react';
+import { AudioWaveform, Bookmark, Grip, List } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { useLibraryStats, useLibraryTracks } from '../../hooks/useRekordboxTracks';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
@@ -7,12 +8,14 @@ import { useRouteImport } from '../../hooks/useRouteEntities';
 import {
   fetchTrackBeatGrid,
   fetchTrackCues,
+  fetchTrackPhrases,
   fetchTracksCues,
   type BeatEntry,
   type BeatGridRow,
   type CueRow,
+  type PhraseRow,
 } from '../../lib/queries/analysisData';
-import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
+import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { ControlButton, SearchControl, SelectControl } from '../ui/controls';
 import type { RekordboxTrack } from '../../types';
@@ -26,9 +29,25 @@ type CueFilter = 'all' | 'with-cues' | 'without-cues';
 type AnalysisFilter = 'all' | 'ready' | 'incomplete';
 
 const CUE_PAGE_SIZE = 100;
-const MAX_GRID_LINES = 360;
+const MAX_TIMELINE_GRID_LINES = 120;
+const MAX_BEAT_RULER_TICKS = 480;
+const MAX_BAR_LABELS = 20;
 
-function durationMsForTrack(track: RekordboxTrack | null, beatGrid: BeatGridRow | null): number | null {
+interface TimelineSection {
+  id: string;
+  label: string;
+  sourceLabel: string;
+  startMs: number;
+  endMs: number;
+  panelColor: string;
+  waveformColor: string;
+}
+
+function durationMsForTrack(
+  track: RekordboxTrack | null,
+  beatGrid: BeatGridRow | null,
+  phrases: PhraseRow[] = [],
+): number | null {
   if (!track) return null;
   if (typeof track.duration_ms === 'number' && Number.isFinite(track.duration_ms) && track.duration_ms > 0) {
     return track.duration_ms;
@@ -36,11 +55,19 @@ function durationMsForTrack(track: RekordboxTrack | null, beatGrid: BeatGridRow 
   if (typeof track.duration_seconds === 'number' && Number.isFinite(track.duration_seconds) && track.duration_seconds > 0) {
     return track.duration_seconds * 1000;
   }
+
+  const candidates: number[] = [];
   const beats = beatGrid?.beats ?? [];
-  const last = beats[beats.length - 1];
-  if (!last || !Number.isFinite(last.ms)) return null;
-  const beatLength = last.bpm > 0 ? 60_000 / last.bpm : 500;
-  return last.ms + beatLength;
+  const lastBeat = beats[beats.length - 1];
+  if (lastBeat && Number.isFinite(lastBeat.ms)) {
+    const beatLength = lastBeat.bpm > 0 ? 60_000 / lastBeat.bpm : 500;
+    candidates.push(lastBeat.ms + beatLength);
+  }
+  for (const phrase of phrases) {
+    if (phrase.end_ms != null && Number.isFinite(phrase.end_ms)) candidates.push(phrase.end_ms);
+    else if (phrase.start_ms != null && Number.isFinite(phrase.start_ms)) candidates.push(phrase.start_ms);
+  }
+  return candidates.length > 0 ? Math.max(...candidates) : null;
 }
 
 function formatTime(milliseconds: number | null): string {
@@ -63,6 +90,11 @@ function cueDisplayName(cue: CueRow): string {
   return cue.point_type === 'loop' ? `${family} Loop` : family;
 }
 
+function cueTimelineLabel(cue: CueRow, memoryIndex: number): string {
+  if (cue.cue_family === 'hot') return `Cue ${cueLabel(cue)}`;
+  return `Memory ${memoryIndex + 1}`;
+}
+
 function analysisReady(track: RekordboxTrack): boolean {
   return track.analysis_parse_status === 'completed' || track.analysis_parse_status === 'reused';
 }
@@ -80,37 +112,161 @@ function analysisLabel(track: RekordboxTrack): string {
   }
 }
 
-function gridLines(beats: BeatEntry[]): BeatEntry[] {
-  if (beats.length <= MAX_GRID_LINES) return beats;
+function timelineGridLines(beats: BeatEntry[]): BeatEntry[] {
   const downbeats = beats.filter((beat) => beat.isDownbeat);
-  if (downbeats.length <= MAX_GRID_LINES) return downbeats;
-  const step = Math.ceil(downbeats.length / MAX_GRID_LINES);
+  if (downbeats.length <= MAX_TIMELINE_GRID_LINES) return downbeats;
+  const step = Math.ceil(downbeats.length / MAX_TIMELINE_GRID_LINES);
   return downbeats.filter((_, index) => index % step === 0);
+}
+
+function beatRulerTicks(beats: BeatEntry[]): BeatEntry[] {
+  if (beats.length <= MAX_BEAT_RULER_TICKS) return beats;
+  const step = Math.ceil(beats.length / MAX_BEAT_RULER_TICKS);
+  const sampled = new Map<number, BeatEntry>();
+  beats.forEach((beat, index) => {
+    if (beat.isDownbeat || index % step === 0) sampled.set(beat.seq, beat);
+  });
+  return [...sampled.values()].sort((a, b) => a.ms - b.ms);
+}
+
+function barLabelBeats(beats: BeatEntry[]): BeatEntry[] {
+  const downbeats = beats.filter((beat) => beat.isDownbeat);
+  if (downbeats.length <= MAX_BAR_LABELS) return downbeats;
+  const step = Math.ceil(downbeats.length / MAX_BAR_LABELS);
+  return downbeats.filter((_, index) => index % step === 0 || index === downbeats.length - 1);
+}
+
+function phraseBeatMs(beatGrid: BeatGridRow | null, beatNumber: number | null): number | null {
+  if (beatNumber == null) return null;
+  const beat = beatGrid?.beats.find((entry) => entry.seq === beatNumber);
+  return beat?.ms ?? null;
+}
+
+function sectionDisplayLabel(sourceLabel: string | null, index: number): string {
+  switch ((sourceLabel ?? '').toLowerCase()) {
+    case 'up': return 'Build';
+    case 'down': return 'Drop';
+    case 'verse2': return 'Verse 2';
+    case 'intro': return 'Intro';
+    case 'verse': return 'Verse';
+    case 'chorus': return 'Chorus';
+    case 'bridge': return 'Bridge';
+    case 'outro': return 'Outro';
+    default: return sourceLabel
+      ? sourceLabel.replace(/[_-]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase())
+      : `Section ${index + 1}`;
+  }
+}
+
+function sectionTone(label: string): { panelColor: string; waveformColor: string } {
+  const normalized = label.toLowerCase();
+  if (normalized.includes('intro')) return { panelColor: '#16477a', waveformColor: '#2997ff' };
+  if (normalized.includes('verse')) return { panelColor: '#503477', waveformColor: '#a868f4' };
+  if (normalized.includes('build') || normalized.includes('up')) return { panelColor: '#8d480d', waveformColor: '#ff8614' };
+  if (normalized.includes('drop') || normalized.includes('down')) return { panelColor: '#8f2d2f', waveformColor: '#ff514b' };
+  if (normalized.includes('chorus')) return { panelColor: '#8a2d61', waveformColor: '#f151a6' };
+  if (normalized.includes('bridge')) return { panelColor: '#23656c', waveformColor: '#32c2c8' };
+  if (normalized.includes('outro')) return { panelColor: '#3d526a', waveformColor: '#72a1cf' };
+  return { panelColor: '#39434f', waveformColor: '#8d9aaa' };
+}
+
+function buildTimelineSections(
+  phrases: PhraseRow[],
+  beatGrid: BeatGridRow | null,
+  durationMs: number | null,
+): TimelineSection[] {
+  if (durationMs == null || durationMs <= 0) return [];
+  const positioned = phrases
+    .map((phrase) => ({
+      phrase,
+      startMs: phrase.start_ms ?? phraseBeatMs(beatGrid, phrase.start_beat),
+      endMs: phrase.end_ms ?? phraseBeatMs(beatGrid, phrase.end_beat),
+    }))
+    .filter((item): item is typeof item & { startMs: number } => item.startMs != null && Number.isFinite(item.startMs))
+    .sort((a, b) => a.startMs - b.startMs);
+
+  return positioned.flatMap((item, index) => {
+    const nextStart = positioned[index + 1]?.startMs ?? null;
+    const startMs = Math.max(0, Math.min(durationMs, item.startMs));
+    const rawEnd = item.endMs ?? nextStart ?? durationMs;
+    const endMs = Math.max(startMs, Math.min(durationMs, rawEnd));
+    if (endMs <= startMs) return [];
+    const sourceLabel = item.phrase.normalized_label ?? '';
+    const label = sectionDisplayLabel(sourceLabel || null, index);
+    const tone = sectionTone(label);
+    return [{
+      id: item.phrase.id,
+      label,
+      sourceLabel: sourceLabel || 'unmapped Rekordbox phrase',
+      startMs,
+      endMs,
+      ...tone,
+    }];
+  });
+}
+
+function percentageAt(ms: number, durationMs: number): number {
+  return Math.max(0, Math.min(100, (ms / durationMs) * 100));
+}
+
+function beatPositionLabel(beat: BeatEntry | undefined): string {
+  if (!beat) return '—';
+  return `${beat.bar}.${beat.beatInBar}.1`;
+}
+
+function TimelineLaneLabel({ icon, label, children }: { icon: ReactNode; label: string; children?: ReactNode }) {
+  return (
+    <div className="flex h-full items-center gap-3 rounded-lg border border-[#25303a] bg-[#111820] px-4 text-[#d7dce2] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
+      <span className="shrink-0 text-[#aab3bd]" aria-hidden="true">{icon}</span>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold tracking-[-0.01em]">{label}</p>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 function CueWaveformPanel({
   track,
   beatGrid,
   cues,
+  phrases,
   cueLoading,
   beatGridLoading,
+  phraseLoading,
   waveformState,
   onRetryWaveform,
 }: {
   track: RekordboxTrack | null;
   beatGrid: BeatGridRow | null;
   cues: CueRow[];
+  phrases: PhraseRow[];
   cueLoading: boolean;
   beatGridLoading: boolean;
+  phraseLoading: boolean;
   waveformState: WaveformLoadState;
   onRetryWaveform: () => void;
 }) {
-  const durationMs = durationMsForTrack(track, beatGrid);
-  const lines = useMemo(() => gridLines(beatGrid?.beats ?? []), [beatGrid]);
+  const durationMs = durationMsForTrack(track, beatGrid, phrases);
+  const sections = useMemo(
+    () => buildTimelineSections(phrases, beatGrid, durationMs),
+    [beatGrid, durationMs, phrases],
+  );
+  const gridLines = useMemo(() => timelineGridLines(beatGrid?.beats ?? []), [beatGrid]);
+  const rulerTicks = useMemo(() => beatRulerTicks(beatGrid?.beats ?? []), [beatGrid]);
+  const rulerLabels = useMemo(() => barLabelBeats(beatGrid?.beats ?? []), [beatGrid]);
   const positionedCues = useMemo(
     () => cues.filter((cue) => cue.start_ms != null && durationMs != null && durationMs > 0),
     [cues, durationMs],
   );
+  const waveformColorSegments = useMemo<WaveformColorSegment[]>(() => {
+    if (durationMs == null || durationMs <= 0) return [];
+    return sections.map((section) => ({
+      startFraction: section.startMs / durationMs,
+      endFraction: section.endMs / durationMs,
+      color: section.waveformColor,
+    }));
+  }, [durationMs, sections]);
 
   if (!track) {
     return (
@@ -121,7 +277,7 @@ function CueWaveformPanel({
           </div>
           <h2 className="text-lg font-black">Select a track to inspect cue points</h2>
           <p className="mt-2 max-w-md text-sm text-muted-foreground">
-            The waveform, Rekordbox beat grid, and imported hot and memory cues will appear here.
+            Track sections, imported cues, the Rekordbox waveform, and the beat grid will appear in one aligned timeline.
           </p>
         </div>
       </section>
@@ -131,6 +287,7 @@ function CueWaveformPanel({
   const keyDisplay = formatKey(track.musical_key);
   const bpmDisplay = track.bpm != null ? track.bpm.toFixed(2) : '—';
   const durationDisplay = formatTime(durationMs);
+  const firstBeat = beatGrid?.beats[0];
 
   return (
     <section className="overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] shadow-sm">
@@ -178,93 +335,180 @@ function CueWaveformPanel({
         </div>
       </div>
 
-      <div className="px-4 pb-4 pt-3 md:px-5 md:pb-5">
-        <div className="relative overflow-hidden rounded-2xl border border-[var(--color-border-subtle)] bg-black/20">
-          <RekordboxPreviewWaveform
-            state={waveformState}
-            height={176}
-            variant="detail"
-            appearance="rekordbox"
-            showCenterLine
-            onRetry={onRetryWaveform}
-            ariaLabel={`Cue point waveform for ${track.title}`}
-            className="rounded-2xl"
-          />
+      <div className="px-3 pb-4 pt-3 md:px-4 md:pb-4">
+        <div className="overflow-x-auto rounded-2xl">
+          <div className="min-w-[920px] rounded-2xl border border-[#29343e] bg-[#080d12] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.025),0_8px_30px_rgba(0,0,0,0.16)]">
+            <div className="grid grid-cols-[168px_minmax(0,1fr)] gap-1.5">
+              <div className="h-[58px]">
+                <TimelineLaneLabel icon={<List size={19} strokeWidth={2.2} />} label="Sections" />
+              </div>
+              <div className="relative h-[58px] overflow-hidden rounded-lg border border-[#25303a] bg-[#0d1319]">
+                {phraseLoading ? (
+                  <div className="flex h-full items-center justify-center text-xs font-medium text-[#7f8994]">Loading track sections…</div>
+                ) : sections.length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-xs font-medium text-[#7f8994]">No Rekordbox section data</div>
+                ) : (
+                  sections.map((section, index) => {
+                    const left = percentageAt(section.startMs, durationMs ?? 1);
+                    const right = percentageAt(section.endMs, durationMs ?? 1);
+                    return (
+                      <div
+                        key={section.id}
+                        className="absolute bottom-0 top-0 flex items-center justify-center border-x-2 border-[#080d12] px-3 text-center text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                        style={{
+                          left: `${left}%`,
+                          width: `${Math.max(0.6, right - left)}%`,
+                          backgroundColor: section.panelColor,
+                          clipPath: index === 0
+                            ? 'polygon(0 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 0 100%)'
+                            : 'polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%)',
+                        }}
+                        title={`${section.label} · ${formatTime(section.startMs)}–${formatTime(section.endMs)} · source ${section.sourceLabel}`}
+                      >
+                        <span className="truncate">{section.label}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
 
-          {durationMs != null && durationMs > 0 && (
-            <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-              {lines.map((beat) => {
-                const left = Math.max(0, Math.min(100, (beat.ms / durationMs) * 100));
-                return (
+              <div className="h-[82px]">
+                <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.1} />} label="Cues" />
+              </div>
+              <div className="relative h-[82px] overflow-hidden rounded-lg border border-[#25303a] bg-[#0d1319]">
+                {durationMs != null && durationMs > 0 && gridLines.map((beat) => (
                   <span
-                    key={`${beat.seq}-${beat.ms}`}
-                    className={cn(
-                      'absolute bottom-0 top-0 w-px',
-                      beat.isDownbeat ? 'bg-foreground/12' : 'bg-foreground/[0.035]',
-                    )}
-                    style={{ left: `${left}%` }}
+                    key={`cue-grid-${beat.seq}`}
+                    className="pointer-events-none absolute bottom-0 top-0 border-l border-dashed border-white/[0.075]"
+                    style={{ left: `${percentageAt(beat.ms, durationMs)}%` }}
+                    aria-hidden="true"
                   />
-                );
-              })}
+                ))}
+                {cueLoading ? (
+                  <div className="flex h-full items-center justify-center text-xs font-medium text-[#7f8994]">Loading cue points…</div>
+                ) : positionedCues.length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-xs font-medium text-[#7f8994]">No imported cue points</div>
+                ) : (
+                  positionedCues.map((cue, index) => {
+                    const left = percentageAt(cue.start_ms ?? 0, durationMs ?? 1);
+                    const markerColor = cue.color_hex || (cue.cue_family === 'hot' ? '#238df2' : '#9b5de5');
+                    const memoryIndex = positionedCues.slice(0, index).filter((item) => item.cue_family === 'memory').length;
+                    return (
+                      <div
+                        key={cue.id}
+                        className="absolute top-[20px] z-10 -translate-x-1/2"
+                        style={{ left: `${left}%` }}
+                        title={`${cueDisplayName(cue)} · ${formatTime(cue.start_ms)}`}
+                      >
+                        <div
+                          className="whitespace-nowrap rounded-md border px-2 py-1 text-[11px] font-semibold leading-none text-white shadow-[0_4px_12px_rgba(0,0,0,0.35)]"
+                          style={{ backgroundColor: markerColor, borderColor: markerColor }}
+                        >
+                          {cueTimelineLabel(cue, memoryIndex)}
+                        </div>
+                        <span
+                          className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-l-[5px] border-r-[5px] border-t-[8px] border-l-transparent border-r-transparent"
+                          style={{ borderTopColor: markerColor }}
+                          aria-hidden="true"
+                        />
+                        <span
+                          className="absolute left-1/2 top-[31px] h-[31px] w-px -translate-x-1/2 opacity-75"
+                          style={{ backgroundColor: markerColor }}
+                          aria-hidden="true"
+                        />
+                      </div>
+                    );
+                  })
+                )}
+              </div>
 
-              {positionedCues.map((cue, index) => {
-                const left = Math.max(0, Math.min(100, ((cue.start_ms ?? 0) / durationMs) * 100));
-                const markerColor = cue.color_hex || (cue.cue_family === 'hot' ? '#28d7ff' : '#b788ff');
-                return (
-                  <span
-                    key={cue.id}
-                    className="absolute bottom-0 top-0"
-                    style={{ left: `${left}%` }}
-                  >
-                    <span className="absolute bottom-0 top-0 w-px opacity-90" style={{ backgroundColor: markerColor }} />
-                    <span
-                      className="absolute -translate-x-1/2 rounded-md border px-1.5 py-1 font-mono text-[9px] font-black leading-none text-white shadow-lg"
-                      style={{
-                        top: `${8 + (index % 2) * 30}px`,
-                        backgroundColor: markerColor,
-                        borderColor: markerColor,
-                      }}
-                      title={`${cueDisplayName(cue)} · ${formatTime(cue.start_ms)}`}
-                    >
-                      {cueLabel(cue)}
-                    </span>
-                  </span>
-                );
-              })}
+              <div className="h-[170px]">
+                <TimelineLaneLabel icon={<AudioWaveform size={20} strokeWidth={2.2} />} label="Waveform" />
+              </div>
+              <div className="relative h-[170px] overflow-hidden rounded-lg border border-[#25303a] bg-[#0b1117]">
+                <RekordboxPreviewWaveform
+                  state={waveformState}
+                  height={168}
+                  variant="detail"
+                  appearance="rekordbox"
+                  showCenterLine={false}
+                  surface={false}
+                  colorSegments={waveformColorSegments}
+                  onRetry={onRetryWaveform}
+                  ariaLabel={`Cue point waveform for ${track.title}`}
+                  className="absolute inset-x-0 top-0"
+                />
+                {durationMs != null && durationMs > 0 && (
+                  <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+                    {gridLines.map((beat) => (
+                      <span
+                        key={`wave-grid-${beat.seq}`}
+                        className="absolute bottom-0 top-0 border-l border-dashed border-white/[0.09]"
+                        style={{ left: `${percentageAt(beat.ms, durationMs)}%` }}
+                      />
+                    ))}
+                    {sections.slice(1).map((section) => (
+                      <span
+                        key={`section-boundary-${section.id}`}
+                        className="absolute bottom-0 top-0 w-px bg-white/[0.13]"
+                        style={{ left: `${percentageAt(section.startMs, durationMs)}%` }}
+                      />
+                    ))}
+                    {positionedCues.map((cue) => {
+                      const markerColor = cue.color_hex || (cue.cue_family === 'hot' ? '#238df2' : '#9b5de5');
+                      return (
+                        <span
+                          key={`wave-cue-${cue.id}`}
+                          className="absolute bottom-0 top-0 w-px opacity-65"
+                          style={{ left: `${percentageAt(cue.start_ms ?? 0, durationMs)}%`, backgroundColor: markerColor }}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="h-[112px]">
+                <TimelineLaneLabel icon={<Grip size={19} strokeWidth={2.5} />} label="Beats & Bars">
+                  <div className="mt-2 space-y-0.5 font-mono text-[11px] leading-tight text-[#8d98a4]">
+                    <p>{beatPositionLabel(firstBeat)}</p>
+                    <p>{formatTime(firstBeat?.ms ?? null)}</p>
+                  </div>
+                </TimelineLaneLabel>
+              </div>
+              <div className="relative h-[112px] overflow-hidden rounded-lg border border-[#25303a] bg-[#0d1319]">
+                {beatGridLoading ? (
+                  <div className="flex h-full items-center justify-center text-xs font-medium text-[#7f8994]">Loading beat grid…</div>
+                ) : durationMs == null || rulerTicks.length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-xs font-medium text-[#7f8994]">No beat grid available</div>
+                ) : (
+                  <>
+                    {rulerTicks.map((beat) => (
+                      <span
+                        key={`ruler-${beat.seq}`}
+                        className={cn(
+                          'absolute top-[28px] -translate-x-1/2 rounded-full bg-[#e7ebef]',
+                          beat.isDownbeat ? 'h-8 w-[3px]' : 'h-[18px] w-[2px] opacity-90',
+                        )}
+                        style={{ left: `${percentageAt(beat.ms, durationMs)}%` }}
+                        title={`Bar ${beat.bar}, beat ${beat.beatInBar} · ${formatTime(beat.ms)}`}
+                      />
+                    ))}
+                    {rulerLabels.map((beat) => (
+                      <span
+                        key={`bar-label-${beat.seq}`}
+                        className="absolute bottom-[19px] -translate-x-1/2 font-mono text-[12px] font-medium tabular-nums text-[#9ea7b1]"
+                        style={{ left: `${percentageAt(beat.ms, durationMs)}%` }}
+                      >
+                        {beat.bar}
+                      </span>
+                    ))}
+                  </>
+                )}
+              </div>
             </div>
-          )}
-        </div>
-
-        <div className="mt-2 grid grid-cols-5 font-mono text-[9px] text-muted-foreground">
-          {[0, 0.25, 0.5, 0.75, 1].map((fraction, index) => (
-            <span key={fraction} className={cn(index === 0 ? 'text-left' : index === 4 ? 'text-right' : 'text-center')}>
-              {formatTime(durationMs == null ? null : durationMs * fraction)}
-            </span>
-          ))}
-        </div>
-
-        {(cueLoading || cues.length > 0) && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {cueLoading ? (
-              <span className="text-xs text-muted-foreground">Loading imported cue points…</span>
-            ) : (
-              cues.map((cue) => (
-                <span
-                  key={cue.id}
-                  className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs"
-                  title={cue.comment ?? undefined}
-                >
-                  <span
-                    className="h-2.5 w-2.5 rounded-sm border border-white/20"
-                    style={{ backgroundColor: cue.color_hex || (cue.cue_family === 'hot' ? '#28d7ff' : '#b788ff') }}
-                  />
-                  <strong className="font-mono">{cueDisplayName(cue)}</strong>
-                  <span className="font-mono text-muted-foreground">{formatTime(cue.start_ms)}</span>
-                </span>
-              ))
-            )}
           </div>
-        )}
+        </div>
       </div>
     </section>
   );
@@ -282,6 +526,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [cueSummaryLoading, setCueSummaryLoading] = useState(false);
   const [beatGrid, setBeatGrid] = useState<BeatGridRow | null>(null);
   const [beatGridLoading, setBeatGridLoading] = useState(false);
+  const [phrases, setPhrases] = useState<PhraseRow[]>([]);
+  const [phraseLoading, setPhraseLoading] = useState(false);
 
   const selectedTrackId = selectedTrack?.id ?? null;
   const { stats } = useLibraryStats(importId);
@@ -342,6 +588,10 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setSelectedTrack(null);
     setSelectedCues([]);
     setSelectedCueLoading(false);
+    setBeatGrid(null);
+    setBeatGridLoading(false);
+    setPhrases([]);
+    setPhraseLoading(false);
   }, [importId]);
 
   useEffect(() => {
@@ -394,6 +644,30 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     };
   }, [selectedTrackId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedTrackId) {
+      setPhrases([]);
+      setPhraseLoading(false);
+      return;
+    }
+    setPhrases([]);
+    setPhraseLoading(true);
+    void fetchTrackPhrases(selectedTrackId)
+      .then((next) => {
+        if (!cancelled) setPhrases(next);
+      })
+      .catch(() => {
+        if (!cancelled) setPhrases([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPhraseLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTrackId]);
+
   const selectedTrackIds = useMemo(() => selectedTrackId ? [selectedTrackId] : [], [selectedTrackId]);
   const {
     getState: getWaveformState,
@@ -424,8 +698,10 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         track={selectedTrack}
         beatGrid={beatGrid}
         cues={selectedCues}
+        phrases={phrases}
         cueLoading={selectedCueLoading}
         beatGridLoading={beatGridLoading}
+        phraseLoading={phraseLoading}
         waveformState={waveformState}
         onRetryWaveform={() => selectedTrackId && retryWaveform([selectedTrackId])}
       />
