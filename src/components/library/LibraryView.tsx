@@ -37,6 +37,7 @@ import type { LibraryTab } from '../../navigation/appRoutes';
 import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
 import { ControlButton } from '../ui/controls';
 
+
 const TABS: { id: LibraryTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'playlists', label: 'Playlists' },
@@ -191,18 +192,10 @@ function ArtistProfileCard({
 
 function DesktopLibraryInfoCard({
   latestImport,
-  mostCommonBpm,
-  mostCommonKey,
-  largestPlaylistName,
-  statsLoading,
   onImport,
   onResumeAnalysis,
 }: {
   latestImport: RekordboxImport;
-  mostCommonBpm: number | null;
-  mostCommonKey: string | null;
-  largestPlaylistName: string | null;
-  statsLoading: boolean;
   onImport: () => void;
   onResumeAnalysis?: (importId: string) => void;
 }) {
@@ -272,30 +265,27 @@ function DesktopLibraryInfoCard({
       )}
 
       <div className="space-y-3 pt-1">
-        {statsLoading ? (
-          <CircleDash size={14} className="animate-spin text-muted-foreground" />
-        ) : (
-          [
-            {
-              icon: ChartBar,
-              label: 'Most common BPM',
-              value: mostCommonBpm != null ? String(mostCommonBpm) : '—',
-            },
-            {
-              icon: Music,
-              label: 'Most common key',
-              value: mostCommonKey ? formatKey(mostCommonKey) : '—',
-            },
-            {
-              icon: FolderOpen,
-              label: 'Largest playlist',
-              value: largestPlaylistName ?? '—',
-            },
-            {
-              icon: Calendar,
-              label: 'Last import',
-              value: fullDate,
-            },
+        {(() => {
+          const total = latestImport.analysis_expected_track_count || latestImport.track_count;
+          const parsed = latestImport.analysis_parsed_track_count ?? 0;
+          const percent = latestImport.analysis_status === 'completed'
+            ? 100
+            : total > 0 ? Math.round((parsed / total) * 100) : 0;
+          const statusLabel: Record<string, string> = {
+            completed: 'Completed',
+            partial: 'Partial',
+            failed: 'Failed',
+            in_progress: 'In Progress',
+            awaiting_upload: 'Awaiting Upload',
+            uploading: 'Uploading',
+            not_requested: 'Not Started',
+          };
+          const analyzed = latestImport.analysis_status === 'completed' ? total : parsed;
+          return [
+            { icon: RecordingFilled, label: 'Status', value: statusLabel[latestImport.analysis_status ?? ''] ?? '—' },
+            { icon: Waveform, label: 'Analyzed', value: analyzed.toLocaleString() },
+            { icon: Music, label: 'Total Tracks', value: total.toLocaleString() },
+            { icon: ChartBar, label: 'Progress', value: `${percent}%` },
           ].map(({ icon: Icon, label, value }) => (
             <div key={label} className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
@@ -306,8 +296,8 @@ function DesktopLibraryInfoCard({
                 {value}
               </span>
             </div>
-          ))
-        )}
+          ));
+        })()}
       </div>
     </div>
   );
@@ -461,6 +451,7 @@ const TrackRow = memo(function TrackRow({
             activeProgress={progress}
             onSeek={canSeek ? handleWaveformSeek : undefined}
             ariaLabel=""
+            surface={false}
           />
         </div>
       </div>
@@ -519,6 +510,7 @@ const TrackRow = memo(function TrackRow({
             activeProgress={progress}
             onSeek={canSeek ? handleWaveformSeek : undefined}
             ariaLabel=""
+            surface={false}
           />
         </div>
       </div>
@@ -540,6 +532,99 @@ function SidebarSection({ icon: Icon, title, children }: {
         {title}
       </p>
       {children}
+    </div>
+  );
+}
+
+// ── Genre donut chart ─────────────────────────────────────────────────────────
+
+const DONUT_COLORS = ['#5BB5E8', '#9B72E8', '#3DBF8A', '#F5A940', '#E55475', '#36C4D0', '#D464C8'];
+const DONUT_OTHER_COLOR = '#4A5568';
+
+function GenreDonutChart({ genres }: { genres: readonly (readonly [string, number])[] }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  if (genres.length === 0) return null;
+
+  const MAX_SHOWN = 6;
+  const shown = genres.slice(0, MAX_SHOWN);
+  const otherCount = genres.slice(MAX_SHOWN).reduce((sum, [, n]) => sum + n, 0);
+  const items: readonly (readonly [string, number])[] = otherCount > 0
+    ? [...shown, ['Other', otherCount] as const]
+    : shown;
+
+  const total = items.reduce((sum, [, n]) => sum + n, 0);
+  const cx = 60, cy = 60, outerR = 52, innerR = 33, GAP = 0.022;
+
+  const segments = (() => {
+    let angle = -Math.PI / 2;
+    return items.map(([name, count], i) => {
+      const fraction = count / total;
+      const sweep = Math.max(0, fraction * 2 * Math.PI - GAP);
+      const start = angle + GAP / 2;
+      const end = start + sweep;
+      angle += fraction * 2 * Math.PI;
+      const color = i < DONUT_COLORS.length ? DONUT_COLORS[i] : DONUT_OTHER_COLOR;
+      const large = sweep > Math.PI ? 1 : 0;
+      const d = [
+        `M ${cx + outerR * Math.cos(start)} ${cy + outerR * Math.sin(start)}`,
+        `A ${outerR} ${outerR} 0 ${large} 1 ${cx + outerR * Math.cos(end)} ${cy + outerR * Math.sin(end)}`,
+        `L ${cx + innerR * Math.cos(end)} ${cy + innerR * Math.sin(end)}`,
+        `A ${innerR} ${innerR} 0 ${large} 0 ${cx + innerR * Math.cos(start)} ${cy + innerR * Math.sin(start)}`,
+        'Z',
+      ].join(' ');
+      return { d, color, name, count, fraction };
+    });
+  })();
+
+  const hovered = hoveredIndex !== null ? segments[hoveredIndex] : null;
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <div className="relative">
+        <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
+          {segments.map((seg, i) => (
+            <path
+              key={seg.name}
+              d={seg.d}
+              fill={seg.color}
+              style={{ opacity: hoveredIndex === null || hoveredIndex === i ? 1 : 0.3, transition: 'opacity 0.12s', cursor: 'pointer' }}
+              onMouseEnter={() => setHoveredIndex(i)}
+              onMouseLeave={() => setHoveredIndex(null)}
+            />
+          ))}
+          <text x={cx} y={cy - 3} textAnchor="middle" style={{ fontSize: 15, fontWeight: 900, fill: 'var(--color-foreground)' }}>
+            {hovered ? `${Math.round(hovered.fraction * 100)}%` : items.length.toString()}
+          </text>
+          <text x={cx} y={cx + 11} textAnchor="middle" style={{ fontSize: 7, fontWeight: 700, fill: 'var(--color-muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            {hovered ? hovered.name.slice(0, 10) : 'total'}
+          </text>
+        </svg>
+        {hovered && (
+          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-20 pointer-events-none rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-panel)] px-2.5 py-1.5 shadow-xl whitespace-nowrap">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: hovered.color }} />
+              <span className="text-[10px] font-semibold text-foreground">{hovered.name}</span>
+            </div>
+            <p className="text-[9px] text-muted-foreground mt-0.5">{hovered.count.toLocaleString()} · {Math.round(hovered.fraction * 100)}%</p>
+          </div>
+        )}
+      </div>
+
+      <div className="w-full space-y-1.5">
+        {segments.map((seg, i) => (
+          <div
+            key={seg.name}
+            className="flex items-center gap-2 cursor-default"
+            style={{ opacity: hoveredIndex === null || hoveredIndex === i ? 1 : 0.3, transition: 'opacity 0.12s' }}
+            onMouseEnter={() => setHoveredIndex(i)}
+            onMouseLeave={() => setHoveredIndex(null)}
+          >
+            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: seg.color }} />
+            <span className="text-[10px] text-muted-foreground truncate flex-1 min-w-0">{seg.name}</span>
+            <span className="text-[10px] font-mono font-bold tabular-nums text-foreground shrink-0">{Math.round(seg.fraction * 100)}%</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -579,20 +664,12 @@ function OverviewPlaylistCard({
           </p>
           {playlist.top_genres?.length > 0 && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1">
-              {playlist.top_genres.slice(0, 2).map((genre, i) => {
-                const colors = [
-                  'bg-blue-500/15 border-blue-500/25 text-blue-300',
-                  'bg-violet-500/15 border-violet-500/25 text-violet-300',
-                  'bg-emerald-500/15 border-emerald-500/25 text-emerald-300',
-                ];
-                const dots = ['bg-blue-300', 'bg-violet-300', 'bg-emerald-300'];
-                return (
-                  <span key={genre} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold ${colors[i % colors.length]}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dots[i % dots.length]}`} />
-                    {genre}
-                  </span>
-                );
-              })}
+              {playlist.top_genres.slice(0, 2).map((genre) => (
+                <span key={genre} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black px-2 py-0.5 text-[9px] font-semibold text-foreground">
+                  <span className="w-1 h-1 rounded-full shrink-0 bg-foreground/70" />
+                  {genre}
+                </span>
+              ))}
               {playlist.top_genres.length > 2 && (
                 <span className="text-[9px] text-muted-foreground font-semibold">
                   +{playlist.top_genres.length - 2}
@@ -906,6 +983,24 @@ export function LibraryView({
   const mostCommonBpm = libraryStats?.mostCommonBpm ?? null;
   const mostCommonKey = libraryStats?.mostCommonKey ?? null;
 
+  const bpmRangeStats = useMemo((): readonly (readonly [string, number])[] => {
+    const raw = libraryStats?.bpmTotals ?? [];
+    const buckets = new Map<number, number>();
+    for (const { bpm, count } of raw) {
+      const bucket = Math.floor(bpm / 10) * 10;
+      buckets.set(bucket, (buckets.get(bucket) ?? 0) + count);
+    }
+    return Array.from(buckets.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([bucket, count]) => [`${bucket}–${bucket + 9}`, count] as const);
+  }, [libraryStats?.bpmTotals]);
+
+  const keyStats = useMemo((): readonly (readonly [string, number])[] =>
+    (libraryStats?.keyTotals ?? [])
+      .map(({ name, count }) => [formatKey(name), count] as const)
+      .sort(([, a], [, b]) => b - a),
+  [libraryStats?.keyTotals]);
+
   const largestPlaylist = useMemo(() => {
     const real = playlists.filter((p) => !p.is_folder);
     if (!real.length) return null;
@@ -1015,10 +1110,6 @@ export function LibraryView({
                     <>
                       <DesktopLibraryInfoCard
                         latestImport={latestImport}
-                        mostCommonBpm={mostCommonBpm}
-                        mostCommonKey={mostCommonKey}
-                        largestPlaylistName={largestPlaylist?.name ?? null}
-                        statsLoading={statsLoading}
                         onImport={onImport}
                         onResumeAnalysis={onResumeAnalysis}
                       />
@@ -1032,20 +1123,12 @@ export function LibraryView({
                             <p className="text-xs text-muted-foreground italic">No genre data</p>
                           ) : (
                             <div className="flex flex-wrap gap-1.5">
-                              {topGenres.map(([genre], i) => {
-                                const colors = [
-                                  'bg-blue-500/15 border-blue-500/25 text-blue-300',
-                                  'bg-violet-500/15 border-violet-500/25 text-violet-300',
-                                  'bg-emerald-500/15 border-emerald-500/25 text-emerald-300',
-                                ];
-                                const dots = ['bg-blue-300', 'bg-violet-300', 'bg-emerald-300'];
-                                return (
-                                  <span key={genre} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold ${colors[i % colors.length]}`} title={genre}>
-                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dots[i % dots.length]}`} />
-                                    <span className="truncate">{genre}</span>
-                                  </span>
-                                );
-                              })}
+                              {topGenres.map(([genre]) => (
+                                <span key={genre} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black px-2 py-0.5 text-[9px] font-semibold text-foreground" title={genre}>
+                                  <span className="w-1 h-1 rounded-full shrink-0 bg-foreground/70" />
+                                  <span className="truncate">{genre}</span>
+                                </span>
+                              ))}
                             </div>
                           )}
                         </SidebarSection>
@@ -1117,6 +1200,35 @@ export function LibraryView({
                       {/* ── OVERVIEW ── */}
                       {activeTab === 'overview' && (
                         <div className="space-y-5">
+
+                          {/* Insights */}
+                          {(topGenres.length > 0 || bpmRangeStats.length > 0 || keyStats.length > 0) && (
+                            <section className="space-y-3">
+                              <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                <ChartBar size={13} /> Insights
+                              </h2>
+                              <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+                                {topGenres.length > 0 && (
+                                  <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4">
+                                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-3">Top Genres</p>
+                                    <GenreDonutChart genres={topGenres} />
+                                  </div>
+                                )}
+                                {bpmRangeStats.length > 0 && (
+                                  <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4">
+                                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-3">BPM Ranges</p>
+                                    <GenreDonutChart genres={bpmRangeStats} />
+                                  </div>
+                                )}
+                                {keyStats.length > 0 && (
+                                  <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4">
+                                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-3">Tracks by Key</p>
+                                    <GenreDonutChart genres={keyStats} />
+                                  </div>
+                                )}
+                              </div>
+                            </section>
+                          )}
 
                           {/* Playlists */}
                           <section className="space-y-3">

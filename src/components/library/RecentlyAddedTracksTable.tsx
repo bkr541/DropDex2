@@ -148,6 +148,8 @@ function TrackRowRecent({
             activeProgress={progress}
             onSeek={canSeek ? handleWaveformSeek : undefined}
             ariaLabel=""
+            surface={false}
+            className="w-full"
           />
         </div>
 
@@ -205,6 +207,8 @@ function TrackRowRecent({
             activeProgress={progress}
             onSeek={canSeek ? handleWaveformSeek : undefined}
             ariaLabel=""
+            surface={false}
+            className="w-full"
           />
         </div>
       </div>

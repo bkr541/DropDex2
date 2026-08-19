@@ -335,7 +335,7 @@ export function RekordboxPreviewWaveform({
     [displayCount, normalized],
   );
   const progress = activeProgress != null ? clampProgress(activeProgress) : null;
-  const resolvedAppearance = appearance ?? (theme === 'cdj' ? 'rekordbox' : 'dropdex');
+  const resolvedAppearance = appearance ?? 'dropdex';
   const resolvedColorSegments = useMemo<ResolvedWaveformColorSegment[]>(() => {
     if (!colorSegments?.length) return [];
     return colorSegments.flatMap((segment) => {
