@@ -140,7 +140,7 @@ function ArtistProfileCard({
     : null;
 
   return (
-    <div className="glass rounded-2xl border border-[var(--color-border-subtle)] px-5 py-6 text-center">
+    <div className="glass rounded-2xl border border-[var(--color-border-subtle)] px-5 py-6 text-center flex flex-col items-center justify-center min-h-[218px]">
       <div className="relative inline-block mb-4">
         <div className="absolute inset-[-5px] rounded-full border-2 border-primary shadow-[0_0_24px_rgba(10,145,255,0.34)] pointer-events-none" />
         {avatarUrl && !imgError ? (
@@ -651,18 +651,6 @@ function DesktopLibraryHero({
 
         {/* Left column — identity + actions */}
         <div className="min-w-0 px-8 py-7 flex flex-col justify-center">
-          <h1 className="text-4xl xl:text-5xl font-black uppercase tracking-tight leading-none">
-            {libraryName}
-          </h1>
-          <p className="mt-3 text-sm text-muted-foreground font-semibold">
-            {latestImport.track_count.toLocaleString()} tracks&nbsp;&nbsp;•&nbsp;&nbsp;{latestImport.playlist_count} playlists
-          </p>
-
-          <div className="mt-4">
-            <ControlButton variant="primary" onClick={onImport}>
-              <Upload size={14} /> Import New Library
-            </ControlButton>
-          </div>
         </div>
 
         {/* Middle column — empty */}
@@ -1042,11 +1030,18 @@ export function LibraryView({
                             <p className="text-xs text-muted-foreground italic">No genre data</p>
                           ) : (
                             <div className="flex flex-wrap gap-1.5">
-                              {topGenres.map(([genre]) => (
-                                <span key={genre} className="library-genre-badge" title={genre}>
-                                  <span className="truncate">{genre}</span>
-                                </span>
-                              ))}
+                              {topGenres.map(([genre], i) => {
+                                const colors = [
+                                  'bg-blue-500/15 border-blue-500/25 text-blue-300',
+                                  'bg-violet-500/15 border-violet-500/25 text-violet-300',
+                                  'bg-emerald-500/15 border-emerald-500/25 text-emerald-300',
+                                ];
+                                return (
+                                  <span key={genre} className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold ${colors[i % colors.length]}`} title={genre}>
+                                    <span className="truncate">{genre}</span>
+                                  </span>
+                                );
+                              })}
                             </div>
                           )}
                         </SidebarSection>
@@ -1103,19 +1098,6 @@ export function LibraryView({
                         </button>
                       ))}
                     </div>
-                    <div className="relative w-full xl:w-72 shrink-0 pb-1.5">
-                      <Search
-                        className="absolute left-3 top-4 -translate-y-1/2 text-muted-foreground pointer-events-none"
-                        size={15}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Search library…"
-                        value={searchQuery}
-                        onChange={(e) => onSearchQueryChange(e.target.value)}
-                        className="w-full h-9 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] pl-9 pr-3 text-xs font-medium text-foreground outline-none transition-colors focus:border-primary/50 focus:bg-[var(--color-surface-hover)]"
-                      />
-                    </div>
                   </div>}
 
                   {/* Tab content */}
@@ -1138,7 +1120,7 @@ export function LibraryView({
                               <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                                 <Music size={13} /> Playlists
                               </h2>
-                              <ControlButton variant="ghost" onClick={() => onActiveTabChange('playlists')} className="text-[10px]">
+                              <ControlButton variant="ghost" onClick={() => onActiveTabChange('playlists')} className="text-[10px]" style={{ fontSize: '10px' }}>
                                 View all <ChevronRight size={12} />
                               </ControlButton>
                             </div>
@@ -1170,7 +1152,7 @@ export function LibraryView({
                               <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                                 <Music size={13} /> Recently Added Tracks
                               </h2>
-                              <ControlButton variant="ghost" onClick={() => onActiveTabChange('recently-added')} className="text-[10px]">
+                              <ControlButton variant="ghost" onClick={() => onActiveTabChange('recently-added')} className="text-[10px]" style={{ fontSize: '10px' }}>
                                 View all <ChevronRight size={12} />
                               </ControlButton>
                             </div>
