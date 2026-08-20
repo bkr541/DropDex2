@@ -34,6 +34,11 @@ export interface WorkingCue {
   sourceAnlzPresent: boolean;
   sourceConflict: boolean;
   sourceKind: string | null;
+  rekordboxKind: number | null;
+  semantic: string | null;
+  pairedHotCueSlot: number | null;
+  strategyVersion: string | null;
+  strategySettings: Record<string, unknown> | null;
   source: WorkingCueSource;
 }
 
@@ -87,6 +92,11 @@ export function normalizeImportedCues(trackId: string, rows: CueRow[]): WorkingC
     sourceAnlzPresent: row.source_anlz_present,
     sourceConflict: row.source_conflict,
     sourceKind: row.source_kind,
+    rekordboxKind: null,
+    semantic: null,
+    pairedHotCueSlot: null,
+    strategyVersion: null,
+    strategySettings: null,
     source: 'imported' as const,
   })));
 }
@@ -127,6 +137,11 @@ function canonicalCue(cue: WorkingCue) {
     sourceAnlzPresent: cue.sourceAnlzPresent,
     sourceConflict: cue.sourceConflict,
     sourceKind: cue.sourceKind,
+    rekordboxKind: cue.rekordboxKind,
+    semantic: cue.semantic,
+    pairedHotCueSlot: cue.pairedHotCueSlot,
+    strategyVersion: cue.strategyVersion,
+    strategySettings: cue.strategySettings,
     source: cue.source,
   };
 }
@@ -187,6 +202,11 @@ export function addWorkingCue(
     sourceAnlzPresent: false,
     sourceConflict: false,
     sourceKind: 'manual',
+    rekordboxKind: null,
+    semantic: null,
+    pairedHotCueSlot: null,
+    strategyVersion: null,
+    strategySettings: null,
     source: 'manual',
   };
 

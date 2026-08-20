@@ -15,6 +15,19 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('workingCueSetsEqual(importedCueBaseline, workingCues)');
   });
 
+
+  it('wires production Auto Cue into the canonical working set without enabling persistence/export', () => {
+    expect(source).toContain('applyAutoCueStrategy({');
+    expect(source).toContain('currentCues: workingCues');
+    expect(source).toContain('setWorkingCues(result.cues)');
+    expect(source).toContain('onClick={() => setEditorMessage(onAutoCue())}');
+    expect(source).toContain('disabled={!autoCueReady}');
+    expect(source).toContain("beatGrid.track_id !== selectedTrackId");
+    expect(source).toContain("phrase.track_id !== selectedTrackId");
+    expect(source).toContain('<ControlButton variant="surface" disabled>Save changes</ControlButton>');
+    expect(source).toContain('variant="primary" disabled title="Cue export will be enabled');
+  });
+
   it('keeps selected-track loading scoped to explicit row selection instead of table filters', () => {
     expect(source).toContain('onClick={() => setSelectedTrack(track)}');
     expect(source).toContain('}, [selectedTrackId]);');

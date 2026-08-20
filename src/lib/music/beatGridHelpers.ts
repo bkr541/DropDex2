@@ -83,6 +83,58 @@ export function nearestBeat(beats: BeatEntry[], ms: number): BeatEntry | null {
   return earlierDistance <= laterDistance ? earlier : later;
 }
 
+
+/** Return the first exact source beat when the grid is valid. */
+export function firstValidBeat(beats: BeatEntry[]): BeatEntry | null {
+  return isUsableBeatGrid(beats) ? beats[0] : null;
+}
+
+/** Return the exact source beat with a given Rekordbox sequence number. */
+export function beatBySequence(beats: BeatEntry[], seq: number | null): BeatEntry | null {
+  if (seq == null || !Number.isFinite(seq) || !isUsableBeatGrid(beats)) return null;
+  return beats.find((beat) => beat.seq === seq) ?? null;
+}
+
+/**
+ * Resolve a stored phrase/cue boundary onto an exact beat. Sequence identity is
+ * authoritative when available; millisecond proximity is only the fallback.
+ */
+export function exactBeatForBoundary(
+  beats: BeatEntry[],
+  boundary: { beatSequence?: number | null; ms?: number | null },
+): BeatEntry | null {
+  const bySequence = beatBySequence(beats, boundary.beatSequence ?? null);
+  if (bySequence) return bySequence;
+  const ms = boundary.ms;
+  return ms != null && Number.isFinite(ms) ? nearestBeat(beats, ms) : null;
+}
+
+/**
+ * Traverse an exact 4/4 Rekordbox grid by whole bars while preserving the
+ * anchor's beat-in-bar. Missing target beats fail closed instead of falling
+ * back to average-BPM arithmetic.
+ */
+export function beatByBarOffset(beats: BeatEntry[], anchor: BeatEntry, bars: number): BeatEntry | null {
+  if (!Number.isInteger(bars) || !isUsableBeatGrid(beats)) return null;
+  const exactAnchor = beats.find((beat) => beat.seq === anchor.seq && beat.ms === anchor.ms);
+  if (!exactAnchor) return null;
+  if (bars === 0) return exactAnchor;
+
+  if (exactAnchor.bar > 0) {
+    const targetBar = exactAnchor.bar + bars;
+    if (targetBar <= 0) return null;
+    return beats.find((beat) => beat.bar === targetBar && beat.beatInBar === exactAnchor.beatInBar) ?? null;
+  }
+
+  // Beats before the first Rekordbox downbeat are marked bar 0. For positive
+  // offsets only, traverse exact stored beat entries rather than inventing a
+  // synthetic bar number.
+  if (bars < 0) return null;
+  const anchorIndex = beats.indexOf(exactAnchor);
+  const target = beats[anchorIndex + bars * 4] ?? null;
+  return target && target.beatInBar === exactAnchor.beatInBar ? target : null;
+}
+
 /**
  * Return only the downbeat entries (beatInBar === 1), preserving order.
  */

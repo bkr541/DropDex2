@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   barAt,
   beatAtOrBefore,
+  beatByBarOffset,
+  beatBySequence,
   beatsInRange,
   bpmAt,
   downbeatsOnly,
+  exactBeatForBoundary,
+  firstValidBeat,
   isUsableBeatGrid,
   nearestBeat,
 } from '../beatGridHelpers';
@@ -179,5 +183,34 @@ describe('barAt', () => {
 
   it('returns null for empty array', () => {
     expect(barAt([], 0)).toBeNull();
+  });
+});
+
+
+describe('exact Stage 3 beat navigation', () => {
+  it('returns exact sequence/boundary identities before falling back to nearest ms', () => {
+    const beats = makeBeats(12, 120);
+    expect(firstValidBeat(beats)).toBe(beats[0]);
+    expect(beatBySequence(beats, 5)).toBe(beats[4]);
+    expect(exactBeatForBoundary(beats, { beatSequence: 5, ms: beats[9].ms })).toBe(beats[4]);
+    expect(exactBeatForBoundary(beats, { ms: beats[7].ms + 20 })).toBe(beats[7]);
+  });
+
+  it('moves by exact bar identity on variable-tempo source milliseconds', () => {
+    const beats = makeBeats(24, 120);
+    beats.forEach((beat, index) => {
+      beat.ms = index === 0 ? 0 : beats[index - 1].ms + 350 + (index % 3) * 47;
+      beat.bpm = 60000 / (350 + (index % 3) * 47);
+    });
+    const anchor = beats[1]; // bar 1, beat 2
+    expect(beatByBarOffset(beats, anchor, 4)).toBe(beats[17]);
+    expect(beatByBarOffset(beats, beats[20], -4)).toBe(beats[4]);
+    expect(beatByBarOffset(beats, anchor, -1)).toBeNull();
+  });
+
+  it('fails closed when an incomplete grid is missing the exact target beat-in-bar', () => {
+    const beats = makeBeats(20, 120).filter((beat) => !(beat.bar === 5 && beat.beatInBar === 1));
+    // Re-sequencing is deliberately not done: stored identity remains source truth.
+    expect(beatByBarOffset(beats, beats[0], 4)).toBeNull();
   });
 });

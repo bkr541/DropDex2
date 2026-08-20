@@ -1,0 +1,511 @@
+import {
+  beatByBarOffset,
+  exactBeatForBoundary,
+  firstValidBeat,
+  isUsableBeatGrid,
+  type BeatEntry,
+} from './beatGridHelpers';
+import {
+  replaceWorkingCues,
+  type WorkingCue,
+} from './cueEditorState';
+import type { PhraseRow } from '../queries/analysisData';
+
+export const AUTO_CUE_STRATEGY_VERSION = 'dropdex-djcues-a-h-v1';
+
+export const AUTO_CUE_STRATEGY_SETTINGS = Object.freeze({
+  mode: 'fill-empty-slots',
+  loopBars: 4,
+  memoryLeadBars: 16,
+  dropSearchStartFraction: 0.20,
+  cueCFallback: 'phrase-then-16-bars-before-drop',
+  cueFFallback: 'phrase-chorus-after-e-or-d',
+  pvdi: 'optional-not-consumed',
+  colorContract: 'derive-from-slot-semantic-v1',
+});
+
+export type PssiCueSemantic =
+  | 'Intro'
+  | 'Up'
+  | 'Down'
+  | 'Chorus'
+  | 'Outro'
+  | 'Verse1'
+  | 'Verse2'
+  | 'Verse3'
+  | 'Verse4'
+  | 'Verse5'
+  | 'Verse6'
+  | 'Bridge'
+  | 'Unknown';
+
+export type AutoCueSemantic =
+  | 'First Beat'
+  | 'Loop In'
+  | 'Vocal / Buildup'
+  | 'Drop'
+  | 'Breakdown'
+  | 'Special / energy recovery'
+  | 'Outro'
+  | 'Loop Out';
+
+export type AutoCueSlot = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
+interface SlotContract {
+  slot: AutoCueSlot;
+  letter: string;
+  semantic: AutoCueSemantic;
+  rekordboxKind: number;
+  loop: boolean;
+  memoryLead: boolean;
+}
+
+export const AUTO_CUE_SLOT_CONTRACTS: readonly SlotContract[] = Object.freeze([
+  { slot: 1, letter: 'A', semantic: 'First Beat', rekordboxKind: 1, loop: false, memoryLead: false },
+  { slot: 2, letter: 'B', semantic: 'Loop In', rekordboxKind: 2, loop: true, memoryLead: false },
+  { slot: 3, letter: 'C', semantic: 'Vocal / Buildup', rekordboxKind: 3, loop: false, memoryLead: true },
+  { slot: 4, letter: 'D', semantic: 'Drop', rekordboxKind: 5, loop: false, memoryLead: true },
+  { slot: 5, letter: 'E', semantic: 'Breakdown', rekordboxKind: 6, loop: false, memoryLead: true },
+  { slot: 6, letter: 'F', semantic: 'Special / energy recovery', rekordboxKind: 7, loop: false, memoryLead: true },
+  { slot: 7, letter: 'G', semantic: 'Outro', rekordboxKind: 8, loop: false, memoryLead: true },
+  { slot: 8, letter: 'H', semantic: 'Loop Out', rekordboxKind: 9, loop: true, memoryLead: false },
+]);
+
+export interface AdaptedPhrase {
+  row: PhraseRow;
+  semantic: PssiCueSemantic;
+  beat: BeatEntry | null;
+}
+
+export interface AutoCueProposal {
+  slot: AutoCueSlot;
+  semantic: AutoCueSemantic;
+  rekordboxKind: number;
+  startBeat: BeatEntry;
+  endBeat: BeatEntry | null;
+  memoryBeat: BeatEntry | null;
+  reason: string;
+}
+
+export interface AutoCueStrategyResult {
+  proposals: AutoCueProposal[];
+  skipped: Partial<Record<AutoCueSlot, string>>;
+}
+
+export interface AutoCueMergeResult {
+  cues: WorkingCue[];
+  addedHotCount: number;
+  addedMemoryCount: number;
+  preservedOccupiedSlots: AutoCueSlot[];
+  skippedSlots: Partial<Record<AutoCueSlot, string>>;
+}
+
+const HIGH_KIND_MAP: Readonly<Record<number, PssiCueSemantic>> = Object.freeze({
+  1: 'Intro',
+  2: 'Up',
+  3: 'Down',
+  5: 'Chorus',
+  6: 'Outro',
+});
+
+const MID_KIND_MAP: Readonly<Record<number, PssiCueSemantic>> = Object.freeze({
+  1: 'Intro',
+  2: 'Verse1',
+  3: 'Verse2',
+  4: 'Verse3',
+  5: 'Verse4',
+  6: 'Verse5',
+  7: 'Verse6',
+  8: 'Bridge',
+  9: 'Chorus',
+  10: 'Outro',
+});
+
+const LOW_KIND_MAP: Readonly<Record<number, PssiCueSemantic>> = Object.freeze({
+  1: 'Intro',
+  2: 'Verse1',
+  3: 'Verse1',
+  4: 'Verse1',
+  5: 'Verse2',
+  6: 'Verse2',
+  7: 'Verse2',
+  8: 'Bridge',
+  9: 'Chorus',
+  10: 'Outro',
+});
+
+function parseRawInteger(value: string | null): number | null {
+  if (value == null || value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+/** Map raw Rekordbox PSSI mood/kind values using DJCues semantics. */
+export function mapRawPssiCueSemantic(sourceMood: string | null, sourceKind: string | null): PssiCueSemantic {
+  const mood = parseRawInteger(sourceMood);
+  const kind = parseRawInteger(sourceKind);
+  if (mood == null || kind == null) return 'Unknown';
+  if (mood === 1) return HIGH_KIND_MAP[kind] ?? 'Unknown';
+  if (mood === 2) return MID_KIND_MAP[kind] ?? 'Unknown';
+  if (mood === 3) return LOW_KIND_MAP[kind] ?? 'Unknown';
+  return 'Unknown';
+}
+
+export function adaptRawPssiPhrases(phrases: PhraseRow[], beats: BeatEntry[]): AdaptedPhrase[] {
+  return phrases
+    .map((row) => ({
+      row,
+      semantic: mapRawPssiCueSemantic(row.source_mood, row.source_kind),
+      beat: exactBeatForBoundary(beats, { beatSequence: row.start_beat, ms: row.start_ms }),
+    }))
+    .sort((a, b) => {
+      const aMs = a.beat?.ms ?? Number.POSITIVE_INFINITY;
+      const bMs = b.beat?.ms ?? Number.POSITIVE_INFINITY;
+      if (aMs !== bMs) return aMs - bMs;
+      return a.row.phrase_index - b.row.phrase_index;
+    });
+}
+
+function slotContract(slot: AutoCueSlot): SlotContract {
+  return AUTO_CUE_SLOT_CONTRACTS[slot - 1];
+}
+
+function validPhrases(phrases: AdaptedPhrase[]): Array<AdaptedPhrase & { beat: BeatEntry }> {
+  return phrases.filter((phrase): phrase is AdaptedPhrase & { beat: BeatEntry } => phrase.beat != null);
+}
+
+function isVerse(semantic: PssiCueSemantic): boolean {
+  return semantic.startsWith('Verse');
+}
+
+function proposal(
+  slot: AutoCueSlot,
+  startBeat: BeatEntry,
+  reason: string,
+  beats: BeatEntry[],
+): AutoCueProposal | null {
+  const contract = slotContract(slot);
+  const endBeat = contract.loop
+    ? beatByBarOffset(beats, startBeat, AUTO_CUE_STRATEGY_SETTINGS.loopBars)
+    : null;
+  if (contract.loop && !endBeat) return null;
+
+  const memoryBeat = contract.memoryLead
+    ? beatByBarOffset(beats, startBeat, -AUTO_CUE_STRATEGY_SETTINGS.memoryLeadBars)
+    : null;
+
+  return {
+    slot,
+    semantic: contract.semantic,
+    rekordboxKind: contract.rekordboxKind,
+    startBeat,
+    endBeat,
+    memoryBeat,
+    reason,
+  };
+}
+
+function inferDurationMs(durationMs: number | null, beats: BeatEntry[]): number {
+  if (durationMs != null && Number.isFinite(durationMs) && durationMs > 0) return durationMs;
+  return beats[beats.length - 1]?.ms ?? 0;
+}
+
+/**
+ * Pure DJCues-compatible A-H proposal engine. It consumes only exact beat-grid
+ * timing plus raw PSSI phrase values and never reads/writes persistence.
+ */
+export function generateAutoCueProposals(input: {
+  beats: BeatEntry[];
+  phrases: PhraseRow[];
+  durationMs: number | null;
+}): AutoCueStrategyResult {
+  const { beats } = input;
+  const skipped: Partial<Record<AutoCueSlot, string>> = {};
+  if (!isUsableBeatGrid(beats)) {
+    for (let slot = 1; slot <= 8; slot += 1) {
+      skipped[slot as AutoCueSlot] = 'No valid exact Rekordbox beat grid.';
+    }
+    return { proposals: [], skipped };
+  }
+
+  const adapted = validPhrases(adaptRawPssiPhrases(input.phrases, beats));
+  const proposals: AutoCueProposal[] = [];
+  const firstBeat = firstValidBeat(beats);
+
+  if (firstBeat) {
+    proposals.push(proposal(1, firstBeat, 'First valid exact Rekordbox beat.', beats)!);
+    const b = proposal(2, firstBeat, 'Four-bar loop from the first valid beat.', beats);
+    if (b) proposals.push(b);
+    else skipped[2] = 'A four-bar loop endpoint is not available on the exact beat grid.';
+  } else {
+    skipped[1] = 'No valid exact Rekordbox beat exists.';
+    skipped[2] = 'No valid exact Rekordbox beat exists.';
+  }
+
+  const durationMs = inferDurationMs(input.durationMs, beats);
+  const dropThresholdMs = durationMs * AUTO_CUE_STRATEGY_SETTINGS.dropSearchStartFraction;
+  const choruses = adapted.filter((phrase) => phrase.semantic === 'Chorus');
+  const qualifyingChorus = choruses.find((phrase) => phrase.beat.ms >= dropThresholdMs) ?? null;
+
+  let dPhrase: (AdaptedPhrase & { beat: BeatEntry }) | null = qualifyingChorus;
+  let dReason = 'First Chorus at or after 20% of track duration.';
+  if (!dPhrase && choruses.length > 0) {
+    const lastEarlyChorus = choruses[choruses.length - 1];
+    const upAfterEarlyChorus = adapted.find(
+      (phrase) => phrase.semantic === 'Up' && phrase.beat.ms > lastEarlyChorus.beat.ms,
+    ) ?? null;
+    if (upAfterEarlyChorus) {
+      dPhrase = upAfterEarlyChorus;
+      dReason = 'All Chorus candidates were early; used the first Up after the last early Chorus.';
+    } else {
+      dPhrase = lastEarlyChorus;
+      dReason = 'All Chorus candidates were early and no later Up existed; used the last Chorus.';
+    }
+  }
+
+  const d = dPhrase ? proposal(4, dPhrase.beat, dReason, beats) : null;
+  if (d) proposals.push(d);
+  else skipped[4] = 'No Chorus candidate exists; Drop was not fabricated.';
+
+  if (d) {
+    const phrasesBeforeD = adapted.filter((phrase) => phrase.beat.ms < d.startBeat.ms);
+    const preferredC = [...phrasesBeforeD].reverse().find(
+      (phrase) => phrase.semantic === 'Up' || isVerse(phrase.semantic),
+    ) ?? null;
+    const anyPhraseBeforeD = phrasesBeforeD[phrasesBeforeD.length - 1] ?? null;
+    const fallbackBeat = beatByBarOffset(beats, d.startBeat, -AUTO_CUE_STRATEGY_SETTINGS.memoryLeadBars);
+    const cAnchor = preferredC?.beat ?? anyPhraseBeforeD?.beat ?? fallbackBeat;
+    if (cAnchor) {
+      const reason = preferredC
+        ? 'Last Up/Verse phrase before D.'
+        : anyPhraseBeforeD
+          ? 'Last valid phrase boundary before D.'
+          : 'No phrase exists before D; used the exact beat 16 bars before D.';
+      const c = proposal(3, cAnchor, reason, beats);
+      if (c) proposals.push(c);
+    } else {
+      skipped[3] = 'No safe exact pre-D phrase or 16-bar fallback exists.';
+    }
+  } else {
+    skipped[3] = 'Cue C requires a safely resolved D anchor in phrase-fallback mode.';
+  }
+
+  const downOrBridge = adapted.filter((phrase) => phrase.semantic === 'Down' || phrase.semantic === 'Bridge');
+  let ePhrase: (AdaptedPhrase & { beat: BeatEntry }) | null = null;
+  let eReason = '';
+  if (d) {
+    ePhrase = downOrBridge.find((phrase) => phrase.beat.ms > d.startBeat.ms) ?? null;
+    eReason = 'First Down/Bridge after D.';
+  } else if (downOrBridge.length > 0) {
+    ePhrase = downOrBridge[0];
+    eReason = 'D is unavailable; used the first Down/Bridge as the conservative breakdown fallback.';
+  }
+  const e = ePhrase ? proposal(5, ePhrase.beat, eReason, beats) : null;
+  if (e) proposals.push(e);
+  else skipped[5] = d
+    ? 'No Down/Bridge exists after D.'
+    : 'No Down/Bridge phrase exists.';
+
+  const fBase = e?.startBeat ?? d?.startBeat ?? null;
+  if (fBase) {
+    const recoveryChorus = choruses.find((phrase) => phrase.beat.ms > fBase.ms) ?? null;
+    if (recoveryChorus) {
+      const f = proposal(
+        6,
+        recoveryChorus.beat,
+        e
+          ? 'No dedicated deterministic energy summary is exposed here; used first Chorus after E.'
+          : 'No dedicated deterministic energy summary is exposed here; used first Chorus after D.',
+        beats,
+      );
+      if (f) proposals.push(f);
+    } else {
+      skipped[6] = 'No Chorus exists after the E/D recovery anchor.';
+    }
+  } else {
+    skipped[6] = 'No E or D anchor exists for the phrase-based energy-recovery fallback.';
+  }
+
+  const firstOutro = adapted.find((phrase) => phrase.semantic === 'Outro') ?? null;
+  const lastBoundary = adapted[adapted.length - 1] ?? null;
+  const gPhrase = firstOutro ?? lastBoundary;
+  const g = gPhrase
+    ? proposal(
+      7,
+      gPhrase.beat,
+      firstOutro ? 'First Outro phrase.' : 'No Outro exists; used the last valid phrase boundary.',
+      beats,
+    )
+    : null;
+  if (g) proposals.push(g);
+  else skipped[7] = 'No valid phrase boundary exists for the outro cue.';
+
+  if (g) {
+    const h = proposal(8, g.startBeat, 'Four-bar loop from the G outro anchor.', beats);
+    if (h) proposals.push(h);
+    else skipped[8] = 'The G anchor does not have a four-bar loop endpoint on the exact beat grid.';
+  } else {
+    skipped[8] = 'Cue H requires a valid G anchor.';
+  }
+
+  proposals.sort((a, b) => a.slot - b.slot);
+  return { proposals, skipped };
+}
+
+function makeAutoWorkingCue(
+  trackId: string,
+  importId: string | null,
+  proposalItem: AutoCueProposal,
+): WorkingCue {
+  const contract = slotContract(proposalItem.slot);
+  return {
+    editorId: `auto:${AUTO_CUE_STRATEGY_VERSION}:hot:${trackId}:${contract.letter}`,
+    trackId,
+    importId,
+    importedCueId: null,
+    rekordboxCueId: null,
+    dedupeKey: null,
+    family: 'hot',
+    hotCueSlot: proposalItem.slot,
+    pointType: contract.loop ? 'loop' : 'cue',
+    startMs: proposalItem.startBeat.ms,
+    endMs: proposalItem.endBeat?.ms ?? null,
+    colorTableIndex: null,
+    colorHex: null,
+    colorName: null,
+    comment: `Auto Cue ${contract.letter} · ${contract.semantic}`,
+    isActiveLoop: contract.loop,
+    beatLoopNumerator: contract.loop ? AUTO_CUE_STRATEGY_SETTINGS.loopBars * 4 : null,
+    beatLoopDenominator: contract.loop ? 1 : null,
+    sourceDbPresent: false,
+    sourceAnlzPresent: false,
+    sourceConflict: false,
+    sourceKind: `auto:${AUTO_CUE_STRATEGY_VERSION}`,
+    rekordboxKind: contract.rekordboxKind,
+    semantic: contract.semantic,
+    pairedHotCueSlot: null,
+    strategyVersion: AUTO_CUE_STRATEGY_VERSION,
+    strategySettings: { ...AUTO_CUE_STRATEGY_SETTINGS },
+    source: 'auto',
+  };
+}
+
+function makeMemoryWorkingCue(
+  trackId: string,
+  importId: string | null,
+  proposalItem: AutoCueProposal,
+): WorkingCue | null {
+  if (!proposalItem.memoryBeat) return null;
+  const contract = slotContract(proposalItem.slot);
+  return {
+    editorId: `auto:${AUTO_CUE_STRATEGY_VERSION}:memory:${trackId}:${contract.letter}`,
+    trackId,
+    importId,
+    importedCueId: null,
+    rekordboxCueId: null,
+    dedupeKey: null,
+    family: 'memory',
+    hotCueSlot: null,
+    pointType: 'cue',
+    startMs: proposalItem.memoryBeat.ms,
+    endMs: null,
+    colorTableIndex: null,
+    colorHex: null,
+    colorName: null,
+    comment: `Auto Memory · 16 bars before Hot Cue ${contract.letter}`,
+    isActiveLoop: false,
+    beatLoopNumerator: null,
+    beatLoopDenominator: null,
+    sourceDbPresent: false,
+    sourceAnlzPresent: false,
+    sourceConflict: false,
+    sourceKind: `auto:${AUTO_CUE_STRATEGY_VERSION}`,
+    rekordboxKind: null,
+    semantic: contract.semantic,
+    pairedHotCueSlot: proposalItem.slot,
+    strategyVersion: AUTO_CUE_STRATEGY_VERSION,
+    strategySettings: { ...AUTO_CUE_STRATEGY_SETTINGS },
+    source: 'auto',
+  };
+}
+
+/** Fill only empty A-H slots and add paired Memory cues without exact-time duplicates. */
+export function mergeAutoCueProposals(input: {
+  trackId: string;
+  importId: string | null;
+  currentCues: WorkingCue[];
+  result: AutoCueStrategyResult;
+}): AutoCueMergeResult {
+  const occupiedSlots = new Set(
+    input.currentCues
+      .filter((cue) => cue.family === 'hot' && cue.hotCueSlot != null)
+      .map((cue) => cue.hotCueSlot as AutoCueSlot),
+  );
+  const occupiedMemoryTimes = new Set(
+    input.currentCues
+      .filter((cue) => cue.family === 'memory' && cue.startMs != null)
+      .map((cue) => cue.startMs as number),
+  );
+  const occupiedMemoryPairs = new Set(
+    input.currentCues
+      .filter((cue) => cue.family === 'memory' && cue.pairedHotCueSlot != null)
+      .map((cue) => cue.pairedHotCueSlot as AutoCueSlot),
+  );
+
+  const next = [...input.currentCues];
+  const preservedOccupiedSlots: AutoCueSlot[] = [];
+  let addedHotCount = 0;
+  let addedMemoryCount = 0;
+
+  for (const proposalItem of input.result.proposals) {
+    if (occupiedSlots.has(proposalItem.slot)) {
+      preservedOccupiedSlots.push(proposalItem.slot);
+      continue;
+    }
+
+    next.push(makeAutoWorkingCue(input.trackId, input.importId, proposalItem));
+    occupiedSlots.add(proposalItem.slot);
+    addedHotCount += 1;
+
+    const memory = makeMemoryWorkingCue(input.trackId, input.importId, proposalItem);
+    if (
+      memory?.startMs != null
+      && !occupiedMemoryTimes.has(memory.startMs)
+      && !occupiedMemoryPairs.has(proposalItem.slot)
+    ) {
+      next.push(memory);
+      occupiedMemoryTimes.add(memory.startMs);
+      occupiedMemoryPairs.add(proposalItem.slot);
+      addedMemoryCount += 1;
+    }
+  }
+
+  return {
+    cues: replaceWorkingCues(next),
+    addedHotCount,
+    addedMemoryCount,
+    preservedOccupiedSlots,
+    skippedSlots: input.result.skipped,
+  };
+}
+
+export function applyAutoCueStrategy(input: {
+  trackId: string;
+  importId: string | null;
+  durationMs: number | null;
+  beats: BeatEntry[];
+  phrases: PhraseRow[];
+  currentCues: WorkingCue[];
+}): AutoCueMergeResult {
+  const result = generateAutoCueProposals({
+    beats: input.beats,
+    phrases: input.phrases,
+    durationMs: input.durationMs,
+  });
+  return mergeAutoCueProposals({
+    trackId: input.trackId,
+    importId: input.importId,
+    currentCues: input.currentCues,
+    result,
+  });
+}

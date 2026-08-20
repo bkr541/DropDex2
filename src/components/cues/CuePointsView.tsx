@@ -3,6 +3,7 @@ import { CircleDash, Music, Upload, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
+import { applyAutoCueStrategy } from '../../lib/music/autoCueStrategy';
 import {
   addWorkingCue,
   deleteWorkingCue,
@@ -278,6 +279,7 @@ function CueWaveformPanel({
   onMoveCue,
   onDeleteCue,
   onDiscard,
+  onAutoCue,
 }: {
   track: RekordboxTrack | null;
   beatGrid: BeatGridRow | null;
@@ -293,6 +295,7 @@ function CueWaveformPanel({
   onMoveCue: (cueId: string, requestedMs: number) => string | null;
   onDeleteCue: (cueId: string) => void;
   onDiscard: () => void;
+  onAutoCue: () => string | null;
 }) {
   const { theme } = useTheme();
   const durationMs = durationMsForTrack(track, beatGrid, phrases);
@@ -362,6 +365,15 @@ function CueWaveformPanel({
   }, [durationMs, sections]);
   const hasUsableGrid = useMemo(() => isUsableBeatGrid(beatGrid?.beats ?? []), [beatGrid]);
   const availableHotCueSlot = useMemo(() => nextAvailableHotCueSlot(cues), [cues]);
+  const autoCueReady = Boolean(
+    track
+    && !cueLoading
+    && !beatGridLoading
+    && !phraseLoading
+    && hasUsableGrid
+    && beatGrid?.track_id === track.id
+    && phrases.every((phrase) => phrase.track_id === track.id),
+  );
 
   const timeAtClientX = useCallback((clientX: number, element: HTMLElement): number | null => {
     if (effectiveViewEnd <= viewStart) return null;
@@ -490,7 +502,14 @@ function CueWaveformPanel({
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <ControlButton variant="surface" disabled>Auto Cue</ControlButton>
+            <ControlButton
+              variant="surface"
+              disabled={!autoCueReady}
+              onClick={() => setEditorMessage(onAutoCue())}
+              title={autoCueReady ? 'Generate deterministic A–H cue proposals' : "Auto Cue requires the selected track's exact beat grid and phrase data to finish loading"}
+            >
+              Auto Cue
+            </ControlButton>
             <ControlButton variant="ghost" disabled={!dirty || cueLoading} onClick={onDiscard}>Discard</ControlButton>
             <ControlButton variant="surface" disabled>Save changes</ControlButton>
             <ControlButton variant="primary" disabled title="Cue export will be enabled in the functional integration stage">
@@ -1005,6 +1024,42 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setWorkingCues((current) => deleteWorkingCue(current, cueId));
   }, []);
 
+  const handleAutoCue = useCallback((): string | null => {
+    if (!selectedTrackId || !selectedTrack) return 'Select a track before running Auto Cue.';
+    if (selectedCueLoading) return 'Cue points are still loading for this track.';
+    if (beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
+    if (phraseLoading) return 'Track sections are still loading for this track.';
+    if (!beatGrid || beatGrid.track_id !== selectedTrackId || !isUsableBeatGrid(beatGrid.beats)) {
+      return 'Auto Cue requires a valid exact Rekordbox beat grid for the selected track.';
+    }
+    if (phrases.some((phrase) => phrase.track_id !== selectedTrackId)) {
+      return 'Auto Cue is waiting for phrase data scoped to the selected track.';
+    }
+
+    const result = applyAutoCueStrategy({
+      trackId: selectedTrackId,
+      importId: selectedTrack.import_id ?? importId,
+      durationMs: durationMsForTrack(selectedTrack, beatGrid, phrases),
+      beats: beatGrid.beats,
+      phrases,
+      currentCues: workingCues,
+    });
+    if (result.addedHotCount > 0 || result.addedMemoryCount > 0) {
+      setWorkingCues(result.cues);
+    }
+
+    const skippedCount = Object.keys(result.skippedSlots).length;
+    if (result.addedHotCount === 0 && result.preservedOccupiedSlots.length > 0) {
+      return 'Auto Cue preserved the occupied Hot Cue slots; no empty proposed slots were available.';
+    }
+    if (result.addedHotCount === 0) {
+      return skippedCount > 0
+        ? `Auto Cue could not safely derive any new Hot Cues (${skippedCount} slot${skippedCount === 1 ? '' : 's'} skipped).`
+        : 'Auto Cue did not add any new cues.';
+    }
+    return `Auto Cue added ${result.addedHotCount} Hot Cue${result.addedHotCount === 1 ? '' : 's'} and ${result.addedMemoryCount} Memory Cue${result.addedMemoryCount === 1 ? '' : 's'}${skippedCount > 0 ? `; ${skippedCount} unsupported slot${skippedCount === 1 ? '' : 's'} skipped` : ''}.`;
+  }, [beatGrid, beatGridLoading, importId, phraseLoading, phrases, selectedCueLoading, selectedTrack, selectedTrackId, workingCues]);
+
   const handleDiscard = useCallback(() => {
     setWorkingCues(importedCueBaseline);
   }, [importedCueBaseline]);
@@ -1043,6 +1098,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         onMoveCue={handleMoveCue}
         onDeleteCue={handleDeleteCue}
         onDiscard={handleDiscard}
+        onAutoCue={handleAutoCue}
       />
 
       <section className="overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] shadow-sm">
