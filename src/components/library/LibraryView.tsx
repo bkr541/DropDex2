@@ -1152,7 +1152,7 @@ export function LibraryView({
   } = useTrackPreviewWaveforms(importId, waveformIds);
 
   return (
-    <div className="space-y-5 md:max-w-7xl md:mx-auto">
+    <div className="md:max-w-7xl md:mx-auto">
       <AnimatePresence mode="wait">
         {showSearch ? (
           <motion.div
@@ -1214,70 +1214,67 @@ export function LibraryView({
             )}
 
             {!importLoading && !importError && (
-              <div className="space-y-4">
-
+              <>
                 {!latestImport && (
                   <EmptyLibrary onImport={onImport} profile={profile} />
                 )}
 
-                {/* ── Top row: sidebar + hero, full width ── */}
                 {latestImport && (
-                  <div className="flex gap-5 items-start">
-                    <div className="hidden lg:flex flex-col gap-4 w-[250px] xl:w-[268px] shrink-0">
-                      <ArtistProfileCard profile={profile} latestImport={latestImport} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="hidden lg:block">
-                        <DesktopLibraryHero
-                          latestImport={latestImport}
-                          profile={profile}
-                          topGenres={topGenres}
-                          mostCommonBpm={mostCommonBpm}
-                          mostCommonKey={mostCommonKey}
-                          largestPlaylistName={largestPlaylist?.name ?? null}
-                          onImport={onImport}
-                          onResumeAnalysis={onResumeAnalysis}
-                        />
+                  <>
+                    {/* ── Sticky header: top row + tabs ── */}
+                    <div className="sticky top-0 z-20 bg-background -mx-4 md:-mx-8 px-4 md:px-8 space-y-4 pb-0">
+
+                      {/* Top row: artist card + hero */}
+                      <div className="flex gap-5 items-start pt-6">
+                        <div className="hidden lg:flex flex-col gap-4 w-[250px] xl:w-[268px] shrink-0">
+                          <ArtistProfileCard profile={profile} latestImport={latestImport} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="hidden lg:block">
+                            <DesktopLibraryHero
+                              latestImport={latestImport}
+                              profile={profile}
+                              topGenres={topGenres}
+                              mostCommonBpm={mostCommonBpm}
+                              mostCommonKey={mostCommonKey}
+                              largestPlaylistName={largestPlaylist?.name ?? null}
+                              onImport={onImport}
+                              onResumeAnalysis={onResumeAnalysis}
+                            />
+                          </div>
+                          <div className="lg:hidden">
+                            <LibraryHero
+                              latestImport={latestImport}
+                              profile={profile}
+                              onImport={onImport}
+                              onResumeAnalysis={onResumeAnalysis}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Tab bar */}
+                      <div className="flex items-center gap-1 overflow-x-auto scrollbar-none border-b border-[var(--color-border-subtle)]">
+                        {TABS.map((tab) => (
+                          <button
+                            key={tab.id}
+                            onClick={() => onActiveTabChange(tab.id)}
+                            className={cn(
+                              'shrink-0 px-4 py-2.5 text-sm font-bold transition-all border-b-2 -mb-px',
+                              activeTab === tab.id
+                                ? 'text-primary border-primary'
+                                : 'text-muted-foreground border-transparent hover:text-foreground',
+                            )}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                )}
 
-                {/* ── Full-width content below hero ── */}
-                <div className="min-w-0 space-y-4">
-
-                  {/* Mobile: retain the existing compact hero. */}
-                  {latestImport && <div className="lg:hidden">
-                    <LibraryHero
-                      latestImport={latestImport}
-                      profile={profile}
-                      onImport={onImport}
-                      onResumeAnalysis={onResumeAnalysis}
-                    />
-                  </div>}
-
-                  {/* Tabs and search share one row, matching the reference layout. */}
-                  {latestImport && <div className="flex flex-col xl:flex-row xl:items-end gap-3 border-b border-[var(--color-border-subtle)]">
-                    <div className="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto scrollbar-none">
-                      {TABS.map((tab) => (
-                        <button
-                          key={tab.id}
-                          onClick={() => onActiveTabChange(tab.id)}
-                          className={cn(
-                            'shrink-0 px-4 py-2.5 text-sm font-bold transition-all border-b-2 -mb-px',
-                            activeTab === tab.id
-                              ? 'text-primary border-primary'
-                              : 'text-muted-foreground border-transparent hover:text-foreground',
-                          )}
-                        >
-                          {tab.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>}
-
-                  {/* Tab content */}
-                  {latestImport && <AnimatePresence mode="wait">
+                    {/* ── Scrollable tab content ── */}
+                    <div className="mt-4">
+                    <AnimatePresence mode="wait">
                     <motion.div
                       key={activeTab}
                       initial={{ opacity: 0, y: 8 }}
@@ -1569,9 +1566,11 @@ export function LibraryView({
                       )}
 
                     </motion.div>
-                  </AnimatePresence>}
+                  </AnimatePresence>
                 </div>
-              </div>
+                  </>
+                )}
+              </>
             )}
           </motion.div>
         )}
