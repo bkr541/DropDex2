@@ -17,6 +17,7 @@ import {
 import { useLibraryStats, useLibraryTracks } from '../../hooks/useRekordboxTracks';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { useRouteImport } from '../../hooks/useRouteEntities';
+import { useAuthSession } from '../../hooks/useAuthSession';
 import {
   fetchTrackBeatGrid,
   fetchTrackCues,
@@ -32,6 +33,17 @@ import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { ControlButton, SearchControl, SelectControl } from '../ui/controls';
 import { useTheme } from '../../theme/ThemeProvider';
 import type { RekordboxTrack } from '../../types';
+import {
+  createCueDraftDocument,
+  cueDraftStrategySummary,
+  fingerprintCueDraftDocument,
+  hydrateCueDraftDocument,
+} from '../../lib/cues/cueDraftDocument';
+import {
+  CueDraftRevisionConflictError,
+  fetchCueDraft,
+  saveCueDraft,
+} from '../../lib/queries/cueDrafts';
 
 interface CuePointsViewProps {
   importId: string | null;
@@ -40,6 +52,7 @@ interface CuePointsViewProps {
 
 type CueFilter = 'all' | 'with-cues' | 'without-cues';
 type AnalysisFilter = 'all' | 'ready' | 'incomplete';
+type CueDraftStatus = 'Original' | 'Unsaved' | 'Saved' | 'Needs Apply';
 
 const CUE_PAGE_SIZE = 100;
 const MAX_TIMELINE_GRID_LINES = 640;
@@ -274,12 +287,16 @@ function CueWaveformPanel({
   phraseLoading,
   waveformState,
   dirty,
+  draftStatus,
+  saving,
+  persistenceMessage,
   onRetryWaveform,
   onAddCue,
   onMoveCue,
   onDeleteCue,
   onDiscard,
   onAutoCue,
+  onSave,
 }: {
   track: RekordboxTrack | null;
   beatGrid: BeatGridRow | null;
@@ -290,12 +307,16 @@ function CueWaveformPanel({
   phraseLoading: boolean;
   waveformState: WaveformLoadState;
   dirty: boolean;
+  draftStatus: CueDraftStatus;
+  saving: boolean;
+  persistenceMessage: string | null;
   onRetryWaveform: () => void;
   onAddCue: (family: 'hot' | 'memory', requestedMs: number) => string | null;
   onMoveCue: (cueId: string, requestedMs: number) => string | null;
   onDeleteCue: (cueId: string) => void;
   onDiscard: () => void;
   onAutoCue: () => string | null;
+  onSave: () => Promise<string | null>;
 }) {
   const { theme } = useTheme();
   const durationMs = durationMsForTrack(track, beatGrid, phrases);
@@ -502,6 +523,12 @@ function CueWaveformPanel({
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <span
+              className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-muted-foreground"
+              title="Cue draft state"
+            >
+              {draftStatus}
+            </span>
             <ControlButton
               variant="surface"
               disabled={!autoCueReady}
@@ -510,8 +537,14 @@ function CueWaveformPanel({
             >
               Auto Cue
             </ControlButton>
-            <ControlButton variant="ghost" disabled={!dirty || cueLoading} onClick={onDiscard}>Discard</ControlButton>
-            <ControlButton variant="surface" disabled>Save changes</ControlButton>
+            <ControlButton variant="ghost" disabled={!dirty || cueLoading || saving} onClick={onDiscard}>Discard</ControlButton>
+            <ControlButton
+              variant="surface"
+              disabled={!dirty || cueLoading || saving}
+              onClick={() => { void onSave().then(setEditorMessage); }}
+            >
+              {saving ? 'Saving…' : 'Save changes'}
+            </ControlButton>
             <ControlButton variant="primary" disabled title="Cue export will be enabled in the functional integration stage">
               Export to Rekordbox
             </ControlButton>
@@ -699,12 +732,12 @@ function CueWaveformPanel({
                     })}
                   </div>
                 )}
-                {editorMessage && (
+                {(editorMessage ?? persistenceMessage) && (
                   <div
                     role="status"
                     className="pointer-events-none absolute bottom-2 right-2 max-w-[420px] rounded-md border border-amber-300/20 bg-[#11181e]/95 px-2.5 py-1.5 text-[10px] font-semibold text-amber-200 shadow-lg"
                   >
-                    {editorMessage}
+                    {editorMessage ?? persistenceMessage}
                   </div>
                 )}
               </div>
@@ -818,12 +851,18 @@ function CueWaveformPanel({
 }
 
 export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
+  const auth = useAuthSession();
+  const userId = auth.status === 'authenticated' ? auth.session.user.id : null;
   const [search, setSearch] = useState('');
   const [genre, setGenre] = useState('');
   const [cueFilter, setCueFilter] = useState<CueFilter>('all');
   const [analysisFilter, setAnalysisFilter] = useState<AnalysisFilter>('all');
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
   const [importedCueBaseline, setImportedCueBaseline] = useState<WorkingCue[]>([]);
+  const [savedCueBaseline, setSavedCueBaseline] = useState<WorkingCue[] | null>(null);
+  const [draftRevision, setDraftRevision] = useState<number | null>(null);
+  const [draftPersistenceMessage, setDraftPersistenceMessage] = useState<string | null>(null);
+  const [savingCueDraft, setSavingCueDraft] = useState(false);
   const [workingCues, setWorkingCues] = useState<WorkingCue[]>([]);
   const [selectedCueLoading, setSelectedCueLoading] = useState(false);
   const [cueRowsByTrackId, setCueRowsByTrackId] = useState<Map<string, CueRow[]>>(new Map());
@@ -834,9 +873,16 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [phraseLoading, setPhraseLoading] = useState(false);
   const manualCueSequenceRef = useRef(0);
   const selectedTrackIdRef = useRef<string | null>(null);
+  const selectedUserIdRef = useRef<string | null>(null);
+  const workingCuesRef = useRef<WorkingCue[]>([]);
+  const cueDraftLoadRequestRef = useRef(0);
+  const cueDraftSaveRequestRef = useRef(0);
+  const cueDraftSaveInFlightRef = useRef(false);
 
   const selectedTrackId = selectedTrack?.id ?? null;
   selectedTrackIdRef.current = selectedTrackId;
+  selectedUserIdRef.current = userId;
+  workingCuesRef.current = workingCues;
   const { stats } = useLibraryStats(importId);
   const { data: routeImport } = useRouteImport(importId);
   const usbName = routeImport?.device_name?.trim() || 'USB';
@@ -894,6 +940,11 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   useEffect(() => {
     setSelectedTrack(null);
     setImportedCueBaseline([]);
+    setSavedCueBaseline(null);
+    setDraftRevision(null);
+    setDraftPersistenceMessage(null);
+    setSavingCueDraft(false);
+    cueDraftSaveInFlightRef.current = false;
     setWorkingCues([]);
     setSelectedCueLoading(false);
     setBeatGrid(null);
@@ -904,38 +955,95 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
 
   useEffect(() => {
     let cancelled = false;
-    if (!selectedTrackId) {
+    const requestId = ++cueDraftLoadRequestRef.current;
+    const requestedTrack = selectedTrack;
+    const requestedTrackId = selectedTrackId;
+    const requestedUserId = userId;
+
+    // A track/user ownership change invalidates any in-flight Save response.
+    // The write may still finish for its original owner, but it must never
+    // reconcile into the newly selected track or block that track's controls.
+    cueDraftSaveRequestRef.current += 1;
+    cueDraftSaveInFlightRef.current = false;
+    setSavingCueDraft(false);
+
+    if (!requestedTrackId || !requestedTrack) {
       setImportedCueBaseline([]);
+      setSavedCueBaseline(null);
+      setDraftRevision(null);
+      setDraftPersistenceMessage(null);
       setWorkingCues([]);
       setSelectedCueLoading(false);
       return;
     }
 
+    const responseIsCurrent = () => (
+      !cancelled
+      && cueDraftLoadRequestRef.current === requestId
+      && isCurrentTrackResponse(selectedTrackIdRef.current, requestedTrackId)
+      && selectedUserIdRef.current === requestedUserId
+    );
+
     setImportedCueBaseline([]);
+    setSavedCueBaseline(null);
+    setDraftRevision(null);
+    setDraftPersistenceMessage(null);
     setWorkingCues([]);
     setSelectedCueLoading(true);
-    void fetchTrackCues(selectedTrackId)
-      .then((next) => {
-        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) {
-          const normalized = normalizeImportedCues(selectedTrackId, next);
-          setImportedCueBaseline(normalized);
-          setWorkingCues(normalized);
+
+    void fetchTrackCues(requestedTrackId)
+      .then(async (rows) => {
+        if (!responseIsCurrent()) return;
+        const imported = normalizeImportedCues(requestedTrackId, rows);
+        setImportedCueBaseline(imported);
+        setWorkingCues(imported);
+
+        if (!requestedUserId) return;
+        try {
+          const draft = await fetchCueDraft(requestedUserId, requestedTrackId);
+          if (!responseIsCurrent() || !draft) return;
+          if (
+            draft.importId !== requestedTrack.import_id
+            || draft.rekordboxContentId !== requestedTrack.rekordbox_content_id
+            || draft.desiredDocument.importId !== requestedTrack.import_id
+            || draft.desiredDocument.trackId !== requestedTrackId
+            || draft.desiredDocument.rekordboxContentId !== requestedTrack.rekordbox_content_id
+          ) {
+            throw new Error('Saved cue draft identity does not match the selected Rekordbox track.');
+          }
+          const hydrated = hydrateCueDraftDocument(draft.desiredDocument);
+          setSavedCueBaseline(hydrated);
+          setDraftRevision(draft.revision);
+          setWorkingCues(hydrated);
+        } catch (error) {
+          if (!responseIsCurrent()) return;
+          setDraftPersistenceMessage(
+            error instanceof Error
+              ? `Saved cue draft could not be loaded: ${error.message}`
+              : 'Saved cue draft could not be loaded.',
+          );
         }
       })
-      .catch(() => {
-        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) {
-          setImportedCueBaseline([]);
-          setWorkingCues([]);
-        }
+      .catch((error) => {
+        if (!responseIsCurrent()) return;
+        setImportedCueBaseline([]);
+        setSavedCueBaseline(null);
+        setDraftRevision(null);
+        setWorkingCues([]);
+        setDraftPersistenceMessage(
+          error instanceof Error
+            ? `Imported cue baseline could not be loaded: ${error.message}`
+            : 'Imported cue baseline could not be loaded.',
+        );
       })
       .finally(() => {
-        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) setSelectedCueLoading(false);
+        if (responseIsCurrent()) setSelectedCueLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [selectedTrackId]);
+  }, [selectedTrack, selectedTrackId, userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -991,10 +1099,16 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     retry: retryWaveform,
   } = useTrackPreviewWaveforms(importId, selectedTrackIds);
   const waveformState = getWaveformState(selectedTrackId);
+  const discardBaseline = savedCueBaseline ?? importedCueBaseline;
   const workingCuesDirty = useMemo(
-    () => !workingCueSetsEqual(importedCueBaseline, workingCues),
-    [importedCueBaseline, workingCues],
+    () => !workingCueSetsEqual(discardBaseline, workingCues),
+    [discardBaseline, workingCues],
   );
+  const cueDraftStatus = useMemo<CueDraftStatus>(() => {
+    if (workingCuesDirty) return 'Unsaved';
+    if (!savedCueBaseline) return 'Original';
+    return workingCueSetsEqual(importedCueBaseline, savedCueBaseline) ? 'Saved' : 'Needs Apply';
+  }, [importedCueBaseline, savedCueBaseline, workingCuesDirty]);
 
   const handleAddCue = useCallback((family: 'hot' | 'memory', requestedMs: number): string | null => {
     if (!selectedTrackId) return 'Select a track before editing cue points.';
@@ -1060,9 +1174,83 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     return `Auto Cue added ${result.addedHotCount} Hot Cue${result.addedHotCount === 1 ? '' : 's'} and ${result.addedMemoryCount} Memory Cue${result.addedMemoryCount === 1 ? '' : 's'}${skippedCount > 0 ? `; ${skippedCount} unsupported slot${skippedCount === 1 ? '' : 's'} skipped` : ''}.`;
   }, [beatGrid, beatGridLoading, importId, phraseLoading, phrases, selectedCueLoading, selectedTrack, selectedTrackId, workingCues]);
 
+  const handleSave = useCallback(async (): Promise<string | null> => {
+    if (!selectedTrackId || !selectedTrack) return 'Select a track before saving cue changes.';
+    if (!userId) return 'Sign in before saving cue changes.';
+    if (selectedCueLoading) return 'Cue points are still loading for this track.';
+    if (!workingCuesDirty) return 'There are no unsaved cue changes.';
+    if (cueDraftSaveInFlightRef.current) return 'A cue draft save is already in progress.';
+
+    cueDraftSaveInFlightRef.current = true;
+    setSavingCueDraft(true);
+    setDraftPersistenceMessage(null);
+    const requestId = ++cueDraftSaveRequestRef.current;
+    const requestedTrackId = selectedTrackId;
+    const requestedUserId = userId;
+    const workingSnapshot = workingCues;
+    const importedSnapshot = importedCueBaseline;
+    const expectedRevision = draftRevision ?? 0;
+
+    const responseIsCurrent = () => (
+      cueDraftSaveRequestRef.current === requestId
+      && selectedTrackIdRef.current === requestedTrackId
+      && selectedUserIdRef.current === requestedUserId
+    );
+
+    try {
+      const document = createCueDraftDocument({
+        importId: selectedTrack.import_id,
+        trackId: requestedTrackId,
+        rekordboxContentId: selectedTrack.rekordbox_content_id,
+        cues: workingSnapshot,
+      });
+      const importedDocument = createCueDraftDocument({
+        importId: selectedTrack.import_id,
+        trackId: requestedTrackId,
+        rekordboxContentId: selectedTrack.rekordbox_content_id,
+        cues: importedSnapshot,
+      });
+      const [desiredFingerprint, importedBaselineFingerprint] = await Promise.all([
+        fingerprintCueDraftDocument(document),
+        fingerprintCueDraftDocument(importedDocument),
+      ]);
+      const strategy = cueDraftStrategySummary(document);
+      const saved = await saveCueDraft({
+        importId: selectedTrack.import_id,
+        trackId: requestedTrackId,
+        rekordboxContentId: selectedTrack.rekordbox_content_id,
+        document,
+        desiredFingerprint,
+        importedBaselineFingerprint,
+        expectedRevision,
+        strategyVersion: strategy.version,
+        strategySettings: strategy.settings,
+      });
+
+      if (!responseIsCurrent()) return null;
+      const hydrated = hydrateCueDraftDocument(saved.desiredDocument);
+      setSavedCueBaseline(hydrated);
+      setDraftRevision(saved.revision);
+      if (workingCueSetsEqual(workingCuesRef.current, workingSnapshot)) {
+        setWorkingCues(hydrated);
+      }
+      return 'Cue changes saved.';
+    } catch (error) {
+      if (!responseIsCurrent()) return null;
+      if (error instanceof CueDraftRevisionConflictError) return error.message;
+      return error instanceof Error ? `Cue changes were not saved: ${error.message}` : 'Cue changes were not saved.';
+    } finally {
+      if (cueDraftSaveRequestRef.current === requestId) {
+        if (responseIsCurrent()) setSavingCueDraft(false);
+        cueDraftSaveInFlightRef.current = false;
+      }
+    }
+  }, [draftRevision, importedCueBaseline, selectedCueLoading, selectedTrack, selectedTrackId, userId, workingCues, workingCuesDirty]);
+
   const handleDiscard = useCallback(() => {
-    setWorkingCues(importedCueBaseline);
-  }, [importedCueBaseline]);
+    setWorkingCues(savedCueBaseline ?? importedCueBaseline);
+    setDraftPersistenceMessage(null);
+  }, [importedCueBaseline, savedCueBaseline]);
 
   if (!importId) {
     return (
@@ -1093,12 +1281,16 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         phraseLoading={phraseLoading}
         waveformState={waveformState}
         dirty={workingCuesDirty}
+        draftStatus={cueDraftStatus}
+        saving={savingCueDraft}
+        persistenceMessage={draftPersistenceMessage}
         onRetryWaveform={() => selectedTrackId && retryWaveform([selectedTrackId])}
         onAddCue={handleAddCue}
         onMoveCue={handleMoveCue}
         onDeleteCue={handleDeleteCue}
         onDiscard={handleDiscard}
         onAutoCue={handleAutoCue}
+        onSave={handleSave}
       />
 
       <section className="overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] shadow-sm">
