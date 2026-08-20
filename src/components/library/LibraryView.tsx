@@ -812,7 +812,7 @@ function DesktopLibraryHero({
             <span className="font-black text-sm leading-none text-emerald-500">Import Complete</span>
           </div>
           <ControlButton variant="neutral" onClick={onImport} className="mt-3 w-full text-[10px]">
-            <Upload size={11} /> Import New Library
+            <Upload size={11} /> Import Library
           </ControlButton>
           <div className="grid grid-cols-1 gap-y-2 mt-3">
             {latestImport.device_name && (
