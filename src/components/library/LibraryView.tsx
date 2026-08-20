@@ -552,7 +552,7 @@ function SingleDonut({
   colorOffset?: number;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const cx = 48, cy = 48, outerR = 41, innerR = 26, GAP = 0.025;
+  const cx = 80, cy = 80, outerR = 72, innerR = 48, GAP = 0.022;
 
   const segments = (() => {
     let angle = -Math.PI / 2;
@@ -577,50 +577,72 @@ function SingleDonut({
   })();
 
   const hovered = hoveredIndex !== null ? segments[hoveredIndex] : null;
+  const topItem = segments[0];
 
   return (
-    <div className="flex flex-col items-center gap-3 flex-1 min-w-0">
-      <div className="relative">
-        <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
+    <div className="flex gap-5 items-center w-full min-w-0">
+      {/* Donut */}
+      <div className="relative shrink-0">
+        <svg width="160" height="160" viewBox="0 0 160 160" aria-hidden="true">
+          <defs>
+            <filter id="seg-glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
           {segments.map((seg, i) => (
             <path
               key={seg.name}
               d={seg.d}
               fill={seg.color}
-              style={{ opacity: hoveredIndex === null || hoveredIndex === i ? 1 : 0.3, transition: 'opacity 0.12s', cursor: 'pointer' }}
+              filter={hoveredIndex === i ? 'url(#seg-glow)' : undefined}
+              style={{
+                opacity: hoveredIndex === null || hoveredIndex === i ? 1 : 0.25,
+                transition: 'opacity 0.15s, filter 0.15s',
+                cursor: 'pointer',
+              }}
               onMouseEnter={() => setHoveredIndex(i)}
               onMouseLeave={() => setHoveredIndex(null)}
             />
           ))}
-          <text x={cx} y={cy - 2} textAnchor="middle" style={{ fontSize: 12, fontWeight: 900, fill: 'var(--color-foreground)' }}>
-            {hovered ? `${Math.round(hovered.fraction * 100)}%` : items.length.toString()}
+          {/* Center: percentage or item count */}
+          <text
+            x={cx} y={cy - 6}
+            textAnchor="middle" dominantBaseline="middle"
+            style={{ fontSize: 26, fontWeight: 900, fill: 'var(--color-foreground)', fontFamily: 'inherit' }}
+          >
+            {hovered ? `${Math.round(hovered.fraction * 100)}%` : `${items.length}`}
           </text>
-          <text x={cx} y={cy + 10} textAnchor="middle" style={{ fontSize: 6, fontWeight: 700, fill: 'var(--color-muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            {hovered ? hovered.name.slice(0, 9) : 'items'}
+          <text
+            x={cx} y={cy + 16}
+            textAnchor="middle"
+            style={{ fontSize: 8, fontWeight: 700, fill: 'var(--color-muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.12em', fontFamily: 'inherit' }}
+          >
+            {hovered ? hovered.name.slice(0, 10) : 'categories'}
           </text>
         </svg>
-        {hovered && (
-          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-20 pointer-events-none rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-panel)] px-2 py-1.5 shadow-xl whitespace-nowrap">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: hovered.color }} />
-              <span className="text-[10px] font-semibold text-foreground">{hovered.name}</span>
-            </div>
-            <p className="text-[9px] text-muted-foreground mt-0.5">{hovered.count.toLocaleString()} · {Math.round(hovered.fraction * 100)}%</p>
-          </div>
-        )}
       </div>
-      <div className="w-full space-y-1">
+
+      {/* Legend — bar rows */}
+      <div className="flex-1 min-w-0 space-y-2">
         {segments.map((seg, i) => (
           <div
             key={seg.name}
-            className="flex items-center gap-1.5 cursor-default min-w-0"
-            style={{ opacity: hoveredIndex === null || hoveredIndex === i ? 1 : 0.3, transition: 'opacity 0.12s' }}
+            className="min-w-0 cursor-default"
+            style={{ opacity: hoveredIndex === null || hoveredIndex === i ? 1 : 0.3, transition: 'opacity 0.15s' }}
             onMouseEnter={() => setHoveredIndex(i)}
             onMouseLeave={() => setHoveredIndex(null)}
           >
-            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: seg.color }} />
-            <span className="text-[9px] text-muted-foreground truncate flex-1 min-w-0">{seg.name}</span>
-            <span className="text-[9px] font-mono font-bold tabular-nums text-foreground shrink-0">{Math.round(seg.fraction * 100)}%</span>
+            <div className="flex items-baseline justify-between mb-0.5 gap-1">
+              <span className="text-[10px] font-semibold truncate" style={{ color: seg.color }}>{seg.name}</span>
+              <span className="text-[10px] font-mono font-black tabular-nums text-foreground shrink-0">{Math.round(seg.fraction * 100)}%</span>
+            </div>
+            <div className="h-[3px] w-full rounded-full bg-white/[0.06] overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${seg.fraction * 100}%`, backgroundColor: seg.color }}
+              />
+            </div>
           </div>
         ))}
       </div>
@@ -632,28 +654,13 @@ function GenreDonutChart({ genres }: { genres: readonly (readonly [string, numbe
   if (genres.length === 0) return null;
 
   const grandTotal = genres.reduce((sum, [, n]) => sum + n, 0);
+  const topSlice = genres.slice(0, DONUT_PER_CHART);
+  const otherTotal = genres.slice(DONUT_PER_CHART).reduce((sum, [, n]) => sum + n, 0);
+  const items: readonly (readonly [string, number])[] = otherTotal > 0
+    ? [...topSlice, ['Other', otherTotal] as const]
+    : topSlice;
 
-  const firstSlice = genres.slice(0, DONUT_PER_CHART);
-  const secondRaw = genres.slice(DONUT_PER_CHART, DONUT_PER_CHART * 2);
-  const remainder = genres.slice(DONUT_PER_CHART * 2).reduce((sum, [, n]) => sum + n, 0);
-
-  const firstOther = genres.slice(DONUT_PER_CHART).reduce((sum, [, n]) => sum + n, 0);
-  const firstItems: readonly (readonly [string, number])[] = firstOther > 0
-    ? [...firstSlice, ['Other', firstOther] as const]
-    : firstSlice;
-
-  const secondItems: readonly (readonly [string, number])[] = remainder > 0
-    ? [...secondRaw, ['Other', remainder] as const]
-    : secondRaw;
-
-  const hasSecond = secondRaw.length > 0;
-
-  return (
-    <div className="flex gap-4">
-      <SingleDonut items={firstItems} total={grandTotal} colorOffset={0} />
-      {hasSecond && <SingleDonut items={secondItems} total={grandTotal} colorOffset={DONUT_PER_CHART} />}
-    </div>
-  );
+  return <SingleDonut items={items} total={grandTotal} colorOffset={0} />;
 }
 
 // ── Compact playlist card for Overview reference grid ─────────────────────────
@@ -870,11 +877,45 @@ function DesktopLibraryHero({
         </div>
 
         {[
-          { label: 'Main BPM', value: mostCommonBpm != null ? `${mostCommonBpm}` : '—' },
-          { label: 'Main Key', value: mostCommonKey ? formatKey(mostCommonKey) : '—' },
-          { label: 'Main Genre', value: topGenres[0]?.[0] ?? '—' },
-        ].map(({ label, value }) => (
+          {
+            label: 'Main BPM',
+            value: mostCommonBpm != null ? `${mostCommonBpm}` : '—',
+            icon: (
+              <svg viewBox="0 0 256 256" className="w-5 h-5 mb-2 text-muted-foreground" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M64.458 228.867c-.428 2.167 1.007 3.91 3.226 3.893l121.557-.938c2.21-.017 3.68-1.794 3.284-3.97l-11.838-64.913c-.397-2.175-1.626-2.393-2.747-.487l-9.156 15.582c-1.12 1.907-1.71 5.207-1.313 7.388l4.915 27.03c.395 2.175-1.072 3.937-3.288 3.937H88.611c-2.211 0-3.659-1.755-3.233-3.92L114.85 62.533l28.44-.49 11.786 44.43c.567 2.139 2.01 2.386 3.236.535l8.392-12.67c1.22-1.843 1.73-5.058 1.139-7.185l-9.596-34.5c-1.184-4.257-5.735-7.677-10.138-7.638l-39.391.349c-4.415.039-8.688 3.584-9.544 7.912L64.458 228.867z"/>
+                <path fillRule="evenodd" d="M118.116 198.935c-1.182 1.865-.347 3.377 1.867 3.377h12.392c2.214 0 4.968-1.524 6.143-3.39l64.55-102.463c1.18-1.871 3.906-3.697 6.076-4.074l9.581-1.667c2.177-.379 4.492-2.38 5.178-4.496l4.772-14.69c.683-2.104-.063-5.034-1.677-6.555L215.53 54.173c-1.609-1.517-4.482-1.862-6.4-.78l-11.799 6.655c-1.925 1.086-3.626 3.754-3.799 5.954l-.938 11.967c-.173 2.202-1.27 5.498-2.453 7.363l-72.026 113.603z"/>
+              </svg>
+            ),
+          },
+          {
+            label: 'Main Key',
+            value: mostCommonKey ? formatKey(mostCommonKey) : '—',
+            icon: (
+              <svg viewBox="0 0 47 47" className="w-5 h-5 mb-2 text-muted-foreground" fill="currentColor" aria-hidden="true">
+                <path d="M40.975,1.968c-0.706-0.706-1.851-0.706-2.558,0c-0.706,0.706-0.706,1.85,0,2.557c5.81,5.813,5.81,15.27,0,21.081c-0.706,0.707-0.706,1.852,0,2.558c0.354,0.353,0.816,0.528,1.278,0.528s0.926-0.176,1.279-0.528C48.191,20.94,48.192,9.19,40.975,1.968z"/>
+                <path d="M36.539,6.399c-0.707-0.707-1.85-0.707-2.556,0c-0.707,0.706-0.707,1.851,0,2.556c3.368,3.368,3.368,8.848-0.001,12.216c-0.706,0.706-0.706,1.851,0.001,2.558c0.353,0.352,0.814,0.528,1.278,0.528c0.463,0,0.926-0.177,1.278-0.53C41.316,18.95,41.316,11.176,36.539,6.399z"/>
+                <path d="M8.583,4.524c0.706-0.707,0.706-1.851,0-2.557c-0.707-0.705-1.851-0.706-2.557,0c-7.218,7.223-7.217,18.973,0,26.193c0.353,0.354,0.816,0.529,1.279,0.529c0.463,0,0.925-0.176,1.278-0.529c0.706-0.706,0.706-1.852,0-2.557C2.772,19.793,2.772,10.336,8.583,4.524z"/>
+                <path d="M13.016,8.955c0.707-0.706,0.707-1.851,0-2.556c-0.706-0.707-1.85-0.707-2.556,0c-4.777,4.777-4.777,12.551,0,17.33c0.353,0.353,0.816,0.529,1.279,0.529c0.463,0,0.925-0.177,1.278-0.529c0.707-0.707,0.707-1.851,0.001-2.557C9.647,17.803,9.647,12.323,13.016,8.955z"/>
+                <path d="M29.525,0c-1.331,0-2.411,1.079-2.411,2.41v18.077c0,1.994-1.622,3.615-3.615,3.615c-1.993,0-3.615-1.622-3.615-3.615V2.41c0-1.331-1.08-2.41-2.411-2.41s-2.41,1.079-2.41,2.41v18.077c0,3.813,2.546,7.041,6.026,8.082V44.59c0,1.331,1.079,2.41,2.41,2.41c1.331,0,2.41-1.079,2.41-2.41V28.568c3.48-1.041,6.026-4.268,6.026-8.082V2.41C31.936,1.079,30.856,0,29.525,0z"/>
+              </svg>
+            ),
+          },
+          {
+            label: 'Main Genre',
+            value: topGenres[0]?.[0] ?? '—',
+            icon: (
+              <svg viewBox="0 0 398.508 398.508" className="w-5 h-5 mb-2 text-muted-foreground" fill="currentColor" aria-hidden="true">
+                <path d="M314.38,157.492c-23.028,0-41.763,18.734-41.763,41.762c0,23.028,18.734,41.762,41.763,41.762c23.027,0,41.762-18.734,41.762-41.762C356.142,176.227,337.408,157.492,314.38,157.492z M314.38,222.016c-12.552,0-22.763-10.211-22.763-22.762s10.211-22.762,22.763-22.762c12.551,0,22.762,10.211,22.762,22.762S326.931,222.016,314.38,222.016z"/>
+                <path d="M314.38,314.984c-23.028,0-41.763,18.734-41.763,41.762s18.734,41.762,41.763,41.762c23.027,0,41.762-18.734,41.762-41.762S337.408,314.984,314.38,314.984z M314.38,379.508c-12.552,0-22.763-10.211-22.763-22.762s10.211-22.762,22.763-22.762c12.551,0,22.762,10.211,22.762,22.762S326.931,379.508,314.38,379.508z"/>
+                <path d="M314.38,83.524c23.027,0,41.762-18.734,41.762-41.762C356.142,18.734,337.408,0,314.38,0c-23.028,0-41.763,18.734-41.763,41.762C272.618,64.79,291.352,83.524,314.38,83.524z M314.38,19c12.551,0,22.762,10.211,22.762,22.762s-10.211,22.762-22.762,22.762c-12.552,0-22.763-10.211-22.763-22.762S301.829,19,314.38,19z"/>
+                <path d="M255.517,51.262c5.247,0,9.5-4.253,9.5-9.5s-4.253-9.5-9.5-9.5h-35.998c-5.247,0-9.5,4.253-9.5,9.5v147.992h-24.999c-5.247,0-9.5,4.253-9.5,9.5s4.253,9.5,9.5,9.5h24.999v147.992c0,5.247,4.253,9.5,9.5,9.5h35.998c5.247,0,9.5-4.253,9.5-9.5s-4.253-9.5-9.5-9.5h-26.498V208.754h26.498c5.247,0,9.5-4.253,9.5-9.5s-4.253-9.5-9.5-9.5h-26.498V51.262H255.517z"/>
+                <path d="M125.989,142.508c8.234-7.633,13.4-18.531,13.4-30.617c0-23.028-18.734-41.762-41.762-41.762S55.865,88.863,55.865,111.89c0,12.086,5.166,22.984,13.4,30.617c-16.1,9.669-26.899,27.297-26.899,47.406v41.971c0,9.296,5.544,17.322,13.5,20.944v56.76c0,10.361,8.43,18.791,18.791,18.791h45.942c10.361,0,18.791-8.43,18.791-18.791v-56.76c7.955-3.623,13.499-11.648,13.499-20.944v-41.971C152.889,169.805,142.089,152.176,125.989,142.508z M74.865,111.89c0-12.551,10.211-22.762,22.762-22.762s22.762,10.211,22.762,22.762s-10.211,22.762-22.762,22.762S74.865,124.441,74.865,111.89z M133.889,231.885c0,2.205-1.794,3.999-3.999,3.999c-5.247,0-9.5,4.253-9.5,9.5v63.997h-13.262v-54.932c0-5.247-4.253-9.5-9.5-9.5s-9.5,4.253-9.5,9.5v54.932H74.866l0-63.997c0-5.247-4.253-9.5-9.5-9.5c-2.205,0-3.999-1.794-3.999-3.999v-41.971c0-19.994,16.267-36.261,36.261-36.261s36.261,16.267,36.261,36.261V231.885z"/>
+              </svg>
+            ),
+          },
+        ].map(({ label, value, icon }) => (
           <div key={label} className="flex-1 flex flex-col items-center justify-center text-center border-l border-white/[0.07] self-stretch px-4">
+            {icon}
             <p className="text-3xl font-black tabular-nums leading-none tracking-tight truncate">{value}</p>
             <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mt-1.5">{label}</p>
           </div>
@@ -1101,12 +1142,12 @@ export function LibraryView({
     const raw = libraryStats?.bpmTotals ?? [];
     const buckets = new Map<number, number>();
     for (const { bpm, count } of raw) {
-      const bucket = Math.floor(bpm / 10) * 10;
+      const bucket = Math.floor(bpm / 20) * 20;
       buckets.set(bucket, (buckets.get(bucket) ?? 0) + count);
     }
     return Array.from(buckets.entries())
       .sort(([a], [b]) => a - b)
-      .map(([bucket, count]) => [`${bucket}–${bucket + 9}`, count] as const);
+      .map(([bucket, count]) => [`${bucket}–${bucket + 19}`, count] as const);
   }, [libraryStats?.bpmTotals]);
 
   const keyStats = useMemo((): readonly (readonly [string, number])[] =>
@@ -1295,20 +1336,20 @@ export function LibraryView({
                               </h2>
                               <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
                                 {topGenres.length > 0 && (
-                                  <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4">
-                                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-3">Top Genres</p>
+                                  <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-5">
+                                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-4">Top Genres</p>
                                     <GenreDonutChart genres={topGenres} />
                                   </div>
                                 )}
                                 {bpmRangeStats.length > 0 && (
-                                  <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4">
-                                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-3">BPM Ranges</p>
+                                  <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-5">
+                                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-4">BPM Ranges</p>
                                     <GenreDonutChart genres={bpmRangeStats} />
                                   </div>
                                 )}
                                 {keyStats.length > 0 && (
-                                  <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4">
-                                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-3">Tracks by Key</p>
+                                  <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-5">
+                                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-4">Tracks by Key</p>
                                     <GenreDonutChart genres={keyStats} />
                                   </div>
                                 )}

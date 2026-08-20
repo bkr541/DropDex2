@@ -79,6 +79,15 @@ const THEME_OPTIONS: ThemeOption[] = [
   { id: 'cdj', label: 'CDJ', description: 'Performance deck', icon: RecordingFilled },
 ];
 
+function CuePointsNavIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" style={{ transform: 'rotate(180deg)' }} aria-hidden="true">
+      <path d="M18,22a1,1,0,0,1-1-1V19H15a1,1,0,0,1,0-2h2V15a1,1,0,0,1,2,0v2h2a1,1,0,0,1,0,2H19v2A1,1,0,0,1,18,22Z" />
+      <path d="M15,13h3a1,1,0,0,0,1-1V9a1,1,0,0,0-.29-.71l-6-6a1,1,0,0,0-1.42,0l-6,6A1,1,0,0,0,5,9V20a2,2,0,0,0,2,2h5a1,1,0,0,0,1-1V15A2,2,0,0,1,15,13Z" />
+    </svg>
+  );
+}
+
 type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'settings' | 'discovery' | 'search' | 'edit-profile' | 'drop-lab' | 'import' | 'reusable-components' | 'not-found';
 
 type ImportNotice = {
@@ -1071,7 +1080,7 @@ export default function App() {
   const sidebarNavItems: { view: View; icon: React.ElementType; label: string; activeColor: string; activeBg: string }[] = [
     { view: 'home', icon: Music, label: libraryLabel, activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'review', icon: Growth, label: 'Review', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
-    { view: 'cues', icon: RecordingFilled, label: 'Cue Points', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
+    { view: 'cues', icon: CuePointsNavIcon, label: 'Cue Points', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'discovery', icon: Radio, label: 'Discover', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'search', icon: Search, label: 'Search', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'reusable-components', icon: Layers, label: 'Reusable Components', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
@@ -1321,7 +1330,7 @@ export default function App() {
         )}
 
         {/* Scrollable content */}
-        <main className={cn('flex-1 overflow-y-auto px-4 md:px-8 pb-32 md:pb-8', currentView === 'home' && 'pt-6')}>
+        <main className="flex-1 overflow-y-auto px-4 md:px-8 pb-32 md:pb-8">
           <ApplicationErrorBoundary level="feature" resetKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
           <RouteFailureProbe />
           <AnimatePresence mode="wait">
