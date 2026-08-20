@@ -5,6 +5,7 @@ import {
   beatsInRange,
   bpmAt,
   downbeatsOnly,
+  isUsableBeatGrid,
   nearestBeat,
 } from '../beatGridHelpers';
 import type { BeatEntry } from '../beatGridHelpers';
@@ -32,12 +33,38 @@ describe('nearestBeat', () => {
     expect(nearestBeat(beats, 999)).toBe(beats[0]);
   });
 
+  it('clamps requests before the first and after the last stored beat', () => {
+    const beats = makeBeats(4, 120, 250);
+    expect(nearestBeat(beats, -100)?.seq).toBe(1);
+    expect(nearestBeat(beats, 99_999)?.seq).toBe(4);
+  });
+
   it('returns beat with smallest absolute distance', () => {
     const beats = makeBeats(4, 120);
     // ms at beat[1] = 500; query at 300 is closer to beat[0] (0) vs beat[1] (500)? 300 vs 200
     // Actually 300 from beat[0]=0 is 300; from beat[1]=500 is 200 → beat[1]
     const result = nearestBeat(beats, 300);
     expect(result?.seq).toBe(2); // beat at 500ms wins (200ms away vs 300ms)
+  });
+
+  it('uses source-stored variable-tempo positions instead of reconstructing from BPM', () => {
+    const beats: BeatEntry[] = [
+      { seq: 1, srcIdx: 0, beatInBar: 1, bar: 1, ms: 0, bpm: 120, isDownbeat: true },
+      { seq: 2, srcIdx: 1, beatInBar: 2, bar: 1, ms: 500, bpm: 120, isDownbeat: false },
+      { seq: 3, srcIdx: 2, beatInBar: 3, bar: 1, ms: 965, bpm: 129, isDownbeat: false },
+      { seq: 4, srcIdx: 3, beatInBar: 4, bar: 1, ms: 1410, bpm: 135, isDownbeat: false },
+    ];
+    expect(nearestBeat(beats, 1180)?.ms).toBe(965);
+  });
+
+  it('fails closed for non-finite requests and malformed/non-monotonic grids', () => {
+    const malformed = [
+      { seq: 1, srcIdx: 0, beatInBar: 1, bar: 1, ms: 500, bpm: 128, isDownbeat: true },
+      { seq: 2, srcIdx: 1, beatInBar: 2, bar: 1, ms: 400, bpm: 128, isDownbeat: false },
+    ];
+    expect(isUsableBeatGrid(malformed)).toBe(false);
+    expect(nearestBeat(malformed, 450)).toBeNull();
+    expect(nearestBeat(makeBeats(4), Number.NaN)).toBeNull();
   });
 
   it('returns first beat when equidistant (tie goes to first found)', () => {

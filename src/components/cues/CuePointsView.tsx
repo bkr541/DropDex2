@@ -1,7 +1,18 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CircleDash, Music, Upload, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
+import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
+import {
+  addWorkingCue,
+  deleteWorkingCue,
+  moveWorkingCue,
+  nextAvailableHotCueSlot,
+  isCurrentTrackResponse,
+  normalizeImportedCues,
+  workingCueSetsEqual,
+  type WorkingCue,
+} from '../../lib/music/cueEditorState';
 import { useLibraryStats, useLibraryTracks } from '../../hooks/useRekordboxTracks';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { useRouteImport } from '../../hooks/useRouteEntities';
@@ -97,20 +108,20 @@ function formatTime(milliseconds: number | null): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-function cueLabel(cue: CueRow): string {
-  if (cue.cue_family === 'memory') return 'M';
-  const slot = cue.hot_cue_slot;
-  if (slot != null && slot >= 1 && slot <= 26) return String.fromCharCode(64 + slot);
-  return slot != null ? `H${slot}` : 'H';
+function cueLabel(cue: WorkingCue): string {
+  if (cue.family === 'memory') return 'M';
+  const slot = cue.hotCueSlot;
+  if (slot != null && slot >= 1 && slot <= 8) return String.fromCharCode(64 + slot);
+  return 'H';
 }
 
-function cueDisplayName(cue: CueRow): string {
-  const family = cue.cue_family === 'hot' ? `Hot Cue ${cueLabel(cue)}` : 'Memory Cue';
-  return cue.point_type === 'loop' ? `${family} Loop` : family;
+function cueDisplayName(cue: WorkingCue): string {
+  const family = cue.family === 'hot' ? `Hot Cue ${cueLabel(cue)}` : 'Memory Cue';
+  return cue.pointType === 'loop' ? `${family} Loop` : family;
 }
 
-function cueTimelineLabel(cue: CueRow, memoryIndex: number): string {
-  if (cue.cue_family === 'hot') return `Cue ${cueLabel(cue)}`;
+function cueTimelineLabel(cue: WorkingCue, memoryIndex: number): string {
+  if (cue.family === 'hot') return `Cue ${cueLabel(cue)}`;
   return `Memory ${memoryIndex + 1}`;
 }
 
@@ -248,6 +259,10 @@ function TimelineLaneLabel({ icon, label, children }: { icon: ReactNode; label: 
   );
 }
 
+type CueContextMenuState =
+  | { kind: 'add'; x: number; y: number; requestedMs: number }
+  | { kind: 'cue'; x: number; y: number; cueId: string };
+
 function CueWaveformPanel({
   track,
   beatGrid,
@@ -257,26 +272,56 @@ function CueWaveformPanel({
   beatGridLoading,
   phraseLoading,
   waveformState,
+  dirty,
   onRetryWaveform,
+  onAddCue,
+  onMoveCue,
+  onDeleteCue,
+  onDiscard,
 }: {
   track: RekordboxTrack | null;
   beatGrid: BeatGridRow | null;
-  cues: CueRow[];
+  cues: WorkingCue[];
   phrases: PhraseRow[];
   cueLoading: boolean;
   beatGridLoading: boolean;
   phraseLoading: boolean;
   waveformState: WaveformLoadState;
+  dirty: boolean;
   onRetryWaveform: () => void;
+  onAddCue: (family: 'hot' | 'memory', requestedMs: number) => string | null;
+  onMoveCue: (cueId: string, requestedMs: number) => string | null;
+  onDeleteCue: (cueId: string) => void;
+  onDiscard: () => void;
 }) {
   const { theme } = useTheme();
   const durationMs = durationMsForTrack(track, beatGrid, phrases);
 
   const [viewStart, setViewStart] = useState(0);
   const [viewEnd, setViewEnd] = useState<number | null>(null);
+  const [selectedCueId, setSelectedCueId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<CueContextMenuState | null>(null);
+  const [editorMessage, setEditorMessage] = useState<string | null>(null);
+  const dragStateRef = useRef<{ cueId: string; pointerId: number; startX: number; moved: boolean } | null>(null);
   const effectiveViewEnd = viewEnd ?? durationMs ?? 0;
 
-  useEffect(() => { setViewStart(0); setViewEnd(null); }, [durationMs]);
+  useEffect(() => {
+    setViewStart(0);
+    setViewEnd(null);
+    setSelectedCueId(null);
+    setContextMenu(null);
+    setEditorMessage(null);
+    dragStateRef.current = null;
+  }, [track?.id, durationMs]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setContextMenu(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [contextMenu]);
 
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     if (!durationMs || durationMs <= 0) return;
@@ -304,7 +349,7 @@ function CueWaveformPanel({
   const rulerTicks = useMemo(() => beatRulerTicks(beatGrid?.beats ?? []), [beatGrid]);
   const rulerLabels = useMemo(() => barLabelBeats(beatGrid?.beats ?? []), [beatGrid]);
   const positionedCues = useMemo(
-    () => cues.filter((cue) => cue.start_ms != null && durationMs != null && durationMs > 0),
+    () => cues.filter((cue) => cue.startMs != null && durationMs != null && durationMs > 0),
     [cues, durationMs],
   );
   const waveformColorSegments = useMemo<WaveformColorSegment[]>(() => {
@@ -315,6 +360,80 @@ function CueWaveformPanel({
       color: section.waveformColor,
     }));
   }, [durationMs, sections]);
+  const hasUsableGrid = useMemo(() => isUsableBeatGrid(beatGrid?.beats ?? []), [beatGrid]);
+  const availableHotCueSlot = useMemo(() => nextAvailableHotCueSlot(cues), [cues]);
+
+  const timeAtClientX = useCallback((clientX: number, element: HTMLElement): number | null => {
+    if (effectiveViewEnd <= viewStart) return null;
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+    const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return viewStart + fraction * (effectiveViewEnd - viewStart);
+  }, [effectiveViewEnd, viewStart]);
+
+  const handleWaveformContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setSelectedCueId(null);
+    if (cueLoading) {
+      setContextMenu(null);
+      setEditorMessage('Cue editing will be available when the imported cue baseline finishes loading.');
+      return;
+    }
+    if (beatGridLoading) {
+      setContextMenu(null);
+      setEditorMessage('Cue editing will be available when the Rekordbox beat grid finishes loading.');
+      return;
+    }
+    if (!hasUsableGrid) {
+      setContextMenu(null);
+      setEditorMessage('Beat snapping is unavailable because this track has no valid Rekordbox beat grid.');
+      return;
+    }
+    const requestedMs = timeAtClientX(event.clientX, event.currentTarget);
+    if (requestedMs == null) {
+      setContextMenu(null);
+      setEditorMessage('Unable to resolve a cue position from the waveform.');
+      return;
+    }
+    setEditorMessage(null);
+    setContextMenu({ kind: 'add', x: event.clientX, y: event.clientY, requestedMs });
+  }, [beatGridLoading, cueLoading, hasUsableGrid, timeAtClientX]);
+
+  const handleCuePointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>, cueId: string) => {
+    if (event.button !== 0) return;
+    setSelectedCueId(cueId);
+    setContextMenu(null);
+    dragStateRef.current = { cueId, pointerId: event.pointerId, startX: event.clientX, moved: false };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, []);
+
+  const handleCuePointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    if (!drag.moved && Math.abs(event.clientX - drag.startX) < 3) return;
+    drag.moved = true;
+    const lane = event.currentTarget.parentElement;
+    if (!lane) return;
+    const requestedMs = timeAtClientX(event.clientX, lane);
+    if (requestedMs == null) return;
+    const error = onMoveCue(drag.cueId, requestedMs);
+    setEditorMessage(error);
+  }, [onMoveCue, timeAtClientX]);
+
+  const handleCuePointerUp = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragStateRef.current;
+    if (drag?.pointerId === event.pointerId && event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    dragStateRef.current = null;
+  }, []);
+
+  const handleCueContextMenu = useCallback((event: React.MouseEvent<HTMLButtonElement>, cueId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedCueId(cueId);
+    setContextMenu({ kind: 'cue', x: event.clientX, y: event.clientY, cueId });
+  }, []);
 
   if (!track) {
     return (
@@ -335,7 +454,6 @@ function CueWaveformPanel({
   const keyDisplay = formatKey(track.musical_key);
   const bpmDisplay = track.bpm != null ? track.bpm.toFixed(2) : '—';
   const durationDisplay = formatTime(durationMs);
-  const firstBeat = beatGrid?.beats[0];
 
   return (
     <section className="overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] shadow-sm">
@@ -373,7 +491,7 @@ function CueWaveformPanel({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <ControlButton variant="surface" disabled>Auto Cue</ControlButton>
-            <ControlButton variant="ghost" disabled>Discard</ControlButton>
+            <ControlButton variant="ghost" disabled={!dirty || cueLoading} onClick={onDiscard}>Discard</ControlButton>
             <ControlButton variant="surface" disabled>Save changes</ControlButton>
             <ControlButton variant="primary" disabled title="Cue export will be enabled in the functional integration stage">
               Export to Rekordbox
@@ -438,28 +556,47 @@ function CueWaveformPanel({
                   </div>
                 ) : (
                   positionedCues.map((cue, index) => {
-                    const left = percentageAt(cue.start_ms ?? 0, viewStart, effectiveViewEnd);
-                    const markerColor = cue.color_hex || (cue.cue_family === 'hot' ? '#238df2' : '#9b5de5');
-                    const memoryIndex = positionedCues.slice(0, index).filter((item) => item.cue_family === 'memory').length;
+                    const left = percentageAt(cue.startMs ?? 0, viewStart, effectiveViewEnd);
+                    const markerColor = cue.colorHex || (cue.family === 'hot' ? '#238df2' : '#9b5de5');
+                    const memoryIndex = positionedCues.slice(0, index).filter((item) => item.family === 'memory').length;
+                    const selected = selectedCueId === cue.editorId;
                     return (
-                      <div
-                        key={cue.id}
-                        className="absolute top-0 bottom-0 z-10 -translate-x-1/2"
+                      <button
+                        key={cue.editorId}
+                        type="button"
+                        className={cn(
+                          'absolute top-0 bottom-0 z-20 w-10 -translate-x-1/2 cursor-ew-resize rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-white/70',
+                          selected && 'bg-white/[0.05]',
+                        )}
                         style={{ left: `${left}%` }}
-                        title={`${cueDisplayName(cue)} · ${formatTime(cue.start_ms)}`}
+                        title={`${cueDisplayName(cue)} · ${formatTime(cue.startMs)} · drag to reposition; right-click to delete`}
+                        aria-label={`${cueDisplayName(cue)} at ${formatTime(cue.startMs)}. Drag to reposition or press Delete to remove.`}
+                        onPointerDown={(event) => handleCuePointerDown(event, cue.editorId)}
+                        onPointerMove={handleCuePointerMove}
+                        onPointerUp={handleCuePointerUp}
+                        onPointerCancel={handleCuePointerUp}
+                        onContextMenu={(event) => handleCueContextMenu(event, cue.editorId)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Delete' || event.key === 'Backspace') {
+                            event.preventDefault();
+                            onDeleteCue(cue.editorId);
+                            setSelectedCueId(null);
+                            setEditorMessage(null);
+                          }
+                        }}
                       >
                         <span
-                          className="absolute top-0 bottom-0 w-px left-1/2 -translate-x-1/2"
+                          className="absolute top-0 bottom-0 left-1/2 w-px -translate-x-1/2"
                           style={{ backgroundColor: markerColor }}
                           aria-hidden="true"
                         />
                         <span
-                          className="absolute top-[4px] left-1/2 -translate-x-1/2 whitespace-nowrap font-mono text-[9px] font-bold leading-none pl-1.5"
+                          className="pointer-events-none absolute top-[4px] left-1/2 -translate-x-1/2 whitespace-nowrap pl-1.5 font-mono text-[9px] font-bold leading-none"
                           style={{ color: markerColor }}
                         >
                           {cueTimelineLabel(cue, memoryIndex)}
                         </span>
-                      </div>
+                      </button>
                     );
                   })
                 )}
@@ -468,7 +605,11 @@ function CueWaveformPanel({
               <div className="h-[88px]">
                 <TimelineLaneLabel icon={<AudioWaveform size={20} strokeWidth={2.25} />} label="Waveform" />
               </div>
-              <div className="relative h-[88px] overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0b1116]">
+              <div
+                className="relative h-[88px] cursor-crosshair overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0b1116]"
+                onContextMenu={handleWaveformContextMenu}
+                title="Right-click to add a beat-snapped cue"
+              >
                 {durationMs != null && durationMs > 0 ? (() => {
                   const wScale = durationMs / (effectiveViewEnd - viewStart);
                   const wLeft = -(viewStart / durationMs) * wScale * 100;
@@ -524,19 +665,27 @@ function CueWaveformPanel({
                       />
                     ))}
                     {positionedCues.map((cue) => {
-                      const markerColor = cue.color_hex || (cue.cue_family === 'hot' ? '#238df2' : '#9b5de5');
+                      const markerColor = cue.colorHex || (cue.family === 'hot' ? '#238df2' : '#9b5de5');
                       return (
                         <span
-                          key={`wave-cue-${cue.id}`}
+                          key={`wave-cue-${cue.editorId}`}
                           className="absolute bottom-0 top-0 w-px opacity-75"
                           style={{
-                            left: `${percentageAt(cue.start_ms ?? 0, viewStart, effectiveViewEnd)}%`,
+                            left: `${percentageAt(cue.startMs ?? 0, viewStart, effectiveViewEnd)}%`,
                             backgroundColor: markerColor,
                             boxShadow: `0 0 5px ${markerColor}55`,
                           }}
                         />
                       );
                     })}
+                  </div>
+                )}
+                {editorMessage && (
+                  <div
+                    role="status"
+                    className="pointer-events-none absolute bottom-2 right-2 max-w-[420px] rounded-md border border-amber-300/20 bg-[#11181e]/95 px-2.5 py-1.5 text-[10px] font-semibold text-amber-200 shadow-lg"
+                  >
+                    {editorMessage}
                   </div>
                 )}
               </div>
@@ -582,6 +731,69 @@ function CueWaveformPanel({
           </div>
         </div>
       </div>
+
+      {contextMenu && (
+        <div
+          className="fixed inset-0 z-[80]"
+          onPointerDown={() => setContextMenu(null)}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <div
+            role="menu"
+            aria-label={contextMenu.kind === 'add' ? 'Add cue' : 'Cue actions'}
+            className="fixed min-w-[190px] overflow-hidden rounded-lg border border-[#34414b] bg-[#11181e] p-1.5 shadow-2xl"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            {contextMenu.kind === 'add' ? (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={availableHotCueSlot == null}
+                  className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-xs font-semibold text-[#e5e9ed] hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => {
+                    const error = onAddCue('hot', contextMenu.requestedMs);
+                    setEditorMessage(error);
+                    setContextMenu(null);
+                  }}
+                >
+                  <span>Add Hot Cue</span>
+                  <span className="font-mono text-[10px] text-[#8e99a4]">
+                    {availableHotCueSlot == null ? 'A–H full' : String.fromCharCode(64 + availableHotCueSlot)}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="mt-0.5 w-full rounded-md px-3 py-2 text-left text-xs font-semibold text-[#e5e9ed] hover:bg-white/[0.06]"
+                  onClick={() => {
+                    const error = onAddCue('memory', contextMenu.requestedMs);
+                    setEditorMessage(error);
+                    setContextMenu(null);
+                  }}
+                >
+                  Add Memory Cue
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                role="menuitem"
+                className="w-full rounded-md px-3 py-2 text-left text-xs font-semibold text-red-300 hover:bg-red-400/[0.08]"
+                onClick={() => {
+                  onDeleteCue(contextMenu.cueId);
+                  setSelectedCueId(null);
+                  setEditorMessage(null);
+                  setContextMenu(null);
+                }}
+              >
+                Delete cue
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -592,7 +804,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [cueFilter, setCueFilter] = useState<CueFilter>('all');
   const [analysisFilter, setAnalysisFilter] = useState<AnalysisFilter>('all');
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
-  const [selectedCues, setSelectedCues] = useState<CueRow[]>([]);
+  const [importedCueBaseline, setImportedCueBaseline] = useState<WorkingCue[]>([]);
+  const [workingCues, setWorkingCues] = useState<WorkingCue[]>([]);
   const [selectedCueLoading, setSelectedCueLoading] = useState(false);
   const [cueRowsByTrackId, setCueRowsByTrackId] = useState<Map<string, CueRow[]>>(new Map());
   const [cueSummaryLoading, setCueSummaryLoading] = useState(false);
@@ -600,8 +813,11 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [beatGridLoading, setBeatGridLoading] = useState(false);
   const [phrases, setPhrases] = useState<PhraseRow[]>([]);
   const [phraseLoading, setPhraseLoading] = useState(false);
+  const manualCueSequenceRef = useRef(0);
+  const selectedTrackIdRef = useRef<string | null>(null);
 
   const selectedTrackId = selectedTrack?.id ?? null;
+  selectedTrackIdRef.current = selectedTrackId;
   const { stats } = useLibraryStats(importId);
   const { data: routeImport } = useRouteImport(importId);
   const usbName = routeImport?.device_name?.trim() || 'USB';
@@ -658,7 +874,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
 
   useEffect(() => {
     setSelectedTrack(null);
-    setSelectedCues([]);
+    setImportedCueBaseline([]);
+    setWorkingCues([]);
     setSelectedCueLoading(false);
     setBeatGrid(null);
     setBeatGridLoading(false);
@@ -669,22 +886,31 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   useEffect(() => {
     let cancelled = false;
     if (!selectedTrackId) {
-      setSelectedCues([]);
+      setImportedCueBaseline([]);
+      setWorkingCues([]);
       setSelectedCueLoading(false);
       return;
     }
 
-    setSelectedCues([]);
+    setImportedCueBaseline([]);
+    setWorkingCues([]);
     setSelectedCueLoading(true);
     void fetchTrackCues(selectedTrackId)
       .then((next) => {
-        if (!cancelled) setSelectedCues(next);
+        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) {
+          const normalized = normalizeImportedCues(selectedTrackId, next);
+          setImportedCueBaseline(normalized);
+          setWorkingCues(normalized);
+        }
       })
       .catch(() => {
-        if (!cancelled) setSelectedCues([]);
+        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) {
+          setImportedCueBaseline([]);
+          setWorkingCues([]);
+        }
       })
       .finally(() => {
-        if (!cancelled) setSelectedCueLoading(false);
+        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) setSelectedCueLoading(false);
       });
 
     return () => {
@@ -703,13 +929,13 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setBeatGridLoading(true);
     void fetchTrackBeatGrid(selectedTrackId)
       .then((next) => {
-        if (!cancelled) setBeatGrid(next);
+        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) setBeatGrid(next);
       })
       .catch(() => {
-        if (!cancelled) setBeatGrid(null);
+        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) setBeatGrid(null);
       })
       .finally(() => {
-        if (!cancelled) setBeatGridLoading(false);
+        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) setBeatGridLoading(false);
       });
     return () => {
       cancelled = true;
@@ -727,13 +953,13 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setPhraseLoading(true);
     void fetchTrackPhrases(selectedTrackId)
       .then((next) => {
-        if (!cancelled) setPhrases(next);
+        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) setPhrases(next);
       })
       .catch(() => {
-        if (!cancelled) setPhrases([]);
+        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) setPhrases([]);
       })
       .finally(() => {
-        if (!cancelled) setPhraseLoading(false);
+        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) setPhraseLoading(false);
       });
     return () => {
       cancelled = true;
@@ -746,6 +972,42 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     retry: retryWaveform,
   } = useTrackPreviewWaveforms(importId, selectedTrackIds);
   const waveformState = getWaveformState(selectedTrackId);
+  const workingCuesDirty = useMemo(
+    () => !workingCueSetsEqual(importedCueBaseline, workingCues),
+    [importedCueBaseline, workingCues],
+  );
+
+  const handleAddCue = useCallback((family: 'hot' | 'memory', requestedMs: number): string | null => {
+    if (!selectedTrackId) return 'Select a track before editing cue points.';
+    if (selectedCueLoading) return 'Cue points are still loading for this track.';
+    if (beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
+    manualCueSequenceRef.current += 1;
+    const result = addWorkingCue(workingCues, {
+      editorId: `manual:${selectedTrackId}:${manualCueSequenceRef.current}`,
+      trackId: selectedTrackId,
+      family,
+      requestedMs,
+      beats: beatGrid?.beats ?? [],
+    });
+    if (!result.error) setWorkingCues(result.cues);
+    return result.error;
+  }, [beatGrid, beatGridLoading, selectedCueLoading, selectedTrackId, workingCues]);
+
+  const handleMoveCue = useCallback((cueId: string, requestedMs: number): string | null => {
+    if (selectedCueLoading) return 'Cue points are still loading for this track.';
+    if (beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
+    const result = moveWorkingCue(workingCues, cueId, requestedMs, beatGrid?.beats ?? []);
+    if (!result.error) setWorkingCues(result.cues);
+    return result.error;
+  }, [beatGrid, beatGridLoading, selectedCueLoading, workingCues]);
+
+  const handleDeleteCue = useCallback((cueId: string) => {
+    setWorkingCues((current) => deleteWorkingCue(current, cueId));
+  }, []);
+
+  const handleDiscard = useCallback(() => {
+    setWorkingCues(importedCueBaseline);
+  }, [importedCueBaseline]);
 
   if (!importId) {
     return (
@@ -769,13 +1031,18 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       <CueWaveformPanel
         track={selectedTrack}
         beatGrid={beatGrid}
-        cues={selectedCues}
+        cues={workingCues}
         phrases={phrases}
         cueLoading={selectedCueLoading}
         beatGridLoading={beatGridLoading}
         phraseLoading={phraseLoading}
         waveformState={waveformState}
+        dirty={workingCuesDirty}
         onRetryWaveform={() => selectedTrackId && retryWaveform([selectedTrackId])}
+        onAddCue={handleAddCue}
+        onMoveCue={handleMoveCue}
+        onDeleteCue={handleDeleteCue}
+        onDiscard={handleDiscard}
       />
 
       <section className="overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] shadow-sm">
