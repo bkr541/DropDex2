@@ -538,22 +538,21 @@ function SidebarSection({ icon: Icon, title, children }: {
 
 // ── Genre donut chart ─────────────────────────────────────────────────────────
 
-const DONUT_COLORS = ['#5BB5E8', '#9B72E8', '#3DBF8A', '#F5A940', '#E55475', '#36C4D0', '#D464C8'];
+const DONUT_COLORS = ['#5BB5E8', '#9B72E8', '#3DBF8A', '#F5A940', '#E55475', '#36C4D0', '#D464C8', '#F97316', '#A3E635', '#22D3EE', '#E879F9', '#34D399'];
 const DONUT_OTHER_COLOR = '#4A5568';
+const DONUT_PER_CHART = 6;
 
-function GenreDonutChart({ genres }: { genres: readonly (readonly [string, number])[] }) {
+function SingleDonut({
+  items,
+  total,
+  colorOffset = 0,
+}: {
+  items: readonly (readonly [string, number])[];
+  total: number;
+  colorOffset?: number;
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  if (genres.length === 0) return null;
-
-  const MAX_SHOWN = 6;
-  const shown = genres.slice(0, MAX_SHOWN);
-  const otherCount = genres.slice(MAX_SHOWN).reduce((sum, [, n]) => sum + n, 0);
-  const items: readonly (readonly [string, number])[] = otherCount > 0
-    ? [...shown, ['Other', otherCount] as const]
-    : shown;
-
-  const total = items.reduce((sum, [, n]) => sum + n, 0);
-  const cx = 60, cy = 60, outerR = 52, innerR = 33, GAP = 0.022;
+  const cx = 48, cy = 48, outerR = 41, innerR = 26, GAP = 0.025;
 
   const segments = (() => {
     let angle = -Math.PI / 2;
@@ -563,7 +562,8 @@ function GenreDonutChart({ genres }: { genres: readonly (readonly [string, numbe
       const start = angle + GAP / 2;
       const end = start + sweep;
       angle += fraction * 2 * Math.PI;
-      const color = i < DONUT_COLORS.length ? DONUT_COLORS[i] : DONUT_OTHER_COLOR;
+      const ci = colorOffset + i;
+      const color = name === 'Other' ? DONUT_OTHER_COLOR : (DONUT_COLORS[ci % DONUT_COLORS.length]);
       const large = sweep > Math.PI ? 1 : 0;
       const d = [
         `M ${cx + outerR * Math.cos(start)} ${cy + outerR * Math.sin(start)}`,
@@ -579,9 +579,9 @@ function GenreDonutChart({ genres }: { genres: readonly (readonly [string, numbe
   const hovered = hoveredIndex !== null ? segments[hoveredIndex] : null;
 
   return (
-    <div className="flex flex-col items-center gap-4">
+    <div className="flex flex-col items-center gap-3 flex-1 min-w-0">
       <div className="relative">
-        <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
+        <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
           {segments.map((seg, i) => (
             <path
               key={seg.name}
@@ -592,15 +592,15 @@ function GenreDonutChart({ genres }: { genres: readonly (readonly [string, numbe
               onMouseLeave={() => setHoveredIndex(null)}
             />
           ))}
-          <text x={cx} y={cy - 3} textAnchor="middle" style={{ fontSize: 15, fontWeight: 900, fill: 'var(--color-foreground)' }}>
+          <text x={cx} y={cy - 2} textAnchor="middle" style={{ fontSize: 12, fontWeight: 900, fill: 'var(--color-foreground)' }}>
             {hovered ? `${Math.round(hovered.fraction * 100)}%` : items.length.toString()}
           </text>
-          <text x={cx} y={cx + 11} textAnchor="middle" style={{ fontSize: 7, fontWeight: 700, fill: 'var(--color-muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            {hovered ? hovered.name.slice(0, 10) : 'total'}
+          <text x={cx} y={cy + 10} textAnchor="middle" style={{ fontSize: 6, fontWeight: 700, fill: 'var(--color-muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            {hovered ? hovered.name.slice(0, 9) : 'items'}
           </text>
         </svg>
         {hovered && (
-          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-20 pointer-events-none rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-panel)] px-2.5 py-1.5 shadow-xl whitespace-nowrap">
+          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-20 pointer-events-none rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-panel)] px-2 py-1.5 shadow-xl whitespace-nowrap">
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: hovered.color }} />
               <span className="text-[10px] font-semibold text-foreground">{hovered.name}</span>
@@ -609,22 +609,49 @@ function GenreDonutChart({ genres }: { genres: readonly (readonly [string, numbe
           </div>
         )}
       </div>
-
-      <div className="w-full space-y-1.5">
+      <div className="w-full space-y-1">
         {segments.map((seg, i) => (
           <div
             key={seg.name}
-            className="flex items-center gap-2 cursor-default"
+            className="flex items-center gap-1.5 cursor-default min-w-0"
             style={{ opacity: hoveredIndex === null || hoveredIndex === i ? 1 : 0.3, transition: 'opacity 0.12s' }}
             onMouseEnter={() => setHoveredIndex(i)}
             onMouseLeave={() => setHoveredIndex(null)}
           >
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: seg.color }} />
-            <span className="text-[10px] text-muted-foreground truncate flex-1 min-w-0">{seg.name}</span>
-            <span className="text-[10px] font-mono font-bold tabular-nums text-foreground shrink-0">{Math.round(seg.fraction * 100)}%</span>
+            <span className="text-[9px] text-muted-foreground truncate flex-1 min-w-0">{seg.name}</span>
+            <span className="text-[9px] font-mono font-bold tabular-nums text-foreground shrink-0">{Math.round(seg.fraction * 100)}%</span>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function GenreDonutChart({ genres }: { genres: readonly (readonly [string, number])[] }) {
+  if (genres.length === 0) return null;
+
+  const grandTotal = genres.reduce((sum, [, n]) => sum + n, 0);
+
+  const firstSlice = genres.slice(0, DONUT_PER_CHART);
+  const secondRaw = genres.slice(DONUT_PER_CHART, DONUT_PER_CHART * 2);
+  const remainder = genres.slice(DONUT_PER_CHART * 2).reduce((sum, [, n]) => sum + n, 0);
+
+  const firstOther = genres.slice(DONUT_PER_CHART).reduce((sum, [, n]) => sum + n, 0);
+  const firstItems: readonly (readonly [string, number])[] = firstOther > 0
+    ? [...firstSlice, ['Other', firstOther] as const]
+    : firstSlice;
+
+  const secondItems: readonly (readonly [string, number])[] = remainder > 0
+    ? [...secondRaw, ['Other', remainder] as const]
+    : secondRaw;
+
+  const hasSecond = secondRaw.length > 0;
+
+  return (
+    <div className="flex gap-4">
+      <SingleDonut items={firstItems} total={grandTotal} colorOffset={0} />
+      {hasSecond && <SingleDonut items={secondItems} total={grandTotal} colorOffset={DONUT_PER_CHART} />}
     </div>
   );
 }
@@ -695,6 +722,7 @@ function DesktopLibraryHero({
   mostCommonKey,
   largestPlaylistName,
   onImport,
+  onResumeAnalysis,
 }: {
   latestImport: RekordboxImport;
   profile: UserProfile | null;
@@ -703,52 +731,107 @@ function DesktopLibraryHero({
   mostCommonKey: string | null;
   largestPlaylistName: string | null;
   onImport: () => void;
+  onResumeAnalysis?: (importId: string) => void;
 }) {
-  const libraryName = profile?.display_name?.toUpperCase() ?? 'MY LIBRARY';
   const { volumeName } = useUsbConnection();
   const lastImport = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
   });
 
+  const analysisStatus = latestImport.analysis_status;
   const analysisTotal = latestImport.analysis_expected_track_count || latestImport.track_count;
-  const analysisParsed = latestImport.analysis_parsed_track_count || 0;
-  const analysisPercent = latestImport.analysis_status === 'completed'
-    ? 100
-    : analysisTotal > 0
-      ? Math.max(0, Math.min(100, Math.round((analysisParsed / analysisTotal) * 100)))
-      : 0;
-  const ringR = 34;
-  const ringC = 2 * Math.PI * ringR;
-
+  const analysisParsed = latestImport.analysis_parsed_track_count ?? 0;
+  const analysisPercent = analysisStatus === 'completed' ? 100
+    : analysisTotal > 0 ? Math.round((analysisParsed / analysisTotal) * 100) : 0;
+  const showAnalysisWarning = analysisStatus && analysisStatus !== 'not_requested' && analysisStatus !== 'completed';
+  const isAmber = analysisStatus === 'partial' || analysisStatus === 'awaiting_upload' || analysisStatus === 'uploading';
+  const isActionable = analysisStatus === 'partial' || analysisStatus === 'failed' || analysisStatus === 'awaiting_upload' || analysisStatus === 'uploading';
+  const analyzedCount = analysisStatus === 'completed' ? analysisTotal : analysisParsed;
 
   return (
     <section className="relative overflow-hidden rounded-2xl border border-[var(--color-border-subtle)] min-h-[218px] bg-[linear-gradient(105deg,rgba(2,12,25,0.98)_0%,rgba(3,25,52,0.95)_50%,rgba(2,11,24,0.98)_100%)]">
       <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_58%_20%,rgba(16,103,220,0.42),transparent_34%),radial-gradient(circle_at_82%_38%,rgba(24,94,190,0.20),transparent_30%),linear-gradient(to_top,rgba(1,7,17,0.92),transparent_58%)]" />
       <div className="absolute -bottom-12 left-[35%] h-36 w-[52%] rounded-[50%] bg-black/30 blur-2xl pointer-events-none" />
 
-      <div className="relative z-10 grid min-h-[218px]" style={{ gridTemplateColumns: '40% 30% 30%' }}>
+      <div className="relative z-10 grid min-h-[218px]" style={{ gridTemplateColumns: '70% 30%' }}>
 
-        {/* Left column — identity + actions */}
-        <div className="min-w-0 px-8 py-7 flex flex-col justify-center">
-        </div>
+        {/* Left+Middle — Library Health */}
+        <div className="min-w-0 px-8 py-7 flex flex-col justify-center gap-5">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold flex items-center gap-1.5">
+            <ChartBar size={11} /> Library Health
+          </p>
 
-        {/* Middle column — empty */}
-        <div className="relative">
-          <div className="absolute left-0 top-6 bottom-6 w-px bg-white/[0.07]" />
-          <div className="absolute right-0 top-6 bottom-6 w-px bg-white/[0.07]" />
+          <div className="flex items-start gap-6">
+            {/* USB Import status */}
+            <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-4 py-3 min-w-[160px]">
+              <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">USB Import</p>
+              <div className="flex items-center gap-2">
+                <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
+                <span className="font-black text-sm leading-none text-emerald-500">Import Complete</span>
+              </div>
+              <ControlButton variant="neutral" onClick={onImport} className="mt-3 w-full text-[10px]">
+                <Upload size={11} /> Import New Library
+              </ControlButton>
+              {latestImport.device_name && (
+                <div className="grid grid-cols-1 gap-y-2 mt-3">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Usb size={11} className="text-muted-foreground shrink-0" />
+                    <span className="text-[10px] text-muted-foreground truncate">USB</span>
+                    <span className="text-[10px] font-bold font-mono ml-auto shrink-0">{latestImport.device_name}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Track Analysis */}
+            <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-4 py-3 flex-1 min-w-0">
+              <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">Track Analysis</p>
+              {showAnalysisWarning ? (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <WarningAlt size={13} className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'} />
+                    <span className={cn('font-black text-sm leading-none', isAmber ? 'text-amber-400' : 'text-red-400')}>
+                      {ANALYSIS_TITLES[analysisStatus ?? ''] ?? 'Analysis Issue'}
+                    </span>
+                  </div>
+                  {isActionable && onResumeAnalysis && (
+                    <ControlButton variant="neutral" onClick={() => onResumeAnalysis(latestImport.id)} className="mt-1 w-full text-[10px]">
+                      <Renew size={11} /> Resume Analysis
+                    </ControlButton>
+                  )}
+                </>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
+                  <span className="font-black text-sm leading-none text-emerald-500">Analysis Complete</span>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
+                {[
+                  { icon: RecordingFilled, label: 'Status', value: { completed: 'Completed', partial: 'Partial', failed: 'Failed', in_progress: 'In Progress', awaiting_upload: 'Awaiting Upload', uploading: 'Uploading', not_requested: 'Not Started' }[analysisStatus ?? ''] ?? '—' },
+                  { icon: Waveform, label: 'Analyzed', value: analyzedCount.toLocaleString() },
+                  { icon: Music, label: 'Total Tracks', value: analysisTotal.toLocaleString() },
+                  { icon: ChartBar, label: 'Progress', value: `${analysisPercent}%` },
+                ].map(({ icon: Icon, label, value }) => (
+                  <div key={label} className="flex items-center gap-1.5 min-w-0">
+                    <Icon size={11} className="text-muted-foreground shrink-0" />
+                    <span className="text-[10px] text-muted-foreground truncate">{label}</span>
+                    <span className="text-[10px] font-bold font-mono ml-auto shrink-0">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Right column — USB + stats */}
-        <div className="px-6 py-7 flex flex-col justify-center gap-4">
-          {/* USB name */}
+        <div className="border-l border-white/[0.07] px-6 py-7 flex flex-col justify-center gap-4">
           {volumeName && (
             <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
               <Usb size={11} />
               <span className="truncate">{volumeName}</span>
             </div>
           )}
-
-          {/* Stats grid 2×3 */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 min-w-0">
             {[
               { label: 'Total Tracks', value: latestImport.track_count.toLocaleString() },
@@ -1105,36 +1188,6 @@ export function LibraryView({
                 {/* ── Left column (desktop only, library loaded) ── */}
                 {latestImport && <div className="hidden lg:flex flex-col gap-4 w-[250px] xl:w-[268px] shrink-0">
                   <ArtistProfileCard profile={profile} latestImport={latestImport} />
-
-                  {latestImport && (
-                    <>
-                      <DesktopLibraryInfoCard
-                        latestImport={latestImport}
-                        onImport={onImport}
-                        onResumeAnalysis={onResumeAnalysis}
-                      />
-
-                      {/* Top Genres */}
-                      <div className="min-h-[300px]">
-                        <SidebarSection icon={Tag} title="Top Genres">
-                          {statsLoading ? (
-                            <CircleDash size={14} className="animate-spin text-muted-foreground" />
-                          ) : topGenres.length === 0 ? (
-                            <p className="text-xs text-muted-foreground italic">No genre data</p>
-                          ) : (
-                            <div className="flex flex-wrap gap-1.5">
-                              {topGenres.map(([genre]) => (
-                                <span key={genre} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black px-2 py-0.5 text-[9px] font-semibold text-foreground" title={genre}>
-                                  <span className="w-1 h-1 rounded-full shrink-0 bg-foreground/70" />
-                                  <span className="truncate">{genre}</span>
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </SidebarSection>
-                      </div>
-                    </>
-                  )}
                 </div>}
 
                 {/* ── Right column ── */}
@@ -1154,6 +1207,7 @@ export function LibraryView({
                       mostCommonKey={mostCommonKey}
                       largestPlaylistName={largestPlaylist?.name ?? null}
                       onImport={onImport}
+                      onResumeAnalysis={onResumeAnalysis}
                     />
                   </div>}
 
