@@ -1,4 +1,4 @@
-import { useState, useMemo, memo, useCallback, type ReactNode } from 'react';
+import { useState, useMemo, memo, useCallback, useRef, type ReactNode } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
@@ -34,7 +34,7 @@ import type {
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
-import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
+import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Undo, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
 import { ControlButton } from '../ui/controls';
 
 
@@ -734,6 +734,17 @@ function DesktopLibraryHero({
   onResumeAnalysis?: (importId: string) => void;
 }) {
   const { volumeName } = useUsbConnection();
+  const [heroBg, setHeroBg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBgUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (heroBg) URL.revokeObjectURL(heroBg);
+    setHeroBg(URL.createObjectURL(file));
+    e.target.value = '';
+  }, [heroBg]);
+
   const lastImport = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
   });
@@ -749,105 +760,125 @@ function DesktopLibraryHero({
   const analyzedCount = analysisStatus === 'completed' ? analysisTotal : analysisParsed;
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-[var(--color-border-subtle)] min-h-[218px] bg-[linear-gradient(105deg,rgba(2,12,25,0.98)_0%,rgba(3,25,52,0.95)_50%,rgba(2,11,24,0.98)_100%)]">
+    <section
+      className={cn(
+        'group relative overflow-hidden rounded-2xl border border-[var(--color-border-subtle)] min-h-[218px]',
+        !heroBg && 'bg-[linear-gradient(105deg,rgba(2,12,25,0.98)_0%,rgba(3,25,52,0.95)_50%,rgba(2,11,24,0.98)_100%)]',
+      )}
+      style={heroBg ? { backgroundImage: `url(${heroBg})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
+    >
       <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_58%_20%,rgba(16,103,220,0.42),transparent_34%),radial-gradient(circle_at_82%_38%,rgba(24,94,190,0.20),transparent_30%),linear-gradient(to_top,rgba(1,7,17,0.92),transparent_58%)]" />
       <div className="absolute -bottom-12 left-[35%] h-36 w-[52%] rounded-[50%] bg-black/30 blur-2xl pointer-events-none" />
 
-      <div className="relative z-10 grid min-h-[218px]" style={{ gridTemplateColumns: '70% 30%' }}>
+      {/* Hover-reveal controls */}
+      <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        {heroBg && (
+          <button
+            onClick={() => { URL.revokeObjectURL(heroBg); setHeroBg(null); }}
+            className="rounded-full bg-black/60 backdrop-blur-sm p-2 text-white hover:bg-black/80 transition-colors"
+            aria-label="Remove background image"
+          >
+            <Undo size={16} />
+          </button>
+        )}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="rounded-full bg-black/60 backdrop-blur-sm p-2 text-white hover:bg-black/80 transition-colors"
+          aria-label="Change background image"
+        >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 13H9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          <path d="M12 10L12 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          <path d="M19 10H18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          <path d="M2 13.3636C2 10.2994 2 8.76721 2.74902 7.6666C3.07328 7.19014 3.48995 6.78104 3.97524 6.46268C4.69555 5.99013 5.59733 5.82123 6.978 5.76086C7.63685 5.76086 8.20412 5.27068 8.33333 4.63636C8.52715 3.68489 9.37805 3 10.3663 3H13.6337C14.6219 3 15.4728 3.68489 15.6667 4.63636C15.7959 5.27068 16.3631 5.76086 17.022 5.76086C18.4027 5.82123 19.3044 5.99013 20.0248 6.46268C20.51 6.78104 20.9267 7.19014 21.251 7.6666C22 8.76721 22 10.2994 22 13.3636C22 16.4279 22 17.9601 21.251 19.0607C20.9267 19.5371 20.51 19.9462 20.0248 20.2646C18.9038 21 17.3433 21 14.2222 21H9.77778C6.65675 21 5.09624 21 3.97524 20.2646C3.48995 19.9462 3.07328 19.5371 2.74902 19.0607C2.53746 18.7498 2.38566 18.4045 2.27673 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+        </button>
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/avif"
+        className="hidden"
+        onChange={handleBgUpload}
+      />
 
-        {/* Left+Middle — Library Health */}
-        <div className="min-w-0 px-8 py-7 flex flex-col justify-center gap-5">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold flex items-center gap-1.5">
-            <ChartBar size={11} /> Library Health
-          </p>
+      <div className="relative z-10 flex items-center min-h-[218px] px-8 py-7 gap-6">
 
-          <div className="flex items-start gap-6">
-            {/* USB Import status */}
-            <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-4 py-3 min-w-[160px]">
-              <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">USB Import</p>
-              <div className="flex items-center gap-2">
-                <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
-                <span className="font-black text-sm leading-none text-emerald-500">Import Complete</span>
+        {/* USB Import */}
+        <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-4 py-3 min-w-[216px] shrink-0">
+          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">USB Import</p>
+          <div className="flex items-center gap-2">
+            <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
+            <span className="font-black text-sm leading-none text-emerald-500">Import Complete</span>
+          </div>
+          <ControlButton variant="neutral" onClick={onImport} className="mt-3 w-full text-[10px]">
+            <Upload size={11} /> Import New Library
+          </ControlButton>
+          <div className="grid grid-cols-1 gap-y-2 mt-3">
+            {latestImport.device_name && (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Usb size={11} className="text-muted-foreground shrink-0" />
+                <span className="text-[10px] text-muted-foreground truncate">USB</span>
+                <span className="text-[10px] font-bold font-mono ml-auto shrink-0">{latestImport.device_name}</span>
               </div>
-              <ControlButton variant="neutral" onClick={onImport} className="mt-3 w-full text-[10px]">
-                <Upload size={11} /> Import New Library
-              </ControlButton>
-              {latestImport.device_name && (
-                <div className="grid grid-cols-1 gap-y-2 mt-3">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <Usb size={11} className="text-muted-foreground shrink-0" />
-                    <span className="text-[10px] text-muted-foreground truncate">USB</span>
-                    <span className="text-[10px] font-bold font-mono ml-auto shrink-0">{latestImport.device_name}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Track Analysis */}
-            <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-4 py-3 flex-1 min-w-0">
-              <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">Track Analysis</p>
-              {showAnalysisWarning ? (
-                <>
-                  <div className="flex items-center gap-2 mb-2">
-                    <WarningAlt size={13} className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'} />
-                    <span className={cn('font-black text-sm leading-none', isAmber ? 'text-amber-400' : 'text-red-400')}>
-                      {ANALYSIS_TITLES[analysisStatus ?? ''] ?? 'Analysis Issue'}
-                    </span>
-                  </div>
-                  {isActionable && onResumeAnalysis && (
-                    <ControlButton variant="neutral" onClick={() => onResumeAnalysis(latestImport.id)} className="mt-1 w-full text-[10px]">
-                      <Renew size={11} /> Resume Analysis
-                    </ControlButton>
-                  )}
-                </>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
-                  <span className="font-black text-sm leading-none text-emerald-500">Analysis Complete</span>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
-                {[
-                  { icon: RecordingFilled, label: 'Status', value: { completed: 'Completed', partial: 'Partial', failed: 'Failed', in_progress: 'In Progress', awaiting_upload: 'Awaiting Upload', uploading: 'Uploading', not_requested: 'Not Started' }[analysisStatus ?? ''] ?? '—' },
-                  { icon: Waveform, label: 'Analyzed', value: analyzedCount.toLocaleString() },
-                  { icon: Music, label: 'Total Tracks', value: analysisTotal.toLocaleString() },
-                  { icon: ChartBar, label: 'Progress', value: `${analysisPercent}%` },
-                ].map(({ icon: Icon, label, value }) => (
-                  <div key={label} className="flex items-center gap-1.5 min-w-0">
-                    <Icon size={11} className="text-muted-foreground shrink-0" />
-                    <span className="text-[10px] text-muted-foreground truncate">{label}</span>
-                    <span className="text-[10px] font-bold font-mono ml-auto shrink-0">{value}</span>
-                  </div>
-                ))}
-              </div>
+            )}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Calendar size={11} className="text-muted-foreground shrink-0" />
+              <span className="text-[10px] text-muted-foreground truncate">Last Import</span>
+              <span className="text-[10px] font-bold font-mono ml-auto shrink-0">{lastImport}</span>
             </div>
           </div>
         </div>
 
-        {/* Right column — USB + stats */}
-        <div className="border-l border-white/[0.07] px-6 py-7 flex flex-col justify-center gap-4">
-          {volumeName && (
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
-              <Usb size={11} />
-              <span className="truncate">{volumeName}</span>
+        {/* Track Analysis */}
+        <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-4 py-3 min-w-[216px] shrink-0">
+          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">Track Analysis</p>
+          {showAnalysisWarning ? (
+            <>
+              <div className="flex items-center gap-2 mb-2">
+                <WarningAlt size={13} className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'} />
+                <span className={cn('font-black text-sm leading-none', isAmber ? 'text-amber-400' : 'text-red-400')}>
+                  {ANALYSIS_TITLES[analysisStatus ?? ''] ?? 'Analysis Issue'}
+                </span>
+              </div>
+              {isActionable && onResumeAnalysis && (
+                <ControlButton variant="neutral" onClick={() => onResumeAnalysis(latestImport.id)} className="mt-1 w-full text-[10px]">
+                  <Renew size={11} /> Resume Analysis
+                </ControlButton>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
+              <span className="font-black text-sm leading-none text-emerald-500">Analysis Complete</span>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 min-w-0">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
             {[
-              { label: 'Total Tracks', value: latestImport.track_count.toLocaleString() },
-              { label: 'Main BPM', value: mostCommonBpm != null ? `${mostCommonBpm}` : '—' },
-              { label: 'Main Key', value: mostCommonKey ? formatKey(mostCommonKey) : '—' },
-              { label: 'Main Genre', value: topGenres[0]?.[0] ?? '—' },
-              { label: 'Largest Playlist', value: largestPlaylistName ?? '—' },
-              { label: 'Last Import', value: lastImport },
-            ].map(({ label, value }) => (
-              <div key={label} className="min-w-0">
-                <p className="text-lg font-black tabular-nums leading-none truncate">{value}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{label}</p>
+              { icon: RecordingFilled, label: 'Status', value: { completed: 'Completed', partial: 'Partial', failed: 'Failed', in_progress: 'In Progress', awaiting_upload: 'Awaiting Upload', uploading: 'Uploading', not_requested: 'Not Started' }[analysisStatus ?? ''] ?? '—' },
+              { icon: Waveform, label: 'Analyzed', value: analyzedCount.toLocaleString() },
+              { icon: Music, label: 'Tracks', value: analysisTotal.toLocaleString() },
+              { icon: ChartBar, label: 'Progress', value: `${analysisPercent}%` },
+            ].map(({ icon: Icon, label, value }) => (
+              <div key={label} className="flex items-center gap-1.5 min-w-0">
+                <Icon size={11} className="text-muted-foreground shrink-0" />
+                <span className="text-[10px] text-muted-foreground truncate">{label}</span>
+                <span className="text-[10px] font-bold font-mono ml-auto shrink-0">{value}</span>
               </div>
             ))}
           </div>
         </div>
+
+        {[
+          { label: 'Main BPM', value: mostCommonBpm != null ? `${mostCommonBpm}` : '—' },
+          { label: 'Main Key', value: mostCommonKey ? formatKey(mostCommonKey) : '—' },
+          { label: 'Main Genre', value: topGenres[0]?.[0] ?? '—' },
+        ].map(({ label, value }) => (
+          <div key={label} className="flex-1 flex flex-col items-center justify-center text-center border-l border-white/[0.07] self-stretch px-4">
+            <p className="text-3xl font-black tabular-nums leading-none tracking-tight truncate">{value}</p>
+            <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mt-1.5">{label}</p>
+          </div>
+        ))}
 
       </div>
     </section>
@@ -1183,33 +1214,37 @@ export function LibraryView({
             )}
 
             {!importLoading && !importError && (
-              <div className="flex gap-5 items-start">
+              <div className="space-y-4">
 
-                {/* ── Left column (desktop only, library loaded) ── */}
-                {latestImport && <div className="hidden lg:flex flex-col gap-4 w-[250px] xl:w-[268px] shrink-0">
-                  <ArtistProfileCard profile={profile} latestImport={latestImport} />
-                </div>}
+                {!latestImport && (
+                  <EmptyLibrary onImport={onImport} profile={profile} />
+                )}
 
-                {/* ── Right column ── */}
-                <div className="flex-1 min-w-0 space-y-4">
+                {/* ── Top row: sidebar + hero, full width ── */}
+                {latestImport && (
+                  <div className="flex gap-5 items-start">
+                    <div className="hidden lg:flex flex-col gap-4 w-[250px] xl:w-[268px] shrink-0">
+                      <ArtistProfileCard profile={profile} latestImport={latestImport} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="hidden lg:block">
+                        <DesktopLibraryHero
+                          latestImport={latestImport}
+                          profile={profile}
+                          topGenres={topGenres}
+                          mostCommonBpm={mostCommonBpm}
+                          mostCommonKey={mostCommonKey}
+                          largestPlaylistName={largestPlaylist?.name ?? null}
+                          onImport={onImport}
+                          onResumeAnalysis={onResumeAnalysis}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-                  {!latestImport && (
-                    <EmptyLibrary onImport={onImport} profile={profile} />
-                  )}
-
-                  {/* Desktop hero mirrors the reference artist-dashboard structure. */}
-                  {latestImport && <div className="hidden lg:block">
-                    <DesktopLibraryHero
-                      latestImport={latestImport}
-                      profile={profile}
-                      topGenres={topGenres}
-                      mostCommonBpm={mostCommonBpm}
-                      mostCommonKey={mostCommonKey}
-                      largestPlaylistName={largestPlaylist?.name ?? null}
-                      onImport={onImport}
-                      onResumeAnalysis={onResumeAnalysis}
-                    />
-                  </div>}
+                {/* ── Full-width content below hero ── */}
+                <div className="min-w-0 space-y-4">
 
                   {/* Mobile: retain the existing compact hero. */}
                   {latestImport && <div className="lg:hidden">
