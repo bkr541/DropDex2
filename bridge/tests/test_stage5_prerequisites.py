@@ -42,14 +42,13 @@ def test_stage4_is_reachable_hydrates_and_discards_saved_first():
     assert "savedCueBaseline ?? importedCueBaseline" in view
 
 
-def test_imported_cues_remain_immutable_and_export_stays_disabled():
+def test_imported_cues_remain_immutable_and_stage7_uses_saved_drafts_only():
     view = read("src/components/cues/CuePointsView.tsx")
     query = read("src/lib/queries/analysisData.ts")
-    assert "Export to Rekordbox" in view
-    export_index = view.index("Export to Rekordbox")
-    export_area = view[export_index - 180:export_index + 80]
-    assert "disabled" in export_area
-    # Imported cue query layer contains reads only; Stage 4 does not update/delete it.
+    assert "Apply to Rekordbox" in view
+    assert "fetchCueDraftsForApply" in view
+    assert "desktop.cueApplyPreflight(desktopDrafts(rows))" in view
+    # Imported cue query layer remains read-only; Stage 7 applies persisted cue_drafts.
     assert ".from('rekordbox_cues')" in query
     assert ".update(" not in query
     assert ".delete(" not in query

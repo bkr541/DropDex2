@@ -32,3 +32,8 @@ release/
 
 # Supabase CLI temp files
 supabase/.temp/
+
+# Stage 7 packaged Rekordbox bridge build artifacts
+bridge/runtime/
+bridge/.pyinstaller/
+bridge/.desktop-build-venv/

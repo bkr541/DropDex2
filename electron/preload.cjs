@@ -9,5 +9,8 @@ contextBridge.exposeInMainWorld('dropdexDesktop', Object.freeze({
   releaseUsb: () => ipcRenderer.invoke('dropdex:release-usb'),
   disconnectUsb: () => ipcRenderer.invoke('dropdex:disconnect-usb'),
   resolveTrackSource: (segments) => ipcRenderer.invoke('dropdex:resolve-track-source', segments),
+  cueApplyAvailability: () => ipcRenderer.invoke('dropdex:cue-apply-availability'),
+  cueApplyPreflight: (savedDrafts) => ipcRenderer.invoke('dropdex:cue-apply-preflight', { savedDrafts }),
+  cueApply: (token, savedDrafts) => ipcRenderer.invoke('dropdex:cue-apply', { token, savedDrafts }),
   openExternal: (url) => ipcRenderer.invoke('dropdex:open-external', url),
 }));

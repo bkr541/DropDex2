@@ -42,8 +42,12 @@ import {
 import {
   CueDraftRevisionConflictError,
   fetchCueDraft,
+  fetchCueDraftsForApply,
+  markCueDraftApplied,
   saveCueDraft,
+  type CueDraftRow,
 } from '../../lib/queries/cueDrafts';
+import type { DesktopCueApplyPreflightResult, DesktopCueApplyResult } from '../../types/dropdex-desktop';
 
 interface CuePointsViewProps {
   importId: string | null;
@@ -52,7 +56,7 @@ interface CuePointsViewProps {
 
 type CueFilter = 'all' | 'with-cues' | 'without-cues';
 type AnalysisFilter = 'all' | 'ready' | 'incomplete';
-type CueDraftStatus = 'Original' | 'Unsaved' | 'Saved' | 'Needs Apply';
+type CueDraftStatus = 'Original' | 'Unsaved' | 'Saved' | 'Needs Apply' | 'Applied';
 
 const CUE_PAGE_SIZE = 100;
 const MAX_TIMELINE_GRID_LINES = 640;
@@ -297,6 +301,9 @@ function CueWaveformPanel({
   onDiscard,
   onAutoCue,
   onSave,
+  applyAvailable,
+  applying,
+  onApply,
 }: {
   track: RekordboxTrack | null;
   beatGrid: BeatGridRow | null;
@@ -317,6 +324,9 @@ function CueWaveformPanel({
   onDiscard: () => void;
   onAutoCue: () => string | null;
   onSave: () => Promise<string | null>;
+  applyAvailable: boolean;
+  applying: boolean;
+  onApply: () => void;
 }) {
   const { theme } = useTheme();
   const durationMs = durationMsForTrack(track, beatGrid, phrases);
@@ -545,8 +555,13 @@ function CueWaveformPanel({
             >
               {saving ? 'Saving…' : 'Save changes'}
             </ControlButton>
-            <ControlButton variant="primary" disabled title="Cue export will be enabled in the functional integration stage">
-              Export to Rekordbox
+            <ControlButton
+              variant="primary"
+              disabled={!applyAvailable || applying}
+              onClick={onApply}
+              title={applyAvailable ? 'Preflight saved cue drafts before applying them to local Rekordbox' : 'Apply requires the Electron desktop app, the packaged bridge, and at least one saved draft that needs apply'}
+            >
+              {applying ? 'Applying…' : 'Apply to Rekordbox'}
             </ControlButton>
           </div>
         </div>
@@ -861,8 +876,20 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [importedCueBaseline, setImportedCueBaseline] = useState<WorkingCue[]>([]);
   const [savedCueBaseline, setSavedCueBaseline] = useState<WorkingCue[] | null>(null);
   const [draftRevision, setDraftRevision] = useState<number | null>(null);
+  const [draftAppliedRevision, setDraftAppliedRevision] = useState<number | null>(null);
+  const [draftAppliedFingerprint, setDraftAppliedFingerprint] = useState<string | null>(null);
+  const [draftDesiredFingerprint, setDraftDesiredFingerprint] = useState<string | null>(null);
   const [draftPersistenceMessage, setDraftPersistenceMessage] = useState<string | null>(null);
   const [savingCueDraft, setSavingCueDraft] = useState(false);
+  const [applyDrafts, setApplyDrafts] = useState<CueDraftRow[]>([]);
+  const [applyBridgeAvailable, setApplyBridgeAvailable] = useState(false);
+  const [applyBridgeReason, setApplyBridgeReason] = useState<string | null>(null);
+  const [applyPreflight, setApplyPreflight] = useState<DesktopCueApplyPreflightResult | null>(null);
+  const [applySnapshot, setApplySnapshot] = useState<CueDraftRow[]>([]);
+  const [applyResult, setApplyResult] = useState<DesktopCueApplyResult | null>(null);
+  const [applyBusy, setApplyBusy] = useState(false);
+  const [applyMessage, setApplyMessage] = useState<string | null>(null);
+  const applyGenerationRef = useRef(0);
   const [workingCues, setWorkingCues] = useState<WorkingCue[]>([]);
   const [selectedCueLoading, setSelectedCueLoading] = useState(false);
   const [cueRowsByTrackId, setCueRowsByTrackId] = useState<Map<string, CueRow[]>>(new Map());
@@ -942,16 +969,24 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setImportedCueBaseline([]);
     setSavedCueBaseline(null);
     setDraftRevision(null);
+    setDraftAppliedRevision(null);
+    setDraftAppliedFingerprint(null);
+    setDraftDesiredFingerprint(null);
     setDraftPersistenceMessage(null);
     setSavingCueDraft(false);
     cueDraftSaveInFlightRef.current = false;
+    applyGenerationRef.current += 1;
+    setApplyPreflight(null);
+    setApplySnapshot([]);
+    setApplyResult(null);
+    setApplyMessage(null);
     setWorkingCues([]);
     setSelectedCueLoading(false);
     setBeatGrid(null);
     setBeatGridLoading(false);
     setPhrases([]);
     setPhraseLoading(false);
-  }, [importId]);
+  }, [importId, userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -971,6 +1006,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       setImportedCueBaseline([]);
       setSavedCueBaseline(null);
       setDraftRevision(null);
+      setDraftAppliedRevision(null);
+      setDraftAppliedFingerprint(null);
+      setDraftDesiredFingerprint(null);
       setDraftPersistenceMessage(null);
       setWorkingCues([]);
       setSelectedCueLoading(false);
@@ -987,6 +1025,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setImportedCueBaseline([]);
     setSavedCueBaseline(null);
     setDraftRevision(null);
+    setDraftAppliedRevision(null);
+    setDraftAppliedFingerprint(null);
+    setDraftDesiredFingerprint(null);
     setDraftPersistenceMessage(null);
     setWorkingCues([]);
     setSelectedCueLoading(true);
@@ -1014,6 +1055,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           const hydrated = hydrateCueDraftDocument(draft.desiredDocument);
           setSavedCueBaseline(hydrated);
           setDraftRevision(draft.revision);
+          setDraftAppliedRevision(draft.appliedRevision);
+          setDraftAppliedFingerprint(draft.appliedFingerprint);
+          setDraftDesiredFingerprint(draft.desiredFingerprint);
           setWorkingCues(hydrated);
         } catch (error) {
           if (!responseIsCurrent()) return;
@@ -1029,6 +1073,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         setImportedCueBaseline([]);
         setSavedCueBaseline(null);
         setDraftRevision(null);
+        setDraftAppliedRevision(null);
+        setDraftAppliedFingerprint(null);
+        setDraftDesiredFingerprint(null);
         setWorkingCues([]);
         setDraftPersistenceMessage(
           error instanceof Error
@@ -1107,8 +1154,147 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const cueDraftStatus = useMemo<CueDraftStatus>(() => {
     if (workingCuesDirty) return 'Unsaved';
     if (!savedCueBaseline) return 'Original';
-    return workingCueSetsEqual(importedCueBaseline, savedCueBaseline) ? 'Saved' : 'Needs Apply';
-  }, [importedCueBaseline, savedCueBaseline, workingCuesDirty]);
+    if (workingCueSetsEqual(importedCueBaseline, savedCueBaseline)) return 'Saved';
+    if (draftRevision != null && draftAppliedRevision === draftRevision && draftAppliedFingerprint === draftDesiredFingerprint) return 'Applied';
+    return 'Needs Apply';
+  }, [draftAppliedFingerprint, draftAppliedRevision, draftDesiredFingerprint, draftRevision, importedCueBaseline, savedCueBaseline, workingCuesDirty]);
+
+  const refreshApplyDrafts = useCallback(async (): Promise<CueDraftRow[]> => {
+    if (!userId || !importId) {
+      setApplyDrafts([]);
+      return [];
+    }
+    const rows = await fetchCueDraftsForApply(userId, importId);
+    setApplyDrafts(rows);
+    return rows;
+  }, [importId, userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const desktop = window.dropdexDesktop;
+    if (!desktop?.isElectron) {
+      setApplyBridgeAvailable(false);
+      setApplyBridgeReason('Apply to Rekordbox is available in the DropDex desktop app only.');
+      return;
+    }
+    void desktop.cueApplyAvailability().then((result) => {
+      if (cancelled) return;
+      setApplyBridgeAvailable(result.available);
+      setApplyBridgeReason(result.reason);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!userId || !importId) {
+      setApplyDrafts([]);
+      return;
+    }
+    void fetchCueDraftsForApply(userId, importId)
+      .then((rows) => { if (!cancelled) setApplyDrafts(rows); })
+      .catch((error) => { if (!cancelled) setApplyMessage(error instanceof Error ? error.message : String(error)); });
+    return () => { cancelled = true; };
+  }, [draftRevision, importId, userId]);
+
+  const desktopDrafts = useCallback((rows: CueDraftRow[]) => rows.map((row) => ({
+    importId: row.importId,
+    trackId: row.trackId,
+    rekordboxContentId: row.rekordboxContentId,
+    revision: row.revision,
+    desiredFingerprint: row.desiredFingerprint,
+    importedBaselineFingerprint: row.importedBaselineFingerprint,
+    desiredDocument: row.desiredDocument as unknown as Record<string, unknown>,
+  })), []);
+
+  const handleApplyPreflight = useCallback(async () => {
+    const desktop = window.dropdexDesktop;
+    if (!desktop?.isElectron || !applyBridgeAvailable || !userId || !importId) return;
+    const generation = ++applyGenerationRef.current;
+    setApplyBusy(true);
+    setApplyMessage(null);
+    setApplyResult(null);
+    try {
+      const rows = await refreshApplyDrafts();
+      if (rows.length === 0) {
+        setApplyMessage('No saved cue drafts currently need to be applied.');
+        return;
+      }
+      const result = await desktop.cueApplyPreflight(desktopDrafts(rows));
+      if (generation !== applyGenerationRef.current || selectedUserIdRef.current !== userId) return;
+      setApplySnapshot(rows);
+      setApplyPreflight(result);
+    } catch (error) {
+      if (generation === applyGenerationRef.current) setApplyMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (generation === applyGenerationRef.current) setApplyBusy(false);
+    }
+  }, [applyBridgeAvailable, desktopDrafts, importId, refreshApplyDrafts, userId]);
+
+  const handleConfirmApply = useCallback(async () => {
+    const desktop = window.dropdexDesktop;
+    const preflight = applyPreflight;
+    if (!desktop?.isElectron || !preflight?.ok || !preflight.token || !userId || !importId || applyBusy) return;
+    const generation = ++applyGenerationRef.current;
+    setApplyBusy(true);
+    setApplyMessage(null);
+    try {
+      const currentRows = await fetchCueDraftsForApply(userId, importId);
+      const currentIdentity = new Map(currentRows.map((row) => [row.trackId, `${row.revision}:${row.desiredFingerprint}`]));
+      const snapshotStillCurrent = applySnapshot.every((row) => currentIdentity.get(row.trackId) === `${row.revision}:${row.desiredFingerprint}`);
+      if (!snapshotStillCurrent || currentRows.length !== applySnapshot.length) {
+        setApplyPreflight(null);
+        setApplySnapshot([]);
+        setApplyDrafts(currentRows);
+        setApplyMessage('Saved cue drafts changed after preflight. Run Apply to Rekordbox again for a fresh preflight.');
+        return;
+      }
+      const result = await desktop.cueApply(preflight.token, desktopDrafts(applySnapshot));
+      if (generation !== applyGenerationRef.current || selectedUserIdRef.current !== userId) return;
+      setApplyResult(result);
+      setApplyPreflight(null);
+      if (result.ok && result.state === 'applied') {
+        const summary = {
+          state: result.state,
+          planFingerprint: result.plan_fingerprint,
+          backupIdentity: result.backup_identity,
+          verifiedTracks: result.tracks.filter((track) => track.state === 'verified').length,
+          rollbackVerified: result.rollback_verified,
+        };
+        const statusUpdates = await Promise.allSettled(applySnapshot.map((row) => markCueDraftApplied({
+          trackId: row.trackId,
+          revision: row.revision,
+          desiredFingerprint: row.desiredFingerprint,
+          operationId: result.operation_id,
+          resultSummary: summary,
+        })));
+        if (statusUpdates.some((item) => item.status === 'rejected')) {
+          setApplyMessage('Rekordbox was updated and verified, but one or more cloud apply-status updates could not be recorded. No newer draft was marked applied.');
+        } else {
+          setApplyMessage('Saved cue drafts were applied to local Rekordbox and verified. Use Rekordbox normally to sync/export to USB later.');
+        }
+        if (selectedTrackId) {
+          const updated = statusUpdates.find((item) => item.status === 'fulfilled' && item.value.trackId === selectedTrackId);
+          if (updated?.status === 'fulfilled') {
+            setDraftAppliedRevision(updated.value.appliedRevision);
+            setDraftAppliedFingerprint(updated.value.appliedFingerprint);
+            setDraftDesiredFingerprint(updated.value.desiredFingerprint);
+          }
+        }
+        await refreshApplyDrafts();
+      } else {
+        setApplyMessage(result.state === 'rolled-back'
+          ? 'Apply did not complete. The original local Rekordbox database was restored and rollback verification succeeded.'
+          : result.state === 'recovery-unverified'
+            ? 'Apply encountered a recovery failure. Do not reopen Rekordbox until the reported recovery state is reviewed.'
+            : 'Apply was rejected. No successful revision was marked applied.');
+      }
+    } catch (error) {
+      if (generation === applyGenerationRef.current) setApplyMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (generation === applyGenerationRef.current) setApplyBusy(false);
+    }
+  }, [applyBusy, applyPreflight, applySnapshot, desktopDrafts, importId, refreshApplyDrafts, selectedTrackId, userId]);
 
   const handleAddCue = useCallback((family: 'hot' | 'memory', requestedMs: number): string | null => {
     if (!selectedTrackId) return 'Select a track before editing cue points.';
@@ -1231,6 +1417,12 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       const hydrated = hydrateCueDraftDocument(saved.desiredDocument);
       setSavedCueBaseline(hydrated);
       setDraftRevision(saved.revision);
+      setDraftAppliedRevision(saved.appliedRevision);
+      setDraftAppliedFingerprint(saved.appliedFingerprint);
+      setDraftDesiredFingerprint(saved.desiredFingerprint);
+      applyGenerationRef.current += 1;
+      setApplyPreflight(null);
+      setApplySnapshot([]);
       if (workingCueSetsEqual(workingCuesRef.current, workingSnapshot)) {
         setWorkingCues(hydrated);
       }
@@ -1291,7 +1483,43 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         onDiscard={handleDiscard}
         onAutoCue={handleAutoCue}
         onSave={handleSave}
+        applyAvailable={applyBridgeAvailable && applyDrafts.length > 0}
+        applying={applyBusy}
+        onApply={() => { void handleApplyPreflight(); }}
       />
+
+      {(applyPreflight || applyResult || applyMessage || (!applyBridgeAvailable && applyBridgeReason)) && (
+        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] p-4" role="status">
+          {applyPreflight ? (
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-black">Apply to Rekordbox preflight</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {applyPreflight.tracks.length} saved track{applyPreflight.tracks.length === 1 ? '' : 's'} · {applySnapshot.reduce((sum, row) => sum + row.desiredDocument.cues.length, 0)} cue{applySnapshot.reduce((sum, row) => sum + row.desiredDocument.cues.length, 0) === 1 ? '' : 's'} · local Rekordbox only, no USB write
+                  </p>
+                </div>
+                <button type="button" className="text-xs font-bold text-muted-foreground hover:text-foreground" onClick={() => { applyGenerationRef.current += 1; setApplyPreflight(null); setApplySnapshot([]); }}>Cancel</button>
+              </div>
+              {applyPreflight.blockers.length > 0 && <div className="rounded-xl border border-red-400/20 bg-red-400/[0.06] p-3 text-xs text-red-200">{applyPreflight.blockers.map((item) => <p key={item.code}>{item.message}</p>)}</div>}
+              {applyPreflight.warnings.length > 0 && <div className="rounded-xl border border-amber-300/20 bg-amber-300/[0.05] p-3 text-xs text-amber-100">{applyPreflight.warnings.map((item) => <p key={item.code}>{item.message}</p>)}</div>}
+              <p className="text-xs text-muted-foreground">DropDex will create/retain the Stage 6 backup identity, replace only the trusted local Rekordbox database after staging verification, and re-verify the live result. Rekordbox must remain closed.</p>
+              <div className="flex justify-end gap-2">
+                <ControlButton variant="ghost" disabled={applyBusy} onClick={() => { applyGenerationRef.current += 1; setApplyPreflight(null); setApplySnapshot([]); }}>Cancel</ControlButton>
+                <ControlButton variant="primary" disabled={applyBusy || !applyPreflight.ok || !applyPreflight.token || applyPreflight.blockers.length > 0} onClick={() => { void handleConfirmApply(); }}>
+                  {applyBusy ? 'Applying…' : 'Confirm Apply'}
+                </ControlButton>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1 text-xs text-muted-foreground">
+              {applyResult && <p className="font-bold text-foreground">Last apply result: {applyResult.state} · {applyResult.tracks.filter((track) => track.state === 'verified').length}/{applyResult.tracks.length} tracks verified{applyResult.backup_identity ? ` · backup ${applyResult.backup_identity.slice(0, 12)}…` : ''}</p>}
+              {applyMessage && <p>{applyMessage}</p>}
+              {!applyBridgeAvailable && applyBridgeReason && <p>{applyBridgeReason}</p>}
+            </div>
+          )}
+        </div>
+      )}
 
       <section className="overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] shadow-sm">
         <div className="border-b border-[var(--color-border-subtle)] px-4 py-4 md:px-5">

@@ -52,6 +52,64 @@ export type DesktopTrackSourceResult =
       error: UsbFileResolutionError;
     };
 
+
+export interface DesktopCueApplyDraft {
+  importId: string;
+  trackId: string;
+  rekordboxContentId: string;
+  revision: number;
+  desiredFingerprint: string;
+  importedBaselineFingerprint: string;
+  desiredDocument: Record<string, unknown>;
+}
+
+export interface DesktopCueApplyDiagnostic { code: string; message: string; }
+
+export interface DesktopCueApplyPreflightTrack {
+  content_id: string;
+  exists: boolean;
+  current_cue_fingerprint: string | null;
+  draft_revision: number;
+  desired_fingerprint: string;
+  imported_baseline_fingerprint: string;
+  imported_baseline_comparison: 'match' | 'diverged' | 'not-comparable';
+}
+
+export interface DesktopCueApplyPreflightResult {
+  ok: boolean;
+  preflight_id: string;
+  plan_fingerprint: string;
+  source_identity: string | null;
+  tracks: DesktopCueApplyPreflightTrack[];
+  blockers: DesktopCueApplyDiagnostic[];
+  warnings: DesktopCueApplyDiagnostic[];
+  token: string | null;
+  expires_at: string | null;
+}
+
+export interface DesktopCueApplyTrackResult {
+  content_id: string;
+  state: 'verified' | 'not-verified';
+  expected_count: number;
+  actual_count: number;
+  details: string | null;
+}
+
+export interface DesktopCueApplyResult {
+  ok: boolean;
+  operation_id: string;
+  state: 'applied' | 'rejected' | 'rolled-back' | 'recovery-unverified';
+  plan_fingerprint: string;
+  source_identity_before: string | null;
+  source_identity_after: string | null;
+  backup_identity: string | null;
+  tracks: DesktopCueApplyTrackResult[];
+  blockers: DesktopCueApplyDiagnostic[];
+  warnings: DesktopCueApplyDiagnostic[];
+  rollback_verified: boolean | null;
+  recovery: Record<string, string> | null;
+}
+
 export interface DropDexDesktopBridge {
   readonly isElectron: true;
   getRuntimeInfo(): Promise<{ platform: string; version: string }>;
@@ -61,6 +119,9 @@ export interface DropDexDesktopBridge {
   releaseUsb(): Promise<DesktopUsbReleaseResult>;
   disconnectUsb(): Promise<DesktopUsbReleaseResult>;
   resolveTrackSource(segments: string[]): Promise<DesktopTrackSourceResult>;
+  cueApplyAvailability(): Promise<{ available: boolean; reason: string | null }>;
+  cueApplyPreflight(savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyPreflightResult>;
+  cueApply(token: string, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyResult>;
   openExternal(url: string): Promise<boolean>;
 }
 

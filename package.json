@@ -10,9 +10,9 @@
     "dev:electron": "wait-on tcp:127.0.0.1:3000 && electron .",
     "desktop": "electron .",
     "build": "vite build",
-    "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win",
+    "dist": "npm run build && npm run build:bridge && electron-builder",
+    "dist:mac": "npm run build && npm run build:bridge && electron-builder --mac",
+    "dist:win": "npm run build && npm run build:bridge && electron-builder --win",
     "preview": "vite preview",
     "clean": "rm -rf dist release",
     "typecheck": "tsc --noEmit",
@@ -23,7 +23,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",
     "check": "npm run typecheck && npm test",
-    "analyze": "ANALYZE=true vite build"
+    "analyze": "ANALYZE=true vite build",
+    "build:bridge": "node scripts/build-rekordbox-bridge.cjs"
   },
   "dependencies": {
     "@carbon/icons-react": "^11.86.0",
@@ -103,6 +104,15 @@
         "AppImage"
       ]
     },
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "extraResources": [
+      {
+        "from": "bridge/runtime",
+        "to": "rekordbox-bridge",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   }
 }

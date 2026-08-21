@@ -4,6 +4,7 @@ const { Readable } = require('node:stream');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { UsbStreamRegistry } = require('./usbStreamRegistry.cjs');
+const { CueApplyBridge } = require('./cueApplyBridge.cjs');
 const {
   isPathInsideRoot,
   resolveContainedRealPath,
@@ -28,6 +29,13 @@ let cachedUsbState = {
 };
 let quittingAfterUsbRelease = false;
 const usbStreams = new UsbStreamRegistry({ closeTimeoutMs: 2500 });
+const cueApplyBridge = new CueApplyBridge({
+  get isPackaged() { return app.isPackaged; },
+  get resourcesPath() { return process.resourcesPath; },
+  get appPath() { return app.getAppPath(); },
+  env: process.env,
+  platform: process.platform,
+});
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -457,6 +465,12 @@ async function selectUsbRoot() {
   return { cancelled: false, state: await desktopConnectionState() };
 }
 
+function assertExactObject(value, allowedKeys, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be an object.`);
+  const keys = Object.keys(value);
+  if (keys.some((key) => !allowedKeys.includes(key))) throw new Error(`${label} contains an unsupported field.`);
+}
+
 function registerIpcHandlers() {
   ipcMain.handle('dropdex:runtime-info', () => ({ platform: process.platform, version: app.getVersion() }));
   ipcMain.handle('dropdex:usb-state', () => desktopConnectionState());
@@ -494,6 +508,15 @@ function registerIpcHandlers() {
     } finally {
       finishRequest?.();
     }
+  });
+  ipcMain.handle('dropdex:cue-apply-availability', () => cueApplyBridge.availability());
+  ipcMain.handle('dropdex:cue-apply-preflight', async (_event, payload) => {
+    assertExactObject(payload, ['savedDrafts'], 'Cue apply preflight payload');
+    return cueApplyBridge.preflight(payload.savedDrafts);
+  });
+  ipcMain.handle('dropdex:cue-apply', async (_event, payload) => {
+    assertExactObject(payload, ['token', 'savedDrafts'], 'Cue apply payload');
+    return cueApplyBridge.apply(payload.token, payload.savedDrafts);
   });
   ipcMain.handle('dropdex:open-external', async (_event, url) => {
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return false;
@@ -562,6 +585,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', (event) => {
+  cueApplyBridge.close();
   if (quittingAfterUsbRelease) return;
   const activity = usbStreams.snapshot();
   if (activity.activeStreamCount === 0 && activity.pendingRequestCount === 0) return;
