@@ -7,59 +7,51 @@ from pathlib import Path
 from typing import Optional
 
 
-def find_master_db() -> Optional[Path]:
-    """
-    Return the first existing master.db path for the current platform.
-    Returns None if not found.
+def candidate_master_db_paths(system: Optional[str] = None) -> list[Path]:
+    """Return trusted, application-owned discovery candidates for ``master.db``.
 
-    macOS:   ~/Library/Pioneer/rekordbox/master.db
-    Windows: %LOCALAPPDATA%\\Pioneer\\rekordbox\\master.db
-             C:\\Users\\<user>\\AppData\\Roaming\\Pioneer\\rekordbox\\master.db
+    This list is deliberately internal and contains no renderer/user supplied path.
+    The read-only bridge may still use :func:`resolve_db_path` with an explicit path;
+    write-capable code must use ``find_master_db`` plus the Stage 5 target guard.
     """
-    system = platform.system()
+    system = system or platform.system()
 
     if system == "Darwin":
-        candidates = [
-            Path.home() / "Library" / "Pioneer" / "rekordbox" / "master.db",
-        ]
-    elif system == "Windows":
-        candidates = []
+        return [Path.home() / "Library" / "Pioneer" / "rekordbox" / "master.db"]
+
+    if system == "Windows":
+        candidates: list[Path] = []
         local_app_data = os.environ.get("LOCALAPPDATA")
         if local_app_data:
-            candidates.append(
-                Path(local_app_data) / "Pioneer" / "rekordbox" / "master.db"
-            )
+            candidates.append(Path(local_app_data) / "Pioneer" / "rekordbox" / "master.db")
         roaming = os.environ.get("APPDATA")
         if roaming:
-            candidates.append(
-                Path(roaming) / "Pioneer" / "rekordbox" / "master.db"
-            )
-        # Fallback hard-coded path
-        home = Path.home()
-        candidates.append(
-            home / "AppData" / "Roaming" / "Pioneer" / "rekordbox" / "master.db"
-        )
-    else:
-        # Linux / other: not officially supported but try a reasonable guess
-        candidates = [
-            Path.home() / ".local" / "share" / "Pioneer" / "rekordbox" / "master.db",
-        ]
+            candidates.append(Path(roaming) / "Pioneer" / "rekordbox" / "master.db")
+        fallback = Path.home() / "AppData" / "Roaming" / "Pioneer" / "rekordbox" / "master.db"
+        if fallback not in candidates:
+            candidates.append(fallback)
+        return candidates
 
-    for candidate in candidates:
+    # Kept for the existing read-only bridge. Stage 5 write safety treats
+    # unsupported platforms as unknown/unsafe and will not mutate anything.
+    return [Path.home() / ".local" / "share" / "Pioneer" / "rekordbox" / "master.db"]
+
+
+def find_master_db() -> Optional[Path]:
+    """Return the first existing trusted discovery candidate, or ``None``."""
+    for candidate in candidate_master_db_paths():
         if candidate.exists():
             return candidate
-
     return None
 
 
 def resolve_db_path(explicit_path: Optional[str]) -> Path:
     """
-    Return Path to master.db.
+    Return Path to master.db for the existing **read-only** bridge.
 
     If *explicit_path* is given, return that path (raising FileNotFoundError if
-    it does not exist on disk).  Otherwise auto-discover via find_master_db().
-    Raises FileNotFoundError with a helpful message when the path is not found.
-    Never modifies the returned path.
+    it does not exist on disk). Otherwise auto-discover via find_master_db().
+    Writer code must never call this function with renderer/user input.
     """
     if explicit_path is not None:
         p = Path(explicit_path)

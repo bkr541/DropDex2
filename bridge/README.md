@@ -134,3 +134,24 @@ pytest
 
 Tests do not require pyrekordbox or a real Rekordbox database — all external
 dependencies are mocked.
+
+## Internal Stage 5 writer foundation
+
+Stage 5 adds a deliberately **non-public, staging-only** writer foundation under
+`rekordbox_bridge.writer*`. It is not registered as a CLI command and is not
+exposed through Electron or the renderer.
+
+The write-capable path has stricter rules than the read-only export/upload path:
+
+- the live target is always discovered internally; caller-supplied database paths are rejected by design,
+- removable/USB targets, symlinks, traversal aliases, and unknown storage classifications fail closed,
+- Rekordbox must be proven closed before backup or staging mutation,
+- a collision-safe recovery backup is created before an isolated writable staging generation,
+- only planned Rekordbox `ContentID` values are changed, with `ContentUUID` resolved from the current local DB,
+- the committed staging DB is reopened and its writer-relevant `DjmdCue` fields are verified,
+- the live local `master.db` is never replaced or opened for writing in Stage 5,
+- ANLZ files are never modified.
+
+The existing `export` and `upload` commands remain read-only and keep their
+`--db-path` option. That option is intentionally **not** part of the writer
+contract.

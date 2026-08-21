@@ -1,0 +1,111 @@
+"""Stage 5 saved-draft -> canonical writer-plan tests."""
+from __future__ import annotations
+
+from copy import deepcopy
+
+import pytest
+
+from rekordbox_bridge.writer_plan import CuePlanValidationError, adapt_saved_cue_drafts
+
+
+def cue(**overrides):
+    value = {
+        "family": "hot",
+        "hotCueSlot": 1,
+        "pointType": "cue",
+        "startMs": 1000.125,
+        "endMs": None,
+        "colorTableIndex": 18,
+        "colorHex": None,
+        "colorName": "Green",
+        "comment": "First beat",
+        "isActiveLoop": False,
+        "beatLoopNumerator": None,
+        "beatLoopDenominator": None,
+        "rekordboxKind": 1,
+    }
+    value.update(overrides)
+    return value
+
+
+def saved_row(*, content_id="123", cues=None, revision=3):
+    document = {
+        "schemaVersion": 1,
+        "importId": "import-1",
+        "trackId": f"track-{content_id}",
+        "rekordboxContentId": content_id,
+        "cues": list(cues if cues is not None else [cue()]),
+    }
+    return {
+        "importId": "import-1",
+        "trackId": f"track-{content_id}",
+        "rekordboxContentId": content_id,
+        "revision": revision,
+        "desiredFingerprint": "a" * 64,
+        "importedBaselineFingerprint": "b" * 64,
+        "desiredDocument": document,
+        # Writer must ignore renderer/cloud-style fields not in its contract.
+        "dbPath": "/Volumes/NEVER/master.db",
+        "ContentUUID": "cloud-controlled-uuid",
+    }
+
+
+class TestWriterPlanAdapter:
+    def test_saved_document_adapts_to_deterministic_plan(self):
+        row = saved_row()
+        first = adapt_saved_cue_drafts([row])
+        second = adapt_saved_cue_drafts([deepcopy(row)])
+        assert first == second
+        assert len(first.plan_fingerprint) == 64
+        assert first.tracks[0].content_id == "123"
+        assert first.tracks[0].draft_revision == 3
+
+    def test_multiple_tracks_are_canonicalized_by_content_id(self):
+        plan = adapt_saved_cue_drafts([saved_row(content_id="20"), saved_row(content_id="10")])
+        assert [track.content_id for track in plan.tracks] == ["10", "20"]
+
+    def test_rejects_unsaved_or_zero_revision(self):
+        with pytest.raises(CuePlanValidationError, match="revision"):
+            adapt_saved_cue_drafts([saved_row(revision=0)])
+
+    def test_rejects_wrong_schema_version(self):
+        row = saved_row()
+        row["desiredDocument"]["schemaVersion"] = 2
+        with pytest.raises(CuePlanValidationError, match="Unsupported"):
+            adapt_saved_cue_drafts([row])
+
+    def test_rejects_malformed_fingerprints(self):
+        row = saved_row()
+        row["desiredFingerprint"] = "not-a-hash"
+        with pytest.raises(CuePlanValidationError, match="SHA-256"):
+            adapt_saved_cue_drafts([row])
+
+    def test_rejects_identity_mismatch(self):
+        row = saved_row()
+        row["desiredDocument"]["rekordboxContentId"] = "999"
+        with pytest.raises(CuePlanValidationError, match="ContentID"):
+            adapt_saved_cue_drafts([row])
+
+    def test_rejects_duplicate_hot_slot(self):
+        row = saved_row(cues=[cue(), cue(startMs=2000)])
+        with pytest.raises(CuePlanValidationError, match="duplicate Hot Cue"):
+            adapt_saved_cue_drafts([row])
+
+    def test_rejects_invalid_loop_range(self):
+        row = saved_row(cues=[cue(pointType="loop", startMs=2000, endMs=1500)])
+        with pytest.raises(CuePlanValidationError, match="requires endMs"):
+            adapt_saved_cue_drafts([row])
+
+    def test_rejects_hot_kind_that_conflicts_with_slot(self):
+        row = saved_row(cues=[cue(hotCueSlot=4, rekordboxKind=4)])
+        with pytest.raises(CuePlanValidationError, match="conflicts"):
+            adapt_saved_cue_drafts([row])
+
+    def test_rejects_duplicate_planned_content_id(self):
+        with pytest.raises(CuePlanValidationError, match="Duplicate planned ContentID"):
+            adapt_saved_cue_drafts([saved_row(), saved_row()])
+
+    def test_does_not_accept_path_or_content_uuid_as_plan_fields(self):
+        plan = adapt_saved_cue_drafts([saved_row()])
+        assert not hasattr(plan, "db_path")
+        assert not hasattr(plan.tracks[0], "content_uuid")
