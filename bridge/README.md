@@ -155,3 +155,31 @@ The write-capable path has stricter rules than the read-only export/upload path:
 The existing `export` and `upload` commands remain read-only and keep their
 `--db-path` option. That option is intentionally **not** part of the writer
 contract.
+
+## Internal Stage 6 verified apply engine
+
+Stage 6 builds on the Stage 4 saved-draft contract and the Stage 5 trusted-target,
+process, backup, staging, and DjmdCue writer boundaries. The new
+`rekordbox_bridge.apply_service` module remains internal and is not registered in
+the CLI, Electron main process, preload bridge, or renderer.
+
+The Stage 6 transition is deliberately two-phase:
+
+1. `preflight_saved_cue_drafts(...)` adapts persisted saved revisions, discovers
+   the trusted local database, proves Rekordbox is closed, rejects SQLite
+   WAL/journal sidecars, reads current cues from a private snapshot, and returns
+   an opaque short-lived single-use token bound to the observed local generation,
+   per-track cue fingerprints, and saved-plan fingerprint.
+2. `apply_saved_cue_drafts(token, same_saved_rows)` consumes that token, re-runs
+   the Stage 5 safety guard, rejects stale local/saved state, creates the durable
+   Stage 5 backup and complete staging generation, verifies every staged target,
+   prepares rollback, and re-runs the deepest target/process guard immediately
+   before the live handoff.
+3. The normal path performs one same-filesystem `os.replace` of `master.db`,
+   reopens a private copy of the live generation, and verifies all writer-relevant
+   cue fields. A post-replacement verification failure atomically restores the
+   prepared copy of the durable backup and reopens/re-verifies the old state.
+
+The recovery backup is retained. Temporary staging/rollback candidates are
+cleaned up without deleting that backup. USB/removable targets and ANLZ writes
+remain forbidden, and Stage 6 still exposes no renderer writer API.

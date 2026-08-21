@@ -274,18 +274,19 @@ def mutate_staging_database(
     return expected
 
 
-def verify_staging_database(
+def verify_database(
     plan: CueApplyPlan,
-    generation: StagingGeneration,
+    database_path: Path,
     expected: Mapping[str, Sequence[Mapping[str, Any]]],
     *,
     database_factory: Optional[Callable[[str], Any]] = None,
+    context: str = "database",
 ) -> StagingVerificationResult:
-    """Reopen the committed staging DB and verify exact writer-relevant cue fields."""
+    """Reopen a closed DB generation and verify exact writer-relevant cue fields."""
     if database_factory is None:
         database_factory, _ = _load_pyrekordbox()
 
-    db = database_factory(str(generation.staging_path))
+    db = database_factory(str(database_path))
     mismatches: list[VerificationMismatch] = []
     verified: list[str] = []
     try:
@@ -304,7 +305,10 @@ def verify_staging_database(
                         content_id=track.content_id,
                         expected_count=len(expected_rows),
                         actual_count=len(actual_rows),
-                        details="Writer-relevant DjmdCue fields differ after reopening staging.",
+                        details=(
+                            "Writer-relevant DjmdCue fields differ after reopening "
+                            f"{context}."
+                        ),
                     )
                 )
             else:
@@ -320,7 +324,10 @@ def verify_staging_database(
                             content_id=track.content_id,
                             expected_count=len(expected_rows),
                             actual_count=len(actual_rows),
-                            details="One or more committed cue rows is missing ID/UUID identity.",
+                            details=(
+                                "One or more committed cue rows is missing ID/UUID "
+                                f"identity in {context}."
+                            ),
                         )
                     )
                 else:
@@ -332,6 +339,23 @@ def verify_staging_database(
         ok=not mismatches,
         verified_content_ids=tuple(verified),
         mismatches=tuple(mismatches),
+    )
+
+
+def verify_staging_database(
+    plan: CueApplyPlan,
+    generation: StagingGeneration,
+    expected: Mapping[str, Sequence[Mapping[str, Any]]],
+    *,
+    database_factory: Optional[Callable[[str], Any]] = None,
+) -> StagingVerificationResult:
+    """Reopen the committed staging DB and verify exact writer-relevant cue fields."""
+    return verify_database(
+        plan,
+        Path(generation.staging_path),
+        expected,
+        database_factory=database_factory,
+        context="staging",
     )
 
 
