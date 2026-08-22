@@ -303,3 +303,48 @@ def write_phrases(
     except Exception as exc:
         logger.error("Failed to write phrases for track %s: %s", track_id, exc)
         return False
+
+
+# ── Optional PVDI vocal analysis ──────────────────────────────────────────────
+
+def write_vocal_analysis(
+    sb: Any,
+    import_id: str,
+    track_id: str,
+    result: Any,
+    source_asset_id: Optional[str],
+    parser_version: str,
+) -> bool:
+    """Persist compact optional PVDI evidence for one track.
+
+    ``result is None`` means a complete .2EX scan found no PVDI tag; any stale
+    row for this track is removed.  All failures stay feature-local and return
+    False so callers can log diagnostics without affecting library readiness.
+    """
+    try:
+        table = sb.table("rekordbox_track_vocal_analysis")
+        if result is None:
+            table.delete().eq("track_id", track_id).execute()
+            return True
+
+        row = {
+            "import_id": import_id,
+            "track_id": track_id,
+            "source_2ex_asset_id": source_asset_id,
+            "source_tag": result.source_tag,
+            "source_header_length": result.source_header_length,
+            "source_u1": result.source_u1,
+            "source_u2": result.source_u2,
+            "frame_duration_ms": result.frame_duration_ms,
+            "frame_count": result.frame_count,
+            "regions": [region.as_dict() for region in result.regions],
+            "integrity_status": result.integrity_status,
+            "complete": bool(result.complete),
+            "parse_warnings": result.warning_dicts(),
+            "parser_version": parser_version,
+        }
+        table.upsert(row, on_conflict="track_id").execute()
+        return True
+    except Exception as exc:
+        logger.error("Failed to write optional PVDI analysis for track %s: %s", track_id, exc)
+        return False

@@ -104,6 +104,34 @@ export interface PhraseRow {
   parser_version: string | null;
 }
 
+// ── Optional PVDI vocal-analysis types ───────────────────────────────────────
+
+export interface VocalRegionRow {
+  start_frame: number;
+  end_frame_exclusive: number;
+  start_ms: number;
+  end_ms: number;
+  duration_ms: number;
+  peak_confidence: number;
+}
+
+export interface VocalAnalysisRow {
+  id: string;
+  import_id: string;
+  track_id: string;
+  source_tag: string;
+  source_header_length: number | null;
+  source_u1: number | null;
+  source_u2: number | null;
+  frame_duration_ms: number | null;
+  frame_count: number;
+  regions: VocalRegionRow[];
+  integrity_status: 'valid' | 'invalid' | 'unsupported';
+  complete: boolean;
+  parse_warnings: Array<Record<string, unknown>>;
+  parser_version: string | null;
+}
+
 // ── Row mappers ───────────────────────────────────────────────────────────────
 
 function mapBeatGridRow(raw: unknown): BeatGridRow {
@@ -189,6 +217,40 @@ function mapPhraseRow(raw: unknown): PhraseRow {
     fill_start_ms: (row.fill_start_ms as number | null) ?? null,
     source_flags: (row.source_flags as Record<string, unknown>) ?? {},
     source_payload: (row.source_payload as Record<string, unknown>) ?? {},
+    parser_version: (row.parser_version as string | null) ?? null,
+  };
+}
+
+function mapVocalAnalysisRow(raw: unknown): VocalAnalysisRow {
+  const row = raw as Record<string, unknown>;
+  const regions = Array.isArray(row.regions)
+    ? row.regions.filter((value): value is VocalRegionRow => {
+      if (value == null || typeof value !== 'object') return false;
+      const region = value as Record<string, unknown>;
+      return typeof region.start_frame === 'number' && Number.isFinite(region.start_frame)
+        && typeof region.end_frame_exclusive === 'number' && Number.isFinite(region.end_frame_exclusive)
+        && typeof region.start_ms === 'number' && Number.isFinite(region.start_ms)
+        && typeof region.end_ms === 'number' && Number.isFinite(region.end_ms)
+        && typeof region.duration_ms === 'number' && Number.isFinite(region.duration_ms)
+        && typeof region.peak_confidence === 'number' && Number.isFinite(region.peak_confidence);
+    })
+    : [];
+  return {
+    id: row.id as string,
+    import_id: row.import_id as string,
+    track_id: row.track_id as string,
+    source_tag: (row.source_tag as string | null) ?? 'PVDI',
+    source_header_length: (row.source_header_length as number | null) ?? null,
+    source_u1: (row.source_u1 as number | null) ?? null,
+    source_u2: (row.source_u2 as number | null) ?? null,
+    frame_duration_ms: (row.frame_duration_ms as number | null) ?? null,
+    frame_count: Number(row.frame_count ?? 0),
+    regions,
+    integrity_status: row.integrity_status as VocalAnalysisRow['integrity_status'],
+    complete: row.complete === true,
+    parse_warnings: Array.isArray(row.parse_warnings)
+      ? row.parse_warnings.filter((value): value is Record<string, unknown> => value != null && typeof value === 'object')
+      : [],
     parser_version: (row.parser_version as string | null) ?? null,
   };
 }
@@ -436,6 +498,22 @@ export async function fetchTrackPhrases(trackId: string): Promise<PhraseRow[]> {
 
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => mapPhraseRow(row));
+}
+
+/** Fetch optional compact PVDI vocal evidence for a single track. */
+export async function fetchTrackVocalAnalysis(trackId: string): Promise<VocalAnalysisRow | null> {
+  const { data, error } = await supabase
+    .from('rekordbox_track_vocal_analysis')
+    .select(
+      'id, import_id, track_id, source_tag, source_header_length, source_u1, source_u2, ' +
+      'frame_duration_ms, frame_count, regions, integrity_status, complete, parse_warnings, parser_version'
+    )
+    .eq('track_id', trackId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (data == null) return null;
+  return mapVocalAnalysisRow(data);
 }
 
 /** Fetch phrase segments for multiple tracks, keyed by track ID. */

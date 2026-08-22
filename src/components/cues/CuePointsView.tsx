@@ -22,11 +22,13 @@ import {
   fetchTrackBeatGrid,
   fetchTrackCues,
   fetchTrackPhrases,
+  fetchTrackVocalAnalysis,
   fetchTracksCues,
   type BeatEntry,
   type BeatGridRow,
   type CueRow,
   type PhraseRow,
+  type VocalAnalysisRow,
 } from '../../lib/queries/analysisData';
 import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
@@ -898,6 +900,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [beatGridLoading, setBeatGridLoading] = useState(false);
   const [phrases, setPhrases] = useState<PhraseRow[]>([]);
   const [phraseLoading, setPhraseLoading] = useState(false);
+  const [vocalAnalysis, setVocalAnalysis] = useState<VocalAnalysisRow | null>(null);
   const manualCueSequenceRef = useRef(0);
   const selectedTrackIdRef = useRef<string | null>(null);
   const selectedUserIdRef = useRef<string | null>(null);
@@ -986,6 +989,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setBeatGridLoading(false);
     setPhrases([]);
     setPhraseLoading(false);
+    setVocalAnalysis(null);
   }, [importId, userId]);
 
   useEffect(() => {
@@ -1134,6 +1138,29 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       })
       .finally(() => {
         if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) setPhraseLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTrackId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedTrackId) {
+      setVocalAnalysis(null);
+      return;
+    }
+    setVocalAnalysis(null);
+    // PVDI is enrichment only: query errors, an absent row, or an older backend
+    // without the Stage 8 migration must leave Auto Cue's Stage 3 path usable.
+    void fetchTrackVocalAnalysis(selectedTrackId)
+      .then((next) => {
+        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) {
+          setVocalAnalysis(next?.track_id === selectedTrackId ? next : null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled && isCurrentTrackResponse(selectedTrackIdRef.current, selectedTrackId)) setVocalAnalysis(null);
       });
     return () => {
       cancelled = true;
@@ -1342,6 +1369,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       durationMs: durationMsForTrack(selectedTrack, beatGrid, phrases),
       beats: beatGrid.beats,
       phrases,
+      vocalAnalysis,
       currentCues: workingCues,
     });
     if (result.addedHotCount > 0 || result.addedMemoryCount > 0) {
@@ -1358,7 +1386,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         : 'Auto Cue did not add any new cues.';
     }
     return `Auto Cue added ${result.addedHotCount} Hot Cue${result.addedHotCount === 1 ? '' : 's'} and ${result.addedMemoryCount} Memory Cue${result.addedMemoryCount === 1 ? '' : 's'}${skippedCount > 0 ? `; ${skippedCount} unsupported slot${skippedCount === 1 ? '' : 's'} skipped` : ''}.`;
-  }, [beatGrid, beatGridLoading, importId, phraseLoading, phrases, selectedCueLoading, selectedTrack, selectedTrackId, workingCues]);
+  }, [beatGrid, beatGridLoading, importId, phraseLoading, phrases, selectedCueLoading, selectedTrack, selectedTrackId, vocalAnalysis, workingCues]);
 
   const handleSave = useCallback(async (): Promise<string | null> => {
     if (!selectedTrackId || !selectedTrack) return 'Select a track before saving cue changes.';

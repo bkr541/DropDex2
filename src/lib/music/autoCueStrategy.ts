@@ -1,17 +1,20 @@
 import {
+  beatAtOrBefore,
   beatByBarOffset,
+  downbeatsOnly,
   exactBeatForBoundary,
   firstValidBeat,
   isUsableBeatGrid,
+  nearestBeat,
   type BeatEntry,
 } from './beatGridHelpers';
 import {
   replaceWorkingCues,
   type WorkingCue,
 } from './cueEditorState';
-import type { PhraseRow } from '../queries/analysisData';
+import type { PhraseRow, VocalAnalysisRow, VocalRegionRow } from '../queries/analysisData';
 
-export const AUTO_CUE_STRATEGY_VERSION = 'dropdex-djcues-a-h-v1';
+export const AUTO_CUE_STRATEGY_VERSION = 'dropdex-djcues-a-h-v2-pvdi';
 
 export const AUTO_CUE_STRATEGY_SETTINGS = Object.freeze({
   mode: 'fill-empty-slots',
@@ -20,7 +23,11 @@ export const AUTO_CUE_STRATEGY_SETTINGS = Object.freeze({
   dropSearchStartFraction: 0.20,
   cueCFallback: 'phrase-then-16-bars-before-drop',
   cueFFallback: 'phrase-chorus-after-e-or-d',
-  pvdi: 'optional-not-consumed',
+  pvdi: 'optional-pvdi-v1',
+  pvdiStrongThreshold: 3,
+  pvdiPositiveContinuation: 0,
+  pvdiMinimumRegionMs: 2000,
+  pvdiPhraseToleranceBars: 4,
   colorContract: 'derive-from-slot-semantic-v1',
 });
 
@@ -210,14 +217,114 @@ function inferDurationMs(durationMs: number | null, beats: BeatEntry[]): number 
   return beats[beats.length - 1]?.ms ?? 0;
 }
 
+function phraseFallbackC(
+  beats: BeatEntry[],
+  adapted: Array<AdaptedPhrase & { beat: BeatEntry }>,
+  d: AutoCueProposal,
+): AutoCueProposal | null {
+  const phrasesBeforeD = adapted.filter((phrase) => phrase.beat.ms < d.startBeat.ms);
+  const preferredC = [...phrasesBeforeD].reverse().find(
+    (phrase) => phrase.semantic === 'Up' || isVerse(phrase.semantic),
+  ) ?? null;
+  const anyPhraseBeforeD = phrasesBeforeD[phrasesBeforeD.length - 1] ?? null;
+  const fallbackBeat = beatByBarOffset(beats, d.startBeat, -AUTO_CUE_STRATEGY_SETTINGS.memoryLeadBars);
+  const cAnchor = preferredC?.beat ?? anyPhraseBeforeD?.beat ?? fallbackBeat;
+  if (!cAnchor) return null;
+  const reason = preferredC
+    ? 'Last Up/Verse phrase before D.'
+    : anyPhraseBeforeD
+      ? 'Last valid phrase boundary before D.'
+      : 'No phrase exists before D; used the exact beat 16 bars before D.';
+  return proposal(3, cAnchor, reason, beats);
+}
+
+function isFiniteVocalRegion(region: VocalRegionRow): boolean {
+  return Number.isFinite(region.start_frame)
+    && Number.isFinite(region.end_frame_exclusive)
+    && Number.isFinite(region.start_ms)
+    && Number.isFinite(region.end_ms)
+    && Number.isFinite(region.duration_ms)
+    && Number.isFinite(region.peak_confidence)
+    && region.start_frame >= 0
+    && region.end_frame_exclusive > region.start_frame
+    && region.start_ms >= 0
+    && region.end_ms > region.start_ms
+    && region.duration_ms > 0;
+}
+
+function phraseWithinPvdiTolerance(onsetBeat: BeatEntry, phraseBeat: BeatEntry): boolean {
+  if (onsetBeat.bar > 0 && phraseBeat.bar > 0) {
+    return Math.abs(onsetBeat.bar - phraseBeat.bar) <= AUTO_CUE_STRATEGY_SETTINGS.pvdiPhraseToleranceBars;
+  }
+  return Math.abs(onsetBeat.seq - phraseBeat.seq) <= AUTO_CUE_STRATEGY_SETTINGS.pvdiPhraseToleranceBars * 4;
+}
+
+function pvdiC(
+  beats: BeatEntry[],
+  adapted: Array<AdaptedPhrase & { beat: BeatEntry }>,
+  d: AutoCueProposal,
+  vocalAnalysis: VocalAnalysisRow | null | undefined,
+): AutoCueProposal | null {
+  if (
+    !vocalAnalysis
+    || vocalAnalysis.source_tag !== 'PVDI'
+    || vocalAnalysis.integrity_status !== 'valid'
+    || !vocalAnalysis.complete
+  ) return null;
+
+  // PVDI parsing emits strong-onset regions in source-frame order. Preserve the
+  // DJCues rule: the first strong onset is the candidate; a short/late first
+  // region falls back rather than silently skipping ahead to a different vocal.
+  const firstRegion = [...vocalAnalysis.regions]
+    .filter(isFiniteVocalRegion)
+    .sort((a, b) => a.start_frame - b.start_frame)[0] ?? null;
+  if (
+    !firstRegion
+    || firstRegion.duration_ms < AUTO_CUE_STRATEGY_SETTINGS.pvdiMinimumRegionMs
+    || firstRegion.start_ms >= d.startBeat.ms
+  ) return null;
+
+  const onsetBeat = nearestBeat(beats, firstRegion.start_ms);
+  if (!onsetBeat) return null;
+
+  const nearestPhrase = adapted
+    .filter((phrase) => phrase.beat.ms < d.startBeat.ms)
+    .filter((phrase) => phraseWithinPvdiTolerance(onsetBeat, phrase.beat))
+    .sort((a, b) => {
+      const aDistance = Math.abs(a.beat.ms - firstRegion.start_ms);
+      const bDistance = Math.abs(b.beat.ms - firstRegion.start_ms);
+      if (aDistance !== bDistance) return aDistance - bDistance;
+      return a.beat.ms - b.beat.ms;
+    })[0] ?? null;
+
+  if (nearestPhrase) {
+    return proposal(
+      3,
+      nearestPhrase.beat,
+      'First valid PVDI vocal onset normalized to a nearby phrase boundary within four bars.',
+      beats,
+    );
+  }
+
+  const downbeat = beatAtOrBefore(downbeatsOnly(beats), onsetBeat.ms) ?? onsetBeat;
+  return proposal(
+    3,
+    downbeat,
+    'First valid PVDI vocal onset normalized to the exact Rekordbox downbeat/grid.',
+    beats,
+  );
+}
+
 /**
- * Pure DJCues-compatible A-H proposal engine. It consumes only exact beat-grid
- * timing plus raw PSSI phrase values and never reads/writes persistence.
+ * Pure DJCues-compatible A-H proposal engine. It consumes exact beat-grid
+ * timing, raw PSSI phrase values, and optional compact PVDI vocal evidence.
+ * It never reads/writes persistence.
  */
 export function generateAutoCueProposals(input: {
   beats: BeatEntry[];
   phrases: PhraseRow[];
   durationMs: number | null;
+  vocalAnalysis?: VocalAnalysisRow | null;
 }): AutoCueStrategyResult {
   const { beats } = input;
   const skipped: Partial<Record<AutoCueSlot, string>> = {};
@@ -268,24 +375,9 @@ export function generateAutoCueProposals(input: {
   else skipped[4] = 'No Chorus candidate exists; Drop was not fabricated.';
 
   if (d) {
-    const phrasesBeforeD = adapted.filter((phrase) => phrase.beat.ms < d.startBeat.ms);
-    const preferredC = [...phrasesBeforeD].reverse().find(
-      (phrase) => phrase.semantic === 'Up' || isVerse(phrase.semantic),
-    ) ?? null;
-    const anyPhraseBeforeD = phrasesBeforeD[phrasesBeforeD.length - 1] ?? null;
-    const fallbackBeat = beatByBarOffset(beats, d.startBeat, -AUTO_CUE_STRATEGY_SETTINGS.memoryLeadBars);
-    const cAnchor = preferredC?.beat ?? anyPhraseBeforeD?.beat ?? fallbackBeat;
-    if (cAnchor) {
-      const reason = preferredC
-        ? 'Last Up/Verse phrase before D.'
-        : anyPhraseBeforeD
-          ? 'Last valid phrase boundary before D.'
-          : 'No phrase exists before D; used the exact beat 16 bars before D.';
-      const c = proposal(3, cAnchor, reason, beats);
-      if (c) proposals.push(c);
-    } else {
-      skipped[3] = 'No safe exact pre-D phrase or 16-bar fallback exists.';
-    }
+    const c = pvdiC(beats, adapted, d, input.vocalAnalysis) ?? phraseFallbackC(beats, adapted, d);
+    if (c) proposals.push(c);
+    else skipped[3] = 'No safe exact pre-D phrase or 16-bar fallback exists.';
   } else {
     skipped[3] = 'Cue C requires a safely resolved D anchor in phrase-fallback mode.';
   }
@@ -495,12 +587,14 @@ export function applyAutoCueStrategy(input: {
   durationMs: number | null;
   beats: BeatEntry[];
   phrases: PhraseRow[];
+  vocalAnalysis?: VocalAnalysisRow | null;
   currentCues: WorkingCue[];
 }): AutoCueMergeResult {
   const result = generateAutoCueProposals({
     beats: input.beats,
     phrases: input.phrases,
     durationMs: input.durationMs,
+    vocalAnalysis: input.vocalAnalysis,
   });
   return mergeAutoCueProposals({
     trackId: input.trackId,

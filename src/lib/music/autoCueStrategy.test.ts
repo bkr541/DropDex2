@@ -9,7 +9,7 @@ import {
   mergeAutoCueProposals,
 } from './autoCueStrategy';
 import type { WorkingCue } from './cueEditorState';
-import type { PhraseRow } from '../queries/analysisData';
+import type { PhraseRow, VocalAnalysisRow, VocalRegionRow } from '../queries/analysisData';
 
 function makeVariableTempoBeats(barCount = 96): BeatEntry[] {
   const beats: BeatEntry[] = [];
@@ -91,6 +91,38 @@ function importedHot(slot: number, startMs: number): WorkingCue {
     strategyVersion: null,
     strategySettings: null,
     source: 'imported',
+  };
+}
+
+
+function vocalAnalysis(regions: VocalRegionRow[], overrides: Partial<VocalAnalysisRow> = {}): VocalAnalysisRow {
+  return {
+    id: 'vocal-1',
+    import_id: 'import-1',
+    track_id: 'track-1',
+    source_tag: 'PVDI',
+    source_header_length: 24,
+    source_u1: 0x400,
+    source_u2: 0x56220001,
+    frame_duration_ms: 1024 / 22050 * 1000,
+    frame_count: 4000,
+    regions,
+    integrity_status: 'valid',
+    complete: true,
+    parse_warnings: [],
+    parser_version: '1.0.0',
+    ...overrides,
+  };
+}
+
+function vocalRegion(startMs: number, durationMs = 2200, startFrame = 100): VocalRegionRow {
+  return {
+    start_frame: startFrame,
+    end_frame_exclusive: startFrame + 48,
+    start_ms: startMs,
+    end_ms: startMs + durationMs,
+    duration_ms: durationMs,
+    peak_confidence: 4,
   };
 }
 
@@ -349,5 +381,102 @@ describe('fill-empty working-set merge', () => {
     expect(merged.addedMemoryCount).toBe(0);
     expect(merged.cues).toEqual(currentCues);
     expect(merged.preservedOccupiedSlots).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+});
+
+
+describe('Stage 8 optional PVDI Cue C enrichment', () => {
+  it('uses the first meaningful pre-D vocal region and normalizes to a nearby phrase boundary', () => {
+    const beats = makeVariableTempoBeats(96);
+    const phrases = [
+      phrase(0, 77, '2', '2', beats), // Verse at bar 20
+      phrase(1, 157, '2', '9', beats), // D Chorus at bar 40
+      phrase(2, 205, '2', '8', beats),
+      phrase(3, 253, '2', '9', beats),
+      phrase(4, 321, '2', '10', beats),
+    ];
+    const result = generateAutoCueProposals({
+      beats,
+      phrases,
+      durationMs: beats.at(-1)!.ms,
+      vocalAnalysis: vocalAnalysis([vocalRegion(beats[81].ms + 10)]), // bar 21, close to bar-20 phrase
+    });
+    const c = result.proposals.find((item) => item.slot === 3)!;
+    expect(c.startBeat.seq).toBe(77);
+    expect(c.reason).toContain('PVDI');
+    expect(c.memoryBeat?.bar).toBe(c.startBeat.bar - 16);
+  });
+
+  it('uses an exact source downbeat when no phrase boundary is within four bars', () => {
+    const beats = makeVariableTempoBeats(96);
+    const phrases = [
+      phrase(0, 157, '2', '9', beats), // D only; no earlier phrase boundary
+      phrase(1, 205, '2', '8', beats),
+      phrase(2, 253, '2', '9', beats),
+      phrase(3, 321, '2', '10', beats),
+    ];
+    const result = generateAutoCueProposals({
+      beats,
+      phrases,
+      durationMs: beats.at(-1)!.ms,
+      vocalAnalysis: vocalAnalysis([vocalRegion(beats[77].ms + 20)]), // beat 2 of bar 20
+    });
+    const c = result.proposals.find((item) => item.slot === 3)!;
+    expect(c.startBeat.seq).toBe(77); // exact downbeat of bar 20, not reconstructed timing
+    expect(c.startBeat).toBe(beats[76]);
+  });
+
+  it('keeps the Stage 3 phrase fallback byte-for-byte equivalent when PVDI is absent, invalid, short, or after D', () => {
+    const beats = makeVariableTempoBeats(96);
+    const phrases = representativePhrases(beats);
+    const durationMs = beats.at(-1)!.ms;
+    const baseline = generateAutoCueProposals({ beats, phrases, durationMs });
+    const d = baseline.proposals.find((item) => item.slot === 4)!;
+    const variants: Array<VocalAnalysisRow | null> = [
+      null,
+      vocalAnalysis([vocalRegion(beats[48].ms)], { integrity_status: 'invalid', complete: false }),
+      vocalAnalysis([vocalRegion(beats[48].ms, 500)]),
+      vocalAnalysis([vocalRegion(d.startBeat.ms + 1)]),
+    ];
+
+    for (const variant of variants) {
+      const result = generateAutoCueProposals({ beats, phrases, durationMs, vocalAnalysis: variant });
+      expect(result.proposals).toEqual(baseline.proposals);
+      expect(result.skipped).toEqual(baseline.skipped);
+    }
+  });
+
+  it('does not skip past a short first strong region to a later vocal region', () => {
+    const beats = makeVariableTempoBeats(96);
+    const phrases = representativePhrases(beats);
+    const durationMs = beats.at(-1)!.ms;
+    const baseline = generateAutoCueProposals({ beats, phrases, durationMs });
+    const result = generateAutoCueProposals({
+      beats,
+      phrases,
+      durationMs,
+      vocalAnalysis: vocalAnalysis([
+        vocalRegion(beats[48].ms, 400, 100),
+        vocalRegion(beats[60].ms, 3000, 200),
+      ]),
+    });
+    expect(result.proposals).toEqual(baseline.proposals);
+  });
+
+  it('changes only C proposal semantics while A/B/D/E/F/G/H remain unchanged', () => {
+    const beats = makeVariableTempoBeats(96);
+    const phrases = representativePhrases(beats);
+    const durationMs = beats.at(-1)!.ms;
+    const baseline = generateAutoCueProposals({ beats, phrases, durationMs });
+    const enhanced = generateAutoCueProposals({
+      beats,
+      phrases,
+      durationMs,
+      vocalAnalysis: vocalAnalysis([vocalRegion(beats[76].ms)]),
+    });
+    for (const slot of [1, 2, 4, 5, 6, 7, 8] as const) {
+      expect(enhanced.proposals.find((item) => item.slot === slot))
+        .toEqual(baseline.proposals.find((item) => item.slot === slot));
+    }
   });
 });

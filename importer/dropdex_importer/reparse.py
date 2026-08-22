@@ -331,10 +331,40 @@ def _reparse_track(sb, track: dict) -> str:
             logger.error("Phrase write failed for track %s: %s", track_id, exc)
             feature_statuses["phrases"] = "failed"
 
-        # Step 6: Determine overall status from feature results and mark track
+        # Optional Stage 8 PVDI vocal evidence. This is best-effort and does not
+        # participate in the blocking feature failure calculation below.
+        try:
+            from .vocal_parser import parse_pvdi_file  # noqa: PLC0415
+            if two_ex_path:
+                vocal = parse_pvdi_file(two_ex_path)
+                _write_vocal_analysis_row(
+                    sb,
+                    import_id,
+                    track_id,
+                    vocal,
+                    asset_ids.get("2EX"),
+                )
+                if vocal is None or vocal.integrity_status != "valid":
+                    feature_statuses["vocal_analysis"] = "skipped"
+                else:
+                    feature_statuses["vocal_analysis"] = "completed"
+            else:
+                feature_statuses["vocal_analysis"] = "skipped"
+        except Exception as exc:
+            logger.warning("Optional PVDI write failed for track %s: %s", track_id, exc)
+            feature_statuses["vocal_analysis"] = "failed"
+
+        # Step 6: Determine overall status from required feature results and mark track.
+        # Optional PVDI failure must never downgrade library readiness.
         overall = getattr(bundle, "overall_status", "completed")
-        failed_features = [k for k, v in feature_statuses.items() if v == "failed"]
-        completed_features = [k for k, v in feature_statuses.items() if v == "completed"]
+        failed_features = [
+            k for k, v in feature_statuses.items()
+            if v == "failed" and k != "vocal_analysis"
+        ]
+        completed_features = [
+            k for k, v in feature_statuses.items()
+            if v == "completed" and k != "vocal_analysis"
+        ]
 
         if completed_features and not failed_features:
             final_status = "completed"
@@ -382,6 +412,38 @@ def _get_asset_ids_for_track(sb, track_id: str) -> dict:
         .execute()
     )
     return {a["asset_type"]: a["id"] for a in (resp.data or [])}
+
+
+def _write_vocal_analysis_row(
+    sb,
+    import_id: str,
+    track_id: str,
+    result,
+    source_asset_id,
+) -> None:
+    """Upsert compact optional PVDI evidence without owning the raw .2EX bytes."""
+    from .vocal_parser import DROPDEX_PVDI_PARSER_VERSION  # noqa: PLC0415
+
+    table = sb.table("rekordbox_track_vocal_analysis")
+    if result is None:
+        table.delete().eq("track_id", track_id).execute()
+        return
+    table.upsert({
+        "import_id": import_id,
+        "track_id": track_id,
+        "source_2ex_asset_id": source_asset_id,
+        "source_tag": result.source_tag,
+        "source_header_length": result.source_header_length,
+        "source_u1": result.source_u1,
+        "source_u2": result.source_u2,
+        "frame_duration_ms": result.frame_duration_ms,
+        "frame_count": result.frame_count,
+        "regions": [region.as_dict() for region in result.regions],
+        "integrity_status": result.integrity_status,
+        "complete": bool(result.complete),
+        "parse_warnings": result.warning_dicts(),
+        "parser_version": DROPDEX_PVDI_PARSER_VERSION,
+    }, on_conflict="track_id").execute()
 
 
 def _write_beat_grid_row(sb, import_id: str, track_id: str, bg, source_asset_id) -> None:

@@ -1237,7 +1237,12 @@ def _archive_optional_2ex_rows(
     import_id: str,
     rows: Sequence[dict],
 ) -> int:
-    """Archive an explicitly supplied optional .2EX batch without parsing it."""
+    """Persist optional PVDI evidence, then archive an explicitly supplied .2EX batch.
+
+    Vocal parsing is best-effort and never blocks archival or library readiness.
+    The staged file is read-only and remains the same source object that is
+    archived by the existing retained-analysis ownership path.
+    """
     optional_rows = [
         dict(row)
         for row in rows
@@ -1261,6 +1266,47 @@ def _archive_optional_2ex_rows(
         by_key[staging_key] = row
     if not members:
         return 0
+
+    # Stage 8 optional enrichment: parse PVDI while the staged .2EX is directly
+    # readable.  Failure is deliberately isolated from archival/readiness.
+    try:
+        from dropdex_importer.vocal_parser import (
+            DROPDEX_PVDI_PARSER_VERSION,
+            parse_pvdi_file,
+        )
+        from .analysis_feature_writer import write_vocal_analysis
+
+        persisted_assets = _fetch_existing_assets_for_paths(
+            sb,
+            import_id,
+            [str(row.get("relative_path") or "") for row in optional_rows],
+        )
+        for staging_key, row in by_key.items():
+            try:
+                staged_path = resolve_staging_key(staging_key, settings.analysis_staging_root)
+                vocal = parse_pvdi_file(staged_path)
+                persisted = persisted_assets.get(str(row.get("relative_path") or "").lower(), {})
+                ok = write_vocal_analysis(
+                    sb,
+                    import_id,
+                    str(row.get("track_id") or ""),
+                    vocal,
+                    persisted.get("id"),
+                    DROPDEX_PVDI_PARSER_VERSION,
+                )
+                if not ok:
+                    logger.warning(
+                        "Optional PVDI persistence failed for track %s; continuing .2EX archival",
+                        row.get("track_id"),
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Optional PVDI parse failed for track %s; continuing .2EX archival: %s",
+                    row.get("track_id"),
+                    exc,
+                )
+    except Exception as exc:
+        logger.warning("Optional PVDI enrichment unavailable; continuing .2EX archival: %s", exc)
 
     archive_path, member_map = create_archive(
         import_id, time.time_ns(), members, settings.analysis_staging_root
@@ -2083,6 +2129,41 @@ def _complete_analysis_import_sync(
             _analysis_worker_checkpoint(
                 import_id, user_id, "after_writing_phrases", current_track_id=track_id, sb=sb
             )
+
+            # Optional Stage 8 PVDI enrichment. It is intentionally non-blocking:
+            # absent, malformed, unsupported, or unwritable vocal evidence must
+            # never change the track/library readiness outcome.
+            try:
+                from dropdex_importer.vocal_parser import (
+                    DROPDEX_PVDI_PARSER_VERSION,
+                    parse_pvdi_file,
+                )
+                from .analysis_feature_writer import write_vocal_analysis
+
+                if local_paths["2EX"]:
+                    vocal = parse_pvdi_file(local_paths["2EX"])
+                    ok = write_vocal_analysis(
+                        sb,
+                        import_id,
+                        track_id,
+                        vocal,
+                        asset_ids.get("2EX"),
+                        DROPDEX_PVDI_PARSER_VERSION,
+                    )
+                    if not ok:
+                        feature_statuses["vocal_analysis"] = "failed"
+                    elif vocal is None:
+                        feature_statuses["vocal_analysis"] = "skipped"
+                    elif vocal.integrity_status == "valid":
+                        feature_statuses["vocal_analysis"] = "completed"
+                    else:
+                        feature_statuses["vocal_analysis"] = "skipped"
+                else:
+                    feature_statuses["vocal_analysis"] = "skipped"
+            except Exception as exc:
+                logger.warning("Optional PVDI extraction failed for track %s: %s", track_id, exc)
+                feature_statuses["vocal_analysis"] = "failed"
+
             _analysis_worker_checkpoint(
                 import_id, user_id, "before_updating_track_status", current_track_id=track_id, sb=sb
             )
