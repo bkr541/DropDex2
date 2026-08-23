@@ -63,7 +63,9 @@
 .dd-accent--green.dd-control-button--secondary { color: #0ea66d; }
 .dd-control-button--danger { background: linear-gradient(180deg, #f2191f 0%, #bf0d12 100%); border-color: #ed252a; box-shadow: 0 7px 13px rgb(210 22 28 / .24), inset 0 1px 0 rgb(255 255 255 / .18); }
 .dd-control-button--danger:hover:not(:disabled) { background: linear-gradient(180deg, #ff2b31 0%, #cf1117 100%); }
-.dd-control-button--danger-outline { background: transparent; box-shadow: none; color: var(--color-control-red); border-color: var(--color-control-red); }
+.dd-control-button--danger-outline { border-radius: 9999px; border-width: 2px; background: transparent; box-shadow: none; color: var(--color-control-red); border-color: var(--color-control-red); }
+.dd-control-button--danger-outline:hover:not(:disabled) { background: rgb(var(--color-control-red-rgb) / .08); border-color: #ff6b78; color: #ff6b78; }
+.dd-control-button.dd-control-button--danger-outline:disabled { background: transparent; border-color: #3a3f47; color: #4a5060; box-shadow: none; }
 .dd-control-button--ghost { background: transparent; box-shadow: none; color: var(--color-text-muted, #8b9ab0); border-color: transparent; }
 .dd-control-button--ghost:hover:not(:disabled) { background: var(--color-surface-hover, rgba(255,255,255,0.06)); color: var(--color-text-primary, #d8dee7); border-color: transparent; }
 .dd-control-button:disabled { cursor: not-allowed; color: #3a4251; border-color: #272e38; background: transparent; box-shadow: none; transform: none; }

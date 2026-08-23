@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { CircleDash, Music, Upload, WarningAlt } from '@carbon/icons-react';
+import { CircleDash, Export, Idea, Music, Save, Undo, Upload, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -506,18 +506,6 @@ function CueWaveformPanel({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
           <h1 className="mt-1 truncate text-xl font-black tracking-tight md:text-2xl">{track.title}</h1>
-          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
-            {[
-              ['Beats', beatGridLoading ? '…' : beatGrid ? String(beatGrid.beat_count ?? beatGrid.beats.length) : '—'],
-              ['Bars', beatGridLoading ? '…' : beatGrid ? String(beatGrid.bar_count ?? '—') : '—'],
-              ['First Beat', beatGridLoading ? '…' : formatTime(beatGrid?.first_beat_ms ?? null)],
-            ].map(([label, value]) => (
-              <span key={label} className="inline-flex items-baseline gap-1.5">
-                <span className="text-[8px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</span>
-                <strong className="font-mono text-[11px] font-black tabular-nums">{value}</strong>
-              </span>
-            ))}
-          </div>
         </div>
 
         <div className="flex flex-wrap items-stretch gap-2 xl:justify-end">
@@ -535,35 +523,37 @@ function CueWaveformPanel({
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-muted-foreground"
-              title="Cue draft state"
-            >
-              {draftStatus}
-            </span>
             <ControlButton
               variant="surface"
               disabled={!autoCueReady}
               onClick={() => setEditorMessage(onAutoCue())}
-              title={autoCueReady ? 'Generate deterministic A–H cue proposals' : "Auto Cue requires the selected track's exact beat grid and phrase data to finish loading"}
+              title={autoCueReady ? 'Auto Cue: generate deterministic A–H cue proposals' : "Auto Cue requires the selected track's exact beat grid and phrase data to finish loading"}
             >
-              Auto Cue
+              <Idea size={17} />
             </ControlButton>
-            <ControlButton variant="ghost" disabled={!dirty || cueLoading || saving} onClick={onDiscard}>Discard</ControlButton>
+            <ControlButton
+              variant="ghost"
+              disabled={!dirty || cueLoading || saving}
+              onClick={onDiscard}
+              title="Discard unsaved cue changes"
+            >
+              <Undo size={17} />
+            </ControlButton>
             <ControlButton
               variant="surface"
               disabled={!dirty || cueLoading || saving}
               onClick={() => { void onSave().then(setEditorMessage); }}
+              title={saving ? 'Saving cue changes…' : 'Save cue changes'}
             >
-              {saving ? 'Saving…' : 'Save changes'}
+              {saving ? <CircleDash size={17} className="animate-spin" /> : <Save size={17} />}
             </ControlButton>
             <ControlButton
               variant="primary"
               disabled={!applyAvailable || applying}
               onClick={onApply}
-              title={applyAvailable ? 'Preflight saved cue drafts before applying them to local Rekordbox' : 'Apply requires the Electron desktop app, the packaged bridge, and at least one saved draft that needs apply'}
+              title={applyAvailable ? 'Apply to Rekordbox: preflight saved cue drafts' : 'Apply requires the Electron desktop app, the packaged bridge, and at least one saved draft that needs apply'}
             >
-              {applying ? 'Applying…' : 'Apply to Rekordbox'}
+              {applying ? <CircleDash size={17} className="animate-spin" /> : <Export size={17} />}
             </ControlButton>
           </div>
         </div>
@@ -572,7 +562,7 @@ function CueWaveformPanel({
       <div className="px-3 pb-2 pt-2 md:px-4">
         <div className="overflow-x-auto rounded-[18px]">
           <div className="min-w-[980px] rounded-[18px] border border-[#2a353e] bg-[#090e13] p-[7px] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
-            <div className="grid grid-cols-[174px_minmax(0,1fr)] gap-x-[5px] gap-y-[4px]" onWheel={handleWheel}>
+            <div className="grid grid-cols-[174px_minmax(0,1fr)] gap-x-[5px] gap-y-[4px]">
               <div className="h-[40px]">
                 <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Sections" />
               </div>
@@ -676,6 +666,7 @@ function CueWaveformPanel({
               </div>
               <div
                 className="relative h-[88px] cursor-crosshair overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0b1116]"
+                onWheel={handleWheel}
                 onContextMenu={handleWaveformContextMenu}
                 title="Right-click to add a beat-snapped cue"
               >
