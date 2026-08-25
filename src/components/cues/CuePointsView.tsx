@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, CircleDash, Export, Idea, Music, Save, Undo, Upload, WarningAlt } from '@carbon/icons-react';
-import { AudioWaveform, Bookmark, Grip, List } from 'lucide-react';
+import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
 import { applyAutoCueStrategy } from '../../lib/music/autoCueStrategy';
@@ -295,38 +295,44 @@ function CueBpmRangeSlider({
   }
 
   return (
-    <div className="min-w-[160px]">
-      <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">BPM</p>
-      <div className="flex items-baseline gap-2 pb-2">
-        <span className="text-sm font-black text-foreground tabular-nums">{lo} – {hi}</span>
-        {isFiltered && (
-          <button
-            type="button"
-            onClick={onReset}
-            className="text-[9px] text-muted-foreground hover:text-foreground transition-colors"
+    <div className="min-w-[180px]">
+      <div className="pb-2">
+        <div className="flex items-center gap-1 mb-1">
+          <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">BPM</p>
+          {isFiltered && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Reset BPM filter"
+            >
+              <RotateCcw size={8} />
+            </button>
+          )}
+        </div>
+        <div ref={trackRef} className="relative h-5 select-none mx-3.5">
+          <div className="absolute left-0 right-0 bottom-[5px] h-px bg-white/15 rounded-full" />
+          <div
+            className="absolute bottom-[5px] h-px bg-primary rounded-full"
+            style={{ left: `${loPct}%`, right: `${100 - hiPct}%` }}
+          />
+          <div
+            className="absolute bottom-[5px] translate-y-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-[var(--color-card)] border border-primary cursor-grab active:cursor-grabbing touch-none flex items-center justify-center"
+            style={{ left: `${loPct}%` }}
+            onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+            onPointerMove={handleLoPointerMove}
           >
-            reset
-          </button>
-        )}
-      </div>
-      <div ref={trackRef} className="relative h-[18px] select-none cursor-pointer">
-        <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-white/15 rounded-full" />
-        <div
-          className="absolute top-1/2 h-px -translate-y-1/2 bg-primary rounded-full"
-          style={{ left: `${loPct}%`, right: `${100 - hiPct}%` }}
-        />
-        <div
-          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-primary cursor-grab active:cursor-grabbing touch-none"
-          style={{ left: `${loPct}%` }}
-          onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
-          onPointerMove={handleLoPointerMove}
-        />
-        <div
-          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-primary cursor-grab active:cursor-grabbing touch-none"
-          style={{ left: `${hiPct}%` }}
-          onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
-          onPointerMove={handleHiPointerMove}
-        />
+            <span className="text-[8px] font-black text-foreground tabular-nums leading-none pointer-events-none">{lo}</span>
+          </div>
+          <div
+            className="absolute bottom-[5px] translate-y-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-[var(--color-card)] border border-primary cursor-grab active:cursor-grabbing touch-none flex items-center justify-center"
+            style={{ left: `${hiPct}%` }}
+            onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+            onPointerMove={handleHiPointerMove}
+          >
+            <span className="text-[8px] font-black text-foreground tabular-nums leading-none pointer-events-none">{hi}</span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -374,7 +380,7 @@ function CueFilterDropdown({
       >
         <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">{label}</p>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-black text-foreground truncate">{selectedLabel}</span>
+          <span className="text-sm text-foreground truncate">{selectedLabel}</span>
           <ChevronDown
             size={14}
             className={cn('shrink-0 text-muted-foreground transition-transform duration-200', open && 'rotate-180')}
@@ -396,7 +402,7 @@ function CueFilterDropdown({
               onClick={() => { onChange(opt.value); setOpen(false); }}
               className={cn(
                 'w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-white/[0.06]',
-                value === opt.value ? 'font-black text-foreground' : 'font-medium text-muted-foreground',
+                value === opt.value ? 'text-foreground' : 'font-medium text-muted-foreground',
               )}
             >
               {opt.label}
@@ -1705,20 +1711,26 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       <section className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
         <div className="border-b border-[var(--color-border-subtle)] px-4 py-4 md:px-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <SearchControl
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search title or artist…"
-              aria-label="Search cue point tracks"
-              className="xl:max-w-xs"
-            />
+            <div className="min-w-[200px] xl:max-w-xs">
+              <div className="pb-2 border-b border-white/15 hover:border-white/35 transition-colors focus-within:border-white/35">
+                <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">Search</p>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Title or artist…"
+                  aria-label="Search cue point tracks"
+                  className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/30 outline-none"
+                />
+              </div>
+            </div>
             <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
               <CueFilterDropdown
                 label="Genre"
                 value={genre}
                 onChange={setGenre}
                 options={[
-                  { value: '', label: 'All genres' },
+                  { value: '', label: 'All' },
                   ...(stats?.genreTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
                 ]}
               />
@@ -1727,7 +1739,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                 value={keyFilter}
                 onChange={setKeyFilter}
                 options={[
-                  { value: '', label: 'All keys' },
+                  { value: '', label: 'All' },
                   ...(stats?.keyTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
                 ]}
               />
@@ -1736,7 +1748,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                 value={cueFilter}
                 onChange={(v) => setCueFilter(v as CueFilter)}
                 options={[
-                  { value: 'all', label: 'All cue states' },
+                  { value: 'all', label: 'All' },
                   { value: 'with-cues', label: 'Has cues' },
                   { value: 'without-cues', label: 'No cues' },
                 ]}
@@ -1746,7 +1758,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                 value={analysisFilter}
                 onChange={(v) => setAnalysisFilter(v as AnalysisFilter)}
                 options={[
-                  { value: 'all', label: 'All analysis' },
+                  { value: 'all', label: 'All' },
                   { value: 'ready', label: 'Analysis ready' },
                   { value: 'incomplete', label: 'Needs analysis' },
                 ]}
