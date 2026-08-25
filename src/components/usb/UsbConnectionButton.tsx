@@ -31,6 +31,7 @@ function StatusIcon({ status, size = 18 }: { status: UsbStatus; size?: number })
   if (status === 'error') return <CloseFilled size={size} />;
   if (status === 'unavailable') return <WifiOff size={size} />;
   if (status === 'wrong_root') return <FolderOff size={size} />;
+  if (status === 'connected') return <Usb size={size} className="text-green-400" />;
   return <Usb size={size} />;
 }
 
@@ -148,7 +149,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
           aria-label={statusTitle(status, volumeName)}
           className={primaryButtonStyle}
         >
-          <StatusDot status={status} />
+          {status !== 'connected' && <StatusDot status={status} />}
           <StatusIcon status={status} size={18} />
           {!collapsed && (
             <span className="truncate">{statusLabel(status, volumeName)}</span>

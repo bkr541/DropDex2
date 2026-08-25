@@ -1021,21 +1021,13 @@ function DesktopLibraryHero({
 
 function OverviewSummaryCards({
   latestImport,
-  playlists,
-  recentTracks,
   mostCommonBpm,
   mostCommonKey,
 }: {
   latestImport: RekordboxImport;
-  playlists: PlaylistWithCount[];
-  recentTracks: RekordboxTrack[];
   mostCommonBpm: number | null;
   mostCommonKey: string | null;
 }) {
-  const playlistCount = playlists.filter((p) => !p.is_folder).length;
-  const playlistTrackCount = latestImport.playlist_track_count || playlists.reduce(
-    (total, p) => total + (p.is_folder ? 0 : p.track_count), 0,
-  );
   const analysisTotal = latestImport.analysis_expected_track_count || latestImport.track_count;
   const analysisParsed = latestImport.analysis_parsed_track_count || 0;
   const analysisPercent = latestImport.analysis_status === 'completed'
@@ -1047,48 +1039,13 @@ function OverviewSummaryCards({
     month: 'short', day: 'numeric', year: 'numeric',
   });
 
-  const dailyBars = useMemo(() => {
-    const counts = new Map<string, number>();
-    recentTracks.forEach((t) => {
-      const d = t.date_added?.slice(0, 10);
-      if (d) counts.set(d, (counts.get(d) ?? 0) + 1);
-    });
-    const bars: { label: string; count: number }[] = [];
-    for (let i = 7; i >= 0; i--) {
-      const date = new Date(latestImport.imported_at);
-      date.setDate(date.getDate() - i);
-      const key = date.toISOString().slice(0, 10);
-      bars.push({
-        label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        count: counts.get(key) ?? 0,
-      });
-    }
-    return bars;
-  }, [recentTracks, latestImport.imported_at]);
-
-  const maxBarCount = Math.max(...dailyBars.map((b) => b.count), 1);
-  const yMax = Math.ceil(maxBarCount / 5) * 5 || 10;
   const ringR = 38;
   const ringC = 2 * Math.PI * ringR;
 
   const DIVIDER = { background: 'rgba(255,255,255,0.08)' };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-      {/* ── Playlists ── */}
-      <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
-        <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M18,4H4A1,1,0,0,0,3,5V19a1,1,0,0,0,1,1H18a1,1,0,0,0,1-1V5A1,1,0,0,0,18,4ZM9,16a2,2,0,1,1,2-2A2,2,0,0,1,9,16Z" style={{fill: '#348dff', opacity: 0.35}} />
-          <path d="M11,14V8a2.9,2.9,0,0,1,3,3" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-          <path d="M11,14a2,2,0,1,1-2-2A2,2,0,0,1,11,14Zm8,5V5a1,1,0,0,0-1-1H4A1,1,0,0,0,3,5V19a1,1,0,0,0,1,1H18A1,1,0,0,0,19,19Zm2-7a5,5,0,0,1-2,4V8A5,5,0,0,1,21,12Z" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-        </svg>
-        <p className="mt-2 text-2xl font-black tabular-nums leading-none">{playlistCount}</p>
-        <p className="text-[10px] text-muted-foreground mt-0.5">Playlists</p>
-        <div className="mt-3 w-full h-px" style={DIVIDER} />
-        <p className="mt-3 text-2xl font-black tabular-nums leading-none">{playlistTrackCount.toLocaleString()}</p>
-        <p className="text-[10px] text-muted-foreground mt-0.5">Total Tracks</p>
-      </div>
+    <div>
 
       {/* ── Library Stats ── */}
       <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
@@ -1126,34 +1083,6 @@ function OverviewSummaryCards({
             </div>
           ))}
         </div>
-      </div>
-
-      {/* ── Recently Added ── */}
-      <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
-        <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M7,19a2,2,0,1,1-2-2A2,2,0,0,1,7,19ZM9,7l2,2h8V4a1,1,0,0,0-1-1H6A1,1,0,0,0,5,4V7Z" style={{fill: '#348dff', opacity: 0.35}} />
-          <path d="M10,16a2.9,2.9,0,0,0-3-3v6" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-          <path d="M3,13V8A1,1,0,0,1,4,7H9l2,2h9a1,1,0,0,1,1,1V20a1,1,0,0,1-1,1H11" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-          <path d="M7,19a2,2,0,1,1-2-2A2,2,0,0,1,7,19ZM9,7l2,2h8V4a1,1,0,0,0-1-1H6A1,1,0,0,0,5,4V7Z" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-        </svg>
-        <p className="mt-2 text-2xl font-black tabular-nums leading-none">{recentTracks.length}</p>
-        <p className="text-[10px] text-muted-foreground mt-0.5">Tracks Added</p>
-        <div className="mt-3 w-full h-px" style={DIVIDER} />
-        <div className="mt-3 w-full relative flex gap-1 h-[56px]">
-          {dailyBars.map((bar, i) => {
-            const pct = bar.count / yMax;
-            const t = i / Math.max(dailyBars.length - 1, 1);
-            const r = Math.round(99 + (236 - 99) * t);
-            const g = Math.round(102 + (72 - 102) * t);
-            const b = Math.round(241 + (153 - 241) * t);
-            return (
-              <div key={i} className="flex-1 flex items-end">
-                <div className="w-full rounded-t-sm" style={{ height: `${Math.max(4, pct * 100)}%`, background: `rgb(${r},${g},${b})` }} />
-              </div>
-            );
-          })}
-        </div>
-        <p className="mt-1.5 text-[10px] text-muted-foreground">{lastImport}</p>
       </div>
 
     </div>
@@ -1465,57 +1394,6 @@ export function LibraryView({
                             </section>
                           )}
 
-                          {/* Playlists */}
-                          <section className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                                <Music size={13} /> Playlists
-                              </h2>
-                              <ControlButton variant="ghost" onClick={() => onActiveTabChange('playlists')} className="text-[10px]" style={{ fontSize: '10px' }}>
-                                View all <ChevronRight size={12} />
-                              </ControlButton>
-                            </div>
-                            {playlistsLoading ? (
-                              <div className="flex items-center justify-center py-6">
-                                <CircleDash className="animate-spin text-muted-foreground" size={20} />
-                              </div>
-                            ) : (
-                              <div className="flex flex-wrap gap-3">
-                                {playlists
-                                  .filter((p) => !p.is_folder)
-                                  .slice(0, 2)
-                                  .map((playlist) => (
-                                    <div key={playlist.id} className="w-[304px]">
-                                      <OverviewPlaylistCard
-                                        playlist={playlist}
-                                        profile={playlistProfilesByRbId.get(playlist.rekordbox_playlist_id)}
-                                        onClick={() => onPlaylistClick(playlist)}
-                                      />
-                                    </div>
-                                  ))}
-                              </div>
-                            )}
-                          </section>
-
-                          {/* Recently added tracks */}
-                          <div>
-                            <div className="flex items-center justify-between mb-3">
-                              <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                                <Music size={13} /> Recently Added Tracks
-                              </h2>
-                              <ControlButton variant="ghost" onClick={() => onActiveTabChange('recently-added')} className="text-[10px]" style={{ fontSize: '10px' }}>
-                                View all <ChevronRight size={12} />
-                              </ControlButton>
-                            </div>
-                            <RecentlyAddedTracksTable
-                              tracks={recentTracks}
-                              loading={recentTracksLoading}
-                              onTrackClick={onTrackClick}
-                              waveformStates={waveformStates}
-                              onRetryWaveform={(trackId) => retryWaveform([trackId])}
-                              showHeader={false}
-                            />
-                          </div>
                         </div>
                       )}
 

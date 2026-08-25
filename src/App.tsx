@@ -1242,7 +1242,6 @@ export default function App() {
                   </ControlButton>
                   <h2 className="text-2xl font-black italic">Cue Points</h2>
                 </div>
-                <p className="text-[8px] text-primary uppercase tracking-[0.2em] font-bold pl-7">Rekordbox cue workspace · Read-only preview</p>
               </div>
             )}
             {!routeBlocked && currentView === 'settings' && (

@@ -75,6 +75,23 @@ interface TimelineSection {
   waveformColor: string;
 }
 
+const CAMELOT_COLORS: Record<number, string> = {
+  1: '#e74c3c', 2: '#3b82f6', 3: '#1d4ed8', 4: '#f59e0b', 5: '#16a34a', 6: '#d97706',
+  7: '#8b5cf6', 8: '#0d9488', 9: '#22c55e', 10: '#0891b2', 11: '#06b6d4', 12: '#ec4899',
+};
+function formatCamelotKey(key: string | null | undefined): string {
+  const raw = formatKey(key);
+  return raw.replace(/^(\d)([AB])$/i, (_, n, l) => `0${n}${l.toUpperCase()}`);
+}
+
+function camelotColor(key: string | null | undefined): string {
+  if (!key) return '#6b7280';
+  const m = key.match(/^(\d{1,2})[AB]$/i);
+  if (!m) return '#6b7280';
+  const n = parseInt(m[1], 10);
+  return (n >= 1 && n <= 12) ? (CAMELOT_COLORS[n] ?? '#6b7280') : '#6b7280';
+}
+
 function durationMsForTrack(
   track: RekordboxTrack | null,
   beatGrid: BeatGridRow | null,
@@ -652,7 +669,7 @@ function CueWaveformPanel({
     );
   }
 
-  const keyDisplay = formatKey(track.musical_key);
+  const keyDisplay = formatCamelotKey(track.musical_key);
   const bpmDisplay = track.bpm != null ? track.bpm.toFixed(2) : '—';
   const durationDisplay = formatTime(durationMs);
 
@@ -671,12 +688,18 @@ function CueWaveformPanel({
               ['Key', keyDisplay],
               ['Duration', durationDisplay],
               ['Cues', cueLoading ? '…' : String(cues.length)],
-            ].map(([label, value]) => (
-              <div key={label} className="min-w-[88px] rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
-                <span className="block text-[8px] font-bold uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
-                <span className="mt-1 block font-mono text-sm font-black tabular-nums">{value}</span>
-              </div>
-            ))}
+            ].map(([label, value]) => {
+              const kc = label === 'Key' ? camelotColor(track.musical_key) : null;
+              return (
+                <div key={label} className="min-w-[88px] rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2"
+                  style={kc ? { backgroundColor: kc, borderColor: 'transparent' } : undefined}>
+                  <span className="block text-[8px] font-bold uppercase tracking-[0.18em]"
+                    style={kc ? { color: 'rgba(255,255,255,0.65)' } : undefined}>{label}</span>
+                  <span className="mt-1 block font-mono text-sm font-black tabular-nums"
+                    style={kc ? { color: 'rgba(255,255,255,0.88)' } : undefined}>{value}</span>
+                </div>
+              );
+            })}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <ControlButton
@@ -1826,9 +1849,12 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                         </td>
                         <td className="px-3 py-3 font-mono text-xs font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
                         <td className="px-3 py-3">
-                          <span className="rounded-md border border-primary/20 bg-primary/[0.07] px-2 py-1 font-mono text-[11px] font-bold text-primary">
-                            {formatKey(track.musical_key)}
-                          </span>
+                          {(() => { const kc = camelotColor(track.musical_key); return (
+                            <span className="rounded-md px-2 py-1 font-mono text-[11px] font-bold"
+                              style={{ backgroundColor: kc, color: 'rgba(255,255,255,0.88)' }}>
+                              {formatCamelotKey(track.musical_key)}
+                            </span>
+                          ); })()}
                         </td>
                         <td className="max-w-[190px] px-3 py-3 text-xs text-muted-foreground"><span className="block truncate">{track.genre ?? '—'}</span></td>
                         <td className="px-3 py-3 text-center">
