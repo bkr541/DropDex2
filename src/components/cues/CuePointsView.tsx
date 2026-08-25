@@ -1046,6 +1046,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [cueFilter, setCueFilter] = useState<CueFilter>('all');
   const [analysisFilter, setAnalysisFilter] = useState<AnalysisFilter>('all');
   const [bpmRange, setBpmRange] = useState<[number, number] | null>(null);
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
   const [importedCueBaseline, setImportedCueBaseline] = useState<WorkingCue[]>([]);
   const [savedCueBaseline, setSavedCueBaseline] = useState<WorkingCue[] | null>(null);
@@ -1148,6 +1150,34 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     }
     return true;
   }), [analysisFilter, bpmRange, cueFilter, cueRowsByTrackId, keyFilter, tracks]);
+
+  const sortedTracks = useMemo(() => {
+    if (!sortCol) return filteredTracks;
+    return [...filteredTracks].sort((a, b) => {
+      let av: string | number | null = null;
+      let bv: string | number | null = null;
+      if (sortCol === 'track') { av = `${a.title ?? ''} ${a.artist ?? ''}`; bv = `${b.title ?? ''} ${b.artist ?? ''}`; }
+      else if (sortCol === 'bpm') { av = a.bpm ?? -1; bv = b.bpm ?? -1; }
+      else if (sortCol === 'key') { av = formatCamelotKey(a.musical_key); bv = formatCamelotKey(b.musical_key); }
+      else if (sortCol === 'genre') { av = a.genre ?? ''; bv = b.genre ?? ''; }
+      else if (sortCol === 'cues') { av = cueRowsByTrackId.get(a.id)?.length ?? 0; bv = cueRowsByTrackId.get(b.id)?.length ?? 0; }
+      else if (sortCol === 'analysis') { av = analysisReady(a) ? 1 : 0; bv = analysisReady(b) ? 1 : 0; }
+      else if (sortCol === 'duration') { av = a.total_time ?? -1; bv = b.total_time ?? -1; }
+      if (av === null || av === bv) return 0;
+      const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [filteredTracks, sortCol, sortDir, cueRowsByTrackId]);
+
+  function handleColDoubleClick(col: string) {
+    if (sortCol === col) {
+      if (sortDir === 'asc') setSortDir('desc');
+      else { setSortCol(null); setSortDir('asc'); }
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  }
 
   useEffect(() => {
     setSelectedTrack(null);
@@ -1808,17 +1838,29 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
               <table className="w-full min-w-[900px] border-collapse text-left">
                 <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
                   <tr className="border-b border-[var(--color-border-faint)]">
-                    <th className="px-4 py-2.5 md:px-5">Track</th>
-                    <th className="px-3 py-2.5">BPM</th>
-                    <th className="px-3 py-2.5">Key</th>
-                    <th className="px-3 py-2.5">Genre</th>
-                    <th className="px-3 py-2.5 text-center">Cues</th>
-                    <th className="px-3 py-2.5">Analysis</th>
-                    <th className="px-4 py-2.5 text-right md:px-5">Duration</th>
+                    {([
+                      { col: 'track', label: 'Track', cls: 'px-4 py-2.5 md:px-5' },
+                      { col: 'bpm', label: 'BPM', cls: 'px-3 py-2.5' },
+                      { col: 'key', label: 'Key', cls: 'px-3 py-2.5' },
+                      { col: 'genre', label: 'Genre', cls: 'px-3 py-2.5' },
+                      { col: 'cues', label: 'Cues', cls: 'px-3 py-2.5 text-center' },
+                      { col: 'analysis', label: 'Analysis', cls: 'px-3 py-2.5' },
+                      { col: 'duration', label: 'Duration', cls: 'px-4 py-2.5 text-right md:px-5' },
+                    ] as const).map(({ col, label, cls }) => (
+                      <th key={col} className={cn(cls, 'select-none cursor-pointer hover:text-foreground transition-colors')}
+                        onDoubleClick={() => handleColDoubleClick(col)}>
+                        <span className="inline-flex items-center gap-1">
+                          {label}
+                          {sortCol === col && (
+                            <span className="text-primary">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                          )}
+                        </span>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border-faint)]">
-                  {filteredTracks.map((track) => {
+                  {sortedTracks.map((track) => {
                     const cueCount = cueRowsByTrackId.get(track.id)?.length ?? 0;
                     const selected = track.id === selectedTrackId;
                     return (
