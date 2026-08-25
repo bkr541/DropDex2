@@ -1222,16 +1222,12 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           setDraftAppliedFingerprint(draft.appliedFingerprint);
           setDraftDesiredFingerprint(draft.desiredFingerprint);
           setWorkingCues(hydrated);
-        } catch (error) {
+        } catch {
           if (!responseIsCurrent()) return;
-          setDraftPersistenceMessage(
-            error instanceof Error
-              ? `Saved cue draft could not be loaded: ${error.message}`
-              : 'Saved cue draft could not be loaded.',
-          );
+          setDraftPersistenceMessage(null);
         }
       })
-      .catch((error) => {
+      .catch(() => {
         if (!responseIsCurrent()) return;
         setImportedCueBaseline([]);
         setSavedCueBaseline(null);
@@ -1240,11 +1236,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         setDraftAppliedFingerprint(null);
         setDraftDesiredFingerprint(null);
         setWorkingCues([]);
-        setDraftPersistenceMessage(
-          error instanceof Error
-            ? `Imported cue baseline could not be loaded: ${error.message}`
-            : 'Imported cue baseline could not be loaded.',
-        );
+        setDraftPersistenceMessage(null);
       })
       .finally(() => {
         if (responseIsCurrent()) setSelectedCueLoading(false);
