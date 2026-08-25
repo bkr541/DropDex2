@@ -723,33 +723,37 @@ function InsightBpmDistribution({ bpmRangeStats }: { bpmRangeStats: readonly (re
 function InsightKeyProfile({ keyStats }: { keyStats: readonly (readonly [string, number])[] }) {
   if (keyStats.length === 0) return null;
   const total = keyStats.reduce((s, [, n]) => s + n, 0);
-  const top6 = keyStats.slice(0, 6);
-  const otherTotal = keyStats.slice(6).reduce((s, [, n]) => s + n, 0);
-  const legendItems: [string, number][] = [
-    ...top6.map(([k, c]) => [k, c] as [string, number]),
-    ...(otherTotal > 0 ? [['Other', otherTotal] as [string, number]] : []),
-  ];
+
+  function KeyRow({ keyName, count, rank }: { keyName: string; count: number; rank: number }) {
+    const color = camelotColor(keyName);
+    const pct = total > 0 ? (count / total) * 100 : 0;
+    return (
+      <div className="flex items-center gap-1.5 min-w-0 shrink-0">
+        <span className="text-[9px] text-muted-foreground font-mono w-3 shrink-0">{rank}</span>
+        <span className="text-[11px] font-black shrink-0 w-7" style={{ color }}>{keyName}</span>
+        <div className="flex-1 h-[3px] bg-white/[0.06] rounded-full min-w-0 overflow-hidden">
+          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+        </div>
+        <span className="text-[10px] font-mono tabular-nums shrink-0 text-right" style={{ minWidth: '4.5rem' }}>
+          <span className="text-[14px] text-foreground font-black">{count.toLocaleString()}</span>
+          <span className="text-muted-foreground font-bold">/{total.toLocaleString()}</span>
+        </span>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex gap-4 items-center flex-1 min-h-0">
-      <div className="w-[180px] shrink-0">
+    <div className="flex gap-4 flex-1 min-h-0">
+      <div className="w-[180px] shrink-0 flex items-center">
         <CamelotWheel keyStats={keyStats} />
       </div>
-      <div className="flex-1 min-w-0 space-y-[6px]">
-        {legendItems.map(([key, count], i) => {
-          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-          const color = key === 'Other' ? '#6b7280' : camelotColor(key);
-          return (
-            <div key={key} className="flex items-center gap-1.5 min-w-0">
-              <span className="text-[9px] text-muted-foreground font-mono w-3 shrink-0">{i + 1}</span>
-              <span className="text-[11px] font-black shrink-0 w-7" style={{ color }}>{key}</span>
-              <div className="flex-1 h-[3px] bg-white/[0.06] rounded-full min-w-0 overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-              </div>
-              <span className="text-[10px] font-mono font-bold shrink-0 w-7 text-right">{pct}%</span>
-            </div>
-          );
-        })}
+      <div
+        className="flex-1 min-w-0 flex flex-col gap-[6px] overflow-y-auto self-center"
+        style={{ maxHeight: '132px', scrollbarWidth: 'none' }}
+      >
+        {keyStats.map(([k, count], i) => (
+          <KeyRow key={k} keyName={k} count={count} rank={i + 1} />
+        ))}
       </div>
     </div>
   );

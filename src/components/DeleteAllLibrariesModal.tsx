@@ -183,7 +183,7 @@ export function DeleteAllLibrariesModal({
               {deleting ? (
                 <>
                   <CircleDash size={16} className="animate-spin" />
-                  {cleanupPass > 0 ? `Deleting all… pass ${cleanupPass}` : 'Deleting all…'}
+                  Deleting all…
                 </>
               ) : (
                 <><TrashCan size={16} /> Delete All</>

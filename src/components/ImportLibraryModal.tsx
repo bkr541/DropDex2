@@ -1576,7 +1576,10 @@ export function ImportLibraryModal({
                       onChange={handleFolderChange}
                     />
 
-                    <div className="flex justify-center">
+                    <div className="flex justify-center gap-3">
+                      <ControlButton variant="ghost" onClick={handleClose}>
+                        <Close size={16} /> Cancel
+                      </ControlButton>
                       <ControlButton
                         variant="primary"
                         onClick={handleImport}
@@ -1640,7 +1643,10 @@ export function ImportLibraryModal({
                       accept={mode === 'zip_bundle' ? '.zip' : '.db'}
                     />
 
-                    <div className="flex justify-center">
+                    <div className="flex justify-center gap-3">
+                      <ControlButton variant="ghost" onClick={handleClose}>
+                        <Close size={16} /> Cancel
+                      </ControlButton>
                       <ControlButton
                         variant="primary"
                         onClick={handleImport}
@@ -1652,12 +1658,6 @@ export function ImportLibraryModal({
                     </div>
                   </>
                 )}
-
-                <div className="mt-3 flex justify-center">
-                  <ControlButton variant="ghost" onClick={handleClose}>
-                    <Close size={16} /> Cancel
-                  </ControlButton>
-                </div>
               </>
             )}
 
