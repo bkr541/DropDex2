@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { CircleDash, Export, Idea, Music, Save, Undo, Upload, WarningAlt } from '@carbon/icons-react';
+import { ChevronDown, CircleDash, Export, Idea, Music, Save, Undo, Upload, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -32,7 +32,7 @@ import {
 } from '../../lib/queries/analysisData';
 import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { ControlButton, SearchControl, SelectControl } from '../ui/controls';
+import { ControlButton, SearchControl } from '../ui/controls';
 import { useTheme } from '../../theme/ThemeProvider';
 import type { RekordboxTrack } from '../../types';
 import {
@@ -256,6 +256,156 @@ function buildTimelineSections(
       ...tone,
     }];
   });
+}
+
+function CueBpmRangeSlider({
+  bounds,
+  value,
+  onChange,
+  onReset,
+}: {
+  bounds: [number, number];
+  value: [number, number];
+  onChange: (range: [number, number]) => void;
+  onReset: () => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [lo, hi] = value;
+  const [bMin, bMax] = bounds;
+  const span = bMax - bMin || 1;
+  const loPct = ((lo - bMin) / span) * 100;
+  const hiPct = ((hi - bMin) / span) * 100;
+  const isFiltered = lo > bMin || hi < bMax;
+
+  function valFromClientX(clientX: number): number {
+    if (!trackRef.current) return bMin;
+    const rect = trackRef.current.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return Math.round(bMin + pct * span);
+  }
+
+  function handleLoPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const val = valFromClientX(e.clientX);
+    onChange([Math.min(val, hi - 1), hi]);
+  }
+
+  function handleHiPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const val = valFromClientX(e.clientX);
+    onChange([lo, Math.max(val, lo + 1)]);
+  }
+
+  return (
+    <div className="min-w-[160px]">
+      <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">BPM</p>
+      <div className="flex items-baseline gap-2 pb-2">
+        <span className="text-sm font-black text-foreground tabular-nums">{lo} – {hi}</span>
+        {isFiltered && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="text-[9px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            reset
+          </button>
+        )}
+      </div>
+      <div ref={trackRef} className="relative h-[18px] select-none cursor-pointer">
+        <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-white/15 rounded-full" />
+        <div
+          className="absolute top-1/2 h-px -translate-y-1/2 bg-primary rounded-full"
+          style={{ left: `${loPct}%`, right: `${100 - hiPct}%` }}
+        />
+        <div
+          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-primary cursor-grab active:cursor-grabbing touch-none"
+          style={{ left: `${loPct}%` }}
+          onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+          onPointerMove={handleLoPointerMove}
+        />
+        <div
+          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-primary cursor-grab active:cursor-grabbing touch-none"
+          style={{ left: `${hiPct}%` }}
+          onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+          onPointerMove={handleHiPointerMove}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CueFilterDropdown({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selectedLabel = options.find((o) => o.value === value)?.label ?? options[0]?.label ?? value;
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: PointerEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative min-w-[130px]">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full text-left pb-2 border-b border-white/15 hover:border-white/35 transition-colors focus-visible:outline-none"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">{label}</p>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-black text-foreground truncate">{selectedLabel}</span>
+          <ChevronDown
+            size={14}
+            className={cn('shrink-0 text-muted-foreground transition-transform duration-200', open && 'rotate-180')}
+            aria-hidden="true"
+          />
+        </div>
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          className="absolute top-full left-0 mt-1.5 z-50 min-w-full glass rounded-xl border border-[var(--color-border-subtle)] overflow-hidden shadow-2xl"
+        >
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              role="option"
+              aria-selected={value === opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={cn(
+                'w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-white/[0.06]',
+                value === opt.value ? 'font-black text-foreground' : 'font-medium text-muted-foreground',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function percentageAt(ms: number, viewStart: number, viewEnd: number): number {
@@ -482,7 +632,7 @@ function CueWaveformPanel({
 
   if (!track) {
     return (
-      <section className="overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)]">
+      <section className="glass rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden">
         <div className="flex min-h-[310px] flex-col items-center justify-center px-6 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
             <Music size={26} />
@@ -501,7 +651,7 @@ function CueWaveformPanel({
   const durationDisplay = formatTime(durationMs);
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] shadow-sm">
+    <section className="glass rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-[var(--color-border-subtle)] px-5 py-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
@@ -863,8 +1013,10 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const userId = auth.status === 'authenticated' ? auth.session.user.id : null;
   const [search, setSearch] = useState('');
   const [genre, setGenre] = useState('');
+  const [keyFilter, setKeyFilter] = useState('');
   const [cueFilter, setCueFilter] = useState<CueFilter>('all');
   const [analysisFilter, setAnalysisFilter] = useState<AnalysisFilter>('all');
+  const [bpmRange, setBpmRange] = useState<[number, number] | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
   const [importedCueBaseline, setImportedCueBaseline] = useState<WorkingCue[]>([]);
   const [savedCueBaseline, setSavedCueBaseline] = useState<WorkingCue[] | null>(null);
@@ -905,6 +1057,11 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   selectedUserIdRef.current = userId;
   workingCuesRef.current = workingCues;
   const { stats } = useLibraryStats(importId);
+  const bpmBounds = useMemo((): [number, number] => {
+    const bpms = (stats?.bpmTotals ?? []).map((t) => t.bpm).filter((b) => b > 0);
+    if (bpms.length === 0) return [60, 200];
+    return [Math.floor(Math.min(...bpms)), Math.ceil(Math.max(...bpms))];
+  }, [stats?.bpmTotals]);
   const { data: routeImport } = useRouteImport(importId);
   const usbName = routeImport?.device_name?.trim() || 'USB';
   const {
@@ -955,8 +1112,13 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     if (cueFilter === 'without-cues' && cueCount > 0) return false;
     if (analysisFilter === 'ready' && !analysisReady(track)) return false;
     if (analysisFilter === 'incomplete' && analysisReady(track)) return false;
+    if (keyFilter && formatKey(track.musical_key) !== keyFilter) return false;
+    if (bpmRange !== null) {
+      const bpm = track.bpm != null ? Math.round(track.bpm) : null;
+      if (bpm == null || bpm < bpmRange[0] || bpm > bpmRange[1]) return false;
+    }
     return true;
-  }), [analysisFilter, cueFilter, cueRowsByTrackId, tracks]);
+  }), [analysisFilter, bpmRange, cueFilter, cueRowsByTrackId, keyFilter, tracks]);
 
   useEffect(() => {
     setSelectedTrack(null);
@@ -1466,7 +1628,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   if (!importId) {
     return (
       <div className="mx-auto max-w-3xl pt-8">
-        <div className="rounded-3xl border border-secondary/20 bg-[var(--color-panel)] p-8 text-center">
+        <div className="glass rounded-2xl border border-secondary/20 p-8 text-center">
           <Music size={48} className="mx-auto mb-4 text-secondary opacity-60" />
           <h2 className="text-2xl font-black">Cue Points</h2>
           <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
@@ -1508,7 +1670,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       />
 
       {(applyPreflight || applyResult || applyMessage) && (
-        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] p-4" role="status">
+        <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4" role="status">
           {applyPreflight ? (
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-4">
@@ -1540,32 +1702,61 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         </div>
       )}
 
-      <section className="overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] shadow-sm">
+      <section className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
         <div className="border-b border-[var(--color-border-subtle)] px-4 py-4 md:px-5">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_180px_170px_180px] w-full">
-              <SearchControl
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search title or artist…"
-                aria-label="Search cue point tracks"
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <SearchControl
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search title or artist…"
+              aria-label="Search cue point tracks"
+              className="xl:max-w-xs"
+            />
+            <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
+              <CueFilterDropdown
+                label="Genre"
+                value={genre}
+                onChange={setGenre}
+                options={[
+                  { value: '', label: 'All genres' },
+                  ...(stats?.genreTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
+                ]}
               />
-              <SelectControl value={genre} onChange={(event) => setGenre(event.target.value)} aria-label="Filter tracks by genre">
-                <option value="">All genres</option>
-                {(stats?.genreTotals ?? []).map((item) => (
-                  <option key={item.name} value={item.name}>{item.name} ({item.count})</option>
-                ))}
-              </SelectControl>
-              <SelectControl value={cueFilter} onChange={(event) => setCueFilter(event.target.value as CueFilter)} aria-label="Filter tracks by cue status">
-                <option value="all">All cue states</option>
-                <option value="with-cues">Has cues</option>
-                <option value="without-cues">No cues</option>
-              </SelectControl>
-              <SelectControl value={analysisFilter} onChange={(event) => setAnalysisFilter(event.target.value as AnalysisFilter)} aria-label="Filter tracks by analysis status">
-                <option value="all">All analysis</option>
-                <option value="ready">Analysis ready</option>
-                <option value="incomplete">Needs analysis</option>
-              </SelectControl>
+              <CueFilterDropdown
+                label="Key"
+                value={keyFilter}
+                onChange={setKeyFilter}
+                options={[
+                  { value: '', label: 'All keys' },
+                  ...(stats?.keyTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
+                ]}
+              />
+              <CueFilterDropdown
+                label="Cue States"
+                value={cueFilter}
+                onChange={(v) => setCueFilter(v as CueFilter)}
+                options={[
+                  { value: 'all', label: 'All cue states' },
+                  { value: 'with-cues', label: 'Has cues' },
+                  { value: 'without-cues', label: 'No cues' },
+                ]}
+              />
+              <CueFilterDropdown
+                label="Analysis"
+                value={analysisFilter}
+                onChange={(v) => setAnalysisFilter(v as AnalysisFilter)}
+                options={[
+                  { value: 'all', label: 'All analysis' },
+                  { value: 'ready', label: 'Analysis ready' },
+                  { value: 'incomplete', label: 'Needs analysis' },
+                ]}
+              />
+              <CueBpmRangeSlider
+                bounds={bpmBounds}
+                value={bpmRange ?? bpmBounds}
+                onChange={setBpmRange}
+                onReset={() => setBpmRange(null)}
+              />
             </div>
           </div>
         </div>
@@ -1588,15 +1779,15 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] border-collapse text-left">
-                <thead className="bg-[var(--color-surface)] text-[9px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 md:px-5">Track</th>
-                    <th className="px-3 py-3">BPM</th>
-                    <th className="px-3 py-3">Key</th>
-                    <th className="px-3 py-3">Genre</th>
-                    <th className="px-3 py-3 text-center">Cues</th>
-                    <th className="px-3 py-3">Analysis</th>
-                    <th className="px-4 py-3 text-right md:px-5">Duration</th>
+                <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+                  <tr className="border-b border-[var(--color-border-faint)]">
+                    <th className="px-4 py-2.5 md:px-5">Track</th>
+                    <th className="px-3 py-2.5">BPM</th>
+                    <th className="px-3 py-2.5">Key</th>
+                    <th className="px-3 py-2.5">Genre</th>
+                    <th className="px-3 py-2.5 text-center">Cues</th>
+                    <th className="px-3 py-2.5">Analysis</th>
+                    <th className="px-4 py-2.5 text-right md:px-5">Duration</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border-faint)]">
