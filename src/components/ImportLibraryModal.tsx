@@ -1451,7 +1451,7 @@ export function ImportLibraryModal({
                         className="flex-1"
                       >
                         {abortDialogIntent === 'pause' ? (
-                          <><Pause size={16} /> Pause Analysis</>
+                          <><Pause size={16} /> Pause</>
                         ) : (
                           <><TrashCan size={16} /> {abortDialogIntent === 'close' ? 'Stop and delete' : 'Delete Import and Data'}</>
                         )}
@@ -1503,7 +1503,7 @@ export function ImportLibraryModal({
                   ))}
                 </div>
 
-                <div className="h-[4.5rem] mb-5 overflow-hidden">
+                <div className="mb-4">
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     {MODE_LABELS[mode].tip}
                   </p>
@@ -1518,43 +1518,49 @@ export function ImportLibraryModal({
                         <p className="text-sm">Scanning folder…</p>
                       </div>
                     ) : phase === 'database_selected' && folderScan ? (
-                      <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4 mb-4">
-                        <ControlButton variant="ghost" onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }} className="mb-2 text-xs">
-                          <ArrowRight size={12} className="rotate-180" /> Choose different folder
-                        </ControlButton>
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                          {folderScan.folderName}
-                        </p>
-                        <div className="space-y-2">
-                          {folderScan.dbFile ? (
-                            <div className="flex items-center gap-2 text-sm">
-                              <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
-                              <span className="font-mono text-xs truncate">
-                                {folderScan.dbFile.name}
-                              </span>
-                              <span className="text-muted-foreground text-xs shrink-0">
-                                {fmtBytes(folderScan.dbFile.size)}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 text-sm">
-                              <WarningAlt size={14} className="text-red-400 shrink-0" />
-                              <span className="text-red-400 text-xs">exportLibrary.db not found</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 text-sm">
-                            {folderScan.anlzFiles.length > 0 ? (
-                              <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
+                      <>
+                        <button
+                          onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
+                          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors mb-2"
+                        >
+                          <ArrowRight size={10} className="rotate-180 shrink-0" />
+                          Choose different folder
+                        </button>
+                        <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4 mb-4">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                            {folderScan.folderName}
+                          </p>
+                          <div className="space-y-2">
+                            {folderScan.dbFile ? (
+                              <div className="flex items-center gap-2 text-sm">
+                                <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
+                                <span className="font-mono text-xs truncate">
+                                  {folderScan.dbFile.name}
+                                </span>
+                                <span className="text-muted-foreground text-xs shrink-0">
+                                  {fmtBytes(folderScan.dbFile.size)}
+                                </span>
+                              </div>
                             ) : (
-                              <WarningAlt size={14} className="text-amber-400 shrink-0" />
+                              <div className="flex items-center gap-2 text-sm">
+                                <WarningAlt size={14} className="text-red-400 shrink-0" />
+                                <span className="text-red-400 text-xs">exportLibrary.db not found</span>
+                              </div>
                             )}
-                            <span className="text-xs">
-                              {folderScan.anlzFiles.length.toLocaleString()} required DAT/EXT analysis file
-                              {folderScan.anlzFiles.length !== 1 ? 's' : ''} found
-                            </span>
+                            <div className="flex items-center gap-2 text-sm">
+                              {folderScan.anlzFiles.length > 0 ? (
+                                <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
+                              ) : (
+                                <WarningAlt size={14} className="text-amber-400 shrink-0" />
+                              )}
+                              <span className="text-xs">
+                                {folderScan.anlzFiles.length.toLocaleString()} required DAT/EXT analysis file
+                                {folderScan.anlzFiles.length !== 1 ? 's' : ''} found
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      </>
                     ) : (
                       <button
                         onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
@@ -1813,7 +1819,7 @@ export function ImportLibraryModal({
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
                   <CircleDash className="animate-spin text-primary" size={28} />
                 </div>
-                <h2 className="text-xl font-bold mb-2">Book Ready, Analysis Running</h2>
+                <h2 className="text-xl font-bold mb-2">Analysis Running</h2>
                 <div className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left">
                   <CheckmarkFilled size={18} className="mt-0.5 shrink-0 text-emerald-400" />
                   <p className="text-xs leading-relaxed text-emerald-100">
@@ -1890,7 +1896,7 @@ export function ImportLibraryModal({
                     variant="secondary"
                     onClick={() => openAbortDialog('pause')}
                   >
-                    Pause Analysis
+                    Pause
                   </ControlButton>
                   <ControlButton
                     type="button"
@@ -1898,7 +1904,7 @@ export function ImportLibraryModal({
                     onClick={() => openAbortDialog('delete')}
                     className="sm:col-span-2"
                   >
-                    <TrashCan size={16} /> Delete Import and Cloud Data
+                    <TrashCan size={16} /> Delete Import
                   </ControlButton>
                 </div>
                 <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">

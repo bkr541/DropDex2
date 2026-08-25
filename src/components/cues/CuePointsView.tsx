@@ -1211,7 +1211,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     }
     void fetchCueDraftsForApply(userId, importId)
       .then((rows) => { if (!cancelled) setApplyDrafts(rows); })
-      .catch((error) => { if (!cancelled) setApplyMessage(error instanceof Error ? error.message : String(error)); });
+      .catch(() => { if (!cancelled) setApplyDrafts([]); });
     return () => { cancelled = true; };
   }, [draftRevision, importId, userId]);
 
@@ -1507,7 +1507,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         onApply={() => { void handleApplyPreflight(); }}
       />
 
-      {(applyPreflight || applyResult || applyMessage || (!applyBridgeAvailable && applyBridgeReason)) && (
+      {(applyPreflight || applyResult || applyMessage) && (
         <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] p-4" role="status">
           {applyPreflight ? (
             <div className="space-y-3">
@@ -1543,16 +1543,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       <section className="overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] shadow-sm">
         <div className="border-b border-[var(--color-border-subtle)] px-4 py-4 md:px-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black">{usbName}&apos;s Tracks</h2>
-                <span className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-                  {total.toLocaleString()}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_180px_170px_180px]">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_180px_170px_180px] w-full">
               <SearchControl
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
