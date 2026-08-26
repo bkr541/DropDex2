@@ -40,6 +40,16 @@ function validateSavedDrafts(savedDrafts) {
         || !/^[0-9a-f]{64}$/i.test(row.importedBaselineLocalCueFingerprint))) {
       throw new Error('Saved draft local Rekordbox cue baseline fingerprint is invalid.');
     }
+    if (row.currentBaselineFingerprint != null
+      && (typeof row.currentBaselineFingerprint !== 'string'
+        || !/^[0-9a-f]{64}$/i.test(row.currentBaselineFingerprint))) {
+      throw new Error('Saved draft current baseline fingerprint is invalid.');
+    }
+    if (row.currentBaselineLocalCueFingerprint != null
+      && (typeof row.currentBaselineLocalCueFingerprint !== 'string'
+        || !/^[0-9a-f]{64}$/i.test(row.currentBaselineLocalCueFingerprint))) {
+      throw new Error('Saved draft current local Rekordbox cue baseline fingerprint is invalid.');
+    }
     for (const field of ['masterDbId', 'masterContentId']) {
       if (row[field] != null
         && (typeof row[field] !== 'string' || row[field].length < 1 || row[field].length > 256)) {

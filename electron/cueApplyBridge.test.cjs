@@ -12,6 +12,8 @@ function draft() {
     desiredFingerprint: 'a'.repeat(64),
     importedBaselineFingerprint: 'b'.repeat(64),
     importedBaselineLocalCueFingerprint: 'c'.repeat(64),
+    currentBaselineFingerprint: 'b'.repeat(64),
+    currentBaselineLocalCueFingerprint: 'c'.repeat(64),
     masterDbId: 'db-main',
     masterContentId: '101',
     desiredDocument: {
@@ -68,6 +70,21 @@ test('legacy drafts may omit Stage 1 safety fields so preflight can block them s
   delete row.masterDbId;
   delete row.masterContentId;
   assert.doesNotThrow(() => validateSavedDrafts([row]));
+});
+
+test('Stage 10 moving baseline fields are optional for legacy drafts but validated when present', () => {
+  const legacy = draft();
+  delete legacy.currentBaselineFingerprint;
+  delete legacy.currentBaselineLocalCueFingerprint;
+  assert.doesNotThrow(() => validateSavedDrafts([legacy]));
+
+  const badCurrent = draft();
+  badCurrent.currentBaselineFingerprint = 'bad';
+  assert.throws(() => validateSavedDrafts([badCurrent]), /current baseline fingerprint/);
+
+  const badLocal = draft();
+  badLocal.currentBaselineLocalCueFingerprint = 'bad';
+  assert.throws(() => validateSavedDrafts([badLocal]), /current local Rekordbox cue baseline fingerprint/);
 });
 
 test('malformed Stage 1 safety fields are rejected at the desktop boundary', () => {

@@ -40,6 +40,8 @@ const row = {
   desired_fingerprint: 'desired',
   imported_baseline_fingerprint: 'baseline',
   imported_baseline_local_cue_fingerprint: 'local-baseline',
+  current_baseline_fingerprint: 'baseline',
+  current_baseline_local_cue_fingerprint: 'local-baseline',
   master_db_id: 'db-main',
   master_content_id: 'content-101',
   revision: 2,
@@ -137,8 +139,8 @@ describe('cue draft production persistence queries', () => {
     const fullPage = Array.from({ length: 500 }, (_, index) => ({ ...row, id: `draft-${index}` }));
     const finalPage = [{ ...row, id: 'draft-500' }];
     mocks.range
-      .mockResolvedValueOnce({ data: fullPage, error: null })
-      .mockResolvedValueOnce({ data: finalPage, error: null });
+      .mockResolvedValueOnce({ data: fullPage, error: null, count: 501 })
+      .mockResolvedValueOnce({ data: finalPage, error: null, count: 501 });
 
     const result = await fetchCueDraftsForApply('user-1', 'import-1');
 
@@ -147,21 +149,65 @@ describe('cue draft production persistence queries', () => {
     expect(mocks.range).toHaveBeenNthCalledWith(2, 500, 999);
   });
 
-  it('rebases both semantic and local cue baselines only through the verified post-apply RPC', async () => {
+  it('continues paging when the server cap is smaller than the requested range', async () => {
+    const firstPage = [
+      { ...row, id: 'draft-1' },
+      { ...row, id: 'draft-2' },
+    ];
+    const secondPage = [{ ...row, id: 'draft-3' }];
+    mocks.range
+      .mockResolvedValueOnce({ data: firstPage, error: null, count: 3 })
+      .mockResolvedValueOnce({ data: secondPage, error: null, count: 3 });
+
+    const result = await fetchCueDraftsForApply('user-1', 'import-1');
+
+    expect(result.map((item) => item.id)).toEqual(['draft-1', 'draft-2', 'draft-3']);
+    expect(mocks.range).toHaveBeenNthCalledWith(1, 0, 499);
+    expect(mocks.range).toHaveBeenNthCalledWith(2, 2, 501);
+  });
+
+  it('fails Apply All if a later page fails instead of applying the partial first page', async () => {
+    mocks.range
+      .mockResolvedValueOnce({ data: [{ ...row, id: 'draft-1' }], error: null, count: 2 })
+      .mockResolvedValueOnce({ data: null, error: { message: 'page 2 unavailable' }, count: 2 });
+
+    await expect(fetchCueDraftsForApply('user-1', 'import-1')).rejects.toThrow(/page 2 unavailable/i);
+  });
+
+  it('does not let already-applied early rows crowd a pending later draft out of Apply All', async () => {
+    const applied = {
+      ...row,
+      id: 'draft-applied',
+      current_baseline_fingerprint: 'desired',
+      current_baseline_local_cue_fingerprint: 'post-apply-local',
+      applied_revision: 2,
+      applied_fingerprint: 'desired',
+    };
+    const pending = { ...row, id: 'draft-pending' };
+    mocks.range
+      .mockResolvedValueOnce({ data: [applied], error: null, count: 2 })
+      .mockResolvedValueOnce({ data: [pending], error: null, count: 2 });
+
+    const result = await fetchCueDraftsForApply('user-1', 'import-1');
+    expect(result.map((item) => item.id)).toEqual(['draft-pending']);
+  });
+
+  it('rebases only the moving comparison baseline through the import-scoped verified post-apply RPC', async () => {
     const rebased = {
       ...row,
-      imported_baseline_fingerprint: 'desired',
-      imported_baseline_local_cue_fingerprint: 'post-apply-local',
+      current_baseline_fingerprint: 'desired',
+      current_baseline_local_cue_fingerprint: 'post-apply-local',
       applied_revision: 2,
       applied_fingerprint: 'desired',
       applied_at: '2026-08-26T05:00:00Z',
       last_apply_operation_id: 'op-1',
-      last_apply_state: 'verified',
+      last_apply_state: 'applied',
       last_apply_summary: { state: 'applied' },
     };
     mocks.single.mockResolvedValue({ data: rebased, error: null });
 
     const result = await markCueDraftApplied({
+      importId: 'import-1',
       trackId: 'track-1',
       revision: 2,
       desiredFingerprint: 'desired',
@@ -170,15 +216,18 @@ describe('cue draft production persistence queries', () => {
       resultSummary: { state: 'applied' },
     });
 
-    expect(mocks.rpc).toHaveBeenCalledWith('mark_cue_draft_applied_v2', expect.objectContaining({
+    expect(mocks.rpc).toHaveBeenCalledWith('mark_cue_draft_applied_v3', expect.objectContaining({
+      p_import_id: 'import-1',
       p_track_id: 'track-1',
       p_revision: 2,
       p_desired_fingerprint: 'desired',
       p_post_apply_local_cue_fingerprint: 'post-apply-local',
       p_operation_id: 'op-1',
     }));
-    expect(result.importedBaselineFingerprint).toBe('desired');
-    expect(result.importedBaselineLocalCueFingerprint).toBe('post-apply-local');
+    expect(result.importedBaselineFingerprint).toBe('baseline');
+    expect(result.importedBaselineLocalCueFingerprint).toBe('local-baseline');
+    expect(result.currentBaselineFingerprint).toBe('desired');
+    expect(result.currentBaselineLocalCueFingerprint).toBe('post-apply-local');
   });
 
 });

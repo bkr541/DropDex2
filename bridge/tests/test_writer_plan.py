@@ -66,6 +66,15 @@ class TestWriterPlanAdapter:
         plan = adapt_saved_cue_drafts([saved_row(content_id="20"), saved_row(content_id="10")])
         assert [track.content_id for track in plan.tracks] == ["10", "20"]
 
+    def test_stage10_current_baseline_overrides_immutable_import_provenance(self):
+        row = saved_row()
+        row["currentBaselineFingerprint"] = "c" * 64
+        row["currentBaselineLocalCueFingerprint"] = "d" * 64
+        plan = adapt_saved_cue_drafts([row])
+        assert plan.tracks[0].imported_baseline_fingerprint == "c" * 64
+        assert plan.tracks[0].imported_baseline_local_cue_fingerprint == "d" * 64
+
+
     def test_stage5_edited_fields_survive_saved_document_to_writer_plan(self):
         row = saved_row(cues=[cue(
             hotCueSlot=4,

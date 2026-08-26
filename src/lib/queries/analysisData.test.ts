@@ -36,12 +36,13 @@ function setupChain(result: { data: unknown[] | null; error: { message: string }
   return chain;
 }
 
-function setupCueChain(result: { data: unknown; error: { message: string } | null }) {
+function setupCueChain(result: { data: unknown; error: { message: string } | null; count?: number | null }) {
   const chain = { select: vi.fn(), in: vi.fn(), order: vi.fn(), range: vi.fn() };
   chain.select.mockReturnValue(chain);
   chain.in.mockReturnValue(chain);
   chain.order.mockReturnValue(chain);
-  chain.range.mockResolvedValue(result);
+  const count = result.count ?? (Array.isArray(result.data) ? result.data.length : null);
+  chain.range.mockResolvedValue({ ...result, count });
   vi.mocked(supabase.from).mockReturnValue(chain as never);
   return chain;
 }
@@ -290,8 +291,8 @@ describe('cue load integrity', () => {
   it('pages cue rows so a full API page cannot be mistaken for a complete track state', async () => {
     const chain = setupCueChain({ data: [], error: null });
     chain.range
-      .mockResolvedValueOnce({ data: Array.from({ length: 500 }, (_, index) => makeCueRow('track-a', { id: `cue-${index}`, start_ms: index })), error: null })
-      .mockResolvedValueOnce({ data: [makeCueRow('track-a', { id: 'cue-500', start_ms: 500 })], error: null });
+      .mockResolvedValueOnce({ data: Array.from({ length: 500 }, (_, index) => makeCueRow('track-a', { id: `cue-${index}`, start_ms: index })), error: null, count: 501 })
+      .mockResolvedValueOnce({ data: [makeCueRow('track-a', { id: 'cue-500', start_ms: 500 })], error: null, count: 501 });
 
     const state = await fetchTrackCueState('track-a');
 
@@ -301,13 +302,47 @@ describe('cue load integrity', () => {
     expect(chain.range).toHaveBeenNthCalledWith(2, 500, 999);
   });
 
+
+  it('continues cue-summary paging when the server returns fewer rows than the requested page size', async () => {
+    const chain = setupCueChain({ data: [], error: null });
+    chain.range
+      .mockResolvedValueOnce({
+        data: [
+          makeCueRow('track-a', { id: 'cue-1', start_ms: 1 }),
+          makeCueRow('track-a', { id: 'cue-2', start_ms: 2 }),
+        ],
+        error: null,
+        count: 3,
+      })
+      .mockResolvedValueOnce({ data: [makeCueRow('track-a', { id: 'cue-3', start_ms: 3 })], error: null, count: 3 });
+
+    const state = await fetchTrackCueState('track-a');
+
+    expect(state.status).toBe('loaded-with-cues');
+    if (state.status === 'loaded-with-cues') expect(state.cues).toHaveLength(3);
+    expect(chain.range).toHaveBeenNthCalledWith(1, 0, 499);
+    expect(chain.range).toHaveBeenNthCalledWith(2, 2, 501);
+  });
+
+  it('fails the whole cue-summary chunk when a later page fails', async () => {
+    const chain = setupCueChain({ data: [], error: null });
+    chain.range
+      .mockResolvedValueOnce({ data: [makeCueRow('track-a', { id: 'cue-1' })], error: null, count: 2 })
+      .mockResolvedValueOnce({ data: null, error: { message: 'page 2 timeout' }, count: 2 });
+
+    const state = await fetchTrackCueState('track-a');
+
+    expect(state).toMatchObject({ status: 'failed', trackId: 'track-a', retryable: true });
+    expect(state.status === 'failed' ? state.error : '').toMatch(/page 2 timeout/i);
+  });
+
   it('loads canonical reconciliation payload for production Cue Points provenance', async () => {
     const payload = { _dropdex_cue_reconciliation: { authority: 'anlz', conflict: null } };
     const chain = setupCueChain({ data: [makeCueRow('track-a', { source_payload: payload })], error: null });
 
     const state = await fetchTrackCueState('track-a');
 
-    expect(chain.select).toHaveBeenCalledWith(expect.stringContaining('source_payload'));
+    expect(chain.select).toHaveBeenCalledWith(expect.stringContaining('source_payload'), { count: 'exact' });
     expect(state.status).toBe('loaded-with-cues');
     if (state.status === 'loaded-with-cues') {
       expect(state.cues[0].source_payload).toEqual(payload);
@@ -345,13 +380,13 @@ describe('cue load integrity', () => {
     goodChain.select.mockReturnValue(goodChain);
     goodChain.in.mockReturnValue(goodChain);
     goodChain.order.mockReturnValue(goodChain);
-    goodChain.range.mockResolvedValue({ data: [makeCueRow('track-good')], error: null });
+    goodChain.range.mockResolvedValue({ data: [makeCueRow('track-good')], error: null, count: 1 });
 
     const badChain = { select: vi.fn(), in: vi.fn(), order: vi.fn(), range: vi.fn() };
     badChain.select.mockReturnValue(badChain);
     badChain.in.mockReturnValue(badChain);
     badChain.order.mockReturnValue(badChain);
-    badChain.range.mockResolvedValue({ data: null, error: { message: 'timeout' } });
+    badChain.range.mockResolvedValue({ data: null, error: { message: 'timeout' }, count: null });
 
     vi.mocked(supabase.from)
       .mockReturnValueOnce(goodChain as never)

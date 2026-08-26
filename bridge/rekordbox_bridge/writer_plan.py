@@ -226,15 +226,24 @@ def adapt_saved_cue_drafts(saved_rows: Sequence[Mapping[str, Any]]) -> CueApplyP
         desired_fingerprint = _required_string(
             row.get("desiredFingerprint", row.get("desired_fingerprint")), "desiredFingerprint"
         )
+        # Stage 10 separates immutable import provenance from the moving
+        # comparison baseline. Prefer the explicit current baseline while
+        # retaining the Stage 1/9 field as a backward-compatible fallback.
         baseline_fingerprint = _required_string(
-            row.get("importedBaselineFingerprint", row.get("imported_baseline_fingerprint")),
-            "importedBaselineFingerprint",
+            row.get(
+                "currentBaselineFingerprint",
+                row.get(
+                    "current_baseline_fingerprint",
+                    row.get("importedBaselineFingerprint", row.get("imported_baseline_fingerprint")),
+                ),
+            ),
+            "currentBaselineFingerprint",
         )
         if not _HASH_RE.fullmatch(desired_fingerprint):
             raise CuePlanValidationError("desiredFingerprint must be a SHA-256 hex digest.")
         if not _HASH_RE.fullmatch(baseline_fingerprint):
             raise CuePlanValidationError(
-                "importedBaselineFingerprint must be a SHA-256 hex digest."
+                "currentBaselineFingerprint must be a SHA-256 hex digest."
             )
 
         document = _mapping(
@@ -258,14 +267,20 @@ def adapt_saved_cue_drafts(saved_rows: Sequence[Mapping[str, Any]]) -> CueApplyP
         )
         imported_baseline_local = _nullable_string(
             row.get(
-                "importedBaselineLocalCueFingerprint",
-                row.get("imported_baseline_local_cue_fingerprint"),
+                "currentBaselineLocalCueFingerprint",
+                row.get(
+                    "current_baseline_local_cue_fingerprint",
+                    row.get(
+                        "importedBaselineLocalCueFingerprint",
+                        row.get("imported_baseline_local_cue_fingerprint"),
+                    ),
+                ),
             ),
-            "importedBaselineLocalCueFingerprint",
+            "currentBaselineLocalCueFingerprint",
         )
         if imported_baseline_local is not None and not _HASH_RE.fullmatch(imported_baseline_local):
             raise CuePlanValidationError(
-                "importedBaselineLocalCueFingerprint must be a SHA-256 hex digest or null."
+                "currentBaselineLocalCueFingerprint must be a SHA-256 hex digest or null."
             )
         imported_baseline_local = imported_baseline_local.lower() if imported_baseline_local else None
         # DropDex already uses imported master_content_id as the local master-library

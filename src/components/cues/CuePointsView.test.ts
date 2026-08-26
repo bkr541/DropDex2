@@ -144,14 +144,19 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('setCueSummaryRetryNonce((value) => value + 1)');
   });
 
-  it('keeps Stage 9 imported truth, desired color semantics, and verified post-Apply rebase separate', () => {
+  it('keeps import provenance separate from the Stage 10 moving current baseline and verified rebase proof', () => {
     expect(source).toContain('fingerprintImportedLocalCueBaseline(importedDocument)');
     expect(source).toContain("kind: 'hot-color-table'");
     expect(source).toContain("kind: 'memory-color'");
     expect(source).toContain('track.local_cue_fingerprint');
     expect(source).toContain('postApplyLocalCueFingerprint');
-    expect(source).toContain('setDraftImportedBaselineFingerprint(updated.value.importedBaselineFingerprint)');
-    expect(source).toContain('setDraftImportedBaselineLocalCueFingerprint(updated.value.importedBaselineLocalCueFingerprint)');
+    expect(source).toContain('currentBaselineFingerprint: row.currentBaselineFingerprint');
+    expect(source).toContain('currentBaselineLocalCueFingerprint: row.currentBaselineLocalCueFingerprint');
+    expect(source).toContain('setDraftCurrentBaselineFingerprint(updatedSelected.value.currentBaselineFingerprint)');
+    expect(source).toContain('setDraftCurrentBaselineLocalCueFingerprint(updatedSelected.value.currentBaselineLocalCueFingerprint)');
+    expect(source).toContain('row.masterContentId ?? row.rekordboxContentId');
+    expect(source).toContain('Retry verified rebase');
+    expect(source).toContain('applyBlockedByPendingRebase');
     expect(source).toContain('existingImportedBaselineLocalCueFingerprint');
   });
 

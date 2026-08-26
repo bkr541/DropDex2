@@ -62,6 +62,8 @@ export interface DesktopCueApplyDraft {
   desiredFingerprint: string;
   importedBaselineFingerprint: string;
   importedBaselineLocalCueFingerprint: string | null;
+  currentBaselineFingerprint?: string;
+  currentBaselineLocalCueFingerprint?: string | null;
   masterDbId: string | null;
   masterContentId: string | null;
   desiredDocument: Record<string, unknown>;

@@ -1,6 +1,13 @@
 import { supabase } from '../supabase';
 import { parseCueDraftDocument, type CueDraftDocument } from '../cues/cueDraftDocument';
 
+const CUE_DRAFT_SELECT =
+  'id,user_id,import_id,track_id,rekordbox_content_id,schema_version,desired_document,desired_fingerprint,'
+  + 'imported_baseline_fingerprint,imported_baseline_local_cue_fingerprint,'
+  + 'current_baseline_fingerprint,current_baseline_local_cue_fingerprint,'
+  + 'master_db_id,master_content_id,revision,strategy_version,strategy_settings,created_at,updated_at,'
+  + 'applied_revision,applied_fingerprint,applied_at,last_apply_operation_id,last_apply_state,last_apply_summary';
+
 export interface CueDraftRow {
   id: string;
   userId: string;
@@ -10,8 +17,14 @@ export interface CueDraftRow {
   schemaVersion: number;
   desiredDocument: CueDraftDocument;
   desiredFingerprint: string;
+  /** Immutable provenance captured from the imported canonical cue document. */
   importedBaselineFingerprint: string;
+  /** Immutable provenance captured from imported DB-backed DjmdCue evidence. */
   importedBaselineLocalCueFingerprint: string | null;
+  /** Moving semantic baseline used for the next Apply after a verified rebase. */
+  currentBaselineFingerprint: string;
+  /** Moving local DjmdCue baseline used by destructive stale-state preflight. */
+  currentBaselineLocalCueFingerprint: string | null;
   masterDbId: string | null;
   masterContentId: string | null;
   revision: number;
@@ -45,6 +58,8 @@ function mapCueDraftRow(raw: unknown): CueDraftRow {
   ) {
     throw new Error('Saved cue draft row identity does not match its canonical document.');
   }
+  const importedBaselineFingerprint = row.imported_baseline_fingerprint as string;
+  const importedBaselineLocalCueFingerprint = (row.imported_baseline_local_cue_fingerprint as string | null) ?? null;
   return {
     id: row.id as string,
     userId: row.user_id as string,
@@ -54,8 +69,13 @@ function mapCueDraftRow(raw: unknown): CueDraftRow {
     schemaVersion: row.schema_version as number,
     desiredDocument,
     desiredFingerprint: row.desired_fingerprint as string,
-    importedBaselineFingerprint: row.imported_baseline_fingerprint as string,
-    importedBaselineLocalCueFingerprint: (row.imported_baseline_local_cue_fingerprint as string | null) ?? null,
+    importedBaselineFingerprint,
+    importedBaselineLocalCueFingerprint,
+    // Backward-compatible hydration for rows encountered during a rolling
+    // migration. Once Stage 10 has run these columns are populated explicitly.
+    currentBaselineFingerprint: (row.current_baseline_fingerprint as string | null) ?? importedBaselineFingerprint,
+    currentBaselineLocalCueFingerprint:
+      (row.current_baseline_local_cue_fingerprint as string | null) ?? importedBaselineLocalCueFingerprint,
     masterDbId: (row.master_db_id as string | null) ?? null,
     masterContentId: (row.master_content_id as string | null) ?? null,
     revision: row.revision as number,
@@ -75,7 +95,7 @@ function mapCueDraftRow(raw: unknown): CueDraftRow {
 export async function fetchCueDraft(userId: string, trackId: string): Promise<CueDraftRow | null> {
   const { data, error } = await supabase
     .from('cue_drafts')
-    .select('id,user_id,import_id,track_id,rekordbox_content_id,schema_version,desired_document,desired_fingerprint,imported_baseline_fingerprint,imported_baseline_local_cue_fingerprint,master_db_id,master_content_id,revision,strategy_version,strategy_settings,created_at,updated_at,applied_revision,applied_fingerprint,applied_at,last_apply_operation_id,last_apply_state,last_apply_summary')
+    .select(CUE_DRAFT_SELECT)
     .eq('user_id', userId)
     .eq('track_id', trackId)
     .maybeSingle();
@@ -119,36 +139,70 @@ export async function saveCueDraft(input: {
   return mapCueDraftRow(data);
 }
 
-
 export function cueDraftNeedsApply(row: CueDraftRow): boolean {
-  if (row.desiredFingerprint === row.importedBaselineFingerprint) return false;
+  if (row.desiredFingerprint === row.currentBaselineFingerprint) return false;
   return row.appliedRevision !== row.revision || row.appliedFingerprint !== row.desiredFingerprint;
 }
 
 const CUE_DRAFT_APPLY_PAGE_SIZE = 500;
 
+/**
+ * Fetch every draft row in the Apply-All scope and prove that the result set is
+ * complete before filtering eligibility. `count: exact` is deliberate: a
+ * Supabase/PostgREST max-rows setting may return fewer rows than the requested
+ * range, so page length alone cannot prove end-of-data.
+ */
 export async function fetchCueDraftsForApply(userId: string, importId: string): Promise<CueDraftRow[]> {
   const rows: unknown[] = [];
-  for (let offset = 0; ; offset += CUE_DRAFT_APPLY_PAGE_SIZE) {
-    const { data, error } = await supabase
+  const seenIds = new Set<string>();
+  let offset = 0;
+  let expectedCount: number | null = null;
+
+  for (;;) {
+    const page = await supabase
       .from('cue_drafts')
-      .select('id,user_id,import_id,track_id,rekordbox_content_id,schema_version,desired_document,desired_fingerprint,imported_baseline_fingerprint,imported_baseline_local_cue_fingerprint,master_db_id,master_content_id,revision,strategy_version,strategy_settings,created_at,updated_at,applied_revision,applied_fingerprint,applied_at,last_apply_operation_id,last_apply_state,last_apply_summary')
+      .select(CUE_DRAFT_SELECT, { count: 'exact' })
       .eq('user_id', userId)
       .eq('import_id', importId)
       .order('rekordbox_content_id', { ascending: true })
       .order('id', { ascending: true })
       .range(offset, offset + CUE_DRAFT_APPLY_PAGE_SIZE - 1);
 
-    if (error) throw new Error(error.message);
-    if (!Array.isArray(data)) throw new Error('Cue draft response schema is invalid: expected an array of rows.');
-    rows.push(...data);
-    if (data.length < CUE_DRAFT_APPLY_PAGE_SIZE) break;
+    if (page.error) throw new Error(page.error.message);
+    if (!Array.isArray(page.data)) throw new Error('Cue draft response schema is invalid: expected an array of rows.');
+    if (!Number.isInteger(page.count) || (page.count as number) < 0) {
+      throw new Error('Cue draft retrieval is incomplete: the server did not return an exact result count.');
+    }
+    if (expectedCount == null) expectedCount = page.count as number;
+    else if (page.count !== expectedCount) {
+      throw new Error('Cue draft retrieval changed while paging; reload before Apply All.');
+    }
+
+    if (page.data.length === 0) {
+      if (offset === expectedCount) break;
+      throw new Error(`Cue draft retrieval stopped after ${offset} of ${expectedCount} rows.`);
+    }
+
+    for (const raw of page.data) {
+      const id = (raw as Record<string, unknown>)?.id;
+      if (typeof id !== 'string' || id.length === 0) throw new Error('Cue draft response contains a row without a stable ID.');
+      if (seenIds.has(id)) throw new Error('Cue draft retrieval returned a duplicate row while paging.');
+      seenIds.add(id);
+      rows.push(raw);
+    }
+    offset += page.data.length;
+    if (offset === expectedCount) break;
+    if (offset > expectedCount) throw new Error('Cue draft retrieval returned more rows than the server-reported total.');
   }
 
+  if (rows.length !== expectedCount) {
+    throw new Error(`Cue draft retrieval is incomplete: loaded ${rows.length} of ${expectedCount ?? 0} rows.`);
+  }
   return rows.map(mapCueDraftRow).filter(cueDraftNeedsApply);
 }
 
 export async function markCueDraftApplied(input: {
+  importId: string;
   trackId: string;
   revision: number;
   desiredFingerprint: string;
@@ -157,7 +211,8 @@ export async function markCueDraftApplied(input: {
   resultSummary: Record<string, unknown>;
 }): Promise<CueDraftRow> {
   const { data, error } = await supabase
-    .rpc('mark_cue_draft_applied_v2', {
+    .rpc('mark_cue_draft_applied_v3', {
+      p_import_id: input.importId,
       p_track_id: input.trackId,
       p_revision: input.revision,
       p_desired_fingerprint: input.desiredFingerprint,

@@ -456,28 +456,60 @@ class TestStage6TransactionalApply:
         assert memory_loop.ColorTableIndex == 5
         assert memory_loop.ActiveLoop == 1
 
-    def test_verified_apply_returns_rebase_fingerprint_that_allows_the_next_legitimate_edit(self, tmp_path):
+    def test_verified_apply_rebase_allows_three_consecutive_edits_without_rewriting_import_provenance(self, tmp_path):
         path = fixture_db(tmp_path)
+        imported_local_baseline = local_baseline_fingerprint()
+
+        first_rows = [draft_row(cues=[draft_cue(comment="first edit")], local_baseline=imported_local_baseline)]
+        first_store = ApplyTokenStore()
+        first_pf = preflight(path, first_rows, first_store)
+        first_result = apply(path, first_pf.token, first_rows, first_store)
+        assert first_result.ok is True
+        first_local = first_result.tracks[0].local_cue_fingerprint
+        assert isinstance(first_local, str) and len(first_local) == 64
+
+        second_row = draft_row(cues=[draft_cue(comment="second edit")], local_baseline=imported_local_baseline)
+        second_row["currentBaselineFingerprint"] = "c" * 64
+        second_row["currentBaselineLocalCueFingerprint"] = first_local
+        second_store = ApplyTokenStore()
+        second_pf = preflight(path, [second_row], second_store)
+        assert second_pf.ok is True
+        assert second_pf.tracks[0].imported_baseline_comparison == "match"
+        second_result = apply(path, second_pf.token, [second_row], second_store)
+        assert second_result.ok is True
+        second_local = second_result.tracks[0].local_cue_fingerprint
+        assert isinstance(second_local, str) and len(second_local) == 64
+
+        third_row = draft_row(cues=[draft_cue(comment="third edit")], local_baseline=imported_local_baseline)
+        third_row["currentBaselineFingerprint"] = "d" * 64
+        third_row["currentBaselineLocalCueFingerprint"] = second_local
+        third_pf = preflight(path, [third_row], ApplyTokenStore())
+        assert third_pf.ok is True
+        assert third_pf.tracks[0].imported_baseline_comparison == "match"
+
+    def test_external_rekordbox_change_after_rebase_still_blocks_the_next_apply(self, tmp_path):
+        path = fixture_db(tmp_path)
+        imported_local_baseline = local_baseline_fingerprint()
+        rows = [draft_row(cues=[draft_cue(comment="first edit")], local_baseline=imported_local_baseline)]
         store = ApplyTokenStore()
-        rows = [draft_row(cues=[draft_cue(comment="first edit")])]
         pf = preflight(path, rows, store)
         result = apply(path, pf.token, rows, store)
-
         assert result.ok is True
-        assert result.state == "applied"
-        assert len(result.tracks) == 1
-        post_apply_fingerprint = result.tracks[0].local_cue_fingerprint
-        assert isinstance(post_apply_fingerprint, str)
-        assert len(post_apply_fingerprint) == 64
+        rebased_local = result.tracks[0].local_cue_fingerprint
 
-        follow_up = [draft_row(
-            cues=[draft_cue(comment="second edit")],
-            local_baseline=post_apply_fingerprint,
-        )]
-        next_preflight = preflight(path, follow_up, ApplyTokenStore())
+        db = SqliteTestDb(str(path))
+        db.conn.execute("update djmdCue set Comment='external change' where ContentID='101'")
+        db.commit()
+        db.close()
 
-        assert next_preflight.ok is True
-        assert next_preflight.tracks[0].imported_baseline_comparison == "match"
+        next_row = draft_row(cues=[draft_cue(comment="second edit")], local_baseline=imported_local_baseline)
+        next_row["currentBaselineFingerprint"] = "c" * 64
+        next_row["currentBaselineLocalCueFingerprint"] = rebased_local
+        blocked = preflight(path, [next_row], ApplyTokenStore())
+
+        assert blocked.ok is False
+        assert blocked.tracks[0].imported_baseline_comparison == "diverged"
+        assert any(item.code == "imported-baseline-stale" for item in blocked.blockers)
 
     def test_unchanged_state_multi_track_apply_stages_then_verifies_live(self, tmp_path):
         path = fixture_db(tmp_path)

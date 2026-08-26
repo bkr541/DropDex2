@@ -404,35 +404,49 @@ export async function fetchTracksCueStates(trackIds: string[]): Promise<CueFetch
   await Promise.all(chunks.map(async (chunk, chunkIndex) => {
     try {
       const data: unknown[] = [];
-      let fetchError: { message?: string } | null = null;
-      for (let offset = 0; ; offset += CUE_FETCH_PAGE_SIZE) {
+      const seenIds = new Set<string>();
+      let expectedCount: number | null = null;
+      let offset = 0;
+
+      for (;;) {
         const page = await supabase
           .from('rekordbox_cues')
-          .select(CUE_SELECT)
+          .select(CUE_SELECT, { count: 'exact' })
           .in('track_id', chunk)
+          .order('track_id', { ascending: true })
           .order('start_ms', { ascending: true })
           .order('id', { ascending: true })
           .range(offset, offset + CUE_FETCH_PAGE_SIZE - 1);
 
-        if (page.error) {
-          fetchError = page.error;
-          break;
+        if (page.error) throw new Error(page.error.message || 'Failed to load cue points.');
+        if (!Array.isArray(page.data)) throw new Error('Cue response schema is invalid: expected an array of rows.');
+        if (!Number.isInteger(page.count) || (page.count as number) < 0) {
+          throw new Error('Cue retrieval is incomplete: the server did not return an exact result count.');
         }
-        if (!Array.isArray(page.data)) {
-          const message = 'Cue response schema is invalid: expected an array of rows.';
-          result.errors.push({ chunkIndex, trackIds: chunk, error: message });
-          for (const trackId of chunk) result.states.set(trackId, cueFailureState(trackId, message, false));
-          return;
+        if (expectedCount == null) expectedCount = page.count as number;
+        else if (page.count !== expectedCount) {
+          throw new Error('Cue retrieval changed while paging; retry the cue request.');
         }
-        data.push(...page.data);
-        if (page.data.length < CUE_FETCH_PAGE_SIZE) break;
+
+        if (page.data.length === 0) {
+          if (offset === expectedCount) break;
+          throw new Error(`Cue retrieval stopped after ${offset} of ${expectedCount} rows.`);
+        }
+
+        for (const raw of page.data) {
+          const id = (raw as Record<string, unknown>)?.id;
+          if (typeof id !== 'string' || id.length === 0) throw new Error('Cue response contains a row without a stable ID.');
+          if (seenIds.has(id)) throw new Error('Cue retrieval returned a duplicate row while paging.');
+          seenIds.add(id);
+          data.push(raw);
+        }
+        offset += page.data.length;
+        if (offset === expectedCount) break;
+        if (offset > expectedCount) throw new Error('Cue retrieval returned more rows than the server-reported total.');
       }
 
-      if (fetchError) {
-        const message = fetchError.message || 'Failed to load cue points.';
-        result.errors.push({ chunkIndex, trackIds: chunk, error: message });
-        for (const trackId of chunk) result.states.set(trackId, cueFailureState(trackId, message, true));
-        return;
+      if (data.length !== expectedCount) {
+        throw new Error(`Cue retrieval is incomplete: loaded ${data.length} of ${expectedCount ?? 0} rows.`);
       }
 
       const cuesByTrack = new Map<string, CueRow[]>();
@@ -464,8 +478,10 @@ export async function fetchTracksCueStates(trackIds: string[]): Promise<CueFetch
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown cue request error.';
+      const retryable = !message.startsWith('Cue response schema is invalid')
+        && !message.startsWith('Cue response contains a row without a stable ID.');
       result.errors.push({ chunkIndex, trackIds: chunk, error: message });
-      for (const trackId of chunk) result.states.set(trackId, cueFailureState(trackId, message, true));
+      for (const trackId of chunk) result.states.set(trackId, cueFailureState(trackId, message, retryable));
     }
   }));
 

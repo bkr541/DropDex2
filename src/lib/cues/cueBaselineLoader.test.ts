@@ -114,6 +114,8 @@ function mockDraft(document: CueDraftDocument) {
     desiredFingerprint: 'a'.repeat(64),
     importedBaselineFingerprint: 'b'.repeat(64),
     importedBaselineLocalCueFingerprint: 'c'.repeat(64),
+    currentBaselineFingerprint: 'b'.repeat(64),
+    currentBaselineLocalCueFingerprint: 'c'.repeat(64),
     masterDbId: null,
     masterContentId: null,
     revision: 1,
@@ -252,6 +254,44 @@ describe('loadCueEditorBaseline', () => {
     expect(fetchTrackCueState).not.toHaveBeenCalled();
   });
 
+  it('hydrates the verified moving baseline after Apply without rewriting original import provenance', async () => {
+    const desired: CueDraftDocument = {
+      schemaVersion: 1,
+      importId: 'import-1',
+      trackId: 'track-1',
+      rekordboxContentId: 'rb-1',
+      cues: [draftCue({ comment: 'applied B' })],
+    };
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [cueRow],
+    });
+    vi.mocked(fetchCueDraft).mockResolvedValue({
+      ...mockDraft(desired),
+      desiredFingerprint: 'd'.repeat(64),
+      importedBaselineFingerprint: 'b'.repeat(64),
+      importedBaselineLocalCueFingerprint: 'c'.repeat(64),
+      currentBaselineFingerprint: 'd'.repeat(64),
+      currentBaselineLocalCueFingerprint: 'e'.repeat(64),
+      appliedRevision: 1,
+      appliedFingerprint: 'd'.repeat(64),
+      lastApplyOperationId: 'op-1',
+      lastApplyState: 'applied',
+    });
+
+    const result = await loadCueEditorBaseline(track, 'user-1');
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.workingCues[0].comment).toBe('applied B');
+      expect(result.draftImportedBaselineFingerprint).toBe('b'.repeat(64));
+      expect(result.draftImportedBaselineLocalCueFingerprint).toBe('c'.repeat(64));
+      expect(result.draftCurrentBaselineFingerprint).toBe('d'.repeat(64));
+      expect(result.draftCurrentBaselineLocalCueFingerprint).toBe('e'.repeat(64));
+    }
+  });
+
   it('keeps a cue query rejection as a failed baseline and never loads the draft', async () => {
     vi.mocked(fetchTrackCueState).mockResolvedValue({
       status: 'failed',
@@ -309,6 +349,8 @@ describe('loadCueEditorBaseline', () => {
       desiredFingerprint: 'a'.repeat(64),
       importedBaselineFingerprint: 'b'.repeat(64),
       importedBaselineLocalCueFingerprint: 'c'.repeat(64),
+      currentBaselineFingerprint: 'b'.repeat(64),
+      currentBaselineLocalCueFingerprint: 'c'.repeat(64),
       masterDbId: null,
       masterContentId: null,
       revision: 1,

@@ -79,6 +79,19 @@ type CueDraftStatus = 'Original' | 'Unsaved' | 'Saved' | 'Needs Apply' | 'Applie
 type TerminalCueLoadStatus = 'loaded-empty' | 'loaded-with-cues' | 'failed';
 type SelectedCueLoadStatus = 'idle' | 'loading' | TerminalCueLoadStatus;
 
+interface CueRebaseRecoveryItem {
+  row: CueDraftRow;
+  postApplyLocalCueFingerprint: string | null;
+}
+
+interface CueRebaseRecoveryState {
+  userId: string;
+  importId: string;
+  operationId: string;
+  summary: Record<string, unknown>;
+  items: CueRebaseRecoveryItem[];
+}
+
 const CUE_PAGE_SIZE = 100;
 const MAX_TIMELINE_GRID_LINES = 640;
 const MAX_BEAT_RULER_TICKS = 640;
@@ -815,6 +828,7 @@ function CueWaveformPanel({
   draftStatus,
   saving,
   persistenceMessage,
+  editingBlockedReason,
   onRetryCues,
   onRetryWaveform,
   onAddCue,
@@ -845,6 +859,7 @@ function CueWaveformPanel({
   draftStatus: CueDraftStatus;
   saving: boolean;
   persistenceMessage: string | null;
+  editingBlockedReason: string | null;
   onRetryCues: () => void;
   onRetryWaveform: () => void;
   onAddCue: (family: 'hot' | 'memory', requestedMs: number, timingMode: CueTimingMode) => string | null;
@@ -946,8 +961,9 @@ function CueWaveformPanel({
   const availableHotCueSlot = useMemo(() => nextAvailableHotCueSlot(cues), [cues]);
   const selectedCue = useMemo(() => cues.find((cue) => cue.editorId === selectedCueId) ?? null, [cues, selectedCueId]);
   const cueBaselineComplete = cueLoadStatus === 'loaded-empty' || cueLoadStatus === 'loaded-with-cues';
-  const cueEditingAllowed = cueBaselineComplete && cueIntegrity?.status === 'valid';
-  const cueIntegrityError = cueIntegrity && cueIntegrity.status !== 'valid' ? cueIntegrity.error ?? 'Cue baseline is not safe to edit.' : null;
+  const cueEditingAllowed = cueBaselineComplete && cueIntegrity?.status === 'valid' && !editingBlockedReason;
+  const cueIntegrityError = editingBlockedReason
+    ?? (cueIntegrity && cueIntegrity.status !== 'valid' ? cueIntegrity.error ?? 'Cue baseline is not safe to edit.' : null);
   const autoCueReady = Boolean(
     track
     && cueEditingAllowed
@@ -1561,6 +1577,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [draftDesiredFingerprint, setDraftDesiredFingerprint] = useState<string | null>(null);
   const [draftImportedBaselineFingerprint, setDraftImportedBaselineFingerprint] = useState<string | null>(null);
   const [draftImportedBaselineLocalCueFingerprint, setDraftImportedBaselineLocalCueFingerprint] = useState<string | null>(null);
+  const [draftCurrentBaselineFingerprint, setDraftCurrentBaselineFingerprint] = useState<string | null>(null);
+  const [draftCurrentBaselineLocalCueFingerprint, setDraftCurrentBaselineLocalCueFingerprint] = useState<string | null>(null);
   const [draftPersistenceMessage, setDraftPersistenceMessage] = useState<string | null>(null);
   const [savingCueDraft, setSavingCueDraft] = useState(false);
   const [applyDrafts, setApplyDrafts] = useState<CueDraftRow[]>([]);
@@ -1583,6 +1601,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [cueSummaryStates, setCueSummaryStates] = useState<Map<string, CueLoadState>>(new Map());
   const [cueSummaryRetryNonce, setCueSummaryRetryNonce] = useState(0);
   const [applyDraftLoadError, setApplyDraftLoadError] = useState<string | null>(null);
+  const [applyRebaseRecovery, setApplyRebaseRecovery] = useState<CueRebaseRecoveryState | null>(null);
   const [beatGrid, setBeatGrid] = useState<BeatGridRow | null>(null);
   const [beatGridLoading, setBeatGridLoading] = useState(false);
   const [phrases, setPhrases] = useState<PhraseRow[]>([]);
@@ -1591,6 +1610,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const manualCueSequenceRef = useRef(0);
   const selectedTrackIdRef = useRef<string | null>(null);
   const selectedUserIdRef = useRef<string | null>(null);
+  const selectedImportIdRef = useRef<string | null>(null);
   const workingCuesRef = useRef<WorkingCue[]>([]);
   const cueDraftLoadRequestRef = useRef(0);
   const cueDraftSaveRequestRef = useRef(0);
@@ -1599,6 +1619,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const selectedTrackId = selectedTrack?.id ?? null;
   selectedTrackIdRef.current = selectedTrackId;
   selectedUserIdRef.current = userId;
+  selectedImportIdRef.current = importId;
   workingCuesRef.current = workingCues;
   const { stats } = useLibraryStats(importId);
   const bpmBounds = useMemo((): [number, number] => {
@@ -1714,6 +1735,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setDraftDesiredFingerprint(null);
     setDraftImportedBaselineFingerprint(null);
     setDraftImportedBaselineLocalCueFingerprint(null);
+    setDraftCurrentBaselineFingerprint(null);
+    setDraftCurrentBaselineLocalCueFingerprint(null);
     setDraftPersistenceMessage(null);
     setSavingCueDraft(false);
     cueDraftSaveInFlightRef.current = false;
@@ -1767,6 +1790,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       setDraftDesiredFingerprint(null);
       setDraftImportedBaselineFingerprint(null);
       setDraftImportedBaselineLocalCueFingerprint(null);
+      setDraftCurrentBaselineFingerprint(null);
+      setDraftCurrentBaselineLocalCueFingerprint(null);
       setDraftPersistenceMessage(null);
       setWorkingCues([]);
       setSelectedCueLoadError(null);
@@ -1791,6 +1816,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setDraftDesiredFingerprint(null);
     setDraftImportedBaselineFingerprint(null);
     setDraftImportedBaselineLocalCueFingerprint(null);
+    setDraftCurrentBaselineFingerprint(null);
+    setDraftCurrentBaselineLocalCueFingerprint(null);
     setDraftPersistenceMessage(null);
     setWorkingCues([]);
     setSelectedCueLoadError(null);
@@ -1811,6 +1838,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           setDraftDesiredFingerprint(null);
           setDraftImportedBaselineFingerprint(null);
           setDraftImportedBaselineLocalCueFingerprint(null);
+          setDraftCurrentBaselineFingerprint(null);
+          setDraftCurrentBaselineLocalCueFingerprint(null);
           setWorkingCues([]);
           setDraftPersistenceMessage(null);
           setSelectedCueLoadStatus('failed');
@@ -1826,6 +1855,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         setDraftDesiredFingerprint(result.draftDesiredFingerprint);
         setDraftImportedBaselineFingerprint(result.draftImportedBaselineFingerprint);
         setDraftImportedBaselineLocalCueFingerprint(result.draftImportedBaselineLocalCueFingerprint);
+        setDraftCurrentBaselineFingerprint(result.draftCurrentBaselineFingerprint);
+        setDraftCurrentBaselineLocalCueFingerprint(result.draftCurrentBaselineLocalCueFingerprint);
         setWorkingCues(result.workingCues);
         setSelectedCueLoadStatus(result.status);
         setSelectedCueLoadError(null);
@@ -1841,6 +1872,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         setDraftDesiredFingerprint(null);
         setDraftImportedBaselineFingerprint(null);
         setDraftImportedBaselineLocalCueFingerprint(null);
+        setDraftCurrentBaselineFingerprint(null);
+        setDraftCurrentBaselineLocalCueFingerprint(null);
         setWorkingCues([]);
         setDraftPersistenceMessage(null);
         setSelectedCueLoadStatus('failed');
@@ -1942,12 +1975,28 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   );
   const selectedCueBaselineComplete = selectedCueLoadOwnedBySelection
     && (selectedCueLoadStatus === 'loaded-empty' || selectedCueLoadStatus === 'loaded-with-cues');
-  const selectedCueBaselineEditable = selectedCueBaselineComplete && selectedCueIntegrity?.status === 'valid';
-  const selectedCueBlockReason = !selectedCueBaselineComplete
-    ? selectedCueLoadError ?? 'Cue editing is blocked until the complete cue baseline loads successfully.'
-    : selectedCueIntegrity?.status !== 'valid'
-      ? selectedCueIntegrity?.error ?? 'Cue editing is blocked until cue ownership is deterministic.'
-      : null;
+  const selectedCueRebaseRecoveryPending = Boolean(
+    applyRebaseRecovery
+    && applyRebaseRecovery.userId === userId
+    && applyRebaseRecovery.importId === importId
+    && selectedTrackId
+    && applyRebaseRecovery.items.some((item) => item.row.trackId === selectedTrackId),
+  );
+  const applyBlockedByPendingRebase = Boolean(
+    applyRebaseRecovery
+    && applyRebaseRecovery.userId === userId
+    && applyRebaseRecovery.items.length > 0,
+  );
+  const selectedCueBaselineEditable = selectedCueBaselineComplete
+    && selectedCueIntegrity?.status === 'valid'
+    && !selectedCueRebaseRecoveryPending;
+  const selectedCueBlockReason = selectedCueRebaseRecoveryPending
+    ? 'Rekordbox was updated and verified, but this track baseline was not rebased in cloud state. Retry the verified baseline rebase before editing or applying again.'
+    : !selectedCueBaselineComplete
+      ? selectedCueLoadError ?? 'Cue editing is blocked until the complete cue baseline loads successfully.'
+      : selectedCueIntegrity?.status !== 'valid'
+        ? selectedCueIntegrity?.error ?? 'Cue editing is blocked until cue ownership is deterministic.'
+        : null;
   const selectedCuePanelStatus: SelectedCueLoadStatus = selectedTrackId && !selectedCueLoadOwnedBySelection
     ? 'loading'
     : selectedCueLoadStatus;
@@ -1966,9 +2015,12 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     if (workingCuesDirty) return 'Unsaved';
     if (!savedCueBaseline) return 'Original';
     if (workingCueSetsEqual(importedCueBaseline, savedCueBaseline)) return 'Saved';
+    if (draftDesiredFingerprint != null
+      && draftDesiredFingerprint === draftCurrentBaselineFingerprint
+      && draftCurrentBaselineLocalCueFingerprint != null) return 'Applied';
     if (draftRevision != null && draftAppliedRevision === draftRevision && draftAppliedFingerprint === draftDesiredFingerprint) return 'Applied';
     return 'Needs Apply';
-  }, [draftAppliedFingerprint, draftAppliedRevision, draftDesiredFingerprint, draftRevision, importedCueBaseline, savedCueBaseline, workingCuesDirty]);
+  }, [draftAppliedFingerprint, draftAppliedRevision, draftCurrentBaselineFingerprint, draftCurrentBaselineLocalCueFingerprint, draftDesiredFingerprint, draftRevision, importedCueBaseline, savedCueBaseline, workingCuesDirty]);
 
   const refreshApplyDrafts = useCallback(async (): Promise<CueDraftRow[]> => {
     if (!userId || !importId) {
@@ -1981,6 +2033,78 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setApplyDraftLoadError(null);
     return rows;
   }, [importId, userId]);
+
+  const persistVerifiedApplyRebase = useCallback(async (recovery: CueRebaseRecoveryState) => {
+    const statusUpdates = await Promise.allSettled(recovery.items.map((item) => {
+      if (!item.postApplyLocalCueFingerprint) {
+        return Promise.reject(new Error(`Verified Apply did not return a local cue fingerprint for ${item.row.masterContentId ?? item.row.rekordboxContentId}.`));
+      }
+      return markCueDraftApplied({
+        importId: item.row.importId,
+        trackId: item.row.trackId,
+        revision: item.row.revision,
+        desiredFingerprint: item.row.desiredFingerprint,
+        postApplyLocalCueFingerprint: item.postApplyLocalCueFingerprint,
+        operationId: recovery.operationId,
+        resultSummary: recovery.summary,
+      });
+    }));
+
+    const failedItems = recovery.items.filter((_, index) => statusUpdates[index]?.status === 'rejected');
+    if (selectedUserIdRef.current === recovery.userId && selectedImportIdRef.current === recovery.importId) {
+      const updatedSelected = statusUpdates.find((item) => item.status === 'fulfilled' && item.value.trackId === selectedTrackIdRef.current);
+      if (updatedSelected?.status === 'fulfilled') {
+        setDraftAppliedRevision(updatedSelected.value.appliedRevision);
+        setDraftAppliedFingerprint(updatedSelected.value.appliedFingerprint);
+        setDraftDesiredFingerprint(updatedSelected.value.desiredFingerprint);
+        setDraftImportedBaselineFingerprint(updatedSelected.value.importedBaselineFingerprint);
+        setDraftImportedBaselineLocalCueFingerprint(updatedSelected.value.importedBaselineLocalCueFingerprint);
+        setDraftCurrentBaselineFingerprint(updatedSelected.value.currentBaselineFingerprint);
+        setDraftCurrentBaselineLocalCueFingerprint(updatedSelected.value.currentBaselineLocalCueFingerprint);
+      }
+    }
+
+    const nextRecovery = failedItems.length > 0 ? { ...recovery, items: failedItems } : null;
+    if (selectedUserIdRef.current === recovery.userId) setApplyRebaseRecovery(nextRecovery);
+    try {
+      if (selectedUserIdRef.current === recovery.userId && selectedImportIdRef.current === recovery.importId) {
+        await refreshApplyDrafts();
+      }
+    } catch (error) {
+      setApplyDraftLoadError(error instanceof Error
+        ? `Saved cue drafts could not be refreshed after Apply: ${error.message}`
+        : 'Saved cue drafts could not be refreshed after Apply.');
+    }
+    return nextRecovery;
+  }, [refreshApplyDrafts]);
+
+  const handleRetryApplyRebase = useCallback(async () => {
+    const recovery = applyRebaseRecovery;
+    if (!recovery || applyBusy) return;
+    if (selectedUserIdRef.current !== recovery.userId) {
+      setApplyMessage('The authenticated user changed. The previous Apply rebase proof cannot be reused in this session.');
+      setApplyRebaseRecovery(null);
+      return;
+    }
+    if (selectedImportIdRef.current !== recovery.importId) {
+      setApplyMessage('Return to the import that was just applied before retrying its verified baseline rebase.');
+      return;
+    }
+    setApplyBusy(true);
+    setApplyMessage(null);
+    try {
+      const remaining = await persistVerifiedApplyRebase(recovery);
+      setApplyMessage(remaining
+        ? 'Rekordbox is already updated and verified, but its cloud baseline still could not be rebased. Editing and further Apply actions remain blocked for the affected track(s). Retry this rebase or refresh/re-import before continuing.'
+        : 'The verified local Rekordbox state was successfully recorded as the new cue baseline. Editing and Apply are safe to continue.');
+    } finally {
+      setApplyBusy(false);
+    }
+  }, [applyBusy, applyRebaseRecovery, persistVerifiedApplyRebase]);
+
+  useEffect(() => {
+    setApplyRebaseRecovery(null);
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2033,6 +2157,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     desiredFingerprint: row.desiredFingerprint,
     importedBaselineFingerprint: row.importedBaselineFingerprint,
     importedBaselineLocalCueFingerprint: row.importedBaselineLocalCueFingerprint,
+    currentBaselineFingerprint: row.currentBaselineFingerprint,
+    currentBaselineLocalCueFingerprint: row.currentBaselineLocalCueFingerprint,
     masterDbId: row.masterDbId,
     masterContentId: row.masterContentId,
     desiredDocument: row.desiredDocument as unknown as Record<string, unknown>,
@@ -2041,6 +2167,12 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const handleApplyPreflight = useCallback(async (kind: 'track' | 'all') => {
     const desktop = window.dropdexDesktop;
     if (!desktop?.isElectron || !applyBridgeAvailable || !userId || !importId) return;
+    if (applyRebaseRecovery && applyRebaseRecovery.userId === userId && applyRebaseRecovery.items.length > 0) {
+      setApplyMessage(applyRebaseRecovery.importId === importId
+        ? 'A verified Rekordbox write is waiting for its cloud baseline rebase. Retry that rebase before any further Apply action.'
+        : 'Another import has a verified Rekordbox write waiting for its cloud baseline rebase. Return to that import and resolve it before another Apply action.');
+      return;
+    }
     if (kind === 'track' && !selectedTrackId) {
       setApplyMessage('Select a track before using Apply Track.');
       return;
@@ -2068,7 +2200,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         return;
       }
       const result = await desktop.cueApplyPreflight(scope, desktopDrafts(selection.rows));
-      if (generation !== applyGenerationRef.current || selectedUserIdRef.current !== userId) return;
+      if (generation !== applyGenerationRef.current
+        || selectedUserIdRef.current !== userId
+        || selectedImportIdRef.current !== importId) return;
       if (scope.kind === 'track' && selectedTrackIdRef.current !== scope.trackId) {
         setApplyMessage('The selected track changed during Apply Track preflight. Run Apply Track again for the current selection.');
         return;
@@ -2081,7 +2215,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     } finally {
       if (generation === applyGenerationRef.current) setApplyBusy(false);
     }
-  }, [applyBridgeAvailable, desktopDrafts, importId, refreshApplyDrafts, selectedCueBaselineEditable, selectedCueBlockReason, selectedTrackId, userId]);
+  }, [applyBridgeAvailable, applyRebaseRecovery, desktopDrafts, importId, refreshApplyDrafts, selectedCueBaselineEditable, selectedCueBlockReason, selectedTrackId, userId]);
 
   const handleConfirmApply = useCallback(async () => {
     const desktop = window.dropdexDesktop;
@@ -2129,7 +2263,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         return;
       }
       const result = await desktop.cueApply(preflight.token, scope, desktopDrafts(applySnapshot));
-      if (generation !== applyGenerationRef.current || selectedUserIdRef.current !== userId) return;
+      if (generation !== applyGenerationRef.current
+        || selectedUserIdRef.current !== userId
+        || selectedImportIdRef.current !== importId) return;
       setApplyResult(result);
       setApplyPreflight(null);
       setApplyScope(null);
@@ -2146,38 +2282,31 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
             .filter((track) => track.state === 'verified' && /^[0-9a-f]{64}$/.test(track.local_cue_fingerprint ?? ''))
             .map((track) => [track.content_id, track.local_cue_fingerprint as string]),
         );
-        const statusUpdates = await Promise.allSettled(applySnapshot.map((row) => {
-          const postApplyLocalCueFingerprint = verifiedByContentId.get(row.rekordboxContentId);
-          if (!postApplyLocalCueFingerprint) {
-            return Promise.reject(new Error(`Verified Apply did not return a local cue fingerprint for ${row.rekordboxContentId}.`));
-          }
-          return markCueDraftApplied({
-            trackId: row.trackId,
-            revision: row.revision,
-            desiredFingerprint: row.desiredFingerprint,
-            postApplyLocalCueFingerprint,
-            operationId: result.operation_id,
-            resultSummary: summary,
-          });
-        }));
-        if (statusUpdates.some((item) => item.status === 'rejected')) {
-          setApplyMessage('Rekordbox was updated and verified, but one or more cloud apply-status updates could not be recorded. No newer draft was marked applied.');
+        const recovery: CueRebaseRecoveryState = {
+          userId,
+          importId,
+          operationId: result.operation_id,
+          summary,
+          items: applySnapshot.map((row) => ({
+            row,
+            // Bridge results use the trusted local master ContentID, which is
+            // masterContentId when available, not necessarily the imported
+            // rekordboxContentId exposed by the renderer.
+            postApplyLocalCueFingerprint: verifiedByContentId.get(row.masterContentId ?? row.rekordboxContentId) ?? null,
+          })),
+        };
+        // From this point forward the local DB is authoritative. Keep an
+        // explicit recovery record before cloud persistence so a failure cannot
+        // silently leave the editor using the pre-Apply comparison baseline.
+        setApplyRebaseRecovery(recovery);
+        const remainingRecovery = await persistVerifiedApplyRebase(recovery);
+        if (remainingRecovery) {
+          setApplyMessage('Rekordbox was updated and verified, but the cloud cue baseline could not be fully rebased. Editing and further Apply actions are blocked for the affected track(s) until the verified rebase is retried or the import is safely refreshed.');
         } else {
           setApplyMessage(scope.kind === 'track'
-            ? 'The selected track was applied to local Rekordbox and verified. Use Rekordbox normally to sync/export to USB later.'
-            : 'All selected saved cue drafts were applied to local Rekordbox and verified. Use Rekordbox normally to sync/export to USB later.');
+            ? 'The selected track was applied to local Rekordbox, verified, and rebased for the next edit.'
+            : 'All selected saved cue drafts were applied to local Rekordbox, verified, and rebased for the next edit.');
         }
-        if (selectedTrackId) {
-          const updated = statusUpdates.find((item) => item.status === 'fulfilled' && item.value.trackId === selectedTrackId);
-          if (updated?.status === 'fulfilled') {
-            setDraftAppliedRevision(updated.value.appliedRevision);
-            setDraftAppliedFingerprint(updated.value.appliedFingerprint);
-            setDraftDesiredFingerprint(updated.value.desiredFingerprint);
-            setDraftImportedBaselineFingerprint(updated.value.importedBaselineFingerprint);
-            setDraftImportedBaselineLocalCueFingerprint(updated.value.importedBaselineLocalCueFingerprint);
-          }
-        }
-        await refreshApplyDrafts();
       } else {
         setApplyMessage(result.state === 'rolled-back'
           ? 'Apply did not complete. The original local Rekordbox database was restored and rollback verification succeeded.'
@@ -2190,7 +2319,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     } finally {
       if (generation === applyGenerationRef.current) setApplyBusy(false);
     }
-  }, [applyBusy, applyPreflight, applyScope, applySnapshot, desktopDrafts, importId, refreshApplyDrafts, selectedCueBaselineEditable, selectedCueBlockReason, selectedTrackId, userId]);
+  }, [applyBusy, applyPreflight, applyScope, applySnapshot, desktopDrafts, importId, persistVerifiedApplyRebase, selectedCueBaselineEditable, selectedCueBlockReason, selectedTrackId, userId]);
 
   const handleAddCue = useCallback((family: 'hot' | 'memory', requestedMs: number, timingMode: CueTimingMode): string | null => {
     if (!selectedTrackId) return 'Select a track before editing cue points.';
@@ -2351,6 +2480,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       setDraftDesiredFingerprint(saved.desiredFingerprint);
       setDraftImportedBaselineFingerprint(saved.importedBaselineFingerprint);
       setDraftImportedBaselineLocalCueFingerprint(saved.importedBaselineLocalCueFingerprint);
+      setDraftCurrentBaselineFingerprint(saved.currentBaselineFingerprint);
+      setDraftCurrentBaselineLocalCueFingerprint(saved.currentBaselineLocalCueFingerprint);
       applyGenerationRef.current += 1;
       setApplyPreflight(null);
       setApplyScope(null);
@@ -2412,6 +2543,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         draftStatus={cueDraftStatus}
         saving={savingCueDraft}
         persistenceMessage={draftPersistenceMessage}
+        editingBlockedReason={selectedCueRebaseRecoveryPending ? selectedCueBlockReason : null}
         onRetryCues={retrySelectedCueBaseline}
         onRetryWaveform={() => selectedTrackId && retryWaveform([selectedTrackId])}
         onAddCue={handleAddCue}
@@ -2423,16 +2555,17 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         onSave={handleSave}
         applyTrackAvailable={applyBridgeAvailable
           && !applyDraftLoadError
+          && !applyBlockedByPendingRebase
           && Boolean(selectedTrackId)
           && selectedCueBaselineEditable
           && applyDrafts.some((row) => row.trackId === selectedTrackId)}
-        applyAllCount={applyBridgeAvailable && !applyDraftLoadError ? applyDrafts.length : 0}
+        applyAllCount={applyBridgeAvailable && !applyDraftLoadError && !applyBlockedByPendingRebase ? applyDrafts.length : 0}
         applying={applyBusy}
         onApplyTrack={() => { void handleApplyPreflight('track'); }}
         onApplyAll={() => { void handleApplyPreflight('all'); }}
       />
 
-      {(applyPreflight || applyResult || applyMessage || applyDraftLoadError) && (
+      {(applyPreflight || applyResult || applyMessage || applyDraftLoadError || applyRebaseRecovery) && (
         <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4" role="status">
           {applyPreflight ? (
             <div className="space-y-3">
@@ -2511,7 +2644,20 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
               </div>
             </div>
           ) : (
-            <div className="space-y-1 text-xs text-muted-foreground">
+            <div className="space-y-2 text-xs text-muted-foreground">
+              {applyRebaseRecovery && applyRebaseRecovery.userId === userId && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-400/25 bg-red-400/[0.06] p-3 text-red-100">
+                  <div>
+                    <p className="font-black">Verified local write needs baseline recovery</p>
+                    <p className="mt-1 text-red-100/80">
+                      Rekordbox already contains the verified cue state for {applyRebaseRecovery.items.length} track{applyRebaseRecovery.items.length === 1 ? '' : 's'}, but cloud baseline persistence is incomplete. Further Apply actions are blocked until this proof is recorded or the import is safely refreshed.
+                    </p>
+                  </div>
+                  <ControlButton variant="surface" disabled={applyBusy || applyRebaseRecovery.importId !== importId} onClick={() => { void handleRetryApplyRebase(); }}>
+                    {applyBusy ? 'Retrying…' : applyRebaseRecovery.importId === importId ? 'Retry verified rebase' : 'Return to affected import'}
+                  </ControlButton>
+                </div>
+              )}
               {applyResult && <p className="font-bold text-foreground">Last apply result: {applyResult.state} · {applyResult.tracks.filter((track) => track.state === 'verified').length}/{applyResult.tracks.length} tracks verified{applyResult.backup_identity ? ` · backup ${applyResult.backup_identity.slice(0, 12)}…` : ''}</p>}
               {applyMessage && <p>{applyMessage}</p>}
               {applyDraftLoadError && <p className="text-red-300">{applyDraftLoadError}</p>}
