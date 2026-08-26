@@ -197,3 +197,38 @@ drafts may still load, but preflight does not issue an apply token when this
 baseline or strong identity is unavailable, ambiguous, stale, or mismatched.
 The existing generation/per-track token check still protects the interval from
 successful preflight through the final live handoff.
+
+## Stage 8 cue round-trip field policy
+
+DropDex treats the saved cue document as the desired semantic cue set, but the
+Rekordbox color encodings are not interchangeable. Hot Cues continue to use
+`ColorTableIndex` plus the existing point/loop `Color` sentinel. Memory Cues use
+an explicit writer-facing `rekordboxColor` value for local `DjmdCue.Color`.
+That value is resolved in the cue domain from supported imported color evidence
+and is persisted with the draft so the bridge never re-guesses it from a UI
+label or a color-table number during destructive apply.
+
+The Device Library Plus `cue` table exposes `colorTableIndex`, not the local
+`master.db` `DjmdCue.Color` column. PCO2 also uses an eight-color export palette
+that is distinct from the seven supported Memory Cue `DjmdCue.Color` values.
+For that reason, unsupported/ambiguous imported Memory colors remain unresolved:
+they may load for inspection, but they cannot produce a comparable imported
+local-cue baseline or pass the writer-plan guard. Legacy drafts missing
+`rekordboxColor` follow the same fail-closed policy.
+
+Writer field ownership for the current Stage 8 contract is:
+
+- editable/canonical: cue family and A-H slot, point/loop timing, comment,
+  active-loop state, `ColorTableIndex`, and the explicit Memory Cue
+  `rekordboxColor` value;
+- writer-derived: new cue row ID/UUID, current local `ContentID`/`ContentUUID`,
+  frame/MPEG sentinel fields, `BeatLoopSize`, and `CueMicrosec` under the
+  existing writer contract;
+- unsupported for silent preservation: imported Memory color representations
+  that cannot be mapped deterministically to the supported local
+  `DjmdCue.Color` values. These block destructive apply instead of being
+  normalized to another color.
+
+Staged verification includes both `Color` and `ColorTableIndex`, so a supported
+Memory Cue color mismatch fails verification before live replacement; the
+existing rollback path remains unchanged.

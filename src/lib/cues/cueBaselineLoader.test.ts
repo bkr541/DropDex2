@@ -83,6 +83,7 @@ function draftCue(overrides: Partial<CueDraftCue> = {}): CueDraftCue {
     colorTableIndex: null,
     colorHex: '#ffffff',
     colorName: null,
+    rekordboxColor: null,
     comment: null,
     isActiveLoop: false,
     beatLoopNumerator: null,

@@ -158,6 +158,14 @@ class TestParsePco2:
         assert entries[0].cue_family == "hot"
         assert entries[0].hot_cue_slot == 3
 
+    def test_hot_cue_h_remains_slot_8_through_parser(self):
+        entry = _pco2_entry(hot_cue=8, time=1000)
+        tag = _pco2_tag([entry])
+        entries, _ = _parse_pco2(tag, _make_asset("EXT"))
+
+        assert entries[0].cue_family == "hot"
+        assert entries[0].hot_cue_slot == 8
+
     def test_point_type_cue(self):
         entry = _pco2_entry(type_=1)
         tag = _pco2_tag([entry])

@@ -2,18 +2,6 @@ import type { CueDraftCue, CueDraftDocument } from './cueDraftDocument';
 import { stableStringify } from './cueDraftDocument';
 
 const HOT_KIND_BY_SLOT: Record<number, number> = { 1: 1, 2: 2, 3: 3, 4: 5, 5: 6, 6: 7, 7: 8, 8: 9 };
-const MEMORY_COLOR_BY_NAME: Record<string, number> = {
-  red: 1,
-  orange: 2,
-  yellow: 3,
-  green: 4,
-  aqua: 5,
-  cyan: 5,
-  blue: 6,
-  purple: 7,
-  violet: 7,
-};
-
 /**
  * Per-track cue semantics that DropDex can derive authoritatively from the
  * imported Device Library Plus cue rows and reproduce through the staging
@@ -37,15 +25,12 @@ export interface LocalCueBaselinePayload {
 
 function cueColor(cue: CueDraftCue): number {
   if (cue.family === 'hot') return cue.pointType === 'loop' ? 255 : -1;
-  if (cue.colorName) {
-    const mapped = MEMORY_COLOR_BY_NAME[cue.colorName.trim().toLowerCase()];
-    if (mapped != null) return mapped;
+  if (cue.rekordboxColor == null) {
+    throw new Error('Imported Memory Cue baseline is missing canonical DjmdCue.Color metadata.');
   }
-  if (cue.colorTableIndex != null && cue.colorTableIndex >= 1 && cue.colorTableIndex <= 7) {
-    return cue.colorTableIndex;
-  }
-  return -1;
+  return cue.rekordboxColor;
 }
+
 
 function localCueRow(cue: CueDraftCue): LocalCueBaselineRow {
   const isLoop = cue.pointType === 'loop';
@@ -73,6 +58,10 @@ export function createImportedLocalCueBaselinePayload(
   // displayed and edited, but cannot prove what local master.db contained at
   // import time.
   if (document.cues.some((cue) => !cue.sourceDbPresent || cue.sourceConflict)) return null;
+  // Complete-set replacement cannot safely reconstruct an imported Memory Cue
+  // when the export evidence could not be mapped to a supported local
+  // DjmdCue.Color representation (including legacy pre-Stage-8 drafts).
+  if (document.cues.some((cue) => cue.family === 'memory' && cue.rekordboxColor == null)) return null;
 
   const cues = document.cues
     .map((cue) => localCueRow(cue))

@@ -26,6 +26,8 @@ export interface WorkingCue {
   colorTableIndex: number | null;
   colorHex: string | null;
   colorName: string | null;
+  /** Canonical writer-facing DjmdCue.Color value for Memory Cue round-trip fidelity. */
+  rekordboxColor?: number | null;
   comment: string | null;
   isActiveLoop: boolean | null;
   beatLoopNumerator: number | null;
@@ -73,6 +75,28 @@ const HOT_REKORDBOX_KIND_BY_SLOT: Readonly<Record<number, number>> = Object.free
   6: 7,
   7: 8,
   8: 9,
+});
+
+const MEMORY_REKORDBOX_COLOR_BY_NAME: Readonly<Record<string, number>> = Object.freeze({
+  red: 1,
+  orange: 2,
+  yellow: 3,
+  green: 4,
+  aqua: 5,
+  cyan: 5,
+  blue: 6,
+  purple: 7,
+  violet: 7,
+});
+
+const MEMORY_REKORDBOX_COLOR_BY_PCO2_HEX: Readonly<Record<string, number>> = Object.freeze({
+  '#FF0000': 1,
+  '#FF8000': 2,
+  '#FFFF00': 3,
+  '#00FF00': 4,
+  '#00FFFF': 5,
+  '#0000FF': 6,
+  '#8000FF': 7,
 });
 
 export const HOT_CUE_MIN_SLOT = 1;
@@ -154,6 +178,44 @@ function stableMetadataRecord(value: Record<string, unknown> | null): Record<str
   return value == null ? null : stableMetadataValue(value) as Record<string, unknown>;
 }
 
+function importedMemoryRekordboxColor(row: CueRow): number | null {
+  const hex = row.color_hex?.trim().toUpperCase() ?? null;
+  if (hex) {
+    // PCO2 has an eight-color export palette that includes Pink. Local
+    // DjmdCue.Color uses the seven Memory Cue values Red..Purple, so only
+    // representable colors are admitted here. Custom/Pink values stay
+    // unresolved and therefore block destructive round-trip apply.
+    return MEMORY_REKORDBOX_COLOR_BY_PCO2_HEX[hex] ?? null;
+  }
+
+  const colorName = row.color_name?.trim().toLowerCase() ?? null;
+  if (colorName) {
+    const mapped = MEMORY_REKORDBOX_COLOR_BY_NAME[colorName];
+    if (mapped != null) return mapped;
+  }
+
+  // PCO2 color_id 0 explicitly means no color. Without PCO2 evidence, a
+  // null/zero Device Library Plus ColorTableIndex is ambiguous because the
+  // local master.db Memory Cue color is stored in DjmdCue.Color instead.
+  if (row.source_kind === 'PCO2' && row.color_table_index === 0) return -1;
+  return null;
+}
+
+function selectedMemoryRekordboxColor(
+  colorTableIndex: number | null,
+  colorName: string | null,
+): number | null {
+  if (colorName) {
+    const mapped = MEMORY_REKORDBOX_COLOR_BY_NAME[colorName.trim().toLowerCase()];
+    if (mapped != null) return mapped;
+  }
+  if (colorTableIndex == null) return -1;
+  if (Number.isInteger(colorTableIndex) && colorTableIndex >= 1 && colorTableIndex <= 7) {
+    return colorTableIndex;
+  }
+  return null;
+}
+
 function exactMilliseconds(value: number): number | null {
   if (!Number.isFinite(value) || value < 0) return null;
   return Math.round(value);
@@ -196,6 +258,7 @@ export function normalizeImportedCues(trackId: string, rows: CueRow[]): WorkingC
     colorTableIndex: row.color_table_index,
     colorHex: row.color_hex,
     colorName: row.color_name,
+    rekordboxColor: row.cue_family === 'memory' ? importedMemoryRekordboxColor(row) : null,
     comment: row.comment,
     isActiveLoop: row.is_active_loop,
     beatLoopNumerator: row.beat_loop_numerator,
@@ -241,6 +304,7 @@ function canonicalCue(cue: WorkingCue) {
     colorTableIndex: cue.colorTableIndex,
     colorHex: cue.colorHex,
     colorName: cue.colorName,
+    rekordboxColor: cue.rekordboxColor ?? null,
     comment: cue.comment,
     isActiveLoop: cue.isActiveLoop,
     beatLoopNumerator: cue.beatLoopNumerator,
@@ -326,6 +390,7 @@ export function addWorkingCue(
     colorTableIndex: null,
     colorHex: null,
     colorName: null,
+    rekordboxColor: options.family === 'memory' ? -1 : null,
     comment: null,
     isActiveLoop: null,
     beatLoopNumerator: null,
@@ -528,11 +593,16 @@ export function editWorkingCue(
   if (action.kind === 'family') {
     if (action.family === 'memory') {
       const previousSlot = cue.family === 'hot' ? cue.hotCueSlot : null;
+      const rekordboxColor = selectedMemoryRekordboxColor(cue.colorTableIndex, cue.colorName);
+      if (rekordboxColor == null) {
+        return { cues, beat: null, error: 'The current color cannot be represented safely as a Rekordbox Memory Cue color. Choose a supported Memory color or clear it first.' };
+      }
       next[cueIndex] = {
         ...cue,
         family: 'memory',
         hotCueSlot: null,
         rekordboxKind: null,
+        rekordboxColor,
         pairedHotCueSlot: null,
       };
       const withoutGeneratedPair = previousSlot == null
@@ -666,11 +736,18 @@ export function editWorkingCue(
     if (action.colorTableIndex != null && (!Number.isInteger(action.colorTableIndex) || action.colorTableIndex < 0)) {
       return { cues, beat: null, error: 'Rekordbox color index must be a non-negative integer or empty.' };
     }
+    const rekordboxColor = cue.family === 'memory'
+      ? selectedMemoryRekordboxColor(action.colorTableIndex, action.colorName)
+      : cue.rekordboxColor ?? null;
+    if (cue.family === 'memory' && rekordboxColor == null) {
+      return { cues, beat: null, error: 'That color cannot be represented safely as a Rekordbox Memory Cue color.' };
+    }
     next[cueIndex] = {
       ...cue,
       colorTableIndex: action.colorTableIndex,
       colorHex: action.colorHex,
       colorName: action.colorName,
+      rekordboxColor,
     };
     return cueResult(next);
   }

@@ -29,17 +29,6 @@ from .security import (
 )
 
 HOT_KIND_BY_SLOT = {1: 1, 2: 2, 3: 3, 4: 5, 5: 6, 6: 7, 7: 8, 8: 9}
-MEMORY_COLOR_BY_NAME = {
-    "red": 1,
-    "orange": 2,
-    "yellow": 3,
-    "green": 4,
-    "aqua": 5,
-    "cyan": 5,
-    "blue": 6,
-    "purple": 7,
-    "violet": 7,
-}
 VERIFY_FIELDS = (
     "ContentID",
     "ContentUUID",
@@ -70,22 +59,21 @@ class StagingWriterError(RuntimeError):
 
 
 def _cue_color(cue: PlannedCue) -> int:
-    """Map saved semantic color data to the local ``DjmdCue.Color`` field.
+    """Return the explicit local ``DjmdCue.Color`` representation.
 
-    DJCues-compatible hot cues primarily use ``ColorTableIndex`` and set Color
-    to -1 (255 for loop-style hot cues). Memory cue Color is a small enum. When
-    a saved memory cue carries a known color name or a 1-7 index, preserve it;
-    otherwise use Rekordbox's no-color sentinel rather than inventing a color.
+    Hot cues continue to use Rekordbox's established Color sentinels. Memory
+    cues must arrive with the canonical writer-facing Color value already
+    resolved by the DropDex cue domain. The writer does not guess from display
+    names or ColorTableIndex because those use different Rekordbox encodings.
     """
     if cue.family == "hot":
         return 255 if cue.point_type == "loop" else -1
-    if cue.color_name:
-        mapped = MEMORY_COLOR_BY_NAME.get(cue.color_name.strip().lower())
-        if mapped is not None:
-            return mapped
-    if cue.color_table_index is not None and 1 <= cue.color_table_index <= 7:
-        return cue.color_table_index
-    return -1
+    if cue.rekordbox_color is None:
+        raise StagingWriterError(
+            "Memory Cue plan is missing canonical DjmdCue.Color metadata.",
+            code="memory-color-unresolved",
+        )
+    return cue.rekordbox_color
 
 
 def build_djmdcue_values(

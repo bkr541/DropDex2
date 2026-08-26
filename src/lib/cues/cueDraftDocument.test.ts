@@ -5,6 +5,7 @@ import {
   cueDraftStrategySummary,
   fingerprintCueDraftDocument,
   hydrateCueDraftDocument,
+  parseCueDraftDocument,
   stableStringify,
   validateCueDraftWorkingSet,
 } from './cueDraftDocument';
@@ -25,6 +26,7 @@ function cue(overrides: Partial<WorkingCue> = {}): WorkingCue {
     colorTableIndex: null,
     colorHex: null,
     colorName: null,
+    rekordboxColor: null,
     comment: null,
     isActiveLoop: null,
     beatLoopNumerator: null,
@@ -90,6 +92,36 @@ describe('cue draft canonical document', () => {
     expect(JSON.stringify(first)).not.toContain('editorId');
     expect(first.cues[0].startMs).toBe(8000);
     expect(await fingerprintCueDraftDocument(first)).toBe(await fingerprintCueDraftDocument(second));
+  });
+
+  it('round-trips canonical Rekordbox Memory Cue Color and loads legacy drafts safely', () => {
+    const document = createCueDraftDocument({
+      ...identity,
+      cues: [cue({
+        importedCueId: 'memory-1',
+        rekordboxCueId: 'rb-memory-1',
+        family: 'memory',
+        hotCueSlot: null,
+        source: 'imported',
+        sourceDbPresent: true,
+        colorTableIndex: 5,
+        colorName: 'Aqua',
+        rekordboxColor: 7,
+      })],
+    });
+    expect(document.cues[0].rekordboxColor).toBe(7);
+    expect(hydrateCueDraftDocument(document)[0].rekordboxColor).toBe(7);
+
+    const legacy = JSON.parse(JSON.stringify(document)) as Record<string, unknown>;
+    delete (legacy.cues as Array<Record<string, unknown>>)[0].rekordboxColor;
+    expect(parseCueDraftDocument(legacy).cues[0].rekordboxColor).toBeNull();
+  });
+
+  it('rejects unsupported persisted Memory Cue Color codes instead of normalizing them', () => {
+    expect(() => createCueDraftDocument({
+      ...identity,
+      cues: [cue({ rekordboxColor: 8 })],
+    })).toThrow(/supported Memory Cue Color value/);
   });
 
   it('round-trips imported/manual/auto writer-facing fields into working state', () => {

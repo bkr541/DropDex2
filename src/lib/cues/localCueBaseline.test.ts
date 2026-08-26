@@ -22,6 +22,7 @@ function cue(overrides: Partial<WorkingCue> = {}): WorkingCue {
     colorTableIndex: null,
     colorHex: null,
     colorName: null,
+    rekordboxColor: -1,
     comment: 'Memory',
     isActiveLoop: null,
     beatLoopNumerator: null,
@@ -78,6 +79,19 @@ describe('local Rekordbox cue baseline fingerprint', () => {
       ActiveLoop: 1,
       Comment: 'Loop',
     })]);
+  });
+
+  it('uses the preserved canonical Memory Cue Color rather than reconstructing it during apply', () => {
+    const payload = createImportedLocalCueBaselinePayload(document([
+      cue({ colorTableIndex: 5, colorName: 'Aqua', rekordboxColor: 7 }),
+    ]));
+    expect(payload?.cues[0]).toMatchObject({ Kind: 0, Color: 7, ColorTableIndex: 5 });
+  });
+
+  it('blocks comparison for legacy or unsupported imported Memory Cues missing canonical Color metadata', async () => {
+    const legacy = document([cue({ rekordboxColor: null })]);
+    expect(createImportedLocalCueBaselinePayload(legacy)).toBeNull();
+    expect(await fingerprintImportedLocalCueBaseline(legacy)).toBeNull();
   });
 
   it('blocks comparison when the imported snapshot contains an ANLZ-only cue', async () => {

@@ -18,11 +18,13 @@ def cue(**overrides):
         "colorTableIndex": 18,
         "colorHex": None,
         "colorName": "Green",
+        "rekordboxColor": -1,
         "comment": "First beat",
         "isActiveLoop": False,
         "beatLoopNumerator": None,
         "beatLoopDenominator": None,
         "rekordboxKind": 1,
+        "sourceDbPresent": True,
     }
     value.update(overrides)
     return value
@@ -91,6 +93,31 @@ class TestWriterPlanAdapter:
         assert planned.color_name == "Aqua"
         assert planned.comment == "Exact drop loop"
         assert planned.is_active_loop is True
+
+    def test_canonical_memory_color_survives_saved_document_to_writer_plan(self):
+        planned = adapt_saved_cue_drafts([saved_row(cues=[cue(
+            family="memory",
+            hotCueSlot=None,
+            rekordboxKind=None,
+            colorTableIndex=5,
+            colorName="Aqua",
+            rekordboxColor=7,
+        )])]).tracks[0].cues[0]
+        assert planned.rekordbox_color == 7
+        assert planned.source_db_present is True
+
+    def test_legacy_imported_memory_without_canonical_color_is_blocked(self):
+        legacy = cue(family="memory", hotCueSlot=None, rekordboxKind=None)
+        legacy.pop("rekordboxColor")
+        with pytest.raises(CuePlanValidationError, match="missing canonical Rekordbox Color metadata"):
+            adapt_saved_cue_drafts([saved_row(cues=[legacy])])
+
+    def test_rejects_unsupported_memory_color_code(self):
+        invalid = cue(
+            family="memory", hotCueSlot=None, rekordboxKind=None, rekordboxColor=8
+        )
+        with pytest.raises(CuePlanValidationError, match="unsupported Rekordbox Color value"):
+            adapt_saved_cue_drafts([saved_row(cues=[invalid])])
 
     def test_rejects_unsaved_or_zero_revision(self):
         with pytest.raises(CuePlanValidationError, match="revision"):

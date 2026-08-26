@@ -20,7 +20,14 @@ from rekordbox_bridge.security import (
     file_identity,
 )
 from rekordbox_bridge.writer_models import TargetSafetyResult
-from tests.test_writer import SqliteTestDb, Tables, draft_cue, draft_row, init_fixture
+from tests.test_writer import (
+    SqliteTestDb,
+    Tables,
+    draft_cue,
+    draft_row,
+    init_fixture,
+    local_baseline_fingerprint,
+)
 
 
 NOW = datetime(2026, 8, 20, 22, 0, tzinfo=timezone.utc)
@@ -336,6 +343,60 @@ class TestStage6TokenAndStaleState:
 
 
 class TestStage6TransactionalApply:
+    def test_unchanged_supported_memory_color_round_trips_without_semantic_drift(self, tmp_path):
+        path = fixture_db(tmp_path)
+        db = SqliteTestDb(str(path))
+        db.conn.execute(
+            "update djmdCue set Color=5, ColorTableIndex=6, Comment='Aqua memory' where ContentID='101'"
+        )
+        db.commit()
+        db.close()
+
+        baseline = local_baseline_fingerprint([{
+            "InMsec": 500, "InFrame": 0, "InMpegFrame": 0,
+            "InMpegAbs": 0, "OutMsec": -1, "OutFrame": -1, "OutMpegFrame": -1,
+            "OutMpegAbs": -1, "Kind": 0, "Color": 5, "ColorTableIndex": 6,
+            "ActiveLoop": -1, "Comment": "Aqua memory", "BeatLoopSize": 0, "CueMicrosec": 0,
+        }])
+        rows = [draft_row(cues=[draft_cue(
+            rekordboxCueId="10",
+            family="memory",
+            hotCueSlot=None,
+            rekordboxKind=None,
+            pointType="cue",
+            startMs=500,
+            endMs=None,
+            colorTableIndex=6,
+            colorHex="#00FFFF",
+            colorName="Aqua",
+            rekordboxColor=5,
+            comment="Aqua memory",
+            isActiveLoop=False,
+        )], local_baseline=baseline)]
+        store = ApplyTokenStore()
+
+        pf = preflight(path, rows, store)
+        assert pf.ok is True
+        diff = pf.tracks[0].diff
+        assert diff is not None
+        assert diff.added == ()
+        assert diff.removed == ()
+        assert diff.changed == ()
+
+        result = apply(path, pf.token, rows, store)
+
+        assert result.ok is True
+        assert result.state == "applied"
+        reopened = cue_rows(path, "101")
+        assert len(reopened) == 1
+        memory = reopened[0]
+        assert memory.Kind == 0
+        assert memory.InMsec == 500
+        assert memory.OutMsec == -1
+        assert memory.Color == 5
+        assert memory.ColorTableIndex == 6
+        assert memory.Comment == "Aqua memory"
+
     def test_stage5_edited_fields_flow_through_real_preflight_apply_and_live_verification(self, tmp_path):
         path = fixture_db(tmp_path)
         store = ApplyTokenStore()
@@ -363,6 +424,7 @@ class TestStage6TransactionalApply:
                 colorTableIndex=5,
                 colorHex=None,
                 colorName="Aqua",
+                rekordboxColor=5,
                 comment="Stage 5 exact loop",
                 isActiveLoop=True,
                 beatLoopNumerator=None,

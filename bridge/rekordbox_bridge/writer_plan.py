@@ -87,11 +87,13 @@ def _canonical_plan_payload(tracks: Sequence[PlannedTrack]) -> dict[str, Any]:
                         "colorTableIndex": cue.color_table_index,
                         "colorHex": cue.color_hex,
                         "colorName": cue.color_name,
+                        "rekordboxColor": cue.rekordbox_color,
                         "comment": cue.comment,
                         "isActiveLoop": cue.is_active_loop,
                         "beatLoopNumerator": cue.beat_loop_numerator,
                         "beatLoopDenominator": cue.beat_loop_denominator,
                         "rekordboxKind": cue.rekordbox_kind,
+                        "sourceDbPresent": cue.source_db_present,
                     }
                     for cue in track.cues
                 ],
@@ -158,6 +160,22 @@ def _parse_cue(raw_value: Any, index: int) -> PlannedCue:
     if family == "memory" and rekordbox_kind not in (None, 0):
         raise CuePlanValidationError(f"Memory Cue {index + 1} has an invalid rekordboxKind.")
 
+    source_db_present = raw.get("sourceDbPresent", False)
+    if not isinstance(source_db_present, bool):
+        raise CuePlanValidationError(f"Cue {index + 1} sourceDbPresent must be boolean.")
+    rekordbox_color = _nullable_int(raw.get("rekordboxColor"), f"Cue {index + 1} rekordboxColor")
+    if family == "memory":
+        if rekordbox_color is None:
+            qualifier = "Imported " if source_db_present else ""
+            raise CuePlanValidationError(
+                f"{qualifier}Memory Cue {index + 1} is missing canonical Rekordbox Color metadata; "
+                "refresh/re-import and rebase this draft before destructive apply."
+            )
+        if rekordbox_color != -1 and not 1 <= rekordbox_color <= 7:
+            raise CuePlanValidationError(
+                f"Memory Cue {index + 1} has an unsupported Rekordbox Color value."
+            )
+
     beat_num = _nullable_int(raw.get("beatLoopNumerator"), f"Cue {index + 1} beatLoopNumerator")
     beat_den = _nullable_int(raw.get("beatLoopDenominator"), f"Cue {index + 1} beatLoopDenominator")
     if beat_num is not None and beat_num < 0:
@@ -182,6 +200,8 @@ def _parse_cue(raw_value: Any, index: int) -> PlannedCue:
         imported_cue_id=_nullable_string(raw.get("importedCueId"), f"Cue {index + 1} importedCueId"),
         rekordbox_cue_id=_nullable_string(raw.get("rekordboxCueId"), f"Cue {index + 1} rekordboxCueId"),
         dedupe_key=_nullable_string(raw.get("dedupeKey"), f"Cue {index + 1} dedupeKey"),
+        rekordbox_color=rekordbox_color,
+        source_db_present=source_db_present,
     )
 
 

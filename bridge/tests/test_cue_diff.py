@@ -56,6 +56,7 @@ def desired_cue(
         beat_loop_denominator=None,
         rekordbox_kind=kind_by_slot.get(slot) if family == "hot" else None,
         rekordbox_cue_id=cue_id,
+        rekordbox_color=-1 if family == "memory" else None,
     )
 
 

@@ -27,6 +27,8 @@ class PlannedCue:
     imported_cue_id: Optional[str] = None
     rekordbox_cue_id: Optional[str] = None
     dedupe_key: Optional[str] = None
+    rekordbox_color: Optional[int] = None
+    source_db_present: bool = False
 
 
 @dataclass(frozen=True)

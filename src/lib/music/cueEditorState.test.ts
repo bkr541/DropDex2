@@ -452,7 +452,7 @@ describe('cue editor working state', () => {
     expect(active.error).toBeNull();
     expect(active.cues[0]).toMatchObject({
       comment: 'Drop loop',
-      colorTableIndex: 6,
+      colorTableIndex: 5,
       colorHex: '#00FFFF',
       colorName: 'Aqua',
       isActiveLoop: true,
@@ -507,6 +507,46 @@ describe('cue editor working state', () => {
     expect(snapped.cues[0].startMs).toBe(1000);
     expect(exactAgain.cues[0].startMs).toBe(1234);
     expect(snappedAgain.cues[0].startMs).toBe(1000);
+  });
+
+  it('derives and preserves canonical Memory Cue Color from authoritative PCO2 color semantics', () => {
+    const [memory] = normalizeImportedCues('track-a', [importedCue({
+      cue_family: 'memory',
+      hot_cue_slot: null,
+      source_kind: 'PCO2',
+      color_table_index: 6,
+      color_hex: '#00FFFF',
+      color_name: 'stale-db-label',
+    })]);
+    expect(memory.rekordboxColor).toBe(5);
+
+    const recolored = editWorkingCue([memory], 'imported:cue-1', {
+      kind: 'color', colorTableIndex: 1, colorHex: null, colorName: 'Red',
+    });
+    expect(recolored.error).toBeNull();
+    expect(recolored.cues[0]).toMatchObject({ rekordboxColor: 1, colorTableIndex: 1, colorName: 'Red' });
+  });
+
+  it('keeps unsupported imported Memory Cue colors explicit instead of guessing a destructive writer value', () => {
+    const [pink] = normalizeImportedCues('track-a', [importedCue({
+      cue_family: 'memory',
+      hot_cue_slot: null,
+      source_kind: 'PCO2',
+      color_table_index: 1,
+      color_hex: '#FF007F',
+      color_name: 'Pink',
+    })]);
+    expect(pink.rekordboxColor).toBeNull();
+
+    const [noColor] = normalizeImportedCues('track-a', [importedCue({
+      cue_family: 'memory',
+      hot_cue_slot: null,
+      source_kind: 'PCO2',
+      color_table_index: 0,
+      color_hex: null,
+      color_name: null,
+    })]);
+    expect(noColor.rekordboxColor).toBe(-1);
   });
 
   it('preserves unusual Rekordbox color table indices instead of guessing a palette meaning', () => {

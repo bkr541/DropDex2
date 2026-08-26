@@ -19,6 +19,7 @@ export interface CueDraftCue {
   colorTableIndex: number | null;
   colorHex: string | null;
   colorName: string | null;
+  rekordboxColor: number | null;
   comment: string | null;
   isActiveLoop: boolean | null;
   beatLoopNumerator: number | null;
@@ -114,6 +115,10 @@ function canonicalCue(cue: WorkingCue): CueDraftCue {
 
   const colorTableIndex = normalizedInteger(cue.colorTableIndex, 'colorTableIndex');
   if (colorTableIndex != null && colorTableIndex < 0) throw new Error('colorTableIndex cannot be negative.');
+  const rekordboxColor = normalizedInteger(cue.rekordboxColor ?? null, 'rekordboxColor');
+  if (rekordboxColor != null && rekordboxColor !== -1 && (rekordboxColor < 1 || rekordboxColor > 7)) {
+    throw new Error('rekordboxColor must be -1 or a supported Memory Cue Color value from 1 through 7.');
+  }
   const beatLoopNumerator = normalizedInteger(cue.beatLoopNumerator, 'beatLoopNumerator');
   const beatLoopDenominator = normalizedInteger(cue.beatLoopDenominator, 'beatLoopDenominator');
   if (beatLoopNumerator != null && beatLoopNumerator < 0) throw new Error('beatLoopNumerator cannot be negative.');
@@ -131,6 +136,7 @@ function canonicalCue(cue: WorkingCue): CueDraftCue {
     colorTableIndex,
     colorHex: normalizedString(cue.colorHex),
     colorName: normalizedString(cue.colorName),
+    rekordboxColor,
     comment: normalizedString(cue.comment),
     isActiveLoop: cue.isActiveLoop,
     beatLoopNumerator,
@@ -284,6 +290,11 @@ export function parseCueDraftDocument(value: unknown): CueDraftDocument {
       colorTableIndex: typeof raw.colorTableIndex === 'number' ? raw.colorTableIndex : null,
       colorHex: typeof raw.colorHex === 'string' ? raw.colorHex : null,
       colorName: typeof raw.colorName === 'string' ? raw.colorName : null,
+      rekordboxColor: typeof raw.rekordboxColor === 'number'
+        && Number.isInteger(raw.rekordboxColor)
+        && (raw.rekordboxColor === -1 || (raw.rekordboxColor >= 1 && raw.rekordboxColor <= 7))
+        ? raw.rekordboxColor
+        : null,
       comment: typeof raw.comment === 'string' ? raw.comment : null,
       isActiveLoop: typeof raw.isActiveLoop === 'boolean' ? raw.isActiveLoop : null,
       beatLoopNumerator: typeof raw.beatLoopNumerator === 'number' ? raw.beatLoopNumerator : null,
@@ -327,6 +338,7 @@ export function hydrateCueDraftDocument(document: CueDraftDocument): WorkingCue[
     colorTableIndex: cue.colorTableIndex,
     colorHex: cue.colorHex,
     colorName: cue.colorName,
+    rekordboxColor: cue.rekordboxColor,
     comment: cue.comment,
     isActiveLoop: cue.isActiveLoop,
     beatLoopNumerator: cue.beatLoopNumerator,

@@ -145,11 +145,13 @@ def draft_cue(**overrides):
         "colorTableIndex": 18,
         "colorHex": None,
         "colorName": "Green",
+        "rekordboxColor": -1,
         "comment": "A",
         "isActiveLoop": False,
         "beatLoopNumerator": None,
         "beatLoopDenominator": None,
         "rekordboxKind": 1,
+        "sourceDbPresent": True,
     }
     value.update(overrides)
     return value
@@ -211,13 +213,25 @@ class TestDjmdCueBuilder:
 
     def test_memory_kind_is_zero(self):
         cue = planned_cue(
-            family="memory", hot_cue_slot=None, rekordbox_kind=None, color_name="Red"
+            family="memory", hot_cue_slot=None, rekordbox_kind=None,
+            color_name="Red", rekordbox_color=1, source_db_present=True,
         )
         row = build_djmdcue_values(
             cue, content_id="101", content_uuid="local-u", cue_id="1", cue_uuid="cue-u"
         )
         assert row["Kind"] == 0
         assert row["Color"] == 1
+
+    def test_memory_color_uses_canonical_writer_value_instead_of_reconstructing_from_display_metadata(self):
+        cue = planned_cue(
+            family="memory", hot_cue_slot=None, rekordbox_kind=None,
+            color_table_index=5, color_name="Aqua", rekordbox_color=7, source_db_present=True,
+        )
+        row = build_djmdcue_values(
+            cue, content_id="101", content_uuid="local-u", cue_id="1", cue_uuid="cue-u"
+        )
+        assert row["Color"] == 7
+        assert row["ColorTableIndex"] == 5
 
     def test_point_uses_djcues_out_sentinels(self):
         row = build_djmdcue_values(
@@ -271,7 +285,7 @@ class TestStagingMutationAndVerification:
                 draft_cue(hotCueSlot=1, rekordboxKind=1, comment="First"),
                 draft_cue(
                     family="memory", hotCueSlot=None, rekordboxKind=None,
-                    startMs=2000, colorTableIndex=4, colorName="Green", comment="Memory",
+                    startMs=2000, colorTableIndex=4, colorName="Green", rekordboxColor=4, comment="Memory",
                 ),
                 draft_cue(
                     hotCueSlot=8, rekordboxKind=9, pointType="loop", startMs=3000,
@@ -336,14 +350,17 @@ class TestStagingMutationAndVerification:
         assert len(still_there) == 1
         assert still_there[0].Comment == "existing"
 
-    def test_verifier_reports_mismatch(self, tmp_path):
+    def test_verifier_reports_supported_memory_color_mismatch(self, tmp_path):
         _, _, generation = self.setup_generation(tmp_path)
-        plan = adapt_saved_cue_drafts([draft_row()])
+        plan = adapt_saved_cue_drafts([draft_row(cues=[draft_cue(
+            family="memory", hotCueSlot=None, rekordboxKind=None,
+            colorTableIndex=5, colorName="Aqua", rekordboxColor=7, comment="Memory",
+        )])])
         expected = mutate_staging_database(
             plan, generation, database_factory=SqliteTestDb, tables_module=Tables
         )
         db = SqliteTestDb(str(generation.staging_path))
-        db.conn.execute("update djmdCue set Comment='tampered' where ContentID='101'")
+        db.conn.execute("update djmdCue set Color=5 where ContentID='101'")
         db.commit()
         db.close()
         verification = verify_staging_database(
