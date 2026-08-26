@@ -362,6 +362,8 @@ export async function fetchTrackCues(trackId: string): Promise<CueRow[]> {
   return state.cues;
 }
 
+const CUE_FETCH_PAGE_SIZE = 500;
+
 const CUE_SELECT =
   'id, import_id, track_id, rekordbox_cue_id, dedupe_key, cue_family, cue_family_authority, ' +
   'hot_cue_slot, point_type, source_kind, start_ms, end_ms, ' +
@@ -401,23 +403,35 @@ export async function fetchTracksCueStates(trackIds: string[]): Promise<CueFetch
 
   await Promise.all(chunks.map(async (chunk, chunkIndex) => {
     try {
-      const { data, error } = await supabase
-        .from('rekordbox_cues')
-        .select(CUE_SELECT)
-        .in('track_id', chunk)
-        .order('start_ms', { ascending: true });
+      const data: unknown[] = [];
+      let fetchError: { message?: string } | null = null;
+      for (let offset = 0; ; offset += CUE_FETCH_PAGE_SIZE) {
+        const page = await supabase
+          .from('rekordbox_cues')
+          .select(CUE_SELECT)
+          .in('track_id', chunk)
+          .order('start_ms', { ascending: true })
+          .order('id', { ascending: true })
+          .range(offset, offset + CUE_FETCH_PAGE_SIZE - 1);
 
-      if (error) {
-        const message = error.message || 'Failed to load cue points.';
-        result.errors.push({ chunkIndex, trackIds: chunk, error: message });
-        for (const trackId of chunk) result.states.set(trackId, cueFailureState(trackId, message, true));
-        return;
+        if (page.error) {
+          fetchError = page.error;
+          break;
+        }
+        if (!Array.isArray(page.data)) {
+          const message = 'Cue response schema is invalid: expected an array of rows.';
+          result.errors.push({ chunkIndex, trackIds: chunk, error: message });
+          for (const trackId of chunk) result.states.set(trackId, cueFailureState(trackId, message, false));
+          return;
+        }
+        data.push(...page.data);
+        if (page.data.length < CUE_FETCH_PAGE_SIZE) break;
       }
 
-      if (!Array.isArray(data)) {
-        const message = 'Cue response schema is invalid: expected an array of rows.';
+      if (fetchError) {
+        const message = fetchError.message || 'Failed to load cue points.';
         result.errors.push({ chunkIndex, trackIds: chunk, error: message });
-        for (const trackId of chunk) result.states.set(trackId, cueFailureState(trackId, message, false));
+        for (const trackId of chunk) result.states.set(trackId, cueFailureState(trackId, message, true));
         return;
       }
 

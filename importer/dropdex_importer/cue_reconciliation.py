@@ -96,7 +96,7 @@ def _anlz_evidence(entry: Any) -> dict[str, Any]:
         "point_type": str(entry.point_type),
         "start_ms": float(entry.start_ms),
         "end_ms": entry.end_ms,
-        "is_active_loop": bool(entry.is_active_loop),
+        "is_active_loop": entry.is_active_loop,
         "color_id": entry.color_id,
         "color_hex": entry.color_hex,
         "comment": entry.comment,
@@ -124,18 +124,26 @@ def _db_evidence(row: Mapping[str, Any]) -> dict[str, Any] | None:
     # Fresh Stage 2 DB rows retain their provisional evidence in source_payload
     # before ANLZ is allowed to overwrite normalized semantic fields.
     if "provisional_cue_family" in payload:
+        # Newer imports preserve all DB-owned normalized semantics in the raw
+        # payload. Prefer those values, including explicit nulls, so future
+        # reconciliation passes cannot accidentally capture already-mutated
+        # canonical fields. Older Stage 2 payloads fall back to the still-raw
+        # row for compatibility.
+        def db_value(key: str) -> Any:
+            return payload[key] if key in payload else row.get(key)
+
         return {
             "provisional_cue_family": payload.get("provisional_cue_family"),
-            "point_type": payload.get("point_type", row.get("point_type")),
-            "start_ms": payload.get("start_ms", row.get("start_ms")),
-            "end_ms": payload.get("end_ms", row.get("end_ms")),
-            "is_active_loop": row.get("is_active_loop"),
-            "color_table_index": row.get("color_table_index"),
-            "color_hex": row.get("color_hex"),
-            "color_name": row.get("color_name"),
-            "comment": row.get("comment"),
-            "beat_loop_numerator": row.get("beat_loop_numerator"),
-            "beat_loop_denominator": row.get("beat_loop_denominator"),
+            "point_type": db_value("point_type"),
+            "start_ms": db_value("start_ms"),
+            "end_ms": db_value("end_ms"),
+            "is_active_loop": db_value("is_active_loop"),
+            "color_table_index": db_value("color_table_index"),
+            "color_hex": db_value("color_hex"),
+            "color_name": db_value("color_name"),
+            "comment": db_value("comment"),
+            "beat_loop_numerator": db_value("beat_loop_numerator"),
+            "beat_loop_denominator": db_value("beat_loop_denominator"),
         }
 
     # A pre-Stage-2 row that was already ANLZ-merged did not retain a canonical
@@ -267,15 +275,20 @@ def _merge_anlz(row: Mapping[str, Any], entry: Any) -> dict[str, Any]:
             "source_kind": entry.source_tag,
             "start_ms": entry.start_ms,
             "end_ms": entry.end_ms,
-            "is_active_loop": entry.is_active_loop,
             "source_anlz_present": True,
             "source_conflict": False,
         }
     )
+    # PCOB/PCO2 proves that a loop exists, but does not prove local
+    # DjmdCue.ActiveLoop state. Preserve the DB-owned value unless a future
+    # parser explicitly supplies an authoritative active-loop value.
+    if entry.is_active_loop is not None:
+        merged["is_active_loop"] = entry.is_active_loop
     if entry.color_hex is not None:
         merged["color_hex"] = entry.color_hex
-    if entry.color_id is not None:
-        merged["color_table_index"] = entry.color_id
+    # PCO2 color_id belongs to the ANLZ/export palette. It is intentionally
+    # retained in source evidence but never written into the DB-owned
+    # ColorTableIndex field without a verified Rekordbox codec.
     if entry.comment is not None:
         merged["comment"] = entry.comment
     if entry.beat_loop_numerator is not None:
@@ -306,7 +319,7 @@ def _new_anlz_row(
         "start_ms": entry.start_ms,
         "end_ms": entry.end_ms,
         "color_hex": entry.color_hex,
-        "color_table_index": entry.color_id,
+        "color_table_index": None,
         "comment": entry.comment,
         "is_active_loop": entry.is_active_loop,
         "beat_loop_numerator": entry.beat_loop_numerator,

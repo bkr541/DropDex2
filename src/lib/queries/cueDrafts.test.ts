@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   eqUser: vi.fn(),
   eqTrack: vi.fn(),
+  order: vi.fn(),
+  range: vi.fn(),
   maybeSingle: vi.fn(),
   single: vi.fn(),
 }));
@@ -18,7 +20,7 @@ vi.mock('../supabase', () => ({
 }));
 
 import { createCueDraftDocument } from '../cues/cueDraftDocument';
-import { CueDraftRevisionConflictError, fetchCueDraft, saveCueDraft } from './cueDrafts';
+import { CueDraftRevisionConflictError, fetchCueDraft, fetchCueDraftsForApply, markCueDraftApplied, saveCueDraft } from './cueDrafts';
 
 const desiredDocument = createCueDraftDocument({
   importId: 'import-1',
@@ -52,7 +54,9 @@ beforeEach(() => {
   mocks.from.mockReturnValue({ select: mocks.select });
   mocks.select.mockReturnValue({ eq: mocks.eqUser });
   mocks.eqUser.mockReturnValue({ eq: mocks.eqTrack });
-  mocks.eqTrack.mockReturnValue({ maybeSingle: mocks.maybeSingle });
+  const terminal = { maybeSingle: mocks.maybeSingle, order: mocks.order };
+  mocks.eqTrack.mockReturnValue(terminal);
+  mocks.order.mockReturnValue({ order: mocks.order, range: mocks.range });
   mocks.rpc.mockReturnValue({ single: mocks.single });
 });
 
@@ -128,4 +132,53 @@ describe('cue draft production persistence queries', () => {
       strategySettings: null,
     })).rejects.toBeInstanceOf(CueDraftRevisionConflictError);
   });
+
+  it('pages Apply All drafts so API row limits cannot masquerade as a complete scope', async () => {
+    const fullPage = Array.from({ length: 500 }, (_, index) => ({ ...row, id: `draft-${index}` }));
+    const finalPage = [{ ...row, id: 'draft-500' }];
+    mocks.range
+      .mockResolvedValueOnce({ data: fullPage, error: null })
+      .mockResolvedValueOnce({ data: finalPage, error: null });
+
+    const result = await fetchCueDraftsForApply('user-1', 'import-1');
+
+    expect(result).toHaveLength(501);
+    expect(mocks.range).toHaveBeenNthCalledWith(1, 0, 499);
+    expect(mocks.range).toHaveBeenNthCalledWith(2, 500, 999);
+  });
+
+  it('rebases both semantic and local cue baselines only through the verified post-apply RPC', async () => {
+    const rebased = {
+      ...row,
+      imported_baseline_fingerprint: 'desired',
+      imported_baseline_local_cue_fingerprint: 'post-apply-local',
+      applied_revision: 2,
+      applied_fingerprint: 'desired',
+      applied_at: '2026-08-26T05:00:00Z',
+      last_apply_operation_id: 'op-1',
+      last_apply_state: 'verified',
+      last_apply_summary: { state: 'applied' },
+    };
+    mocks.single.mockResolvedValue({ data: rebased, error: null });
+
+    const result = await markCueDraftApplied({
+      trackId: 'track-1',
+      revision: 2,
+      desiredFingerprint: 'desired',
+      postApplyLocalCueFingerprint: 'post-apply-local',
+      operationId: 'op-1',
+      resultSummary: { state: 'applied' },
+    });
+
+    expect(mocks.rpc).toHaveBeenCalledWith('mark_cue_draft_applied_v2', expect.objectContaining({
+      p_track_id: 'track-1',
+      p_revision: 2,
+      p_desired_fingerprint: 'desired',
+      p_post_apply_local_cue_fingerprint: 'post-apply-local',
+      p_operation_id: 'op-1',
+    }));
+    expect(result.importedBaselineFingerprint).toBe('desired');
+    expect(result.importedBaselineLocalCueFingerprint).toBe('post-apply-local');
+  });
+
 });

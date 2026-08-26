@@ -833,6 +833,27 @@ class TestInsertCues:
         assert inserted["source_conflict"] is False
         assert inserted["cue_family_authority"] == "provisional"
 
+    def test_preserves_pre_reconciliation_db_owned_evidence_in_source_payload(self):
+        lib = self._lib_with_cue(in_usec=5_000_900, out_usec=10_000_900, color_table_index=6)
+        cue = lib.cues[0]
+        cue.is_active_loop = True
+        cue.beat_loop_numerator = 4
+        cue.beat_loop_denominator = 1
+        sb = MagicMock()
+        sb.table.return_value.insert.return_value.execute.return_value = MagicMock()
+
+        _insert_cues(sb, lib, "import-1", {"42": "uuid-track-42"})
+
+        payload = sb.table.return_value.insert.call_args[0][0][0]["source_payload"]
+        assert payload["point_type"] == cue.point_type
+        assert payload["start_ms"] == pytest.approx(5000.9)
+        assert payload["end_ms"] == pytest.approx(10000.9)
+        assert payload["color_table_index"] == 6
+        assert payload["comment"] == "Test comment"
+        assert payload["is_active_loop"] is True
+        assert payload["beat_loop_numerator"] == 4
+        assert payload["beat_loop_denominator"] == 1
+
     def test_dedupe_key_passed_through(self):
         lib = self._lib_with_cue()
         sb = MagicMock()

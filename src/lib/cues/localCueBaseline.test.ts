@@ -6,7 +6,32 @@ import {
   fingerprintImportedLocalCueBaseline,
 } from './localCueBaseline';
 
+function dbEvidence(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    provisional_cue_family: 'hot',
+    point_type: 'cue',
+    start_ms: 1000,
+    end_ms: null,
+    is_active_loop: false,
+    color_table_index: 3,
+    color_hex: '#112233',
+    color_name: 'Blue',
+    comment: 'DB comment',
+    beat_loop_numerator: null,
+    beat_loop_denominator: null,
+    ...overrides,
+  };
+}
+
 function cue(overrides: Partial<WorkingCue> = {}): WorkingCue {
+  const sourcePayload = overrides.sourcePayload ?? {
+    _dropdex_cue_reconciliation: {
+      db: dbEvidence(),
+      anlz: { cue_family: 'hot', hot_cue_slot: 1 },
+      authority: 'anlz',
+      conflict: null,
+    },
+  };
   return {
     editorId: 'runtime',
     trackId: 'track-1',
@@ -14,23 +39,25 @@ function cue(overrides: Partial<WorkingCue> = {}): WorkingCue {
     importedCueId: 'cue-1',
     rekordboxCueId: 'rb-1',
     dedupeKey: 'db:1',
-    family: 'memory',
-    hotCueSlot: null,
+    family: 'hot',
+    hotCueSlot: 1,
     pointType: 'cue',
     startMs: 1000,
     endMs: null,
-    colorTableIndex: null,
-    colorHex: null,
-    colorName: null,
-    rekordboxColor: -1,
-    comment: 'Memory',
-    isActiveLoop: null,
+    colorTableIndex: 3,
+    colorHex: '#112233',
+    colorName: 'Blue',
+    rekordboxColor: null,
+    comment: 'DB comment',
+    isActiveLoop: false,
     beatLoopNumerator: null,
     beatLoopDenominator: null,
     sourceDbPresent: true,
     sourceAnlzPresent: true,
     sourceConflict: false,
-    sourceKind: '0',
+    sourceKind: 'PCO2',
+    cueFamilyAuthority: 'anlz',
+    sourcePayload,
     rekordboxKind: null,
     semantic: null,
     pairedHotCueSlot: null,
@@ -38,6 +65,7 @@ function cue(overrides: Partial<WorkingCue> = {}): WorkingCue {
     strategySettings: null,
     source: 'imported',
     ...overrides,
+    sourcePayload,
   };
 }
 
@@ -52,68 +80,102 @@ function document(cues: WorkingCue[]) {
 
 describe('local Rekordbox cue baseline fingerprint', () => {
   it('is deterministic when equivalent imported DB cues arrive in a different order', async () => {
+    const one = dbEvidence({ start_ms: 1000, comment: 'One' });
+    const two = dbEvidence({ start_ms: 2000, comment: 'Two' });
     const first = document([
-      cue({ editorId: 'a', startMs: 2000, comment: 'Two' }),
-      cue({ editorId: 'b', importedCueId: 'cue-2', rekordboxCueId: 'rb-2', startMs: 1000, comment: 'One' }),
+      cue({ editorId: 'a', hotCueSlot: 2, startMs: 9999, sourcePayload: { _dropdex_cue_reconciliation: { db: two } } }),
+      cue({ editorId: 'b', importedCueId: 'cue-2', rekordboxCueId: 'rb-2', sourcePayload: { _dropdex_cue_reconciliation: { db: one } } }),
     ]);
     const second = document([
-      cue({ editorId: 'x', importedCueId: 'cue-2', rekordboxCueId: 'rb-2', startMs: 1000, comment: 'One' }),
-      cue({ editorId: 'y', startMs: 2000, comment: 'Two' }),
+      cue({ editorId: 'x', importedCueId: 'cue-2', rekordboxCueId: 'rb-2', sourcePayload: { _dropdex_cue_reconciliation: { db: one } } }),
+      cue({ editorId: 'y', hotCueSlot: 2, startMs: 7777, sourcePayload: { _dropdex_cue_reconciliation: { db: two } } }),
     ]);
     expect(await fingerprintImportedLocalCueBaseline(first))
       .toBe(await fingerprintImportedLocalCueBaseline(second));
   });
 
-  it('uses writer-equivalent DjmdCue values for database-anchored imported cue truth', () => {
+  it('uses preserved DB-owned values even when reconciled editor values disagree', () => {
     const payload = createImportedLocalCueBaselinePayload(document([
       cue({
-        family: 'hot', hotCueSlot: 4, pointType: 'loop', startMs: 1000.9, endMs: 5000.9,
-        colorTableIndex: 8, isActiveLoop: true, comment: 'Loop',
+        family: 'hot', hotCueSlot: 4, pointType: 'loop', startMs: 1000, endMs: 5000,
+        colorTableIndex: 99, isActiveLoop: true, comment: 'ANLZ/editor value',
+        sourcePayload: { _dropdex_cue_reconciliation: { db: dbEvidence({
+          point_type: 'loop', start_ms: 1002.9, end_ms: 5002.9, color_table_index: 8,
+          is_active_loop: false, comment: 'DB truth',
+        }) } },
       }),
     ]));
-    expect(payload?.cues).toEqual([expect.objectContaining({
-      InMsec: 1000,
-      OutMsec: 5000,
+    expect(payload?.cues).toEqual([{
+      InMsec: 1002,
+      OutMsec: 5002,
       Kind: 5,
       Color: 255,
-      ActiveLoop: 1,
-      Comment: 'Loop',
-    })]);
+      ColorTableIndex: 8,
+      ActiveLoop: 0,
+      Comment: 'DB truth',
+    }]);
   });
 
-  it('uses the preserved canonical Memory Cue Color rather than reconstructing it during apply', () => {
+  it('preserves imported DB active-loop true separately from loop existence', () => {
     const payload = createImportedLocalCueBaselinePayload(document([
-      cue({ colorTableIndex: 5, colorName: 'Aqua', rekordboxColor: 7 }),
+      cue({
+        pointType: 'loop', endMs: 3000, isActiveLoop: false,
+        sourcePayload: { _dropdex_cue_reconciliation: { db: dbEvidence({
+          point_type: 'loop', end_ms: 3000, is_active_loop: true,
+        }) } },
+      }),
+    ]));
+    expect(payload?.cues[0]).toMatchObject({ OutMsec: 3000, ActiveLoop: 1 });
+  });
+
+  it('keeps Memory DjmdCue.Color separate from ColorTableIndex when raw local Color is proven', () => {
+    const payload = createImportedLocalCueBaselinePayload(document([
+      cue({
+        family: 'memory', hotCueSlot: null, rekordboxColor: 7, colorTableIndex: 99,
+        sourcePayload: { _dropdex_cue_reconciliation: { db: dbEvidence({
+          provisional_cue_family: 'memory', color_table_index: 5, rekordbox_color: 7,
+        }) } },
+      }),
     ]));
     expect(payload?.cues[0]).toMatchObject({ Kind: 0, Color: 7, ColorTableIndex: 5 });
   });
 
-  it('blocks comparison for legacy or unsupported imported Memory Cues missing canonical Color metadata', async () => {
-    const legacy = document([cue({ rekordboxColor: null })]);
+  it('blocks comparison when local Memory DjmdCue.Color is not proven by DB evidence', async () => {
+    const unresolved = document([cue({
+      family: 'memory', hotCueSlot: null, rekordboxColor: 5,
+      colorHex: '#00FFFF', colorName: 'Aqua',
+      sourcePayload: { _dropdex_cue_reconciliation: { db: dbEvidence({ provisional_cue_family: 'memory' }) } },
+    })]);
+    expect(createImportedLocalCueBaselinePayload(unresolved)).toBeNull();
+    expect(await fingerprintImportedLocalCueBaseline(unresolved)).toBeNull();
+  });
+
+  it('blocks comparison for legacy reconciled state that lacks preserved DB evidence', async () => {
+    const legacy = document([cue({ sourcePayload: { point_type: 'cue', start_ms: 1000 } })]);
     expect(createImportedLocalCueBaselinePayload(legacy)).toBeNull();
     expect(await fingerprintImportedLocalCueBaseline(legacy)).toBeNull();
   });
 
-  it('blocks comparison when the imported snapshot contains an ANLZ-only cue', async () => {
-    const imported = document([
-      cue({ importedCueId: 'anlz-only', sourceDbPresent: false, sourceAnlzPresent: true, startMs: 9000 }),
-    ]);
-    expect(createImportedLocalCueBaselinePayload(imported)).toBeNull();
-    expect(await fingerprintImportedLocalCueBaseline(imported)).toBeNull();
-  });
-
-  it('changes when a material cue property changes', async () => {
-    const base = document([cue()]);
-    const moved = document([cue({ startMs: 1001 })]);
-    const renamed = document([cue({ comment: 'Renamed' })]);
-    expect(await fingerprintImportedLocalCueBaseline(base))
-      .not.toBe(await fingerprintImportedLocalCueBaseline(moved));
-    expect(await fingerprintImportedLocalCueBaseline(base))
-      .not.toBe(await fingerprintImportedLocalCueBaseline(renamed));
-  });
-
-  it('returns no comparable baseline when imported DB cue truth conflicts', async () => {
+  it('blocks comparison when the imported snapshot contains an ANLZ-only or conflicting cue', async () => {
+    const anlzOnly = document([cue({ sourceDbPresent: false })]);
+    expect(await fingerprintImportedLocalCueBaseline(anlzOnly)).toBeNull();
     expect(await fingerprintImportedLocalCueBaseline(document([cue({ sourceConflict: true })]))).toBeNull();
+  });
+
+  it('does not change when only reconciled/editor values change while DB evidence is unchanged', async () => {
+    const baseline = document([cue()]);
+    const edited = document([cue({ startMs: 2222, comment: 'editor changed', colorTableIndex: 77 })]);
+    expect(await fingerprintImportedLocalCueBaseline(baseline))
+      .toBe(await fingerprintImportedLocalCueBaseline(edited));
+  });
+
+  it('changes when preserved DB-owned evidence changes', async () => {
+    const base = document([cue()]);
+    const changed = document([cue({
+      sourcePayload: { _dropdex_cue_reconciliation: { db: dbEvidence({ comment: 'external DB change' }) } },
+    })]);
+    expect(await fingerprintImportedLocalCueBaseline(base))
+      .not.toBe(await fingerprintImportedLocalCueBaseline(changed));
   });
 
   it('represents a proven zero-cue database snapshot deterministically', async () => {

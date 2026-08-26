@@ -456,6 +456,29 @@ class TestStage6TransactionalApply:
         assert memory_loop.ColorTableIndex == 5
         assert memory_loop.ActiveLoop == 1
 
+    def test_verified_apply_returns_rebase_fingerprint_that_allows_the_next_legitimate_edit(self, tmp_path):
+        path = fixture_db(tmp_path)
+        store = ApplyTokenStore()
+        rows = [draft_row(cues=[draft_cue(comment="first edit")])]
+        pf = preflight(path, rows, store)
+        result = apply(path, pf.token, rows, store)
+
+        assert result.ok is True
+        assert result.state == "applied"
+        assert len(result.tracks) == 1
+        post_apply_fingerprint = result.tracks[0].local_cue_fingerprint
+        assert isinstance(post_apply_fingerprint, str)
+        assert len(post_apply_fingerprint) == 64
+
+        follow_up = [draft_row(
+            cues=[draft_cue(comment="second edit")],
+            local_baseline=post_apply_fingerprint,
+        )]
+        next_preflight = preflight(path, follow_up, ApplyTokenStore())
+
+        assert next_preflight.ok is True
+        assert next_preflight.tracks[0].imported_baseline_comparison == "match"
+
     def test_unchanged_state_multi_track_apply_stages_then_verifies_live(self, tmp_path):
         path = fixture_db(tmp_path)
         store = ApplyTokenStore()

@@ -28,7 +28,7 @@ def anlz(
     start_ms: float = 1000.0,
     end_ms: float | None = None,
     point_type: str = "cue",
-    active_loop: bool = False,
+    active_loop: bool | None = None,
     color_id: int | None = None,
     color_hex: str | None = None,
     comment: str | None = None,
@@ -70,6 +70,7 @@ def db_cue(
     comment: str | None = "db-comment",
     source_anlz_present: bool = False,
     slot: int | None = None,
+    active_loop: bool | None = None,
 ) -> dict[str, Any]:
     return {
         "id": cue_id,
@@ -90,7 +91,7 @@ def db_cue(
         "color_hex": None,
         "color_name": "DB Color" if color_table_index else None,
         "comment": comment,
-        "is_active_loop": point_type == "loop",
+        "is_active_loop": (point_type == "loop") if active_loop is None else active_loop,
         "beat_loop_numerator": None,
         "beat_loop_denominator": None,
         "source_db_present": True,
@@ -267,7 +268,7 @@ class TestCanonicalAuthority:
         assert rows[0]["hot_cue_slot"] == 8
         assert rows[0]["color_table_index"] == 0
 
-    def test_anlz_owns_loop_type_timing_extent_and_active_loop(self):
+    def test_anlz_owns_loop_shape_but_preserves_db_active_loop(self):
         rows = apply_plan(
             [db_cue(family="memory", start_ms=1002, point_type="cue")],
             [
@@ -277,7 +278,7 @@ class TestCanonicalAuthority:
                     start_ms=1000,
                     end_ms=3000,
                     point_type="loop",
-                    active_loop=True,
+                    active_loop=None,
                     loop_num=8,
                     loop_den=1,
                 )
@@ -287,11 +288,60 @@ class TestCanonicalAuthority:
         assert row["point_type"] == "loop"
         assert row["start_ms"] == 1000
         assert row["end_ms"] == 3000
-        assert row["is_active_loop"] is True
+        assert row["is_active_loop"] is False
         assert row["beat_loop_numerator"] == 8
         assert row["beat_loop_denominator"] == 1
         # Raw DB timing remains preserved as DB-only evidence.
         assert row["start_usec"] == 1_002_000
+
+    def test_db_active_loop_true_survives_matching_anlz_loop(self):
+        rows = apply_plan(
+            [db_cue(family="hot", slot=1, point_type="loop", end_ms=3000, active_loop=True)],
+            [anlz(family="hot", slot=1, point_type="loop", end_ms=3000, active_loop=None)],
+        )
+        assert rows[0]["point_type"] == "loop"
+        assert rows[0]["is_active_loop"] is True
+
+    def test_anlz_only_loop_keeps_active_loop_unknown(self):
+        rows = apply_plan([], [anlz(family="hot", slot=2, point_type="loop", end_ms=3000)])
+        assert len(rows) == 1
+        assert rows[0]["source_db_present"] is False
+        assert rows[0]["is_active_loop"] is None
+
+    def test_pco2_color_id_does_not_overwrite_db_color_table_index(self):
+        rows = apply_plan(
+            [db_cue(family="hot", slot=1, color_table_index=3)],
+            [anlz(family="hot", slot=1, color_id=6, color_hex="#0000FF")],
+        )
+        assert rows[0]["color_table_index"] == 3
+        assert rows[0]["color_hex"] == "#0000FF"
+        evidence = rows[0]["source_payload"]["_dropdex_cue_reconciliation"]
+        assert evidence["db"]["color_table_index"] == 3
+        assert evidence["anlz"]["color_id"] == 6
+
+    def test_preserved_raw_db_payload_wins_when_building_reconciliation_evidence(self):
+        row = db_cue(
+            family="hot", slot=1, point_type="loop", end_ms=3000,
+            color_table_index=9, comment="row value", active_loop=True,
+        )
+        row["source_payload"].update({
+            "is_active_loop": False,
+            "color_table_index": 4,
+            "comment": "preserved DB value",
+            "beat_loop_numerator": 8,
+            "beat_loop_denominator": 1,
+        })
+        rows = apply_plan(
+            [row],
+            [anlz(family="hot", slot=1, point_type="loop", end_ms=3000, active_loop=None)],
+        )
+
+        evidence = rows[0]["source_payload"]["_dropdex_cue_reconciliation"]["db"]
+        assert evidence["is_active_loop"] is False
+        assert evidence["color_table_index"] == 4
+        assert evidence["comment"] == "preserved DB value"
+        assert evidence["beat_loop_numerator"] == 8
+        assert evidence["beat_loop_denominator"] == 1
 
     def test_db_only_fields_survive_authoritative_merge(self):
         rows = apply_plan(
@@ -358,7 +408,7 @@ class TestProductionPathParity:
                 start_ms=1000,
                 point_type="loop",
                 end_ms=2000,
-                active_loop=True,
+                active_loop=None,
                 color_id=0,
                 loop_num=4,
                 loop_den=1,

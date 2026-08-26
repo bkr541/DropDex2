@@ -33,7 +33,8 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain("kind: 'point-type'");
     expect(source).toContain("kind: 'end-ms', requestedMs: value, timingMode");
     expect(source).toContain("kind: 'loop-length-ms', requestedMs: value, timingMode");
-    expect(source).toContain("kind: 'color'");
+    expect(source).toContain("kind: 'hot-color-table'");
+    expect(source).toContain("kind: 'memory-color'");
     expect(source).toContain("kind: 'comment'");
     expect(source).toContain("kind: 'active-loop'");
   });
@@ -141,6 +142,17 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain("status: 'failed'");
     expect(source).toContain('Those tracks are excluded from Has cues / No cues results until the request succeeds.');
     expect(source).toContain('setCueSummaryRetryNonce((value) => value + 1)');
+  });
+
+  it('keeps Stage 9 imported truth, desired color semantics, and verified post-Apply rebase separate', () => {
+    expect(source).toContain('fingerprintImportedLocalCueBaseline(importedDocument)');
+    expect(source).toContain("kind: 'hot-color-table'");
+    expect(source).toContain("kind: 'memory-color'");
+    expect(source).toContain('track.local_cue_fingerprint');
+    expect(source).toContain('postApplyLocalCueFingerprint');
+    expect(source).toContain('setDraftImportedBaselineFingerprint(updated.value.importedBaselineFingerprint)');
+    expect(source).toContain('setDraftImportedBaselineLocalCueFingerprint(updated.value.importedBaselineLocalCueFingerprint)');
+    expect(source).toContain('existingImportedBaselineLocalCueFingerprint');
   });
 
   it('surfaces Apply draft-loading failure instead of turning it into an empty successful draft set', () => {

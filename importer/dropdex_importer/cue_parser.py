@@ -66,7 +66,8 @@ class AnlzCueEntry:
     color_hex: Optional[str]        # e.g. "#FF0000"; None when no color
     color_id: Optional[int]         # Rekordbox color table index (PCO2 only)
     comment: Optional[str]          # PCO2 only
-    is_active_loop: bool
+    # ANLZ PCOB/PCO2 proves loop presence/extent, not local DjmdCue.ActiveLoop.
+    is_active_loop: Optional[bool]
     beat_loop_numerator: Optional[int]
     beat_loop_denominator: Optional[int]
     source_payload: Dict[str, Any] = field(default_factory=dict)
@@ -229,7 +230,7 @@ def _parse_pco2(
             color_hex=color_hex,
             color_id=color_id,
             comment=comment,
-            is_active_loop=point_type == "loop" and end_ms is not None,
+            is_active_loop=None,
             beat_loop_numerator=loop_num,
             beat_loop_denominator=loop_den,
             source_payload=source_payload,
@@ -301,7 +302,7 @@ def _parse_pcob(
             color_hex=None,
             color_id=None,
             comment=None,
-            is_active_loop=point_type == "loop" and end_ms is not None,
+            is_active_loop=None,
             beat_loop_numerator=None,
             beat_loop_denominator=None,
             source_payload=source_payload,

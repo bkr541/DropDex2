@@ -131,6 +131,7 @@ export interface DesktopCueApplyTrackResult {
   expected_count: number;
   actual_count: number;
   details: string | null;
+  local_cue_fingerprint: string | null;
 }
 
 export interface DesktopCueApplyResult {

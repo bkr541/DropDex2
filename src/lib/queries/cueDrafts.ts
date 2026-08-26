@@ -125,30 +125,43 @@ export function cueDraftNeedsApply(row: CueDraftRow): boolean {
   return row.appliedRevision !== row.revision || row.appliedFingerprint !== row.desiredFingerprint;
 }
 
-export async function fetchCueDraftsForApply(userId: string, importId: string): Promise<CueDraftRow[]> {
-  const { data, error } = await supabase
-    .from('cue_drafts')
-    .select('id,user_id,import_id,track_id,rekordbox_content_id,schema_version,desired_document,desired_fingerprint,imported_baseline_fingerprint,imported_baseline_local_cue_fingerprint,master_db_id,master_content_id,revision,strategy_version,strategy_settings,created_at,updated_at,applied_revision,applied_fingerprint,applied_at,last_apply_operation_id,last_apply_state,last_apply_summary')
-    .eq('user_id', userId)
-    .eq('import_id', importId)
-    .order('rekordbox_content_id', { ascending: true });
+const CUE_DRAFT_APPLY_PAGE_SIZE = 500;
 
-  if (error) throw new Error(error.message);
-  return (data ?? []).map(mapCueDraftRow).filter(cueDraftNeedsApply);
+export async function fetchCueDraftsForApply(userId: string, importId: string): Promise<CueDraftRow[]> {
+  const rows: unknown[] = [];
+  for (let offset = 0; ; offset += CUE_DRAFT_APPLY_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('cue_drafts')
+      .select('id,user_id,import_id,track_id,rekordbox_content_id,schema_version,desired_document,desired_fingerprint,imported_baseline_fingerprint,imported_baseline_local_cue_fingerprint,master_db_id,master_content_id,revision,strategy_version,strategy_settings,created_at,updated_at,applied_revision,applied_fingerprint,applied_at,last_apply_operation_id,last_apply_state,last_apply_summary')
+      .eq('user_id', userId)
+      .eq('import_id', importId)
+      .order('rekordbox_content_id', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + CUE_DRAFT_APPLY_PAGE_SIZE - 1);
+
+    if (error) throw new Error(error.message);
+    if (!Array.isArray(data)) throw new Error('Cue draft response schema is invalid: expected an array of rows.');
+    rows.push(...data);
+    if (data.length < CUE_DRAFT_APPLY_PAGE_SIZE) break;
+  }
+
+  return rows.map(mapCueDraftRow).filter(cueDraftNeedsApply);
 }
 
 export async function markCueDraftApplied(input: {
   trackId: string;
   revision: number;
   desiredFingerprint: string;
+  postApplyLocalCueFingerprint: string;
   operationId: string;
   resultSummary: Record<string, unknown>;
 }): Promise<CueDraftRow> {
   const { data, error } = await supabase
-    .rpc('mark_cue_draft_applied', {
+    .rpc('mark_cue_draft_applied_v2', {
       p_track_id: input.trackId,
       p_revision: input.revision,
       p_desired_fingerprint: input.desiredFingerprint,
+      p_post_apply_local_cue_fingerprint: input.postApplyLocalCueFingerprint,
       p_operation_id: input.operationId,
       p_result_summary: input.resultSummary,
     })

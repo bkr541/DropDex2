@@ -307,6 +307,10 @@ describe('fill-empty working-set merge', () => {
     expect(merged.preservedOccupiedSlots).toEqual([1, 4]);
     expect(merged.addedHotCount).toBe(6);
     expect(merged.cues.filter((cue) => cue.family === 'hot')).toHaveLength(8);
+    const autoB = merged.cues.find((cue) => cue.family === 'hot' && cue.hotCueSlot === 2)!;
+    const autoH = merged.cues.find((cue) => cue.family === 'hot' && cue.hotCueSlot === 8)!;
+    expect(autoB).toMatchObject({ pointType: 'loop', isActiveLoop: false });
+    expect(autoH).toMatchObject({ pointType: 'loop', isActiveLoop: false });
 
     const autoC = merged.cues.find((cue) => cue.family === 'hot' && cue.hotCueSlot === 3)!;
     expect(autoC).toMatchObject({

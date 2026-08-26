@@ -111,7 +111,7 @@ describe('cue visualization contract', () => {
       source: 'canonical-hex',
     });
     expect(resolveCueDisplayColor(cue({ colorName: 'Purple' }))).toMatchObject({ hex: '#a855f7', source: 'canonical-name' });
-    expect(resolveCueDisplayColor(cue({ family: 'memory', hotCueSlot: null, colorTableIndex: 5 }))).toEqual({
+    expect(resolveCueDisplayColor(cue({ family: 'memory', hotCueSlot: null, rekordboxColor: 5, colorTableIndex: null }))).toEqual({
       hex: '#06b6d4',
       label: 'Aqua',
       source: 'canonical-index',

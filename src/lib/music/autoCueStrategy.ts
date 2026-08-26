@@ -469,7 +469,7 @@ function makeAutoWorkingCue(
     colorName: null,
     rekordboxColor: null,
     comment: `Auto Cue ${contract.letter} · ${contract.semantic}`,
-    isActiveLoop: contract.loop,
+    isActiveLoop: contract.loop ? false : null,
     beatLoopNumerator: contract.loop ? AUTO_CUE_STRATEGY_SETTINGS.loopBars * 4 : null,
     beatLoopDenominator: contract.loop ? 1 : null,
     sourceDbPresent: false,

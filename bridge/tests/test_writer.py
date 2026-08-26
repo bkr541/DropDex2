@@ -369,6 +369,35 @@ class TestStagingMutationAndVerification:
         assert verification.ok is False
         assert verification.mismatches[0].content_id == "101"
 
+    def test_verifier_reports_active_loop_mismatch_separately_from_loop_shape(self, tmp_path):
+        _, _, generation = self.setup_generation(tmp_path)
+        plan = adapt_saved_cue_drafts([draft_row(cues=[draft_cue(
+            pointType="loop", endMs=3000, isActiveLoop=False, comment="Inactive loop",
+        )])])
+        expected = mutate_staging_database(
+            plan, generation, database_factory=SqliteTestDb, tables_module=Tables
+        )
+        db = SqliteTestDb(str(generation.staging_path))
+        db.conn.execute("update djmdCue set ActiveLoop=1 where ContentID='101'")
+        db.commit()
+        db.close()
+
+        assert expected["101"][0]["OutMsec"] == 3000
+        assert expected["101"][0]["ActiveLoop"] == 0
+        verification = verify_staging_database(
+            plan, generation, expected, database_factory=SqliteTestDb
+        )
+        reopened = SqliteTestDb(str(generation.staging_path))
+        try:
+            actual = reopened.get_cue(ContentID="101")[0]
+        finally:
+            reopened.close()
+
+        assert actual.OutMsec == 3000
+        assert actual.ActiveLoop == 1
+        assert verification.ok is False
+        assert verification.mismatches[0].content_id == "101"
+
     def test_corrupt_staging_db_fails_without_source_mutation(self, tmp_path):
         source, before, generation = self.setup_generation(tmp_path)
         generation.staging_path.write_bytes(b"not sqlite")

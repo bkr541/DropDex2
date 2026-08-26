@@ -219,6 +219,8 @@ describe('loadCueEditorBaseline', () => {
       expect(result.integrity).toMatchObject({ status: 'invalid', error: expect.stringMatching(/reconciliation conflicts/i) });
       expect(result.savedCues).toHaveLength(1);
       expect(result.workingCues[0].sourceConflict).toBe(true);
+      expect(result.draftImportedBaselineFingerprint).toBe('b'.repeat(64));
+      expect(result.draftImportedBaselineLocalCueFingerprint).toBe('c'.repeat(64));
     }
   });
 

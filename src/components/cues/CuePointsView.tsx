@@ -46,11 +46,11 @@ import {
 } from '../../lib/cues/cueDraftDocument';
 import { fingerprintImportedLocalCueBaseline } from '../../lib/cues/localCueBaseline';
 import {
-  REKORDBOX_MEMORY_CUE_COLORS,
   cueLoopRangeGeometry,
   resolveCueDisplayColor,
   summarizeCueProvenance,
 } from '../../lib/cues/cueVisualization';
+import { REKORDBOX_MEMORY_CUE_COLORS } from '../../lib/cues/rekordboxCueColorCodec';
 import { loadCueEditorBaseline } from '../../lib/cues/cueBaselineLoader';
 import { cueFilterMatches, cueLoadCount, cueLoadOwnerMatches, type CueLoadOwner } from '../../lib/cues/cueLoadState';
 import {
@@ -516,9 +516,9 @@ function CueInspector({
   const loopLengthMs = cue.pointType === 'loop' && cue.startMs != null && cue.endMs != null
     ? Math.max(0, cue.endMs - cue.startMs)
     : null;
-  const knownMemoryColor = cue.colorTableIndex == null
+  const knownMemoryColor = cue.rekordboxColor == null || cue.rekordboxColor === -1
     ? null
-    : REKORDBOX_MEMORY_CUE_COLORS.find((option) => option.index === cue.colorTableIndex) ?? null;
+    : REKORDBOX_MEMORY_CUE_COLORS.find((option) => option.index === cue.rekordboxColor) ?? null;
   const displayColor = resolveCueDisplayColor(cue);
   const provenance = summarizeCueProvenance(cue);
 
@@ -550,7 +550,7 @@ function CueInspector({
         onMessage(null);
         return;
       }
-      onMessage(onEditCue(cue.editorId, { kind: 'color', colorTableIndex: null, colorHex: null, colorName: null }));
+      onMessage(onEditCue(cue.editorId, { kind: 'hot-color-table', colorTableIndex: null }));
       return;
     }
     const value = Number(trimmed);
@@ -563,7 +563,7 @@ function CueInspector({
       onMessage(null);
       return;
     }
-    const error = onEditCue(cue.editorId, { kind: 'color', colorTableIndex: value, colorHex: null, colorName: null });
+    const error = onEditCue(cue.editorId, { kind: 'hot-color-table', colorTableIndex: value });
     onMessage(error);
     if (error) input.value = cue.colorTableIndex == null ? '' : String(cue.colorTableIndex);
   };
@@ -672,31 +672,31 @@ function CueInspector({
         </label>
 
         <label className="min-w-0 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-          {cue.family === 'memory' ? 'Memory color' : 'Hot color table index'}
+          {cue.family === 'memory' ? 'Memory DjmdCue.Color' : 'Hot color table index'}
           {cue.family === 'memory' ? (
             <SelectControl
               className="mt-1"
               disabled={!editable}
-              value={cue.colorTableIndex == null ? 'clear' : String(cue.colorTableIndex)}
+              value={cue.rekordboxColor == null || cue.rekordboxColor === -1 ? 'clear' : String(cue.rekordboxColor)}
               onChange={(event) => {
                 if (event.target.value === 'clear') {
-                  onMessage(onEditCue(cue.editorId, { kind: 'color', colorTableIndex: null, colorHex: null, colorName: null }));
+                  onMessage(onEditCue(cue.editorId, { kind: 'memory-color', rekordboxColor: -1, colorHex: null, colorName: null }));
                   return;
                 }
                 const index = Number(event.target.value);
                 const option = REKORDBOX_MEMORY_CUE_COLORS.find((candidate) => candidate.index === index);
                 if (!option) return;
                 onMessage(onEditCue(cue.editorId, {
-                  kind: 'color',
-                  colorTableIndex: option.index,
-                  colorHex: null,
+                  kind: 'memory-color',
+                  rekordboxColor: option.index,
+                  colorHex: option.hex,
                   colorName: option.name,
                 }));
               }}
             >
               <option value="clear">Unspecified / clear</option>
-              {!knownMemoryColor && cue.colorTableIndex != null && (
-                <option value={String(cue.colorTableIndex)}>Current index {cue.colorTableIndex}</option>
+              {!knownMemoryColor && cue.rekordboxColor != null && cue.rekordboxColor !== -1 && (
+                <option value={String(cue.rekordboxColor)}>Current Color {cue.rekordboxColor}</option>
               )}
               {REKORDBOX_MEMORY_CUE_COLORS.map((option) => (
                 <option key={option.index} value={String(option.index)}>{option.label}</option>
@@ -1559,6 +1559,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [draftAppliedRevision, setDraftAppliedRevision] = useState<number | null>(null);
   const [draftAppliedFingerprint, setDraftAppliedFingerprint] = useState<string | null>(null);
   const [draftDesiredFingerprint, setDraftDesiredFingerprint] = useState<string | null>(null);
+  const [draftImportedBaselineFingerprint, setDraftImportedBaselineFingerprint] = useState<string | null>(null);
+  const [draftImportedBaselineLocalCueFingerprint, setDraftImportedBaselineLocalCueFingerprint] = useState<string | null>(null);
   const [draftPersistenceMessage, setDraftPersistenceMessage] = useState<string | null>(null);
   const [savingCueDraft, setSavingCueDraft] = useState(false);
   const [applyDrafts, setApplyDrafts] = useState<CueDraftRow[]>([]);
@@ -1710,6 +1712,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setDraftAppliedRevision(null);
     setDraftAppliedFingerprint(null);
     setDraftDesiredFingerprint(null);
+    setDraftImportedBaselineFingerprint(null);
+    setDraftImportedBaselineLocalCueFingerprint(null);
     setDraftPersistenceMessage(null);
     setSavingCueDraft(false);
     cueDraftSaveInFlightRef.current = false;
@@ -1761,6 +1765,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       setDraftAppliedRevision(null);
       setDraftAppliedFingerprint(null);
       setDraftDesiredFingerprint(null);
+      setDraftImportedBaselineFingerprint(null);
+      setDraftImportedBaselineLocalCueFingerprint(null);
       setDraftPersistenceMessage(null);
       setWorkingCues([]);
       setSelectedCueLoadError(null);
@@ -1783,6 +1789,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setDraftAppliedRevision(null);
     setDraftAppliedFingerprint(null);
     setDraftDesiredFingerprint(null);
+    setDraftImportedBaselineFingerprint(null);
+    setDraftImportedBaselineLocalCueFingerprint(null);
     setDraftPersistenceMessage(null);
     setWorkingCues([]);
     setSelectedCueLoadError(null);
@@ -1801,6 +1809,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           setDraftAppliedRevision(null);
           setDraftAppliedFingerprint(null);
           setDraftDesiredFingerprint(null);
+          setDraftImportedBaselineFingerprint(null);
+          setDraftImportedBaselineLocalCueFingerprint(null);
           setWorkingCues([]);
           setDraftPersistenceMessage(null);
           setSelectedCueLoadStatus('failed');
@@ -1814,6 +1824,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         setDraftAppliedRevision(result.draftAppliedRevision);
         setDraftAppliedFingerprint(result.draftAppliedFingerprint);
         setDraftDesiredFingerprint(result.draftDesiredFingerprint);
+        setDraftImportedBaselineFingerprint(result.draftImportedBaselineFingerprint);
+        setDraftImportedBaselineLocalCueFingerprint(result.draftImportedBaselineLocalCueFingerprint);
         setWorkingCues(result.workingCues);
         setSelectedCueLoadStatus(result.status);
         setSelectedCueLoadError(null);
@@ -1827,6 +1839,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         setDraftAppliedRevision(null);
         setDraftAppliedFingerprint(null);
         setDraftDesiredFingerprint(null);
+        setDraftImportedBaselineFingerprint(null);
+        setDraftImportedBaselineLocalCueFingerprint(null);
         setWorkingCues([]);
         setDraftPersistenceMessage(null);
         setSelectedCueLoadStatus('failed');
@@ -2127,13 +2141,25 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           verifiedTracks: result.tracks.filter((track) => track.state === 'verified').length,
           rollbackVerified: result.rollback_verified,
         };
-        const statusUpdates = await Promise.allSettled(applySnapshot.map((row) => markCueDraftApplied({
-          trackId: row.trackId,
-          revision: row.revision,
-          desiredFingerprint: row.desiredFingerprint,
-          operationId: result.operation_id,
-          resultSummary: summary,
-        })));
+        const verifiedByContentId = new Map(
+          result.tracks
+            .filter((track) => track.state === 'verified' && /^[0-9a-f]{64}$/.test(track.local_cue_fingerprint ?? ''))
+            .map((track) => [track.content_id, track.local_cue_fingerprint as string]),
+        );
+        const statusUpdates = await Promise.allSettled(applySnapshot.map((row) => {
+          const postApplyLocalCueFingerprint = verifiedByContentId.get(row.rekordboxContentId);
+          if (!postApplyLocalCueFingerprint) {
+            return Promise.reject(new Error(`Verified Apply did not return a local cue fingerprint for ${row.rekordboxContentId}.`));
+          }
+          return markCueDraftApplied({
+            trackId: row.trackId,
+            revision: row.revision,
+            desiredFingerprint: row.desiredFingerprint,
+            postApplyLocalCueFingerprint,
+            operationId: result.operation_id,
+            resultSummary: summary,
+          });
+        }));
         if (statusUpdates.some((item) => item.status === 'rejected')) {
           setApplyMessage('Rekordbox was updated and verified, but one or more cloud apply-status updates could not be recorded. No newer draft was marked applied.');
         } else {
@@ -2147,6 +2173,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
             setDraftAppliedRevision(updated.value.appliedRevision);
             setDraftAppliedFingerprint(updated.value.appliedFingerprint);
             setDraftDesiredFingerprint(updated.value.desiredFingerprint);
+            setDraftImportedBaselineFingerprint(updated.value.importedBaselineFingerprint);
+            setDraftImportedBaselineLocalCueFingerprint(updated.value.importedBaselineLocalCueFingerprint);
           }
         }
         await refreshApplyDrafts();
@@ -2263,6 +2291,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     const workingSnapshot = workingCues;
     const importedSnapshot = importedCueBaseline;
     const expectedRevision = draftRevision ?? 0;
+    const existingImportedBaselineFingerprint = draftImportedBaselineFingerprint;
+    const existingImportedBaselineLocalCueFingerprint = draftImportedBaselineLocalCueFingerprint;
 
     const responseIsCurrent = () => (
       cueDraftSaveRequestRef.current === requestId
@@ -2283,11 +2313,21 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         rekordboxContentId: selectedTrack.rekordbox_content_id,
         cues: importedSnapshot,
       });
-      const [desiredFingerprint, importedBaselineFingerprint, importedBaselineLocalCueFingerprint] = await Promise.all([
+      const [desiredFingerprint, freshImportedBaselineFingerprint, freshImportedBaselineLocalCueFingerprint] = await Promise.all([
         fingerprintCueDraftDocument(document),
         fingerprintCueDraftDocument(importedDocument),
         fingerprintImportedLocalCueBaseline(importedDocument),
       ]);
+      // Once a draft exists, its safety baselines are durable state. In
+      // particular, a verified Apply may have rebased them to the new local
+      // generation. Never overwrite that proof with the original import on a
+      // later Save. Legacy missing proof remains missing/fail-closed.
+      const importedBaselineFingerprint = expectedRevision > 0
+        ? existingImportedBaselineFingerprint ?? freshImportedBaselineFingerprint
+        : freshImportedBaselineFingerprint;
+      const importedBaselineLocalCueFingerprint = expectedRevision > 0
+        ? existingImportedBaselineLocalCueFingerprint
+        : freshImportedBaselineLocalCueFingerprint;
       const strategy = cueDraftStrategySummary(document);
       const saved = await saveCueDraft({
         importId: selectedTrack.import_id,
@@ -2309,6 +2349,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       setDraftAppliedRevision(saved.appliedRevision);
       setDraftAppliedFingerprint(saved.appliedFingerprint);
       setDraftDesiredFingerprint(saved.desiredFingerprint);
+      setDraftImportedBaselineFingerprint(saved.importedBaselineFingerprint);
+      setDraftImportedBaselineLocalCueFingerprint(saved.importedBaselineLocalCueFingerprint);
       applyGenerationRef.current += 1;
       setApplyPreflight(null);
       setApplyScope(null);
@@ -2327,7 +2369,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         cueDraftSaveInFlightRef.current = false;
       }
     }
-  }, [draftRevision, importedCueBaseline, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, selectedTrack, selectedTrackId, userId, workingCues, workingCuesDirty]);
+  }, [draftImportedBaselineFingerprint, draftImportedBaselineLocalCueFingerprint, draftRevision, importedCueBaseline, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, selectedTrack, selectedTrackId, userId, workingCues, workingCuesDirty]);
 
   const handleDiscard = useCallback(() => {
     if (!selectedCueBaselineComplete) return;

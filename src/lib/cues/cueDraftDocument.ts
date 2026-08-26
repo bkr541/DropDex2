@@ -4,6 +4,7 @@ import {
   type WorkingCue,
   type WorkingCueSource,
 } from '../music/cueEditorState';
+import { isSupportedMemoryDjmdCueColor } from './rekordboxCueColorCodec';
 
 export const CUE_DRAFT_SCHEMA_VERSION = 1 as const;
 
@@ -116,7 +117,7 @@ function canonicalCue(cue: WorkingCue): CueDraftCue {
   const colorTableIndex = normalizedInteger(cue.colorTableIndex, 'colorTableIndex');
   if (colorTableIndex != null && colorTableIndex < 0) throw new Error('colorTableIndex cannot be negative.');
   const rekordboxColor = normalizedInteger(cue.rekordboxColor ?? null, 'rekordboxColor');
-  if (rekordboxColor != null && rekordboxColor !== -1 && (rekordboxColor < 1 || rekordboxColor > 7)) {
+  if (rekordboxColor != null && !isSupportedMemoryDjmdCueColor(rekordboxColor)) {
     throw new Error('rekordboxColor must be -1 or a supported Memory Cue Color value from 1 through 7.');
   }
   const beatLoopNumerator = normalizedInteger(cue.beatLoopNumerator, 'beatLoopNumerator');

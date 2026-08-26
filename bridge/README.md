@@ -232,3 +232,37 @@ Writer field ownership for the current Stage 8 contract is:
 Staged verification includes both `Color` and `ColorTableIndex`, so a supported
 Memory Cue color mismatch fails verification before live replacement; the
 existing rollback path remains unchanged.
+
+## Stage 9 cue truth, Active Loop, and color semantics
+
+Stage 9 makes the imported local Rekordbox baseline an explicit evidence
+projection instead of a projection of the reconciled/editor cue document. The
+importer preserves DB-owned cue semantics before ANLZ reconciliation under the
+cue reconciliation source payload, and the renderer baseline fingerprint reads
+only that preserved DB evidence. ANLZ may still supply authoritative Memory vs
+Hot/A-H identity, but it cannot masquerade as DB truth for position, loop end,
+ActiveLoop, comment, or local color fields. Missing/conflicting evidence remains
+inspectable but non-comparable and therefore blocks destructive Apply; a proven
+zero-cue DB snapshot remains comparable.
+
+ANLZ PCOB/PCO2 loop presence and loop extent no longer imply local
+`DjmdCue.ActiveLoop`. Reconciliation preserves the Device Library Plus/DB active
+loop value unless an ANLZ parser explicitly proves an authoritative active-loop
+field. Manual cue-to-loop conversion and Auto Cue B/H loops default inactive.
+Writer verification continues to compare `ActiveLoop` independently from loop
+shape.
+
+Color ownership is also explicit. Hot Cue `ColorTableIndex`, Memory Cue local
+`DjmdCue.Color` (`rekordboxColor` in the saved desired document), and ANLZ PCO2
+palette evidence are separate domains. Memory color editing never updates
+`ColorTableIndex`, PCO2 integer palette IDs never overwrite DB-owned
+`ColorTableIndex`, and unsupported/missing raw Memory `DjmdCue.Color` evidence
+keeps the imported local baseline non-comparable instead of inventing a value.
+
+A verified Apply now returns a canonical post-Apply local cue fingerprint for
+each verified track. The authenticated `mark_cue_draft_applied_v2` RPC advances
+both persisted safety baselines to that exact verified generation, so a later
+legitimate edit does not compare forever against the pre-Apply generation.
+Rejected, rolled-back, unverified, or missing-fingerprint outcomes never rebase.
+Apply All draft retrieval and bulk cue retrieval are paged deterministically so
+API row limits cannot silently truncate a destructive scope.

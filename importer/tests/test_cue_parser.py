@@ -180,7 +180,7 @@ class TestParsePco2:
 
         assert entries[0].point_type == "loop"
         assert entries[0].end_ms == pytest.approx(3000.0)
-        assert entries[0].is_active_loop is True
+        assert entries[0].is_active_loop is None
 
     def test_start_ms_from_time(self):
         entry = _pco2_entry(time=2345)

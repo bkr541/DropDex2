@@ -20,6 +20,8 @@ export interface LoadedCueEditorBaseline {
   draftAppliedRevision: number | null;
   draftAppliedFingerprint: string | null;
   draftDesiredFingerprint: string | null;
+  draftImportedBaselineFingerprint: string | null;
+  draftImportedBaselineLocalCueFingerprint: string | null;
   integrity: CueDraftValidationResult;
 }
 
@@ -122,6 +124,8 @@ export async function loadCueEditorBaseline(
       draftAppliedRevision: null,
       draftAppliedFingerprint: null,
       draftDesiredFingerprint: null,
+      draftImportedBaselineFingerprint: null,
+      draftImportedBaselineLocalCueFingerprint: null,
       integrity: importedIntegrity,
     };
   }
@@ -139,6 +143,8 @@ export async function loadCueEditorBaseline(
         draftAppliedRevision: null,
         draftAppliedFingerprint: null,
         draftDesiredFingerprint: null,
+        draftImportedBaselineFingerprint: null,
+        draftImportedBaselineLocalCueFingerprint: null,
         integrity: importedIntegrity,
       };
     }
@@ -165,6 +171,8 @@ export async function loadCueEditorBaseline(
       draftAppliedRevision: draft.appliedRevision,
       draftAppliedFingerprint: draft.appliedFingerprint,
       draftDesiredFingerprint: draft.desiredFingerprint,
+      draftImportedBaselineFingerprint: draft.importedBaselineFingerprint,
+      draftImportedBaselineLocalCueFingerprint: draft.importedBaselineLocalCueFingerprint,
       integrity: savedIntegrity,
     };
   } catch (error) {

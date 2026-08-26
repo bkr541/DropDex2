@@ -1,4 +1,5 @@
 import type { WorkingCue } from '../music/cueEditorState';
+import { REKORDBOX_MEMORY_CUE_COLORS } from './rekordboxCueColorCodec';
 
 export type CueDisplayColorSource = 'canonical-hex' | 'canonical-name' | 'canonical-index' | 'unknown' | 'fallback';
 
@@ -45,16 +46,6 @@ const CANONICAL_COLOR_NAMES: Readonly<Record<string, string>> = Object.freeze({
   white: '#f8fafc',
 });
 
-export const REKORDBOX_MEMORY_CUE_COLORS = Object.freeze([
-  { index: 1, label: 'Red', name: 'Red', hex: '#ef4444' },
-  { index: 2, label: 'Orange', name: 'Orange', hex: '#f97316' },
-  { index: 3, label: 'Yellow', name: 'Yellow', hex: '#eab308' },
-  { index: 4, label: 'Green', name: 'Green', hex: '#22c55e' },
-  { index: 5, label: 'Aqua', name: 'Aqua', hex: '#06b6d4' },
-  { index: 6, label: 'Blue', name: 'Blue', hex: '#3b82f6' },
-  { index: 7, label: 'Purple', name: 'Purple', hex: '#a855f7' },
-] as const);
-
 function normalizedHex(value: string | null): string | null {
   if (!value) return null;
   const trimmed = value.trim();
@@ -83,11 +74,13 @@ export function resolveCueDisplayColor(cue: WorkingCue): CueDisplayColor {
     return { hex: UNKNOWN_COLOR, label: `${colorName} · unsupported display color`, source: 'unknown' };
   }
 
+  if (cue.family === 'memory' && cue.rekordboxColor != null && cue.rekordboxColor !== -1) {
+    const mapped = REKORDBOX_MEMORY_CUE_COLORS.find((candidate) => candidate.index === cue.rekordboxColor);
+    if (mapped) return { hex: mapped.hex, label: mapped.name, source: 'canonical-index' };
+    return { hex: UNKNOWN_COLOR, label: `Unsupported Memory Color ${cue.rekordboxColor}`, source: 'unknown' };
+  }
+
   if (cue.colorTableIndex != null) {
-    if (cue.family === 'memory') {
-      const mapped = REKORDBOX_MEMORY_CUE_COLORS.find((candidate) => candidate.index === cue.colorTableIndex);
-      if (mapped) return { hex: mapped.hex, label: mapped.name, source: 'canonical-index' };
-    }
     return {
       hex: UNKNOWN_COLOR,
       label: `Rekordbox color index ${cue.colorTableIndex}`,

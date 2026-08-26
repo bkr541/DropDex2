@@ -585,6 +585,15 @@ def _insert_cues(
             "point_type": cue.point_type,
             "start_ms": start_ms,
             "end_ms": end_ms,
+            # Preserve DB-owned cue evidence before ANLZ reconciliation mutates
+            # canonical/editor-facing fields. Stage 9 stale-baseline checks read
+            # these values rather than reverse-guessing them from reconciled cues.
+            "color_table_index": cue.color_table_index,
+            "color_name": cue.color_name,
+            "comment": cue.cue_comment,
+            "is_active_loop": cue.is_active_loop,
+            "beat_loop_numerator": cue.beat_loop_numerator,
+            "beat_loop_denominator": cue.beat_loop_denominator,
             "in_150_frames_per_second": cue.in_150_frames_per_second,
             "out_150_frames_per_second": cue.out_150_frames_per_second,
             "in_mpeg_frame_number": cue.in_mpeg_frame_number,

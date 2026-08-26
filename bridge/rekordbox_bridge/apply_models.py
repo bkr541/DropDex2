@@ -46,6 +46,9 @@ class ApplyTrackResult:
     expected_count: int
     actual_count: int
     details: Optional[str] = None
+    # Canonical local DjmdCue semantic fingerprint after verified Apply. This is
+    # the only value safe to use when rebasing the next destructive preflight.
+    local_cue_fingerprint: Optional[str] = None
 
 
 @dataclass(frozen=True)

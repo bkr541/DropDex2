@@ -445,7 +445,7 @@ describe('cue editor working state', () => {
     const baseline = normalizeImportedCues('track-a', [importedCue({ point_type: 'loop', start_ms: 1000, end_ms: 3000 })]);
     const comment = editWorkingCue(baseline, 'imported:cue-1', { kind: 'comment', comment: 'Drop loop' });
     const color = editWorkingCue(comment.cues, 'imported:cue-1', {
-      kind: 'color', colorTableIndex: 5, colorHex: '#00FFFF', colorName: 'Aqua',
+      kind: 'hot-color-table', colorTableIndex: 5,
     });
     const active = editWorkingCue(color.cues, 'imported:cue-1', { kind: 'active-loop', isActiveLoop: true });
 
@@ -453,8 +453,8 @@ describe('cue editor working state', () => {
     expect(active.cues[0]).toMatchObject({
       comment: 'Drop loop',
       colorTableIndex: 5,
-      colorHex: '#00FFFF',
-      colorName: 'Aqua',
+      colorHex: null,
+      colorName: null,
       isActiveLoop: true,
     });
     expect(workingCueSetsEqual(baseline, active.cues)).toBe(false);
@@ -509,7 +509,7 @@ describe('cue editor working state', () => {
     expect(snappedAgain.cues[0].startMs).toBe(1000);
   });
 
-  it('derives and preserves canonical Memory Cue Color from authoritative PCO2 color semantics', () => {
+  it('derives supported desired Memory Cue Color from PCO2 display evidence without treating it as DB truth', () => {
     const [memory] = normalizeImportedCues('track-a', [importedCue({
       cue_family: 'memory',
       hot_cue_slot: null,
@@ -521,10 +521,10 @@ describe('cue editor working state', () => {
     expect(memory.rekordboxColor).toBe(5);
 
     const recolored = editWorkingCue([memory], 'imported:cue-1', {
-      kind: 'color', colorTableIndex: 1, colorHex: null, colorName: 'Red',
+      kind: 'memory-color', rekordboxColor: 1, colorHex: '#FF0000', colorName: 'Red',
     });
     expect(recolored.error).toBeNull();
-    expect(recolored.cues[0]).toMatchObject({ rekordboxColor: 1, colorTableIndex: 1, colorName: 'Red' });
+    expect(recolored.cues[0]).toMatchObject({ rekordboxColor: 1, colorTableIndex: 6, colorName: 'Red' });
   });
 
   it('keeps unsupported imported Memory Cue colors explicit instead of guessing a destructive writer value', () => {
@@ -546,13 +546,13 @@ describe('cue editor working state', () => {
       color_hex: null,
       color_name: null,
     })]);
-    expect(noColor.rekordboxColor).toBe(-1);
+    expect(noColor.rekordboxColor).toBeNull();
   });
 
   it('preserves unusual Rekordbox color table indices instead of guessing a palette meaning', () => {
     const baseline = normalizeImportedCues('track-a', [importedCue({ color_table_index: 42, color_hex: null, color_name: null })]);
     const changed = editWorkingCue(baseline, 'imported:cue-1', {
-      kind: 'color', colorTableIndex: 77, colorHex: null, colorName: null,
+      kind: 'hot-color-table', colorTableIndex: 77,
     });
     expect(changed.error).toBeNull();
     expect(changed.cues[0]).toMatchObject({ colorTableIndex: 77, colorHex: null, colorName: null });

@@ -178,9 +178,15 @@ BASELINE_FINGERPRINT_FIELDS = (
 )
 
 
+def _cue_field(row: Any, field: str) -> Any:
+    if isinstance(row, Mapping):
+        return row.get(field)
+    return getattr(row, field, None)
+
+
 def _cue_fingerprint(rows: Sequence[Any]) -> str:
     normalized = [
-        {field: _json_scalar(getattr(row, field, None)) for field in BASELINE_FINGERPRINT_FIELDS}
+        {field: _json_scalar(_cue_field(row, field)) for field in BASELINE_FINGERPRINT_FIELDS}
         for row in rows
     ]
     normalized.sort(
@@ -574,8 +580,15 @@ def _verification_track_results(
     for track in plan.tracks:
         mismatch = mismatches.get(track.content_id)
         if mismatch is None and track.content_id in verification.verified_content_ids:
-            count = len(expected.get(track.content_id, ()))
-            results.append(ApplyTrackResult(track.content_id, "verified", count, count))
+            expected_rows = expected.get(track.content_id, ())
+            count = len(expected_rows)
+            results.append(ApplyTrackResult(
+                track.content_id,
+                "verified",
+                count,
+                count,
+                local_cue_fingerprint=_cue_fingerprint(expected_rows),
+            ))
         else:
             expected_count = len(expected.get(track.content_id, ()))
             actual_count = mismatch.actual_count if mismatch else 0

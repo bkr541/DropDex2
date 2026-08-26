@@ -37,10 +37,11 @@ function setupChain(result: { data: unknown[] | null; error: { message: string }
 }
 
 function setupCueChain(result: { data: unknown; error: { message: string } | null }) {
-  const chain = { select: vi.fn(), in: vi.fn(), order: vi.fn() };
+  const chain = { select: vi.fn(), in: vi.fn(), order: vi.fn(), range: vi.fn() };
   chain.select.mockReturnValue(chain);
   chain.in.mockReturnValue(chain);
-  chain.order.mockResolvedValue(result);
+  chain.order.mockReturnValue(chain);
+  chain.range.mockResolvedValue(result);
   vi.mocked(supabase.from).mockReturnValue(chain as never);
   return chain;
 }
@@ -286,6 +287,20 @@ describe('cue load integrity', () => {
     if (state.status === 'loaded-with-cues') expect(state.cues).toHaveLength(1);
   });
 
+  it('pages cue rows so a full API page cannot be mistaken for a complete track state', async () => {
+    const chain = setupCueChain({ data: [], error: null });
+    chain.range
+      .mockResolvedValueOnce({ data: Array.from({ length: 500 }, (_, index) => makeCueRow('track-a', { id: `cue-${index}`, start_ms: index })), error: null })
+      .mockResolvedValueOnce({ data: [makeCueRow('track-a', { id: 'cue-500', start_ms: 500 })], error: null });
+
+    const state = await fetchTrackCueState('track-a');
+
+    expect(state.status).toBe('loaded-with-cues');
+    if (state.status === 'loaded-with-cues') expect(state.cues).toHaveLength(501);
+    expect(chain.range).toHaveBeenNthCalledWith(1, 0, 499);
+    expect(chain.range).toHaveBeenNthCalledWith(2, 500, 999);
+  });
+
   it('loads canonical reconciliation payload for production Cue Points provenance', async () => {
     const payload = { _dropdex_cue_reconciliation: { authority: 'anlz', conflict: null } };
     const chain = setupCueChain({ data: [makeCueRow('track-a', { source_payload: payload })], error: null });
@@ -326,15 +341,17 @@ describe('cue load integrity', () => {
   });
 
   it('keeps successful and failed chunks independently track-scoped', async () => {
-    const goodChain = { select: vi.fn(), in: vi.fn(), order: vi.fn() };
+    const goodChain = { select: vi.fn(), in: vi.fn(), order: vi.fn(), range: vi.fn() };
     goodChain.select.mockReturnValue(goodChain);
     goodChain.in.mockReturnValue(goodChain);
-    goodChain.order.mockResolvedValue({ data: [makeCueRow('track-good')], error: null });
+    goodChain.order.mockReturnValue(goodChain);
+    goodChain.range.mockResolvedValue({ data: [makeCueRow('track-good')], error: null });
 
-    const badChain = { select: vi.fn(), in: vi.fn(), order: vi.fn() };
+    const badChain = { select: vi.fn(), in: vi.fn(), order: vi.fn(), range: vi.fn() };
     badChain.select.mockReturnValue(badChain);
     badChain.in.mockReturnValue(badChain);
-    badChain.order.mockResolvedValue({ data: null, error: { message: 'timeout' } });
+    badChain.order.mockReturnValue(badChain);
+    badChain.range.mockResolvedValue({ data: null, error: { message: 'timeout' } });
 
     vi.mocked(supabase.from)
       .mockReturnValueOnce(goodChain as never)
@@ -354,15 +371,17 @@ describe('cue load integrity', () => {
   });
 
   it('supports retry after transient cue failure without caching empty state', async () => {
-    const failChain = { select: vi.fn(), in: vi.fn(), order: vi.fn() };
+    const failChain = { select: vi.fn(), in: vi.fn(), order: vi.fn(), range: vi.fn() };
     failChain.select.mockReturnValue(failChain);
     failChain.in.mockReturnValue(failChain);
-    failChain.order.mockResolvedValue({ data: null, error: { message: 'network offline' } });
+    failChain.order.mockReturnValue(failChain);
+    failChain.range.mockResolvedValue({ data: null, error: { message: 'network offline' } });
 
-    const successChain = { select: vi.fn(), in: vi.fn(), order: vi.fn() };
+    const successChain = { select: vi.fn(), in: vi.fn(), order: vi.fn(), range: vi.fn() };
     successChain.select.mockReturnValue(successChain);
     successChain.in.mockReturnValue(successChain);
-    successChain.order.mockResolvedValue({ data: [], error: null });
+    successChain.order.mockReturnValue(successChain);
+    successChain.range.mockResolvedValue({ data: [], error: null });
 
     vi.mocked(supabase.from)
       .mockReturnValueOnce(failChain as never)
