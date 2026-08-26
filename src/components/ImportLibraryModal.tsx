@@ -1373,6 +1373,30 @@ export function ImportLibraryModal({
   }, []);
 
   useEffect(() => {
+    const activePhases: UsbImportPhase[] = [
+      'uploading_usb_data',
+      'stopping_usb_reads',
+      'usb_released',
+      'parsing_cloud_data',
+      'deleting_import',
+      'pausing_cloud_work',
+    ];
+    if (!activePhases.includes(phase) || !('wakeLock' in navigator)) return;
+
+    let lock: WakeLockSentinel | null = null;
+    let released = false;
+    navigator.wakeLock.request('screen').then((sentinel) => {
+      if (released) sentinel.release();
+      else lock = sentinel;
+    }).catch(() => { /* unavailable or document hidden — ignore */ });
+
+    return () => {
+      released = true;
+      lock?.release();
+    };
+  }, [phase]);
+
+  useEffect(() => {
     if (!localUsbAccessActive) return undefined;
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -1834,13 +1858,7 @@ export function ImportLibraryModal({
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
                   <CircleDash className="animate-spin text-primary" size={28} />
                 </div>
-                <h2 className="text-xl font-bold mb-2">Analysis Running</h2>
-                <div className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left">
-                  <CheckmarkFilled size={18} className="mt-0.5 shrink-0 text-emerald-400" />
-                  <p className="text-xs leading-relaxed text-emerald-100">
-                    USB reading is complete. DropDex is continuing from uploaded copies and no longer needs the USB. You may open Rekordbox or eject the drive.
-                  </p>
-                </div>
+                <h2 className="text-xl font-bold mb-5">Analysis Running</h2>
                 <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 text-left text-xs">
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Current stage</span>
@@ -1900,10 +1918,10 @@ export function ImportLibraryModal({
                 <div className="mt-6 flex items-center justify-center gap-2 flex-nowrap">
                   <ControlButton
                     type="button"
-                    variant="danger-outline"
-                    onClick={() => openAbortDialog('delete')}
+                    variant="neutral"
+                    onClick={() => openAbortDialog('pause')}
                   >
-                    <TrashCan size={16} /> Delete Import
+                    <Pause size={16} /> Pause Import
                   </ControlButton>
                   <ControlButton
                     type="button"
@@ -1913,18 +1931,7 @@ export function ImportLibraryModal({
                     <ArrowRight size={16} />
                     Continue in Background
                   </ControlButton>
-                  <ControlButton
-                    type="button"
-                    variant="neutral"
-                    onClick={() => openAbortDialog('pause')}
-                    title="Pause analysis"
-                  >
-                    <Pause size={16} />
-                  </ControlButton>
                 </div>
-                <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
-                  Pause keeps completed work and retained uploads for resume. Delete waits for worker shutdown before removing cloud data. Neither action needs the USB.
-                </p>
               </div>
             )}
 
