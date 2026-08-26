@@ -69,6 +69,7 @@ function makeCueRow(trackId: string, overrides: Record<string, unknown> = {}) {
     source_db_present: true,
     source_anlz_present: true,
     source_conflict: false,
+    source_payload: null,
     ...overrides,
   };
 }
@@ -283,6 +284,20 @@ describe('cue load integrity', () => {
 
     expect(state.status).toBe('loaded-with-cues');
     if (state.status === 'loaded-with-cues') expect(state.cues).toHaveLength(1);
+  });
+
+  it('loads canonical reconciliation payload for production Cue Points provenance', async () => {
+    const payload = { _dropdex_cue_reconciliation: { authority: 'anlz', conflict: null } };
+    const chain = setupCueChain({ data: [makeCueRow('track-a', { source_payload: payload })], error: null });
+
+    const state = await fetchTrackCueState('track-a');
+
+    expect(chain.select).toHaveBeenCalledWith(expect.stringContaining('source_payload'));
+    expect(state.status).toBe('loaded-with-cues');
+    if (state.status === 'loaded-with-cues') {
+      expect(state.cues[0].source_payload).toEqual(payload);
+      expect(state.cues[0].cue_family_authority).toBe('anlz');
+    }
   });
 
   it('keeps Supabase/RLS rejection as failed rather than loaded-empty', async () => {

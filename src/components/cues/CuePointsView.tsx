@@ -45,6 +45,12 @@ import {
   type CueDraftValidationResult,
 } from '../../lib/cues/cueDraftDocument';
 import { fingerprintImportedLocalCueBaseline } from '../../lib/cues/localCueBaseline';
+import {
+  REKORDBOX_MEMORY_CUE_COLORS,
+  cueLoopRangeGeometry,
+  resolveCueDisplayColor,
+  summarizeCueProvenance,
+} from '../../lib/cues/cueVisualization';
 import { loadCueEditorBaseline } from '../../lib/cues/cueBaselineLoader';
 import { cueFilterMatches, cueLoadCount, cueLoadOwnerMatches, type CueLoadOwner } from '../../lib/cues/cueLoadState';
 import {
@@ -71,19 +77,6 @@ const CUE_PAGE_SIZE = 100;
 const MAX_TIMELINE_GRID_LINES = 640;
 const MAX_BEAT_RULER_TICKS = 640;
 const MAX_BAR_LABELS = 24;
-
-// Keep this small enum aligned with the existing local-baseline/writer memory-color mapping.
-// Hot Cue ColorTableIndex is intentionally edited as a raw Rekordbox index because the
-// active writer preserves that index but does not define a trustworthy display palette for it.
-const MEMORY_CUE_COLORS = Object.freeze([
-  { index: 1, label: 'Red', name: 'Red' },
-  { index: 2, label: 'Orange', name: 'Orange' },
-  { index: 3, label: 'Yellow', name: 'Yellow' },
-  { index: 4, label: 'Green', name: 'Green' },
-  { index: 5, label: 'Aqua', name: 'Aqua' },
-  { index: 6, label: 'Blue', name: 'Blue' },
-  { index: 7, label: 'Purple', name: 'Purple' },
-] as const);
 
 interface TimelineSection {
   id: string;
@@ -477,6 +470,7 @@ function CueInspector({
   onMoveCue,
   onEditCue,
   onMessage,
+  editable = true,
 }: {
   cue: WorkingCue;
   cues: WorkingCue[];
@@ -484,6 +478,7 @@ function CueInspector({
   onMoveCue: (cueId: string, requestedMs: number, timingMode: CueTimingMode) => string | null;
   onEditCue: (cueId: string, action: CueEditAction) => string | null;
   onMessage: (message: string | null) => void;
+  editable?: boolean;
 }) {
   const occupiedByOther = useMemo(() => new Set(
     cues
@@ -496,7 +491,9 @@ function CueInspector({
     : null;
   const knownMemoryColor = cue.colorTableIndex == null
     ? null
-    : MEMORY_CUE_COLORS.find((option) => option.index === cue.colorTableIndex) ?? null;
+    : REKORDBOX_MEMORY_CUE_COLORS.find((option) => option.index === cue.colorTableIndex) ?? null;
+  const displayColor = resolveCueDisplayColor(cue);
+  const provenance = summarizeCueProvenance(cue);
 
   const commitNumber = (
     rawValue: string,
@@ -556,11 +553,39 @@ function CueInspector({
         </div>
       </div>
 
+      <div className="mt-3 grid gap-2 rounded-lg border border-white/[0.06] bg-black/10 p-2.5 md:grid-cols-3" data-testid="cue-metadata-summary">
+        <div className="min-w-0">
+          <p className="text-[8px] font-black uppercase tracking-[0.14em] text-muted-foreground">Display color</p>
+          <div className="mt-1 flex items-center gap-2 text-[11px] font-semibold">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/20" style={{ backgroundColor: displayColor.hex }} aria-hidden="true" />
+            <span className="truncate">{displayColor.label}</span>
+            {displayColor.source === 'unknown' && <span className="shrink-0 text-amber-300">Unknown mapping</span>}
+          </div>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[8px] font-black uppercase tracking-[0.14em] text-muted-foreground">Provenance</p>
+          <p className="mt-1 text-[11px] font-semibold">{provenance.sources}{cue.sourceKind ? ` · ${cue.sourceKind}` : ''}</p>
+          <p className="mt-0.5 text-[9px] text-muted-foreground">{provenance.resolution}</p>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[8px] font-black uppercase tracking-[0.14em] text-muted-foreground">Conflict status</p>
+          <p className={cn('mt-1 text-[11px] font-bold', provenance.blocking ? 'text-amber-200' : 'text-emerald-300')}>
+            {provenance.blocking ? 'Blocking conflict' : 'No blocking conflict'}
+          </p>
+          {provenance.conflict && <p className="mt-0.5 text-[9px] text-amber-100/80">{provenance.conflict}</p>}
+        </div>
+      </div>
+
+      {!editable && (
+        <p className="mt-2 text-[9px] font-semibold text-amber-200">This cue is inspectable but read-only until the canonical cue baseline is safe.</p>
+      )}
+
       <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <label className="min-w-0 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
           Family / Hot slot
           <SelectControl
             className="mt-1"
+            disabled={!editable}
             value={familySlotValue}
             onChange={(event) => {
               const value = event.target.value;
@@ -588,6 +613,7 @@ function CueInspector({
           Cue type
           <SelectControl
             className="mt-1"
+            disabled={!editable}
             value={cue.pointType}
             onChange={(event) => onMessage(onEditCue(cue.editorId, {
               kind: 'point-type',
@@ -604,6 +630,7 @@ function CueInspector({
           <TextControl
             key={`${cue.editorId}:start:${cue.startMs}`}
             className="mt-1 font-mono tabular-nums"
+            disabled={!editable}
             type="number"
             min={0}
             step={1}
@@ -622,6 +649,7 @@ function CueInspector({
           {cue.family === 'memory' ? (
             <SelectControl
               className="mt-1"
+              disabled={!editable}
               value={cue.colorTableIndex == null ? 'clear' : String(cue.colorTableIndex)}
               onChange={(event) => {
                 if (event.target.value === 'clear') {
@@ -629,7 +657,7 @@ function CueInspector({
                   return;
                 }
                 const index = Number(event.target.value);
-                const option = MEMORY_CUE_COLORS.find((candidate) => candidate.index === index);
+                const option = REKORDBOX_MEMORY_CUE_COLORS.find((candidate) => candidate.index === index);
                 if (!option) return;
                 onMessage(onEditCue(cue.editorId, {
                   kind: 'color',
@@ -643,7 +671,7 @@ function CueInspector({
               {!knownMemoryColor && cue.colorTableIndex != null && (
                 <option value={String(cue.colorTableIndex)}>Current index {cue.colorTableIndex}</option>
               )}
-              {MEMORY_CUE_COLORS.map((option) => (
+              {REKORDBOX_MEMORY_CUE_COLORS.map((option) => (
                 <option key={option.index} value={String(option.index)}>{option.label}</option>
               ))}
             </SelectControl>
@@ -651,6 +679,7 @@ function CueInspector({
             <TextControl
               key={`${cue.editorId}:color-index:${cue.colorTableIndex}`}
               className="mt-1 font-mono tabular-nums"
+              disabled={!editable}
               type="number"
               min={0}
               step={1}
@@ -669,6 +698,7 @@ function CueInspector({
             <TextControl
               key={`${cue.editorId}:end:${cue.endMs}`}
               className="mt-1 font-mono tabular-nums"
+              disabled={!editable}
               type="number"
               min={0}
               step={1}
@@ -686,6 +716,7 @@ function CueInspector({
             <TextControl
               key={`${cue.editorId}:length:${loopLengthMs}`}
               className="mt-1 font-mono tabular-nums"
+              disabled={!editable}
               type="number"
               min={1}
               step={1}
@@ -703,6 +734,7 @@ function CueInspector({
             <button
               type="button"
               aria-pressed={cue.isActiveLoop === true}
+              disabled={!editable}
               className={cn(
                 'mt-1 flex min-h-10 w-full items-center justify-between rounded-lg border px-3 text-xs font-bold normal-case tracking-normal transition-colors',
                 cue.isActiveLoop === true
@@ -722,6 +754,7 @@ function CueInspector({
         Comment / name
         <TextControl
           className="mt-1"
+          disabled={!editable}
           value={cue.comment ?? ''}
           maxLength={255}
           onChange={(event) => onMessage(onEditCue(cue.editorId, { kind: 'comment', comment: event.target.value || null }))}
@@ -863,6 +896,13 @@ function CueWaveformPanel({
     () => cues.filter((cue) => cue.startMs != null && durationMs != null && durationMs > 0),
     [cues, durationMs],
   );
+  const memoryCueIndexes = useMemo(() => {
+    let memoryIndex = 0;
+    return new Map(positionedCues.map((cue) => {
+      const index = cue.family === 'memory' ? memoryIndex++ : memoryIndex;
+      return [cue.editorId, index] as const;
+    }));
+  }, [positionedCues]);
   const waveformColorSegments = useMemo<WaveformColorSegment[]>(() => {
     if (durationMs == null || durationMs <= 0) return [];
     return sections.map((section) => ({
@@ -935,12 +975,12 @@ function CueWaveformPanel({
 
   const handleCuePointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>, cueId: string) => {
     if (event.button !== 0) return;
+    setSelectedCueId(cueId);
+    setContextMenu(null);
     if (!cueEditingAllowed) {
       setEditorMessage(cueIntegrityError);
       return;
     }
-    setSelectedCueId(cueId);
-    setContextMenu(null);
     dragStateRef.current = { cueId, pointerId: event.pointerId, startX: event.clientX, moved: false };
     event.currentTarget.setPointerCapture(event.pointerId);
   }, [cueEditingAllowed, cueIntegrityError]);
@@ -1158,36 +1198,63 @@ function CueWaveformPanel({
                     No cue points
                   </div>
                 ) : (
-                  positionedCues.map((cue, index) => {
-                    const left = percentageAt(cue.startMs ?? 0, viewStart, effectiveViewEnd);
-                    const markerColor = cue.colorHex || (cue.family === 'hot' ? '#238df2' : '#9b5de5');
-                    const memoryIndex = positionedCues.slice(0, index).filter((item) => item.family === 'memory').length;
-                    const selected = selectedCueId === cue.editorId;
-                    return (
-                      <button
-                        key={cue.editorId}
-                        type="button"
-                        className={cn(
-                          'absolute top-0 bottom-0 z-20 w-10 -translate-x-1/2 cursor-ew-resize rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-white/70',
-                          selected && 'bg-white/[0.05]',
-                        )}
-                        style={{ left: `${left}%` }}
-                        title={`${cueDisplayName(cue)} · ${formatTime(cue.startMs)} · drag to reposition; click to edit; right-click for actions`}
-                        aria-label={`${cueDisplayName(cue)} at ${formatTime(cue.startMs)}. Drag to reposition, click to edit, or press Delete to remove.`}
-                        onPointerDown={(event) => handleCuePointerDown(event, cue.editorId)}
-                        onPointerMove={handleCuePointerMove}
-                        onPointerUp={handleCuePointerUp}
-                        onPointerCancel={handleCuePointerUp}
-                        onContextMenu={(event) => handleCueContextMenu(event, cue.editorId)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Delete' || event.key === 'Backspace') {
-                            event.preventDefault();
-                            onDeleteCue(cue.editorId);
-                            setSelectedCueId(null);
-                            setEditorMessage(null);
-                          }
-                        }}
-                      >
+                  <>
+                    {positionedCues.map((cue) => {
+                      const range = cueLoopRangeGeometry(cue, viewStart, effectiveViewEnd);
+                      if (!range?.visible) return null;
+                      const displayColor = resolveCueDisplayColor(cue);
+                      return (
+                        <span
+                          key={`cue-loop-range-${cue.editorId}`}
+                          data-testid="cue-loop-range"
+                          className="pointer-events-none absolute bottom-[5px] top-[5px] z-10 rounded-[3px] border"
+                          style={{
+                            left: `${range.leftPercent}%`,
+                            width: `${range.widthPercent}%`,
+                            minWidth: '2px',
+                            borderColor: `${displayColor.hex}AA`,
+                            backgroundColor: `${displayColor.hex}24`,
+                          }}
+                          title={`${cueDisplayName(cue)} range · ${formatTime(cue.startMs)}–${formatTime(cue.endMs)}`}
+                        >
+                          <span className="absolute bottom-0 right-0 top-0 w-px" style={{ backgroundColor: displayColor.hex }} aria-hidden="true" />
+                        </span>
+                      );
+                    })}
+                    {positionedCues.map((cue) => {
+                      const left = percentageAt(cue.startMs ?? 0, viewStart, effectiveViewEnd);
+                      const displayColor = resolveCueDisplayColor(cue);
+                      const markerColor = displayColor.hex;
+                      const memoryIndex = memoryCueIndexes.get(cue.editorId) ?? 0;
+                      const selected = selectedCueId === cue.editorId;
+                      return (
+                        <button
+                          key={cue.editorId}
+                          type="button"
+                          data-testid={cue.pointType === 'loop' ? 'cue-loop-start-marker' : 'cue-point-marker'}
+                          className={cn(
+                            'absolute top-0 bottom-0 z-20 w-10 -translate-x-1/2 rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-white/70',
+                            cueEditingAllowed ? 'cursor-ew-resize' : 'cursor-pointer',
+                            selected && 'bg-white/[0.05]',
+                          )}
+                          style={{ left: `${left}%` }}
+                          title={`${cueDisplayName(cue)} · ${formatTime(cue.startMs)}${cue.pointType === 'loop' ? `–${formatTime(cue.endMs)}` : ''} · ${cue.comment || 'No comment'} · ${displayColor.label} · ${summarizeCueProvenance(cue).sources}`}
+                          aria-label={`${cueDisplayName(cue)} at ${formatTime(cue.startMs)}${cue.pointType === 'loop' ? ` through ${formatTime(cue.endMs)}` : ''}. ${cueEditingAllowed ? 'Drag to reposition, click to edit, or press Delete to remove.' : 'Read-only because cue integrity is blocked.'}`}
+                          onFocus={() => setSelectedCueId(cue.editorId)}
+                          onPointerDown={(event) => handleCuePointerDown(event, cue.editorId)}
+                          onPointerMove={handleCuePointerMove}
+                          onPointerUp={handleCuePointerUp}
+                          onPointerCancel={handleCuePointerUp}
+                          onContextMenu={(event) => handleCueContextMenu(event, cue.editorId)}
+                          onKeyDown={(event) => {
+                            if (cueEditingAllowed && (event.key === 'Delete' || event.key === 'Backspace')) {
+                              event.preventDefault();
+                              onDeleteCue(cue.editorId);
+                              setSelectedCueId(null);
+                              setEditorMessage(null);
+                            }
+                          }}
+                        >
                         <span
                           className="absolute top-0 bottom-0 left-1/2 w-px -translate-x-1/2"
                           style={{ backgroundColor: markerColor }}
@@ -1200,8 +1267,9 @@ function CueWaveformPanel({
                           {cueTimelineLabel(cue, memoryIndex)}
                         </span>
                       </button>
-                    );
-                  })
+                      );
+                    })}
+                  </>
                 )}
               </div>
 
@@ -1269,17 +1337,35 @@ function CueWaveformPanel({
                       />
                     ))}
                     {positionedCues.map((cue) => {
-                      const markerColor = cue.colorHex || (cue.family === 'hot' ? '#238df2' : '#9b5de5');
+                      const displayColor = resolveCueDisplayColor(cue);
+                      const markerColor = displayColor.hex;
+                      const range = cueLoopRangeGeometry(cue, viewStart, effectiveViewEnd);
                       return (
-                        <span
-                          key={`wave-cue-${cue.editorId}`}
-                          className="absolute bottom-0 top-0 w-px opacity-75"
-                          style={{
-                            left: `${percentageAt(cue.startMs ?? 0, viewStart, effectiveViewEnd)}%`,
-                            backgroundColor: markerColor,
-                            boxShadow: `0 0 5px ${markerColor}55`,
-                          }}
-                        />
+                        <span key={`wave-cue-${cue.editorId}`}>
+                          {range?.visible && (
+                            <span
+                              data-testid="waveform-loop-range"
+                              className="absolute bottom-1 top-1 rounded-[2px] border-y"
+                              style={{
+                                left: `${range.leftPercent}%`,
+                                width: `${range.widthPercent}%`,
+                                minWidth: '2px',
+                                borderColor: `${markerColor}66`,
+                                backgroundColor: `${markerColor}18`,
+                              }}
+                            >
+                              <span className="absolute bottom-0 right-0 top-0 w-px" style={{ backgroundColor: markerColor }} />
+                            </span>
+                          )}
+                          <span
+                            className="absolute bottom-0 top-0 w-px opacity-75"
+                            style={{
+                              left: `${percentageAt(cue.startMs ?? 0, viewStart, effectiveViewEnd)}%`,
+                              backgroundColor: markerColor,
+                              boxShadow: `0 0 5px ${markerColor}55`,
+                            }}
+                          />
+                        </span>
                       );
                     })}
                   </div>
@@ -1336,7 +1422,7 @@ function CueWaveformPanel({
         </div>
       </div>
 
-      {selectedCue && cueEditingAllowed && (
+      {selectedCue && (
         <CueInspector
           cue={selectedCue}
           cues={cues}
@@ -1344,6 +1430,7 @@ function CueWaveformPanel({
           onMoveCue={onMoveCue}
           onEditCue={onEditCue}
           onMessage={setEditorMessage}
+          editable={cueEditingAllowed}
         />
       )}
 

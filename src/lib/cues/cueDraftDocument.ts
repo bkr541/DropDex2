@@ -27,6 +27,8 @@ export interface CueDraftCue {
   sourceAnlzPresent: boolean;
   sourceConflict: boolean;
   sourceKind: string | null;
+  cueFamilyAuthority?: 'provisional' | 'anlz' | null;
+  sourcePayload?: Record<string, unknown> | null;
   rekordboxKind: number | null;
   semantic: string | null;
   pairedHotCueSlot: number | null;
@@ -137,6 +139,8 @@ function canonicalCue(cue: WorkingCue): CueDraftCue {
     sourceAnlzPresent: Boolean(cue.sourceAnlzPresent),
     sourceConflict: Boolean(cue.sourceConflict),
     sourceKind: normalizedString(cue.sourceKind),
+    cueFamilyAuthority: cue.cueFamilyAuthority === 'anlz' || cue.cueFamilyAuthority === 'provisional' ? cue.cueFamilyAuthority : null,
+    sourcePayload: cue.sourcePayload == null ? null : stableValue(cue.sourcePayload) as Record<string, unknown>,
     rekordboxKind: normalizedInteger(cue.rekordboxKind, 'rekordboxKind'),
     semantic: normalizedString(cue.semantic),
     pairedHotCueSlot: normalizedInteger(cue.pairedHotCueSlot, 'pairedHotCueSlot'),
@@ -288,6 +292,8 @@ export function parseCueDraftDocument(value: unknown): CueDraftDocument {
       sourceAnlzPresent: raw.sourceAnlzPresent === true,
       sourceConflict: raw.sourceConflict === true,
       sourceKind: typeof raw.sourceKind === 'string' ? raw.sourceKind : null,
+      cueFamilyAuthority: raw.cueFamilyAuthority === 'anlz' || raw.cueFamilyAuthority === 'provisional' ? raw.cueFamilyAuthority : null,
+      sourcePayload: isRecord(raw.sourcePayload) ? stableValue(raw.sourcePayload) as Record<string, unknown> : null,
       rekordboxKind: typeof raw.rekordboxKind === 'number' ? raw.rekordboxKind : null,
       semantic: typeof raw.semantic === 'string' ? raw.semantic : null,
       pairedHotCueSlot: typeof raw.pairedHotCueSlot === 'number' ? raw.pairedHotCueSlot : null,
@@ -329,6 +335,8 @@ export function hydrateCueDraftDocument(document: CueDraftDocument): WorkingCue[
     sourceAnlzPresent: cue.sourceAnlzPresent,
     sourceConflict: cue.sourceConflict,
     sourceKind: cue.sourceKind,
+    cueFamilyAuthority: cue.cueFamilyAuthority ?? null,
+    sourcePayload: cue.sourcePayload ?? null,
     rekordboxKind: cue.rekordboxKind,
     semantic: cue.semantic,
     pairedHotCueSlot: cue.pairedHotCueSlot,

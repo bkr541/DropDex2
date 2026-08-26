@@ -51,6 +51,7 @@ function importedCue(overrides: Partial<CueRow> = {}): CueRow {
     source_db_present: true,
     source_anlz_present: true,
     source_conflict: false,
+    source_payload: null,
     ...overrides,
   };
 }
@@ -75,7 +76,8 @@ describe('track-scoped async response guard', () => {
 
 describe('cue editor working state', () => {
   it('normalizes imported cues without mutating source rows and preserves round-trip fields', () => {
-    const row = importedCue();
+    const sourcePayload = { _dropdex_cue_reconciliation: { authority: 'anlz', conflict: null } };
+    const row = importedCue({ source_payload: sourcePayload });
     const baseline = normalizeImportedCues('track-a', [row]);
 
     expect(baseline).toHaveLength(1);
@@ -90,11 +92,24 @@ describe('cue editor working state', () => {
       startMs: 500,
       colorHex: '#112233',
       comment: 'Imported label',
+      cueFamilyAuthority: 'anlz',
+      sourcePayload,
       source: 'imported',
     });
 
     baseline[0].startMs = 980;
     expect(row.start_ms).toBe(500);
+  });
+
+  it('compares reconciliation metadata deterministically across JSON key order', () => {
+    const left = normalizeImportedCues('track-a', [importedCue({
+      source_payload: { z: 2, _dropdex_cue_reconciliation: { conflict: null, authority: 'anlz' } },
+    })]);
+    const right = normalizeImportedCues('track-a', [importedCue({
+      source_payload: { _dropdex_cue_reconciliation: { authority: 'anlz', conflict: null }, z: 2 },
+    })]);
+
+    expect(workingCueSetsEqual(left, right)).toBe(true);
   });
 
   it('renders only real A-H ownership as a Hot Cue letter', () => {

@@ -34,6 +34,8 @@ export interface WorkingCue {
   sourceAnlzPresent: boolean;
   sourceConflict: boolean;
   sourceKind: string | null;
+  cueFamilyAuthority?: 'provisional' | 'anlz' | null;
+  sourcePayload?: Record<string, unknown> | null;
   rekordboxKind: number | null;
   semantic: string | null;
   pairedHotCueSlot: number | null;
@@ -136,6 +138,22 @@ function finiteOrNull(value: number | null): number | null {
   return value != null && Number.isFinite(value) ? value : null;
 }
 
+function stableMetadataValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableMetadataValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nested]) => [key, stableMetadataValue(nested)]),
+    );
+  }
+  return value;
+}
+
+function stableMetadataRecord(value: Record<string, unknown> | null): Record<string, unknown> | null {
+  return value == null ? null : stableMetadataValue(value) as Record<string, unknown>;
+}
+
 function exactMilliseconds(value: number): number | null {
   if (!Number.isFinite(value) || value < 0) return null;
   return Math.round(value);
@@ -186,6 +204,8 @@ export function normalizeImportedCues(trackId: string, rows: CueRow[]): WorkingC
     sourceAnlzPresent: row.source_anlz_present,
     sourceConflict: row.source_conflict,
     sourceKind: row.source_kind,
+    cueFamilyAuthority: row.cue_family_authority,
+    sourcePayload: stableMetadataRecord(row.source_payload),
     rekordboxKind: null,
     semantic: null,
     pairedHotCueSlot: null,
@@ -229,6 +249,8 @@ function canonicalCue(cue: WorkingCue) {
     sourceAnlzPresent: cue.sourceAnlzPresent,
     sourceConflict: cue.sourceConflict,
     sourceKind: cue.sourceKind,
+    cueFamilyAuthority: cue.cueFamilyAuthority ?? null,
+    sourcePayload: stableMetadataRecord(cue.sourcePayload ?? null),
     rekordboxKind: cue.rekordboxKind,
     semantic: cue.semantic,
     pairedHotCueSlot: cue.pairedHotCueSlot,

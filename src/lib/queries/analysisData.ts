@@ -81,6 +81,7 @@ export interface CueRow {
   source_db_present: boolean;
   source_anlz_present: boolean;
   source_conflict: boolean;
+  source_payload: Record<string, unknown> | null;
 }
 
 export type CueLoadState =
@@ -233,6 +234,9 @@ function mapCueRow(raw: unknown): CueRow {
     source_db_present: row.source_db_present as boolean,
     source_anlz_present: row.source_anlz_present as boolean,
     source_conflict: row.source_conflict as boolean,
+    source_payload: row.source_payload != null && typeof row.source_payload === 'object' && !Array.isArray(row.source_payload)
+      ? row.source_payload as Record<string, unknown>
+      : null,
   };
 }
 
@@ -363,7 +367,7 @@ const CUE_SELECT =
   'hot_cue_slot, point_type, source_kind, start_ms, end_ms, ' +
   'color_table_index, color_hex, color_name, comment, is_active_loop, ' +
   'beat_loop_numerator, beat_loop_denominator, ' +
-  'source_db_present, source_anlz_present, source_conflict';
+  'source_db_present, source_anlz_present, source_conflict, source_payload';
 
 function cueFailureState(trackId: string, error: string, retryable: boolean): Exclude<CueLoadState, { status: 'loading' }> {
   return { status: 'failed', trackId, error, retryable };

@@ -135,4 +135,20 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('{applyDraftLoadError && <p className="text-red-300">{applyDraftLoadError}</p>}');
     expect(source).not.toContain('.catch(() => setApplyDrafts([]))');
   });
+  it('renders Stage 6 loop ranges, canonical colors, metadata, and conflict provenance in the production Cue Points path', () => {
+    expect(source).toContain('REKORDBOX_MEMORY_CUE_COLORS');
+    expect(source).toContain('cueLoopRangeGeometry');
+    expect(source).toContain("data-testid={cue.pointType === 'loop' ? 'cue-loop-start-marker' : 'cue-point-marker'}");
+    expect(source).toContain('data-testid="cue-loop-range"');
+    expect(source).toContain('data-testid="waveform-loop-range"');
+    expect(source).toContain('data-testid="cue-metadata-summary"');
+    expect(source).toContain('const displayColor = resolveCueDisplayColor(cue);');
+    expect(source).toContain('const provenance = summarizeCueProvenance(cue);');
+    expect(source).toContain("provenance.blocking ? 'Blocking conflict' : 'No blocking conflict'");
+    expect(source).toContain('editable={cueEditingAllowed}');
+    expect(source).toContain('onFocus={() => setSelectedCueId(cue.editorId)}');
+    expect(source).toContain('if (selectedCueId && !cues.some((cue) => cue.editorId === selectedCueId)) setSelectedCueId(null);');
+    expect(source).toContain("if (cueEditingAllowed && (event.key === 'Delete' || event.key === 'Backspace'))");
+  });
+
 });
