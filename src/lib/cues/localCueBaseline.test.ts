@@ -4,6 +4,7 @@ import { createCueDraftDocument } from './cueDraftDocument';
 import {
   createImportedLocalCueBaselinePayload,
   fingerprintImportedLocalCueBaseline,
+  inspectImportedLocalCueBaseline,
 } from './localCueBaseline';
 
 function dbEvidence(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -160,6 +161,25 @@ describe('local Rekordbox cue baseline fingerprint', () => {
     const anlzOnly = document([cue({ sourceDbPresent: false })]);
     expect(await fingerprintImportedLocalCueBaseline(anlzOnly)).toBeNull();
     expect(await fingerprintImportedLocalCueBaseline(document([cue({ sourceConflict: true })]))).toBeNull();
+  });
+
+
+  it('reports why a provisional cue makes the local baseline non-comparable', () => {
+    const result = inspectImportedLocalCueBaseline(document([cue({
+      cueFamilyAuthority: 'provisional',
+      sourceAnlzPresent: false,
+    })]));
+    expect(result.payload).toBeNull();
+    expect(result.blockingReason).toMatch(/authority is provisional.*ANLZ reconciliation/i);
+  });
+
+  it('reports unproven Memory Color instead of collapsing the blocker to null', () => {
+    const result = inspectImportedLocalCueBaseline(document([cue({
+      family: 'memory', hotCueSlot: null,
+      sourcePayload: { _dropdex_cue_reconciliation: { db: dbEvidence({ provisional_cue_family: 'memory' }) } },
+    })]));
+    expect(result.payload).toBeNull();
+    expect(result.blockingReason).toMatch(/Memory Cue Color.*not proven/i);
   });
 
   it('does not change when only reconciled/editor values change while DB evidence is unchanged', async () => {

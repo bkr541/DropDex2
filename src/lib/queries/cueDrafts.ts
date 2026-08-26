@@ -143,8 +143,11 @@ export async function saveCueDraft(input: {
 }
 
 export function cueDraftNeedsApply(row: CueDraftRow): boolean {
-  if (row.desiredFingerprint === row.currentBaselineFingerprint) return false;
-  return row.appliedRevision !== row.revision || row.appliedFingerprint !== row.desiredFingerprint;
+  // Apply eligibility is based only on the Stage 10 verified moving baseline.
+  // Legacy applied_revision/applied_fingerprint bookkeeping is not proof of the
+  // current local Rekordbox database and must never suppress a pending Apply.
+  if (row.currentBaselineLocalCueFingerprint == null) return false;
+  return row.desiredFingerprint !== row.currentBaselineFingerprint;
 }
 
 const CUE_DRAFT_APPLY_PAGE_SIZE = 500;

@@ -132,10 +132,17 @@ def decide_reuse(
 
     reuse_cues = not cue_changed
 
-    if status == "reused" and cue_changed:
-        # Only cues need refresh, analysis is fine
-        status = "metadata_only"
-        reuse_reason = "Analysis unchanged, cues updated"
+    if cue_changed and status in {"reused", "reparse_from_retained"}:
+        # Cue-family/Hot-Cue writer identity is proven by current ANLZ evidence,
+        # not by the raw DjmdCue heuristic import. A changed cue counter must
+        # therefore request fresh DAT/EXT assets and run reconciliation before
+        # the new track can become final. Reprocessing all normalized features is
+        # deliberately conservative until the parser supports a cue-only mode.
+        status = "needs_dat"
+        reuse_grid = False
+        reuse_waveform = False
+        reuse_phrases = False
+        reuse_reason = "Cues changed; fresh ANLZ reconciliation required"
 
     return ReuseDecision(
         new_track_id=new_track.track_id,

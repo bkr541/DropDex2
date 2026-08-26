@@ -25,7 +25,17 @@ export interface LocalCueBaselinePayload {
   cues: LocalCueBaselineRow[];
 }
 
+export interface LocalCueBaselineBuildResult {
+  payload: LocalCueBaselinePayload | null;
+  blockingReason: string | null;
+}
+
 type Evidence = Record<string, unknown>;
+
+interface LocalCueRowResult {
+  row: LocalCueBaselineRow | null;
+  blockingReason: string | null;
+}
 
 function record(value: unknown): Evidence | null {
   return value != null && typeof value === 'object' && !Array.isArray(value)
@@ -102,27 +112,47 @@ function memoryDbColor(evidence: Evidence): number | null | undefined {
   return undefined;
 }
 
-function localCueRow(cue: CueDraftCue): LocalCueBaselineRow | null {
-  if (cue.sourceConflict) return null;
+function cueDescriptor(cue: CueDraftCue): string {
+  if (cue.family === 'hot' && cue.hotCueSlot != null) return `Hot Cue ${cue.hotCueSlot}`;
+  if (cue.family === 'memory') return 'Memory Cue';
+  return 'Cue';
+}
+
+function blocked(cue: CueDraftCue, reason: string): LocalCueRowResult {
+  return { row: null, blockingReason: `${cueDescriptor(cue)}: ${reason}` };
+}
+
+function localCueRow(cue: CueDraftCue): LocalCueRowResult {
+  if (cue.sourceConflict) return blocked(cue, 'source reconciliation is conflicted.');
+  if (!cue.sourceDbPresent) return blocked(cue, 'preserved Rekordbox database evidence is missing.');
   const evidence = importedDbEvidence(cue);
+  if (!evidence) return blocked(cue, 'preserved pre-reconciliation database evidence is unavailable.');
+  if (cue.cueFamilyAuthority !== 'anlz') {
+    return blocked(cue, 'cue-family authority is provisional; current ANLZ reconciliation is required.');
+  }
+  if (!cue.sourceAnlzPresent) return blocked(cue, 'authoritative ANLZ cue-family evidence is missing.');
   const kind = writerKind(cue);
-  if (!evidence || kind == null) return null;
+  if (kind == null) return blocked(cue, 'writer Kind cannot be proven from the cue family/Hot Cue slot.');
 
   const pointType = evidence.point_type;
-  if (pointType !== 'cue' && pointType !== 'loop') return null;
+  if (pointType !== 'cue' && pointType !== 'loop') return blocked(cue, 'database point type is missing or unsupported.');
   const startMs = finiteNumber(evidence.start_ms);
-  if (startMs == null || startMs < 0) return null;
+  if (startMs == null || startMs < 0) return blocked(cue, 'database cue start time is missing or invalid.');
 
   const comment = nullableStringEvidence(evidence, 'comment');
   const colorTableIndex = nullableIntegerEvidence(evidence, 'color_table_index');
-  if (comment === undefined || colorTableIndex === undefined || (colorTableIndex != null && colorTableIndex < 0)) return null;
+  if (comment === undefined) return blocked(cue, 'database Comment evidence is missing or invalid.');
+  if (colorTableIndex === undefined || (colorTableIndex != null && colorTableIndex < 0)) {
+    return blocked(cue, 'database ColorTableIndex evidence is missing or invalid.');
+  }
 
   let endMs = -1;
   let activeLoop = -1;
   if (pointType === 'loop') {
     const rawEnd = finiteNumber(evidence.end_ms);
     const rawActive = booleanEvidence(evidence, 'is_active_loop');
-    if (rawEnd == null || rawEnd <= startMs || rawActive == null) return null;
+    if (rawEnd == null || rawEnd <= startMs) return blocked(cue, 'database loop end time is missing or invalid.');
+    if (rawActive == null) return blocked(cue, 'database ActiveLoop evidence is missing or invalid.');
     endMs = Math.trunc(rawEnd);
     activeLoop = rawActive ? 1 : 0;
   }
@@ -132,38 +162,49 @@ function localCueRow(cue: CueDraftCue): LocalCueBaselineRow | null {
     color = pointType === 'loop' ? 255 : -1;
   } else {
     const rawColor = memoryDbColor(evidence);
-    if (rawColor === undefined || rawColor == null) return null;
+    if (rawColor === undefined || rawColor == null) {
+      return blocked(cue, 'local Rekordbox Memory Cue Color is not proven by database evidence.');
+    }
     color = rawColor;
   }
 
   return {
-    InMsec: Math.trunc(startMs),
-    OutMsec: endMs,
-    Kind: kind,
-    Color: color,
-    ColorTableIndex: colorTableIndex,
-    ActiveLoop: activeLoop,
-    Comment: comment,
+    row: {
+      InMsec: Math.trunc(startMs),
+      OutMsec: endMs,
+      Kind: kind,
+      Color: color,
+      ColorTableIndex: colorTableIndex,
+      ActiveLoop: activeLoop,
+      Comment: comment,
+    },
+    blockingReason: null,
   };
+}
+
+export function inspectImportedLocalCueBaseline(
+  document: CueDraftDocument,
+): LocalCueBaselineBuildResult {
+  const cues: LocalCueBaselineRow[] = [];
+  for (const cue of document.cues) {
+    const result = localCueRow(cue);
+    if (!result.row) return { payload: null, blockingReason: result.blockingReason };
+    cues.push(result.row);
+  }
+  cues.sort((left, right) => stableStringify(left).localeCompare(stableStringify(right)));
+  return { payload: { schemaVersion: 1, cues }, blockingReason: null };
 }
 
 export function createImportedLocalCueBaselinePayload(
   document: CueDraftDocument,
 ): LocalCueBaselinePayload | null {
-  const cues: LocalCueBaselineRow[] = [];
-  for (const cue of document.cues) {
-    const row = localCueRow(cue);
-    if (!row) return null;
-    cues.push(row);
-  }
-  cues.sort((left, right) => stableStringify(left).localeCompare(stableStringify(right)));
-  return { schemaVersion: 1, cues };
+  return inspectImportedLocalCueBaseline(document).payload;
 }
 
 export async function fingerprintImportedLocalCueBaseline(
   document: CueDraftDocument,
 ): Promise<string | null> {
-  const payload = createImportedLocalCueBaselinePayload(document);
+  const payload = inspectImportedLocalCueBaseline(document).payload;
   if (!payload) return null;
   const bytes = new TextEncoder().encode(stableStringify(payload));
   const digest = await crypto.subtle.digest('SHA-256', bytes);

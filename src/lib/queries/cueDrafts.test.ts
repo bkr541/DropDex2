@@ -20,7 +20,7 @@ vi.mock('../supabase', () => ({
 }));
 
 import { createCueDraftDocument } from '../cues/cueDraftDocument';
-import { CueDraftRevisionConflictError, fetchCueDraft, fetchCueDraftsForApply, markCueDraftApplied, markCueDraftApplyOutcome, saveCueDraft } from './cueDrafts';
+import { CueDraftRevisionConflictError, cueDraftNeedsApply, fetchCueDraft, fetchCueDraftsForApply, markCueDraftApplied, markCueDraftApplyOutcome, saveCueDraft } from './cueDrafts';
 
 const desiredDocument = createCueDraftDocument({
   importId: 'import-1',
@@ -133,6 +133,41 @@ describe('cue draft production persistence queries', () => {
       strategyVersion: null,
       strategySettings: null,
     })).rejects.toBeInstanceOf(CueDraftRevisionConflictError);
+  });
+
+
+  it('does not treat legacy applied bookkeeping as proof of the current local Rekordbox state', () => {
+    const legacy = {
+      ...row,
+      desired_document: desiredDocument,
+      applied_revision: 2,
+      applied_fingerprint: 'desired',
+    };
+    const mappedLikeRow = {
+      id: legacy.id, userId: legacy.user_id, importId: legacy.import_id, trackId: legacy.track_id,
+      rekordboxContentId: legacy.rekordbox_content_id, schemaVersion: legacy.schema_version,
+      desiredDocument, desiredFingerprint: legacy.desired_fingerprint,
+      importedBaselineFingerprint: legacy.imported_baseline_fingerprint,
+      importedBaselineLocalCueFingerprint: legacy.imported_baseline_local_cue_fingerprint,
+      currentBaselineFingerprint: legacy.current_baseline_fingerprint,
+      currentBaselineLocalCueFingerprint: legacy.current_baseline_local_cue_fingerprint,
+      masterDbId: legacy.master_db_id, masterContentId: legacy.master_content_id, revision: legacy.revision,
+      strategyVersion: null, strategySettings: null, createdAt: legacy.created_at, updatedAt: legacy.updated_at,
+      appliedRevision: 2, appliedFingerprint: 'desired', appliedAt: null, lastApplyOperationId: null,
+      lastApplyState: null, lastApplySummary: null,
+    };
+    expect(cueDraftNeedsApply(mappedLikeRow)).toBe(true);
+  });
+
+  it('keeps a legacy draft out of destructive Apply until local baseline proof is refreshed', () => {
+    expect(cueDraftNeedsApply({
+      id: 'legacy', userId: 'user-1', importId: 'import-1', trackId: 'track-1', rekordboxContentId: 'content-1',
+      schemaVersion: 1, desiredDocument, desiredFingerprint: 'desired', importedBaselineFingerprint: 'baseline',
+      importedBaselineLocalCueFingerprint: null, currentBaselineFingerprint: 'baseline', currentBaselineLocalCueFingerprint: null,
+      masterDbId: null, masterContentId: null, revision: 2, strategyVersion: null, strategySettings: null,
+      createdAt: row.created_at, updatedAt: row.updated_at, appliedRevision: 2, appliedFingerprint: 'desired',
+      appliedAt: null, lastApplyOperationId: null, lastApplyState: null, lastApplySummary: null,
+    })).toBe(false);
   });
 
   it('pages Apply All drafts so API row limits cannot masquerade as a complete scope', async () => {

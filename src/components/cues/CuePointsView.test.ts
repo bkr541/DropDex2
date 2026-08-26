@@ -56,7 +56,17 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('saveCueDraft({');
     expect(source).toContain('expectedRevision');
     expect(source).toContain('setSavedCueBaseline(hydrated)');
-    expect(source).toContain('disabled={!dirty || !cueEditingAllowed || saving}');
+    expect(source).toContain('disabled={(!dirty && !baselineProofRefreshNeeded) || !cueEditingAllowed || saving}');
+  });
+
+  it('uses cue-feature truth for Ready and refreshes missing legacy baseline proof without trusting old applied bookkeeping', () => {
+    expect(source).toContain('return cueAnalysisReady(track);');
+    expect(source).toContain('return cueAnalysisLabel(track);');
+    expect(source).toContain("if (draftCurrentBaselineLocalCueFingerprint == null) return 'Needs Verification';");
+    expect(source).not.toContain("draftAppliedRevision === draftRevision && draftAppliedFingerprint === draftDesiredFingerprint) return 'Applied'");
+    expect(source).toContain('existingImportedBaselineLocalCueFingerprint ?? freshImportedBaselineLocalCueFingerprint');
+    expect(source).toContain('baselineProofRefreshNeeded={baselineProofRefreshNeeded}');
+    expect(source).toContain('Refresh verified cue baseline proof for this legacy draft');
   });
 
   it('loads imported cues plus saved draft through the canonical baseline loader and Discard restores saved-first/imported-second', () => {

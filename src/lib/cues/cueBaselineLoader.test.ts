@@ -67,6 +67,22 @@ const cueRow = {
   source_db_present: true,
   source_anlz_present: true,
   source_conflict: false,
+  source_payload: {
+    _dropdex_cue_reconciliation: {
+      db: {
+        provisional_cue_family: 'hot',
+        point_type: 'cue',
+        start_ms: 1000,
+        end_ms: null,
+        is_active_loop: false,
+        color_table_index: null,
+        comment: null,
+      },
+      anlz: { cue_family: 'hot', hot_cue_slot: 1 },
+      authority: 'anlz',
+      conflict: null,
+    },
+  },
 };
 
 
@@ -224,6 +240,26 @@ describe('loadCueEditorBaseline', () => {
       expect(result.draftImportedBaselineFingerprint).toBe('b'.repeat(64));
       expect(result.draftImportedBaselineLocalCueFingerprint).toBe('c'.repeat(64));
     }
+  });
+
+
+  it('blocks provisional cue-family authority with a specific comparability diagnostic', async () => {
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [{ ...cueRow, cue_family_authority: 'provisional', source_anlz_present: false }],
+    });
+
+    const result = await loadCueEditorBaseline(track, 'user-1');
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.integrity).toMatchObject({
+        status: 'invalid',
+        error: expect.stringMatching(/authority is provisional.*ANLZ reconciliation/i),
+      });
+    }
+    expect(fetchCueDraft).not.toHaveBeenCalled();
   });
 
   it('blocks a successfully queryable cue table when reconciliation is known incomplete', async () => {

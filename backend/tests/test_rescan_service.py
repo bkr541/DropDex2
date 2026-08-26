@@ -48,14 +48,16 @@ class TestDecideReuse:
         assert d.analysis_changed
         assert not d.reuse_grid and not d.reuse_waveform
 
-    def test_cue_only_change_metadata_only(self):
+    def test_cue_only_change_requires_fresh_anlz_reconciliation(self):
         new = make_identity(track_id="new", cue_update_count=4)
         prior = make_identity(track_id="prior", cue_update_count=3)
         d = decide_reuse(new, prior)
-        assert d.manifest_status == "metadata_only"
+        assert d.manifest_status == "needs_dat"
         assert d.cue_changed and not d.analysis_changed
-        assert d.reuse_grid and d.reuse_waveform  # analysis still reused
-        assert not d.reuse_cues  # cues need refresh
+        # The current parser has no cue-only mode. Fresh DAT/EXT parsing is the
+        # safe path that proves writer Kind before this import becomes final.
+        assert not d.reuse_grid and not d.reuse_waveform and not d.reuse_phrases
+        assert not d.reuse_cues
 
     def test_information_only_change(self):
         new = make_identity(track_id="new", information_update_count=3)
@@ -91,11 +93,12 @@ class TestDecideReuse:
         d = decide_reuse(new, prior)
         assert d.reuse_reason is not None
 
-    def test_reuse_reason_populated_for_metadata_only(self):
+    def test_reuse_reason_explains_cue_reconciliation_refresh(self):
         new = make_identity(track_id="new", cue_update_count=4)
         prior = make_identity(track_id="prior", cue_update_count=3)
         d = decide_reuse(new, prior)
         assert d.reuse_reason is not None
+        assert "ANLZ reconciliation" in d.reuse_reason
 
     def test_analysis_and_cue_both_changed(self):
         new = make_identity(track_id="new", analysis_data_update_count=6, cue_update_count=4)
@@ -147,6 +150,19 @@ class TestDecideReuse:
         )
         assert decision.manifest_status == "reparse_from_retained"
         assert not decision.reuse_grid
+
+    def test_cue_change_never_reuses_stale_retained_anlz_after_parser_change(self):
+        new = make_identity(track_id="new", cue_update_count=4)
+        prior = make_identity(
+            track_id="prior",
+            cue_update_count=3,
+            parser_version="old-parser",
+            retained_source_available=True,
+        )
+        decision = decide_reuse(new, prior, parser_version="new-parser")
+        assert decision.manifest_status == "needs_dat"
+        assert not decision.reuse_cues
+        assert "ANLZ reconciliation" in (decision.reuse_reason or "")
 
     def test_parser_change_requests_dat_when_raw_source_is_unavailable(self):
         new = make_identity(track_id="new")

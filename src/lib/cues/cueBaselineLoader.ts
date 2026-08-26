@@ -2,11 +2,14 @@ import { normalizeImportedCues, type WorkingCue } from '../music/cueEditorState'
 import { fetchTrackCueState, type CueLoadState } from '../queries/analysisData';
 import { fetchCueDraft } from '../queries/cueDrafts';
 import type { RekordboxTrack } from '../../types';
+import { cueSourceCompletenessError } from './cueReadiness';
 import {
+  createCueDraftDocument,
   hydrateCueDraftDocument,
   validateCueDraftWorkingSet,
   type CueDraftValidationResult,
 } from './cueDraftDocument';
+import { inspectImportedLocalCueBaseline } from './localCueBaseline';
 
 type TerminalCueLoadState = Exclude<CueLoadState, { status: 'loading' }>;
 
@@ -44,36 +47,28 @@ export interface FailedCueEditorBaseline {
 export type CueEditorBaselineResult = LoadedCueEditorBaseline | FailedCueEditorBaseline;
 
 
-function cueSourceCompletenessError(track: RekordboxTrack): string | null {
-  const cueFeatureStatus = track.analysis_feature_statuses?.cues;
-  if (cueFeatureStatus && cueFeatureStatus !== 'completed') {
-    return `Cue reconciliation is ${cueFeatureStatus}; refresh or re-run track analysis before editing cues.`;
-  }
-
-  if (
-    !cueFeatureStatus
-    && (track.analysis_parse_status === 'failed'
-      || track.analysis_parse_status === 'partial'
-      || track.analysis_parse_status === 'missing_required'
-      || track.analysis_parse_status === 'queued'
-      || track.analysis_parse_status === 'parsing')
-  ) {
-    return `Cue completeness cannot be proven while track analysis is ${track.analysis_parse_status}.`;
-  }
-  return null;
-}
-
 function loadedStatus(cues: WorkingCue[]): LoadedCueEditorBaseline['status'] {
   return cues.length === 0 ? 'loaded-empty' : 'loaded-with-cues';
 }
 
 function validateBaseline(track: RekordboxTrack, cues: WorkingCue[]): CueDraftValidationResult {
-  return validateCueDraftWorkingSet({
+  const input = {
     importId: track.import_id,
     trackId: track.id,
     rekordboxContentId: track.rekordbox_content_id,
     cues,
-  });
+  };
+  const semanticIntegrity = validateCueDraftWorkingSet(input);
+  if (semanticIntegrity.status !== 'valid') return semanticIntegrity;
+
+  const localBaseline = inspectImportedLocalCueBaseline(createCueDraftDocument(input));
+  if (localBaseline.blockingReason) {
+    return {
+      status: 'invalid',
+      error: `Cue apply baseline is not comparable: ${localBaseline.blockingReason} Refresh or re-run track analysis before editing, saving, or applying this track.`,
+    };
+  }
+  return semanticIntegrity;
 }
 
 function queryFailure(trackId: string, state: Extract<TerminalCueLoadState, { status: 'failed' }>): FailedCueEditorBaseline {

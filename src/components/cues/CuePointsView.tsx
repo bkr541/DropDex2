@@ -52,6 +52,7 @@ import {
 } from '../../lib/cues/cueVisualization';
 import { REKORDBOX_MEMORY_CUE_COLORS } from '../../lib/cues/rekordboxCueColorCodec';
 import { loadCueEditorBaseline } from '../../lib/cues/cueBaselineLoader';
+import { cueAnalysisLabel, cueAnalysisReady } from '../../lib/cues/cueReadiness';
 import { cueFilterMatches, cueLoadCount, cueLoadOwnerMatches, type CueLoadOwner } from '../../lib/cues/cueLoadState';
 import {
   CueDraftRevisionConflictError,
@@ -76,7 +77,7 @@ interface CuePointsViewProps {
 
 type CueFilter = 'all' | 'with-cues' | 'without-cues';
 type AnalysisFilter = 'all' | 'ready' | 'incomplete';
-type CueDraftStatus = 'Original' | 'Unsaved' | 'Saved' | 'Needs Apply' | 'Applied';
+type CueDraftStatus = 'Original' | 'Unsaved' | 'Saved' | 'Needs Verification' | 'Needs Apply' | 'Applied';
 type TerminalCueLoadStatus = 'loaded-empty' | 'loaded-with-cues' | 'failed';
 type SelectedCueLoadStatus = 'idle' | 'loading' | TerminalCueLoadStatus;
 
@@ -215,20 +216,11 @@ function cueTimelineLabel(cue: WorkingCue, memoryIndex: number): string {
 }
 
 function analysisReady(track: RekordboxTrack): boolean {
-  return track.analysis_parse_status === 'completed' || track.analysis_parse_status === 'reused';
+  return cueAnalysisReady(track);
 }
 
 function analysisLabel(track: RekordboxTrack): string {
-  switch (track.analysis_parse_status) {
-    case 'completed': return 'Ready';
-    case 'reused': return 'Reused';
-    case 'partial': return 'Partial';
-    case 'failed': return 'Failed';
-    case 'missing_required': return 'Missing';
-    case 'parsing': return 'Parsing';
-    case 'queued': return 'Queued';
-    default: return 'Pending';
-  }
+  return cueAnalysisLabel(track);
 }
 
 function timelineGridLines(beats: BeatEntry[]): BeatEntry[] {
@@ -827,6 +819,7 @@ function CueWaveformPanel({
   waveformState,
   dirty,
   draftStatus,
+  baselineProofRefreshNeeded,
   saving,
   persistenceMessage,
   editingBlockedReason,
@@ -858,6 +851,7 @@ function CueWaveformPanel({
   waveformState: WaveformLoadState;
   dirty: boolean;
   draftStatus: CueDraftStatus;
+  baselineProofRefreshNeeded: boolean;
   saving: boolean;
   persistenceMessage: string | null;
   editingBlockedReason: string | null;
@@ -1141,9 +1135,13 @@ function CueWaveformPanel({
             </ControlButton>
             <ControlButton
               variant="surface"
-              disabled={!dirty || !cueEditingAllowed || saving}
+              disabled={(!dirty && !baselineProofRefreshNeeded) || !cueEditingAllowed || saving}
               onClick={() => { void onSave().then(setEditorMessage); }}
-              title={saving ? 'Saving cue changes…' : 'Save cue changes'}
+              title={saving
+                ? 'Saving cue changes…'
+                : baselineProofRefreshNeeded && !dirty
+                  ? 'Refresh verified cue baseline proof for this legacy draft'
+                  : 'Save cue changes'}
             >
               {saving ? <CircleDash size={17} className="animate-spin" /> : <Save size={17} />}
             </ControlButton>
@@ -2019,12 +2017,16 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     if (workingCuesDirty) return 'Unsaved';
     if (!savedCueBaseline) return 'Original';
     if (workingCueSetsEqual(importedCueBaseline, savedCueBaseline)) return 'Saved';
+    if (draftCurrentBaselineLocalCueFingerprint == null) return 'Needs Verification';
     if (draftDesiredFingerprint != null
-      && draftDesiredFingerprint === draftCurrentBaselineFingerprint
-      && draftCurrentBaselineLocalCueFingerprint != null) return 'Applied';
-    if (draftRevision != null && draftAppliedRevision === draftRevision && draftAppliedFingerprint === draftDesiredFingerprint) return 'Applied';
+      && draftDesiredFingerprint === draftCurrentBaselineFingerprint) return 'Applied';
     return 'Needs Apply';
-  }, [draftAppliedFingerprint, draftAppliedRevision, draftCurrentBaselineFingerprint, draftCurrentBaselineLocalCueFingerprint, draftDesiredFingerprint, draftRevision, importedCueBaseline, savedCueBaseline, workingCuesDirty]);
+  }, [draftCurrentBaselineFingerprint, draftCurrentBaselineLocalCueFingerprint, draftDesiredFingerprint, importedCueBaseline, savedCueBaseline, workingCuesDirty]);
+  const baselineProofRefreshNeeded = Boolean(
+    savedCueBaseline
+    && draftRevision != null
+    && draftCurrentBaselineLocalCueFingerprint == null,
+  );
 
   const refreshApplyDrafts = useCallback(async (): Promise<CueDraftRow[]> => {
     if (!userId || !importId) {
@@ -2443,7 +2445,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     if (!userId) return 'Sign in before saving cue changes.';
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
     if (!selectedCueBaselineEditable) return selectedCueBlockReason ?? 'Save is blocked until the cue baseline is safe.';
-    if (!workingCuesDirty) return 'There are no unsaved cue changes.';
+    const refreshBaselineProof = draftRevision != null && draftCurrentBaselineLocalCueFingerprint == null;
+    if (!workingCuesDirty && !refreshBaselineProof) return 'There are no unsaved cue changes.';
     if (cueDraftSaveInFlightRef.current) return 'A cue draft save is already in progress.';
 
     cueDraftSaveInFlightRef.current = true;
@@ -2482,15 +2485,16 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         fingerprintCueDraftDocument(importedDocument),
         fingerprintImportedLocalCueBaseline(importedDocument),
       ]);
-      // Once a draft exists, its safety baselines are durable state. In
-      // particular, a verified Apply may have rebased them to the new local
-      // generation. Never overwrite that proof with the original import on a
-      // later Save. Legacy missing proof remains missing/fail-closed.
+      // Once a draft exists, proven safety baselines are durable state. A
+      // verified Apply may have rebased the moving baseline to a newer local
+      // generation, so never overwrite non-null proof with import-time evidence.
+      // Legacy rows that never had local proof may acquire it once from the
+      // freshly validated imported baseline; the Stage 10 RPC has the same rule.
       const importedBaselineFingerprint = expectedRevision > 0
         ? existingImportedBaselineFingerprint ?? freshImportedBaselineFingerprint
         : freshImportedBaselineFingerprint;
       const importedBaselineLocalCueFingerprint = expectedRevision > 0
-        ? existingImportedBaselineLocalCueFingerprint
+        ? existingImportedBaselineLocalCueFingerprint ?? freshImportedBaselineLocalCueFingerprint
         : freshImportedBaselineLocalCueFingerprint;
       const strategy = cueDraftStrategySummary(document);
       const saved = await saveCueDraft({
@@ -2524,7 +2528,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       if (workingCueSetsEqual(workingCuesRef.current, workingSnapshot)) {
         setWorkingCues(hydrated);
       }
-      return 'Cue changes saved.';
+      return workingCuesDirty
+        ? 'Cue changes saved.'
+        : 'Verified cue baseline proof refreshed. This draft can now be evaluated for Apply.';
     } catch (error) {
       if (!responseIsCurrent()) return null;
       if (error instanceof CueDraftRevisionConflictError) return error.message;
@@ -2535,7 +2541,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         cueDraftSaveInFlightRef.current = false;
       }
     }
-  }, [draftImportedBaselineFingerprint, draftImportedBaselineLocalCueFingerprint, draftRevision, importedCueBaseline, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, selectedTrack, selectedTrackId, userId, workingCues, workingCuesDirty]);
+  }, [draftCurrentBaselineLocalCueFingerprint, draftImportedBaselineFingerprint, draftImportedBaselineLocalCueFingerprint, draftRevision, importedCueBaseline, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, selectedTrack, selectedTrackId, userId, workingCues, workingCuesDirty]);
 
   const handleDiscard = useCallback(() => {
     if (!selectedCueBaselineComplete) return;
@@ -2576,6 +2582,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         waveformState={waveformState}
         dirty={workingCuesDirty}
         draftStatus={cueDraftStatus}
+        baselineProofRefreshNeeded={baselineProofRefreshNeeded}
         saving={savingCueDraft}
         persistenceMessage={draftPersistenceMessage}
         editingBlockedReason={selectedCueRebaseRecoveryPending ? selectedCueBlockReason : null}
