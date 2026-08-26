@@ -1479,10 +1479,13 @@ export function ImportLibraryModal({
                     <div className={cn(
                       'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
                       isReady
-                        ? 'bg-emerald-500/10 border border-emerald-600/30'
+                        ? 'bg-green-500/10 border border-green-500/30'
                         : 'bg-primary/10',
                     )}>
-                      <DataBase className={isReady ? 'text-emerald-500' : 'text-primary'} size={20} />
+                      {isReady
+                        ? <CheckmarkFilled className="text-green-500" size={20} />
+                        : <DataBase className="text-primary" size={20} />
+                      }
                     </div>
                     <h2 className="text-xl font-bold">Import Rekordbox Library</h2>
                   </div>
@@ -1494,7 +1497,7 @@ export function ImportLibraryModal({
                 {/* Mode selector */}
                 <div className={cn(
                   'flex gap-1.5 p-1 rounded-xl mb-5 transition-colors',
-                  isReady ? 'bg-emerald-500/5' : 'bg-[var(--color-surface)]',
+                  isReady ? 'bg-green-500/5' : 'bg-[var(--color-surface)]',
                 )}>
                   {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
                     <button
@@ -1504,7 +1507,7 @@ export function ImportLibraryModal({
                         'flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-semibold transition-all',
                         mode === m
                           ? isReady
-                            ? 'bg-emerald-500 text-white shadow-sm'
+                            ? 'bg-green-500 text-white shadow-sm'
                             : 'bg-primary text-white shadow-sm'
                           : 'text-muted-foreground hover:text-foreground',
                       )}
