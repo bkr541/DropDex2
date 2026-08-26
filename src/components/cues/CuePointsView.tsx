@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, CircleDash, Export, Idea, Music, Save, Search, Undo, Upload, WarningAlt } from '@carbon/icons-react';
+import { ChevronDown, CircleDash, Edit, Export, Idea, Music, Save, Search, Undo, Upload, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -1634,6 +1634,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [cueFilter, setCueFilter] = useState<CueFilter>('all');
   const [analysisFilter, setAnalysisFilter] = useState<AnalysisFilter>('all');
   const [bpmRange, setBpmRange] = useState<[number, number] | null>(null);
+  const [editingGenreTrackId, setEditingGenreTrackId] = useState<string | null>(null);
+  const [editingGenreValue, setEditingGenreValue] = useState('');
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
@@ -2984,7 +2986,52 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                             );
                           })()}
                         </td>
-                        <td className="w-[178px] px-3 py-1.5 text-xs text-muted-foreground"><span className="block truncate">{track.genre ?? '—'}</span></td>
+                        <td className="w-[178px] px-3 py-1.5 text-xs text-muted-foreground">
+                          {editingGenreTrackId === track.id ? (
+                            <div className="flex items-center gap-1.5">
+                              <div className="flex-1 border-b border-white/15 focus-within:border-white/35 transition-colors">
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={editingGenreValue}
+                                  onChange={(e) => setEditingGenreValue(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Escape') setEditingGenreTrackId(null); }}
+                                  className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/30 outline-none"
+                                  placeholder="Genre…"
+                                />
+                              </div>
+                              {editingGenreValue !== (track.genre ?? '') && (
+                                <button
+                                  type="button"
+                                  className="shrink-0 text-primary hover:text-primary/80 transition-colors"
+                                  title="Save genre"
+                                  onClick={() => {/* TODO: wire save */}}
+                                >
+                                  <Save size={13} />
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div
+                              className="group flex items-center gap-1.5"
+                              onMouseLeave={() => {}}
+                            >
+                              <span className="block truncate">{track.genre ?? '—'}</span>
+                              <button
+                                type="button"
+                                className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all"
+                                title="Edit genre"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingGenreTrackId(track.id);
+                                  setEditingGenreValue(track.genre ?? '');
+                                }}
+                              >
+                                <Edit size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </td>
                         <td className="px-3 py-1.5 text-center">
                           <span className={cn(
                             'inline-flex min-w-8 justify-center rounded-md border px-2 py-1 font-mono text-[12px] font-black',
