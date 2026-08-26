@@ -9,6 +9,7 @@ import {
   type BeatEntry,
 } from './beatGridHelpers';
 import {
+  inspectHotCueSlotOwnership,
   replaceWorkingCues,
   type WorkingCue,
 } from './cueEditorState';
@@ -105,6 +106,7 @@ export interface AutoCueMergeResult {
   addedMemoryCount: number;
   preservedOccupiedSlots: AutoCueSlot[];
   skippedSlots: Partial<Record<AutoCueSlot, string>>;
+  blockedReason: string | null;
 }
 
 const HIGH_KIND_MAP: Readonly<Record<number, PssiCueSemantic>> = Object.freeze({
@@ -528,6 +530,18 @@ export function mergeAutoCueProposals(input: {
   currentCues: WorkingCue[];
   result: AutoCueStrategyResult;
 }): AutoCueMergeResult {
+  const ownership = inspectHotCueSlotOwnership(input.currentCues);
+  if (ownership.status !== 'valid') {
+    return {
+      cues: input.currentCues,
+      addedHotCount: 0,
+      addedMemoryCount: 0,
+      preservedOccupiedSlots: [],
+      skippedSlots: input.result.skipped,
+      blockedReason: ownership.error ?? 'Hot Cue ownership is not safe for Auto Cue.',
+    };
+  }
+
   const occupiedSlots = new Set(
     input.currentCues
       .filter((cue) => cue.family === 'hot' && cue.hotCueSlot != null)
@@ -578,6 +592,7 @@ export function mergeAutoCueProposals(input: {
     addedMemoryCount,
     preservedOccupiedSlots,
     skippedSlots: input.result.skipped,
+    blockedReason: null,
   };
 }
 

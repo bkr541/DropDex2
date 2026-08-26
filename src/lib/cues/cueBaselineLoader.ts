@@ -2,7 +2,11 @@ import { normalizeImportedCues, type WorkingCue } from '../music/cueEditorState'
 import { fetchTrackCueState, type CueLoadState } from '../queries/analysisData';
 import { fetchCueDraft } from '../queries/cueDrafts';
 import type { RekordboxTrack } from '../../types';
-import { hydrateCueDraftDocument } from './cueDraftDocument';
+import {
+  hydrateCueDraftDocument,
+  validateCueDraftWorkingSet,
+  type CueDraftValidationResult,
+} from './cueDraftDocument';
 
 type TerminalCueLoadState = Exclude<CueLoadState, { status: 'loading' }>;
 
@@ -16,6 +20,7 @@ export interface LoadedCueEditorBaseline {
   draftAppliedRevision: number | null;
   draftAppliedFingerprint: string | null;
   draftDesiredFingerprint: string | null;
+  integrity: CueDraftValidationResult;
 }
 
 export interface FailedCueEditorBaseline {
@@ -58,6 +63,15 @@ function loadedStatus(cues: WorkingCue[]): LoadedCueEditorBaseline['status'] {
   return cues.length === 0 ? 'loaded-empty' : 'loaded-with-cues';
 }
 
+function validateBaseline(track: RekordboxTrack, cues: WorkingCue[]): CueDraftValidationResult {
+  return validateCueDraftWorkingSet({
+    importId: track.import_id,
+    trackId: track.id,
+    rekordboxContentId: track.rekordbox_content_id,
+    cues,
+  });
+}
+
 function queryFailure(trackId: string, state: Extract<TerminalCueLoadState, { status: 'failed' }>): FailedCueEditorBaseline {
   return {
     status: 'failed',
@@ -96,7 +110,8 @@ export async function loadCueEditorBaseline(
   if (cueState.status === 'failed') return queryFailure(track.id, cueState);
 
   const importedCues = normalizeImportedCues(track.id, cueState.cues);
-  if (!userId) {
+  const importedIntegrity = validateBaseline(track, importedCues);
+  if (!userId || importedIntegrity.status !== 'valid') {
     return {
       status: loadedStatus(importedCues),
       trackId: track.id,
@@ -107,6 +122,7 @@ export async function loadCueEditorBaseline(
       draftAppliedRevision: null,
       draftAppliedFingerprint: null,
       draftDesiredFingerprint: null,
+      integrity: importedIntegrity,
     };
   }
 
@@ -123,6 +139,7 @@ export async function loadCueEditorBaseline(
         draftAppliedRevision: null,
         draftAppliedFingerprint: null,
         draftDesiredFingerprint: null,
+        integrity: importedIntegrity,
       };
     }
 
@@ -137,6 +154,7 @@ export async function loadCueEditorBaseline(
     }
 
     const savedCues = hydrateCueDraftDocument(draft.desiredDocument);
+    const savedIntegrity = validateBaseline(track, savedCues);
     return {
       status: loadedStatus(savedCues),
       trackId: track.id,
@@ -147,6 +165,7 @@ export async function loadCueEditorBaseline(
       draftAppliedRevision: draft.appliedRevision,
       draftAppliedFingerprint: draft.appliedFingerprint,
       draftDesiredFingerprint: draft.desiredFingerprint,
+      integrity: savedIntegrity,
     };
   } catch (error) {
     return {

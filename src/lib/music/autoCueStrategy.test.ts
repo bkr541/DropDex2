@@ -319,6 +319,27 @@ describe('fill-empty working-set merge', () => {
     expect(memoryC?.source).toBe('auto');
   });
 
+  it('fails closed instead of filling apparently free slots when imported Hot Cue ownership is unresolved', () => {
+    const beats = makeVariableTempoBeats(96);
+    const strategy = generateAutoCueProposals({
+      beats,
+      phrases: representativePhrases(beats),
+      durationMs: beats.at(-1)!.ms,
+    });
+    const unresolved = { ...importedHot(1, 777), hotCueSlot: null };
+    const merged = mergeAutoCueProposals({
+      trackId: 'track-1',
+      importId: 'import-1',
+      currentCues: [unresolved],
+      result: strategy,
+    });
+
+    expect(merged.blockedReason).toMatch(/unresolved/i);
+    expect(merged.cues).toEqual([unresolved]);
+    expect(merged.addedHotCount).toBe(0);
+    expect(merged.addedMemoryCount).toBe(0);
+  });
+
   it('does not add duplicate Memory cues and repeated Auto Cue runs are deterministic/idempotent under fill-empty semantics', () => {
     const beats = makeVariableTempoBeats(96);
     const phrases = representativePhrases(beats);

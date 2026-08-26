@@ -9,6 +9,7 @@ import {
   deleteWorkingCue,
   moveWorkingCue,
   nextAvailableHotCueSlot,
+  hotCueSlotLabel,
   isCurrentTrackResponse,
   workingCueSetsEqual,
   type WorkingCue,
@@ -38,6 +39,7 @@ import {
   cueDraftStrategySummary,
   fingerprintCueDraftDocument,
   hydrateCueDraftDocument,
+  type CueDraftValidationResult,
 } from '../../lib/cues/cueDraftDocument';
 import { fingerprintImportedLocalCueBaseline } from '../../lib/cues/localCueBaseline';
 import { loadCueEditorBaseline } from '../../lib/cues/cueBaselineLoader';
@@ -149,9 +151,7 @@ function formatTime(milliseconds: number | null): string {
 
 function cueLabel(cue: WorkingCue): string {
   if (cue.family === 'memory') return 'M';
-  const slot = cue.hotCueSlot;
-  if (slot != null && slot >= 1 && slot <= 8) return String.fromCharCode(64 + slot);
-  return 'H';
+  return hotCueSlotLabel(cue.hotCueSlot);
 }
 
 function cueDisplayName(cue: WorkingCue): string {
@@ -466,6 +466,7 @@ function CueWaveformPanel({
   cueLoading,
   cueLoadStatus,
   cueLoadError,
+  cueIntegrity,
   beatGridLoading,
   phraseLoading,
   waveformState,
@@ -492,6 +493,7 @@ function CueWaveformPanel({
   cueLoading: boolean;
   cueLoadStatus: SelectedCueLoadStatus;
   cueLoadError: string | null;
+  cueIntegrity: CueDraftValidationResult | null;
   beatGridLoading: boolean;
   phraseLoading: boolean;
   waveformState: WaveformLoadState;
@@ -580,9 +582,11 @@ function CueWaveformPanel({
   const hasUsableGrid = useMemo(() => isUsableBeatGrid(beatGrid?.beats ?? []), [beatGrid]);
   const availableHotCueSlot = useMemo(() => nextAvailableHotCueSlot(cues), [cues]);
   const cueBaselineComplete = cueLoadStatus === 'loaded-empty' || cueLoadStatus === 'loaded-with-cues';
+  const cueEditingAllowed = cueBaselineComplete && cueIntegrity?.status === 'valid';
+  const cueIntegrityError = cueIntegrity && cueIntegrity.status !== 'valid' ? cueIntegrity.error ?? 'Cue baseline is not safe to edit.' : null;
   const autoCueReady = Boolean(
     track
-    && cueBaselineComplete
+    && cueEditingAllowed
     && !beatGridLoading
     && !phraseLoading
     && hasUsableGrid
@@ -611,6 +615,11 @@ function CueWaveformPanel({
       setEditorMessage(cueLoadError ?? 'Cue editing is unavailable until the complete cue baseline loads successfully.');
       return;
     }
+    if (!cueEditingAllowed) {
+      setContextMenu(null);
+      setEditorMessage(cueIntegrityError);
+      return;
+    }
     if (beatGridLoading) {
       setContextMenu(null);
       setEditorMessage('Cue editing will be available when the Rekordbox beat grid finishes loading.');
@@ -629,15 +638,19 @@ function CueWaveformPanel({
     }
     setEditorMessage(null);
     setContextMenu({ kind: 'add', x: event.clientX, y: event.clientY, requestedMs });
-  }, [beatGridLoading, cueBaselineComplete, cueLoadError, cueLoading, hasUsableGrid, timeAtClientX]);
+  }, [beatGridLoading, cueBaselineComplete, cueEditingAllowed, cueIntegrityError, cueLoadError, cueLoading, hasUsableGrid, timeAtClientX]);
 
   const handleCuePointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>, cueId: string) => {
     if (event.button !== 0) return;
+    if (!cueEditingAllowed) {
+      setEditorMessage(cueIntegrityError);
+      return;
+    }
     setSelectedCueId(cueId);
     setContextMenu(null);
     dragStateRef.current = { cueId, pointerId: event.pointerId, startX: event.clientX, moved: false };
     event.currentTarget.setPointerCapture(event.pointerId);
-  }, []);
+  }, [cueEditingAllowed, cueIntegrityError]);
 
   const handleCuePointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     const drag = dragStateRef.current;
@@ -663,9 +676,14 @@ function CueWaveformPanel({
   const handleCueContextMenu = useCallback((event: React.MouseEvent<HTMLButtonElement>, cueId: string) => {
     event.preventDefault();
     event.stopPropagation();
+    if (!cueEditingAllowed) {
+      setEditorMessage(cueIntegrityError);
+      setContextMenu(null);
+      return;
+    }
     setSelectedCueId(cueId);
     setContextMenu({ kind: 'cue', x: event.clientX, y: event.clientY, cueId });
-  }, []);
+  }, [cueEditingAllowed, cueIntegrityError]);
 
   if (!track) {
     return (
@@ -726,7 +744,7 @@ function CueWaveformPanel({
             </ControlButton>
             <ControlButton
               variant="ghost"
-              disabled={!dirty || !cueBaselineComplete || saving}
+              disabled={!dirty || !cueEditingAllowed || saving}
               onClick={onDiscard}
               title="Discard unsaved cue changes"
             >
@@ -734,7 +752,7 @@ function CueWaveformPanel({
             </ControlButton>
             <ControlButton
               variant="surface"
-              disabled={!dirty || !cueBaselineComplete || saving}
+              disabled={!dirty || !cueEditingAllowed || saving}
               onClick={() => { void onSave().then(setEditorMessage); }}
               title={saving ? 'Saving cue changes…' : 'Save cue changes'}
             >
@@ -751,6 +769,27 @@ function CueWaveformPanel({
           </div>
         </div>
       </div>
+
+      {cueBaselineComplete && cueIntegrity && cueIntegrity.status !== 'valid' && (
+        <div className="mx-5 mt-3 flex items-start justify-between gap-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.06] px-3 py-2 text-amber-100" role="status">
+          <div className="flex min-w-0 items-start gap-2">
+            <WarningAlt size={16} className="mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.12em]">
+                {cueIntegrity.status === 'unresolved' ? 'Cue ownership unresolved' : 'Cue baseline invalid'}
+              </p>
+              <p className="mt-0.5 text-[11px] text-amber-100/80">{cueIntegrityError}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="shrink-0 rounded-md border border-amber-200/20 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-amber-200/[0.08]"
+            onClick={onRetryCues}
+          >
+            Retry baseline
+          </button>
+        </div>
+      )}
 
       <div className="px-3 pb-2 pt-2 md:px-4">
         <div className="overflow-x-auto rounded-[18px]">
@@ -1096,6 +1135,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [selectedCueLoadStatus, setSelectedCueLoadStatus] = useState<SelectedCueLoadStatus>('idle');
   const [selectedCueLoadOwner, setSelectedCueLoadOwner] = useState<CueLoadOwner | null>(null);
   const [selectedCueLoadError, setSelectedCueLoadError] = useState<string | null>(null);
+  const [selectedCueIntegrity, setSelectedCueIntegrity] = useState<CueDraftValidationResult | null>(null);
   const [selectedCueRetryNonce, setSelectedCueRetryNonce] = useState(0);
   const [cueSummaryStates, setCueSummaryStates] = useState<Map<string, CueLoadState>>(new Map());
   const [cueSummaryRetryNonce, setCueSummaryRetryNonce] = useState(0);
@@ -1243,6 +1283,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setSelectedCueLoadStatus('idle');
     setSelectedCueLoadOwner(null);
     setSelectedCueLoadError(null);
+    setSelectedCueIntegrity(null);
     setSelectedCueRetryNonce(0);
     setCueSummaryStates(new Map());
     setCueSummaryRetryNonce(0);
@@ -1281,6 +1322,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       setDraftPersistenceMessage(null);
       setWorkingCues([]);
       setSelectedCueLoadError(null);
+      setSelectedCueIntegrity(null);
       setSelectedCueLoading(false);
       setSelectedCueLoadStatus('idle');
       setSelectedCueLoadOwner(null);
@@ -1302,6 +1344,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setDraftPersistenceMessage(null);
     setWorkingCues([]);
     setSelectedCueLoadError(null);
+    setSelectedCueIntegrity(null);
     setSelectedCueLoading(true);
     setSelectedCueLoadOwner(requestedOwner);
     setSelectedCueLoadStatus('loading');
@@ -1320,6 +1363,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           setDraftPersistenceMessage(null);
           setSelectedCueLoadStatus('failed');
           setSelectedCueLoadError(result.error);
+          setSelectedCueIntegrity(null);
           return;
         }
 
@@ -1331,6 +1375,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         setWorkingCues(result.workingCues);
         setSelectedCueLoadStatus(result.status);
         setSelectedCueLoadError(null);
+        setSelectedCueIntegrity(result.integrity);
       })
       .catch((error) => {
         if (!responseIsCurrent()) return;
@@ -1343,6 +1388,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         setWorkingCues([]);
         setDraftPersistenceMessage(null);
         setSelectedCueLoadStatus('failed');
+        setSelectedCueIntegrity(null);
         setSelectedCueLoadError(error instanceof Error
           ? `Cue baseline could not be loaded: ${error.message}`
           : 'Cue baseline could not be loaded for this track.');
@@ -1440,6 +1486,12 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   );
   const selectedCueBaselineComplete = selectedCueLoadOwnedBySelection
     && (selectedCueLoadStatus === 'loaded-empty' || selectedCueLoadStatus === 'loaded-with-cues');
+  const selectedCueBaselineEditable = selectedCueBaselineComplete && selectedCueIntegrity?.status === 'valid';
+  const selectedCueBlockReason = !selectedCueBaselineComplete
+    ? selectedCueLoadError ?? 'Cue editing is blocked until the complete cue baseline loads successfully.'
+    : selectedCueIntegrity?.status !== 'valid'
+      ? selectedCueIntegrity?.error ?? 'Cue editing is blocked until cue ownership is deterministic.'
+      : null;
   const selectedCuePanelStatus: SelectedCueLoadStatus = selectedTrackId && !selectedCueLoadOwnedBySelection
     ? 'loading'
     : selectedCueLoadStatus;
@@ -1533,8 +1585,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const handleApplyPreflight = useCallback(async () => {
     const desktop = window.dropdexDesktop;
     if (!desktop?.isElectron || !applyBridgeAvailable || !userId || !importId) return;
-    if (selectedTrackId && !selectedCueBaselineComplete) {
-      setApplyMessage(selectedCueLoadError ?? 'Apply is blocked until the selected track has a complete cue baseline.');
+    if (selectedTrackId && !selectedCueBaselineEditable) {
+      setApplyMessage(selectedCueBlockReason ?? 'Apply is blocked until the selected track has a valid cue baseline.');
       return;
     }
     const generation = ++applyGenerationRef.current;
@@ -1556,12 +1608,19 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     } finally {
       if (generation === applyGenerationRef.current) setApplyBusy(false);
     }
-  }, [applyBridgeAvailable, desktopDrafts, importId, refreshApplyDrafts, selectedCueBaselineComplete, selectedCueLoadError, selectedTrackId, userId]);
+  }, [applyBridgeAvailable, desktopDrafts, importId, refreshApplyDrafts, selectedCueBaselineEditable, selectedCueBlockReason, selectedTrackId, userId]);
 
   const handleConfirmApply = useCallback(async () => {
     const desktop = window.dropdexDesktop;
     const preflight = applyPreflight;
     if (!desktop?.isElectron || !preflight?.ok || !preflight.token || !userId || !importId || applyBusy) return;
+    if (selectedTrackId && !selectedCueBaselineEditable) {
+      applyGenerationRef.current += 1;
+      setApplyPreflight(null);
+      setApplySnapshot([]);
+      setApplyMessage(selectedCueBlockReason ?? 'Apply is blocked until the selected track has a valid cue baseline.');
+      return;
+    }
     const generation = ++applyGenerationRef.current;
     setApplyBusy(true);
     setApplyMessage(null);
@@ -1621,12 +1680,12 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     } finally {
       if (generation === applyGenerationRef.current) setApplyBusy(false);
     }
-  }, [applyBusy, applyPreflight, applySnapshot, desktopDrafts, importId, refreshApplyDrafts, selectedTrackId, userId]);
+  }, [applyBusy, applyPreflight, applySnapshot, desktopDrafts, importId, refreshApplyDrafts, selectedCueBaselineEditable, selectedCueBlockReason, selectedTrackId, userId]);
 
   const handleAddCue = useCallback((family: 'hot' | 'memory', requestedMs: number): string | null => {
     if (!selectedTrackId) return 'Select a track before editing cue points.';
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
-    if (!selectedCueBaselineComplete) return selectedCueLoadError ?? 'Cue editing is blocked until the complete cue baseline loads successfully.';
+    if (!selectedCueBaselineEditable) return selectedCueBlockReason ?? 'Cue editing is blocked until the cue baseline is safe.';
     if (beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
     manualCueSequenceRef.current += 1;
     const result = addWorkingCue(workingCues, {
@@ -1638,26 +1697,26 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     });
     if (!result.error) setWorkingCues(result.cues);
     return result.error;
-  }, [beatGrid, beatGridLoading, selectedCueBaselineComplete, selectedCueLoadError, selectedCueLoading, selectedTrackId, workingCues]);
+  }, [beatGrid, beatGridLoading, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, selectedTrackId, workingCues]);
 
   const handleMoveCue = useCallback((cueId: string, requestedMs: number): string | null => {
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
-    if (!selectedCueBaselineComplete) return selectedCueLoadError ?? 'Cue editing is blocked until the complete cue baseline loads successfully.';
+    if (!selectedCueBaselineEditable) return selectedCueBlockReason ?? 'Cue editing is blocked until the cue baseline is safe.';
     if (beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
     const result = moveWorkingCue(workingCues, cueId, requestedMs, beatGrid?.beats ?? []);
     if (!result.error) setWorkingCues(result.cues);
     return result.error;
-  }, [beatGrid, beatGridLoading, selectedCueBaselineComplete, selectedCueLoadError, selectedCueLoading, workingCues]);
+  }, [beatGrid, beatGridLoading, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, workingCues]);
 
   const handleDeleteCue = useCallback((cueId: string) => {
-    if (!selectedCueBaselineComplete) return;
+    if (!selectedCueBaselineEditable) return;
     setWorkingCues((current) => deleteWorkingCue(current, cueId));
-  }, [selectedCueBaselineComplete]);
+  }, [selectedCueBaselineEditable]);
 
   const handleAutoCue = useCallback((): string | null => {
     if (!selectedTrackId || !selectedTrack) return 'Select a track before running Auto Cue.';
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
-    if (!selectedCueBaselineComplete) return selectedCueLoadError ?? 'Auto Cue is blocked until the complete cue baseline loads successfully.';
+    if (!selectedCueBaselineEditable) return selectedCueBlockReason ?? 'Auto Cue is blocked until the cue baseline is safe.';
     if (beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
     if (phraseLoading) return 'Track sections are still loading for this track.';
     if (!beatGrid || beatGrid.track_id !== selectedTrackId || !isUsableBeatGrid(beatGrid.beats)) {
@@ -1676,6 +1735,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       vocalAnalysis,
       currentCues: workingCues,
     });
+    if (result.blockedReason) return result.blockedReason;
     if (result.addedHotCount > 0 || result.addedMemoryCount > 0) {
       setWorkingCues(result.cues);
     }
@@ -1690,13 +1750,13 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         : 'Auto Cue did not add any new cues.';
     }
     return `Auto Cue added ${result.addedHotCount} Hot Cue${result.addedHotCount === 1 ? '' : 's'} and ${result.addedMemoryCount} Memory Cue${result.addedMemoryCount === 1 ? '' : 's'}${skippedCount > 0 ? `; ${skippedCount} unsupported slot${skippedCount === 1 ? '' : 's'} skipped` : ''}.`;
-  }, [beatGrid, beatGridLoading, importId, phraseLoading, phrases, selectedCueBaselineComplete, selectedCueLoadError, selectedCueLoading, selectedTrack, selectedTrackId, vocalAnalysis, workingCues]);
+  }, [beatGrid, beatGridLoading, importId, phraseLoading, phrases, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, selectedTrack, selectedTrackId, vocalAnalysis, workingCues]);
 
   const handleSave = useCallback(async (): Promise<string | null> => {
     if (!selectedTrackId || !selectedTrack) return 'Select a track before saving cue changes.';
     if (!userId) return 'Sign in before saving cue changes.';
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
-    if (!selectedCueBaselineComplete) return selectedCueLoadError ?? 'Save is blocked until the complete cue baseline loads successfully.';
+    if (!selectedCueBaselineEditable) return selectedCueBlockReason ?? 'Save is blocked until the cue baseline is safe.';
     if (!workingCuesDirty) return 'There are no unsaved cue changes.';
     if (cueDraftSaveInFlightRef.current) return 'A cue draft save is already in progress.';
 
@@ -1772,7 +1832,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         cueDraftSaveInFlightRef.current = false;
       }
     }
-  }, [draftRevision, importedCueBaseline, selectedCueBaselineComplete, selectedCueLoadError, selectedCueLoading, selectedTrack, selectedTrackId, userId, workingCues, workingCuesDirty]);
+  }, [draftRevision, importedCueBaseline, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, selectedTrack, selectedTrackId, userId, workingCues, workingCuesDirty]);
 
   const handleDiscard = useCallback(() => {
     if (!selectedCueBaselineComplete) return;
@@ -1807,6 +1867,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         cueLoading={selectedCuePanelLoading}
         cueLoadStatus={selectedCuePanelStatus}
         cueLoadError={selectedCuePanelError}
+        cueIntegrity={selectedCueLoadOwnedBySelection ? selectedCueIntegrity : null}
         beatGridLoading={beatGridLoading}
         phraseLoading={phraseLoading}
         waveformState={waveformState}
@@ -1825,7 +1886,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         applyAvailable={applyBridgeAvailable
           && applyDrafts.length > 0
           && !applyDraftLoadError
-          && (!selectedTrackId || selectedCueBaselineComplete)}
+          && (!selectedTrackId || selectedCueBaselineEditable)}
         applying={applyBusy}
         onApply={() => { void handleApplyPreflight(); }}
       />
@@ -1848,7 +1909,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
               <p className="text-xs text-muted-foreground">DropDex will create/retain the Stage 6 backup identity, replace only the trusted local Rekordbox database after staging verification, and re-verify the live result. Rekordbox must remain closed.</p>
               <div className="flex justify-end gap-2">
                 <ControlButton variant="ghost" disabled={applyBusy} onClick={() => { applyGenerationRef.current += 1; setApplyPreflight(null); setApplySnapshot([]); }}>Cancel</ControlButton>
-                <ControlButton variant="primary" disabled={applyBusy || !applyPreflight.ok || !applyPreflight.token || applyPreflight.blockers.length > 0} onClick={() => { void handleConfirmApply(); }}>
+                <ControlButton variant="primary" disabled={applyBusy || !applyPreflight.ok || !applyPreflight.token || applyPreflight.blockers.length > 0 || Boolean(selectedTrackId && !selectedCueBaselineEditable)} onClick={() => { void handleConfirmApply(); }}>
                   {applyBusy ? 'Applying…' : 'Confirm Apply'}
                 </ControlButton>
               </div>

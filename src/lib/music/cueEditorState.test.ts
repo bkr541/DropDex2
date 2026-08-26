@@ -3,6 +3,8 @@ import type { BeatEntry } from './beatGridHelpers';
 import {
   addWorkingCue,
   deleteWorkingCue,
+  hotCueSlotLabel,
+  inspectHotCueSlotOwnership,
   isCurrentTrackResponse,
   moveWorkingCue,
   nextAvailableHotCueSlot,
@@ -89,6 +91,36 @@ describe('cue editor working state', () => {
 
     baseline[0].startMs = 980;
     expect(row.start_ms).toBe(500);
+  });
+
+  it('renders only real A-H ownership as a Hot Cue letter', () => {
+    expect(hotCueSlotLabel(null)).toBe('?');
+    expect(hotCueSlotLabel(0)).toBe('?');
+    expect(hotCueSlotLabel(9)).toBe('?');
+    expect(hotCueSlotLabel(8)).toBe('H');
+  });
+
+  it('fails Hot Cue allocation closed for unresolved or duplicate imported ownership', () => {
+    const unresolved = normalizeImportedCues('track-a', [importedCue({ hot_cue_slot: null })]);
+    expect(inspectHotCueSlotOwnership(unresolved).status).toBe('unresolved');
+    expect(nextAvailableHotCueSlot(unresolved)).toBeNull();
+    const invalid = normalizeImportedCues('track-a', [importedCue({ hot_cue_slot: 9 })]);
+    expect(inspectHotCueSlotOwnership(invalid).status).toBe('invalid');
+    expect(nextAvailableHotCueSlot(invalid)).toBeNull();
+    expect(addWorkingCue(unresolved, {
+      editorId: 'manual:blocked-unresolved',
+      trackId: 'track-a',
+      family: 'hot',
+      requestedMs: 980,
+      beats: variableTempoBeats,
+    })).toMatchObject({ cues: unresolved, error: expect.stringMatching(/unresolved/i) });
+
+    const duplicate = normalizeImportedCues('track-a', [
+      importedCue({ id: 'cue-a-1', hot_cue_slot: 1 }),
+      importedCue({ id: 'cue-a-2', rekordbox_cue_id: 'rb-2', dedupe_key: 'dedupe-2', hot_cue_slot: 1, start_ms: 980 }),
+    ]);
+    expect(inspectHotCueSlotOwnership(duplicate)).toMatchObject({ status: 'invalid', error: expect.stringMatching(/Duplicate Hot Cue slot A/i) });
+    expect(nextAvailableHotCueSlot(duplicate)).toBeNull();
   });
 
   it('adds multiple cues on exact source beat milliseconds and assigns unique A-H hot slots', () => {

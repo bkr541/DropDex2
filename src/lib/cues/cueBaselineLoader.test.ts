@@ -7,6 +7,7 @@ import { fetchTrackCueState } from '../queries/analysisData';
 import { fetchCueDraft } from '../queries/cueDrafts';
 import { loadCueEditorBaseline } from './cueBaselineLoader';
 import type { RekordboxTrack } from '../../types';
+import type { CueDraftDocument, CueDraftCue } from './cueDraftDocument';
 
 const track: RekordboxTrack = {
   id: 'track-1',
@@ -68,6 +69,66 @@ const cueRow = {
   source_conflict: false,
 };
 
+
+function draftCue(overrides: Partial<CueDraftCue> = {}): CueDraftCue {
+  return {
+    importedCueId: 'cue-1',
+    rekordboxCueId: 'rb-cue-1',
+    dedupeKey: 'db:rb-cue-1',
+    family: 'hot',
+    hotCueSlot: 1,
+    pointType: 'cue',
+    startMs: 1000,
+    endMs: null,
+    colorTableIndex: null,
+    colorHex: '#ffffff',
+    colorName: null,
+    comment: null,
+    isActiveLoop: false,
+    beatLoopNumerator: null,
+    beatLoopDenominator: null,
+    sourceDbPresent: true,
+    sourceAnlzPresent: true,
+    sourceConflict: false,
+    sourceKind: 'PCO2',
+    rekordboxKind: null,
+    semantic: null,
+    pairedHotCueSlot: null,
+    strategyVersion: null,
+    strategySettings: null,
+    source: 'imported',
+    ...overrides,
+  };
+}
+
+function mockDraft(document: CueDraftDocument) {
+  return {
+    id: 'draft-1',
+    userId: 'user-1',
+    importId: 'import-1',
+    trackId: 'track-1',
+    rekordboxContentId: 'rb-1',
+    schemaVersion: 1,
+    desiredDocument: document,
+    desiredFingerprint: 'a'.repeat(64),
+    importedBaselineFingerprint: 'b'.repeat(64),
+    importedBaselineLocalCueFingerprint: 'c'.repeat(64),
+    masterDbId: null,
+    masterContentId: null,
+    revision: 1,
+    strategyVersion: null,
+    strategySettings: null,
+    createdAt: '2026-08-25T00:00:00Z',
+    updatedAt: '2026-08-25T00:00:00Z',
+    appliedRevision: null,
+    appliedFingerprint: null,
+    appliedAt: null,
+    lastApplyOperationId: null,
+    lastApplyState: null,
+    lastApplySummary: null,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(fetchTrackCueState).mockResolvedValue({ status: 'loaded-empty', trackId: track.id, cues: [] });
@@ -97,6 +158,67 @@ describe('loadCueEditorBaseline', () => {
       expect(result.workingCues[0].hotCueSlot).toBe(1);
     }
     expect(fetchCueDraft).not.toHaveBeenCalled();
+  });
+
+  it('marks an unresolved imported Hot Cue immediately and keeps it inspectable without loading a draft', async () => {
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [{ ...cueRow, hot_cue_slot: null }],
+    });
+
+    const result = await loadCueEditorBaseline(track, 'user-1');
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.integrity).toMatchObject({ status: 'unresolved', error: expect.stringMatching(/A–H ownership is unresolved/i) });
+      expect(result.workingCues).toHaveLength(1);
+      expect(result.workingCues[0].hotCueSlot).toBeNull();
+    }
+    expect(fetchCueDraft).not.toHaveBeenCalled();
+  });
+
+  it('detects duplicate A ownership during initial imported-baseline hydration', async () => {
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [
+        cueRow,
+        { ...cueRow, id: 'cue-2', rekordbox_cue_id: 'rb-cue-2', dedupe_key: 'db:rb-cue-2', start_ms: 2000 },
+      ],
+    });
+
+    const result = await loadCueEditorBaseline(track, 'user-1');
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.integrity).toMatchObject({ status: 'invalid', error: expect.stringMatching(/Duplicate Hot Cue slot A/i) });
+      expect(result.workingCues).toHaveLength(2);
+    }
+  });
+
+  it('validates a saved draft again after hydration before exposing it as editable', async () => {
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [cueRow],
+    });
+    vi.mocked(fetchCueDraft).mockResolvedValue(mockDraft({
+      schemaVersion: 1,
+      importId: 'import-1',
+      trackId: 'track-1',
+      rekordboxContentId: 'rb-1',
+      cues: [draftCue({ sourceConflict: true })],
+    }));
+
+    const result = await loadCueEditorBaseline(track, 'user-1');
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.integrity).toMatchObject({ status: 'invalid', error: expect.stringMatching(/reconciliation conflicts/i) });
+      expect(result.savedCues).toHaveLength(1);
+      expect(result.workingCues[0].sourceConflict).toBe(true);
+    }
   });
 
   it('blocks a successfully queryable cue table when reconciliation is known incomplete', async () => {

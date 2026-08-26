@@ -1,4 +1,9 @@
-import type { WorkingCue, WorkingCueSource } from '../music/cueEditorState';
+import {
+  HOT_CUE_MAX_SLOT,
+  HOT_CUE_MIN_SLOT,
+  type WorkingCue,
+  type WorkingCueSource,
+} from '../music/cueEditorState';
 
 export const CUE_DRAFT_SCHEMA_VERSION = 1 as const;
 
@@ -43,6 +48,13 @@ export interface CueDraftStrategySummary {
   settings: Record<string, unknown> | null;
 }
 
+export type CueDraftValidationStatus = 'valid' | 'unresolved' | 'invalid';
+
+export interface CueDraftValidationResult {
+  status: CueDraftValidationStatus;
+  error: string | null;
+}
+
 function normalizedNumber(value: number | null, field: string, required = false): number | null {
   if (value == null) {
     if (required) throw new Error(`${field} is required.`);
@@ -84,7 +96,7 @@ function canonicalCue(cue: WorkingCue): CueDraftCue {
 
   const endMs = normalizedNumber(cue.endMs, 'Cue endMs');
   if (cue.family === 'hot') {
-    if (cue.hotCueSlot == null || cue.hotCueSlot < 1 || cue.hotCueSlot > 8 || !Number.isInteger(cue.hotCueSlot)) {
+    if (cue.hotCueSlot == null || cue.hotCueSlot < HOT_CUE_MIN_SLOT || cue.hotCueSlot > HOT_CUE_MAX_SLOT || !Number.isInteger(cue.hotCueSlot)) {
       throw new Error('Hot Cues must own one deterministic slot from A through H.');
     }
   } else if (cue.hotCueSlot != null) {
@@ -169,6 +181,57 @@ export function createCueDraftDocument(input: {
     rekordboxContentId: input.rekordboxContentId,
     cues,
   };
+}
+
+/**
+ * Validate a hydrated editor baseline using the same canonical document rules
+ * that guard Save and Apply. Unknown/invalid Hot Cue slot identity is reported
+ * separately so the UI can keep the source visible while blocking mutation.
+ */
+export function validateCueDraftWorkingSet(input: {
+  importId: string;
+  trackId: string;
+  rekordboxContentId: string;
+  cues: WorkingCue[];
+}): CueDraftValidationResult {
+  const unresolvedHotCue = input.cues.find((cue) => cue.family === 'hot' && cue.hotCueSlot == null);
+  if (unresolvedHotCue) {
+    return {
+      status: 'unresolved',
+      error: 'Hot Cue A–H ownership is unresolved. Refresh or re-analyze cue data before editing, saving, or applying this track.',
+    };
+  }
+
+  const invalidHotCue = input.cues.find((cue) => (
+    cue.family === 'hot'
+    && cue.hotCueSlot != null
+    && (!Number.isInteger(cue.hotCueSlot)
+      || cue.hotCueSlot < HOT_CUE_MIN_SLOT
+      || cue.hotCueSlot > HOT_CUE_MAX_SLOT)
+  ));
+  if (invalidHotCue) {
+    return {
+      status: 'invalid',
+      error: 'Hot Cue slot identity is invalid. Refresh or re-analyze cue data before editing, saving, or applying this track.',
+    };
+  }
+
+  if (input.cues.some((cue) => cue.sourceConflict)) {
+    return {
+      status: 'invalid',
+      error: 'Cue source reconciliation conflicts must be resolved before cue changes can be edited, saved, or applied.',
+    };
+  }
+
+  try {
+    createCueDraftDocument(input);
+    return { status: 'valid', error: null };
+  } catch (error) {
+    return {
+      status: 'invalid',
+      error: error instanceof Error ? error.message : 'Cue baseline is invalid.',
+    };
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

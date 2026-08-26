@@ -32,7 +32,7 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('saveCueDraft({');
     expect(source).toContain('expectedRevision');
     expect(source).toContain('setSavedCueBaseline(hydrated)');
-    expect(source).toContain('disabled={!dirty || !cueBaselineComplete || saving}');
+    expect(source).toContain('disabled={!dirty || !cueEditingAllowed || saving}');
   });
 
   it('loads imported cues plus saved draft through the canonical baseline loader and Discard restores saved-first/imported-second', () => {
@@ -63,8 +63,22 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('applyAvailable={applyBridgeAvailable');
     expect(source).toContain('&& applyDrafts.length > 0');
     expect(source).toContain('&& !applyDraftLoadError');
-    expect(source).toContain('&& (!selectedTrackId || selectedCueBaselineComplete)}');
-    expect(source).toContain('if (selectedTrackId && !selectedCueBaselineComplete)');
+    expect(source).toContain('&& (!selectedTrackId || selectedCueBaselineEditable)}');
+    expect(source.match(/if \(selectedTrackId && !selectedCueBaselineEditable\)/g)).toHaveLength(2);
+    expect(source).toContain('Boolean(selectedTrackId && !selectedCueBaselineEditable)');
+  });
+
+  it('surfaces Stage 4 cue integrity and blocks mutation/apply while malformed cues remain inspectable', () => {
+    expect(source).toContain('return hotCueSlotLabel(cue.hotCueSlot)');
+    expect(source).toContain('setSelectedCueIntegrity(result.integrity)');
+    expect(source).toContain("selectedCueIntegrity?.status === 'valid'");
+    expect(source).toContain("cueIntegrity.status === 'unresolved' ? 'Cue ownership unresolved' : 'Cue baseline invalid'");
+    expect(source).toContain("if (!selectedCueBaselineEditable) return selectedCueBlockReason");
+    expect(source).toContain('if (!selectedCueBaselineEditable) return;');
+    expect(source).toContain('if (result.blockedReason) return result.blockedReason;');
+    expect(source).toContain('workingCues={result.workingCues}').toBe(false);
+    expect(source).toContain('setWorkingCues(result.workingCues)');
+    expect(source).toContain('Retry baseline');
   });
 
   it('persists the imported local DjmdCue baseline and strong track identity for desktop apply', () => {

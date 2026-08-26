@@ -51,6 +51,58 @@ export interface CueEditResult {
 export const HOT_CUE_MIN_SLOT = 1;
 export const HOT_CUE_MAX_SLOT = 8;
 
+export type HotCueSlotOwnershipStatus = 'valid' | 'unresolved' | 'invalid';
+
+export interface HotCueSlotOwnership {
+  status: HotCueSlotOwnershipStatus;
+  occupiedSlots: number[];
+  error: string | null;
+}
+
+export function hotCueSlotLabel(slot: number | null): string {
+  return slot != null
+    && Number.isInteger(slot)
+    && slot >= HOT_CUE_MIN_SLOT
+    && slot <= HOT_CUE_MAX_SLOT
+    ? String.fromCharCode(64 + slot)
+    : '?';
+}
+
+export function inspectHotCueSlotOwnership(cues: WorkingCue[]): HotCueSlotOwnership {
+  const occupied = new Set<number>();
+  for (const cue of cues) {
+    if (cue.family !== 'hot') continue;
+    const slot = cue.hotCueSlot;
+    if (slot == null) {
+      return {
+        status: 'unresolved',
+        occupiedSlots: [...occupied].sort((left, right) => left - right),
+        error: 'Hot Cue ownership is unresolved. Refresh or re-analyze cue data before editing Hot Cues.',
+      };
+    }
+    if (!Number.isInteger(slot) || slot < HOT_CUE_MIN_SLOT || slot > HOT_CUE_MAX_SLOT) {
+      return {
+        status: 'invalid',
+        occupiedSlots: [...occupied].sort((left, right) => left - right),
+        error: 'Hot Cue slot identity is invalid. Refresh or re-analyze cue data before editing Hot Cues.',
+      };
+    }
+    if (occupied.has(slot)) {
+      return {
+        status: 'invalid',
+        occupiedSlots: [...occupied].sort((left, right) => left - right),
+        error: `Duplicate Hot Cue slot ${hotCueSlotLabel(slot)} prevents safe cue editing.`,
+      };
+    }
+    occupied.add(slot);
+  }
+  return {
+    status: 'valid',
+    occupiedSlots: [...occupied].sort((left, right) => left - right),
+    error: null,
+  };
+}
+
 export function isCurrentTrackResponse(activeTrackId: string | null, requestedTrackId: string): boolean {
   return activeTrackId === requestedTrackId;
 }
@@ -102,12 +154,10 @@ export function normalizeImportedCues(trackId: string, rows: CueRow[]): WorkingC
 }
 
 export function nextAvailableHotCueSlot(cues: WorkingCue[]): number | null {
-  const occupied = new Set(
-    cues
-      .filter((cue) => cue.family === 'hot')
-      .map((cue) => cue.hotCueSlot)
-      .filter((slot): slot is number => slot != null && slot >= HOT_CUE_MIN_SLOT && slot <= HOT_CUE_MAX_SLOT),
-  );
+  const ownership = inspectHotCueSlotOwnership(cues);
+  if (ownership.status !== 'valid') return null;
+
+  const occupied = new Set(ownership.occupiedSlots);
   for (let slot = HOT_CUE_MIN_SLOT; slot <= HOT_CUE_MAX_SLOT; slot += 1) {
     if (!occupied.has(slot)) return slot;
   }
@@ -174,9 +224,16 @@ export function addWorkingCue(
     return { cues, beat: null, error: 'Beat snapping is unavailable because this track has no valid Rekordbox beat grid.' };
   }
 
-  const hotCueSlot = options.family === 'hot' ? nextAvailableHotCueSlot(cues) : null;
-  if (options.family === 'hot' && hotCueSlot == null) {
-    return { cues, beat, error: 'Hot Cue slots A–H are already in use.' };
+  let hotCueSlot: number | null = null;
+  if (options.family === 'hot') {
+    const ownership = inspectHotCueSlotOwnership(cues);
+    if (ownership.status !== 'valid') {
+      return { cues, beat, error: ownership.error ?? 'Hot Cue ownership is not safe to edit.' };
+    }
+    hotCueSlot = nextAvailableHotCueSlot(cues);
+    if (hotCueSlot == null) {
+      return { cues, beat, error: 'Hot Cue slots A–H are already in use.' };
+    }
   }
 
   const nextCue: WorkingCue = {

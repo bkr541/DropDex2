@@ -6,6 +6,7 @@ import {
   fingerprintCueDraftDocument,
   hydrateCueDraftDocument,
   stableStringify,
+  validateCueDraftWorkingSet,
 } from './cueDraftDocument';
 
 function cue(overrides: Partial<WorkingCue> = {}): WorkingCue {
@@ -152,6 +153,38 @@ describe('cue draft canonical document', () => {
       strategySettings: { mode: 'fill-empty' },
       source: 'auto',
     });
+  });
+
+  it('classifies unresolved Hot Cue identity separately from canonical invalid state', () => {
+    expect(validateCueDraftWorkingSet({
+      ...identity,
+      cues: [cue({ family: 'hot', hotCueSlot: null })],
+    })).toMatchObject({ status: 'unresolved', error: expect.stringMatching(/A–H ownership is unresolved/i) });
+
+    expect(validateCueDraftWorkingSet({
+      ...identity,
+      cues: [cue({ family: 'hot', hotCueSlot: 9 })],
+    })).toMatchObject({ status: 'invalid', error: expect.stringMatching(/slot identity is invalid/i) });
+
+    expect(validateCueDraftWorkingSet({
+      ...identity,
+      cues: [
+        cue({ family: 'hot', hotCueSlot: 1 }),
+        cue({ family: 'hot', hotCueSlot: 1, startMs: 2000 }),
+      ],
+    })).toMatchObject({ status: 'invalid', error: expect.stringMatching(/Duplicate Hot Cue slot A/i) });
+
+    expect(validateCueDraftWorkingSet({
+      ...identity,
+      cues: [cue({ pointType: 'loop', startMs: 4000, endMs: 3000 })],
+    })).toMatchObject({ status: 'invalid', error: expect.stringMatching(/Loop cues require/i) });
+  });
+
+  it('classifies unresolved reconciliation conflicts as an invalid editor baseline', () => {
+    expect(validateCueDraftWorkingSet({
+      ...identity,
+      cues: [cue({ sourceConflict: true, source: 'imported' })],
+    })).toMatchObject({ status: 'invalid', error: expect.stringMatching(/reconciliation conflicts/i) });
   });
 
   it('rejects duplicate Hot Cue ownership and malformed loops', () => {
