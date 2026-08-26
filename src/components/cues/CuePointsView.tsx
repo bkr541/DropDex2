@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, CircleDash, Export, Idea, Music, Save, Undo, Upload, WarningAlt } from '@carbon/icons-react';
+import { ChevronDown, CircleDash, Export, Idea, Music, Save, Search, Undo, Upload, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -404,18 +404,27 @@ function CueFilterDropdown({
   value,
   onChange,
   options,
+  searchable = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
+  searchable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const selectedLabel = options.find((o) => o.value === value)?.label ?? options[0]?.label ?? value;
 
+  const filtered = searchable && search.trim()
+    ? options.filter((o) => o.label.toLowerCase().includes(search.trim().toLowerCase()))
+    : options;
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setSearch(''); return; }
+    if (searchable) setTimeout(() => searchRef.current?.focus(), 0);
     function onPointerDown(e: PointerEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
@@ -428,7 +437,7 @@ function CueFilterDropdown({
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [open]);
+  }, [open, searchable]);
 
   return (
     <div ref={ref} className="relative min-w-[130px]">
@@ -452,9 +461,26 @@ function CueFilterDropdown({
       {open && (
         <div
           role="listbox"
-          className="absolute top-full left-0 mt-1.5 z-50 min-w-full glass rounded-xl border border-[var(--color-border-subtle)] overflow-hidden shadow-2xl"
+          className="absolute top-full left-0 mt-1.5 z-50 min-w-full glass rounded-xl border border-[var(--color-border-subtle)] overflow-y-auto overscroll-contain shadow-2xl max-h-[320px]"
         >
-          {options.map((opt) => (
+          {searchable && (
+            <div className="dd-control-wrap sticky top-0 p-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)]">
+              <Search size={16} className="dd-control-start-icon" aria-hidden="true" />
+              <input
+                ref={searchRef}
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search…"
+                className="dd-text-control dd-text-control--with-start-icon"
+                style={{ minHeight: 34, fontSize: 13 }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          )}
+          {filtered.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-muted-foreground">No results</p>
+          ) : filtered.map((opt) => (
             <button
               key={opt.value}
               type="button"
@@ -484,14 +510,22 @@ function beatPositionLabel(beat: BeatEntry | undefined): string {
   return `${beat.bar}.${beat.beatInBar}.1`;
 }
 
-function TimelineLaneLabel({ icon, label, children }: { icon: ReactNode; label: string; children?: ReactNode }) {
+function TimelineLaneLabel({ icon, label, color, children, collapsed }: { icon: ReactNode; label: string; color: string; children?: ReactNode; collapsed?: boolean }) {
   return (
-    <div className="flex h-full items-center gap-3.5 rounded-[8px] border border-[#26313a] bg-[#11181e] px-[18px] text-[#d9dde1] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
-      <span className="shrink-0 text-[#aeb7bf]" aria-hidden="true">{icon}</span>
-      <div className="min-w-0">
-        <p className="truncate text-[14px] font-semibold tracking-[-0.015em]">{label}</p>
-        {children}
-      </div>
+    <div className={cn(
+      'pointer-events-none relative flex h-full items-center text-[#d9dde1] transition-all duration-200',
+      collapsed ? 'justify-center px-0' : 'gap-3.5 pl-[10px] pr-1',
+    )}>
+      {!collapsed && (
+        <span className="absolute left-[2px] top-1/2 h-[20px] w-[3px] -translate-y-1/2 rounded-full" style={{ backgroundColor: color }} />
+      )}
+      <span className="shrink-0" style={{ color: color }} aria-hidden="true">{icon}</span>
+      {!collapsed && (
+        <div className="min-w-0">
+          <p className="truncate text-[14px] font-semibold tracking-[-0.015em]">{label}</p>
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -871,11 +905,14 @@ function CueWaveformPanel({
   onApplyAll: () => void;
 }) {
   const { theme } = useTheme();
+  const [labelsCollapsed, setLabelsCollapsed] = useState(false);
   const durationMs = durationMsForTrack(track, beatGrid, phrases);
 
   const [viewStart, setViewStart] = useState(0);
   const [viewEnd, setViewEnd] = useState<number | null>(null);
   const [selectedCueId, setSelectedCueId] = useState<string | null>(null);
+  const viewRef = useRef({ start: 0, end: null as number | null });
+  const wheelRafRef = useRef<number | null>(null);
   const [contextMenu, setContextMenu] = useState<CueContextMenuState | null>(null);
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
   const [timingMode, setTimingMode] = useState<CueTimingMode>('snap');
@@ -908,23 +945,50 @@ function CueWaveformPanel({
     if (selectedCueId && !cues.some((cue) => cue.editorId === selectedCueId)) setSelectedCueId(null);
   }, [cues, selectedCueId]);
 
+  // Keep viewRef in sync so wheel handler always reads the latest view without stale closures
+  useEffect(() => { viewRef.current = { start: viewStart, end: viewEnd }; }, [viewStart, viewEnd]);
+
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     if (!durationMs || durationMs <= 0) return;
     e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
-    const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const vStart = viewStart;
-    const vEnd = viewEnd ?? durationMs;
-    const focusMs = vStart + fraction * (vEnd - vStart);
-    const factor = e.deltaY > 0 ? 1.06 : 1 / 1.06;
-    const range = Math.max(2000, Math.min(durationMs, (vEnd - vStart) * factor));
-    let newStart = focusMs - fraction * range;
-    let newEnd = focusMs + (1 - fraction) * range;
+    const { start: vStart, end: vEndRaw } = viewRef.current;
+    const vEnd = vEndRaw ?? durationMs;
+    const viewRange = vEnd - vStart;
+
+    let newStart: number;
+    let newEnd: number;
+
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      // Horizontal scroll → pan
+      const panMs = (e.deltaX / rect.width) * viewRange;
+      newStart = vStart + panMs;
+      newEnd = vEnd + panMs;
+    } else {
+      // Vertical scroll → zoom toward cursor, factor scaled by deltaY magnitude
+      const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const focusMs = vStart + fraction * viewRange;
+      const factor = Math.exp(e.deltaY * 0.003);
+      const range = Math.max(2000, Math.min(durationMs, viewRange * factor));
+      newStart = focusMs - fraction * range;
+      newEnd = focusMs + (1 - fraction) * range;
+    }
+
     if (newStart < 0) { newEnd = Math.min(durationMs, newEnd - newStart); newStart = 0; }
     if (newEnd > durationMs) { newStart = Math.max(0, newStart - (newEnd - durationMs)); newEnd = durationMs; }
-    setViewStart(newStart);
-    setViewEnd(newEnd);
-  }, [durationMs, viewStart, viewEnd]);
+
+    // Write to ref immediately so the next queued event reads the updated value
+    viewRef.current = { start: newStart, end: newEnd };
+
+    // Commit to state at most once per animation frame
+    if (!wheelRafRef.current) {
+      wheelRafRef.current = requestAnimationFrame(() => {
+        setViewStart(viewRef.current.start);
+        setViewEnd(viewRef.current.end);
+        wheelRafRef.current = null;
+      });
+    }
+  }, [durationMs]);
 
   const sections = useMemo(
     () => buildTimelineSections(phrases, beatGrid, durationMs),
@@ -1086,35 +1150,26 @@ function CueWaveformPanel({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
           <h1 className="mt-1 truncate text-xl font-black tracking-tight md:text-2xl">{track.title}</h1>
+          <p className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+            <span><span className="font-semibold text-foreground/60">BPM:</span> {bpmDisplay}</span>
+            <span>
+              <span className="font-semibold text-foreground/60">Key:</span>{' '}
+              <span className="font-semibold" style={camelotColor(track.musical_key) ? { color: camelotColor(track.musical_key)! } : undefined}>{keyDisplay}</span>
+            </span>
+            <span><span className="font-semibold text-foreground/60">Duration:</span> {durationDisplay}</span>
+            <span><span className="font-semibold text-foreground/60">Cues:</span> {cueLoading ? '…' : cueLoadStatus === 'failed' ? '!' : String(cues.length)}</span>
+          </p>
         </div>
 
         <div className="flex flex-wrap items-stretch gap-2 xl:justify-end">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {[
-              ['BPM', bpmDisplay],
-              ['Key', keyDisplay],
-              ['Duration', durationDisplay],
-              ['Cues', cueLoading ? '…' : cueLoadStatus === 'failed' ? '!' : String(cues.length)],
-            ].map(([label, value]) => {
-              const kc = label === 'Key' ? camelotColor(track.musical_key) : null;
-              return (
-                <div key={label} className="min-w-[88px] rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2"
-                  style={kc ? { backgroundColor: kc, borderColor: 'transparent' } : undefined}>
-                  <span className="block text-[8px] font-bold uppercase tracking-[0.18em]"
-                    style={kc ? { color: 'rgba(255,255,255,0.65)' } : undefined}>{label}</span>
-                  <span className="mt-1 block font-mono text-sm font-black tabular-nums"
-                    style={kc ? { color: 'rgba(255,255,255,0.88)' } : undefined}>{value}</span>
-                </div>
-              );
-            })}
-          </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="min-w-[148px]">
               <SegmentedControl
                 ariaLabel="Cue timing mode"
+                variant="pill"
                 value={timingMode}
                 onChange={(value) => setTimingMode(value as CueTimingMode)}
-                options={[{ value: 'snap', label: 'Snap' }, { value: 'exact', label: 'Exact ms' }]}
+                options={[{ value: 'snap', label: 'Snap' }, { value: 'exact', label: 'Exact' }]}
               />
             </div>
             <ControlButton
@@ -1188,14 +1243,26 @@ function CueWaveformPanel({
         </div>
       )}
 
-      <div className="px-3 pb-2 pt-2 md:px-4">
-        <div className="overflow-x-auto rounded-[18px]">
-          <div className="min-w-[980px] rounded-[18px] border border-[#2a353e] bg-[#090e13] p-[7px] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
-            <div className="grid grid-cols-[174px_minmax(0,1fr)] gap-x-[5px] gap-y-[4px]">
-              <div className="h-[40px]">
-                <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Sections" />
+      <div className="pl-0 pr-3 pb-2 pt-2 md:pr-4">
+        <div className="overflow-x-auto">
+          <div className="min-w-[980px]">
+            <div className="relative">
+              {/* Right border for the label column — single nav-bar border */}
+              <div className={cn('pointer-events-none absolute top-0 bottom-0 z-10 border-r border-[#1e2a36] transition-[left] duration-200', labelsCollapsed ? 'left-[48px]' : 'left-[150px]')} />
+              {/* Unified content column background */}
+              <div className={cn('pointer-events-none absolute inset-y-0 right-0 rounded-[8px] border border-[#26313a] bg-[#0d1318] transition-[left] duration-200', labelsCollapsed ? 'left-[calc(48px+29px)]' : 'left-[calc(150px+29px)]')} />
+              {/* Full-column click target — clicking anywhere in the label column collapses/expands */}
+              <button
+                type="button"
+                onClick={() => setLabelsCollapsed((v) => !v)}
+                className={cn('absolute top-0 bottom-0 left-0 z-20 cursor-pointer transition-[width] duration-200', labelsCollapsed ? 'w-[48px]' : 'w-[150px]')}
+                aria-label={labelsCollapsed ? 'Expand timeline lanes' : 'Collapse timeline lanes'}
+              />
+            <div className={cn('grid gap-x-[29px] gap-y-0 transition-[grid-template-columns] duration-200', labelsCollapsed ? 'grid-cols-[48px_minmax(0,1fr)]' : 'grid-cols-[150px_minmax(0,1fr)]')}>
+              <div className="h-[40px] border-b border-[#1e2a30]">
+                <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Sections" color="#60a5fa" collapsed={labelsCollapsed} />
               </div>
-              <div className="relative h-[40px] overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0d1318]">
+              <div className="relative h-[40px] overflow-hidden border-b border-[#1e2a30]">
                 {phraseLoading ? (
                   <div className="flex h-full items-center px-5 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
                 ) : sections.length === 0 ? (
@@ -1232,10 +1299,10 @@ function CueWaveformPanel({
                 )}
               </div>
 
-              <div className="h-[40px]">
-                <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.25} />} label="Cues" />
+              <div className="h-[40px] border-b border-[#1e2a30]">
+                <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.25} />} label="Cues" color="#fb923c" collapsed={labelsCollapsed} />
               </div>
-              <div className="relative h-[40px] overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0d1318]">
+              <div className="relative h-[40px] overflow-hidden border-b border-[#1e2a30]">
                 {cueLoading ? (
                   <div className="flex h-full items-center px-5 text-[11px] font-medium text-[#707b85]">Loading cue points…</div>
                 ) : cueLoadStatus === 'failed' ? (
@@ -1329,11 +1396,11 @@ function CueWaveformPanel({
                 )}
               </div>
 
-              <div className="h-[88px]">
-                <TimelineLaneLabel icon={<AudioWaveform size={20} strokeWidth={2.25} />} label="Waveform" />
+              <div className="h-[88px] border-b border-[#1e2a30]">
+                <TimelineLaneLabel icon={<AudioWaveform size={20} strokeWidth={2.25} />} label="Waveform" color="#5dcfff" collapsed={labelsCollapsed} />
               </div>
               <div
-                className="relative h-[88px] cursor-crosshair overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0b1116]"
+                className="relative h-[88px] cursor-crosshair overflow-hidden border-b border-[#1e2a30]"
                 onWheel={handleWheel}
                 onContextMenu={handleWaveformContextMenu}
                 title={timingMode === 'snap' ? 'Right-click to add a beat-snapped cue' : 'Right-click to add an exact millisecond cue'}
@@ -1437,9 +1504,9 @@ function CueWaveformPanel({
               </div>
 
               <div className="h-[40px]">
-                <TimelineLaneLabel icon={<Grip size={19} strokeWidth={2.55} />} label="Beat Grid" />
+                <TimelineLaneLabel icon={<Grip size={19} strokeWidth={2.55} />} label="Beat Grid" color="#4ade80" collapsed={labelsCollapsed} />
               </div>
-              <div className="relative h-[40px] overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0d1318]">
+              <div className="relative h-[40px] overflow-hidden">
                 {beatGridLoading ? (
                   <div className="flex h-full items-center px-5 text-[11px] font-medium text-[#707b85]">Loading beat grid…</div>
                 ) : durationMs == null || rulerTicks.length === 0 ? (
@@ -1473,6 +1540,7 @@ function CueWaveformPanel({
                   </>
                 )}
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -2725,7 +2793,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       <section className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
         <div className="border-b border-[var(--color-border-subtle)] px-4 py-4 md:px-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="min-w-[200px] xl:max-w-xs">
+            <div className="min-w-[200px] flex-1">
               <div className="pb-2 border-b border-white/15 hover:border-white/35 transition-colors focus-within:border-white/35">
                 <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">Search</p>
                 <input
@@ -2743,6 +2811,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                 label="Genre"
                 value={genre}
                 onChange={setGenre}
+                searchable
                 options={[
                   { value: '', label: 'All' },
                   ...(stats?.genreTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
@@ -2752,6 +2821,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                 label="Key"
                 value={keyFilter}
                 onChange={setKeyFilter}
+                searchable
                 options={[
                   { value: '', label: 'All' },
                   ...(stats?.keyTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
@@ -2830,9 +2900,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                         onClick={() => handleColClick(col)}>
                         <span className="inline-flex items-center gap-1">
                           {label}
-                          {sortCol === col && (
-                            <span className="text-primary">{sortDir === 'asc' ? '↑' : '↓'}</span>
-                          )}
+                          <span className={cn('text-primary', sortCol !== col && 'invisible')}>{sortDir === 'asc' ? '↑' : '↓'}</span>
                         </span>
                       </th>
                     ))}
@@ -2860,7 +2928,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                           selected ? 'bg-primary/[0.08]' : 'hover:bg-[var(--color-surface-hover)]',
                         )}
                       >
-                        <td className="px-4 py-3 md:px-5">
+                        <td className="px-4 py-1.5 md:px-5">
                           <div className="flex items-center gap-2">
                             <span className={cn(
                               'h-2 w-2 shrink-0 rounded-full',
@@ -2873,8 +2941,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                                     : 'bg-amber-400',
                             )} aria-hidden="true" />
                             <span className={cn('h-8 w-1 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
-                            <div className="flex min-w-0 flex-1 items-center gap-2">
-                              <div className="w-[220px] shrink-0">
+                            <div className="flex min-w-0 flex-1 items-center gap-8">
+                              <div className="w-[500px] shrink-0">
                                 <p className={cn('truncate text-sm font-bold', selected && 'text-primary')}>{track.title}</p>
                                 <p className="mt-0.5 truncate text-xs text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
                               </div>
@@ -2884,18 +2952,16 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                                 const cols = ws.waveform.previewColumns;
                                 if (cols.length === 0) return null;
                                 const maxH = Math.max(...cols.map(c => c.h), 1);
-                                const N = 300, H = 20;
+                                const N = 350, H = 20;
                                 const step = cols.length / N;
-                                const cdjBlue = '#1a9bea';
+                                const cdjBlue = '#5dcfff';
                                 return (
-                                  <svg width="100%" height={H} viewBox={`0 0 ${N} ${H}`} preserveAspectRatio="none" className="min-w-0 flex-1 opacity-70" aria-hidden="true">
+                                  <svg width="100%" height={H} viewBox={`0 0 ${N} ${H}`} preserveAspectRatio="none" className="flex-1 min-w-0" aria-hidden="true">
                                     {Array.from({ length: N }, (_, i) => {
                                       const col = cols[Math.floor(i * step)];
                                       const h = Math.max(1, (col.h / maxH) * H);
                                       const fill = theme === 'cdj' ? cdjBlue : ('r' in col ? `rgb(${col.r},${col.g},${col.b})` : cdjBlue);
-                                      return (
-                                        <rect key={i} x={i} y={(H - h) / 2} width={0.75} height={h} fill={fill} />
-                                      );
+                                      return <rect key={i} x={i} y={(H - h) / 2} width={0.76} height={h} fill={fill} />;
                                     })}
                                   </svg>
                                 );
@@ -2903,19 +2969,25 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                             </div>
                           </div>
                         </td>
-                        <td className="px-3 py-3 font-mono text-xs font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
-                        <td className="px-3 py-3">
-                          {(() => { const kc = camelotColor(track.musical_key); return (
-                            <span className="rounded-md p-1.5 font-mono text-[11px] font-bold"
-                              style={{ backgroundColor: kc, color: 'rgba(255,255,255,0.88)' }}>
-                              {formatCamelotKey(track.musical_key)}
-                            </span>
-                          ); })()}
+                        <td className="px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
+                        <td className="px-3 py-1.5">
+                          {(() => {
+                            const kc = camelotColor(track.musical_key);
+                            const key = formatCamelotKey(track.musical_key);
+                            if (!key) return <span className="text-xs text-muted-foreground">—</span>;
+                            return (
+                              <span className="inline-flex items-center rounded-[5px] bg-white/[0.05] pl-[3px] pr-2 py-1 font-mono text-[13px] font-bold"
+                                style={{ color: kc ?? 'rgba(255,255,255,0.5)' }}>
+                                <span className="mr-1.5 h-[14px] w-[3px] shrink-0 rounded-full" style={{ backgroundColor: kc ?? 'rgba(255,255,255,0.2)' }} />
+                                {key}
+                              </span>
+                            );
+                          })()}
                         </td>
-                        <td className="w-[178px] px-3 py-3 text-xs text-muted-foreground"><span className="block truncate">{track.genre ?? '—'}</span></td>
-                        <td className="px-3 py-3 text-center">
+                        <td className="w-[178px] px-3 py-1.5 text-xs text-muted-foreground"><span className="block truncate">{track.genre ?? '—'}</span></td>
+                        <td className="px-3 py-1.5 text-center">
                           <span className={cn(
-                            'inline-flex min-w-8 justify-center rounded-md border px-2 py-1 font-mono text-[10px] font-black',
+                            'inline-flex min-w-8 justify-center rounded-md border px-2 py-1 font-mono text-[12px] font-black',
                             cueState?.status === 'failed'
                               ? 'border-red-400/25 bg-red-400/10 text-red-300'
                               : (cueCount ?? 0) > 0
@@ -2925,7 +2997,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                             {cueState?.status === 'loading' || !cueState ? '…' : cueState.status === 'failed' ? '!' : cueCount}
                           </span>
                         </td>
-                        <td className="w-[80px] px-3 py-3 text-right font-mono text-xs text-muted-foreground">
+                        <td className="w-[80px] px-3 py-1.5 text-right font-mono text-[13px] text-muted-foreground">
                           {formatTime(durationMsForTrack(track, null))}
                         </td>
                       </tr>

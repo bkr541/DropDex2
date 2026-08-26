@@ -6,16 +6,18 @@ export function SegmentedControl({
   value,
   onChange,
   tone = 'blue',
+  variant = 'default',
   ariaLabel,
 }: {
   options: { value: string; label: string }[];
   value: string;
   onChange: (value: string) => void;
   tone?: 'blue' | 'green';
+  variant?: 'default' | 'pill';
   ariaLabel: string;
 }) {
   return (
-    <div className={cn('dd-segmented', `dd-segmented--${tone}`)} role="group" aria-label={ariaLabel}>
+    <div className={cn('dd-segmented', variant === 'pill' ? 'dd-segmented--pill' : `dd-segmented--${tone}`)} role="group" aria-label={ariaLabel}>
       {options.map((option) => (
         <button
           key={option.value}

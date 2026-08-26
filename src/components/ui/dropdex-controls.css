@@ -101,6 +101,12 @@
 .dd-segmented--blue .dd-segmented__item[aria-pressed="true"] { color: white; background: linear-gradient(180deg, #398cff, #1664d9); box-shadow: inset 0 0 0 1px #62a7ff; }
 .dd-segmented--green .dd-segmented__item[aria-pressed="true"] { color: #48e8ae; background: #0e2d2a; box-shadow: inset 0 0 0 1px #0b7f69; }
 
+/* Pill variant */
+.dd-segmented--pill { border-radius: 9999px; border-color: #1e2a38; background: #0b1018; padding: 3px; min-height: unset; overflow: visible; box-shadow: none; gap: 2px; }
+.dd-segmented--pill .dd-segmented__item { border-right: 0; border-radius: 9999px; padding: 5px 16px; color: #566170; font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.dd-segmented--pill .dd-segmented__item:hover { background: #141e2a; color: #9aa5b4; }
+.dd-segmented--pill .dd-segmented__item[aria-pressed="true"] { background: #e8edf3; color: #0d1117; box-shadow: 0 1px 4px rgba(0,0,0,.45); }
+
 .dd-settings-row { display: flex; gap: 14px; }
 .dd-settings-row__button { min-width: 116px; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 20px; border: 1px solid var(--color-control-border); border-radius: 8px; background: linear-gradient(180deg, #121923, #090d12); color: var(--color-control-text); box-shadow: var(--shadow-control); font-size: 14px; font-weight: 720; }
 .dd-settings-row__button:hover { background: #16202b; }
