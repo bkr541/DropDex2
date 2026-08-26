@@ -13,19 +13,19 @@
 }
 
 .dd-control-button {
-  min-height: 45px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
   width: fit-content;
-  padding: 0 18px;
+  padding: 0 14px;
   border: 1px solid var(--color-control-border);
   border-radius: var(--radius-control);
   color: var(--color-control-text);
   background: linear-gradient(180deg, #121922 0%, #090d12 100%);
   box-shadow: var(--shadow-control);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1;
   letter-spacing: .025em;
