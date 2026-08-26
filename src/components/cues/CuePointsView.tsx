@@ -1557,6 +1557,7 @@ function CueWaveformPanel({
 }
 
 export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
+  const { theme } = useTheme();
   const auth = useAuthSession();
   const userId = auth.status === 'authenticated' ? auth.session.user.id : null;
   const [search, setSearch] = useState('');
@@ -2873,7 +2874,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                             )} aria-hidden="true" />
                             <span className={cn('h-8 w-1 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
                             <div className="flex min-w-0 flex-1 items-center gap-2">
-                              <div className="min-w-0 flex-1">
+                              <div className="w-[220px] shrink-0">
                                 <p className={cn('truncate text-sm font-bold', selected && 'text-primary')}>{track.title}</p>
                                 <p className="mt-0.5 truncate text-xs text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
                               </div>
@@ -2883,18 +2884,17 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                                 const cols = ws.waveform.previewColumns;
                                 if (cols.length === 0) return null;
                                 const maxH = Math.max(...cols.map(c => c.h), 1);
-                                const W = 200, H = 20, n = W;
-                                const step = cols.length / n;
-                                const barW = 0.8;
+                                const N = 300, H = 20;
+                                const step = cols.length / N;
                                 const cdjBlue = '#1a9bea';
                                 return (
-                                  <svg width={W} height={H} className="shrink-0 opacity-70" aria-hidden="true">
-                                    {Array.from({ length: n }, (_, i) => {
+                                  <svg width="100%" height={H} viewBox={`0 0 ${N} ${H}`} preserveAspectRatio="none" className="min-w-0 flex-1 opacity-70" aria-hidden="true">
+                                    {Array.from({ length: N }, (_, i) => {
                                       const col = cols[Math.floor(i * step)];
                                       const h = Math.max(1, (col.h / maxH) * H);
                                       const fill = theme === 'cdj' ? cdjBlue : ('r' in col ? `rgb(${col.r},${col.g},${col.b})` : cdjBlue);
                                       return (
-                                        <rect key={i} x={i * (W / n)} y={(H - h) / 2} width={barW} height={h} fill={fill} />
+                                        <rect key={i} x={i} y={(H - h) / 2} width={0.75} height={h} fill={fill} />
                                       );
                                     })}
                                   </svg>
