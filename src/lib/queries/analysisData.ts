@@ -65,6 +65,7 @@ export interface CueRow {
   rekordbox_cue_id: string | null;
   dedupe_key: string;
   cue_family: 'hot' | 'memory';
+  cue_family_authority: 'provisional' | 'anlz';
   hot_cue_slot: number | null;
   point_type: 'cue' | 'loop';
   source_kind: string | null;
@@ -180,6 +181,8 @@ function mapCueRow(raw: unknown): CueRow {
     rekordbox_cue_id: (row.rekordbox_cue_id as string | null) ?? null,
     dedupe_key: row.dedupe_key as string,
     cue_family: row.cue_family as 'hot' | 'memory',
+    cue_family_authority: (row.cue_family_authority as 'provisional' | 'anlz' | null)
+      ?? ((row.source_anlz_present as boolean) ? 'anlz' : 'provisional'),
     hot_cue_slot: (row.hot_cue_slot as number | null) ?? null,
     point_type: row.point_type as 'cue' | 'loop',
     source_kind: (row.source_kind as string | null) ?? null,
@@ -318,7 +321,7 @@ export async function fetchTrackCues(trackId: string): Promise<CueRow[]> {
   const { data, error } = await supabase
     .from('rekordbox_cues')
     .select(
-      'id, import_id, track_id, rekordbox_cue_id, dedupe_key, cue_family, ' +
+      'id, import_id, track_id, rekordbox_cue_id, dedupe_key, cue_family, cue_family_authority, ' +
       'hot_cue_slot, point_type, source_kind, start_ms, end_ms, ' +
       'color_table_index, color_hex, color_name, comment, is_active_loop, ' +
       'beat_loop_numerator, beat_loop_denominator, ' +
@@ -343,7 +346,7 @@ export async function fetchTracksCues(trackIds: string[]): Promise<Map<string, C
     const { data, error } = await supabase
       .from('rekordbox_cues')
       .select(
-        'id, import_id, track_id, rekordbox_cue_id, dedupe_key, cue_family, ' +
+        'id, import_id, track_id, rekordbox_cue_id, dedupe_key, cue_family, cue_family_authority, ' +
         'hot_cue_slot, point_type, source_kind, start_ms, end_ms, ' +
         'color_table_index, color_hex, color_name, comment, is_active_loop, ' +
         'beat_loop_numerator, beat_loop_denominator, ' +

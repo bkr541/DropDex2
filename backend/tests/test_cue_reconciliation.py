@@ -1,273 +1,379 @@
-"""
-Tests for cue reconciliation logic in analysis_feature_writer.
-
-Specifically covers _find_db_match hot-cue slot matching when the DB row
-has hot_cue_slot=None (library import didn't store the slot letter).
-
-To run:
-    cd backend
-    pytest tests/test_cue_reconciliation.py -v
-"""
+"""Stage 2 canonical DB + ANLZ cue reconciliation regression coverage."""
 
 from __future__ import annotations
 
+from copy import deepcopy
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock
+from typing import Any
 
-import pytest
-
-from app.analysis_feature_writer import _find_db_match, reconcile_and_write_cues
-
-# Tolerance used by the real cue_parser; we replicate it here for tests.
-CUE_MATCH_TOLERANCE_MS = 3.0
+from app.analysis_fast_pipeline import ParsedTrack, _reconcile_cues_bulk
+from app.analysis_feature_writer import reconcile_and_write_cues
+from dropdex_importer.cue_parser import AnlzCueEntry, CUE_MATCH_TOLERANCE_MS
+from dropdex_importer.cue_reconciliation import build_cue_reconciliation_plan
+from dropdex_importer.reparse import _reconcile_cues
 
 
-# ── Minimal AnlzCueEntry stub ─────────────────────────────────────────────────
-
-def _anlz_entry(
+def anlz(
     *,
-    cue_family: str = "hot",
-    hot_cue_slot: Optional[int] = 0,
+    family: str = "hot",
+    slot: int | None = 1,
     start_ms: float = 1000.0,
-    color_hex: Optional[str] = None,
-    color_id: Optional[int] = None,
-    comment: Optional[str] = None,
-    beat_loop_numerator: Optional[int] = None,
-    beat_loop_denominator: Optional[int] = None,
+    end_ms: float | None = None,
     point_type: str = "cue",
-    end_ms: Optional[float] = None,
-    is_active_loop: bool = False,
-    source_tag: str = "DAT",
+    active_loop: bool = False,
+    color_id: int | None = None,
+    color_hex: str | None = None,
+    comment: str | None = None,
+    loop_num: int | None = None,
+    loop_den: int | None = None,
+    source_tag: str = "PCO2",
     source_index: int = 0,
-    source_payload: Dict[str, Any] = None,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        cue_family=cue_family,
-        hot_cue_slot=hot_cue_slot,
+) -> AnlzCueEntry:
+    return AnlzCueEntry(
+        source_index=source_index,
+        source_tag=source_tag,
+        hot_cue_slot=slot,
+        cue_family=family,
+        point_type=point_type,
         start_ms=start_ms,
+        end_ms=end_ms,
         color_hex=color_hex,
         color_id=color_id,
         comment=comment,
-        beat_loop_numerator=beat_loop_numerator,
-        beat_loop_denominator=beat_loop_denominator,
-        point_type=point_type,
-        end_ms=end_ms,
-        is_active_loop=is_active_loop,
-        source_tag=source_tag,
-        source_index=source_index,
-        source_payload=source_payload or {},
+        is_active_loop=active_loop,
+        beat_loop_numerator=loop_num,
+        beat_loop_denominator=loop_den,
+        source_payload={
+            "tag": source_tag,
+            "src_idx": source_index,
+            "hot_cue": 0 if family == "memory" else slot,
+        },
     )
 
 
-def _db_cue(
+def db_cue(
     *,
-    id: str = "db-cue-uuid-001",
-    cue_family: str = "hot",
-    hot_cue_slot: Optional[int] = None,
+    cue_id: str = "db-1",
+    family: str = "memory",
     start_ms: float = 1000.0,
-) -> Dict[str, Any]:
+    end_ms: float | None = None,
+    point_type: str = "cue",
+    color_table_index: int | None = None,
+    comment: str | None = "db-comment",
+    source_anlz_present: bool = False,
+    slot: int | None = None,
+) -> dict[str, Any]:
     return {
-        "id": id,
-        "cue_family": cue_family,
-        "hot_cue_slot": hot_cue_slot,
+        "id": cue_id,
+        "import_id": "imp-1",
+        "track_id": "track-1",
+        "rekordbox_cue_id": f"rb-{cue_id}",
+        "dedupe_key": f"db:{cue_id}",
+        "cue_family": family,
+        "cue_family_authority": "anlz" if source_anlz_present else "provisional",
+        "hot_cue_slot": slot,
+        "point_type": point_type,
+        "source_kind": "4" if point_type == "loop" else "0",
+        "start_usec": int(start_ms * 1000),
+        "end_usec": int(end_ms * 1000) if end_ms is not None else None,
         "start_ms": start_ms,
+        "end_ms": end_ms,
+        "color_table_index": color_table_index,
+        "color_hex": None,
+        "color_name": "DB Color" if color_table_index else None,
+        "comment": comment,
+        "is_active_loop": point_type == "loop",
+        "beat_loop_numerator": None,
+        "beat_loop_denominator": None,
+        "source_db_present": True,
+        "source_anlz_present": source_anlz_present,
+        "source_conflict": False,
+        "source_payload": {
+            "cue_id": f"rb-{cue_id}",
+            "provisional_cue_family": family,
+            "point_type": point_type,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+        },
     }
 
 
-# ── _find_db_match unit tests ─────────────────────────────────────────────────
-
-class TestFindDbMatchNullSlot:
-    def test_null_slot_db_cue_matches_anlz_hot_cue(self):
-        """
-        DB hot cue with hot_cue_slot=None should match an ANLZ hot cue with
-        hot_cue_slot=0 (A), because the ANLZ enriches the DB entry.
-        """
-        anlz = _anlz_entry(cue_family="hot", hot_cue_slot=0, start_ms=1000.0)
-        existing = [_db_cue(cue_family="hot", hot_cue_slot=None, start_ms=1000.0)]
-
-        match = _find_db_match(anlz, existing, set(), CUE_MATCH_TOLERANCE_MS)
-
-        assert match is not None, "DB cue with slot=None should match ANLZ cue with slot=0"
-        assert match["id"] == "db-cue-uuid-001"
-
-    def test_known_slot_mismatch_does_not_match(self):
-        """
-        DB hot cue with hot_cue_slot=0 must NOT match ANLZ with hot_cue_slot=1
-        — these are different letter slots (A vs B).
-        """
-        anlz = _anlz_entry(cue_family="hot", hot_cue_slot=1, start_ms=1000.0)
-        existing = [_db_cue(cue_family="hot", hot_cue_slot=0, start_ms=1000.0)]
-
-        match = _find_db_match(anlz, existing, set(), CUE_MATCH_TOLERANCE_MS)
-
-        assert match is None, "Different known slots must not match"
-
-    def test_same_known_slot_matches(self):
-        """
-        DB hot cue with hot_cue_slot=1 should match ANLZ with hot_cue_slot=1
-        when timing is within tolerance.
-        """
-        anlz = _anlz_entry(cue_family="hot", hot_cue_slot=1, start_ms=1000.0)
-        existing = [_db_cue(cue_family="hot", hot_cue_slot=1, start_ms=1001.0)]
-
-        match = _find_db_match(anlz, existing, set(), CUE_MATCH_TOLERANCE_MS)
-
-        assert match is not None, "Same known slots within tolerance must match"
-        assert match["id"] == "db-cue-uuid-001"
-
-    def test_null_slot_outside_tolerance_does_not_match(self):
-        """Even when DB slot is None, timing must be within tolerance."""
-        anlz = _anlz_entry(cue_family="hot", hot_cue_slot=0, start_ms=1000.0)
-        existing = [_db_cue(cue_family="hot", hot_cue_slot=None, start_ms=2000.0)]
-
-        match = _find_db_match(anlz, existing, set(), CUE_MATCH_TOLERANCE_MS)
-
-        assert match is None, "Timing mismatch must prevent a match even when slot is None"
-
-    def test_already_matched_id_skipped(self):
-        """A DB cue already in already_matched set must be skipped."""
-        anlz = _anlz_entry(cue_family="hot", hot_cue_slot=None, start_ms=1000.0)
-        existing = [_db_cue(id="db-cue-uuid-001", cue_family="hot", hot_cue_slot=None, start_ms=1000.0)]
-
-        match = _find_db_match(anlz, existing, {"db-cue-uuid-001"}, CUE_MATCH_TOLERANCE_MS)
-
-        assert match is None, "Already-matched DB cue must not be returned again"
-
-    def test_memory_cue_matches_by_timing_only(self):
-        """Memory cues (cue_family=memory) match on timing, not slot."""
-        anlz = _anlz_entry(cue_family="memory", hot_cue_slot=None, start_ms=5000.0)
-        existing = [_db_cue(cue_family="memory", hot_cue_slot=None, start_ms=5001.5)]
-
-        match = _find_db_match(anlz, existing, set(), CUE_MATCH_TOLERANCE_MS)
-
-        assert match is not None
+def apply_plan(existing: list[dict[str, Any]], entries: list[AnlzCueEntry]) -> list[dict[str, Any]]:
+    sb = FakeCueSb(existing)
+    plan = build_cue_reconciliation_plan(
+        sb.rows,
+        entries,
+        import_id="imp-1",
+        track_id="track-1",
+        tolerance_ms=CUE_MATCH_TOLERANCE_MS,
+    )
+    sb.apply_plan(plan)
+    return sb.rows
 
 
-# ── reconcile_and_write_cues integration tests ────────────────────────────────
+class FakeCueSb:
+    """Small in-memory Supabase surface used by all three production entry paths."""
 
-class _FakeSbCues:
-    """Minimal fake Supabase client that records cue table operations."""
+    def __init__(self, rows: list[dict[str, Any]]):
+        self.rows = deepcopy(rows)
+        self.upsert_batches = 0
+        self._next_id = 1
 
-    def __init__(self, existing_cues: List[Dict[str, Any]]):
-        self._cues = existing_cues
-        self.updates: List[Dict[str, Any]] = []   # (id, update_dict) tuples
-        self.inserts: List[Dict[str, Any]] = []
-        self.upsert_conflicts: List[str | None] = []
+    def table(self, name: str):
+        assert name == "rekordbox_cues"
+        return FakeCueQuery(self)
 
-    def table(self, name: str) -> "_FakeCueProxy":
-        return _FakeCueProxy(self, name)
+    def apply_plan(self, plan) -> None:
+        if plan.upsert_rows:
+            FakeCueQuery(self).upsert(list(plan.upsert_rows), on_conflict="track_id,dedupe_key").execute()
+        if plan.delete_ids:
+            FakeCueQuery(self).delete().in_("id", list(plan.delete_ids)).execute()
 
 
-class _FakeCueProxy:
-    def __init__(self, sb: _FakeSbCues, table_name: str):
-        self._sb = sb
-        self._table = table_name
-        self._op: Optional[str] = None
-        self._data: Any = None
-        self._filter_col: Optional[str] = None
-        self._filter_val: Any = None
+class FakeCueQuery:
+    def __init__(self, sb: FakeCueSb):
+        self.sb = sb
+        self.operation = "select"
+        self.payload: Any = None
+        self.filters: list[tuple[str, str, Any]] = []
 
-    def select(self, *a, **k):
+    def select(self, *_args, **_kwargs):
+        self.operation = "select"
         return self
 
-    def eq(self, col, val):
-        self._filter_col = col
-        self._filter_val = val
+    def eq(self, field: str, value: Any):
+        self.filters.append(("eq", field, value))
         return self
 
-    def update(self, data, **k):
-        self._op = "update"
-        self._data = data
+    def in_(self, field: str, values: list[Any]):
+        self.filters.append(("in", field, list(values)))
         return self
 
-    def insert(self, data, **k):
-        self._op = "insert"
-        self._data = data
+    def upsert(self, payload: Any, **_kwargs):
+        self.operation = "upsert"
+        self.payload = payload
         return self
 
-    def upsert(self, data, on_conflict=None, **k):
-        self._op = "upsert"
-        self._data = data
-        self._sb.upsert_conflicts.append(on_conflict)
+    def delete(self):
+        self.operation = "delete"
         return self
+
+    def _matches(self, row: dict[str, Any]) -> bool:
+        for kind, field, value in self.filters:
+            if kind == "eq" and row.get(field) != value:
+                return False
+            if kind == "in" and row.get(field) not in value:
+                return False
+        return True
 
     def execute(self):
-        if self._op == "update":
-            self._sb.updates.append({"filter_val": self._filter_val, "data": self._data})
+        if self.operation == "select":
+            return SimpleNamespace(data=[deepcopy(row) for row in self.sb.rows if self._matches(row)])
+        if self.operation == "delete":
+            self.sb.rows = [row for row in self.sb.rows if not self._matches(row)]
             return SimpleNamespace(data=[])
-        if self._op in {"insert", "upsert"}:
-            self._sb.inserts.append(self._data)
+        if self.operation == "upsert":
+            self.sb.upsert_batches += 1
+            payload = self.payload if isinstance(self.payload, list) else [self.payload]
+            for incoming in deepcopy(payload):
+                match = next(
+                    (
+                        row
+                        for row in self.sb.rows
+                        if row.get("track_id") == incoming.get("track_id")
+                        and row.get("dedupe_key") == incoming.get("dedupe_key")
+                    ),
+                    None,
+                )
+                if match is None:
+                    incoming.setdefault("id", f"generated-{self.sb._next_id}")
+                    self.sb._next_id += 1
+                    self.sb.rows.append(incoming)
+                else:
+                    match.update(incoming)
             return SimpleNamespace(data=[])
-        # select
-        return SimpleNamespace(data=self._sb._cues)
+        raise AssertionError(f"unexpected operation {self.operation}")
 
 
-class TestReconcileAndWriteCues:
-    def test_null_slot_db_cue_updated_with_anlz_slot(self):
-        """
-        When the DB cue has hot_cue_slot=None and ANLZ has slot=0,
-        reconcile_and_write_cues should UPDATE the row (not insert a duplicate)
-        and the update payload must include hot_cue_slot=0.
-        """
-        existing = [_db_cue(id="cue-001", cue_family="hot", hot_cue_slot=None, start_ms=1000.0)]
-        anlz_entries = [_anlz_entry(cue_family="hot", hot_cue_slot=0, start_ms=1000.0)]
+def projection(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    fields = (
+        "dedupe_key",
+        "rekordbox_cue_id",
+        "cue_family",
+        "cue_family_authority",
+        "hot_cue_slot",
+        "point_type",
+        "start_ms",
+        "end_ms",
+        "color_table_index",
+        "color_hex",
+        "comment",
+        "is_active_loop",
+        "beat_loop_numerator",
+        "beat_loop_denominator",
+        "source_db_present",
+        "source_anlz_present",
+        "source_conflict",
+    )
+    return sorted(
+        [{field: row.get(field) for field in fields} for row in rows],
+        key=lambda row: str(row["dedupe_key"]),
+    )
 
-        sb = _FakeSbCues(existing_cues=existing)
-        result = reconcile_and_write_cues(
-            sb, import_id="imp-001", track_id="trk-001",
-            anlz_entries=anlz_entries, warnings=[],
+
+class TestCanonicalAuthority:
+    def test_provisional_memory_merges_into_authoritative_hot_a(self):
+        rows = apply_plan(
+            [db_cue(family="memory", color_table_index=0)],
+            [anlz(family="hot", slot=1)],
+        )
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["dedupe_key"] == "db:db-1"
+        assert row["cue_family"] == "hot"
+        assert row["cue_family_authority"] == "anlz"
+        assert row["hot_cue_slot"] == 1
+        assert row["source_db_present"] is True
+        assert row["source_anlz_present"] is True
+        assert row["source_conflict"] is False
+
+    def test_provisional_hot_merges_into_authoritative_memory(self):
+        rows = apply_plan(
+            [db_cue(family="hot", color_table_index=3)],
+            [anlz(family="memory", slot=None)],
+        )
+        assert len(rows) == 1
+        assert rows[0]["cue_family"] == "memory"
+        assert rows[0]["hot_cue_slot"] is None
+        assert rows[0]["cue_family_authority"] == "anlz"
+
+    def test_hot_h_with_zero_color_index_remains_hot(self):
+        rows = apply_plan(
+            [db_cue(family="memory", color_table_index=0)],
+            [anlz(family="hot", slot=8, color_id=0)],
+        )
+        assert rows[0]["cue_family"] == "hot"
+        assert rows[0]["hot_cue_slot"] == 8
+        assert rows[0]["color_table_index"] == 0
+
+    def test_anlz_owns_loop_type_timing_extent_and_active_loop(self):
+        rows = apply_plan(
+            [db_cue(family="memory", start_ms=1002, point_type="cue")],
+            [
+                anlz(
+                    family="memory",
+                    slot=None,
+                    start_ms=1000,
+                    end_ms=3000,
+                    point_type="loop",
+                    active_loop=True,
+                    loop_num=8,
+                    loop_den=1,
+                )
+            ],
+        )
+        row = rows[0]
+        assert row["point_type"] == "loop"
+        assert row["start_ms"] == 1000
+        assert row["end_ms"] == 3000
+        assert row["is_active_loop"] is True
+        assert row["beat_loop_numerator"] == 8
+        assert row["beat_loop_denominator"] == 1
+        # Raw DB timing remains preserved as DB-only evidence.
+        assert row["start_usec"] == 1_002_000
+
+    def test_db_only_fields_survive_authoritative_merge(self):
+        rows = apply_plan(
+            [db_cue(comment="DB-only label")],
+            [anlz(comment=None)],
+        )
+        assert rows[0]["rekordbox_cue_id"] == "rb-db-1"
+        assert rows[0]["comment"] == "DB-only label"
+
+
+class TestDeterminismAndConflicts:
+    def test_reconciliation_is_idempotent_without_duplicates(self):
+        first = apply_plan([db_cue()], [anlz(family="hot", slot=1)])
+        second = apply_plan(first, [anlz(family="hot", slot=1)])
+        assert projection(second) == projection(first)
+        assert len(second) == 1
+
+    def test_two_distinct_nearby_cues_remain_distinct(self):
+        first = db_cue(cue_id="one", start_ms=1000)
+        second = db_cue(cue_id="two", start_ms=1008)
+        rows = apply_plan(
+            [first, second],
+            [
+                anlz(family="hot", slot=1, start_ms=1000, source_index=0),
+                anlz(family="memory", slot=None, start_ms=1008, source_index=1),
+            ],
+        )
+        assert len(rows) == 2
+        by_key = {row["dedupe_key"]: row for row in rows}
+        assert by_key["db:one"]["start_ms"] == 1000
+        assert by_key["db:two"]["start_ms"] == 1008
+        assert {row["cue_family"] for row in rows} == {"hot", "memory"}
+
+    def test_equal_timing_ambiguity_becomes_explicit_conflict(self):
+        rows = apply_plan(
+            [db_cue(cue_id="one", start_ms=1000), db_cue(cue_id="two", start_ms=1000)],
+            [anlz(family="hot", slot=1, start_ms=1000)],
+        )
+        assert len(rows) == 3
+        assert all(row["source_conflict"] for row in rows)
+        anlz_only = next(row for row in rows if row["dedupe_key"].startswith("anlz:"))
+        conflict = anlz_only["source_payload"]["_dropdex_cue_reconciliation"]["conflict"]
+        assert conflict["reason"] == "ambiguous_db_timing_match"
+        assert conflict["candidate_ids"] == ["one", "two"]
+
+    def test_input_order_does_not_change_output(self):
+        existing = [db_cue(cue_id="one", start_ms=1000), db_cue(cue_id="two", start_ms=1200)]
+        entries = [
+            anlz(family="hot", slot=1, start_ms=1000, source_index=0),
+            anlz(family="memory", slot=None, start_ms=1200, source_index=1),
+        ]
+        forward = apply_plan(existing, entries)
+        reversed_inputs = apply_plan(list(reversed(existing)), list(reversed(entries)))
+        assert projection(forward) == projection(reversed_inputs)
+
+
+class TestProductionPathParity:
+    def test_initial_fast_and_reparse_produce_equivalent_rows(self):
+        existing = [db_cue(family="memory", color_table_index=0)]
+        entries = [
+            anlz(
+                family="hot",
+                slot=1,
+                start_ms=1000,
+                point_type="loop",
+                end_ms=2000,
+                active_loop=True,
+                color_id=0,
+                loop_num=4,
+                loop_den=1,
+            )
+        ]
+
+        normal = FakeCueSb(existing)
+        assert reconcile_and_write_cues(normal, "imp-1", "track-1", entries, []) is True
+
+        fast = FakeCueSb(existing)
+        _reconcile_cues_bulk(
+            fast,
+            "imp-1",
+            [
+                ParsedTrack(
+                    track={"id": "track-1"},
+                    assets=[],
+                    parse_status="completed",
+                    cue_entries=entries,
+                )
+            ],
         )
 
-        assert result is True
-        # Must have updated, not inserted
-        assert len(sb.updates) == 1, "Expected one update, got: " + str(sb.updates)
-        assert len(sb.inserts) == 0, "Expected no new inserts (no duplicate), got: " + str(sb.inserts)
-        # Slot must be enriched in the update
-        update_data = sb.updates[0]["data"]
-        assert update_data.get("hot_cue_slot") == 0, f"Expected slot=0 in update, got: {update_data}"
-        assert update_data.get("source_anlz_present") is True
+        reparse = FakeCueSb(existing)
+        _reconcile_cues(reparse, "imp-1", "track-1", entries, CUE_MATCH_TOLERANCE_MS)
 
-    def test_known_slot_mismatch_inserts_new_row(self):
-        """
-        When DB has slot=0 and ANLZ has slot=1, no match occurs.
-        ANLZ entry must be inserted as a new row (source_db_present=False).
-        """
-        existing = [_db_cue(id="cue-002", cue_family="hot", hot_cue_slot=0, start_ms=1000.0)]
-        anlz_entries = [_anlz_entry(cue_family="hot", hot_cue_slot=1, start_ms=1000.0)]
-
-        sb = _FakeSbCues(existing_cues=existing)
-        result = reconcile_and_write_cues(
-            sb, import_id="imp-001", track_id="trk-001",
-            anlz_entries=anlz_entries, warnings=[],
-        )
-
-        assert result is True
-        assert len(sb.updates) == 0, "Mismatched slots must not update existing row"
-        assert len(sb.inserts) == 1, "Unmatched ANLZ entry must be inserted"
-        inserted = sb.inserts[0]
-        assert inserted["source_db_present"] is False
-        assert inserted["source_anlz_present"] is True
-        assert inserted["hot_cue_slot"] == 1
-        assert sb.upsert_conflicts == ["track_id,dedupe_key"]
-
-    def test_same_known_slot_matches_and_updates(self):
-        """
-        When DB slot=1 and ANLZ slot=1, they match.
-        The existing row is updated with source_anlz_present=True.
-        """
-        existing = [_db_cue(id="cue-003", cue_family="hot", hot_cue_slot=1, start_ms=2000.0)]
-        anlz_entries = [_anlz_entry(cue_family="hot", hot_cue_slot=1, start_ms=2000.5)]
-
-        sb = _FakeSbCues(existing_cues=existing)
-        result = reconcile_and_write_cues(
-            sb, import_id="imp-001", track_id="trk-001",
-            anlz_entries=anlz_entries, warnings=[],
-        )
-
-        assert result is True
-        assert len(sb.updates) == 1
-        assert len(sb.inserts) == 0
-        update_data = sb.updates[0]["data"]
-        assert update_data.get("source_anlz_present") is True
-        assert update_data.get("hot_cue_slot") == 1
+        assert projection(normal.rows) == projection(fast.rows) == projection(reparse.rows)
+        # The fast route keeps the existing bulk write shape: one preload + one batch upsert.
+        assert fast.upsert_batches == 1

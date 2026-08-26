@@ -138,122 +138,32 @@ def reconcile_and_write_cues(
     anlz_entries: List[Any],    # List[AnlzCueEntry] from cue_parser
     warnings: List[Any],        # List[AnalysisParseWarning] (unused here but kept for callers)
 ) -> bool:
-    """
-    Reconcile ANLZ cue entries against existing DB rows for the track.
-
-    Matching algorithm:
-    - Hot cues: match requires same slot AND start timing within tolerance.
-    - Memory cues: match requires start timing within tolerance.
-    - Matched rows: updated with ANLZ color/comment/slot data.
-    - Unmatched ANLZ entries: inserted as new rows (source_db_present=False).
-    Returns True on success.
-    """
+    """Reconcile one track through the canonical DB + ANLZ cue path."""
     from dropdex_importer.cue_parser import CUE_MATCH_TOLERANCE_MS  # noqa: PLC0415
+    from dropdex_importer.cue_reconciliation import (  # noqa: PLC0415
+        apply_cue_reconciliation_plan,
+        build_cue_reconciliation_plan,
+    )
 
     try:
         resp = (
             sb.table("rekordbox_cues")
-            .select("id, cue_family, hot_cue_slot, start_ms")
+            .select("*")
             .eq("track_id", track_id)
             .execute()
         )
-        existing: List[dict] = resp.data or []
+        plan = build_cue_reconciliation_plan(
+            resp.data or [],
+            anlz_entries,
+            import_id=import_id,
+            track_id=track_id,
+            tolerance_ms=CUE_MATCH_TOLERANCE_MS,
+        )
+        apply_cue_reconciliation_plan(sb, plan)
+        return True
     except Exception as exc:
-        logger.error("Failed to fetch existing cues for track %s: %s", track_id, exc)
+        logger.error("Failed to reconcile cues for track %s: %s", track_id, exc)
         return False
-
-    matched_db_ids: set = set()
-
-    for anlz in anlz_entries:
-        match = _find_db_match(anlz, existing, matched_db_ids, CUE_MATCH_TOLERANCE_MS)
-
-        if match:
-            matched_db_ids.add(match["id"])
-            update: Dict[str, Any] = {
-                "source_anlz_present": True,
-            }
-            # Enrich with ANLZ slot if DB slot was unknown
-            if anlz.hot_cue_slot is not None:
-                update["hot_cue_slot"] = anlz.hot_cue_slot
-            if anlz.color_hex is not None:
-                update["color_hex"] = anlz.color_hex
-            if anlz.color_id is not None:
-                update["color_table_index"] = anlz.color_id
-            if anlz.comment is not None:
-                update["comment"] = anlz.comment
-            if anlz.beat_loop_numerator is not None:
-                update["beat_loop_numerator"] = anlz.beat_loop_numerator
-            if anlz.beat_loop_denominator is not None:
-                update["beat_loop_denominator"] = anlz.beat_loop_denominator
-            try:
-                sb.table("rekordbox_cues").update(update).eq("id", match["id"]).execute()
-            except Exception as exc:
-                logger.error("Failed to update cue %s: %s", match["id"], exc)
-
-        else:
-            dedupe_key = f"anlz:{import_id}:{anlz.source_tag}:{anlz.source_index}"
-            row = {
-                "import_id": import_id,
-                "track_id": track_id,
-                "dedupe_key": dedupe_key,
-                "cue_family": anlz.cue_family,
-                "hot_cue_slot": anlz.hot_cue_slot,
-                "point_type": anlz.point_type,
-                "start_ms": anlz.start_ms,
-                "end_ms": anlz.end_ms,
-                "color_hex": anlz.color_hex,
-                "color_table_index": anlz.color_id,
-                "comment": anlz.comment,
-                "is_active_loop": anlz.is_active_loop,
-                "beat_loop_numerator": anlz.beat_loop_numerator,
-                "beat_loop_denominator": anlz.beat_loop_denominator,
-                "source_db_present": False,
-                "source_anlz_present": True,
-                "source_conflict": False,
-                "source_payload": anlz.source_payload,
-            }
-            try:
-                sb.table("rekordbox_cues").upsert(
-                    row, on_conflict="track_id,dedupe_key"
-                ).execute()
-            except Exception as exc:
-                logger.error(
-                    "Failed to insert ANLZ-only cue for track %s (idx=%s): %s",
-                    track_id, anlz.source_index, exc,
-                )
-
-    return True
-
-
-def _find_db_match(
-    anlz: Any,
-    existing: List[dict],
-    already_matched: set,
-    tolerance_ms: float,
-) -> Optional[dict]:
-    """
-    Find the best-matching existing DB cue row for an ANLZ entry.
-
-    Hot cues: must match on both slot and timing.
-    Memory cues: must match on timing only.
-    """
-    for db_cue in existing:
-        if db_cue["id"] in already_matched:
-            continue
-        if db_cue["cue_family"] != anlz.cue_family:
-            continue
-        if anlz.cue_family == "hot":
-            db_slot = db_cue.get("hot_cue_slot")
-            anlz_slot = anlz.hot_cue_slot
-            # Reject only when both slots are known and disagree
-            if db_slot is not None and anlz_slot is not None and db_slot != anlz_slot:
-                continue
-        db_ms = db_cue.get("start_ms")
-        if db_ms is None:
-            continue
-        if abs(float(db_ms) - anlz.start_ms) <= tolerance_ms:
-            return db_cue
-    return None
 
 
 # ── Phrases ───────────────────────────────────────────────────────────────────

@@ -401,6 +401,10 @@ class _CueQuery:
         self.filters.append((field, value))
         return self
 
+    def in_(self, field, values):
+        self.filters.append((field, list(values)))
+        return self
+
     def update(self, payload):
         self.operation = "update"
         self.payload = payload
@@ -448,24 +452,49 @@ class TestCueReparseOwnership:
 
         _reconcile_cues(sb, "i1", "t1", [], 5.0)
 
-        assert sb.operations == [("delete", None, [("id", "stale-anlz")])]
+        assert sb.operations == [("delete", None, [("id", ["stale-anlz"])])]
 
     def test_retains_db_owned_cue_and_clears_stale_anlz_ownership(self):
         sb = _CueSb([{
             "id": "merged",
+            "import_id": "i1",
+            "track_id": "t1",
+            "rekordbox_cue_id": "cue-1",
             "dedupe_key": "db:i1:cue-1",
-            "cue_family": "memory",
-            "hot_cue_slot": None,
+            "cue_family": "hot",
+            "cue_family_authority": "anlz",
+            "hot_cue_slot": 1,
+            "point_type": "cue",
             "start_ms": 1000,
+            "end_ms": None,
             "source_kind": "PCOB",
             "source_db_present": True,
             "source_anlz_present": True,
+            "source_conflict": False,
+            "source_payload": {
+                "_dropdex_cue_reconciliation": {
+                    "db": {
+                        "provisional_cue_family": "memory",
+                        "point_type": "cue",
+                        "start_ms": 1000,
+                        "end_ms": None,
+                    },
+                    "anlz": {"cue_family": "hot"},
+                    "authority": "anlz",
+                    "conflict": None,
+                }
+            },
         }])
 
         _reconcile_cues(sb, "i1", "t1", [], 5.0)
 
-        assert sb.operations == [(
-            "update",
-            {"source_anlz_present": False, "source_conflict": False},
-            [("id", "merged")],
-        )]
+        assert len(sb.operations) == 1
+        operation, payload, filters = sb.operations[0]
+        assert operation == "upsert"
+        assert filters == []
+        restored = payload[0]
+        assert restored["cue_family"] == "memory"
+        assert restored["cue_family_authority"] == "provisional"
+        assert restored["hot_cue_slot"] is None
+        assert restored["source_anlz_present"] is False
+        assert restored["source_conflict"] is False

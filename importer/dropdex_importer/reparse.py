@@ -533,108 +533,29 @@ def _write_waveform_row(
     sb.table("rekordbox_track_waveforms").upsert(row, on_conflict="track_id").execute()
 
 
-def _find_best_cue_match(anlz, existing: list, already_matched: set, tolerance_ms: float):
-    """
-    Find the best-matching existing DB cue row for an ANLZ entry.
-
-    - Same cue_family required.
-    - Hot cues: reject only when both db and anlz slots are non-None and differ.
-    - Timing must be within tolerance_ms.
-    """
-    for db_cue in existing:
-        if db_cue["id"] in already_matched:
-            continue
-        if db_cue.get("cue_family") != anlz.cue_family:
-            continue
-        if anlz.cue_family == "hot":
-            db_slot = db_cue.get("hot_cue_slot")
-            anlz_slot = anlz.hot_cue_slot
-            if db_slot is not None and anlz_slot is not None and db_slot != anlz_slot:
-                continue
-        db_ms = db_cue.get("start_ms")
-        if db_ms is None:
-            continue
-        if abs(float(db_ms) - anlz.start_ms) <= tolerance_ms:
-            return db_cue
-    return None
-
-
 def _reconcile_cues(
     sb, import_id: str, track_id: str, anlz_entries: list, tolerance_ms: float
 ) -> None:
-    """Reconcile parser-owned ANLZ cues without deleting DB/user-owned cues."""
+    """Reconcile reparsed cues through the canonical production planner."""
+    from .cue_reconciliation import (
+        apply_cue_reconciliation_plan,
+        build_cue_reconciliation_plan,
+    )
+
     resp = (
         sb.table("rekordbox_cues")
-        .select(
-            "id, dedupe_key, cue_family, hot_cue_slot, start_ms, "
-            "source_kind, source_db_present, source_anlz_present"
-        )
+        .select("*")
         .eq("track_id", track_id)
         .execute()
     )
-    existing = resp.data or []
-    matched: set = set()
-
-    for anlz in anlz_entries:
-        match = _find_best_cue_match(anlz, existing, matched, tolerance_ms)
-        source_payload = {
-            **(anlz.source_payload or {}),
-            "source_tag": anlz.source_tag,
-            "source_index": anlz.source_index,
-        }
-        if match:
-            matched.add(match["id"])
-            update: dict = {
-                "source_anlz_present": True,
-                "point_type": anlz.point_type,
-                "start_ms": anlz.start_ms,
-                "end_ms": anlz.end_ms,
-                "source_kind": anlz.source_tag,
-                "source_payload": source_payload,
-                "source_conflict": False,
-            }
-            if anlz.hot_cue_slot is not None:
-                update["hot_cue_slot"] = anlz.hot_cue_slot
-            if anlz.color_hex is not None:
-                update["color_hex"] = anlz.color_hex
-            sb.table("rekordbox_cues").update(update).eq("id", match["id"]).execute()
-        else:
-            key = f"anlz:{import_id}:{anlz.source_tag}:{anlz.source_index}"
-            sb.table("rekordbox_cues").upsert({
-                "import_id": import_id,
-                "track_id": track_id,
-                "dedupe_key": key,
-                "cue_family": anlz.cue_family,
-                "hot_cue_slot": anlz.hot_cue_slot,
-                "point_type": anlz.point_type,
-                "source_kind": anlz.source_tag,
-                "start_ms": anlz.start_ms,
-                "end_ms": anlz.end_ms,
-                "color_hex": anlz.color_hex,
-                "source_payload": source_payload,
-                "source_anlz_present": True,
-                "source_db_present": False,
-                "source_conflict": False,
-            }, on_conflict="track_id,dedupe_key").execute()
-
-    # Rows that were previously sourced from ANLZ but disappeared from the new
-    # parse must not linger as phantom hot cues. Parser-only rows are deleted;
-    # merged DB/user rows are retained and simply lose their ANLZ ownership flag.
-    for stale in existing:
-        if stale.get("id") in matched or not stale.get("source_anlz_present"):
-            continue
-        parser_owned = (
-            not stale.get("source_db_present")
-            and str(stale.get("dedupe_key") or "").startswith("anlz:")
-            and str(stale.get("source_kind") or "").upper().startswith("PCO")
-        )
-        if parser_owned:
-            sb.table("rekordbox_cues").delete().eq("id", stale["id"]).execute()
-        else:
-            sb.table("rekordbox_cues").update({
-                "source_anlz_present": False,
-                "source_conflict": False,
-            }).eq("id", stale["id"]).execute()
+    plan = build_cue_reconciliation_plan(
+        resp.data or [],
+        anlz_entries,
+        import_id=import_id,
+        track_id=track_id,
+        tolerance_ms=tolerance_ms,
+    )
+    apply_cue_reconciliation_plan(sb, plan)
 
 
 def _write_phrase_rows(sb, import_id: str, track_id: str, entries: list) -> None:

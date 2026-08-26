@@ -291,6 +291,7 @@ export interface RekordboxTrackWaveform {
 }
 
 export type RekordboxCueFamily = 'hot' | 'memory';
+export type RekordboxCueFamilyAuthority = 'provisional' | 'anlz';
 
 export type RekordboxCuePointType = 'cue' | 'loop';
 
@@ -301,6 +302,7 @@ export interface RekordboxCue {
   rekordbox_cue_id: string | null;
   dedupe_key: string;
   cue_family: RekordboxCueFamily;
+  cue_family_authority: RekordboxCueFamilyAuthority;
   hot_cue_slot: number | null;
   point_type: RekordboxCuePointType;
   source_kind: string | null;

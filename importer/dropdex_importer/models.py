@@ -140,9 +140,11 @@ class NormalizedCue:
     out_number_of_sample_in_block: Optional[int]
     # Derived / resolved fields
     color_name: Optional[str] = None   # looked up from Color table; None if unavailable
-    # Provisional cue_family: 'hot' when colorTableIndex > 0, else 'memory'.
-    # This will be confirmed or corrected when ANLZ data is available.
+    # Compatibility-only provisional cue_family. The persisted row carries
+    # cue_family_authority='provisional' until canonical ANLZ reconciliation.
     cue_family: str = "memory"
+    # Explicitly marks the DB-only family as a heuristic until ANLZ resolves it.
+    cue_family_authority: str = "provisional"
     # point_type: 'loop' when kind == 4, else 'cue'.
     point_type: str = "cue"
     # hot_cue_slot: not determinable from DB alone; set to None until ANLZ parsed.

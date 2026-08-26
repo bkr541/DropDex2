@@ -578,7 +578,11 @@ def _phrase_rows(import_id: str, parsed: ParsedTrack, parser_version: str) -> li
 
 def _reconcile_cues_bulk(sb: Any, import_id: str, parsed_batch: Sequence[ParsedTrack]) -> None:
     from dropdex_importer.cue_parser import CUE_MATCH_TOLERANCE_MS
-    from .analysis_feature_writer import _find_db_match
+    from dropdex_importer.cue_reconciliation import (
+        CueReconciliationPlan,
+        apply_cue_reconciliation_plan,
+        build_cue_reconciliation_plan,
+    )
 
     track_ids = [str(parsed.track["id"]) for parsed in parsed_batch]
     if not track_ids:
@@ -594,53 +598,27 @@ def _reconcile_cues_bulk(sb: Any, import_id: str, parsed_batch: Sequence[ParsedT
     for row in existing_rows:
         by_track.setdefault(str(row.get("track_id")), []).append(row)
 
-    upserts: list[dict[str, Any]] = []
+    upsert_rows: list[dict[str, Any]] = []
+    delete_ids: list[str] = []
     for parsed in parsed_batch:
         track_id = str(parsed.track["id"])
-        existing = by_track.get(track_id, [])
-        matched: set[str] = set()
-        for entry in parsed.cue_entries:
-            match = _find_db_match(entry, existing, matched, CUE_MATCH_TOLERANCE_MS)
-            if match:
-                matched.add(match["id"])
-                merged = dict(match)
-                merged["source_anlz_present"] = True
-                if entry.hot_cue_slot is not None:
-                    merged["hot_cue_slot"] = entry.hot_cue_slot
-                if entry.color_hex is not None:
-                    merged["color_hex"] = entry.color_hex
-                if entry.color_id is not None:
-                    merged["color_table_index"] = entry.color_id
-                if entry.comment is not None:
-                    merged["comment"] = entry.comment
-                if entry.beat_loop_numerator is not None:
-                    merged["beat_loop_numerator"] = entry.beat_loop_numerator
-                if entry.beat_loop_denominator is not None:
-                    merged["beat_loop_denominator"] = entry.beat_loop_denominator
-                upserts.append(merged)
-            else:
-                upserts.append({
-                    "import_id": import_id,
-                    "track_id": track_id,
-                    "dedupe_key": f"anlz:{import_id}:{entry.source_tag}:{entry.source_index}",
-                    "cue_family": entry.cue_family,
-                    "hot_cue_slot": entry.hot_cue_slot,
-                    "point_type": entry.point_type,
-                    "start_ms": entry.start_ms,
-                    "end_ms": entry.end_ms,
-                    "color_hex": entry.color_hex,
-                    "color_table_index": entry.color_id,
-                    "comment": entry.comment,
-                    "is_active_loop": entry.is_active_loop,
-                    "beat_loop_numerator": entry.beat_loop_numerator,
-                    "beat_loop_denominator": entry.beat_loop_denominator,
-                    "source_db_present": False,
-                    "source_anlz_present": True,
-                    "source_conflict": False,
-                    "source_payload": entry.source_payload,
-                })
-    if upserts:
-        sb.table("rekordbox_cues").upsert(upserts, on_conflict="track_id,dedupe_key").execute()
+        plan = build_cue_reconciliation_plan(
+            by_track.get(track_id, []),
+            parsed.cue_entries,
+            import_id=import_id,
+            track_id=track_id,
+            tolerance_ms=CUE_MATCH_TOLERANCE_MS,
+        )
+        upsert_rows.extend(plan.upsert_rows)
+        delete_ids.extend(plan.delete_ids)
+
+    apply_cue_reconciliation_plan(
+        sb,
+        CueReconciliationPlan(
+            upsert_rows=tuple(upsert_rows),
+            delete_ids=tuple(sorted(set(delete_ids))),
+        ),
+    )
 
 
 def _bulk_track_status(sb: Any, import_id: str, rows: list[dict[str, Any]]) -> None:

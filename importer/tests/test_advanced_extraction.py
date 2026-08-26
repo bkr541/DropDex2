@@ -445,6 +445,7 @@ class TestExtractCues:
         _extract_cues(db, lib, {3: "Pink"})
         cue = lib.cues[0]
         assert cue.cue_family == "hot"
+        assert cue.cue_family_authority == "provisional"
         assert cue.color_name == "Pink"
 
     def test_hot_cue_slot_is_none(self):
@@ -830,6 +831,7 @@ class TestInsertCues:
         assert inserted["source_db_present"] is True
         assert inserted["source_anlz_present"] is False
         assert inserted["source_conflict"] is False
+        assert inserted["cue_family_authority"] == "provisional"
 
     def test_dedupe_key_passed_through(self):
         lib = self._lib_with_cue()

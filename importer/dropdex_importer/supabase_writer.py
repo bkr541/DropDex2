@@ -581,6 +581,10 @@ def _insert_cues(
         source_payload = {
             "cue_id": cue.rekordbox_cue_id,
             "kind": cue.kind,
+            "provisional_cue_family": cue.cue_family,
+            "point_type": cue.point_type,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
             "in_150_frames_per_second": cue.in_150_frames_per_second,
             "out_150_frames_per_second": cue.out_150_frames_per_second,
             "in_mpeg_frame_number": cue.in_mpeg_frame_number,
@@ -602,6 +606,7 @@ def _insert_cues(
                 "rekordbox_cue_id": cue.rekordbox_cue_id,
                 "dedupe_key": cue.dedupe_key,
                 "cue_family": cue.cue_family,
+                "cue_family_authority": cue.cue_family_authority,
                 "hot_cue_slot": cue.hot_cue_slot,
                 "point_type": cue.point_type,
                 "source_kind": str(cue.kind),

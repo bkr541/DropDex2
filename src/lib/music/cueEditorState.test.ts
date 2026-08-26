@@ -31,6 +31,7 @@ function importedCue(overrides: Partial<CueRow> = {}): CueRow {
     rekordbox_cue_id: 'rb-1',
     dedupe_key: 'dedupe-1',
     cue_family: 'hot',
+    cue_family_authority: 'anlz',
     hot_cue_slot: 1,
     point_type: 'cue',
     source_kind: 'rekordbox',

@@ -590,8 +590,9 @@ def _extract_cues(
         if cti is not None and cti > 0:
             color_name = color_map.get(int(cti))
 
-        # Provisional family: colorTableIndex > 0 → hot cue, else memory cue.
-        # This will be confirmed against ANLZ data in a later pipeline stage.
+        # Compatibility-only provisional family. ColorTableIndex is a color
+        # reference, not authoritative Hot/Memory identity; reconciliation must
+        # ignore this label when ANLZ semantics are available.
         cue_family = "hot" if (cti is not None and cti > 0) else "memory"
 
         # Provisional point_type from the raw kind field.
