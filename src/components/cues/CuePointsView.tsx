@@ -2873,7 +2873,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                             )} aria-hidden="true" />
                             <span className={cn('h-8 w-1 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
                             <div className="flex min-w-0 flex-1 items-center gap-2">
-                              <div className="min-w-0 max-w-[152px]">
+                              <div className="min-w-0 flex-1">
                                 <p className={cn('truncate text-sm font-bold', selected && 'text-primary')}>{track.title}</p>
                                 <p className="mt-0.5 truncate text-xs text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
                               </div>
@@ -2883,15 +2883,16 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                                 const cols = ws.waveform.previewColumns;
                                 if (cols.length === 0) return null;
                                 const maxH = Math.max(...cols.map(c => c.h), 1);
-                                const W = 88, H = 20, n = Math.min(cols.length, W);
+                                const W = 200, H = 20, n = W;
                                 const step = cols.length / n;
-                                const barW = Math.max(1, W / n - 0.4);
+                                const barW = 0.8;
+                                const cdjBlue = '#1a9bea';
                                 return (
-                                  <svg width={W} height={H} className="shrink-0 opacity-55" aria-hidden="true">
+                                  <svg width={W} height={H} className="shrink-0 opacity-70" aria-hidden="true">
                                     {Array.from({ length: n }, (_, i) => {
                                       const col = cols[Math.floor(i * step)];
                                       const h = Math.max(1, (col.h / maxH) * H);
-                                      const fill = 'r' in col ? `rgb(${col.r},${col.g},${col.b})` : '#4899d4';
+                                      const fill = theme === 'cdj' ? cdjBlue : ('r' in col ? `rgb(${col.r},${col.g},${col.b})` : cdjBlue);
                                       return (
                                         <rect key={i} x={i * (W / n)} y={(H - h) / 2} width={barW} height={h} fill={fill} />
                                       );

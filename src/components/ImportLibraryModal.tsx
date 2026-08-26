@@ -1774,11 +1774,6 @@ export function ImportLibraryModal({
                     </ControlButton>
                   )}
                 </div>
-                {mode === 'usb_folder' && libraryMetadataReady && (
-                  <p className="mt-2 text-[10px] leading-relaxed text-amber-200 text-center">
-                    Keep the USB connected and Rekordbox closed until the background panel confirms USB access is released.
-                  </p>
-                )}
               </div>
             )}
 
@@ -1891,11 +1886,9 @@ export function ImportLibraryModal({
                     </div>
                   )}
                 </div>
-                <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
-                  Processing{' '}
-                  <span className="font-semibold text-foreground">
-                    {parseProgress.currentTrackLabel || 'queued tracks…'}
-                  </span>
+                <p className="mt-4 text-xs uppercase tracking-widest text-muted-foreground">Processing</p>
+                <p className="mt-1 text-sm font-semibold text-foreground leading-snug">
+                  {parseProgress.currentTrackLabel || 'queued tracks…'}
                 </p>
                 <div className="mt-5">
                   <div className="w-full h-2 bg-[var(--color-surface)] rounded-full overflow-hidden mb-3">
@@ -2113,10 +2106,10 @@ export function ImportLibraryModal({
                 {/* Header */}
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center shrink-0">
-                      <WarningAlt className="text-amber-400" size={20} />
+                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+                      <CheckmarkFilled className="text-primary" size={20} />
                     </div>
-                    <h2 className="text-xl font-bold">Imported with Warnings</h2>
+                    <h2 className="text-xl font-bold">Import Complete</h2>
                   </div>
                   <ControlButton variant="ghost" onClick={handleDone}>
                     <Close size={18} />
@@ -2136,11 +2129,13 @@ export function ImportLibraryModal({
                   <>
                     <p className="text-sm text-muted-foreground mb-4">
                       {withAnalysis.completed_count.toLocaleString()} tracks fully parsed ·{' '}
-                      {(
-                        withAnalysis.partial_count +
-                        withAnalysis.failed_count +
-                        withAnalysis.missing_required_count
-                      ).toLocaleString()}{' '}
+                      <span className="font-semibold text-amber-400">
+                        {(
+                          withAnalysis.partial_count +
+                          withAnalysis.failed_count +
+                          withAnalysis.missing_required_count
+                        ).toLocaleString()}
+                      </span>{' '}
                       with issues
                     </p>
 
@@ -2159,8 +2154,8 @@ export function ImportLibraryModal({
                     </div>
 
                     {reconciliation && (reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0 || withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
-                      <div className="mb-4 p-3 rounded-xl bg-amber-500/8 border border-amber-500/20">
-                        <p className="text-[9px] uppercase tracking-widest text-amber-400/80 font-bold mb-2">File Summary</p>
+                      <div className="mb-4 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)]">
+                        <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mb-2">File Summary</p>
                         <div className="space-y-1">
                           <SummaryRow label="Uploaded" value={reconciliation.successfullyUploadedFiles} />
                           {reconciliation.failedFiles > 0 && <SummaryRow label="Failed after retries" value={reconciliation.failedFiles} warn />}
