@@ -83,6 +83,12 @@ describe('Cue Points production editor wiring', () => {
     expect(source).not.toMatch(/useEffect\([\s\S]{0,600}\[filteredTracks\]/);
   });
 
+  it('sorts Duration from the persisted Rekordbox duration fields instead of the nonexistent total_time field', () => {
+    expect(source).toContain("a.duration_ms ?? (a.duration_seconds != null ? a.duration_seconds * 1000 : -1)");
+    expect(source).toContain("b.duration_ms ?? (b.duration_seconds != null ? b.duration_seconds * 1000 : -1)");
+    expect(source).not.toContain("sortCol === 'duration') { av = a.total_time");
+  });
+
   it('keeps Apply Track distinct from Apply All and sends the exact persisted scope through preflight/apply', () => {
     expect(source).toContain('<span>Apply Track</span>');
     expect(source).toContain('<span>Apply All ({applyAllCount})</span>');
@@ -93,6 +99,16 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('desktop.cueApply(preflight.token, scope, desktopDrafts(applySnapshot))');
     expect(source).toContain("scope.kind === 'track' && selectedTrackId !== scope.trackId");
     expect(source).toContain('applyDrafts.some((row) => row.trackId === selectedTrackId)');
+  });
+
+  it('durably records rejected, rolled-back, and recovery-unverified Apply outcomes before stale-renderer guards', () => {
+    expect(source).toContain('markCueDraftApplyOutcome({');
+    expect(source).toContain("if (result.state !== 'applied')");
+    expect(source).toContain('const persisted = await Promise.allSettled(applySnapshot.map((row) => markCueDraftApplyOutcome({');
+    const persistenceIndex = source.indexOf("if (result.state !== 'applied')");
+    const staleGuardIndex = source.indexOf('if (generation !== applyGenerationRef.current', source.indexOf('const result = await desktop.cueApply'));
+    expect(persistenceIndex).toBeGreaterThan(-1);
+    expect(staleGuardIndex).toBeGreaterThan(persistenceIndex);
   });
 
   it('shows the canonical per-track current-vs-desired diff and complete-set replacement semantics before confirmation', () => {

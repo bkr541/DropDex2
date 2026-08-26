@@ -20,7 +20,7 @@ vi.mock('../supabase', () => ({
 }));
 
 import { createCueDraftDocument } from '../cues/cueDraftDocument';
-import { CueDraftRevisionConflictError, fetchCueDraft, fetchCueDraftsForApply, markCueDraftApplied, saveCueDraft } from './cueDrafts';
+import { CueDraftRevisionConflictError, fetchCueDraft, fetchCueDraftsForApply, markCueDraftApplied, markCueDraftApplyOutcome, saveCueDraft } from './cueDrafts';
 
 const desiredDocument = createCueDraftDocument({
   importId: 'import-1',
@@ -190,6 +190,39 @@ describe('cue draft production persistence queries', () => {
 
     const result = await fetchCueDraftsForApply('user-1', 'import-1');
     expect(result.map((item) => item.id)).toEqual(['draft-pending']);
+  });
+
+  it('persists non-applied desktop outcomes without using the successful-apply RPC', async () => {
+    const failed = {
+      ...row,
+      last_apply_operation_id: 'op-failed',
+      last_apply_state: 'rolled-back',
+      last_apply_summary: { state: 'rolled-back', rollbackVerified: true },
+    };
+    mocks.single.mockResolvedValue({ data: failed, error: null });
+
+    const result = await markCueDraftApplyOutcome({
+      importId: 'import-1',
+      trackId: 'track-1',
+      revision: 2,
+      desiredFingerprint: 'desired',
+      operationId: 'op-failed',
+      state: 'rolled-back',
+      resultSummary: { state: 'rolled-back', rollbackVerified: true },
+    });
+
+    expect(mocks.rpc).toHaveBeenCalledWith('mark_cue_draft_apply_outcome_v1', {
+      p_import_id: 'import-1',
+      p_track_id: 'track-1',
+      p_revision: 2,
+      p_desired_fingerprint: 'desired',
+      p_operation_id: 'op-failed',
+      p_apply_state: 'rolled-back',
+      p_result_summary: { state: 'rolled-back', rollbackVerified: true },
+    });
+    expect(result.lastApplyOperationId).toBe('op-failed');
+    expect(result.lastApplyState).toBe('rolled-back');
+    expect(result.appliedRevision).toBeNull();
   });
 
   it('rebases only the moving comparison baseline through the import-scoped verified post-apply RPC', async () => {

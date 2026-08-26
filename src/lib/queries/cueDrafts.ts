@@ -8,6 +8,9 @@ const CUE_DRAFT_SELECT =
   + 'master_db_id,master_content_id,revision,strategy_version,strategy_settings,created_at,updated_at,'
   + 'applied_revision,applied_fingerprint,applied_at,last_apply_operation_id,last_apply_state,last_apply_summary';
 
+export type CueDraftApplyState = 'applied' | 'rejected' | 'rolled-back' | 'recovery-unverified';
+export type CueDraftNonAppliedState = Exclude<CueDraftApplyState, 'applied'>;
+
 export interface CueDraftRow {
   id: string;
   userId: string;
@@ -36,7 +39,7 @@ export interface CueDraftRow {
   appliedFingerprint: string | null;
   appliedAt: string | null;
   lastApplyOperationId: string | null;
-  lastApplyState: string | null;
+  lastApplyState: CueDraftApplyState | null;
   lastApplySummary: Record<string, unknown> | null;
 }
 
@@ -87,7 +90,7 @@ function mapCueDraftRow(raw: unknown): CueDraftRow {
     appliedFingerprint: (row.applied_fingerprint as string | null) ?? null,
     appliedAt: (row.applied_at as string | null) ?? null,
     lastApplyOperationId: (row.last_apply_operation_id as string | null) ?? null,
-    lastApplyState: (row.last_apply_state as string | null) ?? null,
+    lastApplyState: (row.last_apply_state as CueDraftApplyState | null) ?? null,
     lastApplySummary: (row.last_apply_summary as Record<string, unknown> | null) ?? null,
   };
 }
@@ -218,6 +221,31 @@ export async function markCueDraftApplied(input: {
       p_desired_fingerprint: input.desiredFingerprint,
       p_post_apply_local_cue_fingerprint: input.postApplyLocalCueFingerprint,
       p_operation_id: input.operationId,
+      p_result_summary: input.resultSummary,
+    })
+    .single();
+  if (error) throw new Error(error.message);
+  return mapCueDraftRow(data);
+}
+
+
+export async function markCueDraftApplyOutcome(input: {
+  importId: string;
+  trackId: string;
+  revision: number;
+  desiredFingerprint: string;
+  operationId: string;
+  state: CueDraftNonAppliedState;
+  resultSummary: Record<string, unknown>;
+}): Promise<CueDraftRow> {
+  const { data, error } = await supabase
+    .rpc('mark_cue_draft_apply_outcome_v1', {
+      p_import_id: input.importId,
+      p_track_id: input.trackId,
+      p_revision: input.revision,
+      p_desired_fingerprint: input.desiredFingerprint,
+      p_operation_id: input.operationId,
+      p_apply_state: input.state,
       p_result_summary: input.resultSummary,
     })
     .single();

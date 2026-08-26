@@ -57,6 +57,7 @@ import {
   CueDraftRevisionConflictError,
   fetchCueDraftsForApply,
   markCueDraftApplied,
+  markCueDraftApplyOutcome,
   saveCueDraft,
   type CueDraftRow,
 } from '../../lib/queries/cueDrafts';
@@ -1703,7 +1704,10 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         bv = bCount ?? Number.POSITIVE_INFINITY;
       }
       else if (sortCol === 'analysis') { av = analysisReady(a) ? 1 : 0; bv = analysisReady(b) ? 1 : 0; }
-      else if (sortCol === 'duration') { av = a.total_time ?? -1; bv = b.total_time ?? -1; }
+      else if (sortCol === 'duration') {
+        av = a.duration_ms ?? (a.duration_seconds != null ? a.duration_seconds * 1000 : -1);
+        bv = b.duration_ms ?? (b.duration_seconds != null ? b.duration_seconds * 1000 : -1);
+      }
       if (av === null || av === bv) return 0;
       const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
       return sortDir === 'asc' ? cmp : -cmp;
@@ -2263,6 +2267,34 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         return;
       }
       const result = await desktop.cueApply(preflight.token, scope, desktopDrafts(applySnapshot));
+      let failedOutcomePersistenceCount = 0;
+      if (result.state !== 'applied') {
+        const failureSummary = {
+          state: result.state,
+          planFingerprint: result.plan_fingerprint,
+          sourceIdentityBefore: result.source_identity_before,
+          sourceIdentityAfter: result.source_identity_after,
+          backupIdentity: result.backup_identity,
+          rollbackVerified: result.rollback_verified,
+          tracks: result.tracks,
+          blockers: result.blockers,
+          warnings: result.warnings,
+          recovery: result.recovery,
+        };
+        // Persist the desktop outcome before renderer-generation guards. If the
+        // user changes selection/import while the bridge is working, the exact
+        // attempted revisions still need a durable audit record in Supabase.
+        const persisted = await Promise.allSettled(applySnapshot.map((row) => markCueDraftApplyOutcome({
+          importId,
+          trackId: row.trackId,
+          revision: row.revision,
+          desiredFingerprint: row.desiredFingerprint,
+          operationId: result.operation_id,
+          state: result.state,
+          resultSummary: failureSummary,
+        })));
+        failedOutcomePersistenceCount = persisted.filter((item) => item.status === 'rejected').length;
+      }
       if (generation !== applyGenerationRef.current
         || selectedUserIdRef.current !== userId
         || selectedImportIdRef.current !== importId) return;
@@ -2308,11 +2340,14 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
             : 'All selected saved cue drafts were applied to local Rekordbox, verified, and rebased for the next edit.');
         }
       } else {
-        setApplyMessage(result.state === 'rolled-back'
+        const outcomeMessage = result.state === 'rolled-back'
           ? 'Apply did not complete. The original local Rekordbox database was restored and rollback verification succeeded.'
           : result.state === 'recovery-unverified'
             ? 'Apply encountered a recovery failure. Do not reopen Rekordbox until the reported recovery state is reviewed.'
-            : 'Apply was rejected. No successful revision was marked applied.');
+            : 'Apply was rejected. No successful revision was marked applied.';
+        setApplyMessage(failedOutcomePersistenceCount > 0
+          ? `${outcomeMessage} Warning: ${failedOutcomePersistenceCount} failed apply outcome${failedOutcomePersistenceCount === 1 ? '' : 's'} could not be persisted to the cloud audit state.`
+          : outcomeMessage);
       }
     } catch (error) {
       if (generation === applyGenerationRef.current) setApplyMessage(error instanceof Error ? error.message : String(error));
