@@ -7,9 +7,9 @@ describe('Cue Points production editor wiring', () => {
   it('keeps Stage 2 manual editing on the canonical working cue set and exact Rekordbox beat-grid path', () => {
     expect(source).toContain('cues={workingCues}');
     expect(source).toContain('onContextMenu={handleWaveformContextMenu}');
-    expect(source).toContain("onAddCue('hot', contextMenu.requestedMs)");
-    expect(source).toContain("onAddCue('memory', contextMenu.requestedMs)");
-    expect(source).toContain('onMoveCue(drag.cueId, requestedMs)');
+    expect(source).toContain("onAddCue('hot', contextMenu.requestedMs, timingMode)");
+    expect(source).toContain("onAddCue('memory', contextMenu.requestedMs, timingMode)");
+    expect(source).toContain('onMoveCue(drag.cueId, requestedMs, timingMode)');
     expect(source).toContain('onDeleteCue(contextMenu.cueId)');
     expect(source).toContain('beats: beatGrid?.beats ?? []');
   });
@@ -22,6 +22,29 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('disabled={!autoCueReady}');
     expect(source).toContain("beatGrid.track_id !== selectedTrackId");
     expect(source).toContain("phrase.track_id !== selectedTrackId");
+  });
+
+  it('exposes the Stage 5 selected-cue inspector through canonical editor actions', () => {
+    expect(source).toContain('data-testid="selected-cue-inspector"');
+    expect(source).toContain('editWorkingCue(workingCues, cueId, action, beatGrid?.beats ?? [])');
+    expect(source).toContain("kind: 'family', family: 'memory'");
+    expect(source).toContain("kind: 'family', family: 'hot', hotCueSlot: slot");
+    expect(source).toContain("kind: 'hot-slot', hotCueSlot: slot");
+    expect(source).toContain("kind: 'point-type'");
+    expect(source).toContain("kind: 'end-ms', requestedMs: value, timingMode");
+    expect(source).toContain("kind: 'loop-length-ms', requestedMs: value, timingMode");
+    expect(source).toContain("kind: 'color'");
+    expect(source).toContain("kind: 'comment'");
+    expect(source).toContain("kind: 'active-loop'");
+  });
+
+  it('keeps snap timing default and makes exact-millisecond editing deliberate', () => {
+    expect(source).toContain("useState<CueTimingMode>('snap')");
+    expect(source).toContain("{ value: 'snap', label: 'Snap' }");
+    expect(source).toContain("{ value: 'exact', label: 'Exact ms' }");
+    expect(source).toContain("timingMode === 'snap' && beatGridLoading");
+    expect(source).toContain('timingMode,');
+    expect(source).toContain("title={timingMode === 'snap' ? 'Right-click to add a beat-snapped cue' : 'Right-click to add an exact millisecond cue'}");
   });
 
   it('enters Save through the production Cue Points action and complete-document RPC path', () => {

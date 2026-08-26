@@ -202,6 +202,59 @@ describe('cue draft canonical document', () => {
     })).toThrow(/Loop cues require/);
   });
 
+  it('round-trips deliberate exact-millisecond timing and all Stage 5 editable metadata', () => {
+    const document = createCueDraftDocument({
+      ...identity,
+      cues: [cue({
+        family: 'hot',
+        hotCueSlot: 4,
+        pointType: 'loop',
+        startMs: 1111,
+        endMs: 4444,
+        colorTableIndex: 5,
+        colorHex: '#00FFFF',
+        colorName: 'Aqua',
+        comment: 'Exact drop loop',
+        isActiveLoop: true,
+        beatLoopNumerator: null,
+        beatLoopDenominator: null,
+        rekordboxKind: 5,
+      })],
+    });
+
+    expect(document.cues[0]).toMatchObject({
+      family: 'hot',
+      hotCueSlot: 4,
+      pointType: 'loop',
+      startMs: 1111,
+      endMs: 4444,
+      colorTableIndex: 6,
+      colorHex: '#00FFFF',
+      colorName: 'Aqua',
+      comment: 'Exact drop loop',
+      isActiveLoop: true,
+      rekordboxKind: 5,
+    });
+    expect(hydrateCueDraftDocument(document)[0]).toMatchObject(document.cues[0]);
+  });
+
+  it('rejects active-loop point cues and malformed writer-facing metadata before Save', () => {
+    expect(() => createCueDraftDocument({
+      ...identity,
+      cues: [cue({ isActiveLoop: true })],
+    })).toThrow(/Point cues cannot be active loops/);
+
+    expect(() => createCueDraftDocument({
+      ...identity,
+      cues: [cue({ colorTableIndex: -1 })],
+    })).toThrow(/colorTableIndex cannot be negative/);
+
+    expect(() => createCueDraftDocument({
+      ...identity,
+      cues: [cue({ pointType: 'loop', endMs: 2000, beatLoopDenominator: 0 })],
+    })).toThrow(/beatLoopDenominator must be positive/);
+  });
+
   it('summarizes Auto Cue strategy metadata without changing manual/imported cues', () => {
     const document = createCueDraftDocument({
       ...identity,

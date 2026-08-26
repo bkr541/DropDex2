@@ -85,6 +85,14 @@ def cue_comment(path: Path, content_id: str) -> str:
         db.close()
 
 
+def cue_rows(path: Path, content_id: str):
+    db = SqliteTestDb(str(path))
+    try:
+        return db.get_cue(ContentID=content_id)
+    finally:
+        db.close()
+
+
 class TestStage6Preflight:
     def test_current_local_fingerprint_is_deterministic_and_preflight_is_read_only(self, tmp_path):
         path = fixture_db(tmp_path)
@@ -301,6 +309,64 @@ class TestStage6TokenAndStaleState:
 
 
 class TestStage6TransactionalApply:
+    def test_stage5_edited_fields_flow_through_real_preflight_apply_and_live_verification(self, tmp_path):
+        path = fixture_db(tmp_path)
+        store = ApplyTokenStore()
+        rows = [draft_row(cues=[
+            draft_cue(
+                family="hot",
+                hotCueSlot=8,
+                rekordboxKind=9,
+                pointType="cue",
+                startMs=1337,
+                endMs=None,
+                colorTableIndex=18,
+                colorHex=None,
+                colorName=None,
+                comment="Stage 5 Hot H",
+                isActiveLoop=False,
+            ),
+            draft_cue(
+                family="memory",
+                hotCueSlot=None,
+                rekordboxKind=None,
+                pointType="loop",
+                startMs=2333,
+                endMs=4666,
+                colorTableIndex=5,
+                colorHex=None,
+                colorName="Aqua",
+                comment="Stage 5 exact loop",
+                isActiveLoop=True,
+                beatLoopNumerator=None,
+                beatLoopDenominator=None,
+            ),
+        ])]
+
+        pf = preflight(path, rows, store)
+        assert pf.ok is True
+        result = apply(path, pf.token, rows, store)
+
+        assert result.ok is True
+        assert result.state == "applied"
+        written = {cue.Comment: cue for cue in cue_rows(path, "101")}
+        assert set(written) == {"Stage 5 Hot H", "Stage 5 exact loop"}
+
+        hot = written["Stage 5 Hot H"]
+        assert hot.InMsec == 1337
+        assert hot.OutMsec == -1
+        assert hot.Kind == 9
+        assert hot.ColorTableIndex == 18
+        assert hot.ActiveLoop == -1
+
+        memory_loop = written["Stage 5 exact loop"]
+        assert memory_loop.InMsec == 2333
+        assert memory_loop.OutMsec == 4666
+        assert memory_loop.Kind == 0
+        assert memory_loop.Color == 5
+        assert memory_loop.ColorTableIndex == 5
+        assert memory_loop.ActiveLoop == 1
+
     def test_unchanged_state_multi_track_apply_stages_then_verifies_live(self, tmp_path):
         path = fixture_db(tmp_path)
         store = ApplyTokenStore()

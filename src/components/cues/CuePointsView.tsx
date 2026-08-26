@@ -7,11 +7,14 @@ import { applyAutoCueStrategy } from '../../lib/music/autoCueStrategy';
 import {
   addWorkingCue,
   deleteWorkingCue,
+  editWorkingCue,
   moveWorkingCue,
   nextAvailableHotCueSlot,
   hotCueSlotLabel,
   isCurrentTrackResponse,
   workingCueSetsEqual,
+  type CueEditAction,
+  type CueTimingMode,
   type WorkingCue,
 } from '../../lib/music/cueEditorState';
 import { useLibraryStats, useLibraryTracks } from '../../hooks/useRekordboxTracks';
@@ -31,7 +34,7 @@ import {
 } from '../../lib/queries/analysisData';
 import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { ControlButton, SearchControl } from '../ui/controls';
+import { ControlButton, SearchControl, SegmentedControl, SelectControl, TextControl } from '../ui/controls';
 import { useTheme } from '../../theme/ThemeProvider';
 import type { RekordboxTrack } from '../../types';
 import {
@@ -68,6 +71,19 @@ const CUE_PAGE_SIZE = 100;
 const MAX_TIMELINE_GRID_LINES = 640;
 const MAX_BEAT_RULER_TICKS = 640;
 const MAX_BAR_LABELS = 24;
+
+// Keep this small enum aligned with the existing local-baseline/writer memory-color mapping.
+// Hot Cue ColorTableIndex is intentionally edited as a raw Rekordbox index because the
+// active writer preserves that index but does not define a trustworthy display palette for it.
+const MEMORY_CUE_COLORS = Object.freeze([
+  { index: 1, label: 'Red', name: 'Red' },
+  { index: 2, label: 'Orange', name: 'Orange' },
+  { index: 3, label: 'Yellow', name: 'Yellow' },
+  { index: 4, label: 'Green', name: 'Green' },
+  { index: 5, label: 'Aqua', name: 'Aqua' },
+  { index: 6, label: 'Blue', name: 'Blue' },
+  { index: 7, label: 'Purple', name: 'Purple' },
+] as const);
 
 interface TimelineSection {
   id: string;
@@ -454,6 +470,271 @@ function TimelineLaneLabel({ icon, label, children }: { icon: ReactNode; label: 
   );
 }
 
+function CueInspector({
+  cue,
+  cues,
+  timingMode,
+  onMoveCue,
+  onEditCue,
+  onMessage,
+}: {
+  cue: WorkingCue;
+  cues: WorkingCue[];
+  timingMode: CueTimingMode;
+  onMoveCue: (cueId: string, requestedMs: number, timingMode: CueTimingMode) => string | null;
+  onEditCue: (cueId: string, action: CueEditAction) => string | null;
+  onMessage: (message: string | null) => void;
+}) {
+  const occupiedByOther = useMemo(() => new Set(
+    cues
+      .filter((candidate) => candidate.editorId !== cue.editorId && candidate.family === 'hot' && candidate.hotCueSlot != null)
+      .map((candidate) => candidate.hotCueSlot as number),
+  ), [cue.editorId, cues]);
+  const familySlotValue = cue.family === 'memory' ? 'memory' : `hot:${cue.hotCueSlot ?? ''}`;
+  const loopLengthMs = cue.pointType === 'loop' && cue.startMs != null && cue.endMs != null
+    ? Math.max(0, cue.endMs - cue.startMs)
+    : null;
+  const knownMemoryColor = cue.colorTableIndex == null
+    ? null
+    : MEMORY_CUE_COLORS.find((option) => option.index === cue.colorTableIndex) ?? null;
+
+  const commitNumber = (
+    rawValue: string,
+    currentValue: number | null,
+    commit: (value: number) => string | null,
+    input: HTMLInputElement,
+  ) => {
+    const value = Number(rawValue);
+    if (!Number.isFinite(value) || value < 0) {
+      input.value = currentValue == null ? '' : String(currentValue);
+      onMessage('Timing must be a non-negative millisecond value.');
+      return;
+    }
+    if (currentValue != null && value === currentValue) {
+      onMessage(null);
+      return;
+    }
+    const error = commit(value);
+    onMessage(error);
+    if (error) input.value = currentValue == null ? '' : String(currentValue);
+  };
+
+  const commitHotColorIndex = (rawValue: string, input: HTMLInputElement) => {
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      if (cue.colorTableIndex == null && cue.colorName == null && cue.colorHex == null) {
+        onMessage(null);
+        return;
+      }
+      onMessage(onEditCue(cue.editorId, { kind: 'color', colorTableIndex: null, colorHex: null, colorName: null }));
+      return;
+    }
+    const value = Number(trimmed);
+    if (!Number.isInteger(value) || value < 0) {
+      input.value = cue.colorTableIndex == null ? '' : String(cue.colorTableIndex);
+      onMessage('Hot Cue color table index must be a non-negative integer.');
+      return;
+    }
+    if (value === cue.colorTableIndex) {
+      onMessage(null);
+      return;
+    }
+    const error = onEditCue(cue.editorId, { kind: 'color', colorTableIndex: value, colorHex: null, colorName: null });
+    onMessage(error);
+    if (error) input.value = cue.colorTableIndex == null ? '' : String(cue.colorTableIndex);
+  };
+
+  return (
+    <div className="mx-3 mb-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3 md:mx-4" data-testid="selected-cue-inspector">
+      <div className="min-w-0">
+        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-muted-foreground">Selected cue</p>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <span className="text-sm font-black">{cueDisplayName(cue)}</span>
+          <span className="rounded-md border border-white/10 px-2 py-0.5 font-mono text-[9px] text-muted-foreground">
+            {timingMode === 'snap' ? 'SNAP · Rekordbox grid' : 'EXACT · integer ms'}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <label className="min-w-0 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+          Family / Hot slot
+          <SelectControl
+            className="mt-1"
+            value={familySlotValue}
+            onChange={(event) => {
+              const value = event.target.value;
+              const error = value === 'memory'
+                ? onEditCue(cue.editorId, { kind: 'family', family: 'memory' })
+                : (() => {
+                  const slot = Number(value.split(':')[1]);
+                  return cue.family === 'hot'
+                    ? onEditCue(cue.editorId, { kind: 'hot-slot', hotCueSlot: slot })
+                    : onEditCue(cue.editorId, { kind: 'family', family: 'hot', hotCueSlot: slot });
+                })();
+              onMessage(error);
+            }}
+          >
+            <option value="memory">Memory Cue</option>
+            {Array.from({ length: 8 }, (_, index) => index + 1).map((slot) => (
+              <option key={slot} value={`hot:${slot}`} disabled={occupiedByOther.has(slot)}>
+                Hot Cue {hotCueSlotLabel(slot)}{occupiedByOther.has(slot) ? ' · occupied' : ''}
+              </option>
+            ))}
+          </SelectControl>
+        </label>
+
+        <label className="min-w-0 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+          Cue type
+          <SelectControl
+            className="mt-1"
+            value={cue.pointType}
+            onChange={(event) => onMessage(onEditCue(cue.editorId, {
+              kind: 'point-type',
+              pointType: event.target.value as 'cue' | 'loop',
+            }))}
+          >
+            <option value="cue">Cue point</option>
+            <option value="loop">Loop · 4-bar default</option>
+          </SelectControl>
+        </label>
+
+        <label className="min-w-0 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+          Start (ms)
+          <TextControl
+            key={`${cue.editorId}:start:${cue.startMs}`}
+            className="mt-1 font-mono tabular-nums"
+            type="number"
+            min={0}
+            step={1}
+            defaultValue={cue.startMs ?? ''}
+            onBlur={(event) => commitNumber(
+              event.currentTarget.value,
+              cue.startMs,
+              (value) => onMoveCue(cue.editorId, value, timingMode),
+              event.currentTarget,
+            )}
+          />
+        </label>
+
+        <label className="min-w-0 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+          {cue.family === 'memory' ? 'Memory color' : 'Hot color table index'}
+          {cue.family === 'memory' ? (
+            <SelectControl
+              className="mt-1"
+              value={cue.colorTableIndex == null ? 'clear' : String(cue.colorTableIndex)}
+              onChange={(event) => {
+                if (event.target.value === 'clear') {
+                  onMessage(onEditCue(cue.editorId, { kind: 'color', colorTableIndex: null, colorHex: null, colorName: null }));
+                  return;
+                }
+                const index = Number(event.target.value);
+                const option = MEMORY_CUE_COLORS.find((candidate) => candidate.index === index);
+                if (!option) return;
+                onMessage(onEditCue(cue.editorId, {
+                  kind: 'color',
+                  colorTableIndex: option.index,
+                  colorHex: null,
+                  colorName: option.name,
+                }));
+              }}
+            >
+              <option value="clear">Unspecified / clear</option>
+              {!knownMemoryColor && cue.colorTableIndex != null && (
+                <option value={String(cue.colorTableIndex)}>Current index {cue.colorTableIndex}</option>
+              )}
+              {MEMORY_CUE_COLORS.map((option) => (
+                <option key={option.index} value={String(option.index)}>{option.label}</option>
+              ))}
+            </SelectControl>
+          ) : (
+            <TextControl
+              key={`${cue.editorId}:color-index:${cue.colorTableIndex}`}
+              className="mt-1 font-mono tabular-nums"
+              type="number"
+              min={0}
+              step={1}
+              defaultValue={cue.colorTableIndex ?? ''}
+              placeholder="Unspecified"
+              onBlur={(event) => commitHotColorIndex(event.currentTarget.value, event.currentTarget)}
+            />
+          )}
+        </label>
+      </div>
+
+      {cue.pointType === 'loop' && (
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <label className="text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            Loop end (ms)
+            <TextControl
+              key={`${cue.editorId}:end:${cue.endMs}`}
+              className="mt-1 font-mono tabular-nums"
+              type="number"
+              min={0}
+              step={1}
+              defaultValue={cue.endMs ?? ''}
+              onBlur={(event) => commitNumber(
+                event.currentTarget.value,
+                cue.endMs,
+                (value) => onEditCue(cue.editorId, { kind: 'end-ms', requestedMs: value, timingMode }),
+                event.currentTarget,
+              )}
+            />
+          </label>
+          <label className="text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            Loop length (ms)
+            <TextControl
+              key={`${cue.editorId}:length:${loopLengthMs}`}
+              className="mt-1 font-mono tabular-nums"
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={loopLengthMs ?? ''}
+              onBlur={(event) => commitNumber(
+                event.currentTarget.value,
+                loopLengthMs,
+                (value) => onEditCue(cue.editorId, { kind: 'loop-length-ms', requestedMs: value, timingMode }),
+                event.currentTarget,
+              )}
+            />
+          </label>
+          <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            Active loop
+            <button
+              type="button"
+              aria-pressed={cue.isActiveLoop === true}
+              className={cn(
+                'mt-1 flex min-h-10 w-full items-center justify-between rounded-lg border px-3 text-xs font-bold normal-case tracking-normal transition-colors',
+                cue.isActiveLoop === true
+                  ? 'border-primary/40 bg-primary/10 text-foreground'
+                  : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-muted-foreground hover:text-foreground',
+              )}
+              onClick={() => onMessage(onEditCue(cue.editorId, { kind: 'active-loop', isActiveLoop: cue.isActiveLoop !== true }))}
+            >
+              <span>{cue.isActiveLoop === true ? 'Enabled' : 'Disabled'}</span>
+              <span className="font-mono text-[9px]">{cue.beatLoopNumerator && cue.beatLoopDenominator ? `${cue.beatLoopNumerator}/${cue.beatLoopDenominator}` : 'custom'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      <label className="mt-3 block text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+        Comment / name
+        <TextControl
+          className="mt-1"
+          value={cue.comment ?? ''}
+          maxLength={255}
+          onChange={(event) => onMessage(onEditCue(cue.editorId, { kind: 'comment', comment: event.target.value || null }))}
+          placeholder="Cue comment"
+        />
+      </label>
+      <p className="mt-2 text-[9px] text-muted-foreground">
+        Snap is the default. Exact mode records deliberate integer-millisecond timing and does not resnap existing cues merely by selecting or opening them.
+      </p>
+    </div>
+  );
+}
+
 type CueContextMenuState =
   | { kind: 'add'; x: number; y: number; requestedMs: number }
   | { kind: 'cue'; x: number; y: number; cueId: string };
@@ -478,6 +759,7 @@ function CueWaveformPanel({
   onRetryWaveform,
   onAddCue,
   onMoveCue,
+  onEditCue,
   onDeleteCue,
   onDiscard,
   onAutoCue,
@@ -503,8 +785,9 @@ function CueWaveformPanel({
   persistenceMessage: string | null;
   onRetryCues: () => void;
   onRetryWaveform: () => void;
-  onAddCue: (family: 'hot' | 'memory', requestedMs: number) => string | null;
-  onMoveCue: (cueId: string, requestedMs: number) => string | null;
+  onAddCue: (family: 'hot' | 'memory', requestedMs: number, timingMode: CueTimingMode) => string | null;
+  onMoveCue: (cueId: string, requestedMs: number, timingMode: CueTimingMode) => string | null;
+  onEditCue: (cueId: string, action: CueEditAction) => string | null;
   onDeleteCue: (cueId: string) => void;
   onDiscard: () => void;
   onAutoCue: () => string | null;
@@ -521,6 +804,7 @@ function CueWaveformPanel({
   const [selectedCueId, setSelectedCueId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<CueContextMenuState | null>(null);
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
+  const [timingMode, setTimingMode] = useState<CueTimingMode>('snap');
   const dragStateRef = useRef<{ cueId: string; pointerId: number; startX: number; moved: boolean } | null>(null);
   const effectiveViewEnd = viewEnd ?? durationMs ?? 0;
 
@@ -534,6 +818,10 @@ function CueWaveformPanel({
   }, [track?.id, durationMs]);
 
   useEffect(() => {
+    setTimingMode('snap');
+  }, [track?.id]);
+
+  useEffect(() => {
     if (!contextMenu) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setContextMenu(null);
@@ -541,6 +829,10 @@ function CueWaveformPanel({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (selectedCueId && !cues.some((cue) => cue.editorId === selectedCueId)) setSelectedCueId(null);
+  }, [cues, selectedCueId]);
 
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     if (!durationMs || durationMs <= 0) return;
@@ -581,6 +873,7 @@ function CueWaveformPanel({
   }, [durationMs, sections]);
   const hasUsableGrid = useMemo(() => isUsableBeatGrid(beatGrid?.beats ?? []), [beatGrid]);
   const availableHotCueSlot = useMemo(() => nextAvailableHotCueSlot(cues), [cues]);
+  const selectedCue = useMemo(() => cues.find((cue) => cue.editorId === selectedCueId) ?? null, [cues, selectedCueId]);
   const cueBaselineComplete = cueLoadStatus === 'loaded-empty' || cueLoadStatus === 'loaded-with-cues';
   const cueEditingAllowed = cueBaselineComplete && cueIntegrity?.status === 'valid';
   const cueIntegrityError = cueIntegrity && cueIntegrity.status !== 'valid' ? cueIntegrity.error ?? 'Cue baseline is not safe to edit.' : null;
@@ -620,14 +913,14 @@ function CueWaveformPanel({
       setEditorMessage(cueIntegrityError);
       return;
     }
-    if (beatGridLoading) {
+    if (timingMode === 'snap' && beatGridLoading) {
       setContextMenu(null);
       setEditorMessage('Cue editing will be available when the Rekordbox beat grid finishes loading.');
       return;
     }
-    if (!hasUsableGrid) {
+    if (timingMode === 'snap' && !hasUsableGrid) {
       setContextMenu(null);
-      setEditorMessage('Beat snapping is unavailable because this track has no valid Rekordbox beat grid.');
+      setEditorMessage('Beat snapping is unavailable because this track has no valid Rekordbox beat grid. Switch to Exact ms for deliberate off-grid timing.');
       return;
     }
     const requestedMs = timeAtClientX(event.clientX, event.currentTarget);
@@ -638,7 +931,7 @@ function CueWaveformPanel({
     }
     setEditorMessage(null);
     setContextMenu({ kind: 'add', x: event.clientX, y: event.clientY, requestedMs });
-  }, [beatGridLoading, cueBaselineComplete, cueEditingAllowed, cueIntegrityError, cueLoadError, cueLoading, hasUsableGrid, timeAtClientX]);
+  }, [beatGridLoading, cueBaselineComplete, cueEditingAllowed, cueIntegrityError, cueLoadError, cueLoading, hasUsableGrid, timeAtClientX, timingMode]);
 
   const handleCuePointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>, cueId: string) => {
     if (event.button !== 0) return;
@@ -661,9 +954,9 @@ function CueWaveformPanel({
     if (!lane) return;
     const requestedMs = timeAtClientX(event.clientX, lane);
     if (requestedMs == null) return;
-    const error = onMoveCue(drag.cueId, requestedMs);
+    const error = onMoveCue(drag.cueId, requestedMs, timingMode);
     setEditorMessage(error);
-  }, [onMoveCue, timeAtClientX]);
+  }, [onMoveCue, timeAtClientX, timingMode]);
 
   const handleCuePointerUp = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     const drag = dragStateRef.current;
@@ -734,6 +1027,14 @@ function CueWaveformPanel({
             })}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="min-w-[148px]">
+              <SegmentedControl
+                ariaLabel="Cue timing mode"
+                value={timingMode}
+                onChange={(value) => setTimingMode(value as CueTimingMode)}
+                options={[{ value: 'snap', label: 'Snap' }, { value: 'exact', label: 'Exact ms' }]}
+              />
+            </div>
             <ControlButton
               variant="surface"
               disabled={!autoCueReady}
@@ -871,8 +1172,8 @@ function CueWaveformPanel({
                           selected && 'bg-white/[0.05]',
                         )}
                         style={{ left: `${left}%` }}
-                        title={`${cueDisplayName(cue)} · ${formatTime(cue.startMs)} · drag to reposition; right-click to delete`}
-                        aria-label={`${cueDisplayName(cue)} at ${formatTime(cue.startMs)}. Drag to reposition or press Delete to remove.`}
+                        title={`${cueDisplayName(cue)} · ${formatTime(cue.startMs)} · drag to reposition; click to edit; right-click for actions`}
+                        aria-label={`${cueDisplayName(cue)} at ${formatTime(cue.startMs)}. Drag to reposition, click to edit, or press Delete to remove.`}
                         onPointerDown={(event) => handleCuePointerDown(event, cue.editorId)}
                         onPointerMove={handleCuePointerMove}
                         onPointerUp={handleCuePointerUp}
@@ -911,7 +1212,7 @@ function CueWaveformPanel({
                 className="relative h-[88px] cursor-crosshair overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0b1116]"
                 onWheel={handleWheel}
                 onContextMenu={handleWaveformContextMenu}
-                title="Right-click to add a beat-snapped cue"
+                title={timingMode === 'snap' ? 'Right-click to add a beat-snapped cue' : 'Right-click to add an exact millisecond cue'}
               >
                 {durationMs != null && durationMs > 0 ? (() => {
                   const wScale = durationMs / (effectiveViewEnd - viewStart);
@@ -1035,6 +1336,17 @@ function CueWaveformPanel({
         </div>
       </div>
 
+      {selectedCue && cueEditingAllowed && (
+        <CueInspector
+          cue={selectedCue}
+          cues={cues}
+          timingMode={timingMode}
+          onMoveCue={onMoveCue}
+          onEditCue={onEditCue}
+          onMessage={setEditorMessage}
+        />
+      )}
+
       {contextMenu && (
         <div
           className="fixed inset-0 z-[80]"
@@ -1056,7 +1368,7 @@ function CueWaveformPanel({
                   disabled={availableHotCueSlot == null}
                   className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-xs font-semibold text-[#e5e9ed] hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => {
-                    const error = onAddCue('hot', contextMenu.requestedMs);
+                    const error = onAddCue('hot', contextMenu.requestedMs, timingMode);
                     setEditorMessage(error);
                     setContextMenu(null);
                   }}
@@ -1071,7 +1383,7 @@ function CueWaveformPanel({
                   role="menuitem"
                   className="mt-0.5 w-full rounded-md px-3 py-2 text-left text-xs font-semibold text-[#e5e9ed] hover:bg-white/[0.06]"
                   onClick={() => {
-                    const error = onAddCue('memory', contextMenu.requestedMs);
+                    const error = onAddCue('memory', contextMenu.requestedMs, timingMode);
                     setEditorMessage(error);
                     setContextMenu(null);
                   }}
@@ -1682,11 +1994,11 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     }
   }, [applyBusy, applyPreflight, applySnapshot, desktopDrafts, importId, refreshApplyDrafts, selectedCueBaselineEditable, selectedCueBlockReason, selectedTrackId, userId]);
 
-  const handleAddCue = useCallback((family: 'hot' | 'memory', requestedMs: number): string | null => {
+  const handleAddCue = useCallback((family: 'hot' | 'memory', requestedMs: number, timingMode: CueTimingMode): string | null => {
     if (!selectedTrackId) return 'Select a track before editing cue points.';
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
     if (!selectedCueBaselineEditable) return selectedCueBlockReason ?? 'Cue editing is blocked until the cue baseline is safe.';
-    if (beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
+    if (timingMode === 'snap' && beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
     manualCueSequenceRef.current += 1;
     const result = addWorkingCue(workingCues, {
       editorId: `manual:${selectedTrackId}:${manualCueSequenceRef.current}`,
@@ -1694,16 +2006,28 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       family,
       requestedMs,
       beats: beatGrid?.beats ?? [],
+      timingMode,
     });
     if (!result.error) setWorkingCues(result.cues);
     return result.error;
   }, [beatGrid, beatGridLoading, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, selectedTrackId, workingCues]);
 
-  const handleMoveCue = useCallback((cueId: string, requestedMs: number): string | null => {
+  const handleMoveCue = useCallback((cueId: string, requestedMs: number, timingMode: CueTimingMode): string | null => {
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
     if (!selectedCueBaselineEditable) return selectedCueBlockReason ?? 'Cue editing is blocked until the cue baseline is safe.';
-    if (beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
-    const result = moveWorkingCue(workingCues, cueId, requestedMs, beatGrid?.beats ?? []);
+    if (timingMode === 'snap' && beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
+    const result = moveWorkingCue(workingCues, cueId, requestedMs, beatGrid?.beats ?? [], timingMode);
+    if (!result.error) setWorkingCues(result.cues);
+    return result.error;
+  }, [beatGrid, beatGridLoading, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, workingCues]);
+
+  const handleEditCue = useCallback((cueId: string, action: CueEditAction): string | null => {
+    if (selectedCueLoading) return 'Cue points are still loading for this track.';
+    if (!selectedCueBaselineEditable) return selectedCueBlockReason ?? 'Cue editing is blocked until the cue baseline is safe.';
+    const needsGrid = (action.kind === 'point-type' && action.pointType === 'loop')
+      || ((action.kind === 'end-ms' || action.kind === 'loop-length-ms') && action.timingMode === 'snap');
+    if (needsGrid && beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
+    const result = editWorkingCue(workingCues, cueId, action, beatGrid?.beats ?? []);
     if (!result.error) setWorkingCues(result.cues);
     return result.error;
   }, [beatGrid, beatGridLoading, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, workingCues]);
@@ -1879,6 +2203,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         onRetryWaveform={() => selectedTrackId && retryWaveform([selectedTrackId])}
         onAddCue={handleAddCue}
         onMoveCue={handleMoveCue}
+        onEditCue={handleEditCue}
         onDeleteCue={handleDeleteCue}
         onDiscard={handleDiscard}
         onAutoCue={handleAutoCue}

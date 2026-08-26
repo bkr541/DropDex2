@@ -64,6 +64,34 @@ class TestWriterPlanAdapter:
         plan = adapt_saved_cue_drafts([saved_row(content_id="20"), saved_row(content_id="10")])
         assert [track.content_id for track in plan.tracks] == ["10", "20"]
 
+    def test_stage5_edited_fields_survive_saved_document_to_writer_plan(self):
+        row = saved_row(cues=[cue(
+            hotCueSlot=4,
+            rekordboxKind=5,
+            pointType="loop",
+            startMs=1111,
+            endMs=4444,
+            colorTableIndex=5,
+            colorHex="#00FFFF",
+            colorName="Aqua",
+            comment="Exact drop loop",
+            isActiveLoop=True,
+            beatLoopNumerator=None,
+            beatLoopDenominator=None,
+        )])
+        planned = adapt_saved_cue_drafts([row]).tracks[0].cues[0]
+        assert planned.family == "hot"
+        assert planned.hot_cue_slot == 4
+        assert planned.rekordbox_kind == 5
+        assert planned.point_type == "loop"
+        assert planned.start_ms == 1111
+        assert planned.end_ms == 4444
+        assert planned.color_table_index == 5
+        assert planned.color_hex == "#00FFFF"
+        assert planned.color_name == "Aqua"
+        assert planned.comment == "Exact drop loop"
+        assert planned.is_active_loop is True
+
     def test_rejects_unsaved_or_zero_revision(self):
         with pytest.raises(CuePlanValidationError, match="revision"):
             adapt_saved_cue_drafts([saved_row(revision=0)])

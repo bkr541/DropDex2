@@ -105,9 +105,17 @@ function canonicalCue(cue: WorkingCue): CueDraftCue {
 
   if (cue.pointType === 'loop') {
     if (endMs == null || endMs <= startMs) throw new Error('Loop cues require an endMs after startMs.');
-  } else if (endMs != null && endMs < startMs) {
-    throw new Error('Cue endMs cannot be before startMs.');
+  } else {
+    if (endMs != null && endMs < startMs) throw new Error('Cue endMs cannot be before startMs.');
+    if (cue.isActiveLoop === true) throw new Error('Point cues cannot be active loops.');
   }
+
+  const colorTableIndex = normalizedInteger(cue.colorTableIndex, 'colorTableIndex');
+  if (colorTableIndex != null && colorTableIndex < 0) throw new Error('colorTableIndex cannot be negative.');
+  const beatLoopNumerator = normalizedInteger(cue.beatLoopNumerator, 'beatLoopNumerator');
+  const beatLoopDenominator = normalizedInteger(cue.beatLoopDenominator, 'beatLoopDenominator');
+  if (beatLoopNumerator != null && beatLoopNumerator < 0) throw new Error('beatLoopNumerator cannot be negative.');
+  if (beatLoopDenominator != null && beatLoopDenominator <= 0) throw new Error('beatLoopDenominator must be positive.');
 
   return {
     importedCueId: normalizedString(cue.importedCueId),
@@ -118,13 +126,13 @@ function canonicalCue(cue: WorkingCue): CueDraftCue {
     pointType: cue.pointType,
     startMs,
     endMs,
-    colorTableIndex: normalizedInteger(cue.colorTableIndex, 'colorTableIndex'),
+    colorTableIndex,
     colorHex: normalizedString(cue.colorHex),
     colorName: normalizedString(cue.colorName),
     comment: normalizedString(cue.comment),
     isActiveLoop: cue.isActiveLoop,
-    beatLoopNumerator: normalizedInteger(cue.beatLoopNumerator, 'beatLoopNumerator'),
-    beatLoopDenominator: normalizedInteger(cue.beatLoopDenominator, 'beatLoopDenominator'),
+    beatLoopNumerator,
+    beatLoopDenominator,
     sourceDbPresent: Boolean(cue.sourceDbPresent),
     sourceAnlzPresent: Boolean(cue.sourceAnlzPresent),
     sourceConflict: Boolean(cue.sourceConflict),

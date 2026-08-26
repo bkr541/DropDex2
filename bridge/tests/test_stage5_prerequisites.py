@@ -38,7 +38,7 @@ def test_stage4_is_reachable_hydrates_and_discards_saved_first():
     assert "fetchCueDraft" in view
     assert "hydrateCueDraftDocument" in view
     assert "saveCueDraft" in view
-    assert "Save changes" in view
+    assert "Save cue changes" in view
     assert "savedCueBaseline ?? importedCueBaseline" in view
 
 

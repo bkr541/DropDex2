@@ -3,6 +3,7 @@ import type { BeatEntry } from './beatGridHelpers';
 import {
   addWorkingCue,
   deleteWorkingCue,
+  editWorkingCue,
   hotCueSlotLabel,
   inspectHotCueSlotOwnership,
   isCurrentTrackResponse,
@@ -10,6 +11,7 @@ import {
   nextAvailableHotCueSlot,
   normalizeImportedCues,
   workingCueSetsEqual,
+  DEFAULT_LOOP_BEATS,
 } from './cueEditorState';
 import type { CueRow } from '../queries/analysisData';
 
@@ -60,6 +62,8 @@ const variableTempoBeats: BeatEntry[] = [
   beat(4, 1430, 133.333),
   beat(5, 1880, 133.333),
 ];
+
+const loopBeats: BeatEntry[] = Array.from({ length: 40 }, (_, index) => beat(index + 1, index * 500, 120));
 
 describe('track-scoped async response guard', () => {
   it('rejects a late Track A response after Track B becomes active', () => {
@@ -228,6 +232,212 @@ describe('cue editor working state', () => {
 
     const discarded = baseline;
     expect(workingCueSetsEqual(baseline, discarded)).toBe(true);
+  });
+
+  it('changes Hot Cue slots only when the target A-H ownership is free', () => {
+    const baseline = normalizeImportedCues('track-a', [
+      importedCue({ id: 'cue-a', hot_cue_slot: 1 }),
+      importedCue({ id: 'cue-b', rekordbox_cue_id: 'rb-b', dedupe_key: 'dedupe-b', hot_cue_slot: 2, start_ms: 1000 }),
+    ]);
+
+    const collision = editWorkingCue(baseline, 'imported:cue-a', { kind: 'hot-slot', hotCueSlot: 2 });
+    expect(collision.error).toContain('already in use');
+    expect(collision.cues).toBe(baseline);
+
+    const changed = editWorkingCue(baseline, 'imported:cue-a', { kind: 'hot-slot', hotCueSlot: 4 });
+    expect(changed.error).toBeNull();
+    expect(changed.cues.find((cue) => cue.editorId === 'imported:cue-a')).toMatchObject({
+      family: 'hot',
+      hotCueSlot: 4,
+      rekordboxKind: 5,
+    });
+  });
+
+  it('keeps rapid family and slot changes collision-safe', () => {
+    const baseline = normalizeImportedCues('track-a', [
+      importedCue({ id: 'cue-a', hot_cue_slot: 1 }),
+      importedCue({ id: 'cue-b', rekordbox_cue_id: 'rb-b', dedupe_key: 'dedupe-b', hot_cue_slot: 2, start_ms: 1000 }),
+    ]);
+
+    const memory = editWorkingCue(baseline, 'imported:cue-a', { kind: 'family', family: 'memory' });
+    const hotC = editWorkingCue(memory.cues, 'imported:cue-a', { kind: 'family', family: 'hot', hotCueSlot: 3 });
+    const hotD = editWorkingCue(hotC.cues, 'imported:cue-a', { kind: 'hot-slot', hotCueSlot: 4 });
+    const collision = editWorkingCue(hotD.cues, 'imported:cue-a', { kind: 'hot-slot', hotCueSlot: 2 });
+    const memoryAgain = editWorkingCue(hotD.cues, 'imported:cue-a', { kind: 'family', family: 'memory' });
+    const hotA = editWorkingCue(memoryAgain.cues, 'imported:cue-a', { kind: 'family', family: 'hot', hotCueSlot: 1 });
+
+    expect(collision.error).toContain('already in use');
+    expect(hotA.error).toBeNull();
+    expect(inspectHotCueSlotOwnership(hotA.cues)).toMatchObject({ status: 'valid', occupiedSlots: [1, 2] });
+  });
+
+  it('converts Hot and Memory families without leaving impossible slot state', () => {
+    const baseline = normalizeImportedCues('track-a', [importedCue({ hot_cue_slot: 3 })]);
+    const memory = editWorkingCue(baseline, 'imported:cue-1', { kind: 'family', family: 'memory' });
+    expect(memory.error).toBeNull();
+    expect(memory.cues[0]).toMatchObject({ family: 'memory', hotCueSlot: null, rekordboxKind: null });
+
+    const missingSlot = editWorkingCue(memory.cues, 'imported:cue-1', { kind: 'family', family: 'hot' });
+    expect(missingSlot.error).toMatch(/explicit free slot/i);
+
+    const hot = editWorkingCue(memory.cues, 'imported:cue-1', { kind: 'family', family: 'hot', hotCueSlot: 8 });
+    expect(hot.error).toBeNull();
+    expect(hot.cues[0]).toMatchObject({ family: 'hot', hotCueSlot: 8, rekordboxKind: 9 });
+  });
+
+  it('converts a point cue to the established four-bar loop and clears loop-only state when converted back', () => {
+    const baseline = normalizeImportedCues('track-a', [importedCue({ start_ms: 500 })]);
+    const loop = editWorkingCue(baseline, 'imported:cue-1', { kind: 'point-type', pointType: 'loop' }, loopBeats);
+    expect(loop.error).toBeNull();
+    expect(loop.cues[0]).toMatchObject({
+      pointType: 'loop',
+      startMs: 500,
+      endMs: 500 + DEFAULT_LOOP_BEATS * 500,
+      isActiveLoop: false,
+      beatLoopNumerator: DEFAULT_LOOP_BEATS,
+      beatLoopDenominator: 1,
+    });
+
+    const point = editWorkingCue(loop.cues, 'imported:cue-1', { kind: 'point-type', pointType: 'cue' }, loopBeats);
+    expect(point.error).toBeNull();
+    expect(point.cues[0]).toMatchObject({
+      pointType: 'cue',
+      endMs: null,
+      isActiveLoop: null,
+      beatLoopNumerator: null,
+      beatLoopDenominator: null,
+    });
+  });
+
+  it('rejects impossible loop conversion and invalid loop ends', () => {
+    const nearEnd = normalizeImportedCues('track-a', [importedCue({ start_ms: 19000 })]);
+    expect(editWorkingCue(nearEnd, 'imported:cue-1', { kind: 'point-type', pointType: 'loop' }, loopBeats).error)
+      .toContain('four-bar loop');
+
+    const loop = normalizeImportedCues('track-a', [importedCue({ point_type: 'loop', start_ms: 1000, end_ms: 3000 })]);
+    expect(editWorkingCue(loop, 'imported:cue-1', { kind: 'end-ms', requestedMs: 500, timingMode: 'exact' }, loopBeats).error)
+      .toContain('after loop start');
+    expect(editWorkingCue(loop, 'imported:cue-1', { kind: 'loop-length-ms', requestedMs: 0, timingMode: 'exact' }, loopBeats).error)
+      .toContain('after loop start');
+    expect(editWorkingCue(loop, 'imported:cue-1', { kind: 'loop-length-ms', requestedMs: -500, timingMode: 'exact' }, loopBeats).error)
+      .toContain('after loop start');
+  });
+
+  it('resizes loops in snapped or exact mode and keeps beat-loop metadata truthful', () => {
+    const loop = normalizeImportedCues('track-a', [importedCue({ point_type: 'loop', start_ms: 1000, end_ms: 3000 })]);
+    const snapped = editWorkingCue(loop, 'imported:cue-1', { kind: 'end-ms', requestedMs: 4200, timingMode: 'snap' }, loopBeats);
+    expect(snapped.error).toBeNull();
+    expect(snapped.cues[0]).toMatchObject({ endMs: 4000, beatLoopNumerator: 6, beatLoopDenominator: 1 });
+
+    const exact = editWorkingCue(snapped.cues, 'imported:cue-1', { kind: 'loop-length-ms', requestedMs: 3333, timingMode: 'exact' }, loopBeats);
+    expect(exact.error).toBeNull();
+    expect(exact.cues[0]).toMatchObject({ endMs: 4333, beatLoopNumerator: null, beatLoopDenominator: null });
+  });
+
+  it('edits comment, color, and active-loop state through canonical editor actions', () => {
+    const baseline = normalizeImportedCues('track-a', [importedCue({ point_type: 'loop', start_ms: 1000, end_ms: 3000 })]);
+    const comment = editWorkingCue(baseline, 'imported:cue-1', { kind: 'comment', comment: 'Drop loop' });
+    const color = editWorkingCue(comment.cues, 'imported:cue-1', {
+      kind: 'color', colorTableIndex: 5, colorHex: '#00FFFF', colorName: 'Aqua',
+    });
+    const active = editWorkingCue(color.cues, 'imported:cue-1', { kind: 'active-loop', isActiveLoop: true });
+
+    expect(active.error).toBeNull();
+    expect(active.cues[0]).toMatchObject({
+      comment: 'Drop loop',
+      colorTableIndex: 6,
+      colorHex: '#00FFFF',
+      colorName: 'Aqua',
+      isActiveLoop: true,
+    });
+    expect(workingCueSetsEqual(baseline, active.cues)).toBe(false);
+
+    const point = normalizeImportedCues('track-a', [importedCue()]);
+    expect(editWorkingCue(point, 'imported:cue-1', { kind: 'active-loop', isActiveLoop: true }).error)
+      .toContain('only for loop');
+  });
+
+  it('keeps beat snapping as default while exact mode preserves deliberate off-grid milliseconds', () => {
+    const baseline = normalizeImportedCues('track-a', [importedCue({ start_ms: 500 })]);
+    const snapped = moveWorkingCue(baseline, 'imported:cue-1', 1111, variableTempoBeats);
+    expect(snapped.cues[0].startMs).toBe(980);
+
+    const exact = moveWorkingCue(baseline, 'imported:cue-1', 1111, variableTempoBeats, 'exact');
+    expect(exact.error).toBeNull();
+    expect(exact.cues[0].startMs).toBe(1111);
+
+    const loop = normalizeImportedCues('track-a', [importedCue({
+      point_type: 'loop', start_ms: 500, end_ms: 1430, beat_loop_numerator: 2, beat_loop_denominator: 1,
+    })]);
+    const exactLoop = moveWorkingCue(loop, 'imported:cue-1', 1111, variableTempoBeats, 'exact');
+    expect(exactLoop.cues[0]).toMatchObject({
+      startMs: 1111,
+      endMs: 2041,
+      beatLoopNumerator: null,
+      beatLoopDenominator: null,
+    });
+
+    const exactAdded = addWorkingCue([], {
+      editorId: 'manual:exact',
+      trackId: 'track-a',
+      family: 'memory',
+      requestedMs: 1234.4,
+      beats: [],
+      timingMode: 'exact',
+    });
+    expect(exactAdded.error).toBeNull();
+    expect(exactAdded.cues[0].startMs).toBe(1234);
+  });
+
+  it('allows deliberate repeated snap/exact timing changes without sticky mode state', () => {
+    const baseline = normalizeImportedCues('track-a', [importedCue({ start_ms: 500 })]);
+    const exact = moveWorkingCue(baseline, 'imported:cue-1', 1111, loopBeats, 'exact');
+    const snapped = moveWorkingCue(exact.cues, 'imported:cue-1', 1111, loopBeats, 'snap');
+    const exactAgain = moveWorkingCue(snapped.cues, 'imported:cue-1', 1234, loopBeats, 'exact');
+    const snappedAgain = moveWorkingCue(exactAgain.cues, 'imported:cue-1', 1234, loopBeats, 'snap');
+
+    expect(exact.cues[0].startMs).toBe(1111);
+    expect(snapped.cues[0].startMs).toBe(1000);
+    expect(exactAgain.cues[0].startMs).toBe(1234);
+    expect(snappedAgain.cues[0].startMs).toBe(1000);
+  });
+
+  it('preserves unusual Rekordbox color table indices instead of guessing a palette meaning', () => {
+    const baseline = normalizeImportedCues('track-a', [importedCue({ color_table_index: 42, color_hex: null, color_name: null })]);
+    const changed = editWorkingCue(baseline, 'imported:cue-1', {
+      kind: 'color', colorTableIndex: 77, colorHex: null, colorName: null,
+    });
+    expect(changed.error).toBeNull();
+    expect(changed.cues[0]).toMatchObject({ colorTableIndex: 77, colorHex: null, colorName: null });
+  });
+
+  it('marks every Stage 5 editable field as dirty when its canonical value changes', () => {
+    const baseline = normalizeImportedCues('track-a', [importedCue({
+      point_type: 'loop',
+      start_ms: 1000,
+      end_ms: 3000,
+      is_active_loop: false,
+      beat_loop_numerator: 4,
+      beat_loop_denominator: 1,
+    })]);
+    const editableChanges: Array<Partial<(typeof baseline)[number]>> = [
+      { family: 'memory', hotCueSlot: null },
+      { hotCueSlot: 2 },
+      { pointType: 'cue' },
+      { startMs: 1111 },
+      { endMs: 3333 },
+      { colorTableIndex: 7 },
+      { colorHex: '#0000FF' },
+      { colorName: 'Blue' },
+      { comment: 'Changed' },
+      { isActiveLoop: true },
+      { beatLoopNumerator: 6 },
+      { beatLoopDenominator: 2 },
+    ];
+
+    for (const change of editableChanges) {
+      expect(workingCueSetsEqual(baseline, [{ ...baseline[0], ...change }])).toBe(false);
+    }
   });
 
   it('keeps track-scoped baselines isolated', () => {
