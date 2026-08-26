@@ -1234,16 +1234,6 @@ export default function App() {
                 <p className="text-[8px] text-secondary uppercase tracking-[0.2em] font-bold pl-7">Optimized for low-light</p>
               </div>
             )}
-            {!routeBlocked && currentView === 'cues' && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic">Cue Points</h2>
-                </div>
-              </div>
-            )}
             {!routeBlocked && currentView === 'settings' && (
               <div>
                 <div className="flex items-center gap-2">

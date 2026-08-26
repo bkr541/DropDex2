@@ -228,6 +228,31 @@ def _get_live_analysis_progress(import_id: str) -> Dict[str, Any]:
         return dict(_ANALYSIS_PROGRESS.get(import_id) or {})
 
 
+def _maybe_backfill_duration_from_beat_grid(sb: Any, track_id: str, beats: list) -> None:
+    """Update duration_ms/duration_seconds from the beat grid when the DB value is null or zero.
+
+    Mirrors the frontend durationMsForTrack() fallback: last beat position + one beat interval.
+    Only fires when the track row has no usable duration from the Rekordbox XML metadata.
+    """
+    try:
+        last_beat = beats[-1]
+        last_ms = getattr(last_beat, "ms", None)
+        last_bpm = getattr(last_beat, "bpm", None) or 0
+        if last_ms is None or last_ms <= 0:
+            return
+        inferred_ms = int(last_ms + (60_000.0 / last_bpm if last_bpm > 0 else 500))
+        inferred_seconds = inferred_ms // 1000
+        (
+            sb.table("rekordbox_tracks")
+            .update({"duration_ms": inferred_ms, "duration_seconds": inferred_seconds})
+            .eq("id", track_id)
+            .or_("duration_ms.is.null,duration_ms.lte.0")
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning("Beat grid duration backfill failed for track %s: %s", track_id, exc)
+
+
 def _parse_bundle(
     dat_path: Optional[str] = None,
     ext_path: Optional[str] = None,
@@ -2053,6 +2078,8 @@ def _complete_analysis_import_sync(
                     src_id = asset_ids.get("DAT") or asset_ids.get("EXT")
                     ok = write_beat_grid(sb, import_id, track_id, bg, src_id, _PARSER_VERSION)
                     feature_statuses["beat_grid"] = "completed" if ok else "failed"
+                    if ok and bg.beats:
+                        _maybe_backfill_duration_from_beat_grid(sb, track_id, bg.beats)
                 else:
                     feature_statuses["beat_grid"] = "skipped"
             except Exception as exc:

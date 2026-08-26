@@ -1965,11 +1965,11 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     };
   }, [selectedTrackId]);
 
-  const selectedTrackIds = useMemo(() => selectedTrackId ? [selectedTrackId] : [], [selectedTrackId]);
+  const allVisibleTrackIds = useMemo(() => sortedTracks.map(t => t.id), [sortedTracks]);
   const {
     getState: getWaveformState,
     retry: retryWaveform,
-  } = useTrackPreviewWaveforms(importId, selectedTrackIds);
+  } = useTrackPreviewWaveforms(importId, allVisibleTrackIds);
   const waveformState = getWaveformState(selectedTrackId);
   const selectedCueLoadOwnedBySelection = cueLoadOwnerMatches(
     selectedCueLoadOwner,
@@ -2821,10 +2821,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                       { col: 'track', label: 'Track', cls: 'px-4 py-2.5 md:px-5' },
                       { col: 'bpm', label: 'BPM', cls: 'px-3 py-2.5' },
                       { col: 'key', label: 'Key', cls: 'px-3 py-2.5' },
-                      { col: 'genre', label: 'Genre', cls: 'px-3 py-2.5' },
+                      { col: 'genre', label: 'Genre', cls: 'px-3 py-2.5 w-[178px]' },
                       { col: 'cues', label: 'Cues', cls: 'px-3 py-2.5 text-center' },
-                      { col: 'analysis', label: 'Analysis', cls: 'px-3 py-2.5' },
-                      { col: 'duration', label: 'Duration', cls: 'px-4 py-2.5 text-right md:px-5' },
+                      { col: 'duration', label: 'Duration', cls: 'px-3 py-2.5 text-right w-[80px]' },
                     ] as const).map(({ col, label, cls }) => (
                       <th key={col} className={cn(cls, 'select-none cursor-pointer hover:text-foreground transition-colors')}
                         onClick={() => handleColClick(col)}>
@@ -2860,25 +2859,59 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                           selected ? 'bg-primary/[0.08]' : 'hover:bg-[var(--color-surface-hover)]',
                         )}
                       >
-                        <td className="max-w-[420px] px-4 py-3 md:px-5">
-                          <div className="flex items-center gap-3">
-                            <span className={cn('h-8 w-1 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
-                            <div className="min-w-0">
-                              <p className={cn('truncate text-sm font-bold', selected && 'text-primary')}>{track.title}</p>
-                              <p className="mt-0.5 truncate text-xs text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
+                        <td className="px-4 py-3 md:px-5">
+                          <div className="flex items-center gap-2">
+                            <span className={cn(
+                              'h-2 w-2 shrink-0 rounded-full',
+                              analysisReady(track)
+                                ? 'bg-emerald-400'
+                                : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required'
+                                  ? 'bg-red-400'
+                                  : track.analysis_parse_status == null
+                                    ? 'bg-muted-foreground/40'
+                                    : 'bg-amber-400',
+                            )} aria-hidden="true" />
+                            <span className={cn('h-8 w-1 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                              <div className="min-w-0 max-w-[152px]">
+                                <p className={cn('truncate text-sm font-bold', selected && 'text-primary')}>{track.title}</p>
+                                <p className="mt-0.5 truncate text-xs text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
+                              </div>
+                              {(() => {
+                                const ws = getWaveformState(track.id);
+                                if (ws?.status !== 'loaded' || !ws.waveform.previewColumnsValid) return null;
+                                const cols = ws.waveform.previewColumns;
+                                if (cols.length === 0) return null;
+                                const maxH = Math.max(...cols.map(c => c.h), 1);
+                                const W = 88, H = 20, n = Math.min(cols.length, W);
+                                const step = cols.length / n;
+                                const barW = Math.max(1, W / n - 0.4);
+                                return (
+                                  <svg width={W} height={H} className="shrink-0 opacity-55" aria-hidden="true">
+                                    {Array.from({ length: n }, (_, i) => {
+                                      const col = cols[Math.floor(i * step)];
+                                      const h = Math.max(1, (col.h / maxH) * H);
+                                      const fill = 'r' in col ? `rgb(${col.r},${col.g},${col.b})` : '#4899d4';
+                                      return (
+                                        <rect key={i} x={i * (W / n)} y={(H - h) / 2} width={barW} height={h} fill={fill} />
+                                      );
+                                    })}
+                                  </svg>
+                                );
+                              })()}
                             </div>
                           </div>
                         </td>
                         <td className="px-3 py-3 font-mono text-xs font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
                         <td className="px-3 py-3">
                           {(() => { const kc = camelotColor(track.musical_key); return (
-                            <span className="rounded-md px-2 py-1 font-mono text-[11px] font-bold"
+                            <span className="rounded-md p-1.5 font-mono text-[11px] font-bold"
                               style={{ backgroundColor: kc, color: 'rgba(255,255,255,0.88)' }}>
                               {formatCamelotKey(track.musical_key)}
                             </span>
                           ); })()}
                         </td>
-                        <td className="max-w-[190px] px-3 py-3 text-xs text-muted-foreground"><span className="block truncate">{track.genre ?? '—'}</span></td>
+                        <td className="w-[178px] px-3 py-3 text-xs text-muted-foreground"><span className="block truncate">{track.genre ?? '—'}</span></td>
                         <td className="px-3 py-3 text-center">
                           <span className={cn(
                             'inline-flex min-w-8 justify-center rounded-md border px-2 py-1 font-mono text-[10px] font-black',
@@ -2891,19 +2924,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                             {cueState?.status === 'loading' || !cueState ? '…' : cueState.status === 'failed' ? '!' : cueCount}
                           </span>
                         </td>
-                        <td className="px-3 py-3">
-                          <span className={cn(
-                            'inline-flex rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em]',
-                            analysisReady(track)
-                              ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300'
-                              : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required'
-                                ? 'border-red-400/20 bg-red-400/10 text-red-300'
-                                : 'border-amber-400/20 bg-amber-400/10 text-amber-300',
-                          )}>
-                            {analysisLabel(track)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground md:px-5">
+                        <td className="w-[80px] px-3 py-3 text-right font-mono text-xs text-muted-foreground">
                           {formatTime(durationMsForTrack(track, null))}
                         </td>
                       </tr>

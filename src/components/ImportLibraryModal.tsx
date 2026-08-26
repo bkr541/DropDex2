@@ -1527,21 +1527,23 @@ export function ImportLibraryModal({
                 {/* USB Folder picker */}
                 {mode === 'usb_folder' && (
                   <>
+                    <button
+                      onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
+                      className={cn(
+                        'flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors mb-2',
+                        !(phase === 'database_selected' && folderScan) && 'invisible pointer-events-none',
+                      )}
+                    >
+                      <ArrowRight size={10} className="rotate-180 shrink-0" />
+                      Choose different folder
+                    </button>
                     {phase === 'scanning_usb' ? (
                       <div className="w-full py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] mb-4 flex flex-col items-center gap-2 text-muted-foreground">
                         <CircleDash size={20} className="animate-spin text-primary" />
                         <p className="text-sm">Scanning folder…</p>
                       </div>
                     ) : phase === 'database_selected' && folderScan ? (
-                      <>
-                        <button
-                          onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
-                          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors mb-2"
-                        >
-                          <ArrowRight size={10} className="rotate-180 shrink-0" />
-                          Choose different folder
-                        </button>
-                        <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4 mb-4">
+                      <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4 mb-4">
                           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                             {folderScan.folderName}
                           </p>
@@ -1575,7 +1577,6 @@ export function ImportLibraryModal({
                             </div>
                           </div>
                         </div>
-                      </>
                     ) : (
                       <button
                         onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
@@ -1734,8 +1735,11 @@ export function ImportLibraryModal({
                   </>
                 )}
 
-                {mode === 'usb_folder' && libraryMetadataReady && (
-                  <div className="mt-6 space-y-2">
+                <div className="mt-6 flex justify-center gap-3">
+                  <ControlButton variant="ghost" onClick={() => openAbortDialog('delete')}>
+                    <Close size={16} /> Cancel import
+                  </ControlButton>
+                  {mode === 'usb_folder' && libraryMetadataReady && (
                     <ControlButton
                       type="button"
                       variant="primary"
@@ -1744,17 +1748,13 @@ export function ImportLibraryModal({
                       <ArrowRight size={16} />
                       Browse in Background
                     </ControlButton>
-                    <p className="text-[10px] leading-relaxed text-amber-200">
-                      Keep the USB connected and Rekordbox closed until the background panel confirms USB access is released.
-                    </p>
-                  </div>
-                )}
-
-                <div className="mt-4 flex justify-center">
-                  <ControlButton variant="ghost" onClick={() => openAbortDialog('delete')}>
-                    <Close size={16} /> Cancel import
-                  </ControlButton>
+                  )}
                 </div>
+                {mode === 'usb_folder' && libraryMetadataReady && (
+                  <p className="mt-2 text-[10px] leading-relaxed text-amber-200 text-center">
+                    Keep the USB connected and Rekordbox closed until the background panel confirms USB access is released.
+                  </p>
+                )}
               </div>
             )}
 
@@ -1897,7 +1897,14 @@ export function ImportLibraryModal({
                     )}
                   </p>
                 </div>
-                <div className="mt-6 grid gap-2 sm:grid-cols-2">
+                <div className="mt-6 flex items-center justify-center gap-2 flex-nowrap">
+                  <ControlButton
+                    type="button"
+                    variant="danger-outline"
+                    onClick={() => openAbortDialog('delete')}
+                  >
+                    <TrashCan size={16} /> Delete Import
+                  </ControlButton>
                   <ControlButton
                     type="button"
                     variant="primary"
@@ -1908,18 +1915,11 @@ export function ImportLibraryModal({
                   </ControlButton>
                   <ControlButton
                     type="button"
-                    variant="secondary"
+                    variant="neutral"
                     onClick={() => openAbortDialog('pause')}
+                    title="Pause analysis"
                   >
-                    Pause
-                  </ControlButton>
-                  <ControlButton
-                    type="button"
-                    variant="danger-outline"
-                    onClick={() => openAbortDialog('delete')}
-                    className="sm:col-span-2"
-                  >
-                    <TrashCan size={16} /> Delete Import
+                    <Pause size={16} />
                   </ControlButton>
                 </div>
                 <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
