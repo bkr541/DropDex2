@@ -129,7 +129,7 @@ const MODE_LABELS: Record<Mode, { label: string; icon: React.ReactNode; tip: str
     tip: 'Upload a ZIP archive containing exportLibrary.db and ANLZ files.',
   },
   database_only: {
-    label: 'DataBase Only',
+    label: 'Database Only',
     icon: <DataBase size={14} />,
     tip: 'Upload exportLibrary.db to import playlists and track metadata without analysis data.',
   },
@@ -1397,6 +1397,8 @@ export function ImportLibraryModal({
       ? Math.round((progress.filesUploaded / progress.filesTotal) * 100)
       : progress.bundlePct;
 
+  const isReady = mode === 'usb_folder' ? Boolean(folderScan?.dbFile) : Boolean(selectedFile);
+
   const withAnalysis =
     finalResult?.kind === 'with_analysis' ? finalResult.data : null;
   const libraryOnly =
@@ -1474,8 +1476,13 @@ export function ImportLibraryModal({
               <>
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-                      <DataBase className="text-primary" size={20} />
+                    <div className={cn(
+                      'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+                      isReady
+                        ? 'bg-emerald-500/10 border border-emerald-600/30'
+                        : 'bg-primary/10',
+                    )}>
+                      <DataBase className={isReady ? 'text-emerald-500' : 'text-primary'} size={20} />
                     </div>
                     <h2 className="text-xl font-bold">Import Rekordbox Library</h2>
                   </div>
@@ -1485,7 +1492,10 @@ export function ImportLibraryModal({
                 </div>
 
                 {/* Mode selector */}
-                <div className="flex gap-1.5 p-1 bg-[var(--color-surface)] rounded-xl mb-5">
+                <div className={cn(
+                  'flex gap-1.5 p-1 rounded-xl mb-5 transition-colors',
+                  isReady ? 'bg-emerald-500/5' : 'bg-[var(--color-surface)]',
+                )}>
                   {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
                     <button
                       key={m}
@@ -1493,7 +1503,9 @@ export function ImportLibraryModal({
                       className={cn(
                         'flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-semibold transition-all',
                         mode === m
-                          ? 'bg-primary text-white shadow-sm'
+                          ? isReady
+                            ? 'bg-emerald-500 text-white shadow-sm'
+                            : 'bg-primary text-white shadow-sm'
                           : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
@@ -1601,7 +1613,7 @@ export function ImportLibraryModal({
                   </>
                 )}
 
-                {/* ZIP Bundle / DataBase Only picker */}
+                {/* ZIP Bundle / Database Only picker */}
                 {(mode === 'zip_bundle' || mode === 'database_only') && (
                   <>
                     <button
@@ -1674,7 +1686,7 @@ export function ImportLibraryModal({
                   <CircleDash className="animate-spin text-primary" size={28} />
                 </div>
                 <h2 className="text-xl font-bold mb-2">
-                  {localUsbStage === 'uploading_database' && 'Uploading Rekordbox DataBase…'}
+                  {localUsbStage === 'uploading_database' && 'Uploading Rekordbox Database…'}
                   {localUsbStage === 'matching_analysis' && 'Matching Analysis Files…'}
                   {localUsbStage === 'uploading_analysis' && 'Uploading Analysis Files…'}
                   {localUsbStage === 'uploading_bundle' && 'Uploading Bundle…'}
