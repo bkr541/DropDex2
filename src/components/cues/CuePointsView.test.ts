@@ -186,10 +186,13 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('existingImportedBaselineLocalCueFingerprint');
   });
 
-  it('surfaces Apply draft-loading failure instead of turning it into an empty successful draft set', () => {
+  it('surfaces Apply draft-loading failure and lets the user retry the guarded loader', () => {
     expect(source).toContain('setApplyDraftLoadError(');
     expect(source).toContain('Saved cue drafts could not be loaded for Apply:');
-    expect(source).toContain('{applyDraftLoadError && <p className="text-red-300">{applyDraftLoadError}</p>}');
+    expect(source).toContain('const [applyDraftRetryNonce, setApplyDraftRetryNonce] = useState(0);');
+    expect(source).toContain('[applyDraftRetryNonce, draftRevision, importId, userId]');
+    expect(source).toContain('onClick={() => setApplyDraftRetryNonce((value) => value + 1)}');
+    expect(source).toContain('Retry loading drafts');
     expect(source).not.toContain('.catch(() => setApplyDrafts([]))');
   });
   it('renders Stage 6 loop ranges, canonical colors, metadata, and conflict provenance in the production Cue Points path', () => {

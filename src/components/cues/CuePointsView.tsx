@@ -1600,6 +1600,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [cueSummaryStates, setCueSummaryStates] = useState<Map<string, CueLoadState>>(new Map());
   const [cueSummaryRetryNonce, setCueSummaryRetryNonce] = useState(0);
   const [applyDraftLoadError, setApplyDraftLoadError] = useState<string | null>(null);
+  const [applyDraftRetryNonce, setApplyDraftRetryNonce] = useState(0);
   const [applyRebaseRecovery, setApplyRebaseRecovery] = useState<CueRebaseRecoveryState | null>(null);
   const [beatGrid, setBeatGrid] = useState<BeatGridRow | null>(null);
   const [beatGridLoading, setBeatGridLoading] = useState(false);
@@ -2153,7 +2154,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           : 'Saved cue drafts could not be loaded for Apply.');
       });
     return () => { cancelled = true; };
-  }, [draftRevision, importId, userId]);
+  }, [applyDraftRetryNonce, draftRevision, importId, userId]);
 
   const desktopDrafts = useCallback((rows: CueDraftRow[]) => rows.map((row) => ({
     importId: row.importId,
@@ -2702,7 +2703,18 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
               )}
               {applyResult && <p className="font-bold text-foreground">Last apply result: {applyResult.state} · {applyResult.tracks.filter((track) => track.state === 'verified').length}/{applyResult.tracks.length} tracks verified{applyResult.backup_identity ? ` · backup ${applyResult.backup_identity.slice(0, 12)}…` : ''}</p>}
               {applyMessage && <p>{applyMessage}</p>}
-              {applyDraftLoadError && <p className="text-red-300">{applyDraftLoadError}</p>}
+              {applyDraftLoadError && (
+                <div className="flex flex-wrap items-center justify-between gap-3 text-red-300">
+                  <p>{applyDraftLoadError}</p>
+                  <ControlButton
+                    variant="surface"
+                    disabled={!userId || !importId || applyBusy}
+                    onClick={() => setApplyDraftRetryNonce((value) => value + 1)}
+                  >
+                    Retry loading drafts
+                  </ControlButton>
+                </div>
+              )}
               {!applyBridgeAvailable && applyBridgeReason && <p>{applyBridgeReason}</p>}
             </div>
           )}
