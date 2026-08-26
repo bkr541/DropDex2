@@ -5,7 +5,7 @@ vi.mock('../supabase', () => ({
 }));
 
 import { supabase } from '../supabase';
-import { fetchTrackPreviewWaveforms } from './analysisData';
+import { fetchTrackCueState, fetchTrackPreviewWaveforms, fetchTracksCueStates } from './analysisData';
 
 function colorCol(h = 100, r = 50, g = 60, b = 70) {
   return { h, r, g, b };
@@ -34,6 +34,43 @@ function setupChain(result: { data: unknown[] | null; error: { message: string }
   chain.in.mockResolvedValue(result);
   vi.mocked(supabase.from).mockReturnValue(chain as never);
   return chain;
+}
+
+function setupCueChain(result: { data: unknown; error: { message: string } | null }) {
+  const chain = { select: vi.fn(), in: vi.fn(), order: vi.fn() };
+  chain.select.mockReturnValue(chain);
+  chain.in.mockReturnValue(chain);
+  chain.order.mockResolvedValue(result);
+  vi.mocked(supabase.from).mockReturnValue(chain as never);
+  return chain;
+}
+
+function makeCueRow(trackId: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id: `cue-${trackId}`,
+    import_id: 'imp-1',
+    track_id: trackId,
+    rekordbox_cue_id: `rb-${trackId}`,
+    dedupe_key: `db:${trackId}`,
+    cue_family: 'hot',
+    cue_family_authority: 'anlz',
+    hot_cue_slot: 1,
+    point_type: 'cue',
+    source_kind: '0',
+    start_ms: 1000,
+    end_ms: null,
+    color_table_index: null,
+    color_hex: null,
+    color_name: null,
+    comment: null,
+    is_active_loop: false,
+    beat_loop_numerator: null,
+    beat_loop_denominator: null,
+    source_db_present: true,
+    source_anlz_present: true,
+    source_conflict: false,
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
@@ -227,5 +264,99 @@ describe('fetchTrackPreviewWaveforms', () => {
 
     expect(first.states.get('track-retry')?.status).toBe('error');
     expect(second.states.get('track-retry')?.status).toBe('loaded');
+  });
+});
+
+describe('cue load integrity', () => {
+  it('represents a successful zero-cue query as loaded-empty', async () => {
+    setupCueChain({ data: [], error: null });
+
+    const state = await fetchTrackCueState('track-empty');
+
+    expect(state).toEqual({ status: 'loaded-empty', trackId: 'track-empty', cues: [] });
+  });
+
+  it('represents returned cues as loaded-with-cues', async () => {
+    setupCueChain({ data: [makeCueRow('track-a')], error: null });
+
+    const state = await fetchTrackCueState('track-a');
+
+    expect(state.status).toBe('loaded-with-cues');
+    if (state.status === 'loaded-with-cues') expect(state.cues).toHaveLength(1);
+  });
+
+  it('keeps Supabase/RLS rejection as failed rather than loaded-empty', async () => {
+    setupCueChain({ data: null, error: { message: 'permission denied by RLS' } });
+
+    const state = await fetchTrackCueState('track-a');
+
+    expect(state).toEqual({
+      status: 'failed',
+      trackId: 'track-a',
+      error: 'permission denied by RLS',
+      retryable: true,
+    });
+  });
+
+  it('keeps a malformed successful response as failed/incomplete', async () => {
+    setupCueChain({ data: { unexpected: true }, error: null });
+
+    const state = await fetchTrackCueState('track-a');
+
+    expect(state).toMatchObject({
+      status: 'failed',
+      trackId: 'track-a',
+      retryable: false,
+    });
+  });
+
+  it('keeps successful and failed chunks independently track-scoped', async () => {
+    const goodChain = { select: vi.fn(), in: vi.fn(), order: vi.fn() };
+    goodChain.select.mockReturnValue(goodChain);
+    goodChain.in.mockReturnValue(goodChain);
+    goodChain.order.mockResolvedValue({ data: [makeCueRow('track-good')], error: null });
+
+    const badChain = { select: vi.fn(), in: vi.fn(), order: vi.fn() };
+    badChain.select.mockReturnValue(badChain);
+    badChain.in.mockReturnValue(badChain);
+    badChain.order.mockResolvedValue({ data: null, error: { message: 'timeout' } });
+
+    vi.mocked(supabase.from)
+      .mockReturnValueOnce(goodChain as never)
+      .mockReturnValueOnce(badChain as never);
+
+    const firstChunk = ['track-good', ...Array.from({ length: 199 }, (_, index) => `empty-${index}`)];
+    const result = await fetchTracksCueStates([...firstChunk, 'track-fail']);
+
+    expect(result.states.get('track-good')?.status).toBe('loaded-with-cues');
+    expect(result.states.get('empty-0')?.status).toBe('loaded-empty');
+    expect(result.states.get('track-fail')?.status).toBe('failed');
+    expect(result.errors).toEqual([{
+      chunkIndex: 1,
+      trackIds: ['track-fail'],
+      error: 'timeout',
+    }]);
+  });
+
+  it('supports retry after transient cue failure without caching empty state', async () => {
+    const failChain = { select: vi.fn(), in: vi.fn(), order: vi.fn() };
+    failChain.select.mockReturnValue(failChain);
+    failChain.in.mockReturnValue(failChain);
+    failChain.order.mockResolvedValue({ data: null, error: { message: 'network offline' } });
+
+    const successChain = { select: vi.fn(), in: vi.fn(), order: vi.fn() };
+    successChain.select.mockReturnValue(successChain);
+    successChain.in.mockReturnValue(successChain);
+    successChain.order.mockResolvedValue({ data: [], error: null });
+
+    vi.mocked(supabase.from)
+      .mockReturnValueOnce(failChain as never)
+      .mockReturnValueOnce(successChain as never);
+
+    const first = await fetchTrackCueState('track-retry');
+    const second = await fetchTrackCueState('track-retry');
+
+    expect(first.status).toBe('failed');
+    expect(second.status).toBe('loaded-empty');
   });
 });

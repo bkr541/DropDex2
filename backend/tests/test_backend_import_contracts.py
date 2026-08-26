@@ -80,3 +80,10 @@ def test_relative_symbol_imports_resolve_to_real_module_exports():
                     )
 
     assert not failures, "Unresolved relative imports:\n" + "\n".join(sorted(failures))
+
+
+def test_cue_persistence_failure_cannot_leave_track_overall_completed():
+    for filename in ("bundle_import_service.py", "analysis_import_service.py"):
+        source = (APP_ROOT / filename).read_text(encoding="utf-8")
+        assert 'feature_statuses.get("cues") == "failed" and overall == "completed"' in source
+        assert 'overall = "partial"' in source

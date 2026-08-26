@@ -6,10 +6,18 @@ from copy import deepcopy
 from types import SimpleNamespace
 from typing import Any
 
-from app.analysis_fast_pipeline import ParsedTrack, _reconcile_cues_bulk
+from app.analysis_fast_pipeline import (
+    CueReconciliationIntegrityError,
+    ParsedTrack,
+    _reconcile_cues_bulk,
+)
 from app.analysis_feature_writer import reconcile_and_write_cues
 from dropdex_importer.cue_parser import AnlzCueEntry, CUE_MATCH_TOLERANCE_MS
-from dropdex_importer.cue_reconciliation import build_cue_reconciliation_plan
+from dropdex_importer.cue_reconciliation import (
+    CueReconciliationPersistenceError,
+    apply_cue_reconciliation_plan,
+    build_cue_reconciliation_plan,
+)
 from dropdex_importer.reparse import _reconcile_cues
 
 
@@ -114,10 +122,11 @@ def apply_plan(existing: list[dict[str, Any]], entries: list[AnlzCueEntry]) -> l
 class FakeCueSb:
     """Small in-memory Supabase surface used by all three production entry paths."""
 
-    def __init__(self, rows: list[dict[str, Any]]):
+    def __init__(self, rows: list[dict[str, Any]], *, fail_operations: set[str] | None = None):
         self.rows = deepcopy(rows)
         self.upsert_batches = 0
         self._next_id = 1
+        self.fail_operations = set(fail_operations or set())
 
     def table(self, name: str):
         assert name == "rekordbox_cues"
@@ -167,6 +176,8 @@ class FakeCueQuery:
         return True
 
     def execute(self):
+        if self.operation in self.sb.fail_operations:
+            raise RuntimeError(f"forced {self.operation} failure")
         if self.operation == "select":
             return SimpleNamespace(data=[deepcopy(row) for row in self.sb.rows if self._matches(row)])
         if self.operation == "delete":
@@ -355,7 +366,9 @@ class TestProductionPathParity:
         ]
 
         normal = FakeCueSb(existing)
-        assert reconcile_and_write_cues(normal, "imp-1", "track-1", entries, []) is True
+        result = reconcile_and_write_cues(normal, "imp-1", "track-1", entries, [])
+        assert result.complete is True
+        assert result.state == "complete"
 
         fast = FakeCueSb(existing)
         _reconcile_cues_bulk(
@@ -377,3 +390,77 @@ class TestProductionPathParity:
         assert projection(normal.rows) == projection(fast.rows) == projection(reparse.rows)
         # The fast route keeps the existing bulk write shape: one preload + one batch upsert.
         assert fast.upsert_batches == 1
+
+
+class TestCuePersistenceIntegrity:
+    def test_partial_delete_failure_is_structured_and_never_complete(self):
+        stale = db_cue(cue_id="stale", start_ms=2000, source_anlz_present=True)
+        stale.update({
+            "rekordbox_cue_id": None,
+            "dedupe_key": "anlz:stale",
+            "source_db_present": False,
+        })
+        existing = [
+            db_cue(cue_id="keep", start_ms=1000),
+            stale,
+        ]
+        plan = build_cue_reconciliation_plan(
+            existing,
+            [anlz(start_ms=1000)],
+            import_id="imp-1",
+            track_id="track-1",
+            tolerance_ms=CUE_MATCH_TOLERANCE_MS,
+        )
+        assert plan.upsert_rows
+        assert plan.delete_ids == ("stale",)
+
+        sb = FakeCueSb(existing, fail_operations={"delete"})
+        try:
+            apply_cue_reconciliation_plan(sb, plan)
+            raise AssertionError("expected CueReconciliationPersistenceError")
+        except CueReconciliationPersistenceError as exc:
+            assert exc.result.state == "partial"
+            assert exc.result.complete is False
+            assert exc.result.applied_upserts == len(plan.upsert_rows)
+            assert exc.result.applied_deletes == 0
+
+    def test_feature_writer_reports_partial_persistence_as_failed_result(self):
+        stale = db_cue(cue_id="stale", start_ms=2000, source_anlz_present=True)
+        stale.update({
+            "rekordbox_cue_id": None,
+            "dedupe_key": "anlz:stale",
+            "source_db_present": False,
+        })
+        existing = [
+            db_cue(cue_id="keep", start_ms=1000),
+            stale,
+        ]
+        sb = FakeCueSb(existing, fail_operations={"delete"})
+
+        result = reconcile_and_write_cues(
+            sb,
+            "imp-1",
+            "track-1",
+            [anlz(start_ms=1000)],
+            [],
+        )
+
+        assert result.complete is False
+        assert result.state == "partial"
+        assert result.applied_upserts > 0
+        assert result.applied_deletes == 0
+
+    def test_fast_path_preload_failure_propagates_instead_of_skipping_cues(self):
+        sb = FakeCueSb([], fail_operations={"select"})
+        parsed = ParsedTrack(
+            track={"id": "track-1"},
+            assets=[],
+            parse_status="completed",
+            cue_entries=[],
+        )
+
+        try:
+            _reconcile_cues_bulk(sb, "imp-1", [parsed])
+            raise AssertionError("expected preload failure to propagate")
+        except CueReconciliationIntegrityError as exc:
+            assert "baseline preload failed" in str(exc)

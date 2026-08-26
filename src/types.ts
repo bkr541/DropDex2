@@ -167,6 +167,7 @@ export interface RekordboxTrack {
   information_update_count: number | null;
   analysis_reused_from_track_id: string | null;
   analysis_parse_status: RekordboxTrackParseStatus | null;
+  analysis_feature_statuses?: Record<string, string>;
   analysis_manifest_status?: 'reused' | 'metadata_only' | 'needs_dat' | 'needs_ext' | 'needs_analysis' | 'reparse_from_retained' | 'unavailable';
   analysis_failure_reason?: string | null;
   analysis_parse_warnings: unknown[];

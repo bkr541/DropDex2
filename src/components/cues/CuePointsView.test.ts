@@ -24,7 +24,7 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain("phrase.track_id !== selectedTrackId");
   });
 
-  it('enters Stage 4 Save through the production Cue Points action and complete-document RPC path', () => {
+  it('enters Save through the production Cue Points action and complete-document RPC path', () => {
     expect(source).toContain('onSave={handleSave}');
     expect(source).toContain('void onSave().then(setEditorMessage)');
     expect(source).toContain('createCueDraftDocument({');
@@ -32,22 +32,23 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('saveCueDraft({');
     expect(source).toContain('expectedRevision');
     expect(source).toContain('setSavedCueBaseline(hydrated)');
-    expect(source).toContain("{saving ? 'Saving…' : 'Save changes'}");
+    expect(source).toContain('disabled={!dirty || !cueBaselineComplete || saving}');
   });
 
-  it('hydrates a saved draft for the explicit selected track and Discard restores saved-first/imported-second', () => {
-    expect(source).toContain('fetchCueDraft(requestedUserId, requestedTrackId)');
-    expect(source).toContain('hydrateCueDraftDocument(draft.desiredDocument)');
+  it('loads imported cues plus saved draft through the canonical baseline loader and Discard restores saved-first/imported-second', () => {
+    expect(source).toContain('loadCueEditorBaseline(requestedTrack, requestedUserId)');
+    expect(source).toContain('setSavedCueBaseline(result.savedCues)');
+    expect(source).toContain('setWorkingCues(result.workingCues)');
     expect(source).toContain('const discardBaseline = savedCueBaseline ?? importedCueBaseline;');
     expect(source).toContain('setWorkingCues(savedCueBaseline ?? importedCueBaseline)');
     expect(source).toContain("if (!savedCueBaseline) return 'Original'");
-    expect(source).toContain("? 'Saved' : 'Needs Apply'");
+    expect(source).toContain("return 'Needs Apply';");
   });
 
   it('guards cue/draft responses against stale track or user ownership', () => {
     expect(source).toContain('cueDraftLoadRequestRef.current === requestId');
-    expect(source).toContain('selectedTrackIdRef.current, requestedTrackId');
-    expect(source).toContain('selectedUserIdRef.current === requestedUserId');
+    expect(source).toContain('cueLoadOwnerMatches(requestedOwner, selectedTrackIdRef.current, selectedUserIdRef.current)');
+    expect(source).toContain('selectedCueLoadOwnedBySelection = cueLoadOwnerMatches(');
     expect(source).toContain('cueDraftSaveRequestRef.current === requestId');
     expect(source).toContain('workingCueSetsEqual(workingCuesRef.current, workingSnapshot)');
   });
@@ -58,9 +59,14 @@ describe('Cue Points production editor wiring', () => {
     expect(source).not.toMatch(/useEffect\([\s\S]{0,600}\[filteredTracks\]/);
   });
 
-  it('keeps Rekordbox export disabled in Stage 4', () => {
-    expect(source).toContain('variant="primary" disabled title="Cue export will be enabled');
+  it('keeps Rekordbox Apply guarded by bridge availability, saved drafts, and a complete selected-track baseline', () => {
+    expect(source).toContain('applyAvailable={applyBridgeAvailable');
+    expect(source).toContain('&& applyDrafts.length > 0');
+    expect(source).toContain('&& !applyDraftLoadError');
+    expect(source).toContain('&& (!selectedTrackId || selectedCueBaselineComplete)}');
+    expect(source).toContain('if (selectedTrackId && !selectedCueBaselineComplete)');
   });
+
   it('persists the imported local DjmdCue baseline and strong track identity for desktop apply', () => {
     expect(source).toContain('fingerprintImportedLocalCueBaseline(importedDocument)');
     expect(source).toContain('importedBaselineLocalCueFingerprint,');
@@ -68,11 +74,28 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('masterContentId: row.masterContentId');
   });
 
-  it('keeps cue-load failures distinct from an editable zero-cue baseline', () => {
-    expect(source).toContain('setSelectedCueLoadError(');
-    expect(source).toContain('Cue points could not be loaded');
-    expect(source).toContain('if (selectedCueLoadError) return selectedCueLoadError;');
-    expect(source).toContain('if (selectedCueLoading || selectedCueLoadError) return;');
-    expect(source).toContain('persistenceMessage={selectedCueLoadError ?? draftPersistenceMessage}');
+  it('keeps selected cue-load and saved-draft failures distinct from an editable zero-cue baseline', () => {
+    expect(source).toContain("setSelectedCueLoadStatus('failed')");
+    expect(source).toContain('setSelectedCueLoadError(result.error)');
+    expect(source).toContain("cueLoadStatus === 'failed'");
+    expect(source).toContain("cueLoadError ?? 'Cue points could not be loaded.'");
+    expect(source).toContain('onClick={onRetryCues}');
+    expect(source).toContain('if (!selectedCueBaselineComplete) return;');
+    expect(source).toContain('persistenceMessage={draftPersistenceMessage}');
+  });
+
+  it('uses explicit library cue load states so failed tracks are not classified as No cues', () => {
+    expect(source).toContain('fetchTracksCueStates(trackIds)');
+    expect(source).toContain('cueFilterMatches(cueSummaryStates.get(track.id), cueFilter)');
+    expect(source).toContain("status: 'failed'");
+    expect(source).toContain('Those tracks are excluded from Has cues / No cues results until the request succeeds.');
+    expect(source).toContain('setCueSummaryRetryNonce((value) => value + 1)');
+  });
+
+  it('surfaces Apply draft-loading failure instead of turning it into an empty successful draft set', () => {
+    expect(source).toContain('setApplyDraftLoadError(');
+    expect(source).toContain('Saved cue drafts could not be loaded for Apply:');
+    expect(source).toContain('{applyDraftLoadError && <p className="text-red-300">{applyDraftLoadError}</p>}');
+    expect(source).not.toContain('.catch(() => setApplyDrafts([]))');
   });
 });

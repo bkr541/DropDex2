@@ -675,6 +675,25 @@ def test_bulk_track_status_bounds_real_usb_scale_rpc_payloads():
     assert sum(map(len, rpc_rows)) == 2_213
 
 
+def test_bulk_track_status_persists_cue_integrity_override_ignored_by_legacy_rpc():
+    sb = MagicMock()
+    sb.rpc.return_value.execute.return_value.data = None
+    update_chain = sb.table.return_value.update.return_value
+    update_chain.eq.return_value = update_chain
+    update_chain.execute.return_value.data = None
+
+    fast._bulk_track_status(sb, "import-1", [{
+        "track_id": "track-1",
+        "analysis_parse_status": "failed",
+        "analysis_feature_statuses": {"cues": "failed"},
+    }])
+
+    sb.table.assert_called_with("rekordbox_tracks")
+    sb.table.return_value.update.assert_called_with({
+        "analysis_feature_statuses": {"cues": "failed"},
+    })
+
+
 def test_manifest_persistence_bounds_real_usb_scale_rpc_payloads():
     entries = [
         SimpleNamespace(

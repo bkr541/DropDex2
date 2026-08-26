@@ -15,11 +15,25 @@ Security invariants
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 _ANALYSIS_BUCKET = "rekordbox-analysis-assets"
+
+
+@dataclass(frozen=True)
+class CueWriteResult:
+    """Track-scoped cue reconciliation/persistence completeness."""
+
+    state: str
+    complete: bool
+    planned_upserts: int = 0
+    planned_deletes: int = 0
+    applied_upserts: int = 0
+    applied_deletes: int = 0
+    error: str | None = None
 
 
 # ── Beat grid ─────────────────────────────────────────────────────────────────
@@ -137,10 +151,11 @@ def reconcile_and_write_cues(
     track_id: str,
     anlz_entries: List[Any],    # List[AnlzCueEntry] from cue_parser
     warnings: List[Any],        # List[AnalysisParseWarning] (unused here but kept for callers)
-) -> bool:
-    """Reconcile one track through the canonical DB + ANLZ cue path."""
+) -> CueWriteResult:
+    """Reconcile one track without collapsing persistence failure into success."""
     from dropdex_importer.cue_parser import CUE_MATCH_TOLERANCE_MS  # noqa: PLC0415
     from dropdex_importer.cue_reconciliation import (  # noqa: PLC0415
+        CueReconciliationPersistenceError,
         apply_cue_reconciliation_plan,
         build_cue_reconciliation_plan,
     )
@@ -159,11 +174,43 @@ def reconcile_and_write_cues(
             track_id=track_id,
             tolerance_ms=CUE_MATCH_TOLERANCE_MS,
         )
-        apply_cue_reconciliation_plan(sb, plan)
-        return True
+        applied = apply_cue_reconciliation_plan(sb, plan)
+        return CueWriteResult(
+            state=applied.state,
+            complete=applied.complete,
+            planned_upserts=applied.planned_upserts,
+            planned_deletes=applied.planned_deletes,
+            applied_upserts=applied.applied_upserts,
+            applied_deletes=applied.applied_deletes,
+            error=applied.error,
+        )
+    except CueReconciliationPersistenceError as exc:
+        result = exc.result
+        logger.error(
+            "Cue reconciliation persistence incomplete for track %s: state=%s upserts=%s/%s deletes=%s/%s",
+            track_id,
+            result.state,
+            result.applied_upserts,
+            result.planned_upserts,
+            result.applied_deletes,
+            result.planned_deletes,
+        )
+        return CueWriteResult(
+            state=result.state,
+            complete=False,
+            planned_upserts=result.planned_upserts,
+            planned_deletes=result.planned_deletes,
+            applied_upserts=result.applied_upserts,
+            applied_deletes=result.applied_deletes,
+            error=result.error,
+        )
     except Exception as exc:
         logger.error("Failed to reconcile cues for track %s: %s", track_id, exc)
-        return False
+        return CueWriteResult(
+            state="failed",
+            complete=False,
+            error=f"Cue reconciliation failed ({type(exc).__name__}).",
+        )
 
 
 # ── Phrases ───────────────────────────────────────────────────────────────────

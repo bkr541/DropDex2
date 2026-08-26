@@ -24,6 +24,30 @@ class CueReconciliationPlan:
     delete_ids: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class CueReconciliationApplyResult:
+    """Observed persistence outcome for one canonical reconciliation plan."""
+
+    state: str
+    planned_upserts: int
+    planned_deletes: int
+    applied_upserts: int
+    applied_deletes: int
+    error: str | None = None
+
+    @property
+    def complete(self) -> bool:
+        return self.state == "complete"
+
+
+class CueReconciliationPersistenceError(RuntimeError):
+    """Canonical cue persistence failed before the full plan was committed."""
+
+    def __init__(self, result: CueReconciliationApplyResult) -> None:
+        super().__init__(result.error or "Cue reconciliation persistence failed.")
+        self.result = result
+
+
 def _persistable_row(row: Mapping[str, Any]) -> dict[str, Any]:
     """Strip server-owned columns before an upsert on the semantic dedupe key."""
     return {key: value for key, value in row.items() if key not in _SERVER_MANAGED_FIELDS}
@@ -467,12 +491,58 @@ def build_cue_reconciliation_plan(
     )
 
 
-def apply_cue_reconciliation_plan(sb: Any, plan: CueReconciliationPlan) -> None:
-    """Apply a canonical plan using bounded Supabase-compatible operations."""
+def apply_cue_reconciliation_plan(
+    sb: Any, plan: CueReconciliationPlan
+) -> CueReconciliationApplyResult:
+    """Apply a canonical plan and preserve complete/partial/failed semantics.
+
+    Supabase/PostgREST does not give this path a cross-request transaction for the
+    upsert + stale-row delete pair. If the second mutation fails after the first
+    succeeded, the caller must know the baseline is partial and non-authoritative;
+    it must never continue as though reconciliation completed successfully.
+    """
+
+    planned_upserts = len(plan.upsert_rows)
+    planned_deletes = len(plan.delete_ids)
+    applied_upserts = 0
+    applied_deletes = 0
 
     if plan.upsert_rows:
-        sb.table(_CUE_TABLE).upsert(
-            list(plan.upsert_rows), on_conflict="track_id,dedupe_key"
-        ).execute()
+        try:
+            sb.table(_CUE_TABLE).upsert(
+                list(plan.upsert_rows), on_conflict="track_id,dedupe_key"
+            ).execute()
+            applied_upserts = planned_upserts
+        except Exception as exc:
+            result = CueReconciliationApplyResult(
+                state="failed",
+                planned_upserts=planned_upserts,
+                planned_deletes=planned_deletes,
+                applied_upserts=0,
+                applied_deletes=0,
+                error=f"Cue reconciliation upsert failed ({type(exc).__name__}).",
+            )
+            raise CueReconciliationPersistenceError(result) from exc
+
     if plan.delete_ids:
-        sb.table(_CUE_TABLE).delete().in_("id", list(plan.delete_ids)).execute()
+        try:
+            sb.table(_CUE_TABLE).delete().in_("id", list(plan.delete_ids)).execute()
+            applied_deletes = planned_deletes
+        except Exception as exc:
+            result = CueReconciliationApplyResult(
+                state="partial" if applied_upserts > 0 else "failed",
+                planned_upserts=planned_upserts,
+                planned_deletes=planned_deletes,
+                applied_upserts=applied_upserts,
+                applied_deletes=0,
+                error=f"Cue reconciliation delete failed ({type(exc).__name__}).",
+            )
+            raise CueReconciliationPersistenceError(result) from exc
+
+    return CueReconciliationApplyResult(
+        state="complete",
+        planned_upserts=planned_upserts,
+        planned_deletes=planned_deletes,
+        applied_upserts=applied_upserts,
+        applied_deletes=applied_deletes,
+    )

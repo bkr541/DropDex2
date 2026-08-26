@@ -68,6 +68,21 @@ describe('cue draft production persistence queries', () => {
     expect(result?.desiredDocument).toEqual(desiredDocument);
   });
 
+  it('rejects malformed saved-draft hydration instead of treating it as no draft', async () => {
+    mocks.maybeSingle.mockResolvedValue({
+      data: {
+        ...row,
+        desired_document: {
+          ...desiredDocument,
+          cues: [{ family: 'not-a-cue-family' }],
+        },
+      },
+      error: null,
+    });
+
+    await expect(fetchCueDraft('user-1', 'track-1')).rejects.toThrow(/invalid family/i);
+  });
+
   it('saves one complete document through the expected-revision RPC', async () => {
     mocks.single.mockResolvedValue({ data: row, error: null });
     const result = await saveCueDraft({

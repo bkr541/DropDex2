@@ -2097,8 +2097,8 @@ def _complete_analysis_import_sync(
                 from .analysis_feature_writer import reconcile_and_write_cues  # noqa: PLC0415
 
                 cue_entries, cue_warns = parse_anlz_cues(bundle.dat, bundle.ext)
-                ok = reconcile_and_write_cues(sb, import_id, track_id, cue_entries, cue_warns)
-                feature_statuses["cues"] = "completed" if ok else "failed"
+                cue_result = reconcile_and_write_cues(sb, import_id, track_id, cue_entries, cue_warns)
+                feature_statuses["cues"] = "completed" if cue_result.complete else "failed"
             except Exception as exc:
                 logger.error("Cue extraction failed for track %s: %s", track_id, exc)
                 feature_statuses["cues"] = "failed"
@@ -2163,6 +2163,9 @@ def _complete_analysis_import_sync(
             except Exception as exc:
                 logger.warning("Optional PVDI extraction failed for track %s: %s", track_id, exc)
                 feature_statuses["vocal_analysis"] = "failed"
+
+            if feature_statuses.get("cues") == "failed" and overall == "completed":
+                overall = "partial"
 
             _analysis_worker_checkpoint(
                 import_id, user_id, "before_updating_track_status", current_track_id=track_id, sb=sb

@@ -83,6 +83,41 @@ export interface CueRow {
   source_conflict: boolean;
 }
 
+export type CueLoadState =
+  | {
+      status: 'loading';
+      trackId: string;
+    }
+  | {
+      status: 'loaded-empty';
+      trackId: string;
+      cues: [];
+    }
+  | {
+      status: 'loaded-with-cues';
+      trackId: string;
+      cues: CueRow[];
+    }
+  | {
+      status: 'failed';
+      trackId: string;
+      error: string;
+      retryable: boolean;
+    };
+
+export interface CueChunkError {
+  chunkIndex: number;
+  trackIds: string[];
+  error: string;
+}
+
+export interface CueFetchResult {
+  /** One terminal, track-scoped result for every requested track ID. */
+  states: Map<string, Exclude<CueLoadState, { status: 'loading' }>>;
+  /** Chunk diagnostics retained for logging and tests. */
+  errors: CueChunkError[];
+}
+
 // ── Phrase types ───────────────────────────────────────────────────────────────
 
 export interface PhraseRow {
@@ -318,52 +353,119 @@ export async function fetchTrackPreviewWaveform(
 
 /** Fetch all cue points for a single track, ordered by start time. */
 export async function fetchTrackCues(trackId: string): Promise<CueRow[]> {
-  const { data, error } = await supabase
-    .from('rekordbox_cues')
-    .select(
-      'id, import_id, track_id, rekordbox_cue_id, dedupe_key, cue_family, cue_family_authority, ' +
-      'hot_cue_slot, point_type, source_kind, start_ms, end_ms, ' +
-      'color_table_index, color_hex, color_name, comment, is_active_loop, ' +
-      'beat_loop_numerator, beat_loop_denominator, ' +
-      'source_db_present, source_anlz_present, source_conflict'
-    )
-    .eq('track_id', trackId)
-    .order('start_ms', { ascending: true });
-
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => mapCueRow(row));
+  const state = await fetchTrackCueState(trackId);
+  if (state.status === 'failed') throw new Error(state.error);
+  return state.cues;
 }
 
-/** Fetch cue points for multiple tracks, keyed by track ID. */
-export async function fetchTracksCues(trackIds: string[]): Promise<Map<string, CueRow[]>> {
-  const uniqueIds = [...new Set(trackIds)].filter(Boolean);
-  const result = new Map<string, CueRow[]>();
-  for (const id of uniqueIds) result.set(id, []);
-  if (uniqueIds.length === 0) return result;
+const CUE_SELECT =
+  'id, import_id, track_id, rekordbox_cue_id, dedupe_key, cue_family, cue_family_authority, ' +
+  'hot_cue_slot, point_type, source_kind, start_ms, end_ms, ' +
+  'color_table_index, color_hex, color_name, comment, is_active_loop, ' +
+  'beat_loop_numerator, beat_loop_denominator, ' +
+  'source_db_present, source_anlz_present, source_conflict';
 
-  const chunks = chunkIds(uniqueIds, WAVEFORM_CHUNK_SIZE);
-  await Promise.all(chunks.map(async (chunk) => {
-    const { data, error } = await supabase
-      .from('rekordbox_cues')
-      .select(
-        'id, import_id, track_id, rekordbox_cue_id, dedupe_key, cue_family, cue_family_authority, ' +
-        'hot_cue_slot, point_type, source_kind, start_ms, end_ms, ' +
-        'color_table_index, color_hex, color_name, comment, is_active_loop, ' +
-        'beat_loop_numerator, beat_loop_denominator, ' +
-        'source_db_present, source_anlz_present, source_conflict'
-      )
-      .in('track_id', chunk)
-      .order('start_ms', { ascending: true });
+function cueFailureState(trackId: string, error: string, retryable: boolean): Exclude<CueLoadState, { status: 'loading' }> {
+  return { status: 'failed', trackId, error, retryable };
+}
 
-    if (error) throw new Error(error.message);
-    for (const row of data ?? []) {
-      const mapped = mapCueRow(row);
-      const rows = result.get(mapped.track_id) ?? [];
-      rows.push(mapped);
-      result.set(mapped.track_id, rows);
+/**
+ * Fetch terminal cue-load state for one track.
+ *
+ * A successful query with zero rows is an intentional `loaded-empty` state.
+ * Request/schema failures remain explicit failures and are never represented as
+ * an empty cue collection.
+ */
+export async function fetchTrackCueState(trackId: string): Promise<Exclude<CueLoadState, { status: 'loading' }>> {
+  const result = await fetchTracksCueStates([trackId]);
+  return result.states.get(trackId) ?? cueFailureState(
+    trackId,
+    'Cue request completed without a track-scoped result.',
+    true,
+  );
+}
+
+/**
+ * Fetch cue points for multiple tracks with one explicit terminal state per ID.
+ * Failed chunks do not erase successful siblings and cannot masquerade as zero
+ * cues in filters or counts.
+ */
+export async function fetchTracksCueStates(trackIds: string[]): Promise<CueFetchResult> {
+  const chunks = chunkIds(trackIds, WAVEFORM_CHUNK_SIZE);
+  const result: CueFetchResult = { states: new Map(), errors: [] };
+  if (chunks.length === 0) return result;
+
+  await Promise.all(chunks.map(async (chunk, chunkIndex) => {
+    try {
+      const { data, error } = await supabase
+        .from('rekordbox_cues')
+        .select(CUE_SELECT)
+        .in('track_id', chunk)
+        .order('start_ms', { ascending: true });
+
+      if (error) {
+        const message = error.message || 'Failed to load cue points.';
+        result.errors.push({ chunkIndex, trackIds: chunk, error: message });
+        for (const trackId of chunk) result.states.set(trackId, cueFailureState(trackId, message, true));
+        return;
+      }
+
+      if (!Array.isArray(data)) {
+        const message = 'Cue response schema is invalid: expected an array of rows.';
+        result.errors.push({ chunkIndex, trackIds: chunk, error: message });
+        for (const trackId of chunk) result.states.set(trackId, cueFailureState(trackId, message, false));
+        return;
+      }
+
+      const cuesByTrack = new Map<string, CueRow[]>();
+      let unscopedRow = false;
+      for (const raw of data) {
+        const mapped = mapCueRow(raw);
+        if (!mapped.track_id || !chunk.includes(mapped.track_id)) {
+          unscopedRow = true;
+          continue;
+        }
+        const rows = cuesByTrack.get(mapped.track_id) ?? [];
+        rows.push(mapped);
+        cuesByTrack.set(mapped.track_id, rows);
+      }
+
+      for (const trackId of chunk) {
+        const cues = cuesByTrack.get(trackId) ?? [];
+        if (unscopedRow && cues.length === 0) {
+          result.states.set(trackId, cueFailureState(
+            trackId,
+            'Cue response contained data that could not be associated with this track.',
+            false,
+          ));
+          continue;
+        }
+        result.states.set(trackId, cues.length === 0
+          ? { status: 'loaded-empty', trackId, cues: [] }
+          : { status: 'loaded-with-cues', trackId, cues });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown cue request error.';
+      result.errors.push({ chunkIndex, trackIds: chunk, error: message });
+      for (const trackId of chunk) result.states.set(trackId, cueFailureState(trackId, message, true));
     }
   }));
+
   return result;
+}
+
+/**
+ * Backward-compatible strict bulk helper. Callers that cannot tolerate partial
+ * cue state still receive all-or-nothing behavior; cue-aware UIs should consume
+ * `fetchTracksCueStates` directly so failures stay track-scoped.
+ */
+export async function fetchTracksCues(trackIds: string[]): Promise<Map<string, CueRow[]>> {
+  const result = await fetchTracksCueStates(trackIds);
+  const failures = [...result.states.values()].filter((state) => state.status === 'failed');
+  if (failures.length > 0) {
+    throw new Error(failures[0]?.error ?? 'One or more cue requests failed.');
+  }
+  return new Map([...result.states.entries()].map(([trackId, state]) => [trackId, state.cues]));
 }
 
 // ── Bulk waveform fetch ────────────────────────────────────────────────────────

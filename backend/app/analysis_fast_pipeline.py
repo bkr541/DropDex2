@@ -65,6 +65,10 @@ class ParsedTrack:
     parse_elapsed_ms: float = 0.0
 
 
+class CueReconciliationIntegrityError(RuntimeError):
+    """Fast-path cue reconciliation could not prove a complete persisted baseline."""
+
+
 def _persistable_asset(asset: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in asset.items() if not str(key).startswith("_")}
 
@@ -591,8 +595,12 @@ def _reconcile_cues_bulk(sb: Any, import_id: str, parsed_batch: Sequence[ParsedT
         response = sb.table("rekordbox_cues").select("*").in_("track_id", track_ids).execute()
         existing_rows = list(response.data or [])
     except Exception as exc:
-        logger.warning("Bulk cue preload failed; cue batch skipped: %s", exc)
-        return
+        # The cue planner needs the complete current baseline. Skipping this
+        # feature after a preload failure would let _write_batch continue and
+        # mark the track analysis completed even though cues were unresolved.
+        raise CueReconciliationIntegrityError(
+            f"Cue reconciliation baseline preload failed ({type(exc).__name__})."
+        ) from exc
 
     by_track: dict[str, list[dict[str, Any]]] = {}
     for row in existing_rows:
@@ -612,13 +620,18 @@ def _reconcile_cues_bulk(sb: Any, import_id: str, parsed_batch: Sequence[ParsedT
         upsert_rows.extend(plan.upsert_rows)
         delete_ids.extend(plan.delete_ids)
 
-    apply_cue_reconciliation_plan(
-        sb,
-        CueReconciliationPlan(
-            upsert_rows=tuple(upsert_rows),
-            delete_ids=tuple(sorted(set(delete_ids))),
-        ),
-    )
+    try:
+        apply_cue_reconciliation_plan(
+            sb,
+            CueReconciliationPlan(
+                upsert_rows=tuple(upsert_rows),
+                delete_ids=tuple(sorted(set(delete_ids))),
+            ),
+        )
+    except Exception as exc:
+        raise CueReconciliationIntegrityError(
+            f"Cue reconciliation persistence failed ({type(exc).__name__})."
+        ) from exc
 
 
 def _bulk_track_status(sb: Any, import_id: str, rows: list[dict[str, Any]]) -> None:
@@ -630,18 +643,32 @@ def _bulk_track_status(sb: Any, import_id: str, rows: list[dict[str, Any]]) -> N
     # for that chunk, preserving successful bulk updates from earlier chunks.
     for row_chunk in _chunks(rows, _BULK_WRITE_CHUNK_SIZE):
         chunk = list(row_chunk)
+        rpc_succeeded = False
         try:
             sb.rpc(
                 "bulk_update_rekordbox_track_analysis",
                 {"p_import_id": import_id, "p_rows": chunk},
             ).execute()
-            continue
+            rpc_succeeded = True
         except Exception as exc:
             logger.warning(
                 "Bulk track status RPC unavailable for %d rows, using compatibility fallback: %s",
                 len(chunk),
                 exc,
             )
+
+        if rpc_succeeded:
+            # The existing bulk RPC predates analysis_feature_statuses and ignores
+            # that key. Persist rare cue-integrity overrides explicitly rather
+            # than silently dropping the failure marker.
+            for row in chunk:
+                if "analysis_feature_statuses" not in row:
+                    continue
+                sb.table("rekordbox_tracks").update({
+                    "analysis_feature_statuses": row["analysis_feature_statuses"],
+                }).eq("id", row["track_id"]).eq("import_id", import_id).execute()
+            continue
+
         for row in chunk:
             payload = dict(row)
             track_id = payload.pop("track_id")
@@ -760,14 +787,17 @@ def _write_batch_resilient(
             "message": "Parsed features could not be persisted for this track.",
             "detail": type(exc).__name__,
         })
-        _bulk_track_status(sb, import_id, [{
+        failure_status = {
             "track_id": parsed.track["id"],
             "analysis_parse_status": "failed",
             "analysis_parse_warnings": parsed.warnings,
             "analysis_failure_reason": "Parsed features could not be persisted for this track.",
             "analysis_feature_schema_version": feature_schema_version,
             "analysis_completed_at": datetime.now(timezone.utc).isoformat(),
-        }])
+        }
+        if isinstance(exc, CueReconciliationIntegrityError):
+            failure_status["analysis_feature_statuses"] = {"cues": "failed"}
+        _bulk_track_status(sb, import_id, [failure_status])
         return 1
 
 
