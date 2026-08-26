@@ -24,6 +24,9 @@ class PlannedCue:
     beat_loop_numerator: Optional[int]
     beat_loop_denominator: Optional[int]
     rekordbox_kind: Optional[int]
+    imported_cue_id: Optional[str] = None
+    rekordbox_cue_id: Optional[str] = None
+    dedupe_key: Optional[str] = None
 
 
 @dataclass(frozen=True)

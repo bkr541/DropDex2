@@ -4,7 +4,7 @@ const path = require('node:path');
 const { existsSync } = require('node:fs');
 
 const RESULT_PREFIX = 'DROPDEX_BRIDGE_RESULT:';
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 const MAX_PAYLOAD_BYTES = 1_500_000;
 const REQUEST_TIMEOUT_MS = 120_000;
 const FORBIDDEN_KEYS = new Set(['databasePath', 'database_path', 'dbPath', 'db_path', 'sql', 'shell', 'argv', 'path']);
@@ -59,6 +59,34 @@ function validateSavedDrafts(savedDrafts) {
   }
   const bytes = Buffer.byteLength(JSON.stringify(savedDrafts), 'utf8');
   if (bytes > MAX_PAYLOAD_BYTES) throw new Error('Cue apply payload is too large.');
+}
+
+function validateApplyScope(scope, savedDrafts) {
+  if (!scope || typeof scope !== 'object' || Array.isArray(scope)) throw new Error('Cue apply scope is invalid.');
+  if (scope.kind !== 'track' && scope.kind !== 'all') throw new Error('Cue apply scope kind is invalid.');
+  if (typeof scope.importId !== 'string' || scope.importId.length < 1 || scope.importId.length > 256) {
+    throw new Error('Cue apply scope importId is invalid.');
+  }
+  const expectedKeys = scope.kind === 'track' ? ['importId', 'kind', 'trackId'] : ['importId', 'kind'];
+  const actualKeys = Object.keys(scope).sort();
+  if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) {
+    throw new Error('Cue apply scope contains unsupported fields.');
+  }
+  if (scope.kind === 'track' && (typeof scope.trackId !== 'string' || scope.trackId.length < 1 || scope.trackId.length > 256)) {
+    throw new Error('Cue apply scope trackId is invalid.');
+  }
+  for (const row of savedDrafts) {
+    if (row.importId !== scope.importId || row.desiredDocument?.importId !== scope.importId) {
+      throw new Error('Cue apply scope does not match the saved draft import.');
+    }
+  }
+  if (scope.kind === 'track') {
+    if (savedDrafts.length !== 1) throw new Error('Apply Track requires exactly one saved cue draft.');
+    const row = savedDrafts[0];
+    if (row.trackId !== scope.trackId || row.desiredDocument?.trackId !== scope.trackId) {
+      throw new Error('Apply Track scope does not match the saved cue draft track.');
+    }
+  }
 }
 
 function packagedBinaryPath(resourcesPath, platform = process.platform) {
@@ -182,15 +210,17 @@ class CueApplyBridge {
     }
   }
 
-  preflight(savedDrafts) {
+  preflight(scope, savedDrafts) {
     validateSavedDrafts(savedDrafts);
-    return this.request('preflight', { savedDrafts });
+    validateApplyScope(scope, savedDrafts);
+    return this.request('preflight', { scope, savedDrafts });
   }
 
-  apply(token, savedDrafts) {
+  apply(token, scope, savedDrafts) {
     if (typeof token !== 'string' || token.length < 16 || token.length > 512) throw new Error('Preflight token is invalid.');
     validateSavedDrafts(savedDrafts);
-    return this.request('apply', { token, savedDrafts });
+    validateApplyScope(scope, savedDrafts);
+    return this.request('apply', { token, scope, savedDrafts });
   }
 
   close() {
@@ -200,4 +230,4 @@ class CueApplyBridge {
   }
 }
 
-module.exports = { CueApplyBridge, packagedBinaryPath, resolveLaunch, validateSavedDrafts };
+module.exports = { CueApplyBridge, packagedBinaryPath, resolveLaunch, validateApplyScope, validateSavedDrafts };

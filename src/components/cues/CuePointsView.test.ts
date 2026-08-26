@@ -82,13 +82,27 @@ describe('Cue Points production editor wiring', () => {
     expect(source).not.toMatch(/useEffect\([\s\S]{0,600}\[filteredTracks\]/);
   });
 
-  it('keeps Rekordbox Apply guarded by bridge availability, saved drafts, and a complete selected-track baseline', () => {
-    expect(source).toContain('applyAvailable={applyBridgeAvailable');
-    expect(source).toContain('&& applyDrafts.length > 0');
-    expect(source).toContain('&& !applyDraftLoadError');
-    expect(source).toContain('&& (!selectedTrackId || selectedCueBaselineEditable)}');
-    expect(source.match(/if \(selectedTrackId && !selectedCueBaselineEditable\)/g)).toHaveLength(2);
-    expect(source).toContain('Boolean(selectedTrackId && !selectedCueBaselineEditable)');
+  it('keeps Apply Track distinct from Apply All and sends the exact persisted scope through preflight/apply', () => {
+    expect(source).toContain('<span>Apply Track</span>');
+    expect(source).toContain('<span>Apply All ({applyAllCount})</span>');
+    expect(source).toContain("handleApplyPreflight('track')");
+    expect(source).toContain("handleApplyPreflight('all')");
+    expect(source).toContain("resolveCueApplySelection(rows, scope)");
+    expect(source).toContain('desktop.cueApplyPreflight(scope, desktopDrafts(selection.rows))');
+    expect(source).toContain('desktop.cueApply(preflight.token, scope, desktopDrafts(applySnapshot))');
+    expect(source).toContain("scope.kind === 'track' && selectedTrackId !== scope.trackId");
+    expect(source).toContain('applyDrafts.some((row) => row.trackId === selectedTrackId)');
+  });
+
+  it('shows the canonical per-track current-vs-desired diff and complete-set replacement semantics before confirmation', () => {
+    expect(source).toContain("diff.current_count} current → ${diff.desired_count} desired");
+    expect(source).toContain("change.changes.includes('moved')");
+    expect(source).toContain("change.changes.includes('family')");
+    expect(source).toContain("change.changes.includes('slot')");
+    expect(source).toContain("change.changes.includes('point-type')");
+    expect(source).toContain("change.changes.includes('loop-extent')");
+    expect(source).toContain('cueDiffChangeLabel(change)');
+    expect(source).toContain('replaces the complete Rekordbox cue set');
   });
 
   it('surfaces Stage 4 cue integrity and blocks mutation/apply while malformed cues remain inspectable', () => {

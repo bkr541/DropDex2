@@ -60,7 +60,13 @@ import {
   saveCueDraft,
   type CueDraftRow,
 } from '../../lib/queries/cueDrafts';
-import type { DesktopCueApplyPreflightResult, DesktopCueApplyResult } from '../../types/dropdex-desktop';
+import { resolveCueApplySelection, type CueApplyScope } from '../../lib/cues/cueApplyScope';
+import type {
+  DesktopCueApplyPreflightResult,
+  DesktopCueApplyResult,
+  DesktopCueDiffChange,
+  DesktopCueDiffCue,
+} from '../../types/dropdex-desktop';
 
 interface CuePointsViewProps {
   importId: string | null;
@@ -166,6 +172,27 @@ function cueLabel(cue: WorkingCue): string {
 function cueDisplayName(cue: WorkingCue): string {
   const family = cue.family === 'hot' ? `Hot Cue ${cueLabel(cue)}` : 'Memory Cue';
   return cue.pointType === 'loop' ? `${family} Loop` : family;
+}
+
+function cueDiffLabel(cue: DesktopCueDiffCue): string {
+  const family = cue.family === 'hot'
+    ? `Hot Cue ${hotCueSlotLabel(cue.hot_cue_slot)}`
+    : cue.family === 'memory' ? 'Memory Cue' : 'Unknown cue';
+  return `${family}${cue.point_type === 'loop' ? ' Loop' : ''} @ ${formatTime(cue.start_ms)}`;
+}
+
+function cueDiffChangeLabel(change: DesktopCueDiffChange): string {
+  const labels: Record<string, string> = {
+    moved: 'moved',
+    family: 'Hot/Memory',
+    slot: 'slot',
+    'point-type': 'cue/loop',
+    'loop-extent': 'loop extent',
+    comment: 'comment/name',
+    color: 'color',
+    'active-loop': 'active loop',
+  };
+  return change.changes.map((item) => labels[item] ?? item).join(', ');
 }
 
 function cueTimelineLabel(cue: WorkingCue, memoryIndex: number): string {
@@ -797,9 +824,11 @@ function CueWaveformPanel({
   onDiscard,
   onAutoCue,
   onSave,
-  applyAvailable,
+  applyTrackAvailable,
+  applyAllCount,
   applying,
-  onApply,
+  onApplyTrack,
+  onApplyAll,
 }: {
   track: RekordboxTrack | null;
   beatGrid: BeatGridRow | null;
@@ -825,9 +854,11 @@ function CueWaveformPanel({
   onDiscard: () => void;
   onAutoCue: () => string | null;
   onSave: () => Promise<string | null>;
-  applyAvailable: boolean;
+  applyTrackAvailable: boolean;
+  applyAllCount: number;
   applying: boolean;
-  onApply: () => void;
+  onApplyTrack: () => void;
+  onApplyAll: () => void;
 }) {
   const { theme } = useTheme();
   const durationMs = durationMsForTrack(track, beatGrid, phrases);
@@ -1100,12 +1131,22 @@ function CueWaveformPanel({
               {saving ? <CircleDash size={17} className="animate-spin" /> : <Save size={17} />}
             </ControlButton>
             <ControlButton
-              variant="primary"
-              disabled={!applyAvailable || applying}
-              onClick={onApply}
-              title={applyAvailable ? 'Apply to Rekordbox: preflight saved cue drafts' : 'Apply requires the Electron desktop app, the packaged bridge, and at least one saved draft that needs apply'}
+              variant="surface"
+              disabled={!applyTrackAvailable || applying}
+              onClick={onApplyTrack}
+              title={applyTrackAvailable ? 'Apply only the selected track to local Rekordbox' : 'Apply Track requires a saved pending draft for the selected track'}
             >
               {applying ? <CircleDash size={17} className="animate-spin" /> : <Export size={17} />}
+              <span>Apply Track</span>
+            </ControlButton>
+            <ControlButton
+              variant="primary"
+              disabled={applyAllCount === 0 || applying}
+              onClick={onApplyAll}
+              title={applyAllCount > 0 ? `Apply all ${applyAllCount} saved track changes to local Rekordbox` : 'Apply All requires at least one saved draft that needs apply'}
+            >
+              {applying ? <CircleDash size={17} className="animate-spin" /> : <Export size={17} />}
+              <span>Apply All ({applyAllCount})</span>
             </ControlButton>
           </div>
         </div>
@@ -1524,6 +1565,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [applyBridgeAvailable, setApplyBridgeAvailable] = useState(false);
   const [applyBridgeReason, setApplyBridgeReason] = useState<string | null>(null);
   const [applyPreflight, setApplyPreflight] = useState<DesktopCueApplyPreflightResult | null>(null);
+  const [applyScope, setApplyScope] = useState<CueApplyScope | null>(null);
   const [applySnapshot, setApplySnapshot] = useState<CueDraftRow[]>([]);
   const [applyResult, setApplyResult] = useState<DesktopCueApplyResult | null>(null);
   const [applyBusy, setApplyBusy] = useState(false);
@@ -1673,6 +1715,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     cueDraftSaveInFlightRef.current = false;
     applyGenerationRef.current += 1;
     setApplyPreflight(null);
+    setApplyScope(null);
     setApplySnapshot([]);
     setApplyResult(null);
     setApplyMessage(null);
@@ -1981,26 +2024,43 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     desiredDocument: row.desiredDocument as unknown as Record<string, unknown>,
   })), []);
 
-  const handleApplyPreflight = useCallback(async () => {
+  const handleApplyPreflight = useCallback(async (kind: 'track' | 'all') => {
     const desktop = window.dropdexDesktop;
     if (!desktop?.isElectron || !applyBridgeAvailable || !userId || !importId) return;
-    if (selectedTrackId && !selectedCueBaselineEditable) {
-      setApplyMessage(selectedCueBlockReason ?? 'Apply is blocked until the selected track has a valid cue baseline.');
+    if (kind === 'track' && !selectedTrackId) {
+      setApplyMessage('Select a track before using Apply Track.');
       return;
     }
+    if (kind === 'track' && !selectedCueBaselineEditable) {
+      setApplyMessage(selectedCueBlockReason ?? 'Apply Track is blocked until the selected track has a valid cue baseline.');
+      return;
+    }
+
+    const scope: CueApplyScope = kind === 'track'
+      ? { kind: 'track', importId, trackId: selectedTrackId as string }
+      : { kind: 'all', importId };
     const generation = ++applyGenerationRef.current;
     setApplyBusy(true);
     setApplyMessage(null);
     setApplyResult(null);
+    setApplyPreflight(null);
+    setApplyScope(null);
+    setApplySnapshot([]);
     try {
       const rows = await refreshApplyDrafts();
-      if (rows.length === 0) {
-        setApplyMessage('No saved cue drafts currently need to be applied.');
+      const selection = resolveCueApplySelection(rows, scope);
+      if (selection.error) {
+        setApplyMessage(selection.error);
         return;
       }
-      const result = await desktop.cueApplyPreflight(desktopDrafts(rows));
+      const result = await desktop.cueApplyPreflight(scope, desktopDrafts(selection.rows));
       if (generation !== applyGenerationRef.current || selectedUserIdRef.current !== userId) return;
-      setApplySnapshot(rows);
+      if (scope.kind === 'track' && selectedTrackIdRef.current !== scope.trackId) {
+        setApplyMessage('The selected track changed during Apply Track preflight. Run Apply Track again for the current selection.');
+        return;
+      }
+      setApplyScope(scope);
+      setApplySnapshot(selection.rows);
       setApplyPreflight(result);
     } catch (error) {
       if (generation === applyGenerationRef.current) setApplyMessage(error instanceof Error ? error.message : String(error));
@@ -2012,12 +2072,22 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const handleConfirmApply = useCallback(async () => {
     const desktop = window.dropdexDesktop;
     const preflight = applyPreflight;
-    if (!desktop?.isElectron || !preflight?.ok || !preflight.token || !userId || !importId || applyBusy) return;
-    if (selectedTrackId && !selectedCueBaselineEditable) {
+    const scope = applyScope;
+    if (!desktop?.isElectron || !preflight?.ok || !preflight.token || !scope || !userId || !importId || applyBusy) return;
+    if (scope.kind === 'track' && selectedTrackId !== scope.trackId) {
       applyGenerationRef.current += 1;
       setApplyPreflight(null);
+      setApplyScope(null);
       setApplySnapshot([]);
-      setApplyMessage(selectedCueBlockReason ?? 'Apply is blocked until the selected track has a valid cue baseline.');
+      setApplyMessage('The selected track changed after preflight. Run Apply Track again for the current selection.');
+      return;
+    }
+    if (scope.kind === 'track' && !selectedCueBaselineEditable) {
+      applyGenerationRef.current += 1;
+      setApplyPreflight(null);
+      setApplyScope(null);
+      setApplySnapshot([]);
+      setApplyMessage(selectedCueBlockReason ?? 'Apply Track is blocked until the selected track has a valid cue baseline.');
       return;
     }
     const generation = ++applyGenerationRef.current;
@@ -2025,19 +2095,30 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setApplyMessage(null);
     try {
       const currentRows = await fetchCueDraftsForApply(userId, importId);
-      const currentIdentity = new Map(currentRows.map((row) => [row.trackId, `${row.revision}:${row.desiredFingerprint}`]));
-      const snapshotStillCurrent = applySnapshot.every((row) => currentIdentity.get(row.trackId) === `${row.revision}:${row.desiredFingerprint}`);
-      if (!snapshotStillCurrent || currentRows.length !== applySnapshot.length) {
+      const currentSelection = resolveCueApplySelection(currentRows, scope);
+      if (currentSelection.error) {
         setApplyPreflight(null);
+        setApplyScope(null);
         setApplySnapshot([]);
         setApplyDrafts(currentRows);
-        setApplyMessage('Saved cue drafts changed after preflight. Run Apply to Rekordbox again for a fresh preflight.');
+        setApplyMessage(currentSelection.error);
         return;
       }
-      const result = await desktop.cueApply(preflight.token, desktopDrafts(applySnapshot));
+      const currentIdentity = new Map(currentSelection.rows.map((row) => [row.trackId, `${row.revision}:${row.desiredFingerprint}`]));
+      const snapshotStillCurrent = applySnapshot.every((row) => currentIdentity.get(row.trackId) === `${row.revision}:${row.desiredFingerprint}`);
+      if (!snapshotStillCurrent || currentSelection.rows.length !== applySnapshot.length) {
+        setApplyPreflight(null);
+        setApplyScope(null);
+        setApplySnapshot([]);
+        setApplyDrafts(currentRows);
+        setApplyMessage('Saved cue drafts changed after preflight. Run the Apply action again for a fresh preflight.');
+        return;
+      }
+      const result = await desktop.cueApply(preflight.token, scope, desktopDrafts(applySnapshot));
       if (generation !== applyGenerationRef.current || selectedUserIdRef.current !== userId) return;
       setApplyResult(result);
       setApplyPreflight(null);
+      setApplyScope(null);
       if (result.ok && result.state === 'applied') {
         const summary = {
           state: result.state,
@@ -2056,7 +2137,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         if (statusUpdates.some((item) => item.status === 'rejected')) {
           setApplyMessage('Rekordbox was updated and verified, but one or more cloud apply-status updates could not be recorded. No newer draft was marked applied.');
         } else {
-          setApplyMessage('Saved cue drafts were applied to local Rekordbox and verified. Use Rekordbox normally to sync/export to USB later.');
+          setApplyMessage(scope.kind === 'track'
+            ? 'The selected track was applied to local Rekordbox and verified. Use Rekordbox normally to sync/export to USB later.'
+            : 'All selected saved cue drafts were applied to local Rekordbox and verified. Use Rekordbox normally to sync/export to USB later.');
         }
         if (selectedTrackId) {
           const updated = statusUpdates.find((item) => item.status === 'fulfilled' && item.value.trackId === selectedTrackId);
@@ -2079,7 +2162,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     } finally {
       if (generation === applyGenerationRef.current) setApplyBusy(false);
     }
-  }, [applyBusy, applyPreflight, applySnapshot, desktopDrafts, importId, refreshApplyDrafts, selectedCueBaselineEditable, selectedCueBlockReason, selectedTrackId, userId]);
+  }, [applyBusy, applyPreflight, applyScope, applySnapshot, desktopDrafts, importId, refreshApplyDrafts, selectedCueBaselineEditable, selectedCueBlockReason, selectedTrackId, userId]);
 
   const handleAddCue = useCallback((family: 'hot' | 'memory', requestedMs: number, timingMode: CueTimingMode): string | null => {
     if (!selectedTrackId) return 'Select a track before editing cue points.';
@@ -2228,6 +2311,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       setDraftDesiredFingerprint(saved.desiredFingerprint);
       applyGenerationRef.current += 1;
       setApplyPreflight(null);
+      setApplyScope(null);
       setApplySnapshot([]);
       if (workingCueSetsEqual(workingCuesRef.current, workingSnapshot)) {
         setWorkingCues(hydrated);
@@ -2295,12 +2379,15 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         onDiscard={handleDiscard}
         onAutoCue={handleAutoCue}
         onSave={handleSave}
-        applyAvailable={applyBridgeAvailable
-          && applyDrafts.length > 0
+        applyTrackAvailable={applyBridgeAvailable
           && !applyDraftLoadError
-          && (!selectedTrackId || selectedCueBaselineEditable)}
+          && Boolean(selectedTrackId)
+          && selectedCueBaselineEditable
+          && applyDrafts.some((row) => row.trackId === selectedTrackId)}
+        applyAllCount={applyBridgeAvailable && !applyDraftLoadError ? applyDrafts.length : 0}
         applying={applyBusy}
-        onApply={() => { void handleApplyPreflight(); }}
+        onApplyTrack={() => { void handleApplyPreflight('track'); }}
+        onApplyAll={() => { void handleApplyPreflight('all'); }}
       />
 
       {(applyPreflight || applyResult || applyMessage || applyDraftLoadError) && (
@@ -2309,20 +2396,75 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-base font-black">Apply to Rekordbox preflight</h2>
+                  <h2 className="text-base font-black">{applyScope?.kind === 'track' ? 'Apply Track' : 'Apply All'} preflight</h2>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {applyPreflight.tracks.length} saved track{applyPreflight.tracks.length === 1 ? '' : 's'} · {applySnapshot.reduce((sum, row) => sum + row.desiredDocument.cues.length, 0)} cue{applySnapshot.reduce((sum, row) => sum + row.desiredDocument.cues.length, 0) === 1 ? '' : 's'} · local Rekordbox only, no USB write
+                    {applyPreflight.tracks.length} saved track{applyPreflight.tracks.length === 1 ? '' : 's'} · {applySnapshot.reduce((sum, row) => sum + row.desiredDocument.cues.length, 0)} desired cue{applySnapshot.reduce((sum, row) => sum + row.desiredDocument.cues.length, 0) === 1 ? '' : 's'} · local Rekordbox only, no USB write
                   </p>
                 </div>
-                <button type="button" className="text-xs font-bold text-muted-foreground hover:text-foreground" onClick={() => { applyGenerationRef.current += 1; setApplyPreflight(null); setApplySnapshot([]); }}>Cancel</button>
+                <button type="button" className="text-xs font-bold text-muted-foreground hover:text-foreground" onClick={() => { applyGenerationRef.current += 1; setApplyPreflight(null); setApplyScope(null); setApplySnapshot([]); }}>Cancel</button>
               </div>
-              {applyPreflight.blockers.length > 0 && <div className="rounded-xl border border-red-400/20 bg-red-400/[0.06] p-3 text-xs text-red-200">{applyPreflight.blockers.map((item) => <p key={item.code}>{item.message}</p>)}</div>}
-              {applyPreflight.warnings.length > 0 && <div className="rounded-xl border border-amber-300/20 bg-amber-300/[0.05] p-3 text-xs text-amber-100">{applyPreflight.warnings.map((item) => <p key={item.code}>{item.message}</p>)}</div>}
-              <p className="text-xs text-muted-foreground">DropDex will create/retain the Stage 6 backup identity, replace only the trusted local Rekordbox database after staging verification, and re-verify the live result. Rekordbox must remain closed.</p>
+              {applyPreflight.blockers.length > 0 && <div className="rounded-xl border border-red-400/20 bg-red-400/[0.06] p-3 text-xs text-red-200">{applyPreflight.blockers.map((item) => <p key={`${item.code}:${item.message}`}>{item.message}</p>)}</div>}
+              {applyPreflight.warnings.length > 0 && <div className="rounded-xl border border-amber-300/20 bg-amber-300/[0.05] p-3 text-xs text-amber-100">{applyPreflight.warnings.map((item) => <p key={`${item.code}:${item.message}`}>{item.message}</p>)}</div>}
+
+              <div className="space-y-2">
+                {applyPreflight.tracks.map((track) => {
+                  const draft = applySnapshot.find((row) => row.masterContentId === track.content_id || row.rekordboxContentId === track.content_id);
+                  const diff = track.diff;
+                  const movedCount = diff?.changed.filter((change) => change.changes.includes('moved')).length ?? 0;
+                  const familyCount = diff?.changed.filter((change) => change.changes.includes('family')).length ?? 0;
+                  const slotCount = diff?.changed.filter((change) => change.changes.includes('slot')).length ?? 0;
+                  const typeCount = diff?.changed.filter((change) => change.changes.includes('point-type')).length ?? 0;
+                  const loopCount = diff?.changed.filter((change) => change.changes.includes('loop-extent')).length ?? 0;
+                  const metadataCount = diff?.changed.filter((change) => change.changes.some((item) => ['comment', 'color', 'active-loop'].includes(item))).length ?? 0;
+                  return (
+                    <details key={track.content_id} className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/40 p-3" open={applyPreflight.tracks.length === 1}>
+                      <summary className="cursor-pointer list-none">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-black text-foreground">{draft?.trackId ?? `Content ${track.content_id}`}</p>
+                            <p className="mt-0.5 text-[10px] text-muted-foreground">
+                              {diff ? `${diff.current_count} current → ${diff.desired_count} desired` : 'Diff unavailable'}
+                              {diff?.blocking ? ' · BLOCKED' : ''}
+                            </p>
+                          </div>
+                          {diff && (
+                            <div className="flex flex-wrap gap-1 text-[9px] font-bold text-muted-foreground">
+                              <span className="rounded-md border border-white/10 px-1.5 py-0.5">+{diff.added.length}</span>
+                              <span className="rounded-md border border-white/10 px-1.5 py-0.5">−{diff.removed.length}</span>
+                              <span className="rounded-md border border-white/10 px-1.5 py-0.5">Move {movedCount}</span>
+                              <span className="rounded-md border border-white/10 px-1.5 py-0.5">Hot/Memory {familyCount}</span>
+                              <span className="rounded-md border border-white/10 px-1.5 py-0.5">Slot {slotCount}</span>
+                              <span className="rounded-md border border-white/10 px-1.5 py-0.5">Cue/Loop {typeCount}</span>
+                              <span className="rounded-md border border-white/10 px-1.5 py-0.5">Loop {loopCount}</span>
+                              <span className="rounded-md border border-white/10 px-1.5 py-0.5">Meta {metadataCount}</span>
+                            </div>
+                          )}
+                        </div>
+                      </summary>
+                      {diff && (
+                        <div className="mt-3 space-y-2 border-t border-white/10 pt-2 text-[10px] text-muted-foreground">
+                          {diff.conflicts.map((message) => <p key={message} className="text-red-300">Conflict: {message}</p>)}
+                          {diff.added.map((cue, index) => <p key={`add:${index}:${cue.start_ms}`}><span className="font-bold text-emerald-300">ADD</span> {cueDiffLabel(cue)}</p>)}
+                          {diff.removed.map((cue, index) => <p key={`remove:${index}:${cue.start_ms}`}><span className="font-bold text-red-300">REMOVE</span> {cueDiffLabel(cue)}</p>)}
+                          {diff.changed.map((change, index) => (
+                            <p key={`change:${index}:${change.after.start_ms}`}>
+                              <span className="font-bold text-amber-200">CHANGE</span> {cueDiffLabel(change.before)} → {cueDiffLabel(change.after)} · {cueDiffChangeLabel(change)}
+                            </p>
+                          ))}
+                          {diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0 && diff.conflicts.length === 0 && <p>No cue changes for this track.</p>}
+                        </div>
+                      )}
+                    </details>
+                  );
+                })}
+              </div>
+
+              <p className="text-xs font-semibold text-foreground">{applyScope?.kind === 'track' ? 'Apply Track replaces the complete Rekordbox cue set for this track.' : `Apply All replaces the complete Rekordbox cue set for each of these ${applyPreflight.tracks.length} tracks.`}</p>
+              <p className="text-xs text-muted-foreground">DropDex will retain the guarded backup identity, write only to an isolated staging database, verify the staged cue sets, atomically replace the trusted local Rekordbox database, and re-verify the live result. Rekordbox must remain closed.</p>
               <div className="flex justify-end gap-2">
-                <ControlButton variant="ghost" disabled={applyBusy} onClick={() => { applyGenerationRef.current += 1; setApplyPreflight(null); setApplySnapshot([]); }}>Cancel</ControlButton>
-                <ControlButton variant="primary" disabled={applyBusy || !applyPreflight.ok || !applyPreflight.token || applyPreflight.blockers.length > 0 || Boolean(selectedTrackId && !selectedCueBaselineEditable)} onClick={() => { void handleConfirmApply(); }}>
-                  {applyBusy ? 'Applying…' : 'Confirm Apply'}
+                <ControlButton variant="ghost" disabled={applyBusy} onClick={() => { applyGenerationRef.current += 1; setApplyPreflight(null); setApplyScope(null); setApplySnapshot([]); }}>Cancel</ControlButton>
+                <ControlButton variant="primary" disabled={applyBusy || !applyPreflight.ok || !applyPreflight.token || applyPreflight.blockers.length > 0 || Boolean(applyScope?.kind === 'track' && !selectedCueBaselineEditable)} onClick={() => { void handleConfirmApply(); }}>
+                  {applyBusy ? 'Applying…' : applyScope?.kind === 'track' ? 'Confirm Apply Track' : `Confirm Apply All (${applyPreflight.tracks.length})`}
                 </ControlButton>
               </div>
             </div>

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { packagedBinaryPath, resolveLaunch, validateSavedDrafts } = require('./cueApplyBridge.cjs');
+const { packagedBinaryPath, resolveLaunch, validateApplyScope, validateSavedDrafts } = require('./cueApplyBridge.cjs');
 
 function draft() {
   return {
@@ -78,4 +78,28 @@ test('malformed Stage 1 safety fields are rejected at the desktop boundary', () 
   const badIdentity = draft();
   badIdentity.masterContentId = '';
   assert.throws(() => validateSavedDrafts([badIdentity]), /masterContentId/);
+});
+
+test('Apply Track scope is enforced as exactly one matching persisted track', () => {
+  const row = draft();
+  assert.doesNotThrow(() => validateApplyScope({ kind: 'track', importId: 'import-1', trackId: 'track-1' }, [row]));
+  assert.throws(
+    () => validateApplyScope({ kind: 'track', importId: 'import-1', trackId: 'track-1' }, [row, row]),
+    /exactly one/,
+  );
+  assert.throws(
+    () => validateApplyScope({ kind: 'track', importId: 'import-1', trackId: 'other' }, [row]),
+    /does not match/,
+  );
+});
+
+test('Apply All scope cannot cross import identity', () => {
+  const row = draft();
+  const other = draft();
+  other.importId = 'import-2';
+  other.desiredDocument.importId = 'import-2';
+  assert.throws(
+    () => validateApplyScope({ kind: 'all', importId: 'import-1' }, [row, other]),
+    /does not match the saved draft import/,
+  );
 });

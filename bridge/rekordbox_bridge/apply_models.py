@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Mapping, Optional, Tuple
 
+from .cue_diff import CueTrackDiff
+
 
 @dataclass(frozen=True)
 class ApplyDiagnostic:
@@ -21,6 +23,7 @@ class PreflightTrackResult:
     imported_baseline_fingerprint: str
     imported_baseline_comparison: Literal["match", "diverged", "missing", "not-comparable"] = "not-comparable"
     identity_comparison: Literal["match", "missing", "mismatch", "not-comparable"] = "not-comparable"
+    diff: Optional[CueTrackDiff] = None
 
 
 @dataclass(frozen=True)

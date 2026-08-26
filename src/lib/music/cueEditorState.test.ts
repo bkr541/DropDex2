@@ -10,6 +10,7 @@ import {
   moveWorkingCue,
   nextAvailableHotCueSlot,
   normalizeImportedCues,
+  type WorkingCue,
   workingCueSetsEqual,
   DEFAULT_LOOP_BEATS,
 } from './cueEditorState';
@@ -65,6 +66,68 @@ const variableTempoBeats: BeatEntry[] = [
 ];
 
 const loopBeats: BeatEntry[] = Array.from({ length: 40 }, (_, index) => beat(index + 1, index * 500, 120));
+const pairedBeats: BeatEntry[] = Array.from({ length: 320 }, (_, index) => beat(index + 1, index * 500, 120));
+
+function pairedAutoCues(): WorkingCue[] {
+  const imported = normalizeImportedCues('track-a', [importedCue({ hot_cue_slot: 4, start_ms: 48_000 })])[0];
+  const strategySettings = { memoryLeadBars: 16 };
+  return [
+    {
+      ...imported,
+      editorId: 'auto:hot:4',
+      importedCueId: null,
+      rekordboxCueId: null,
+      dedupeKey: null,
+      sourceDbPresent: false,
+      sourceAnlzPresent: false,
+      sourceKind: 'auto:stage7-test',
+      source: 'auto',
+      strategyVersion: 'stage7-test',
+      strategySettings,
+      semantic: 'Drop',
+    },
+    {
+      ...imported,
+      editorId: 'auto:memory:4',
+      importedCueId: null,
+      rekordboxCueId: null,
+      dedupeKey: null,
+      family: 'memory',
+      hotCueSlot: null,
+      rekordboxKind: null,
+      startMs: 16_000,
+      comment: 'Auto Memory · 16 bars before Hot Cue D',
+      sourceDbPresent: false,
+      sourceAnlzPresent: false,
+      sourceKind: 'auto:stage7-test',
+      source: 'auto',
+      pairedHotCueSlot: 4,
+      strategyVersion: 'stage7-test',
+      strategySettings,
+      semantic: 'Drop',
+    },
+    {
+      ...imported,
+      editorId: 'manual:nearby-memory',
+      importedCueId: null,
+      rekordboxCueId: null,
+      dedupeKey: null,
+      family: 'memory',
+      hotCueSlot: null,
+      rekordboxKind: null,
+      startMs: 16_500,
+      comment: 'Manual nearby warning',
+      sourceDbPresent: false,
+      sourceAnlzPresent: false,
+      sourceKind: 'manual',
+      source: 'manual',
+      pairedHotCueSlot: null,
+      strategyVersion: null,
+      strategySettings: null,
+      semantic: null,
+    },
+  ];
+}
 
 describe('track-scoped async response guard', () => {
   it('rejects a late Track A response after Track B becomes active', () => {
@@ -203,6 +266,35 @@ describe('cue editor working state', () => {
     expect(result.error).toBeNull();
     expect(result.beat?.ms).toBe(980);
     expect(result.cues[0].startMs).toBe(980);
+  });
+
+  it('moves a paired Auto Memory Cue by the persisted bar relationship and leaves nearby manual Memory Cues alone', () => {
+    const baseline = pairedAutoCues();
+    const result = moveWorkingCue(baseline, 'auto:hot:4', 58_050, pairedBeats);
+
+    expect(result.error).toBeNull();
+    expect(result.cues.find((cue) => cue.editorId === 'auto:hot:4')?.startMs).toBe(58_000);
+    expect(result.cues.find((cue) => cue.editorId === 'auto:memory:4')?.startMs).toBe(26_000);
+    expect(result.cues.find((cue) => cue.editorId === 'manual:nearby-memory')?.startMs).toBe(16_500);
+  });
+
+  it('deletes a paired generated Memory Cue with its Hot Cue without deleting a nearby manual Memory Cue', () => {
+    const result = deleteWorkingCue(pairedAutoCues(), 'auto:hot:4');
+
+    expect(result.some((cue) => cue.editorId === 'auto:hot:4')).toBe(false);
+    expect(result.some((cue) => cue.editorId === 'auto:memory:4')).toBe(false);
+    expect(result.find((cue) => cue.editorId === 'manual:nearby-memory')?.startMs).toBe(16_500);
+  });
+
+  it('keeps explicit pairing metadata synchronized when a generated Hot Cue changes slot', () => {
+    const result = editWorkingCue(pairedAutoCues(), 'auto:hot:4', { kind: 'hot-slot', hotCueSlot: 5 });
+
+    expect(result.error).toBeNull();
+    expect(result.cues.find((cue) => cue.editorId === 'auto:hot:4')).toMatchObject({ hotCueSlot: 5, rekordboxKind: 6 });
+    expect(result.cues.find((cue) => cue.editorId === 'auto:memory:4')).toMatchObject({
+      pairedHotCueSlot: 5,
+      comment: 'Auto Memory · 16 bars before Hot Cue E',
+    });
   });
 
   it('moves loop start and end to exact beats while preserving its beat length', () => {

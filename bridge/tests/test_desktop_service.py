@@ -1,9 +1,14 @@
 """Stage 7 desktop protocol and packaging source-level locks."""
-from pathlib import Path
 import json
 import os
 import subprocess
 import sys
+from pathlib import Path
+
+import pytest
+
+from rekordbox_bridge import desktop_service
+from rekordbox_bridge.desktop_service import _validate_scope
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -15,6 +20,7 @@ def test_desktop_service_keeps_stage6_operations_narrow():
     assert 'operation == "apply"' in source
     assert "databasePath" not in source
     assert "db_path" not in source
+    assert '_validate_scope(request.get("scope"), saved_rows)' in source
     assert "apply_saved_cue_drafts(token, saved_rows)" in source
 
 
@@ -34,7 +40,7 @@ def test_persistent_protocol_process_answers_availability():
         assert process.stdin is not None
         assert process.stdout is not None
         request = {
-            "protocolVersion": 1,
+            "protocolVersion": 2,
             "requestId": "availability-1",
             "operation": "availability",
         }
@@ -70,7 +76,49 @@ def test_electron_main_exposes_only_three_cue_apply_channels():
     assert "dropdex:cue-apply-availability" in main
     assert "dropdex:cue-apply-preflight" in main
     assert "dropdex:cue-apply" in main
-    assert "assertExactObject(payload, ['savedDrafts']" in main
-    assert "assertExactObject(payload, ['token', 'savedDrafts']" in main
+    assert "assertExactObject(payload, ['scope', 'savedDrafts']" in main
+    assert "assertExactObject(payload, ['token', 'scope', 'savedDrafts']" in main
     assert "cueApplyPreflight" in preload
     assert "cueApply:" in preload
+
+
+def test_desktop_protocol_enforces_track_vs_all_scope():
+    row = {
+        "importId": "import-1",
+        "trackId": "track-1",
+        "desiredDocument": {"importId": "import-1", "trackId": "track-1"},
+    }
+    _validate_scope({"kind": "track", "importId": "import-1", "trackId": "track-1"}, [row])
+    _validate_scope({"kind": "all", "importId": "import-1"}, [row])
+    with pytest.raises(ValueError, match="exactly one"):
+        _validate_scope({"kind": "track", "importId": "import-1", "trackId": "track-1"}, [row, row])
+    with pytest.raises(ValueError, match="track scope"):
+        _validate_scope({"kind": "track", "importId": "import-1", "trackId": "other"}, [row])
+
+
+def test_desktop_protocol_preflight_dispatch_preserves_explicit_track_scope(monkeypatch):
+    row = {
+        "importId": "import-1",
+        "trackId": "track-1",
+        "desiredDocument": {"importId": "import-1", "trackId": "track-1"},
+    }
+    captured = {}
+
+    def fake_preflight(saved_rows):
+        captured["rows"] = saved_rows
+        return {"ok": True}
+
+    monkeypatch.setattr(desktop_service, "preflight_saved_cue_drafts", fake_preflight)
+    request = {
+        "operation": "preflight",
+        "scope": {"kind": "track", "importId": "import-1", "trackId": "track-1"},
+        "savedDrafts": [row],
+    }
+
+    assert desktop_service._handle(request) == {"ok": True}
+    assert captured["rows"] == [row]
+
+    widened = dict(request)
+    widened["savedDrafts"] = [row, row]
+    with pytest.raises(ValueError, match="exactly one"):
+        desktop_service._handle(widened)

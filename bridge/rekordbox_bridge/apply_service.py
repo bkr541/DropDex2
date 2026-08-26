@@ -14,7 +14,7 @@ import shutil
 import stat
 import threading
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -27,6 +27,7 @@ from .apply_models import (
     PreflightTrackResult,
     VerifiedApplyResult,
 )
+from .cue_diff import diff_cues
 from .security import (
     StagingSafetyError,
     create_backup_and_staging,
@@ -62,6 +63,7 @@ class _ObservedTrack:
     identity_comparison: str
     identity_error: Optional[str] = None
     identity_error_code: Optional[str] = None
+    cue_rows: tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -242,6 +244,7 @@ def _observe_snapshot(
                     exists=True,
                     cue_fingerprint=_cue_fingerprint(rows),
                     identity_comparison="match",
+                    cue_rows=tuple(rows),
                 )
             )
     finally:
@@ -297,6 +300,13 @@ def _preflight_track_results(
             comparison = "match"
         else:
             comparison = "diverged"
+        cue_diff = None
+        if current.identity_comparison == "match" and current.cue_fingerprint is not None:
+            cue_diff = diff_cues(current.cue_rows, track.cues)
+            cue_diff = replace(
+                cue_diff,
+                blocking=cue_diff.blocking or comparison != "match",
+            )
         results.append(
             PreflightTrackResult(
                 content_id=track.content_id,
@@ -307,6 +317,7 @@ def _preflight_track_results(
                 imported_baseline_fingerprint=track.imported_baseline_fingerprint,
                 imported_baseline_comparison=comparison,
                 identity_comparison=current.identity_comparison,
+                diff=cue_diff,
             )
         )
     return tuple(results)
@@ -369,6 +380,13 @@ def _preflight_blockers(
                 _diagnostic(
                     "imported-baseline-not-comparable",
                     f"Track {track.track_id} cue baseline cannot be compared safely to current local Rekordbox.",
+                )
+            )
+        if result.diff and result.diff.conflicts:
+            blockers.append(
+                _diagnostic(
+                    "cue-diff-conflict",
+                    f"Track {track.track_id} cannot produce an unambiguous current-vs-desired cue diff: {result.diff.conflicts[0]}",
                 )
             )
     return tuple(blockers)

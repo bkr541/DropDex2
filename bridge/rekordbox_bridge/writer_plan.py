@@ -179,6 +179,9 @@ def _parse_cue(raw_value: Any, index: int) -> PlannedCue:
         beat_loop_numerator=beat_num,
         beat_loop_denominator=beat_den,
         rekordbox_kind=rekordbox_kind,
+        imported_cue_id=_nullable_string(raw.get("importedCueId"), f"Cue {index + 1} importedCueId"),
+        rekordbox_cue_id=_nullable_string(raw.get("rekordboxCueId"), f"Cue {index + 1} rekordboxCueId"),
+        dedupe_key=_nullable_string(raw.get("dedupeKey"), f"Cue {index + 1} dedupeKey"),
     )
 
 

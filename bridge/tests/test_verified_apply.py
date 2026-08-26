@@ -113,6 +113,33 @@ class TestStage6Preflight:
         assert not Path(f"{path}-shm").exists()
         assert first.token != second.token
 
+    def test_preflight_includes_current_local_vs_desired_cue_diff(self, tmp_path):
+        path = fixture_db(tmp_path)
+        row = draft_row(cues=[draft_cue(
+            rekordboxCueId="10",
+            family="memory",
+            hotCueSlot=None,
+            rekordboxKind=None,
+            startMs=750,
+            colorTableIndex=None,
+            colorName=None,
+            comment="changed",
+        )])
+
+        result = preflight(path, [row], ApplyTokenStore())
+
+        assert result.ok is True
+        diff = result.tracks[0].diff
+        assert diff is not None
+        assert diff.current_count == 1
+        assert diff.desired_count == 1
+        assert diff.added == ()
+        assert diff.removed == ()
+        assert len(diff.changed) == 1
+        assert "moved" in diff.changed[0].changes
+        assert "comment" in diff.changed[0].changes
+        assert diff.blocking is False
+
     def test_missing_target_track_blocks_token(self, tmp_path):
         path = fixture_db(tmp_path)
         result = preflight(path, [draft_row(content_id="999")], ApplyTokenStore())

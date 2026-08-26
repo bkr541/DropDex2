@@ -12,9 +12,43 @@ from typing import Any, Mapping
 
 from rekordbox_bridge.apply_service import apply_saved_cue_drafts, preflight_saved_cue_drafts
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 RESULT_PREFIX = "DROPDEX_BRIDGE_RESULT:"
 MAX_REQUEST_BYTES = 2_000_000
+
+
+def _validate_scope(scope: Any, saved_rows: list[Any]) -> None:
+    if not isinstance(scope, Mapping):
+        raise ValueError("scope is required")
+    kind = scope.get("kind")
+    import_id = scope.get("importId")
+    if kind not in ("track", "all") or not isinstance(import_id, str) or not import_id:
+        raise ValueError("scope is invalid")
+    expected_keys = {"kind", "importId", "trackId"} if kind == "track" else {"kind", "importId"}
+    if set(scope) != expected_keys:
+        raise ValueError("scope contains unsupported fields")
+    track_id = scope.get("trackId") if kind == "track" else None
+    if kind == "track" and (not isinstance(track_id, str) or not track_id):
+        raise ValueError("track scope requires trackId")
+
+    for row in saved_rows:
+        if not isinstance(row, Mapping):
+            raise ValueError("savedDrafts entries must be objects")
+        document = row.get("desiredDocument", row.get("desired_document"))
+        if not isinstance(document, Mapping):
+            raise ValueError("saved draft document is invalid")
+        row_import_id = row.get("importId", row.get("import_id"))
+        if row_import_id != import_id or document.get("importId") != import_id:
+            raise ValueError("scope does not match saved draft import")
+
+    if kind == "track":
+        if len(saved_rows) != 1:
+            raise ValueError("Apply Track requires exactly one saved cue draft")
+        row = saved_rows[0]
+        document = row.get("desiredDocument", row.get("desired_document"))
+        row_track_id = row.get("trackId", row.get("track_id"))
+        if row_track_id != track_id or document.get("trackId") != track_id:
+            raise ValueError("track scope does not match saved cue draft")
 
 
 def _jsonable(value: Any) -> Any:
@@ -52,6 +86,7 @@ def _handle(request: Mapping[str, Any]) -> Any:
         saved_rows = request.get("savedDrafts")
         if not isinstance(saved_rows, list):
             raise ValueError("savedDrafts must be an array")
+        _validate_scope(request.get("scope"), saved_rows)
         return preflight_saved_cue_drafts(saved_rows)
     if operation == "apply":
         token = request.get("token")
@@ -60,6 +95,7 @@ def _handle(request: Mapping[str, Any]) -> Any:
             raise ValueError("token is required")
         if not isinstance(saved_rows, list):
             raise ValueError("savedDrafts must be an array")
+        _validate_scope(request.get("scope"), saved_rows)
         return apply_saved_cue_drafts(token, saved_rows)
     raise ValueError("unsupported operation")
 

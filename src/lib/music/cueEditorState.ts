@@ -1,4 +1,4 @@
-import { isUsableBeatGrid, nearestBeat, type BeatEntry } from './beatGridHelpers';
+import { beatByBarOffset, isUsableBeatGrid, nearestBeat, type BeatEntry } from './beatGridHelpers';
 import type { CueRow } from '../queries/analysisData';
 
 export type WorkingCueSource = 'imported' | 'manual' | 'auto';
@@ -349,6 +349,80 @@ function beatIndex(beats: BeatEntry[], beat: BeatEntry): number {
   return beats.findIndex((candidate) => candidate === beat || candidate.seq === beat.seq && candidate.ms === beat.ms);
 }
 
+function pairedGeneratedMemoryCues(cues: WorkingCue[], hotCueSlot: number | null): WorkingCue[] {
+  if (hotCueSlot == null) return [];
+  return cues.filter((cue) => (
+    cue.family === 'memory'
+    && cue.pairedHotCueSlot === hotCueSlot
+    && cue.source === 'auto'
+  ));
+}
+
+function pairedMemoryLeadBars(cue: WorkingCue): number | null {
+  const value = cue.strategySettings?.memoryLeadBars;
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function updatePairedMemorySlot(cues: WorkingCue[], previousSlot: number | null, nextSlot: number): WorkingCue[] {
+  if (previousSlot == null || previousSlot === nextSlot) return cues;
+  const nextLabel = hotCueSlotLabel(nextSlot);
+  return cues.map((candidate) => {
+    if (candidate.family !== 'memory' || candidate.source !== 'auto' || candidate.pairedHotCueSlot !== previousSlot) {
+      return candidate;
+    }
+    const comment = candidate.comment?.startsWith('Auto Memory · ')
+      ? candidate.comment.replace(/Hot Cue [A-H]$/, `Hot Cue ${nextLabel}`)
+      : candidate.comment;
+    return { ...candidate, pairedHotCueSlot: nextSlot, comment };
+  });
+}
+
+function syncPairedMemoryAfterHotMove(
+  originalCues: WorkingCue[],
+  movedCues: WorkingCue[],
+  hotCue: WorkingCue,
+  beats: BeatEntry[],
+  timingMode: CueTimingMode,
+  resultBeat: BeatEntry | null,
+): CueEditResult {
+  if (hotCue.family !== 'hot' || hotCue.hotCueSlot == null || hotCue.startMs == null) return cueResult(movedCues, null, resultBeat);
+  const paired = pairedGeneratedMemoryCues(originalCues, hotCue.hotCueSlot);
+  if (paired.length === 0) return cueResult(movedCues, null, resultBeat);
+  if (paired.length !== 1) {
+    return { cues: originalCues, beat: null, error: 'Auto Cue pairing is ambiguous. Reload or re-run Auto Cue before moving this Hot Cue.' };
+  }
+  if (!isUsableBeatGrid(beats)) {
+    return { cues: originalCues, beat: null, error: 'Moving a paired Auto Cue requires a valid Rekordbox beat grid.' };
+  }
+
+  const leadBars = pairedMemoryLeadBars(paired[0]);
+  if (leadBars == null) {
+    return { cues: originalCues, beat: null, error: 'Auto Cue pairing metadata is incomplete. Reload or re-run Auto Cue before moving this Hot Cue.' };
+  }
+
+  const hotAnchor = nearestBeat(beats, hotCue.startMs);
+  if (!hotAnchor) {
+    return { cues: originalCues, beat: null, error: 'The paired Hot Cue cannot be mapped to the Rekordbox beat grid.' };
+  }
+  const memoryAnchor = beatByBarOffset(beats, hotAnchor, -leadBars);
+  if (!memoryAnchor) {
+    return { cues: originalCues, beat: hotAnchor, error: `The paired Memory Cue cannot remain ${leadBars} bars before this Hot Cue.` };
+  }
+
+  const phaseOffsetMs = timingMode === 'exact' ? hotCue.startMs - hotAnchor.ms : 0;
+  const pairedStartMs = exactMilliseconds(memoryAnchor.ms + phaseOffsetMs);
+  if (pairedStartMs == null || pairedStartMs < 0) {
+    return { cues: originalCues, beat: hotAnchor, error: 'The paired Memory Cue would move before the start of the track.' };
+  }
+
+  const next = movedCues.map((candidate) => (
+    candidate.editorId === paired[0].editorId
+      ? { ...candidate, startMs: pairedStartMs }
+      : candidate
+  ));
+  return cueResult(next, null, hotAnchor);
+}
+
 export function moveWorkingCue(
   cues: WorkingCue[],
   editorId: string,
@@ -385,7 +459,7 @@ export function moveWorkingCue(
     }
     const next = [...cues];
     next[cueIndex] = { ...cue, startMs, endMs, beatLoopNumerator, beatLoopDenominator };
-    return cueResult(next);
+    return syncPairedMemoryAfterHotMove(cues, next, next[cueIndex], beats, timingMode, null);
   }
 
   if (!isUsableBeatGrid(beats)) {
@@ -422,7 +496,7 @@ export function moveWorkingCue(
 
   const next = [...cues];
   next[cueIndex] = { ...cue, startMs: targetBeat.ms, endMs };
-  return cueResult(next, null, targetBeat);
+  return syncPairedMemoryAfterHotMove(cues, next, next[cueIndex], beats, timingMode, targetBeat);
 }
 
 function slotCollision(cues: WorkingCue[], editorId: string, slot: number): WorkingCue | null {
@@ -453,6 +527,7 @@ export function editWorkingCue(
 
   if (action.kind === 'family') {
     if (action.family === 'memory') {
+      const previousSlot = cue.family === 'hot' ? cue.hotCueSlot : null;
       next[cueIndex] = {
         ...cue,
         family: 'memory',
@@ -460,7 +535,15 @@ export function editWorkingCue(
         rekordboxKind: null,
         pairedHotCueSlot: null,
       };
-      return cueResult(next);
+      const withoutGeneratedPair = previousSlot == null
+        ? next
+        : next.filter((candidate) => !(
+          candidate.editorId !== editorId
+          && candidate.family === 'memory'
+          && candidate.source === 'auto'
+          && candidate.pairedHotCueSlot === previousSlot
+        ));
+      return cueResult(withoutGeneratedPair);
     }
     const slot = action.hotCueSlot;
     if (slot == null || !validHotSlot(slot)) {
@@ -493,12 +576,13 @@ export function editWorkingCue(
     if (slotCollision(cues, editorId, action.hotCueSlot)) {
       return { cues, beat: null, error: `Hot Cue slot ${hotCueSlotLabel(action.hotCueSlot)} is already in use.` };
     }
+    const previousSlot = cue.hotCueSlot;
     next[cueIndex] = {
       ...cue,
       hotCueSlot: action.hotCueSlot,
       rekordboxKind: HOT_REKORDBOX_KIND_BY_SLOT[action.hotCueSlot] ?? null,
     };
-    return cueResult(next);
+    return cueResult(updatePairedMemorySlot(next, previousSlot, action.hotCueSlot));
   }
 
   if (action.kind === 'point-type') {
@@ -599,7 +683,15 @@ export function editWorkingCue(
 }
 
 export function deleteWorkingCue(cues: WorkingCue[], editorId: string): WorkingCue[] {
-  return cues.filter((cue) => cue.editorId !== editorId);
+  const target = cues.find((cue) => cue.editorId === editorId);
+  if (!target) return cues;
+  if (target.family !== 'hot' || target.hotCueSlot == null) {
+    return cues.filter((cue) => cue.editorId !== editorId);
+  }
+  return cues.filter((cue) => (
+    cue.editorId !== editorId
+    && !(cue.family === 'memory' && cue.source === 'auto' && cue.pairedHotCueSlot === target.hotCueSlot)
+  ));
 }
 
 /** Stable Stage 3 extension point for replacing auto-generated proposals. */

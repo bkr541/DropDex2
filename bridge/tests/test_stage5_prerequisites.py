@@ -47,7 +47,8 @@ def test_imported_cues_remain_immutable_and_stage7_uses_saved_drafts_only():
     query = read("src/lib/queries/analysisData.ts")
     assert "Apply to Rekordbox" in view
     assert "fetchCueDraftsForApply" in view
-    assert "desktop.cueApplyPreflight(desktopDrafts(rows))" in view
+    assert "resolveCueApplySelection(rows, scope)" in view
+    assert "desktop.cueApplyPreflight(scope, desktopDrafts(selection.rows))" in view
     # Imported cue query layer remains read-only; Stage 7 applies persisted cue_drafts.
     assert ".from('rekordbox_cues')" in query
     assert ".update(" not in query

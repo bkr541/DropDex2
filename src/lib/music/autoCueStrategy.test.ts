@@ -8,7 +8,7 @@ import {
   mapRawPssiCueSemantic,
   mergeAutoCueProposals,
 } from './autoCueStrategy';
-import type { WorkingCue } from './cueEditorState';
+import { deleteWorkingCue, type WorkingCue } from './cueEditorState';
 import type { PhraseRow, VocalAnalysisRow, VocalRegionRow } from '../queries/analysisData';
 
 function makeVariableTempoBeats(barCount = 96): BeatEntry[] {
@@ -374,7 +374,9 @@ describe('fill-empty working-set merge', () => {
         ? { ...cue, startMs: (cue.startMs ?? 0) + 123 }
         : cue,
     );
-    const withoutHotD = movedMemory.filter((cue) => !(cue.family === 'hot' && cue.hotCueSlot === 4));
+    const hotD = movedMemory.find((cue) => cue.family === 'hot' && cue.hotCueSlot === 4)!;
+    const withoutHotD = deleteWorkingCue(movedMemory, hotD.editorId);
+    expect(withoutHotD.filter((cue) => cue.family === 'memory' && cue.pairedHotCueSlot === 4)).toHaveLength(0);
     const rerunAfterHotDelete = applyAutoCueStrategy({
       trackId: 'track-1',
       importId: 'import-1',

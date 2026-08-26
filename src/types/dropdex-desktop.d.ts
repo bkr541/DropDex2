@@ -1,4 +1,5 @@
 import type { UsbFileResolutionError } from '../lib/usb/resolveUsbFile';
+import type { CueApplyScope } from '../lib/cues/cueApplyScope';
 
 export type DesktopUsbStatus =
   | 'disconnected'
@@ -68,6 +69,38 @@ export interface DesktopCueApplyDraft {
 
 export interface DesktopCueApplyDiagnostic { code: string; message: string; }
 
+export type DesktopCueApplyScope = CueApplyScope;
+
+export interface DesktopCueDiffCue {
+  identity: string | null;
+  family: string;
+  hot_cue_slot: number | null;
+  point_type: string;
+  start_ms: number;
+  end_ms: number | null;
+  color: number | null;
+  color_table_index: number | null;
+  comment: string | null;
+  is_active_loop: boolean | null;
+}
+
+export interface DesktopCueDiffChange {
+  before: DesktopCueDiffCue;
+  after: DesktopCueDiffCue;
+  match_basis: string;
+  changes: string[];
+}
+
+export interface DesktopCueTrackDiff {
+  current_count: number;
+  desired_count: number;
+  added: DesktopCueDiffCue[];
+  removed: DesktopCueDiffCue[];
+  changed: DesktopCueDiffChange[];
+  conflicts: string[];
+  blocking: boolean;
+}
+
 export interface DesktopCueApplyPreflightTrack {
   content_id: string;
   exists: boolean;
@@ -77,6 +110,7 @@ export interface DesktopCueApplyPreflightTrack {
   imported_baseline_fingerprint: string;
   imported_baseline_comparison: 'match' | 'diverged' | 'missing' | 'not-comparable';
   identity_comparison: 'match' | 'missing' | 'mismatch' | 'not-comparable';
+  diff: DesktopCueTrackDiff | null;
 }
 
 export interface DesktopCueApplyPreflightResult {
@@ -124,8 +158,8 @@ export interface DropDexDesktopBridge {
   disconnectUsb(): Promise<DesktopUsbReleaseResult>;
   resolveTrackSource(segments: string[]): Promise<DesktopTrackSourceResult>;
   cueApplyAvailability(): Promise<{ available: boolean; reason: string | null }>;
-  cueApplyPreflight(savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyPreflightResult>;
-  cueApply(token: string, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyResult>;
+  cueApplyPreflight(scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyPreflightResult>;
+  cueApply(token: string, scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyResult>;
   openExternal(url: string): Promise<boolean>;
 }
 
