@@ -15,7 +15,7 @@ import {
 } from './cueEditorState';
 import type { PhraseRow, VocalAnalysisRow, VocalRegionRow } from '../queries/analysisData';
 
-export const AUTO_CUE_STRATEGY_VERSION = 'dropdex-djcues-a-h-v2-pvdi';
+export const AUTO_CUE_STRATEGY_VERSION = 'dropdex-djcues-a-h-v3-parity';
 
 export const AUTO_CUE_STRATEGY_SETTINGS = Object.freeze({
   mode: 'fill-empty-slots',
@@ -29,7 +29,7 @@ export const AUTO_CUE_STRATEGY_SETTINGS = Object.freeze({
   pvdiPositiveContinuation: 0,
   pvdiMinimumRegionMs: 2000,
   pvdiPhraseToleranceBars: 4,
-  colorContract: 'derive-from-slot-semantic-v1',
+  colorContract: 'djcues-slot-colors-v1',
 });
 
 export type PssiCueSemantic =
@@ -59,24 +59,34 @@ export type AutoCueSemantic =
 
 export type AutoCueSlot = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
-interface SlotContract {
+export interface SlotContract {
   slot: AutoCueSlot;
   letter: string;
   semantic: AutoCueSemantic;
   rekordboxKind: number;
   loop: boolean;
-  memoryLead: boolean;
+  hotColorTableIndex: number;
+  colorName: 'Red' | 'Orange' | 'Yellow' | 'Green' | 'Aqua' | 'Blue' | 'Purple';
+  colorHex: string;
+  pairedMemory: boolean;
+  memoryOffsetBars: number;
+  memoryPointType: 'cue' | 'loop';
+  memoryRekordboxColor: number;
+  memoryColorTableIndex: number | null;
 }
 
+// Authoritative DropDex/DJcues A-H contract. Hot colors are Rekordbox
+// ColorTableIndex values. Memory colors are the independent DjmdCue.Color
+// encoding from rekordboxCueColorCodec; never translate one integer into the other.
 export const AUTO_CUE_SLOT_CONTRACTS: readonly SlotContract[] = Object.freeze([
-  { slot: 1, letter: 'A', semantic: 'First Beat', rekordboxKind: 1, loop: false, memoryLead: false },
-  { slot: 2, letter: 'B', semantic: 'Loop In', rekordboxKind: 2, loop: true, memoryLead: false },
-  { slot: 3, letter: 'C', semantic: 'Vocal / Buildup', rekordboxKind: 3, loop: false, memoryLead: true },
-  { slot: 4, letter: 'D', semantic: 'Drop', rekordboxKind: 5, loop: false, memoryLead: true },
-  { slot: 5, letter: 'E', semantic: 'Breakdown', rekordboxKind: 6, loop: false, memoryLead: true },
-  { slot: 6, letter: 'F', semantic: 'Special / energy recovery', rekordboxKind: 7, loop: false, memoryLead: true },
-  { slot: 7, letter: 'G', semantic: 'Outro', rekordboxKind: 8, loop: false, memoryLead: true },
-  { slot: 8, letter: 'H', semantic: 'Loop Out', rekordboxKind: 9, loop: true, memoryLead: false },
+  { slot: 1, letter: 'A', semantic: 'First Beat', rekordboxKind: 1, loop: false, hotColorTableIndex: 18, colorName: 'Green', colorHex: '#00FF00', pairedMemory: true, memoryOffsetBars: 0, memoryPointType: 'cue', memoryRekordboxColor: 4, memoryColorTableIndex: null },
+  { slot: 2, letter: 'B', semantic: 'Loop In', rekordboxKind: 2, loop: true, hotColorTableIndex: 18, colorName: 'Green', colorHex: '#00FF00', pairedMemory: true, memoryOffsetBars: 0, memoryPointType: 'loop', memoryRekordboxColor: 4, memoryColorTableIndex: 0 },
+  { slot: 3, letter: 'C', semantic: 'Vocal / Buildup', rekordboxKind: 3, loop: false, hotColorTableIndex: 32, colorName: 'Yellow', colorHex: '#FFFF00', pairedMemory: true, memoryOffsetBars: 16, memoryPointType: 'cue', memoryRekordboxColor: 3, memoryColorTableIndex: null },
+  { slot: 4, letter: 'D', semantic: 'Drop', rekordboxKind: 5, loop: false, hotColorTableIndex: 42, colorName: 'Red', colorHex: '#FF0000', pairedMemory: true, memoryOffsetBars: 16, memoryPointType: 'cue', memoryRekordboxColor: 1, memoryColorTableIndex: null },
+  { slot: 5, letter: 'E', semantic: 'Breakdown', rekordboxKind: 6, loop: false, hotColorTableIndex: 1, colorName: 'Blue', colorHex: '#0000FF', pairedMemory: true, memoryOffsetBars: 16, memoryPointType: 'cue', memoryRekordboxColor: 6, memoryColorTableIndex: null },
+  { slot: 6, letter: 'F', semantic: 'Special / energy recovery', rekordboxKind: 7, loop: false, hotColorTableIndex: 56, colorName: 'Purple', colorHex: '#8000FF', pairedMemory: true, memoryOffsetBars: 16, memoryPointType: 'cue', memoryRekordboxColor: 7, memoryColorTableIndex: null },
+  { slot: 7, letter: 'G', semantic: 'Outro', rekordboxKind: 8, loop: false, hotColorTableIndex: 9, colorName: 'Aqua', colorHex: '#00FFFF', pairedMemory: true, memoryOffsetBars: 16, memoryPointType: 'cue', memoryRekordboxColor: 5, memoryColorTableIndex: null },
+  { slot: 8, letter: 'H', semantic: 'Loop Out', rekordboxKind: 9, loop: true, hotColorTableIndex: 0, colorName: 'Orange', colorHex: '#FF8000', pairedMemory: true, memoryOffsetBars: 0, memoryPointType: 'loop', memoryRekordboxColor: 2, memoryColorTableIndex: 0 },
 ]);
 
 export interface AdaptedPhrase {
@@ -92,6 +102,7 @@ export interface AutoCueProposal {
   startBeat: BeatEntry;
   endBeat: BeatEntry | null;
   memoryBeat: BeatEntry | null;
+  memoryEndBeat: BeatEntry | null;
   reason: string;
 }
 
@@ -199,9 +210,13 @@ function proposal(
     : null;
   if (contract.loop && !endBeat) return null;
 
-  const memoryBeat = contract.memoryLead
-    ? beatByBarOffset(beats, startBeat, -AUTO_CUE_STRATEGY_SETTINGS.memoryLeadBars)
-    : null;
+  let memoryBeat: BeatEntry | null = null;
+  if (contract.pairedMemory) {
+    memoryBeat = contract.memoryOffsetBars === 0
+      ? startBeat
+      : beatByBarOffset(beats, startBeat, -contract.memoryOffsetBars) ?? firstValidBeat(beats);
+  }
+  const memoryEndBeat = contract.memoryPointType === 'loop' ? endBeat : null;
 
   return {
     slot,
@@ -210,6 +225,7 @@ function proposal(
     startBeat,
     endBeat,
     memoryBeat,
+    memoryEndBeat,
     reason,
   };
 }
@@ -464,9 +480,9 @@ function makeAutoWorkingCue(
     pointType: contract.loop ? 'loop' : 'cue',
     startMs: proposalItem.startBeat.ms,
     endMs: proposalItem.endBeat?.ms ?? null,
-    colorTableIndex: null,
-    colorHex: null,
-    colorName: null,
+    colorTableIndex: contract.hotColorTableIndex,
+    colorHex: contract.colorHex,
+    colorName: contract.colorName,
     rekordboxColor: null,
     comment: `Auto Cue ${contract.letter} · ${contract.semantic}`,
     isActiveLoop: contract.loop ? false : null,
@@ -501,17 +517,19 @@ function makeMemoryWorkingCue(
     dedupeKey: null,
     family: 'memory',
     hotCueSlot: null,
-    pointType: 'cue',
+    pointType: contract.memoryPointType,
     startMs: proposalItem.memoryBeat.ms,
-    endMs: null,
-    colorTableIndex: null,
-    colorHex: null,
-    colorName: null,
-    rekordboxColor: -1,
-    comment: `Auto Memory · 16 bars before Hot Cue ${contract.letter}`,
-    isActiveLoop: false,
-    beatLoopNumerator: null,
-    beatLoopDenominator: null,
+    endMs: proposalItem.memoryEndBeat?.ms ?? null,
+    colorTableIndex: contract.memoryColorTableIndex,
+    colorHex: contract.colorHex,
+    colorName: contract.colorName,
+    rekordboxColor: contract.memoryRekordboxColor,
+    comment: contract.memoryOffsetBars === 0
+      ? `Auto Memory · paired with Hot Cue ${contract.letter}`
+      : `Auto Memory · ${contract.memoryOffsetBars} bars before Hot Cue ${contract.letter}`,
+    isActiveLoop: contract.memoryPointType === 'loop' ? false : null,
+    beatLoopNumerator: contract.memoryPointType === 'loop' ? AUTO_CUE_STRATEGY_SETTINGS.loopBars * 4 : null,
+    beatLoopDenominator: contract.memoryPointType === 'loop' ? 1 : null,
     sourceDbPresent: false,
     sourceAnlzPresent: false,
     sourceConflict: false,
@@ -520,12 +538,12 @@ function makeMemoryWorkingCue(
     semantic: contract.semantic,
     pairedHotCueSlot: proposalItem.slot,
     strategyVersion: AUTO_CUE_STRATEGY_VERSION,
-    strategySettings: { ...AUTO_CUE_STRATEGY_SETTINGS },
+    strategySettings: { ...AUTO_CUE_STRATEGY_SETTINGS, pairedMemoryOffsetBars: contract.memoryOffsetBars },
     source: 'auto',
   };
 }
 
-/** Fill only empty A-H slots and add paired Memory cues without exact-time duplicates. */
+/** Fill only empty A-H slots and add each generated Hot Cue's true paired Memory cue/loop. */
 export function mergeAutoCueProposals(input: {
   trackId: string;
   importId: string | null;
@@ -549,11 +567,6 @@ export function mergeAutoCueProposals(input: {
       .filter((cue) => cue.family === 'hot' && cue.hotCueSlot != null)
       .map((cue) => cue.hotCueSlot as AutoCueSlot),
   );
-  const occupiedMemoryTimes = new Set(
-    input.currentCues
-      .filter((cue) => cue.family === 'memory' && cue.startMs != null)
-      .map((cue) => cue.startMs as number),
-  );
   const occupiedMemoryPairs = new Set(
     input.currentCues
       .filter((cue) => cue.family === 'memory' && cue.pairedHotCueSlot != null)
@@ -576,13 +589,8 @@ export function mergeAutoCueProposals(input: {
     addedHotCount += 1;
 
     const memory = makeMemoryWorkingCue(input.trackId, input.importId, proposalItem);
-    if (
-      memory?.startMs != null
-      && !occupiedMemoryTimes.has(memory.startMs)
-      && !occupiedMemoryPairs.has(proposalItem.slot)
-    ) {
+    if (memory?.startMs != null && !occupiedMemoryPairs.has(proposalItem.slot)) {
       next.push(memory);
-      occupiedMemoryTimes.add(memory.startMs);
       occupiedMemoryPairs.add(proposalItem.slot);
       addedMemoryCount += 1;
     }

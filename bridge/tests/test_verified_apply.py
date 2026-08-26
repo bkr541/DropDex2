@@ -238,7 +238,7 @@ class TestStage6Preflight:
             "update djmdCue set Color=2, ColorTableIndex=3 where ContentID='101'",
             "update djmdCue set Kind=1 where ContentID='101'",
             "update djmdCue set OutMsec=1000, OutFrame=0, OutMpegFrame=0, OutMpegAbs=0, ActiveLoop=1 where ContentID='101'",
-            "insert into djmdCue values ('11','101','local-uuid-101','extra',750,0,0,0,-1,-1,-1,-1,1,-1,2,-1,'added',0,0)",
+            "insert into djmdCue values ('11','101','local-uuid-101','extra',750,0,0,0,-1,-1,-1,-1,1,-1,2,-1,'added',0,0,NULL,NULL)",
         ],
         ids=["deleted", "moved", "metadata", "recolored", "hot-memory-family", "loop", "added"],
     )

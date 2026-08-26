@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BeatEntry } from './beatGridHelpers';
 import {
+  AUTO_CUE_SLOT_CONTRACTS,
   AUTO_CUE_STRATEGY_VERSION,
   adaptRawPssiPhrases,
   applyAutoCueStrategy,
@@ -8,7 +9,7 @@ import {
   mapRawPssiCueSemantic,
   mergeAutoCueProposals,
 } from './autoCueStrategy';
-import { deleteWorkingCue, type WorkingCue } from './cueEditorState';
+import { deleteWorkingCue, moveWorkingCue, type WorkingCue } from './cueEditorState';
 import type { PhraseRow, VocalAnalysisRow, VocalRegionRow } from '../queries/analysisData';
 
 function makeVariableTempoBeats(barCount = 96): BeatEntry[] {
@@ -168,6 +169,28 @@ describe('raw PSSI DJCues semantic adapter', () => {
 });
 
 describe('DJCues-compatible A-H strategy', () => {
+
+  it('declares the authoritative A-H Hot/Memory/color contract', () => {
+    expect(AUTO_CUE_SLOT_CONTRACTS.map((contract) => ({
+      slot: contract.slot,
+      kind: contract.rekordboxKind,
+      loop: contract.loop,
+      hotColor: contract.hotColorTableIndex,
+      memoryOffsetBars: contract.memoryOffsetBars,
+      memoryType: contract.memoryPointType,
+      memoryColor: contract.memoryRekordboxColor,
+      memoryColorTableIndex: contract.memoryColorTableIndex,
+    }))).toEqual([
+      { slot: 1, kind: 1, loop: false, hotColor: 18, memoryOffsetBars: 0, memoryType: 'cue', memoryColor: 4, memoryColorTableIndex: null },
+      { slot: 2, kind: 2, loop: true, hotColor: 18, memoryOffsetBars: 0, memoryType: 'loop', memoryColor: 4, memoryColorTableIndex: 0 },
+      { slot: 3, kind: 3, loop: false, hotColor: 32, memoryOffsetBars: 16, memoryType: 'cue', memoryColor: 3, memoryColorTableIndex: null },
+      { slot: 4, kind: 5, loop: false, hotColor: 42, memoryOffsetBars: 16, memoryType: 'cue', memoryColor: 1, memoryColorTableIndex: null },
+      { slot: 5, kind: 6, loop: false, hotColor: 1, memoryOffsetBars: 16, memoryType: 'cue', memoryColor: 6, memoryColorTableIndex: null },
+      { slot: 6, kind: 7, loop: false, hotColor: 56, memoryOffsetBars: 16, memoryType: 'cue', memoryColor: 7, memoryColorTableIndex: null },
+      { slot: 7, kind: 8, loop: false, hotColor: 9, memoryOffsetBars: 16, memoryType: 'cue', memoryColor: 5, memoryColorTableIndex: null },
+      { slot: 8, kind: 9, loop: true, hotColor: 0, memoryOffsetBars: 0, memoryType: 'loop', memoryColor: 2, memoryColorTableIndex: 0 },
+    ]);
+  });
   it('builds representative A-H proposals and exact variable-tempo loop/memory offsets', () => {
     const beats = makeVariableTempoBeats(96);
     const phrases = representativePhrases(beats);
@@ -283,6 +306,24 @@ describe('DJCues-compatible A-H strategy', () => {
     expect(noGrid.proposals).toHaveLength(0);
     expect(Object.keys(noGrid.skipped)).toHaveLength(8);
   });
+
+
+  it('fails safely for a very short track and for an H loop whose exact four-bar endpoint is past track end', () => {
+    const tiny = makeVariableTempoBeats(3);
+    const tinyResult = generateAutoCueProposals({ beats: tiny, phrases: [], durationMs: tiny.at(-1)!.ms });
+    expect(tinyResult.proposals.map((item) => item.slot)).toEqual([1]);
+    expect(tinyResult.skipped[2]).toMatch(/four-bar loop endpoint/i);
+
+    const beats = makeVariableTempoBeats(24);
+    const nearEnd = generateAutoCueProposals({
+      beats,
+      durationMs: beats.at(-1)!.ms,
+      phrases: [phrase(0, 85, '2', '10', beats)],
+    });
+    expect(nearEnd.proposals.find((item) => item.slot === 7)?.startBeat.seq).toBe(85);
+    expect(nearEnd.proposals.some((item) => item.slot === 8)).toBe(false);
+    expect(nearEnd.skipped[8]).toMatch(/four-bar loop endpoint/i);
+  });
 });
 
 describe('fill-empty working-set merge', () => {
@@ -309,8 +350,13 @@ describe('fill-empty working-set merge', () => {
     expect(merged.cues.filter((cue) => cue.family === 'hot')).toHaveLength(8);
     const autoB = merged.cues.find((cue) => cue.family === 'hot' && cue.hotCueSlot === 2)!;
     const autoH = merged.cues.find((cue) => cue.family === 'hot' && cue.hotCueSlot === 8)!;
-    expect(autoB).toMatchObject({ pointType: 'loop', isActiveLoop: false });
-    expect(autoH).toMatchObject({ pointType: 'loop', isActiveLoop: false });
+    expect(autoB).toMatchObject({ pointType: 'loop', isActiveLoop: false, colorTableIndex: 18 });
+    expect(autoH).toMatchObject({ pointType: 'loop', isActiveLoop: false, colorTableIndex: 0 });
+
+    const memoryB = merged.cues.find((cue) => cue.family === 'memory' && cue.pairedHotCueSlot === 2)!;
+    const memoryH = merged.cues.find((cue) => cue.family === 'memory' && cue.pairedHotCueSlot === 8)!;
+    expect(memoryB).toMatchObject({ pointType: 'loop', startMs: autoB.startMs, endMs: autoB.endMs, rekordboxColor: 4, colorTableIndex: 0, isActiveLoop: false });
+    expect(memoryH).toMatchObject({ pointType: 'loop', startMs: autoH.startMs, endMs: autoH.endMs, rekordboxColor: 2, colorTableIndex: 0, isActiveLoop: false });
 
     const autoC = merged.cues.find((cue) => cue.family === 'hot' && cue.hotCueSlot === 3)!;
     expect(autoC).toMatchObject({
@@ -368,10 +414,11 @@ describe('fill-empty working-set merge', () => {
     expect(second.addedMemoryCount).toBe(0);
     expect(second.cues).toEqual(first.cues);
 
-    const memoryTimes = first.cues
+    const pairedMemorySlots = first.cues
       .filter((cue) => cue.family === 'memory')
-      .map((cue) => cue.startMs);
-    expect(new Set(memoryTimes).size).toBe(memoryTimes.length);
+      .map((cue) => cue.pairedHotCueSlot)
+      .sort();
+    expect(pairedMemorySlots).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
 
     const movedMemory = first.cues.map((cue) =>
       cue.family === 'memory' && cue.pairedHotCueSlot === 4
@@ -391,6 +438,54 @@ describe('fill-empty working-set merge', () => {
     });
     expect(rerunAfterHotDelete.addedHotCount).toBe(1);
     expect(rerunAfterHotDelete.cues.filter((cue) => cue.family === 'memory' && cue.pairedHotCueSlot === 4)).toHaveLength(1);
+  });
+
+  it('creates A/B/H same-position paired Memory cues, clamps C-G warning pairs at the first beat, and preserves slot colors', () => {
+    const beats = makeVariableTempoBeats(24);
+    const phrases = [
+      phrase(0, 5, '2', '2', beats),
+      phrase(1, 17, '2', '9', beats),
+      phrase(2, 33, '2', '8', beats),
+      phrase(3, 49, '2', '9', beats),
+      phrase(4, 65, '2', '10', beats),
+    ];
+    const merged = applyAutoCueStrategy({
+      trackId: 'track-1', importId: 'import-1', durationMs: beats.at(-1)!.ms, beats, phrases, currentCues: [],
+    });
+    const hot = (slot: number) => merged.cues.find((cue) => cue.family === 'hot' && cue.hotCueSlot === slot)!;
+    const mem = (slot: number) => merged.cues.find((cue) => cue.family === 'memory' && cue.pairedHotCueSlot === slot)!;
+
+    expect(mem(1).startMs).toBe(hot(1).startMs);
+    expect(mem(2)).toMatchObject({ pointType: 'loop', startMs: hot(2).startMs, endMs: hot(2).endMs });
+    expect(mem(8)).toMatchObject({ pointType: 'loop', startMs: hot(8).startMs, endMs: hot(8).endMs });
+    for (const slot of [3, 4, 5, 6, 7]) expect(mem(slot).startMs).toBe(beats[0].ms);
+    expect(merged.cues.filter((cue) => cue.family === 'memory')).toHaveLength(8);
+    expect([1, 2, 3, 4, 5, 6, 7, 8].map((slot) => hot(slot).colorTableIndex))
+      .toEqual([18, 18, 32, 42, 1, 56, 9, 0]);
+    expect([1, 2, 3, 4, 5, 6, 7, 8].map((slot) => mem(slot).rekordboxColor))
+      .toEqual([4, 4, 3, 1, 6, 7, 5, 2]);
+  });
+
+  it('moves only the generated pair, keeps a manual nearby Memory Cue, clamps warnings, and keeps paired loops aligned', () => {
+    const beats = makeVariableTempoBeats(96);
+    const first = applyAutoCueStrategy({
+      trackId: 'track-1', importId: 'import-1', durationMs: beats.at(-1)!.ms, beats, phrases: representativePhrases(beats), currentCues: [],
+    });
+    const hotD = first.cues.find((cue) => cue.family === 'hot' && cue.hotCueSlot === 4)!;
+    const generatedD = first.cues.find((cue) => cue.family === 'memory' && cue.pairedHotCueSlot === 4)!;
+    const manual = { ...generatedD, editorId: 'manual-near-d', source: 'manual' as const, pairedHotCueSlot: null, startMs: generatedD.startMs! + 1 };
+    const movedNearStart = moveWorkingCue([...first.cues, manual], hotD.editorId, beats[8].ms, beats, 'snap');
+    expect(movedNearStart.error).toBeNull();
+    expect(movedNearStart.cues.find((cue) => cue.editorId === generatedD.editorId)?.startMs).toBe(beats[0].ms);
+    expect(movedNearStart.cues.find((cue) => cue.editorId === manual.editorId)?.startMs).toBe(manual.startMs);
+
+    const hotB = first.cues.find((cue) => cue.family === 'hot' && cue.hotCueSlot === 2)!;
+    const memoryB = first.cues.find((cue) => cue.family === 'memory' && cue.pairedHotCueSlot === 2)!;
+    const movedB = moveWorkingCue(first.cues, hotB.editorId, beats[32].ms, beats, 'snap');
+    const movedHotB = movedB.cues.find((cue) => cue.editorId === hotB.editorId)!;
+    const movedMemoryB = movedB.cues.find((cue) => cue.editorId === memoryB.editorId)!;
+    expect(movedB.error).toBeNull();
+    expect(movedMemoryB).toMatchObject({ startMs: movedHotB.startMs, endMs: movedHotB.endMs, pointType: 'loop', isActiveLoop: false });
   });
 
   it('preserves all A-H when every slot is occupied', () => {

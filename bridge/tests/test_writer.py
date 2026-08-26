@@ -11,6 +11,7 @@ from uuid import UUID
 
 import pytest
 
+from rekordbox_bridge.djmdcue_policy import DJMDCUE_MODEL_FIELDS
 from rekordbox_bridge.writer import (
     HOT_KIND_BY_SLOT,
     StagingWriterError,
@@ -27,10 +28,22 @@ CUE_COLUMNS = [
     "ID", "ContentID", "ContentUUID", "UUID", "InMsec", "InFrame", "InMpegFrame",
     "InMpegAbs", "OutMsec", "OutFrame", "OutMpegFrame", "OutMpegAbs", "Kind",
     "Color", "ColorTableIndex", "ActiveLoop", "Comment", "BeatLoopSize", "CueMicrosec",
+    "InPointSeekInfo", "OutPointSeekInfo",
 ]
 
 
+class _FakeColumn:
+    def __init__(self, name):
+        self.name = name
+
+
+class _FakeTable:
+    columns = tuple(_FakeColumn(name) for name in DJMDCUE_MODEL_FIELDS)
+
+
 class DjmdCue:
+    __table__ = _FakeTable()
+
     @classmethod
     def create(cls, **kwargs):
         return SimpleNamespace(**kwargs)
@@ -96,18 +109,19 @@ def init_fixture(path: Path) -> None:
         InMsec integer, InFrame integer, InMpegFrame integer, InMpegAbs integer,
         OutMsec integer, OutFrame integer, OutMpegFrame integer, OutMpegAbs integer,
         Kind integer, Color integer, ColorTableIndex integer, ActiveLoop integer,
-        Comment text, BeatLoopSize integer, CueMicrosec integer
+        Comment text, BeatLoopSize integer, CueMicrosec integer,
+        InPointSeekInfo text, OutPointSeekInfo text
         )"""
     )
     conn.execute("insert into djmdContent values (?, ?, ?)", ("101", "local-uuid-101", "db-main"))
     conn.execute("insert into djmdContent values (?, ?, ?)", ("202", "local-uuid-202", "db-main"))
     for cue_id, content_id in (("10", "101"), ("20", "202")):
         conn.execute(
-            "insert into djmdCue values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "insert into djmdCue values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 cue_id, content_id, f"local-uuid-{content_id}", f"old-{cue_id}",
                 500, 0, 0, 0, -1, -1, -1, -1, 0, -1, None, -1,
-                "existing", 0, 0,
+                "existing", 0, 0, None, None,
             ),
         )
     conn.commit()
@@ -246,6 +260,8 @@ class TestDjmdCueBuilder:
         assert row["ActiveLoop"] == -1
         assert row["BeatLoopSize"] == 0
         assert row["CueMicrosec"] == 0
+        assert row["InPointSeekInfo"] is None
+        assert row["OutPointSeekInfo"] is None
 
     def test_loop_uses_djcues_loop_fields_and_active_flag(self):
         row = build_djmdcue_values(

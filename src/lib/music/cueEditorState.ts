@@ -1,4 +1,4 @@
-import { beatByBarOffset, isUsableBeatGrid, nearestBeat, type BeatEntry } from './beatGridHelpers';
+import { beatByBarOffset, firstValidBeat, isUsableBeatGrid, nearestBeat, type BeatEntry } from './beatGridHelpers';
 import type { CueRow } from '../queries/analysisData';
 import {
   isSupportedMemoryDjmdCueColor,
@@ -378,9 +378,13 @@ function pairedGeneratedMemoryCues(cues: WorkingCue[], hotCueSlot: number | null
   ));
 }
 
-function pairedMemoryLeadBars(cue: WorkingCue): number | null {
-  const value = cue.strategySettings?.memoryLeadBars;
-  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+function pairedMemoryOffsetBars(cue: WorkingCue): number | null {
+  const explicit = cue.strategySettings?.pairedMemoryOffsetBars;
+  if (typeof explicit === 'number' && Number.isInteger(explicit) && explicit >= 0) return explicit;
+  // Backward compatibility for Stage 7 generated pairs, which only persisted the
+  // positive C-G lead. Stage 11 generated A/B/H pairs always store an explicit 0.
+  const legacy = cue.strategySettings?.memoryLeadBars;
+  return typeof legacy === 'number' && Number.isInteger(legacy) && legacy > 0 ? legacy : null;
 }
 
 function updatePairedMemorySlot(cues: WorkingCue[], previousSlot: number | null, nextSlot: number): WorkingCue[] {
@@ -415,7 +419,7 @@ function syncPairedMemoryAfterHotMove(
     return { cues: originalCues, beat: null, error: 'Moving a paired Auto Cue requires a valid Rekordbox beat grid.' };
   }
 
-  const leadBars = pairedMemoryLeadBars(paired[0]);
+  const leadBars = pairedMemoryOffsetBars(paired[0]);
   if (leadBars == null) {
     return { cues: originalCues, beat: null, error: 'Auto Cue pairing metadata is incomplete. Reload or re-run Auto Cue before moving this Hot Cue.' };
   }
@@ -424,22 +428,36 @@ function syncPairedMemoryAfterHotMove(
   if (!hotAnchor) {
     return { cues: originalCues, beat: null, error: 'The paired Hot Cue cannot be mapped to the Rekordbox beat grid.' };
   }
-  const memoryAnchor = beatByBarOffset(beats, hotAnchor, -leadBars);
+  const memoryAnchor = leadBars === 0
+    ? hotAnchor
+    : beatByBarOffset(beats, hotAnchor, -leadBars) ?? firstValidBeat(beats);
   if (!memoryAnchor) {
-    return { cues: originalCues, beat: hotAnchor, error: `The paired Memory Cue cannot remain ${leadBars} bars before this Hot Cue.` };
+    return { cues: originalCues, beat: hotAnchor, error: 'The paired Memory Cue cannot be mapped to the Rekordbox beat grid.' };
   }
 
   const phaseOffsetMs = timingMode === 'exact' ? hotCue.startMs - hotAnchor.ms : 0;
-  const pairedStartMs = exactMilliseconds(memoryAnchor.ms + phaseOffsetMs);
+  // Snap mode must retain the exact canonical beat-grid timestamp, including
+  // fractional milliseconds. Exact mode retains the Hot Cue's phase offset.
+  const pairedStartMs = timingMode === 'snap'
+    ? memoryAnchor.ms
+    : exactMilliseconds(memoryAnchor.ms + phaseOffsetMs);
   if (pairedStartMs == null || pairedStartMs < 0) {
     return { cues: originalCues, beat: hotAnchor, error: 'The paired Memory Cue would move before the start of the track.' };
   }
 
-  const next = movedCues.map((candidate) => (
-    candidate.editorId === paired[0].editorId
-      ? { ...candidate, startMs: pairedStartMs }
-      : candidate
-  ));
+  const next = movedCues.map((candidate) => {
+    if (candidate.editorId !== paired[0].editorId) return candidate;
+    if (leadBars === 0 && candidate.pointType === 'loop' && hotCue.pointType === 'loop') {
+      return {
+        ...candidate,
+        startMs: pairedStartMs,
+        endMs: hotCue.endMs,
+        beatLoopNumerator: hotCue.beatLoopNumerator,
+        beatLoopDenominator: hotCue.beatLoopDenominator,
+      };
+    }
+    return { ...candidate, startMs: pairedStartMs };
+  });
   return cueResult(next, null, hotAnchor);
 }
 

@@ -9,6 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional, Sequence, Tuple
 
+from .djmdcue_policy import (
+    find_matching_desired_for_preservation,
+    nondefault_preserved_fields,
+    preservation_blocker,
+)
 from .writer import HOT_KIND_BY_SLOT, build_djmdcue_values
 from .writer_models import PlannedCue
 
@@ -226,6 +231,29 @@ def diff_cues(current_rows: Sequence[Any], desired_cues: Sequence[PlannedCue]) -
     current = [item[0] for item in current_with_conflicts]
     desired = [_desired_cue(cue) for cue in desired_cues]
     conflicts = [item[1] for item in current_with_conflicts if item[1] is not None]
+
+    for row in current_rows:
+        if not nondefault_preserved_fields(row):
+            continue
+        desired_match, match_basis = find_matching_desired_for_preservation(row, desired_cues)
+        if match_basis == "removed":
+            # No cue of the same family/slot remains: this is an intentional removal.
+            continue
+        if match_basis == "ambiguous" or desired_match is None:
+            conflicts.append(
+                f"Current local cue {getattr(row, 'ID', '?')} contains non-default preserved DjmdCue fields "
+                "but preservation ownership is ambiguous in the desired complete cue set."
+            )
+            continue
+        blocker = preservation_blocker(
+            row,
+            desired_id=desired_match.rekordbox_cue_id,
+            desired_start_ms=int(desired_match.start_ms),
+            desired_end_ms=int(desired_match.end_ms) if desired_match.end_ms is not None else None,
+            allow_semantic_rebind=match_basis == "semantic-rebind",
+        )
+        if blocker:
+            conflicts.append(blocker)
 
     desired_ids = [cue.identity for cue in desired if cue.identity is not None]
     if len(desired_ids) != len(set(desired_ids)):

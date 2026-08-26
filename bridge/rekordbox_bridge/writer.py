@@ -10,6 +10,12 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
+from .djmdcue_policy import (
+    PRESERVED_FIELDS,
+    preserved_values,
+    source_row_for_preservation,
+    validate_model_inventory,
+)
 from .writer_models import (
     CueApplyPlan,
     PlannedCue,
@@ -47,6 +53,8 @@ VERIFY_FIELDS = (
     "Comment",
     "BeatLoopSize",
     "CueMicrosec",
+    "InPointSeekInfo",
+    "OutPointSeekInfo",
 )
 
 
@@ -83,6 +91,7 @@ def build_djmdcue_values(
     content_uuid: str,
     cue_id: str,
     cue_uuid: str,
+    preserved_fields: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """Pure DJCues-compatible ``DjmdCue`` field construction."""
     if cue.family == "hot":
@@ -101,7 +110,7 @@ def build_djmdcue_values(
     else:
         out_msec = -1
 
-    return {
+    values = {
         "ID": str(cue_id),
         "ContentID": str(content_id),
         "ContentUUID": str(content_uuid),
@@ -121,7 +130,14 @@ def build_djmdcue_values(
         "Comment": cue.comment,
         "BeatLoopSize": 0,
         "CueMicrosec": 0,
+        "InPointSeekInfo": None,
+        "OutPointSeekInfo": None,
     }
+    if preserved_fields:
+        for field in PRESERVED_FIELDS:
+            if field in preserved_fields:
+                values[field] = preserved_fields[field]
+    return values
 
 
 def _load_pyrekordbox() -> tuple[Callable[[str], Any], Any]:
@@ -136,6 +152,10 @@ def _load_pyrekordbox() -> tuple[Callable[[str], Any], Any]:
             from pyrekordbox.masterdb import models as tables  # type: ignore
         except ImportError as exc:  # pragma: no cover - version compatibility path
             raise ImportError("Installed pyrekordbox does not expose DjmdCue models.") from exc
+    try:
+        validate_model_inventory(tables.DjmdCue)
+    except ValueError as exc:
+        raise StagingWriterError(str(exc), code="djmdcue-model-inventory-mismatch") from exc
     return Rekordbox6Database, tables
 
 
@@ -269,6 +289,10 @@ def mutate_staging_database(
         loaded_factory, loaded_tables = _load_pyrekordbox()
         database_factory = database_factory or loaded_factory
         tables_module = tables_module or loaded_tables
+    try:
+        validate_model_inventory(tables_module.DjmdCue)
+    except ValueError as exc:
+        raise StagingWriterError(str(exc), code="djmdcue-model-inventory-mismatch") from exc
 
     db = database_factory(str(staging))
     expected: dict[str, list[dict[str, Any]]] = {}
@@ -281,11 +305,16 @@ def mutate_staging_database(
 
         for track in plan.tracks:
             content = content_by_id[track.content_id]
-            for existing in _cue_rows_for_content(db, track.content_id):
+            existing_rows = _cue_rows_for_content(db, track.content_id)
+            for existing in existing_rows:
                 db.delete(existing)
 
             expected_rows: list[dict[str, Any]] = []
             for cue in track.cues:
+                preserved = None
+                source_row = source_row_for_preservation(existing_rows, cue)
+                if source_row is not None:
+                    preserved = preserved_values(source_row)
                 cue_id = db.generate_unused_id(tables_module.DjmdCue)
                 values = build_djmdcue_values(
                     cue,
@@ -293,6 +322,7 @@ def mutate_staging_database(
                     content_uuid=str(content.UUID),
                     cue_id=str(cue_id),
                     cue_uuid=str(uuid_factory()),
+                    preserved_fields=preserved,
                 )
                 row = tables_module.DjmdCue.create(**values)
                 db.add(row)
