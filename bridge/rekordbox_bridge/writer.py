@@ -13,6 +13,7 @@ from uuid import uuid4
 from .writer_models import (
     CueApplyPlan,
     PlannedCue,
+    PlannedTrack,
     StagingGeneration,
     StagingOperationResult,
     StagingVerificationResult,
@@ -62,6 +63,10 @@ VERIFY_FIELDS = (
 
 class StagingWriterError(RuntimeError):
     """A staging-only cue write or verification failed."""
+
+    def __init__(self, message: str, *, code: str = "writer-error") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def _cue_color(cue: PlannedCue) -> int:
@@ -164,16 +169,62 @@ def _content_for_id(db: Any, content_id: str) -> Any:
         raise StagingWriterError(f"Could not resolve planned ContentID {content_id}.") from exc
     if content is None:
         raise StagingWriterError(
-            f"Planned ContentID {content_id} does not exist in the local database."
+            f"Planned ContentID {content_id} does not exist in the local database.",
+            code="content-missing",
         )
     if isinstance(content, (list, tuple)):
         if len(content) != 1:
-            raise StagingWriterError(f"Planned ContentID {content_id} is not uniquely resolvable.")
+            raise StagingWriterError(
+                f"Planned ContentID {content_id} is not uniquely resolvable.",
+                code="content-ambiguous",
+            )
         content = content[0]
     resolved_id = getattr(content, "ID", None)
     content_uuid = getattr(content, "UUID", None)
     if resolved_id is None or str(resolved_id) != content_id or not content_uuid:
         raise StagingWriterError(f"Planned ContentID {content_id} has invalid local identity data.")
+    return content
+
+
+def _content_master_db_id(content: Any) -> Optional[str]:
+    for field in ("MasterDBID", "MasterDbID", "MasterDBId", "masterDbId", "master_db_id"):
+        value = getattr(content, field, None)
+        if value is not None and str(value).strip():
+            return str(value)
+    return None
+
+
+def _content_for_track(db: Any, track: PlannedTrack) -> Any:
+    """Resolve and verify the strongest persisted identity before cue mutation.
+
+    DropDex import/reconciliation already treats ``master_content_id`` as the local
+    master-library ``DjmdContent.ID``. This writer deliberately reuses that contract
+    instead of inventing a second resolver or weakening a strong mismatch to ContentID.
+    """
+    if not track.master_content_id:
+        raise StagingWriterError(
+            f"Track {track.track_id} has no strong master ContentID; destructive apply is blocked.",
+            code="strong-identity-missing",
+        )
+    if track.content_id != track.master_content_id:
+        raise StagingWriterError(
+            f"Track {track.track_id} planned target does not match its strong master ContentID.",
+            code="strong-identity-mismatch",
+        )
+
+    content = _content_for_id(db, track.master_content_id)
+    if track.master_db_id:
+        local_master_db_id = _content_master_db_id(content)
+        if local_master_db_id is None:
+            raise StagingWriterError(
+                f"Track {track.track_id} local master DB identity is unavailable; destructive apply is blocked.",
+                code="strong-db-identity-unavailable",
+            )
+        if local_master_db_id != track.master_db_id:
+            raise StagingWriterError(
+                f"Track {track.track_id} strong master DB identity does not match current local Rekordbox.",
+                code="strong-db-identity-mismatch",
+            )
     return content
 
 
@@ -236,7 +287,7 @@ def mutate_staging_database(
     try:
         # Validate every target and resolve ContentUUIDs before deleting anything.
         content_by_id = {
-            track.content_id: _content_for_id(db, track.content_id)
+            track.content_id: _content_for_track(db, track)
             for track in plan.tracks
         }
 

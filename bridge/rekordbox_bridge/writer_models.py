@@ -31,9 +31,13 @@ class PlannedTrack:
     import_id: str
     track_id: str
     content_id: str
+    rekordbox_content_id: str
+    master_db_id: Optional[str]
+    master_content_id: Optional[str]
     draft_revision: int
     desired_fingerprint: str
     imported_baseline_fingerprint: str
+    imported_baseline_local_cue_fingerprint: Optional[str]
     cues: Tuple[PlannedCue, ...]
 
 

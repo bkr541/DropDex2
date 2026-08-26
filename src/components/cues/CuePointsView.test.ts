@@ -61,4 +61,18 @@ describe('Cue Points production editor wiring', () => {
   it('keeps Rekordbox export disabled in Stage 4', () => {
     expect(source).toContain('variant="primary" disabled title="Cue export will be enabled');
   });
+  it('persists the imported local DjmdCue baseline and strong track identity for desktop apply', () => {
+    expect(source).toContain('fingerprintImportedLocalCueBaseline(importedDocument)');
+    expect(source).toContain('importedBaselineLocalCueFingerprint,');
+    expect(source).toContain('masterDbId: row.masterDbId');
+    expect(source).toContain('masterContentId: row.masterContentId');
+  });
+
+  it('keeps cue-load failures distinct from an editable zero-cue baseline', () => {
+    expect(source).toContain('setSelectedCueLoadError(');
+    expect(source).toContain('Cue points could not be loaded');
+    expect(source).toContain('if (selectedCueLoadError) return selectedCueLoadError;');
+    expect(source).toContain('if (selectedCueLoading || selectedCueLoadError) return;');
+    expect(source).toContain('persistenceMessage={selectedCueLoadError ?? draftPersistenceMessage}');
+  });
 });

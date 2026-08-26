@@ -11,6 +11,9 @@ export interface CueDraftRow {
   desiredDocument: CueDraftDocument;
   desiredFingerprint: string;
   importedBaselineFingerprint: string;
+  importedBaselineLocalCueFingerprint: string | null;
+  masterDbId: string | null;
+  masterContentId: string | null;
   revision: number;
   strategyVersion: string | null;
   strategySettings: Record<string, unknown> | null;
@@ -52,6 +55,9 @@ function mapCueDraftRow(raw: unknown): CueDraftRow {
     desiredDocument,
     desiredFingerprint: row.desired_fingerprint as string,
     importedBaselineFingerprint: row.imported_baseline_fingerprint as string,
+    importedBaselineLocalCueFingerprint: (row.imported_baseline_local_cue_fingerprint as string | null) ?? null,
+    masterDbId: (row.master_db_id as string | null) ?? null,
+    masterContentId: (row.master_content_id as string | null) ?? null,
     revision: row.revision as number,
     strategyVersion: (row.strategy_version as string | null) ?? null,
     strategySettings: (row.strategy_settings as Record<string, unknown> | null) ?? null,
@@ -69,7 +75,7 @@ function mapCueDraftRow(raw: unknown): CueDraftRow {
 export async function fetchCueDraft(userId: string, trackId: string): Promise<CueDraftRow | null> {
   const { data, error } = await supabase
     .from('cue_drafts')
-    .select('id,user_id,import_id,track_id,rekordbox_content_id,schema_version,desired_document,desired_fingerprint,imported_baseline_fingerprint,revision,strategy_version,strategy_settings,created_at,updated_at,applied_revision,applied_fingerprint,applied_at,last_apply_operation_id,last_apply_state,last_apply_summary')
+    .select('id,user_id,import_id,track_id,rekordbox_content_id,schema_version,desired_document,desired_fingerprint,imported_baseline_fingerprint,imported_baseline_local_cue_fingerprint,master_db_id,master_content_id,revision,strategy_version,strategy_settings,created_at,updated_at,applied_revision,applied_fingerprint,applied_at,last_apply_operation_id,last_apply_state,last_apply_summary')
     .eq('user_id', userId)
     .eq('track_id', trackId)
     .maybeSingle();
@@ -85,6 +91,7 @@ export async function saveCueDraft(input: {
   document: CueDraftDocument;
   desiredFingerprint: string;
   importedBaselineFingerprint: string;
+  importedBaselineLocalCueFingerprint: string | null;
   expectedRevision: number;
   strategyVersion: string | null;
   strategySettings: Record<string, unknown> | null;
@@ -98,6 +105,7 @@ export async function saveCueDraft(input: {
       p_desired_document: input.document,
       p_desired_fingerprint: input.desiredFingerprint,
       p_imported_baseline_fingerprint: input.importedBaselineFingerprint,
+      p_imported_baseline_local_cue_fingerprint: input.importedBaselineLocalCueFingerprint,
       p_expected_revision: input.expectedRevision,
       p_strategy_version: input.strategyVersion,
       p_strategy_settings: input.strategySettings,
@@ -120,7 +128,7 @@ export function cueDraftNeedsApply(row: CueDraftRow): boolean {
 export async function fetchCueDraftsForApply(userId: string, importId: string): Promise<CueDraftRow[]> {
   const { data, error } = await supabase
     .from('cue_drafts')
-    .select('id,user_id,import_id,track_id,rekordbox_content_id,schema_version,desired_document,desired_fingerprint,imported_baseline_fingerprint,revision,strategy_version,strategy_settings,created_at,updated_at,applied_revision,applied_fingerprint,applied_at,last_apply_operation_id,last_apply_state,last_apply_summary')
+    .select('id,user_id,import_id,track_id,rekordbox_content_id,schema_version,desired_document,desired_fingerprint,imported_baseline_fingerprint,imported_baseline_local_cue_fingerprint,master_db_id,master_content_id,revision,strategy_version,strategy_settings,created_at,updated_at,applied_revision,applied_fingerprint,applied_at,last_apply_operation_id,last_apply_state,last_apply_summary')
     .eq('user_id', userId)
     .eq('import_id', importId)
     .order('rekordbox_content_id', { ascending: true });

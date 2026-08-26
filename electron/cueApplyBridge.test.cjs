@@ -11,6 +11,9 @@ function draft() {
     revision: 2,
     desiredFingerprint: 'a'.repeat(64),
     importedBaselineFingerprint: 'b'.repeat(64),
+    importedBaselineLocalCueFingerprint: 'c'.repeat(64),
+    masterDbId: 'db-main',
+    masterContentId: '101',
     desiredDocument: {
       schemaVersion: 1,
       importId: 'import-1',
@@ -56,4 +59,23 @@ test('development resolution is allowed to use the source module', () => {
   });
   assert.ok(launch);
   assert.ok(launch.args.includes('rekordbox_bridge.desktop_service') || launch.command.includes('dropdex-rekordbox-bridge'));
+});
+
+
+test('legacy drafts may omit Stage 1 safety fields so preflight can block them safely', () => {
+  const row = draft();
+  delete row.importedBaselineLocalCueFingerprint;
+  delete row.masterDbId;
+  delete row.masterContentId;
+  assert.doesNotThrow(() => validateSavedDrafts([row]));
+});
+
+test('malformed Stage 1 safety fields are rejected at the desktop boundary', () => {
+  const badHash = draft();
+  badHash.importedBaselineLocalCueFingerprint = 'not-a-hash';
+  assert.throws(() => validateSavedDrafts([badHash]), /local Rekordbox cue baseline fingerprint/);
+
+  const badIdentity = draft();
+  badIdentity.masterContentId = '';
+  assert.throws(() => validateSavedDrafts([badIdentity]), /masterContentId/);
 });

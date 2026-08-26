@@ -3,12 +3,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from rekordbox_bridge.apply_service import (
     ApplyTokenStore,
+    _cue_fingerprint,
     apply_saved_cue_drafts,
     preflight_saved_cue_drafts,
 )
@@ -110,14 +112,105 @@ class TestStage6Preflight:
         assert result.token is None
         assert result.blockers[0].code == "target-track-missing"
 
-    def test_imported_vs_local_divergence_is_informational(self, tmp_path):
+    def test_imported_vs_local_divergence_is_a_hard_blocker(self, tmp_path):
         path = fixture_db(tmp_path)
         row = draft_row()
         row["importedBaselineLocalCueFingerprint"] = "f" * 64
         result = preflight(path, [row], ApplyTokenStore())
-        assert result.ok is True
+        assert result.ok is False
+        assert result.token is None
         assert result.tracks[0].imported_baseline_comparison == "diverged"
-        assert any(item.code == "imported-baseline-diverged" for item in result.warnings)
+        assert any(item.code == "imported-baseline-stale" for item in result.blockers)
+        assert result.warnings == ()
+
+    def test_missing_local_baseline_blocks_legacy_destructive_apply(self, tmp_path):
+        path = fixture_db(tmp_path)
+        row = draft_row()
+        row.pop("importedBaselineLocalCueFingerprint")
+        result = preflight(path, [row], ApplyTokenStore())
+        assert result.ok is False
+        assert result.token is None
+        assert result.tracks[0].imported_baseline_comparison == "missing"
+        assert any(item.code == "imported-baseline-missing" for item in result.blockers)
+
+    def test_legacy_draft_without_strong_identity_remains_parseable_but_cannot_apply(self, tmp_path):
+        path = fixture_db(tmp_path)
+        row = draft_row()
+        row.pop("importedBaselineLocalCueFingerprint")
+        row.pop("masterDbId")
+        row.pop("masterContentId")
+        result = preflight(path, [row], ApplyTokenStore())
+        assert result.ok is False
+        assert result.token is None
+        assert any(item.code == "strong-track-identity-missing" for item in result.blockers)
+        assert any(item.code == "imported-baseline-missing" for item in result.blockers)
+
+    def test_stronger_master_db_identity_mismatch_blocks_even_when_weak_content_id_exists(self, tmp_path):
+        path = fixture_db(tmp_path)
+        row = draft_row(master_db_id="different-master-db")
+        result = preflight(path, [row], ApplyTokenStore())
+        assert result.ok is False
+        assert result.token is None
+        assert result.tracks[0].identity_comparison == "mismatch"
+        assert any(item.code == "strong-track-identity-mismatch" for item in result.blockers)
+
+    def test_ambiguous_strong_content_resolution_blocks(self, tmp_path):
+        path = fixture_db(tmp_path)
+
+        class AmbiguousDb(SqliteTestDb):
+            def get_content(self, **filters):
+                content = super().get_content(**filters)
+                return [content, content] if content is not None else None
+
+        result = preflight_saved_cue_drafts(
+            [draft_row()],
+            token_store=ApplyTokenStore(),
+            now=NOW,
+            discover_target=discovery_for(path),
+            require_closed=closed,
+            database_factory=AmbiguousDb,
+        )
+        assert result.ok is False
+        assert result.token is None
+        assert any(item.code == "strong-track-identity-ambiguous" for item in result.blockers)
+
+    def test_canonical_fingerprint_is_stable_for_reordered_rows(self):
+        first = SimpleNamespace(
+            ContentID="101", InMsec=500, InFrame=0, InMpegFrame=0, InMpegAbs=0,
+            OutMsec=-1, OutFrame=-1, OutMpegFrame=-1, OutMpegAbs=-1, Kind=0,
+            Color=-1, ColorTableIndex=None, ActiveLoop=-1, Comment="one", BeatLoopSize=0, CueMicrosec=0,
+        )
+        second = SimpleNamespace(
+            ContentID="101", InMsec=1000, InFrame=0, InMpegFrame=0, InMpegAbs=0,
+            OutMsec=-1, OutFrame=-1, OutMpegFrame=-1, OutMpegAbs=-1, Kind=1,
+            Color=-1, ColorTableIndex=2, ActiveLoop=-1, Comment="two", BeatLoopSize=0, CueMicrosec=0,
+        )
+        assert _cue_fingerprint([first, second]) == _cue_fingerprint([second, first])
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "delete from djmdCue where ContentID='101'",
+            "update djmdCue set InMsec=501 where ContentID='101'",
+            "update djmdCue set Comment='external-metadata' where ContentID='101'",
+            "update djmdCue set Color=2, ColorTableIndex=3 where ContentID='101'",
+            "update djmdCue set Kind=1 where ContentID='101'",
+            "update djmdCue set OutMsec=1000, OutFrame=0, OutMpegFrame=0, OutMpegAbs=0, ActiveLoop=1 where ContentID='101'",
+            "insert into djmdCue values ('11','101','local-uuid-101','extra',750,0,0,0,-1,-1,-1,-1,1,-1,2,-1,'added',0,0)",
+        ],
+        ids=["deleted", "moved", "metadata", "recolored", "hot-memory-family", "loop", "added"],
+    )
+    def test_any_material_local_cue_change_after_import_blocks_preflight(self, tmp_path, mutation):
+        path = fixture_db(tmp_path)
+        db = SqliteTestDb(str(path))
+        db.conn.execute(mutation)
+        db.commit()
+        db.close()
+        result = preflight(path, [draft_row()], ApplyTokenStore())
+        assert result.ok is False
+        assert result.token is None
+        assert result.tracks[0].imported_baseline_comparison == "diverged"
+        assert any(item.code == "imported-baseline-stale" for item in result.blockers)
 
     def test_sqlite_sidecar_blocks_single_file_generation(self, tmp_path):
         path = fixture_db(tmp_path)

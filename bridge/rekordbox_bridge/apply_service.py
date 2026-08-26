@@ -39,6 +39,7 @@ from .writer import (
     VERIFY_FIELDS,
     StagingWriterError,
     _close_db,
+    _content_for_track,
     _cue_rows_for_content,
     _load_pyrekordbox,
     mutate_staging_database,
@@ -58,6 +59,9 @@ class _ObservedTrack:
     content_id: str
     exists: bool
     cue_fingerprint: Optional[str]
+    identity_comparison: str
+    identity_error: Optional[str] = None
+    identity_error_code: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -158,9 +162,23 @@ def _json_scalar(value: Any) -> Any:
     return str(value)
 
 
-def _cue_fingerprint(content_id: str, content_uuid: str, rows: Sequence[Any]) -> str:
+# Fingerprint only cue semantics that survive DropDex import normalization and are
+# material to complete-set replacement. Raw frame/MPEG encodings are redundant
+# with millisecond positions and are not preserved authoritatively by the editor.
+BASELINE_FINGERPRINT_FIELDS = (
+    "InMsec",
+    "OutMsec",
+    "Kind",
+    "Color",
+    "ColorTableIndex",
+    "ActiveLoop",
+    "Comment",
+)
+
+
+def _cue_fingerprint(rows: Sequence[Any]) -> str:
     normalized = [
-        {field: _json_scalar(getattr(row, field, None)) for field in VERIFY_FIELDS}
+        {field: _json_scalar(getattr(row, field, None)) for field in BASELINE_FINGERPRINT_FIELDS}
         for row in rows
     ]
     normalized.sort(
@@ -170,32 +188,12 @@ def _cue_fingerprint(content_id: str, content_uuid: str, rows: Sequence[Any]) ->
     )
     payload = {
         "schemaVersion": 1,
-        "contentId": content_id,
-        "contentUuid": content_uuid,
         "cues": normalized,
     }
     encoded = json.dumps(
         payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
-
-
-def _resolve_content(db: Any, content_id: str) -> Any | None:
-    try:
-        content = db.get_content(ID=content_id)
-    except Exception as exc:  # noqa: BLE001 - database adapters vary
-        raise StagingWriterError(f"Could not resolve planned ContentID {content_id}.") from exc
-    if content is None:
-        return None
-    if isinstance(content, (list, tuple)):
-        if len(content) != 1:
-            raise StagingWriterError(f"Planned ContentID {content_id} is not uniquely resolvable.")
-        content = content[0]
-    resolved_id = getattr(content, "ID", None)
-    content_uuid = getattr(content, "UUID", None)
-    if resolved_id is None or str(resolved_id) != content_id or not content_uuid:
-        raise StagingWriterError(f"Planned ContentID {content_id} has invalid local identity data.")
-    return content
 
 
 def _observe_snapshot(
@@ -210,18 +208,40 @@ def _observe_snapshot(
     observed: list[_ObservedTrack] = []
     try:
         for track in plan.tracks:
-            content = _resolve_content(db, track.content_id)
-            if content is None:
-                observed.append(_ObservedTrack(track.content_id, False, None))
+            if not track.master_content_id:
+                observed.append(
+                    _ObservedTrack(
+                        content_id=track.content_id,
+                        exists=False,
+                        cue_fingerprint=None,
+                        identity_comparison="missing",
+                        identity_error=(
+                            "Saved draft has no strong master ContentID; refresh/re-save the imported track before apply."
+                        ),
+                    )
+                )
+                continue
+            try:
+                _content_for_track(db, track)
+            except StagingWriterError as exc:
+                observed.append(
+                    _ObservedTrack(
+                        content_id=track.content_id,
+                        exists=getattr(exc, "code", None) != "content-missing",
+                        cue_fingerprint=None,
+                        identity_comparison="mismatch",
+                        identity_error=str(exc),
+                        identity_error_code=getattr(exc, "code", None),
+                    )
+                )
                 continue
             rows = _cue_rows_for_content(db, track.content_id)
             observed.append(
                 _ObservedTrack(
                     content_id=track.content_id,
                     exists=True,
-                    cue_fingerprint=_cue_fingerprint(
-                        track.content_id, str(getattr(content, "UUID")), rows
-                    ),
+                    cue_fingerprint=_cue_fingerprint(rows),
+                    identity_comparison="match",
                 )
             )
     finally:
@@ -260,40 +280,18 @@ def _observed_fingerprint_identity(
     return tuple((track.content_id, track.cue_fingerprint) for track in observed)
 
 
-def _optional_imported_local_fingerprint(row: Mapping[str, Any]) -> Optional[str]:
-    value = row.get(
-        "importedBaselineLocalCueFingerprint",
-        row.get("imported_baseline_local_cue_fingerprint"),
-    )
-    if not isinstance(value, str) or len(value) != 64:
-        return None
-    try:
-        int(value, 16)
-    except ValueError:
-        return None
-    return value.lower()
-
-
 def _preflight_track_results(
     plan: CueApplyPlan,
     observed: Sequence[_ObservedTrack],
-    saved_rows: Sequence[Mapping[str, Any]],
 ) -> tuple[PreflightTrackResult, ...]:
     observed_by_id = {item.content_id: item for item in observed}
-    rows_by_content: dict[str, Mapping[str, Any]] = {}
-    for row in saved_rows:
-        content_id = row.get("rekordboxContentId", row.get("rekordbox_content_id"))
-        document = row.get("desiredDocument", row.get("desired_document"))
-        if content_id is None and isinstance(document, Mapping):
-            content_id = document.get("rekordboxContentId")
-        if content_id is not None:
-            rows_by_content[str(content_id)] = row
-
     results: list[PreflightTrackResult] = []
     for track in plan.tracks:
         current = observed_by_id[track.content_id]
-        comparable = _optional_imported_local_fingerprint(rows_by_content.get(track.content_id, {}))
-        if comparable is None or current.cue_fingerprint is None:
+        comparable = track.imported_baseline_local_cue_fingerprint
+        if comparable is None:
+            comparison = "missing"
+        elif current.identity_comparison != "match" or current.cue_fingerprint is None:
             comparison = "not-comparable"
         elif comparable == current.cue_fingerprint:
             comparison = "match"
@@ -308,9 +306,72 @@ def _preflight_track_results(
                 desired_fingerprint=track.desired_fingerprint,
                 imported_baseline_fingerprint=track.imported_baseline_fingerprint,
                 imported_baseline_comparison=comparison,
+                identity_comparison=current.identity_comparison,
             )
         )
     return tuple(results)
+
+
+def _preflight_blockers(
+    plan: CueApplyPlan,
+    observed: Sequence[_ObservedTrack],
+    track_results: Sequence[PreflightTrackResult],
+) -> tuple[ApplyDiagnostic, ...]:
+    observed_by_id = {item.content_id: item for item in observed}
+    blockers: list[ApplyDiagnostic] = []
+    for track, result in zip(plan.tracks, track_results):
+        current = observed_by_id[track.content_id]
+        if result.identity_comparison == "missing":
+            blockers.append(
+                _diagnostic(
+                    "strong-track-identity-missing",
+                    f"Track {track.track_id} has no strong imported master identity. Refresh/re-save this track before applying cues.",
+                )
+            )
+        elif not result.exists:
+            blockers.append(
+                _diagnostic(
+                    "target-track-missing",
+                    f"ContentID {track.content_id} is not present in current local Rekordbox.",
+                )
+            )
+        elif current.identity_error_code == "content-ambiguous":
+            blockers.append(
+                _diagnostic(
+                    "strong-track-identity-ambiguous",
+                    current.identity_error or f"Track {track.track_id} is not uniquely resolvable in current local Rekordbox.",
+                )
+            )
+        elif result.identity_comparison == "mismatch":
+            blockers.append(
+                _diagnostic(
+                    "strong-track-identity-mismatch",
+                    current.identity_error or f"Track {track.track_id} does not match current local Rekordbox identity.",
+                )
+            )
+
+        if result.imported_baseline_comparison == "missing":
+            blockers.append(
+                _diagnostic(
+                    "imported-baseline-missing",
+                    f"Track {track.track_id} has no comparable imported local cue baseline. Refresh/re-save the imported track before apply.",
+                )
+            )
+        elif result.imported_baseline_comparison == "diverged":
+            blockers.append(
+                _diagnostic(
+                    "imported-baseline-stale",
+                    f"Current local Rekordbox cues for track {track.track_id} differ from the imported baseline. Re-import/rebase instead of overwriting newer local cue edits.",
+                )
+            )
+        elif result.imported_baseline_comparison == "not-comparable" and result.identity_comparison == "match":
+            blockers.append(
+                _diagnostic(
+                    "imported-baseline-not-comparable",
+                    f"Track {track.track_id} cue baseline cannot be compared safely to current local Rekordbox.",
+                )
+            )
+    return tuple(blockers)
 
 
 def preflight_saved_cue_drafts(
@@ -368,32 +429,9 @@ def preflight_saved_cue_drafts(
             blockers=(_diagnostic("preflight-blocked", str(exc)),),
         )
 
-    track_results = _preflight_track_results(plan, observed, saved_rows)
-    blockers = tuple(
-        _diagnostic(
-            "target-track-missing",
-            f"ContentID {track.content_id} is not present in current local Rekordbox.",
-        )
-        for track in track_results
-        if not track.exists
-    )
+    track_results = _preflight_track_results(plan, observed)
+    blockers = _preflight_blockers(plan, observed, track_results)
     warnings: list[ApplyDiagnostic] = []
-    if any(track.imported_baseline_comparison == "diverged" for track in track_results):
-        warnings.append(
-            _diagnostic(
-                "imported-baseline-diverged",
-                "Imported baseline differs from current local Rekordbox; this is informational only.",
-            )
-        )
-    if any(track.imported_baseline_comparison == "not-comparable" for track in track_results):
-        warnings.append(
-            _diagnostic(
-                "imported-baseline-not-comparable",
-                "Stage 4 stores its imported baseline document fingerprint, which is not the "
-                "same canonical schema as Stage 6 local cue fingerprints; no stale-state "
-                "decision is made from that baseline.",
-            )
-        )
     if blockers:
         return ApplyPreflightResult(
             ok=False,
@@ -701,6 +739,14 @@ def apply_saved_cue_drafts(
                 plan.plan_fingerprint,
                 "target-track-missing",
                 "One or more target ContentIDs disappeared after preflight.",
+                source_identity_before=record.source_identity,
+            )
+        if any(item.identity_comparison != "match" for item in observed):
+            return _rejected_result(
+                operation_id,
+                plan.plan_fingerprint,
+                "strong-track-identity-stale",
+                "One or more target tracks no longer match the strong identity verified at preflight.",
                 source_identity_before=record.source_identity,
             )
         if _observed_fingerprint_identity(observed) != record.track_fingerprints:

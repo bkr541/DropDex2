@@ -1,6 +1,8 @@
 """Stage 5 DjmdCue staging writer and verifier tests."""
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,9 +49,11 @@ class SqliteTestDb:
 
     def get_content(self, **filters):
         row = self.conn.execute(
-            "select ID, UUID from djmdContent where ID = ?", (str(filters["ID"]),)
+            "select ID, UUID, MasterDBID from djmdContent where ID = ?", (str(filters["ID"]),)
         ).fetchone()
-        return None if row is None else SimpleNamespace(ID=row["ID"], UUID=row["UUID"])
+        return None if row is None else SimpleNamespace(
+            ID=row["ID"], UUID=row["UUID"], MasterDBID=row["MasterDBID"]
+        )
 
     def get_cue(self, **filters):
         rows = self.conn.execute(
@@ -85,7 +89,7 @@ class SqliteTestDb:
 
 def init_fixture(path: Path) -> None:
     conn = sqlite3.connect(path)
-    conn.execute("create table djmdContent (ID text primary key, UUID text not null)")
+    conn.execute("create table djmdContent (ID text primary key, UUID text not null, MasterDBID text)")
     conn.execute(
         """create table djmdCue (
         ID text primary key, ContentID text, ContentUUID text, UUID text,
@@ -95,8 +99,8 @@ def init_fixture(path: Path) -> None:
         Comment text, BeatLoopSize integer, CueMicrosec integer
         )"""
     )
-    conn.execute("insert into djmdContent values (?, ?)", ("101", "local-uuid-101"))
-    conn.execute("insert into djmdContent values (?, ?)", ("202", "local-uuid-202"))
+    conn.execute("insert into djmdContent values (?, ?, ?)", ("101", "local-uuid-101", "db-main"))
+    conn.execute("insert into djmdContent values (?, ?, ?)", ("202", "local-uuid-202", "db-main"))
     for cue_id, content_id in (("10", "101"), ("20", "202")):
         conn.execute(
             "insert into djmdCue values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -108,6 +112,27 @@ def init_fixture(path: Path) -> None:
         )
     conn.commit()
     conn.close()
+
+
+BASELINE_FIELDS = [
+    "InMsec", "OutMsec", "Kind", "Color", "ColorTableIndex",
+    "ActiveLoop", "Comment",
+]
+
+
+def local_baseline_fingerprint(cues=None) -> str:
+    if cues is None:
+        cues = [{
+            "InMsec": 500, "InFrame": 0, "InMpegFrame": 0,
+            "InMpegAbs": 0, "OutMsec": -1, "OutFrame": -1, "OutMpegFrame": -1,
+            "OutMpegAbs": -1, "Kind": 0, "Color": -1, "ColorTableIndex": None,
+            "ActiveLoop": -1, "Comment": "existing", "BeatLoopSize": 0, "CueMicrosec": 0,
+        }]
+    normalized = [{field: cue.get(field) for field in BASELINE_FIELDS} for cue in cues]
+    normalized.sort(key=lambda value: json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+    payload = {"schemaVersion": 1, "cues": normalized}
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def draft_cue(**overrides):
@@ -130,11 +155,16 @@ def draft_cue(**overrides):
     return value
 
 
-def draft_row(content_id="101", cues=None):
+def draft_row(content_id="101", cues=None, *, master_db_id="db-main", master_content_id=None, local_baseline=None):
+    master_content_id = content_id if master_content_id is None else master_content_id
+    local_baseline = local_baseline_fingerprint() if local_baseline is None else local_baseline
     return {
         "revision": 4,
         "desiredFingerprint": "a" * 64,
         "importedBaselineFingerprint": "b" * 64,
+        "importedBaselineLocalCueFingerprint": local_baseline,
+        "masterDbId": master_db_id,
+        "masterContentId": master_content_id,
         "importId": "import-1",
         "trackId": f"track-{content_id}",
         "rekordboxContentId": content_id,

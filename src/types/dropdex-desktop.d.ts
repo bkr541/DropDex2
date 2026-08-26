@@ -60,6 +60,9 @@ export interface DesktopCueApplyDraft {
   revision: number;
   desiredFingerprint: string;
   importedBaselineFingerprint: string;
+  importedBaselineLocalCueFingerprint: string | null;
+  masterDbId: string | null;
+  masterContentId: string | null;
   desiredDocument: Record<string, unknown>;
 }
 
@@ -72,7 +75,8 @@ export interface DesktopCueApplyPreflightTrack {
   draft_revision: number;
   desired_fingerprint: string;
   imported_baseline_fingerprint: string;
-  imported_baseline_comparison: 'match' | 'diverged' | 'not-comparable';
+  imported_baseline_comparison: 'match' | 'diverged' | 'missing' | 'not-comparable';
+  identity_comparison: 'match' | 'missing' | 'mismatch' | 'not-comparable';
 }
 
 export interface DesktopCueApplyPreflightResult {

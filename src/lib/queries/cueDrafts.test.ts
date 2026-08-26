@@ -37,6 +37,9 @@ const row = {
   desired_document: desiredDocument,
   desired_fingerprint: 'desired',
   imported_baseline_fingerprint: 'baseline',
+  imported_baseline_local_cue_fingerprint: 'local-baseline',
+  master_db_id: 'db-main',
+  master_content_id: 'content-101',
   revision: 2,
   strategy_version: null,
   strategy_settings: null,
@@ -74,6 +77,7 @@ describe('cue draft production persistence queries', () => {
       document: desiredDocument,
       desiredFingerprint: 'desired',
       importedBaselineFingerprint: 'baseline',
+      importedBaselineLocalCueFingerprint: 'local-baseline',
       expectedRevision: 1,
       strategyVersion: null,
       strategySettings: null,
@@ -84,6 +88,7 @@ describe('cue draft production persistence queries', () => {
       p_track_id: 'track-1',
       p_rekordbox_content_id: 'content-1',
       p_desired_document: desiredDocument,
+      p_imported_baseline_local_cue_fingerprint: 'local-baseline',
       p_expected_revision: 1,
     }));
     expect(result.revision).toBe(2);
@@ -102,6 +107,7 @@ describe('cue draft production persistence queries', () => {
       document: desiredDocument,
       desiredFingerprint: 'desired',
       importedBaselineFingerprint: 'baseline',
+      importedBaselineLocalCueFingerprint: 'local-baseline',
       expectedRevision: 1,
       strategyVersion: null,
       strategySettings: null,

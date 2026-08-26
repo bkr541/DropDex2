@@ -41,6 +41,7 @@ import {
   fingerprintCueDraftDocument,
   hydrateCueDraftDocument,
 } from '../../lib/cues/cueDraftDocument';
+import { fingerprintImportedLocalCueBaseline } from '../../lib/cues/localCueBaseline';
 import {
   CueDraftRevisionConflictError,
   fetchCueDraft,
@@ -1068,6 +1069,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const applyGenerationRef = useRef(0);
   const [workingCues, setWorkingCues] = useState<WorkingCue[]>([]);
   const [selectedCueLoading, setSelectedCueLoading] = useState(false);
+  const [selectedCueLoadError, setSelectedCueLoadError] = useState<string | null>(null);
   const [cueRowsByTrackId, setCueRowsByTrackId] = useState<Map<string, CueRow[]>>(new Map());
   const [cueSummaryLoading, setCueSummaryLoading] = useState(false);
   const [beatGrid, setBeatGrid] = useState<BeatGridRow | null>(null);
@@ -1169,7 +1171,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     });
   }, [filteredTracks, sortCol, sortDir, cueRowsByTrackId]);
 
-  function handleColDoubleClick(col: string) {
+  function handleColClick(col: string) {
     if (sortCol === col) {
       if (sortDir === 'asc') setSortDir('desc');
       else { setSortCol(null); setSortDir('asc'); }
@@ -1227,6 +1229,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       setDraftDesiredFingerprint(null);
       setDraftPersistenceMessage(null);
       setWorkingCues([]);
+      setSelectedCueLoadError(null);
       setSelectedCueLoading(false);
       return;
     }
@@ -1246,12 +1249,14 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setDraftDesiredFingerprint(null);
     setDraftPersistenceMessage(null);
     setWorkingCues([]);
+    setSelectedCueLoadError(null);
     setSelectedCueLoading(true);
 
     void fetchTrackCues(requestedTrackId)
       .then(async (rows) => {
         if (!responseIsCurrent()) return;
         const imported = normalizeImportedCues(requestedTrackId, rows);
+        setSelectedCueLoadError(null);
         setImportedCueBaseline(imported);
         setWorkingCues(imported);
 
@@ -1280,7 +1285,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           setDraftPersistenceMessage(null);
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (!responseIsCurrent()) return;
         setImportedCueBaseline([]);
         setSavedCueBaseline(null);
@@ -1290,6 +1295,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         setDraftDesiredFingerprint(null);
         setWorkingCues([]);
         setDraftPersistenceMessage(null);
+        setSelectedCueLoadError(error instanceof Error
+          ? `Cue points could not be loaded: ${error.message}`
+          : 'Cue points could not be loaded for this track.');
       })
       .finally(() => {
         if (responseIsCurrent()) setSelectedCueLoading(false);
@@ -1435,6 +1443,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     revision: row.revision,
     desiredFingerprint: row.desiredFingerprint,
     importedBaselineFingerprint: row.importedBaselineFingerprint,
+    importedBaselineLocalCueFingerprint: row.importedBaselineLocalCueFingerprint,
+    masterDbId: row.masterDbId,
+    masterContentId: row.masterContentId,
     desiredDocument: row.desiredDocument as unknown as Record<string, unknown>,
   })), []);
 
@@ -1530,6 +1541,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const handleAddCue = useCallback((family: 'hot' | 'memory', requestedMs: number): string | null => {
     if (!selectedTrackId) return 'Select a track before editing cue points.';
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
+    if (selectedCueLoadError) return selectedCueLoadError;
     if (beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
     manualCueSequenceRef.current += 1;
     const result = addWorkingCue(workingCues, {
@@ -1541,23 +1553,26 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     });
     if (!result.error) setWorkingCues(result.cues);
     return result.error;
-  }, [beatGrid, beatGridLoading, selectedCueLoading, selectedTrackId, workingCues]);
+  }, [beatGrid, beatGridLoading, selectedCueLoadError, selectedCueLoading, selectedTrackId, workingCues]);
 
   const handleMoveCue = useCallback((cueId: string, requestedMs: number): string | null => {
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
+    if (selectedCueLoadError) return selectedCueLoadError;
     if (beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
     const result = moveWorkingCue(workingCues, cueId, requestedMs, beatGrid?.beats ?? []);
     if (!result.error) setWorkingCues(result.cues);
     return result.error;
-  }, [beatGrid, beatGridLoading, selectedCueLoading, workingCues]);
+  }, [beatGrid, beatGridLoading, selectedCueLoadError, selectedCueLoading, workingCues]);
 
   const handleDeleteCue = useCallback((cueId: string) => {
+    if (selectedCueLoading || selectedCueLoadError) return;
     setWorkingCues((current) => deleteWorkingCue(current, cueId));
-  }, []);
+  }, [selectedCueLoadError, selectedCueLoading]);
 
   const handleAutoCue = useCallback((): string | null => {
     if (!selectedTrackId || !selectedTrack) return 'Select a track before running Auto Cue.';
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
+    if (selectedCueLoadError) return selectedCueLoadError;
     if (beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
     if (phraseLoading) return 'Track sections are still loading for this track.';
     if (!beatGrid || beatGrid.track_id !== selectedTrackId || !isUsableBeatGrid(beatGrid.beats)) {
@@ -1590,12 +1605,13 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         : 'Auto Cue did not add any new cues.';
     }
     return `Auto Cue added ${result.addedHotCount} Hot Cue${result.addedHotCount === 1 ? '' : 's'} and ${result.addedMemoryCount} Memory Cue${result.addedMemoryCount === 1 ? '' : 's'}${skippedCount > 0 ? `; ${skippedCount} unsupported slot${skippedCount === 1 ? '' : 's'} skipped` : ''}.`;
-  }, [beatGrid, beatGridLoading, importId, phraseLoading, phrases, selectedCueLoading, selectedTrack, selectedTrackId, vocalAnalysis, workingCues]);
+  }, [beatGrid, beatGridLoading, importId, phraseLoading, phrases, selectedCueLoadError, selectedCueLoading, selectedTrack, selectedTrackId, vocalAnalysis, workingCues]);
 
   const handleSave = useCallback(async (): Promise<string | null> => {
     if (!selectedTrackId || !selectedTrack) return 'Select a track before saving cue changes.';
     if (!userId) return 'Sign in before saving cue changes.';
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
+    if (selectedCueLoadError) return selectedCueLoadError;
     if (!workingCuesDirty) return 'There are no unsaved cue changes.';
     if (cueDraftSaveInFlightRef.current) return 'A cue draft save is already in progress.';
 
@@ -1628,9 +1644,10 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         rekordboxContentId: selectedTrack.rekordbox_content_id,
         cues: importedSnapshot,
       });
-      const [desiredFingerprint, importedBaselineFingerprint] = await Promise.all([
+      const [desiredFingerprint, importedBaselineFingerprint, importedBaselineLocalCueFingerprint] = await Promise.all([
         fingerprintCueDraftDocument(document),
         fingerprintCueDraftDocument(importedDocument),
+        fingerprintImportedLocalCueBaseline(importedDocument),
       ]);
       const strategy = cueDraftStrategySummary(document);
       const saved = await saveCueDraft({
@@ -1640,6 +1657,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         document,
         desiredFingerprint,
         importedBaselineFingerprint,
+        importedBaselineLocalCueFingerprint,
         expectedRevision,
         strategyVersion: strategy.version,
         strategySettings: strategy.settings,
@@ -1669,7 +1687,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         cueDraftSaveInFlightRef.current = false;
       }
     }
-  }, [draftRevision, importedCueBaseline, selectedCueLoading, selectedTrack, selectedTrackId, userId, workingCues, workingCuesDirty]);
+  }, [draftRevision, importedCueBaseline, selectedCueLoadError, selectedCueLoading, selectedTrack, selectedTrackId, userId, workingCues, workingCuesDirty]);
 
   const handleDiscard = useCallback(() => {
     setWorkingCues(savedCueBaseline ?? importedCueBaseline);
@@ -1707,7 +1725,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         dirty={workingCuesDirty}
         draftStatus={cueDraftStatus}
         saving={savingCueDraft}
-        persistenceMessage={draftPersistenceMessage}
+        persistenceMessage={selectedCueLoadError ?? draftPersistenceMessage}
         onRetryWaveform={() => selectedTrackId && retryWaveform([selectedTrackId])}
         onAddCue={handleAddCue}
         onMoveCue={handleMoveCue}
@@ -1848,7 +1866,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                       { col: 'duration', label: 'Duration', cls: 'px-4 py-2.5 text-right md:px-5' },
                     ] as const).map(({ col, label, cls }) => (
                       <th key={col} className={cn(cls, 'select-none cursor-pointer hover:text-foreground transition-colors')}
-                        onDoubleClick={() => handleColDoubleClick(col)}>
+                        onClick={() => handleColClick(col)}>
                         <span className="inline-flex items-center gap-1">
                           {label}
                           {sortCol === col && (

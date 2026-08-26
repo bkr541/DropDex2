@@ -19,7 +19,8 @@ class PreflightTrackResult:
     draft_revision: int
     desired_fingerprint: str
     imported_baseline_fingerprint: str
-    imported_baseline_comparison: Literal["match", "diverged", "not-comparable"] = "not-comparable"
+    imported_baseline_comparison: Literal["match", "diverged", "missing", "not-comparable"] = "not-comparable"
+    identity_comparison: Literal["match", "missing", "mismatch", "not-comparable"] = "not-comparable"
 
 
 @dataclass(frozen=True)

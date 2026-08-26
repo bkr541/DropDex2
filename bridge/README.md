@@ -183,3 +183,17 @@ The Stage 6 transition is deliberately two-phase:
 The recovery backup is retained. Temporary staging/rollback candidates are
 cleaned up without deleting that backup. USB/removable targets and ANLZ writes
 remain forbidden, and Stage 6 still exposes no renderer writer API.
+
+### Stage 1 cue-apply safety contract
+
+Destructive cue replacement now requires two persisted values that are separate
+from the editable cue document: `imported_baseline_local_cue_fingerprint`, a
+canonical per-track fingerprint of the imported DB-backed cue set using the
+same `DjmdCue` cue semantics as preflight. ANLZ-only or source-conflicting cue
+imports are intentionally non-comparable and block apply. The imported track's
+`master_db_id` /
+`master_content_id` identity copied server-side from `rekordbox_tracks`. Legacy
+drafts may still load, but preflight does not issue an apply token when this
+baseline or strong identity is unavailable, ambiguous, stale, or mismatched.
+The existing generation/per-track token check still protects the interval from
+successful preflight through the final live handoff.

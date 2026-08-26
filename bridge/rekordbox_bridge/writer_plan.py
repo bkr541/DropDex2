@@ -10,7 +10,7 @@ from typing import Any, Optional
 from .writer_models import CueApplyPlan, PlannedCue, PlannedTrack
 
 CUE_DRAFT_SCHEMA_VERSION = 1
-WRITER_PLAN_SCHEMA_VERSION = 1
+WRITER_PLAN_SCHEMA_VERSION = 2
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 _HOT_KIND_BY_SLOT = {1: 1, 2: 2, 3: 3, 4: 5, 5: 6, 6: 7, 7: 8, 8: 9}
 
@@ -70,9 +70,13 @@ def _canonical_plan_payload(tracks: Sequence[PlannedTrack]) -> dict[str, Any]:
                 "importId": track.import_id,
                 "trackId": track.track_id,
                 "contentId": track.content_id,
+                "rekordboxContentId": track.rekordbox_content_id,
+                "masterDbId": track.master_db_id,
+                "masterContentId": track.master_content_id,
                 "draftRevision": track.draft_revision,
                 "desiredFingerprint": track.desired_fingerprint,
                 "importedBaselineFingerprint": track.imported_baseline_fingerprint,
+                "importedBaselineLocalCueFingerprint": track.imported_baseline_local_cue_fingerprint,
                 "cues": [
                     {
                         "family": cue.family,
@@ -220,9 +224,31 @@ def adapt_saved_cue_drafts(saved_rows: Sequence[Mapping[str, Any]]) -> CueApplyP
 
         import_id = _required_string(document.get("importId"), "desiredDocument.importId")
         track_id = _required_string(document.get("trackId"), "desiredDocument.trackId")
-        content_id = _required_string(
+        rekordbox_content_id = _required_string(
             document.get("rekordboxContentId"), "desiredDocument.rekordboxContentId"
         )
+        master_db_id = _nullable_string(
+            row.get("masterDbId", row.get("master_db_id")), "masterDbId"
+        )
+        master_content_id = _nullable_string(
+            row.get("masterContentId", row.get("master_content_id")), "masterContentId"
+        )
+        imported_baseline_local = _nullable_string(
+            row.get(
+                "importedBaselineLocalCueFingerprint",
+                row.get("imported_baseline_local_cue_fingerprint"),
+            ),
+            "importedBaselineLocalCueFingerprint",
+        )
+        if imported_baseline_local is not None and not _HASH_RE.fullmatch(imported_baseline_local):
+            raise CuePlanValidationError(
+                "importedBaselineLocalCueFingerprint must be a SHA-256 hex digest or null."
+            )
+        imported_baseline_local = imported_baseline_local.lower() if imported_baseline_local else None
+        # DropDex already uses imported master_content_id as the local master-library
+        # DjmdContent.ID in the existing Rekordbox bridge. Preserve that repository-native
+        # identity contract here and let preflight fail closed when it is unavailable.
+        content_id = master_content_id or rekordbox_content_id
 
         row_import = row.get("importId", row.get("import_id"))
         row_track = row.get("trackId", row.get("track_id"))
@@ -231,7 +257,7 @@ def adapt_saved_cue_drafts(saved_rows: Sequence[Mapping[str, Any]]) -> CueApplyP
             raise CuePlanValidationError("Saved draft import identity does not match its document.")
         if row_track is not None and str(row_track) != track_id:
             raise CuePlanValidationError("Saved draft track identity does not match its document.")
-        if row_content is not None and str(row_content) != content_id:
+        if row_content is not None and str(row_content) != rekordbox_content_id:
             raise CuePlanValidationError("Saved draft ContentID does not match its document.")
 
         if content_id in seen_content_ids:
@@ -252,9 +278,13 @@ def adapt_saved_cue_drafts(saved_rows: Sequence[Mapping[str, Any]]) -> CueApplyP
                 import_id=import_id,
                 track_id=track_id,
                 content_id=content_id,
+                rekordbox_content_id=rekordbox_content_id,
+                master_db_id=master_db_id,
+                master_content_id=master_content_id,
                 draft_revision=revision,
                 desired_fingerprint=desired_fingerprint,
                 imported_baseline_fingerprint=baseline_fingerprint,
+                imported_baseline_local_cue_fingerprint=imported_baseline_local,
                 cues=cues,
             )
         )
