@@ -19,6 +19,7 @@ export function Dialog({
   destructive = false,
   inline = false,
   closeOnBackdrop = true,
+  placement = 'center',
 }: {
   open?: boolean;
   title: string;
@@ -28,6 +29,7 @@ export function Dialog({
   destructive?: boolean;
   inline?: boolean;
   closeOnBackdrop?: boolean;
+  placement?: 'center' | 'right';
 }) {
   const titleId = useId();
   const surfaceRef = useRef<HTMLElement | null>(null);
@@ -51,7 +53,7 @@ export function Dialog({
     <section
       ref={surfaceRef}
       tabIndex={-1}
-      className={cn('dd-dialog', destructive && 'dd-dialog--destructive', inline && 'dd-dialog--inline')}
+      className={cn('dd-dialog', destructive && 'dd-dialog--destructive', inline && 'dd-dialog--inline', placement === 'right' && 'dd-dialog--right-sheet')}
       role="dialog"
       aria-modal={inline ? undefined : true}
       aria-labelledby={titleId}
@@ -72,5 +74,5 @@ export function Dialog({
     </section>
   );
   if (inline) return surface;
-  return <div className="dd-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (closeOnBackdrop && event.target === event.currentTarget) onClose?.(); }}>{surface}</div>;
+  return <div className={cn('dd-dialog-backdrop', placement === 'right' && 'dd-dialog-backdrop--right-sheet')} role="presentation" onMouseDown={(event) => { if (closeOnBackdrop && event.target === event.currentTarget) onClose?.(); }}>{surface}</div>;
 }

@@ -231,6 +231,23 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain("metadataDraftLoadStatus !== 'loaded'");
   });
 
+  it('wires the Stage 3 Pending Changes review to the shared complete draft cache and revision-safe Discard path', () => {
+    expect(source).toContain('<PendingMetadataChangesReview');
+    expect(source).toContain('pendingCount={pendingMetadataCount}');
+    expect(source).toContain('rows={pendingMetadataReviewRows}');
+    expect(source).toContain('fetchTracksByIds(trackIds)');
+    expect(source).toContain('.filter(metadataDraftNeedsApply).length');
+    expect(source).toContain('draft.currentBaselineValue');
+    expect(source).toContain('discardGenreMetadataDraft({');
+    expect(source).toContain('expectedRevision: draft.revision');
+    expect(source).toContain('next.delete(draft.trackId)');
+    expect(source).toContain('if (editingGenreTrackId === draft.trackId)');
+    expect(source).toContain('genreSaveInFlightRef.current.has(inFlightKey)');
+    expect(source).toContain('setMetadataDraftRetryNonce((value) => value + 1)');
+    expect(source).toContain('setPendingMetadataTrackRetryNonce((value) => value + 1)');
+    expect(source).toContain('Pending Changes (${pendingMetadataCount})');
+  });
+
   it('renders Stage 6 loop ranges, canonical colors, metadata, and conflict provenance in the production Cue Points path', () => {
     expect(source).toContain('REKORDBOX_MEMORY_CUE_COLORS');
     expect(source).toContain('cueLoopRangeGeometry');

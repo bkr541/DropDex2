@@ -1,0 +1,183 @@
+import { CircleDash, WarningAlt } from '@carbon/icons-react';
+import type { RekordboxTrack } from '../../types';
+import type { TrackMetadataDraftRow } from '../../lib/queries/trackMetadataDrafts';
+import { ControlButton } from '../ui/controls';
+import { Dialog } from '../ui/feedback/Dialog';
+
+export type PendingMetadataReviewLoadStatus = 'idle' | 'loading' | 'loaded' | 'failed';
+
+export interface PendingMetadataReviewRow {
+  draft: TrackMetadataDraftRow;
+  track: Pick<RekordboxTrack, 'id' | 'title' | 'artist'>;
+}
+
+function currentGenreLabel(value: string | null): string {
+  return value == null ? 'No Genre' : value;
+}
+
+function pendingGenreLabel(value: string | null): string {
+  return value == null ? 'Clear Genre (No Genre)' : value;
+}
+
+export function PendingMetadataChangesReview({
+  open,
+  pendingCount,
+  draftLoadStatus,
+  draftLoadError,
+  identityLoadStatus,
+  identityLoadError,
+  rows,
+  discardingTrackIds,
+  actionError,
+  onClose,
+  onRetryDrafts,
+  onRetryIdentities,
+  onDiscard,
+}: {
+  open: boolean;
+  pendingCount: number;
+  draftLoadStatus: PendingMetadataReviewLoadStatus;
+  draftLoadError: string | null;
+  identityLoadStatus: PendingMetadataReviewLoadStatus;
+  identityLoadError: string | null;
+  rows: PendingMetadataReviewRow[];
+  discardingTrackIds: Set<string>;
+  actionError: string | null;
+  onClose: () => void;
+  onRetryDrafts: () => void;
+  onRetryIdentities: () => void;
+  onDiscard: (draft: TrackMetadataDraftRow) => void;
+}) {
+  const title = draftLoadStatus === 'loaded'
+    ? `Pending Changes (${pendingCount})`
+    : 'Pending Changes';
+
+  return (
+    <Dialog open={open} title={title} onClose={onClose} placement="right" closeOnBackdrop>
+      <div className="flex min-h-0 flex-col gap-4" data-testid="pending-metadata-review">
+        <div>
+          <p className="text-[11px] font-semibold text-foreground">Metadata changes waiting for Rekordbox</p>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Review saved metadata drafts here. Cue drafts remain a separate Apply operation.
+          </p>
+        </div>
+
+        {(draftLoadStatus === 'idle' || draftLoadStatus === 'loading') && (
+          <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-white/[0.02] p-3 text-[11px] text-muted-foreground" role="status">
+            <CircleDash className="animate-spin" size={15} />
+            Loading pending metadata changes…
+          </div>
+        )}
+
+        {draftLoadStatus === 'failed' && (
+          <div className="rounded-lg border border-red-400/25 bg-red-400/[0.05] p-3 text-[11px] text-red-200" role="alert">
+            <div className="flex items-start gap-2">
+              <WarningAlt className="mt-0.5 shrink-0" size={15} />
+              <p className="min-w-0 break-words">{draftLoadError ?? 'Pending metadata changes could not be loaded.'}</p>
+            </div>
+            <ControlButton variant="surface" className="mt-3" onClick={onRetryDrafts}>
+              Retry pending changes
+            </ControlButton>
+          </div>
+        )}
+
+        {draftLoadStatus === 'loaded' && pendingCount === 0 && (
+          <div className="rounded-lg border border-[var(--color-border-subtle)] bg-white/[0.02] p-5 text-center">
+            <p className="text-xs font-black text-foreground">No pending metadata changes</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">Saved Genre edits will appear here until they are discarded or applied.</p>
+          </div>
+        )}
+
+        {draftLoadStatus === 'loaded' && pendingCount > 0 && (identityLoadStatus === 'idle' || identityLoadStatus === 'loading') && (
+          <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-white/[0.02] p-3 text-[11px] text-muted-foreground" role="status">
+            <CircleDash className="animate-spin" size={15} />
+            Loading track details for all pending changes…
+          </div>
+        )}
+
+        {draftLoadStatus === 'loaded' && pendingCount > 0 && identityLoadStatus === 'failed' && (
+          <div className="rounded-lg border border-red-400/25 bg-red-400/[0.05] p-3 text-[11px] text-red-200" role="alert">
+            <div className="flex items-start gap-2">
+              <WarningAlt className="mt-0.5 shrink-0" size={15} />
+              <p className="min-w-0 break-words">{identityLoadError ?? 'Track details for pending changes could not be loaded.'}</p>
+            </div>
+            <ControlButton variant="surface" className="mt-3" onClick={onRetryIdentities}>
+              Retry track details
+            </ControlButton>
+          </div>
+        )}
+
+        {actionError && (
+          <div className="rounded-lg border border-red-400/25 bg-red-400/[0.05] p-3 text-[11px] text-red-200" role="alert">
+            <p className="break-words">{actionError}</p>
+            <ControlButton variant="surface" className="mt-3" onClick={onRetryDrafts}>
+              Reload pending changes
+            </ControlButton>
+          </div>
+        )}
+
+        {draftLoadStatus === 'loaded' && pendingCount > 0 && identityLoadStatus === 'loaded' && (
+          <div className="space-y-3" aria-label="Pending metadata changes list">
+            {rows.map(({ draft, track }) => {
+              const discarding = discardingTrackIds.has(draft.trackId);
+              return (
+                <article
+                  key={draft.id}
+                  className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/45 p-3"
+                  data-testid="pending-metadata-row"
+                >
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-words text-xs font-black text-foreground [overflow-wrap:anywhere]">{track.title}</p>
+                      {track.artist && <p className="mt-0.5 break-words text-[10px] text-muted-foreground [overflow-wrap:anywhere]">{track.artist}</p>}
+                    </div>
+                    <span className="shrink-0 rounded-full border border-amber-300/25 bg-amber-300/[0.08] px-2 py-1 text-[8px] font-black uppercase tracking-wide text-amber-200">
+                      Genre
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-stretch gap-2" aria-label="Current to pending Genre change">
+                    <div className="min-w-0 rounded-lg border border-white/10 bg-black/10 p-2.5">
+                      <p className="text-[8px] font-black uppercase tracking-[0.12em] text-muted-foreground">Current</p>
+                      <p className="mt-1 break-words text-[11px] font-semibold text-foreground [overflow-wrap:anywhere]">{currentGenreLabel(draft.currentBaselineValue)}</p>
+                    </div>
+                    <div className="flex items-center text-sm font-black text-muted-foreground" aria-hidden="true">→</div>
+                    <div className="min-w-0 rounded-lg border border-amber-300/20 bg-amber-300/[0.04] p-2.5">
+                      <p className="text-[8px] font-black uppercase tracking-[0.12em] text-amber-200">Pending</p>
+                      <p className="mt-1 break-words text-[11px] font-semibold text-foreground [overflow-wrap:anywhere]">{pendingGenreLabel(draft.pendingValue)}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex justify-end">
+                    <ControlButton
+                      variant="ghost"
+                      disabled={discarding}
+                      onClick={() => onDiscard(draft)}
+                      aria-label={`Discard pending Genre change for ${track.title}`}
+                    >
+                      {discarding ? 'Discarding…' : 'Discard'}
+                    </ControlButton>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="border-t border-[var(--color-border-subtle)] pt-4">
+          <ControlButton
+            variant="primary"
+            className="w-full justify-center"
+            disabled
+            title="Metadata Apply is intentionally unavailable until the later metadata apply backend stage is implemented."
+          >
+            Apply All Metadata Changes{draftLoadStatus === 'loaded' ? ` (${pendingCount})` : ''}
+          </ControlButton>
+          <p className="mt-2 text-center text-[9px] text-muted-foreground">
+            Apply is disabled in this stage. This review surface does not write to Rekordbox yet.
+          </p>
+        </div>
+      </div>
+    </Dialog>
+  );
+}

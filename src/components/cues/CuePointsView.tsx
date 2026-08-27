@@ -18,6 +18,7 @@ import {
   type WorkingCue,
 } from '../../lib/music/cueEditorState';
 import { useLibraryStats, useLibraryTracks } from '../../hooks/useRekordboxTracks';
+import { fetchTracksByIds } from '../../lib/queries/rekordbox';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { useRouteImport } from '../../hooks/useRouteEntities';
 import { useAuthSession } from '../../hooks/useAuthSession';
@@ -63,6 +64,7 @@ import {
   type CueDraftRow,
 } from '../../lib/queries/cueDrafts';
 import {
+  discardGenreMetadataDraft,
   fetchTrackMetadataDraftsForImport,
   normalizeGenreMetadataDraftValue,
   REKORDBOX_GENRE_MAX_LENGTH,
@@ -72,6 +74,7 @@ import {
   type TrackMetadataDraftRow,
 } from '../../lib/queries/trackMetadataDrafts';
 import { resolveCueApplySelection, type CueApplyScope } from '../../lib/cues/cueApplyScope';
+import { PendingMetadataChangesReview } from './PendingMetadataChangesReview';
 import type {
   DesktopCueApplyPreflightResult,
   DesktopCueApplyResult,
@@ -95,6 +98,11 @@ interface GenreSaveErrorState {
   trackId: string;
   message: string;
   revisionConflict: boolean;
+}
+
+function metadataDraftNeedsApply(draft: TrackMetadataDraftRow): boolean {
+  return normalizeGenreMetadataDraftValue(draft.pendingValue)
+    !== normalizeGenreMetadataDraftValue(draft.currentBaselineValue);
 }
 
 interface CueRebaseRecoveryItem {
@@ -1658,6 +1666,13 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [metadataDraftRetryNonce, setMetadataDraftRetryNonce] = useState(0);
   const [savingGenreTrackIds, setSavingGenreTrackIds] = useState<Set<string>>(new Set());
   const [genreSaveError, setGenreSaveError] = useState<GenreSaveErrorState | null>(null);
+  const [pendingMetadataReviewOpen, setPendingMetadataReviewOpen] = useState(false);
+  const [pendingMetadataTracksById, setPendingMetadataTracksById] = useState<Map<string, RekordboxTrack>>(new Map());
+  const [pendingMetadataTrackLoadStatus, setPendingMetadataTrackLoadStatus] = useState<MetadataDraftLoadStatus>('idle');
+  const [pendingMetadataTrackLoadError, setPendingMetadataTrackLoadError] = useState<string | null>(null);
+  const [pendingMetadataTrackRetryNonce, setPendingMetadataTrackRetryNonce] = useState(0);
+  const [discardingMetadataTrackIds, setDiscardingMetadataTrackIds] = useState<Set<string>>(new Set());
+  const [metadataDraftActionError, setMetadataDraftActionError] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
@@ -1748,6 +1763,13 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setEditingGenreValue('');
     setSavingGenreTrackIds(new Set());
     setGenreSaveError(null);
+    setPendingMetadataReviewOpen(false);
+    setPendingMetadataTracksById(new Map());
+    setPendingMetadataTrackLoadStatus('idle');
+    setPendingMetadataTrackLoadError(null);
+    setPendingMetadataTrackRetryNonce(0);
+    setDiscardingMetadataTrackIds(new Set());
+    setMetadataDraftActionError(null);
   }, [importId, userId]);
 
   useEffect(() => {
@@ -1786,6 +1808,64 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     };
   }, [importId, metadataDraftRetryNonce, userId]);
 
+  const pendingMetadataDraftTrackIdsKey = useMemo(
+    () => [...genreDraftsByTrackId.values()]
+      .filter(metadataDraftNeedsApply)
+      .map((draft) => draft.trackId)
+      .sort()
+      .join(','),
+    [genreDraftsByTrackId],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!userId || !importId || metadataDraftLoadStatus !== 'loaded') {
+      setPendingMetadataTracksById(new Map());
+      setPendingMetadataTrackLoadStatus('idle');
+      setPendingMetadataTrackLoadError(null);
+      return;
+    }
+
+    const trackIds = pendingMetadataDraftTrackIdsKey ? pendingMetadataDraftTrackIdsKey.split(',') : [];
+    if (trackIds.length === 0) {
+      setPendingMetadataTracksById(new Map());
+      setPendingMetadataTrackLoadStatus('loaded');
+      setPendingMetadataTrackLoadError(null);
+      return;
+    }
+
+    setPendingMetadataTracksById(new Map());
+    setPendingMetadataTrackLoadStatus('loading');
+    setPendingMetadataTrackLoadError(null);
+    void fetchTracksByIds(trackIds)
+      .then((rows) => {
+        if (cancelled) return;
+        const byId = new Map(rows.map((track) => [track.id, track]));
+        const missingIds = trackIds.filter((trackId) => !byId.has(trackId));
+        const wrongImport = rows.find((track) => track.import_id !== importId);
+        if (missingIds.length > 0 || wrongImport) {
+          throw new Error(missingIds.length > 0
+            ? `Track details are incomplete for ${missingIds.length} pending metadata change${missingIds.length === 1 ? '' : 's'}.`
+            : 'A pending metadata track resolved outside the active import.');
+        }
+        setPendingMetadataTracksById(byId);
+        setPendingMetadataTrackLoadStatus('loaded');
+        setPendingMetadataTrackLoadError(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setPendingMetadataTracksById(new Map());
+        setPendingMetadataTrackLoadStatus('failed');
+        setPendingMetadataTrackLoadError(error instanceof Error
+          ? `Track details for pending metadata changes could not be loaded: ${error.message}`
+          : 'Track details for pending metadata changes could not be loaded.');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [importId, metadataDraftLoadStatus, pendingMetadataDraftTrackIdsKey, pendingMetadataTrackRetryNonce, userId]);
+
   const saveInlineGenreDraft = useCallback(async (track: RekordboxTrack) => {
     if (!userId || !importId || metadataDraftLoadStatus !== 'loaded') return;
 
@@ -1815,6 +1895,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       return next;
     });
     setGenreSaveError((current) => current?.trackId === track.id ? null : current);
+    setMetadataDraftActionError(null);
 
     try {
       const saved = await saveGenreMetadataDraft({
@@ -1861,6 +1942,85 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       });
     }
   }, [editingGenreValue, genreDraftsByTrackId, importId, metadataDraftLoadStatus, userId]);
+
+  const discardPendingGenreDraft = useCallback(async (draft: TrackMetadataDraftRow) => {
+    if (!userId || !importId || metadataDraftLoadStatus !== 'loaded') return;
+    const inFlightKey = `${userId}:${importId}:${draft.trackId}`;
+    if (genreSaveInFlightRef.current.has(inFlightKey)) {
+      setMetadataDraftActionError('This Genre change is already being updated. Wait for that request to finish, then try Discard again.');
+      return;
+    }
+
+    const contextGeneration = genreSaveContextGenerationRef.current;
+    const requestedUserId = userId;
+    const requestedImportId = importId;
+    genreSaveInFlightRef.current.add(inFlightKey);
+    setDiscardingMetadataTrackIds((current) => {
+      const next = new Set(current);
+      next.add(draft.trackId);
+      return next;
+    });
+    setMetadataDraftActionError(null);
+
+    try {
+      await discardGenreMetadataDraft({
+        importId: requestedImportId,
+        trackId: draft.trackId,
+        expectedRevision: draft.revision,
+      });
+      if (
+        genreSaveContextGenerationRef.current !== contextGeneration
+        || selectedUserIdRef.current !== requestedUserId
+        || selectedImportIdRef.current !== requestedImportId
+      ) return;
+
+      setGenreDraftsByTrackId((current) => {
+        const latest = current.get(draft.trackId);
+        if (!latest || latest.revision !== draft.revision) return current;
+        const next = new Map(current);
+        next.delete(draft.trackId);
+        return next;
+      });
+      if (editingGenreTrackId === draft.trackId) {
+        setEditingGenreTrackId(null);
+        setEditingGenreValue('');
+      }
+      setGenreSaveError((current) => current?.trackId === draft.trackId ? null : current);
+    } catch (error) {
+      if (
+        genreSaveContextGenerationRef.current !== contextGeneration
+        || selectedUserIdRef.current !== requestedUserId
+        || selectedImportIdRef.current !== requestedImportId
+      ) return;
+      const conflict = error instanceof TrackMetadataDraftRevisionConflictError;
+      setMetadataDraftActionError(conflict
+        ? `${error.message} Reload pending changes before discarding.`
+        : error instanceof Error ? `Pending Genre change could not be discarded: ${error.message}` : 'Pending Genre change could not be discarded.');
+    } finally {
+      genreSaveInFlightRef.current.delete(inFlightKey);
+      if (
+        genreSaveContextGenerationRef.current === contextGeneration
+        && selectedUserIdRef.current === requestedUserId
+        && selectedImportIdRef.current === requestedImportId
+      ) setDiscardingMetadataTrackIds((current) => {
+        const next = new Set(current);
+        next.delete(draft.trackId);
+        return next;
+      });
+    }
+  }, [editingGenreTrackId, importId, metadataDraftLoadStatus, userId]);
+
+  const pendingMetadataReviewRows = useMemo(() => {
+    if (metadataDraftLoadStatus !== 'loaded' || pendingMetadataTrackLoadStatus !== 'loaded') return [];
+    return [...genreDraftsByTrackId.values()]
+      .filter(metadataDraftNeedsApply)
+      .map((draft) => ({ draft, track: pendingMetadataTracksById.get(draft.trackId) }))
+      .filter((row): row is { draft: TrackMetadataDraftRow; track: RekordboxTrack } => Boolean(row.track))
+      .sort((a, b) => a.track.title.localeCompare(b.track.title) || (a.track.artist ?? '').localeCompare(b.track.artist ?? ''));
+  }, [genreDraftsByTrackId, metadataDraftLoadStatus, pendingMetadataTrackLoadStatus, pendingMetadataTracksById]);
+  const pendingMetadataCount = metadataDraftLoadStatus === 'loaded'
+    ? [...genreDraftsByTrackId.values()].filter(metadataDraftNeedsApply).length
+    : 0;
 
   const trackIdsKey = useMemo(() => tracks.map((track) => track.id).join(','), [tracks]);
   useEffect(() => {
@@ -2787,6 +2947,22 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 pb-10">
+      <PendingMetadataChangesReview
+        open={pendingMetadataReviewOpen}
+        pendingCount={pendingMetadataCount}
+        draftLoadStatus={metadataDraftLoadStatus}
+        draftLoadError={metadataDraftLoadError}
+        identityLoadStatus={pendingMetadataTrackLoadStatus}
+        identityLoadError={pendingMetadataTrackLoadError}
+        rows={pendingMetadataReviewRows}
+        discardingTrackIds={discardingMetadataTrackIds}
+        actionError={metadataDraftActionError}
+        onClose={() => setPendingMetadataReviewOpen(false)}
+        onRetryDrafts={() => { setMetadataDraftActionError(null); setMetadataDraftRetryNonce((value) => value + 1); }}
+        onRetryIdentities={() => setPendingMetadataTrackRetryNonce((value) => value + 1)}
+        onDiscard={(draft) => { void discardPendingGenreDraft(draft); }}
+      />
+
       <CueWaveformPanel
         track={selectedTrack}
         beatGrid={beatGrid}
@@ -2956,6 +3132,18 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
               </div>
             </div>
             <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
+              <ControlButton
+                variant="surface"
+                disabled={!userId}
+                onClick={() => setPendingMetadataReviewOpen(true)}
+                aria-label={metadataDraftLoadStatus === 'loaded' ? `Open Pending Changes, ${pendingMetadataCount} pending` : 'Open Pending Changes'}
+                title={metadataDraftLoadStatus === 'failed' ? 'Pending metadata state failed to load. Open to retry.' : 'Review saved metadata changes'}
+              >
+                <List size={14} />
+                {metadataDraftLoadStatus === 'loaded'
+                  ? `Pending Changes (${pendingMetadataCount})`
+                  : metadataDraftLoadStatus === 'failed' ? 'Pending Changes (!)' : 'Pending Changes (…)'}
+              </ControlButton>
               <CueFilterDropdown
                 label="Genre"
                 value={genre}
