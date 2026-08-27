@@ -23,8 +23,10 @@ import {
   discardGenreMetadataDraft,
   fetchGenreMetadataDraft,
   fetchTrackMetadataDraftsForImport,
+  normalizeGenreMetadataDraftValue,
   saveGenreMetadataDraft,
   TrackMetadataDraftRevisionConflictError,
+  validateGenreMetadataDraftValue,
 } from './trackMetadataDrafts';
 
 const fingerprint = 'a'.repeat(64);
@@ -69,6 +71,13 @@ beforeEach(() => {
 });
 
 describe('track metadata draft query boundary', () => {
+  it('mirrors the server Genre normalization rule without collapsing meaningful inner spacing', () => {
+    expect(normalizeGenreMetadataDraftValue('  Bass   House  ')).toBe('Bass   House');
+    expect(normalizeGenreMetadataDraftValue('   ')).toBeNull();
+    expect(normalizeGenreMetadataDraftValue(null)).toBeNull();
+    expect(() => validateGenreMetadataDraftValue('g'.repeat(256))).toThrow(/255 characters or fewer/i);
+  });
+
   it('loads the persisted Genre draft through the user/track/field scope', async () => {
     mocks.maybeSingle.mockResolvedValue({ data: row, error: null });
 

@@ -62,6 +62,15 @@ import {
   saveCueDraft,
   type CueDraftRow,
 } from '../../lib/queries/cueDrafts';
+import {
+  fetchTrackMetadataDraftsForImport,
+  normalizeGenreMetadataDraftValue,
+  REKORDBOX_GENRE_MAX_LENGTH,
+  saveGenreMetadataDraft,
+  TrackMetadataDraftRevisionConflictError,
+  validateGenreMetadataDraftValue,
+  type TrackMetadataDraftRow,
+} from '../../lib/queries/trackMetadataDrafts';
 import { resolveCueApplySelection, type CueApplyScope } from '../../lib/cues/cueApplyScope';
 import type {
   DesktopCueApplyPreflightResult,
@@ -80,6 +89,13 @@ type AnalysisFilter = 'all' | 'ready' | 'incomplete';
 type CueDraftStatus = 'Original' | 'Unsaved' | 'Saved' | 'Needs Verification' | 'Needs Apply' | 'Applied';
 type TerminalCueLoadStatus = 'loaded-empty' | 'loaded-with-cues' | 'failed';
 type SelectedCueLoadStatus = 'idle' | 'loading' | TerminalCueLoadStatus;
+type MetadataDraftLoadStatus = 'idle' | 'loading' | 'loaded' | 'failed';
+
+interface GenreSaveErrorState {
+  trackId: string;
+  message: string;
+  revisionConflict: boolean;
+}
 
 interface CueRebaseRecoveryItem {
   row: CueDraftRow;
@@ -1636,6 +1652,12 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [bpmRange, setBpmRange] = useState<[number, number] | null>(null);
   const [editingGenreTrackId, setEditingGenreTrackId] = useState<string | null>(null);
   const [editingGenreValue, setEditingGenreValue] = useState('');
+  const [genreDraftsByTrackId, setGenreDraftsByTrackId] = useState<Map<string, TrackMetadataDraftRow>>(new Map());
+  const [metadataDraftLoadStatus, setMetadataDraftLoadStatus] = useState<MetadataDraftLoadStatus>('idle');
+  const [metadataDraftLoadError, setMetadataDraftLoadError] = useState<string | null>(null);
+  const [metadataDraftRetryNonce, setMetadataDraftRetryNonce] = useState(0);
+  const [savingGenreTrackIds, setSavingGenreTrackIds] = useState<Set<string>>(new Set());
+  const [genreSaveError, setGenreSaveError] = useState<GenreSaveErrorState | null>(null);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
@@ -1686,6 +1708,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const cueDraftLoadRequestRef = useRef(0);
   const cueDraftSaveRequestRef = useRef(0);
   const cueDraftSaveInFlightRef = useRef(false);
+  const genreSaveContextGenerationRef = useRef(0);
+  const genreSaveInFlightRef = useRef<Set<string>>(new Set());
 
   const selectedTrackId = selectedTrack?.id ?? null;
   selectedTrackIdRef.current = selectedTrackId;
@@ -1714,6 +1738,129 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     debounceMs: 220,
     pageSize: CUE_PAGE_SIZE,
   });
+
+  useEffect(() => {
+    // Identity changes cancel only this renderer's reconciliation. Any RPC
+    // already accepted by Supabase remains revision-protected for its original
+    // track and cannot leak its response into the new user/import scope.
+    genreSaveContextGenerationRef.current += 1;
+    setEditingGenreTrackId(null);
+    setEditingGenreValue('');
+    setSavingGenreTrackIds(new Set());
+    setGenreSaveError(null);
+  }, [importId, userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!userId || !importId) {
+      setGenreDraftsByTrackId(new Map());
+      setMetadataDraftLoadStatus('idle');
+      setMetadataDraftLoadError(null);
+      return;
+    }
+
+    // Do not retain the previous scope or silently equate a failed load with
+    // "no pending metadata". Editing is enabled only after a complete load.
+    setGenreDraftsByTrackId(new Map());
+    setMetadataDraftLoadStatus('loading');
+    setMetadataDraftLoadError(null);
+    void fetchTrackMetadataDraftsForImport(userId, importId)
+      .then((rows) => {
+        if (cancelled) return;
+        setGenreDraftsByTrackId(new Map(rows.map((row) => [row.trackId, row])));
+        setMetadataDraftLoadStatus('loaded');
+        setMetadataDraftLoadError(null);
+        setGenreSaveError((current) => current?.revisionConflict ? null : current);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setGenreDraftsByTrackId(new Map());
+        setMetadataDraftLoadStatus('failed');
+        setMetadataDraftLoadError(error instanceof Error
+          ? `Pending Genre changes could not be loaded: ${error.message}`
+          : 'Pending Genre changes could not be loaded.');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [importId, metadataDraftRetryNonce, userId]);
+
+  const saveInlineGenreDraft = useCallback(async (track: RekordboxTrack) => {
+    if (!userId || !importId || metadataDraftLoadStatus !== 'loaded') return;
+
+    const inFlightKey = `${userId}:${importId}:${track.id}`;
+    if (genreSaveInFlightRef.current.has(inFlightKey)) return;
+
+    let pendingValue: string | null;
+    try {
+      pendingValue = validateGenreMetadataDraftValue(editingGenreValue);
+    } catch (error) {
+      setGenreSaveError({
+        trackId: track.id,
+        message: error instanceof Error ? error.message : 'Genre could not be saved.',
+        revisionConflict: false,
+      });
+      return;
+    }
+
+    const existingDraft = genreDraftsByTrackId.get(track.id) ?? null;
+    const contextGeneration = genreSaveContextGenerationRef.current;
+    const requestedUserId = userId;
+    const requestedImportId = importId;
+    genreSaveInFlightRef.current.add(inFlightKey);
+    setSavingGenreTrackIds((current) => {
+      const next = new Set(current);
+      next.add(track.id);
+      return next;
+    });
+    setGenreSaveError((current) => current?.trackId === track.id ? null : current);
+
+    try {
+      const saved = await saveGenreMetadataDraft({
+        importId: requestedImportId,
+        trackId: track.id,
+        pendingValue,
+        expectedRevision: existingDraft?.revision ?? 0,
+      });
+      if (
+        genreSaveContextGenerationRef.current !== contextGeneration
+        || selectedUserIdRef.current !== requestedUserId
+        || selectedImportIdRef.current !== requestedImportId
+      ) return;
+
+      setGenreDraftsByTrackId((current) => {
+        const next = new Map(current);
+        if (saved) next.set(track.id, saved);
+        else next.delete(track.id);
+        return next;
+      });
+      setEditingGenreTrackId((current) => current === track.id ? null : current);
+      setGenreSaveError((current) => current?.trackId === track.id ? null : current);
+    } catch (error) {
+      if (
+        genreSaveContextGenerationRef.current !== contextGeneration
+        || selectedUserIdRef.current !== requestedUserId
+        || selectedImportIdRef.current !== requestedImportId
+      ) return;
+      setGenreSaveError({
+        trackId: track.id,
+        message: error instanceof Error ? error.message : 'Genre could not be saved.',
+        revisionConflict: error instanceof TrackMetadataDraftRevisionConflictError,
+      });
+    } finally {
+      genreSaveInFlightRef.current.delete(inFlightKey);
+      if (
+        genreSaveContextGenerationRef.current === contextGeneration
+        && selectedUserIdRef.current === requestedUserId
+        && selectedImportIdRef.current === requestedImportId
+      ) setSavingGenreTrackIds((current) => {
+        const next = new Set(current);
+        next.delete(track.id);
+        return next;
+      });
+    }
+  }, [editingGenreValue, genreDraftsByTrackId, importId, metadataDraftLoadStatus, userId]);
 
   const trackIdsKey = useMemo(() => tracks.map((track) => track.id).join(','), [tracks]);
   useEffect(() => {
@@ -2859,6 +3006,26 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           </div>
         </div>
 
+        {metadataDraftLoadStatus === 'loading' && userId && importId && (
+          <div className="flex items-center gap-2 border-b border-[var(--color-border-faint)] bg-white/[0.02] px-5 py-2.5 text-xs text-muted-foreground" role="status">
+            <CircleDash className="animate-spin" size={14} />
+            Loading pending Genre changes…
+          </div>
+        )}
+
+        {metadataDraftLoadError && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-red-400/15 bg-red-400/[0.04] px-5 py-3 text-xs text-red-200" role="alert">
+            <span>{metadataDraftLoadError} Canonical Rekordbox Genre values are shown below, but pending state is unknown until this succeeds.</span>
+            <ControlButton
+              variant="ghost"
+              disabled={!userId || !importId || metadataDraftLoadStatus === 'loading'}
+              onClick={() => setMetadataDraftRetryNonce((value) => value + 1)}
+            >
+              Retry pending Genres
+            </ControlButton>
+          </div>
+        )}
+
         {cueSummaryFailureCount > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-red-400/15 bg-red-400/[0.04] px-5 py-3 text-xs text-red-200" role="status">
             <span>
@@ -2913,6 +3080,12 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                     const cueState = cueSummaryStates.get(track.id);
                     const cueCount = cueLoadCount(cueState);
                     const selected = track.id === selectedTrackId;
+                    const genreDraft = genreDraftsByTrackId.get(track.id) ?? null;
+                    const effectiveGenre = genreDraft ? genreDraft.pendingValue : track.genre;
+                    const genreEditingDirty = editingGenreTrackId === track.id
+                      && normalizeGenreMetadataDraftValue(editingGenreValue) !== normalizeGenreMetadataDraftValue(effectiveGenre);
+                    const genreSaving = savingGenreTrackIds.has(track.id);
+                    const genreEditingAvailable = metadataDraftLoadStatus === 'loaded';
                     return (
                       <tr
                         key={track.id}
@@ -2988,27 +3161,67 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                         </td>
                         <td className="w-[178px] px-3 py-1.5 text-xs text-muted-foreground">
                           {editingGenreTrackId === track.id ? (
-                            <div className="flex items-center gap-1.5">
-                              <div className="flex-1 border-b border-white/15 focus-within:border-white/35 transition-colors">
-                                <input
-                                  type="text"
-                                  autoFocus
-                                  value={editingGenreValue}
-                                  onChange={(e) => setEditingGenreValue(e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === 'Escape') setEditingGenreTrackId(null); }}
-                                  className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/30 outline-none"
-                                  placeholder="Genre…"
-                                />
+                            <div className="space-y-1.5" onClick={(event) => event.stopPropagation()}>
+                              <div className="flex items-center gap-1.5">
+                                <div className="flex-1 border-b border-white/15 focus-within:border-white/35 transition-colors">
+                                  <input
+                                    type="text"
+                                    autoFocus
+                                    maxLength={REKORDBOX_GENRE_MAX_LENGTH}
+                                    value={editingGenreValue}
+                                    onChange={(event) => {
+                                      setEditingGenreValue(event.target.value);
+                                      setGenreSaveError((current) => current?.trackId === track.id ? null : current);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      event.stopPropagation();
+                                      if (event.key === 'Escape') {
+                                        event.preventDefault();
+                                        setEditingGenreTrackId(null);
+                                        setGenreSaveError((current) => current?.trackId === track.id ? null : current);
+                                      } else if (event.key === 'Enter' && !event.repeat && genreEditingDirty && !genreSaving) {
+                                        event.preventDefault();
+                                        void saveInlineGenreDraft(track);
+                                      }
+                                    }}
+                                    disabled={genreSaving}
+                                    aria-label={`Genre for ${track.title}`}
+                                    className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/30 outline-none disabled:opacity-60"
+                                    placeholder="Genre…"
+                                  />
+                                </div>
+                                {genreEditingDirty && (
+                                  <button
+                                    type="button"
+                                    className="shrink-0 text-primary hover:text-primary/80 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                                    title="Save pending Genre change"
+                                    aria-label={`Save pending Genre change for ${track.title}`}
+                                    disabled={genreSaving || !genreEditingAvailable}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void saveInlineGenreDraft(track);
+                                    }}
+                                  >
+                                    {genreSaving ? <CircleDash className="animate-spin" size={13} /> : <Save size={13} />}
+                                  </button>
+                                )}
                               </div>
-                              {editingGenreValue !== (track.genre ?? '') && (
-                                <button
-                                  type="button"
-                                  className="shrink-0 text-primary hover:text-primary/80 transition-colors"
-                                  title="Save genre"
-                                  onClick={() => {/* TODO: wire save */}}
-                                >
-                                  <Save size={13} />
-                                </button>
+                              {genreSaveError?.trackId === track.id && (
+                                <div className="flex items-center justify-between gap-2 text-[10px] text-red-300" role="alert">
+                                  <span>{genreSaveError.message}</span>
+                                  {genreSaveError.revisionConflict && (
+                                    <button
+                                      type="button"
+                                      className="shrink-0 font-bold text-red-200 underline underline-offset-2 hover:text-red-100"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setMetadataDraftRetryNonce((value) => value + 1);
+                                      }}
+                                    >
+                                      Reload pending Genre
+                                    </button>
+                                  )}
+                                </div>
                               )}
                             </div>
                           ) : (
@@ -3016,15 +3229,28 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                               className="group flex items-center gap-1.5"
                               onMouseLeave={() => {}}
                             >
-                              <span className="block truncate">{track.genre ?? '—'}</span>
+                              <span className="block min-w-0 truncate">{effectiveGenre ?? '—'}</span>
+                              {genreDraft && (
+                                <span
+                                  className="shrink-0 rounded-full border border-amber-300/25 bg-amber-300/[0.08] px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-amber-200"
+                                  title="Pending Genre change. Not yet applied to Rekordbox."
+                                  aria-label="Pending Genre change, not yet applied to Rekordbox"
+                                >
+                                  Pending
+                                </span>
+                              )}
                               <button
                                 type="button"
-                                className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all"
-                                title="Edit genre"
+                                className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all disabled:cursor-not-allowed disabled:opacity-20 group-hover:disabled:opacity-20"
+                                title={genreEditingAvailable ? 'Edit Genre' : 'Pending Genre changes must finish loading before editing'}
+                                aria-label={`Edit Genre for ${track.title}`}
+                                disabled={!genreEditingAvailable}
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  if (!genreEditingAvailable) return;
                                   setEditingGenreTrackId(track.id);
-                                  setEditingGenreValue(track.genre ?? '');
+                                  setEditingGenreValue(effectiveGenre ?? '');
+                                  setGenreSaveError(null);
                                 }}
                               >
                                 <Edit size={12} />

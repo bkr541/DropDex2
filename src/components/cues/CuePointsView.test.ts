@@ -195,6 +195,42 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('Retry loading drafts');
     expect(source).not.toContain('.catch(() => setApplyDrafts([]))');
   });
+
+  it('wires inline Genre editing to the persisted metadata-draft production path without mutating canonical track Genre', () => {
+    expect(source).toContain('fetchTrackMetadataDraftsForImport(userId, importId)');
+    expect(source).toContain('new Map(rows.map((row) => [row.trackId, row]))');
+    expect(source).toContain('const genreDraft = genreDraftsByTrackId.get(track.id) ?? null;');
+    expect(source).toContain('const effectiveGenre = genreDraft ? genreDraft.pendingValue : track.genre;');
+    expect(source).toContain('setEditingGenreValue(effectiveGenre ?? \'\')');
+    expect(source).toContain('saveGenreMetadataDraft({');
+    expect(source).toContain('expectedRevision: existingDraft?.revision ?? 0');
+    expect(source).toContain('if (saved) next.set(track.id, saved);');
+    expect(source).toContain('else next.delete(track.id);');
+    expect(source).not.toContain('track.genre =');
+    expect(source).not.toContain('TODO: wire save');
+  });
+
+  it('keeps Genre editor keyboard, retry, pending, and stale-revision behavior explicit and recoverable', () => {
+    expect(source).toContain("event.key === 'Escape'");
+    expect(source).toContain("event.key === 'Enter' && !event.repeat && genreEditingDirty && !genreSaving");
+    expect(source).toContain('genreSaveInFlightRef.current.has(inFlightKey)');
+    expect(source).toContain('error instanceof TrackMetadataDraftRevisionConflictError');
+    expect(source).toContain('Reload pending Genre');
+    expect(source).toContain('setMetadataDraftRetryNonce((value) => value + 1)');
+    expect(source).toContain('Pending Genre change. Not yet applied to Rekordbox.');
+    expect(source).toContain('Pending Genre changes could not be loaded:');
+    expect(source).toContain('pending state is unknown until this succeeds');
+    expect(source).toContain('maxLength={REKORDBOX_GENRE_MAX_LENGTH}');
+    expect(source).toContain('onClick={(event) => event.stopPropagation()}');
+  });
+
+  it('loads Genre drafts once per import scope instead of issuing per-row metadata queries', () => {
+    expect(source.match(/fetchTrackMetadataDraftsForImport\(userId, importId\)/g)).toHaveLength(1);
+    expect(source).not.toContain('fetchGenreMetadataDraft(');
+    expect(source).toContain('[importId, metadataDraftRetryNonce, userId]');
+    expect(source).toContain("metadataDraftLoadStatus !== 'loaded'");
+  });
+
   it('renders Stage 6 loop ranges, canonical colors, metadata, and conflict provenance in the production Cue Points path', () => {
     expect(source).toContain('REKORDBOX_MEMORY_CUE_COLORS');
     expect(source).toContain('cueLoopRangeGeometry');

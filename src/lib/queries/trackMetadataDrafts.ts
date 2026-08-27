@@ -44,6 +44,25 @@ export class TrackMetadataDraftRevisionConflictError extends Error {
   }
 }
 
+/**
+ * Client-compatible Genre normalization for editor/display comparisons. The
+ * SECURITY DEFINER RPC remains authoritative, so this helper deliberately
+ * mirrors only the verified Stage 1 Genre rule: trim outer whitespace and use
+ * null for an empty value while preserving case and meaningful inner spacing.
+ */
+export function normalizeGenreMetadataDraftValue(value: string | null | undefined): string | null {
+  const normalized = value?.trim() ?? '';
+  return normalized === '' ? null : normalized;
+}
+
+export function validateGenreMetadataDraftValue(value: string | null | undefined): string | null {
+  const normalized = normalizeGenreMetadataDraftValue(value);
+  if (normalized != null && normalized.length > REKORDBOX_GENRE_MAX_LENGTH) {
+    throw new Error(`Genre must be ${REKORDBOX_GENRE_MAX_LENGTH} characters or fewer.`);
+  }
+  return normalized;
+}
+
 function mapTrackMetadataDraftRow(raw: unknown): TrackMetadataDraftRow {
   const row = raw as Record<string, unknown>;
   if (row.field !== 'genre') {
