@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const {
+  CueApplyBridge,
   packagedBinaryPath,
   resolveLaunch,
   validateApplyScope,
@@ -204,4 +205,27 @@ test('metadata Apply Track cannot widen to another persisted draft', () => {
   assert.throws(() => validateMetadataApplyScope({
     kind: 'track', importId: 'import-1', trackId: 'other',
   }, [row]), /exactly the scoped saved draft/);
+});
+
+
+test('metadata apply method sends only the bound token, validated scope, and saved drafts', async () => {
+  const bridge = new CueApplyBridge({});
+  const captured = [];
+  bridge.request = async (operation, payload) => {
+    captured.push({ operation, payload });
+    return { ok: true, state: 'applied' };
+  };
+  const row = metadataDraft();
+  const scope = { kind: 'all', importId: 'import-1', expectedDraftCount: 1 };
+  const result = await bridge.metadataApply('x'.repeat(32), scope, [row]);
+  assert.deepEqual(result, { ok: true, state: 'applied' });
+  assert.deepEqual(captured, [{
+    operation: 'metadataApply',
+    payload: { token: 'x'.repeat(32), scope, savedDrafts: [row] },
+  }]);
+
+  assert.throws(
+    () => bridge.metadataApply('short', scope, [row]),
+    /Metadata preflight token is invalid/,
+  );
 });

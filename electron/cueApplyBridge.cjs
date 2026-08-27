@@ -286,7 +286,7 @@ class CueApplyBridge {
   }
 
   async request(operation, payload = {}) {
-    if (!['availability', 'preflight', 'apply', 'metadataAvailability', 'metadataPreflight'].includes(operation)) throw new Error('Unsupported desktop bridge operation.');
+    if (!['availability', 'preflight', 'apply', 'metadataAvailability', 'metadataPreflight', 'metadataApply'].includes(operation)) throw new Error('Unsupported desktop bridge operation.');
     this._start();
     if (!this.child?.stdin?.writable) throw new Error(this.startError?.message || 'Rekordbox apply bridge is unavailable.');
     const requestId = crypto.randomUUID();
@@ -327,6 +327,7 @@ class CueApplyBridge {
         reason: null,
         metadataSchemaVersion: result?.metadataSchemaVersion ?? null,
         genreMaxLength: result?.genreMaxLength ?? null,
+        metadataApplySupported: result?.metadataApplySupported === true,
       };
     } catch (error) {
       return {
@@ -334,6 +335,7 @@ class CueApplyBridge {
         reason: error instanceof Error ? error.message : String(error),
         metadataSchemaVersion: null,
         genreMaxLength: null,
+        metadataApplySupported: false,
       };
     }
   }
@@ -342,6 +344,13 @@ class CueApplyBridge {
     validateSavedMetadataDrafts(savedDrafts);
     validateMetadataApplyScope(scope, savedDrafts);
     return this.request('metadataPreflight', { scope, savedDrafts });
+  }
+
+  metadataApply(token, scope, savedDrafts) {
+    if (typeof token !== 'string' || token.length < 16 || token.length > 512) throw new Error('Metadata preflight token is invalid.');
+    validateSavedMetadataDrafts(savedDrafts);
+    validateMetadataApplyScope(scope, savedDrafts);
+    return this.request('metadataApply', { token, scope, savedDrafts });
   }
 
   preflight(scope, savedDrafts) {

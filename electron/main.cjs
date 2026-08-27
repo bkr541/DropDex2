@@ -514,6 +514,10 @@ function registerIpcHandlers() {
     assertExactObject(payload, ['scope', 'savedDrafts'], 'Metadata apply preflight payload');
     return cueApplyBridge.metadataPreflight(payload.scope, payload.savedDrafts);
   });
+  ipcMain.handle('dropdex:metadata-apply', async (_event, payload) => {
+    assertExactObject(payload, ['token', 'scope', 'savedDrafts'], 'Metadata apply payload');
+    return cueApplyBridge.metadataApply(payload.token, payload.scope, payload.savedDrafts);
+  });
   ipcMain.handle('dropdex:cue-apply-availability', () => cueApplyBridge.availability());
   ipcMain.handle('dropdex:cue-apply-preflight', async (_event, payload) => {
     assertExactObject(payload, ['scope', 'savedDrafts'], 'Cue apply preflight payload');

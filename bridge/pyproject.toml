@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.27",
-    "pyrekordbox>=0.4",
+    "pyrekordbox @ git+https://github.com/dylanljones/pyrekordbox.git@f695541827cc488af267d6ca8a8e0052598d85a0",
 ]
 
 [project.scripts]

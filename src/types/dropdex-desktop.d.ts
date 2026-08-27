@@ -206,6 +206,36 @@ export interface DesktopMetadataPreflightResult {
   expires_at: string | null;
 }
 
+
+export interface DesktopMetadataApplyTrackResult {
+  draft_id: string;
+  track_id: string;
+  content_id: string;
+  state: 'verified' | 'not-verified';
+  applied_revision: number;
+  applied_fingerprint: string;
+  normalized_applied_genre: string | null;
+  desired_resolution: 'reuse' | 'create' | 'clear';
+  resolved_genre_id: string | null;
+  verification_state: 'verified' | 'failed' | 'not-run';
+  details: string | null;
+}
+
+export interface DesktopMetadataApplyResult {
+  ok: boolean;
+  operation_id: string;
+  state: 'applied' | 'rejected' | 'rolled-back' | 'recovery-unverified';
+  plan_fingerprint: string;
+  source_identity_before: string | null;
+  source_identity_after: string | null;
+  backup_identity: string | null;
+  tracks: DesktopMetadataApplyTrackResult[];
+  blockers: DesktopMetadataDiagnostic[];
+  warnings: DesktopMetadataDiagnostic[];
+  rollback_verified: boolean | null;
+  recovery: Record<string, string> | null;
+}
+
 export interface DropDexDesktopBridge {
   readonly isElectron: true;
   getRuntimeInfo(): Promise<{ platform: string; version: string }>;
@@ -215,8 +245,9 @@ export interface DropDexDesktopBridge {
   releaseUsb(): Promise<DesktopUsbReleaseResult>;
   disconnectUsb(): Promise<DesktopUsbReleaseResult>;
   resolveTrackSource(segments: string[]): Promise<DesktopTrackSourceResult>;
-  metadataApplyAvailability(): Promise<{ available: boolean; reason: string | null; metadataSchemaVersion: number | null; genreMaxLength: number | null }>;
+  metadataApplyAvailability(): Promise<{ available: boolean; reason: string | null; metadataSchemaVersion: number | null; genreMaxLength: number | null; metadataApplySupported: boolean }>;
   metadataApplyPreflight(scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataPreflightResult>;
+  metadataApply(token: string, scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataApplyResult>;
   cueApplyAvailability(): Promise<{ available: boolean; reason: string | null }>;
   cueApplyPreflight(scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyPreflightResult>;
   cueApply(token: string, scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyResult>;

@@ -232,14 +232,17 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain("metadataDraftLoadStatus !== 'loaded'");
   });
 
-  it('wires Stage 4 metadata preflight through the desktop boundary without adding metadata mutation', () => {
+  it('wires Stage 5 metadata preflight and explicit bound apply through the desktop boundary', () => {
     expect(source).toContain('desktop.metadataApplyAvailability()');
+    expect(source).toContain('result.metadataApplySupported === true');
     expect(source).toContain('desktop.metadataApplyPreflight(');
+    expect(source).toContain('desktop.metadataApply(');
     expect(source).toContain("{ kind: 'all', importId, expectedDraftCount: pendingRows.length }");
     expect(source).toContain('freshIdentityKey !== pendingMetadataDraftIdentityKey');
     expect(source).toContain('Pending metadata changed before preflight.');
-    expect(source).toContain('Stage 4 intentionally performs no Rekordbox metadata write.');
-    expect(source).not.toContain('desktop.metadataApply(');
+    expect(source).toContain('Pending metadata changed after preflight. No write was requested');
+    expect(source).toContain('setMetadataApplyPreflight(null); // Stage 4 tokens are single-use even on rejection.');
+    expect(source).toContain('pending cloud draft is intentionally retained for Stage 6 finalization');
   });
 
   it('wires the Stage 3 Pending Changes review to the shared complete draft cache and revision-safe Discard path', () => {

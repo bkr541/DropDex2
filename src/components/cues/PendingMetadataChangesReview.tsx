@@ -1,7 +1,7 @@
 import { CircleDash, WarningAlt } from '@carbon/icons-react';
 import type { RekordboxTrack } from '../../types';
 import type { TrackMetadataDraftRow } from '../../lib/queries/trackMetadataDrafts';
-import type { DesktopMetadataPreflightResult } from '../../types/dropdex-desktop';
+import type { DesktopMetadataApplyResult, DesktopMetadataPreflightResult } from '../../types/dropdex-desktop';
 import { ControlButton } from '../ui/controls';
 import { Dialog } from '../ui/feedback/Dialog';
 
@@ -34,12 +34,14 @@ export function PendingMetadataChangesReview({
   applyAvailabilityReason,
   preflightBusy,
   preflightResult,
+  applyResult,
   preflightMessage,
   onClose,
   onRetryDrafts,
   onRetryIdentities,
   onDiscard,
   onPreflightAll,
+  onApplyAll,
 }: {
   open: boolean;
   pendingCount: number;
@@ -54,12 +56,14 @@ export function PendingMetadataChangesReview({
   applyAvailabilityReason: string | null;
   preflightBusy: boolean;
   preflightResult: DesktopMetadataPreflightResult | null;
+  applyResult: DesktopMetadataApplyResult | null;
   preflightMessage: string | null;
   onClose: () => void;
   onRetryDrafts: () => void;
   onRetryIdentities: () => void;
   onDiscard: (draft: TrackMetadataDraftRow) => void;
   onPreflightAll: () => void;
+  onApplyAll: () => void;
 }) {
   const title = draftLoadStatus === 'loaded'
     ? `Pending Changes (${pendingCount})`
@@ -215,6 +219,42 @@ export function PendingMetadataChangesReview({
           </div>
         )}
 
+        {applyResult && (
+          <div
+            className={`rounded-lg border p-3 text-[11px] ${applyResult.ok
+              ? 'border-emerald-300/25 bg-emerald-300/[0.05] text-emerald-100'
+              : applyResult.state === 'recovery-unverified'
+                ? 'border-amber-300/30 bg-amber-300/[0.06] text-amber-100'
+                : 'border-red-400/25 bg-red-400/[0.05] text-red-200'}`}
+            role={applyResult.ok ? 'status' : 'alert'}
+            data-testid="metadata-apply-result"
+          >
+            <p className="font-black">
+              {applyResult.state === 'applied'
+                ? `Rekordbox Genre verified for ${applyResult.tracks.length} metadata change${applyResult.tracks.length === 1 ? '' : 's'}.`
+                : applyResult.state === 'rolled-back'
+                  ? 'Metadata apply failed after replacement; the prior Rekordbox generation was restored and verified.'
+                  : applyResult.state === 'recovery-unverified'
+                    ? 'Metadata apply recovery could not be verified. Do not retry until the Rekordbox database is inspected.'
+                    : 'Metadata apply was rejected before a verified write completed.'}
+            </p>
+            {applyResult.blockers.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {applyResult.blockers.map((blocker, index) => (
+                  <li key={`${blocker.code}:${index}`} className="break-words">
+                    <span className="font-black">{blocker.code}:</span> {blocker.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {applyResult.ok && (
+              <p className="mt-2 text-[10px] text-emerald-100/80">
+                Local Rekordbox is verified. The pending DropDex draft remains until Stage 6 cloud finalization and canonical rebase.
+              </p>
+            )}
+          </div>
+        )}
+
         {preflightMessage && (
           <div className="rounded-lg border border-[var(--color-border-subtle)] bg-white/[0.02] p-3 text-[11px] text-muted-foreground" role="status">
             {preflightMessage}
@@ -222,26 +262,48 @@ export function PendingMetadataChangesReview({
         )}
 
         <div className="border-t border-[var(--color-border-subtle)] pt-4">
-          <ControlButton
-            variant="primary"
-            className="w-full justify-center"
-            disabled={
-              preflightBusy
-              || !applyAvailable
-              || draftLoadStatus !== 'loaded'
-              || identityLoadStatus !== 'loaded'
-              || pendingCount === 0
-              || discardingTrackIds.size > 0
-            }
-            onClick={onPreflightAll}
-            title={applyAvailable
-              ? 'Run a read-only Rekordbox metadata preflight for the complete pending set.'
-              : (applyAvailabilityReason ?? 'Metadata preflight is unavailable in this desktop runtime.')}
-          >
-            {preflightBusy ? 'Checking Metadata…' : `Preflight Apply All Metadata Changes${draftLoadStatus === 'loaded' ? ` (${pendingCount})` : ''}`}
-          </ControlButton>
+          {preflightResult?.ok && preflightResult.token ? (
+            <div className="space-y-2">
+              <ControlButton
+                variant="primary"
+                className="w-full justify-center"
+                disabled={preflightBusy || !applyAvailable || discardingTrackIds.size > 0}
+                onClick={onApplyAll}
+                title="Apply the exact preflight-bound Genre plan through staging, verification, atomic replacement, and rollback protection."
+              >
+                {preflightBusy ? 'Applying Metadata…' : `Apply All Metadata Changes (${preflightResult.tracks.length})`}
+              </ControlButton>
+              <ControlButton
+                variant="surface"
+                className="w-full justify-center"
+                disabled={preflightBusy || !applyAvailable || discardingTrackIds.size > 0}
+                onClick={onPreflightAll}
+              >
+                Run Preflight Again
+              </ControlButton>
+            </div>
+          ) : (
+            <ControlButton
+              variant="primary"
+              className="w-full justify-center"
+              disabled={
+                preflightBusy
+                || !applyAvailable
+                || draftLoadStatus !== 'loaded'
+                || identityLoadStatus !== 'loaded'
+                || pendingCount === 0
+                || discardingTrackIds.size > 0
+              }
+              onClick={onPreflightAll}
+              title={applyAvailable
+                ? 'Run a read-only Rekordbox metadata preflight for the complete pending set.'
+                : (applyAvailabilityReason ?? 'Metadata apply is unavailable in this desktop runtime.')}
+            >
+              {preflightBusy ? 'Checking Metadata…' : `Preflight Apply All Metadata Changes${draftLoadStatus === 'loaded' ? ` (${pendingCount})` : ''}`}
+            </ControlButton>
+          )}
           <p className="mt-2 text-center text-[9px] text-muted-foreground">
-            Stage 4 only checks identity, current Genre, conflicts, and the planned Genre resolution. It does not write to Rekordbox.
+            Preflight is read-only. Apply writes only the bound Genre plan through the verified staging and rollback path; cue drafts remain separate.
           </p>
           {!applyAvailable && applyAvailabilityReason && (
             <p className="mt-1 break-words text-center text-[9px] text-red-300">{applyAvailabilityReason}</p>

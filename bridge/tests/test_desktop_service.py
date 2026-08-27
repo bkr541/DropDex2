@@ -1,4 +1,4 @@
-"""Desktop cue-apply and Stage 4 metadata-preflight protocol locks."""
+"""Desktop cue-apply and Stage 5 metadata-apply protocol locks."""
 import json
 import os
 import subprocess
@@ -20,6 +20,7 @@ def test_desktop_service_keeps_operations_narrow():
     assert 'operation == "apply"' in source
     assert 'operation == "metadataAvailability"' in source
     assert 'operation == "metadataPreflight"' in source
+    assert 'operation == "metadataApply"' in source
     assert "databasePath" not in source
     assert "db_path" not in source
     assert '_validate_scope(request.get("scope"), saved_rows)' in source
@@ -74,7 +75,7 @@ def test_packaging_declares_bundled_runtime_and_no_packaged_python_fallback():
     assert "DROPDEX_PYTHON" not in packaged_branch
 
 
-def test_electron_main_preserves_cue_channels_and_adds_separate_metadata_preflight_channels():
+def test_electron_main_preserves_cue_channels_and_adds_separate_metadata_apply_channels():
     main = (ROOT / "electron/main.cjs").read_text(encoding="utf-8")
     preload = (ROOT / "electron/preload.cjs").read_text(encoding="utf-8")
     assert "dropdex:cue-apply-availability" in main
@@ -88,7 +89,8 @@ def test_electron_main_preserves_cue_channels_and_adds_separate_metadata_preflig
     assert "dropdex:metadata-apply-preflight" in main
     assert "metadataApplyAvailability" in preload
     assert "metadataApplyPreflight" in preload
-    assert "dropdex:metadata-apply'" not in main
+    assert "dropdex:metadata-apply'" in main
+    assert "metadataApply:" in preload
 
 
 def test_desktop_protocol_enforces_track_vs_all_scope():
@@ -199,3 +201,41 @@ def test_metadata_preflight_dispatch_enters_production_service_boundary(monkeypa
     }
     with pytest.raises(ValueError, match="incomplete"):
         desktop_service._handle(incomplete)
+
+
+def test_metadata_apply_dispatch_enters_production_service_boundary(monkeypatch):
+    row = metadata_row()
+    captured = {}
+
+    def fake_apply(token, saved_rows):
+        captured["token"] = token
+        captured["rows"] = saved_rows
+        return {"ok": True, "state": "applied"}
+
+    monkeypatch.setattr(desktop_service, "apply_saved_metadata_drafts", fake_apply)
+    request = {
+        "operation": "metadataApply",
+        "token": "opaque-preflight-token",
+        "scope": {"kind": "all", "importId": "import-1", "expectedDraftCount": 1},
+        "savedDrafts": [row],
+    }
+    assert desktop_service._handle(request) == {"ok": True, "state": "applied"}
+    assert captured == {"token": "opaque-preflight-token", "rows": [row]}
+
+    widened = {
+        **request,
+        "scope": {"kind": "all", "importId": "import-1", "expectedDraftCount": 2},
+    }
+    with pytest.raises(ValueError, match="incomplete"):
+        desktop_service._handle(widened)
+
+
+def test_metadata_writer_dependency_matches_the_importer_pinned_pyrekordbox_revision():
+    pyproject = (ROOT / "bridge/pyproject.toml").read_text(encoding="utf-8")
+    importer_requirements = (ROOT / "importer/requirements.txt").read_text(encoding="utf-8")
+    expected = (
+        "git+https://github.com/dylanljones/pyrekordbox.git"
+        "@f695541827cc488af267d6ca8a8e0052598d85a0"
+    )
+    assert expected in pyproject
+    assert expected in importer_requirements

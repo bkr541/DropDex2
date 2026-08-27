@@ -1,4 +1,4 @@
-"""Narrow JSON-lines desktop protocol for cue apply and metadata preflight.
+"""Narrow JSON-lines desktop protocol for cue apply and verified metadata apply.
 
 This long-lived process owns preflight token stores for its lifetime. It never
 accepts a filesystem path, SQL, shell command, or arbitrary operation name from
@@ -12,6 +12,10 @@ from dataclasses import asdict, is_dataclass
 from typing import Any, Mapping
 
 from rekordbox_bridge.apply_service import apply_saved_cue_drafts, preflight_saved_cue_drafts
+from rekordbox_bridge.metadata_apply import (
+    apply_saved_metadata_drafts,
+    metadata_apply_availability,
+)
 from rekordbox_bridge.metadata_preflight import (
     metadata_preflight_availability,
     preflight_saved_metadata_drafts,
@@ -141,13 +145,23 @@ def _handle(request: Mapping[str, Any]) -> Any:
         return {"available": True, "protocolVersion": PROTOCOL_VERSION}
     if operation == "metadataAvailability":
         result = metadata_preflight_availability()
-        return {**result, "protocolVersion": PROTOCOL_VERSION}
+        apply_capability = metadata_apply_availability()
+        return {**result, **apply_capability, "protocolVersion": PROTOCOL_VERSION}
     if operation == "metadataPreflight":
         saved_rows = request.get("savedDrafts")
         if not isinstance(saved_rows, list):
             raise ValueError("savedDrafts must be an array")
         _validate_metadata_scope(request.get("scope"), saved_rows)
         return preflight_saved_metadata_drafts(saved_rows)
+    if operation == "metadataApply":
+        token = request.get("token")
+        saved_rows = request.get("savedDrafts")
+        if not isinstance(token, str) or not token:
+            raise ValueError("metadata token is required")
+        if not isinstance(saved_rows, list):
+            raise ValueError("savedDrafts must be an array")
+        _validate_metadata_scope(request.get("scope"), saved_rows)
+        return apply_saved_metadata_drafts(token, saved_rows)
     if operation == "preflight":
         saved_rows = request.get("savedDrafts")
         if not isinstance(saved_rows, list):

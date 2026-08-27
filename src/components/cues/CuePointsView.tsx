@@ -80,6 +80,7 @@ import type {
   DesktopCueApplyResult,
   DesktopCueDiffChange,
   DesktopCueDiffCue,
+  DesktopMetadataApplyResult,
   DesktopMetadataDraft,
   DesktopMetadataPreflightResult,
 } from '../../types/dropdex-desktop';
@@ -1678,6 +1679,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [metadataApplyBridgeAvailable, setMetadataApplyBridgeAvailable] = useState(false);
   const [metadataApplyBridgeReason, setMetadataApplyBridgeReason] = useState<string | null>(null);
   const [metadataApplyPreflight, setMetadataApplyPreflight] = useState<DesktopMetadataPreflightResult | null>(null);
+  const [metadataApplyResult, setMetadataApplyResult] = useState<DesktopMetadataApplyResult | null>(null);
   const [metadataApplyBusy, setMetadataApplyBusy] = useState(false);
   const [metadataApplyMessage, setMetadataApplyMessage] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<string | null>(null);
@@ -1780,6 +1782,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setMetadataDraftActionError(null);
     metadataApplyGenerationRef.current += 1;
     setMetadataApplyPreflight(null);
+    setMetadataApplyResult(null);
     setMetadataApplyMessage(null);
     setMetadataApplyBusy(false);
   }, [importId, userId]);
@@ -1795,6 +1798,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     void desktop.metadataApplyAvailability().then((result) => {
       if (cancelled) return;
       const compatible = result.available
+        && result.metadataApplySupported === true
         && result.metadataSchemaVersion === 1
         && result.genreMaxLength === REKORDBOX_GENRE_MAX_LENGTH;
       setMetadataApplyBridgeAvailable(compatible);
@@ -2068,6 +2072,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   useEffect(() => {
     metadataApplyGenerationRef.current += 1;
     setMetadataApplyPreflight(null);
+    setMetadataApplyResult(null);
     setMetadataApplyMessage(null);
     setMetadataApplyBusy(false);
   }, [pendingMetadataDraftIdentityKey]);
@@ -2104,6 +2109,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     const generation = ++metadataApplyGenerationRef.current;
     setMetadataApplyBusy(true);
     setMetadataApplyPreflight(null);
+    setMetadataApplyResult(null);
     setMetadataApplyMessage(null);
     setMetadataDraftActionError(null);
     try {
@@ -2139,7 +2145,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         || selectedImportIdRef.current !== importId) return;
       setMetadataApplyPreflight(result);
       setMetadataApplyMessage(result.ok
-        ? 'Read-only preflight passed. The plan is confirmation-ready, but Stage 4 intentionally performs no Rekordbox metadata write.'
+        ? 'Read-only preflight passed. Review the exact Genre resolutions, then Apply All to write this bound plan safely.'
         : 'Read-only preflight found blockers. Pending Genre drafts were left unchanged.');
     } catch (error) {
       if (generation === metadataApplyGenerationRef.current) {
@@ -2149,6 +2155,78 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       if (generation === metadataApplyGenerationRef.current) setMetadataApplyBusy(false);
     }
   }, [desktopMetadataDrafts, importId, metadataApplyBridgeAvailable, metadataApplyBusy, metadataDraftLoadStatus, pendingMetadataDraftIdentityKey, userId]);
+
+  const handleMetadataApplyAll = useCallback(async () => {
+    const desktop = window.dropdexDesktop;
+    const preflight = metadataApplyPreflight;
+    if (!desktop?.isElectron
+      || typeof desktop.metadataApply !== 'function'
+      || !metadataApplyBridgeAvailable
+      || !userId
+      || !importId
+      || metadataApplyBusy
+      || !preflight?.ok
+      || !preflight.token) return;
+    if (metadataDraftLoadStatus !== 'loaded') {
+      setMetadataApplyMessage('Load the complete pending metadata set before applying.');
+      return;
+    }
+
+    const generation = ++metadataApplyGenerationRef.current;
+    setMetadataApplyBusy(true);
+    setMetadataApplyResult(null);
+    setMetadataApplyMessage(null);
+    setMetadataDraftActionError(null);
+    try {
+      // Re-read the persisted complete set immediately before mutation. The
+      // opaque token is bound to these exact draft revisions/fingerprints, and
+      // the Python bridge independently revalidates local Rekordbox state.
+      const freshRows = await fetchTrackMetadataDraftsForImport(userId, importId);
+      if (generation !== metadataApplyGenerationRef.current
+        || selectedUserIdRef.current !== userId
+        || selectedImportIdRef.current !== importId) return;
+      const pendingRows = freshRows
+        .filter(metadataDraftNeedsApply)
+        .sort((a, b) => a.trackId.localeCompare(b.trackId) || a.id.localeCompare(b.id));
+      const freshIdentityKey = pendingRows
+        .map((draft) => `${draft.id}:${draft.revision}:${draft.draftFingerprint}`)
+        .join('|');
+      if (freshIdentityKey !== pendingMetadataDraftIdentityKey
+        || pendingRows.length !== preflight.tracks.length) {
+        setGenreDraftsByTrackId(new Map(freshRows.map((row) => [row.trackId, row])));
+        setMetadataApplyPreflight(null);
+        setMetadataApplyMessage('Pending metadata changed after preflight. No write was requested; run preflight again for the refreshed complete set.');
+        return;
+      }
+
+      const result = await desktop.metadataApply(
+        preflight.token,
+        { kind: 'all', importId, expectedDraftCount: pendingRows.length },
+        desktopMetadataDrafts(pendingRows),
+      );
+      if (generation !== metadataApplyGenerationRef.current
+        || selectedUserIdRef.current !== userId
+        || selectedImportIdRef.current !== importId) return;
+      setMetadataApplyPreflight(null); // Stage 4 tokens are single-use even on rejection.
+      setMetadataApplyResult(result);
+      setMetadataApplyMessage(result.state === 'applied'
+        ? 'Rekordbox Genre was staged, replaced, reopened, and semantically verified. The pending cloud draft is intentionally retained for Stage 6 finalization.'
+        : result.state === 'rolled-back'
+          ? 'The local Genre apply did not verify, so DropDex restored and verified the prior Rekordbox generation. The pending draft remains.'
+          : result.state === 'recovery-unverified'
+            ? 'Rollback could not be verified. Stop metadata writes and inspect the recovery details before retrying.'
+            : 'Metadata apply was rejected safely. The pending draft remains; run preflight again after resolving the blocker.');
+    } catch (error) {
+      if (generation === metadataApplyGenerationRef.current) {
+        // The desktop token may have been claimed before a transport-visible
+        // failure, so force a new preflight rather than risking token replay.
+        setMetadataApplyPreflight(null);
+        setMetadataApplyMessage(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      if (generation === metadataApplyGenerationRef.current) setMetadataApplyBusy(false);
+    }
+  }, [desktopMetadataDrafts, importId, metadataApplyBridgeAvailable, metadataApplyBusy, metadataApplyPreflight, metadataDraftLoadStatus, pendingMetadataDraftIdentityKey, userId]);
 
   const trackIdsKey = useMemo(() => tracks.map((track) => track.id).join(','), [tracks]);
   useEffect(() => {
@@ -3089,12 +3167,14 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         applyAvailabilityReason={metadataApplyBridgeReason}
         preflightBusy={metadataApplyBusy}
         preflightResult={metadataApplyPreflight}
+        applyResult={metadataApplyResult}
         preflightMessage={metadataApplyMessage}
         onClose={() => setPendingMetadataReviewOpen(false)}
         onRetryDrafts={() => { setMetadataDraftActionError(null); setMetadataDraftRetryNonce((value) => value + 1); }}
         onRetryIdentities={() => setPendingMetadataTrackRetryNonce((value) => value + 1)}
         onDiscard={(draft) => { void discardPendingGenreDraft(draft); }}
         onPreflightAll={() => { void handleMetadataPreflightAll(); }}
+        onApplyAll={() => { void handleMetadataApplyAll(); }}
       />
 
       <CueWaveformPanel
