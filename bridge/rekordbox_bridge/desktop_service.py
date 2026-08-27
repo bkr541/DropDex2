@@ -1,7 +1,8 @@
-"""Narrow JSON-lines desktop protocol for Stage 7 cue apply.
+"""Narrow JSON-lines desktop protocol for cue apply and metadata preflight.
 
-This process owns the Stage 6 token store for its lifetime. It never accepts a
-filesystem path, SQL, shell command, or arbitrary operation name from React.
+This long-lived process owns preflight token stores for its lifetime. It never
+accepts a filesystem path, SQL, shell command, or arbitrary operation name from
+the renderer.
 """
 from __future__ import annotations
 
@@ -11,8 +12,12 @@ from dataclasses import asdict, is_dataclass
 from typing import Any, Mapping
 
 from rekordbox_bridge.apply_service import apply_saved_cue_drafts, preflight_saved_cue_drafts
+from rekordbox_bridge.metadata_preflight import (
+    metadata_preflight_availability,
+    preflight_saved_metadata_drafts,
+)
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 RESULT_PREFIX = "DROPDEX_BRIDGE_RESULT:"
 MAX_REQUEST_BYTES = 2_000_000
 
@@ -51,6 +56,58 @@ def _validate_scope(scope: Any, saved_rows: list[Any]) -> None:
             raise ValueError("track scope does not match saved cue draft")
 
 
+def _validate_metadata_scope(scope: Any, saved_rows: list[Any]) -> None:
+    if not isinstance(scope, Mapping):
+        raise ValueError("metadata scope is required")
+    kind = scope.get("kind")
+    import_id = scope.get("importId")
+    if (
+        kind not in ("track", "all")
+        or not isinstance(import_id, str)
+        or not import_id
+        or len(import_id) > 256
+    ):
+        raise ValueError("metadata scope is invalid")
+
+    expected_keys = (
+        {"kind", "importId", "trackId"}
+        if kind == "track"
+        else {"kind", "importId", "expectedDraftCount"}
+    )
+    if set(scope) != expected_keys:
+        raise ValueError("metadata scope contains unsupported fields")
+
+    if not saved_rows or len(saved_rows) > 5000:
+        raise ValueError("metadata preflight requires between 1 and 5000 saved drafts")
+
+    for row in saved_rows:
+        if not isinstance(row, Mapping):
+            raise ValueError("savedDrafts entries must be objects")
+        if row.get("importId") != import_id:
+            raise ValueError("metadata scope does not match saved draft import")
+        if row.get("field") != "genre":
+            raise ValueError("unsupported metadata field")
+
+    if kind == "track":
+        track_id = scope.get("trackId")
+        if not isinstance(track_id, str) or not track_id or len(track_id) > 256:
+            raise ValueError("metadata track scope requires trackId")
+        if len(saved_rows) != 1 or saved_rows[0].get("trackId") != track_id:
+            raise ValueError("metadata track scope does not match exactly one saved draft")
+        return
+
+    expected_count = scope.get("expectedDraftCount")
+    if (
+        isinstance(expected_count, bool)
+        or not isinstance(expected_count, int)
+        or expected_count <= 0
+        or expected_count > 5000
+    ):
+        raise ValueError("metadata all scope expectedDraftCount is invalid")
+    if expected_count != len(saved_rows):
+        raise ValueError("metadata all scope is incomplete")
+
+
 def _jsonable(value: Any) -> Any:
     if is_dataclass(value):
         return {key: _jsonable(item) for key, item in asdict(value).items()}
@@ -82,6 +139,15 @@ def _handle(request: Mapping[str, Any]) -> Any:
         import pyrekordbox  # noqa: F401
 
         return {"available": True, "protocolVersion": PROTOCOL_VERSION}
+    if operation == "metadataAvailability":
+        result = metadata_preflight_availability()
+        return {**result, "protocolVersion": PROTOCOL_VERSION}
+    if operation == "metadataPreflight":
+        saved_rows = request.get("savedDrafts")
+        if not isinstance(saved_rows, list):
+            raise ValueError("savedDrafts must be an array")
+        _validate_metadata_scope(request.get("scope"), saved_rows)
+        return preflight_saved_metadata_drafts(saved_rows)
     if operation == "preflight":
         saved_rows = request.get("savedDrafts")
         if not isinstance(saved_rows, list):

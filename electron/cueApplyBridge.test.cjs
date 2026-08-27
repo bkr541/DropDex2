@@ -1,7 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { packagedBinaryPath, resolveLaunch, validateApplyScope, validateSavedDrafts } = require('./cueApplyBridge.cjs');
+const {
+  packagedBinaryPath,
+  resolveLaunch,
+  validateApplyScope,
+  validateMetadataApplyScope,
+  validateSavedDrafts,
+  validateSavedMetadataDrafts,
+} = require('./cueApplyBridge.cjs');
 
 function draft() {
   return {
@@ -119,4 +126,82 @@ test('Apply All scope cannot cross import identity', () => {
     () => validateApplyScope({ kind: 'all', importId: 'import-1' }, [row, other]),
     /does not match the saved draft import/,
   );
+});
+
+
+function metadataDraft(overrides = {}) {
+  return {
+    id: 'metadata-draft-1',
+    userId: 'user-1',
+    importId: 'import-1',
+    trackId: 'track-1',
+    field: 'genre',
+    schemaVersion: 1,
+    pendingValue: 'Techno',
+    importedBaselineValue: 'House',
+    currentBaselineValue: 'House',
+    masterDbId: 'db-main',
+    masterContentId: '101',
+    revision: 2,
+    draftFingerprint: 'd'.repeat(64),
+    ...overrides,
+  };
+}
+
+test('metadata desktop boundary rejects arbitrary targets, unsupported fields, and unexpected keys', () => {
+  const pathAttempt = metadataDraft();
+  pathAttempt.databasePath = '/tmp/master.db';
+  assert.throws(() => validateSavedMetadataDrafts([pathAttempt]), /Forbidden renderer field/);
+
+  assert.throws(
+    () => validateSavedMetadataDrafts([metadataDraft({ field: 'comment' })]),
+    /Only Genre metadata drafts/,
+  );
+
+  const extra = metadataDraft({ surprise: 'nope' });
+  assert.throws(() => validateSavedMetadataDrafts([extra]), /unsupported or missing fields/);
+});
+
+test('metadata desktop boundary requires strong master identities and normalized Genre', () => {
+  assert.throws(
+    () => validateSavedMetadataDrafts([metadataDraft({ masterDbId: '' })]),
+    /masterDbId/,
+  );
+  assert.throws(
+    () => validateSavedMetadataDrafts([metadataDraft({ pendingValue: ' Techno ' })]),
+    /must already be normalized/,
+  );
+  assert.doesNotThrow(() => validateSavedMetadataDrafts([metadataDraft({ pendingValue: null })]));
+});
+
+test('metadata Apply All carries an explicit complete-set count', () => {
+  const first = metadataDraft();
+  const second = metadataDraft({ id: 'metadata-draft-2', trackId: 'track-2', masterContentId: '102' });
+  const rows = [first, second];
+  assert.doesNotThrow(() => validateMetadataApplyScope({
+    kind: 'all',
+    importId: 'import-1',
+    expectedDraftCount: 2,
+  }, rows));
+  assert.throws(() => validateMetadataApplyScope({
+    kind: 'all',
+    importId: 'import-1',
+    expectedDraftCount: 3,
+  }, rows), /incomplete/);
+  assert.throws(() => validateMetadataApplyScope({
+    kind: 'all',
+    importId: 'import-1',
+    expectedDraftCount: 2,
+    sql: 'update DjmdContent',
+  }, rows), /unsupported or missing fields/);
+});
+
+test('metadata Apply Track cannot widen to another persisted draft', () => {
+  const row = metadataDraft();
+  assert.doesNotThrow(() => validateMetadataApplyScope({
+    kind: 'track', importId: 'import-1', trackId: 'track-1',
+  }, [row]));
+  assert.throws(() => validateMetadataApplyScope({
+    kind: 'track', importId: 'import-1', trackId: 'other',
+  }, [row]), /exactly the scoped saved draft/);
 });

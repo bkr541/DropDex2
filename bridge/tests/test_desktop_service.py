@@ -1,4 +1,4 @@
-"""Stage 7 desktop protocol and packaging source-level locks."""
+"""Desktop cue-apply and Stage 4 metadata-preflight protocol locks."""
 import json
 import os
 import subprocess
@@ -8,16 +8,18 @@ from pathlib import Path
 import pytest
 
 from rekordbox_bridge import desktop_service
-from rekordbox_bridge.desktop_service import _validate_scope
+from rekordbox_bridge.desktop_service import _validate_metadata_scope, _validate_scope
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_desktop_service_keeps_stage6_operations_narrow():
+def test_desktop_service_keeps_operations_narrow():
     source = (ROOT / "bridge/rekordbox_bridge/desktop_service.py").read_text(encoding="utf-8")
     assert 'operation == "availability"' in source
     assert 'operation == "preflight"' in source
     assert 'operation == "apply"' in source
+    assert 'operation == "metadataAvailability"' in source
+    assert 'operation == "metadataPreflight"' in source
     assert "databasePath" not in source
     assert "db_path" not in source
     assert '_validate_scope(request.get("scope"), saved_rows)' in source
@@ -40,7 +42,7 @@ def test_persistent_protocol_process_answers_availability():
         assert process.stdin is not None
         assert process.stdout is not None
         request = {
-            "protocolVersion": 2,
+            "protocolVersion": 3,
             "requestId": "availability-1",
             "operation": "availability",
         }
@@ -65,12 +67,14 @@ def test_packaging_declares_bundled_runtime_and_no_packaged_python_fallback():
     assert package["scripts"]["dist"].count("build:bridge") == 1
     assert any(item["to"] == "rekordbox-bridge" for item in package["build"]["extraResources"])
     launcher = (ROOT / "electron/cueApplyBridge.cjs").read_text(encoding="utf-8")
-    packaged_branch = launcher.split("if (isPackaged)", 1)[1].split("if (env.DROPDEX_REKORDBOX_BRIDGE_BINARY)", 1)[0]
+    packaged_branch = launcher.split("if (isPackaged)", 1)[1].split(
+        "if (env.DROPDEX_REKORDBOX_BRIDGE_BINARY)", 1
+    )[0]
     assert "python3" not in packaged_branch
     assert "DROPDEX_PYTHON" not in packaged_branch
 
 
-def test_electron_main_exposes_only_three_cue_apply_channels():
+def test_electron_main_preserves_cue_channels_and_adds_separate_metadata_preflight_channels():
     main = (ROOT / "electron/main.cjs").read_text(encoding="utf-8")
     preload = (ROOT / "electron/preload.cjs").read_text(encoding="utf-8")
     assert "dropdex:cue-apply-availability" in main
@@ -80,6 +84,11 @@ def test_electron_main_exposes_only_three_cue_apply_channels():
     assert "assertExactObject(payload, ['token', 'scope', 'savedDrafts']" in main
     assert "cueApplyPreflight" in preload
     assert "cueApply:" in preload
+    assert "dropdex:metadata-apply-availability" in main
+    assert "dropdex:metadata-apply-preflight" in main
+    assert "metadataApplyAvailability" in preload
+    assert "metadataApplyPreflight" in preload
+    assert "dropdex:metadata-apply'" not in main
 
 
 def test_desktop_protocol_enforces_track_vs_all_scope():
@@ -122,3 +131,71 @@ def test_desktop_protocol_preflight_dispatch_preserves_explicit_track_scope(monk
     widened["savedDrafts"] = [row, row]
     with pytest.raises(ValueError, match="exactly one"):
         desktop_service._handle(widened)
+
+
+def metadata_row(**overrides):
+    row = {
+        "id": "draft-1",
+        "userId": "user-1",
+        "importId": "import-1",
+        "trackId": "track-1",
+        "field": "genre",
+        "schemaVersion": 1,
+        "pendingValue": "Techno",
+        "importedBaselineValue": "House",
+        "currentBaselineValue": "House",
+        "masterDbId": "db-main",
+        "masterContentId": "101",
+        "revision": 2,
+        "draftFingerprint": "a" * 64,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_metadata_all_scope_requires_declared_complete_set():
+    rows = [metadata_row(), metadata_row(id="draft-2", trackId="track-2", masterContentId="102")]
+    _validate_metadata_scope(
+        {"kind": "all", "importId": "import-1", "expectedDraftCount": 2},
+        rows,
+    )
+    with pytest.raises(ValueError, match="incomplete"):
+        _validate_metadata_scope(
+            {"kind": "all", "importId": "import-1", "expectedDraftCount": 3},
+            rows,
+        )
+    with pytest.raises(ValueError, match="unsupported fields"):
+        _validate_metadata_scope(
+            {
+                "kind": "all",
+                "importId": "import-1",
+                "expectedDraftCount": 2,
+                "databasePath": "/tmp/master.db",
+            },
+            rows,
+        )
+
+
+def test_metadata_preflight_dispatch_enters_production_service_boundary(monkeypatch):
+    row = metadata_row()
+    captured = {}
+
+    def fake_preflight(saved_rows):
+        captured["rows"] = saved_rows
+        return {"ok": True, "kind": "metadata"}
+
+    monkeypatch.setattr(desktop_service, "preflight_saved_metadata_drafts", fake_preflight)
+    request = {
+        "operation": "metadataPreflight",
+        "scope": {"kind": "all", "importId": "import-1", "expectedDraftCount": 1},
+        "savedDrafts": [row],
+    }
+    assert desktop_service._handle(request) == {"ok": True, "kind": "metadata"}
+    assert captured["rows"] == [row]
+
+    incomplete = {
+        **request,
+        "scope": {"kind": "all", "importId": "import-1", "expectedDraftCount": 2},
+    }
+    with pytest.raises(ValueError, match="incomplete"):
+        desktop_service._handle(incomplete)

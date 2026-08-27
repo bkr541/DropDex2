@@ -202,38 +202,66 @@ def _content_master_db_id(content: Any) -> Optional[str]:
     return None
 
 
-def _content_for_track(db: Any, track: PlannedTrack) -> Any:
-    """Resolve and verify the strongest persisted identity before cue mutation.
+def _content_for_strong_identity(
+    db: Any,
+    *,
+    track_id: str,
+    content_id: str,
+    master_db_id: Optional[str],
+    master_content_id: Optional[str],
+    operation_label: str = "local operation",
+    require_master_db_id: bool = False,
+) -> Any:
+    """Resolve the repository-native trusted master identity without mutation.
 
-    DropDex import/reconciliation already treats ``master_content_id`` as the local
-    master-library ``DjmdContent.ID``. This writer deliberately reuses that contract
-    instead of inventing a second resolver or weakening a strong mismatch to ContentID.
+    Cue apply and metadata preflight share this exact identity contract so a new
+    metadata protocol cannot invent a weaker local-target resolver. Renderer data
+    never supplies a database path or SQL target; the persisted master ContentID
+    must resolve and its MasterDBID must still match current local Rekordbox.
     """
-    if not track.master_content_id:
+    if not master_content_id:
         raise StagingWriterError(
-            f"Track {track.track_id} has no strong master ContentID; destructive apply is blocked.",
+            f"Track {track_id} has no strong master ContentID; {operation_label} is blocked.",
             code="strong-identity-missing",
         )
-    if track.content_id != track.master_content_id:
+    if content_id != master_content_id:
         raise StagingWriterError(
-            f"Track {track.track_id} planned target does not match its strong master ContentID.",
+            f"Track {track_id} planned target does not match its strong master ContentID.",
             code="strong-identity-mismatch",
         )
 
-    content = _content_for_id(db, track.master_content_id)
-    if track.master_db_id:
-        local_master_db_id = _content_master_db_id(content)
-        if local_master_db_id is None:
+    content = _content_for_id(db, master_content_id)
+    if not master_db_id:
+        if require_master_db_id:
             raise StagingWriterError(
-                f"Track {track.track_id} local master DB identity is unavailable; destructive apply is blocked.",
-                code="strong-db-identity-unavailable",
+                f"Track {track_id} has no strong master DB identity; {operation_label} is blocked.",
+                code="strong-db-identity-missing",
             )
-        if local_master_db_id != track.master_db_id:
-            raise StagingWriterError(
-                f"Track {track.track_id} strong master DB identity does not match current local Rekordbox.",
-                code="strong-db-identity-mismatch",
-            )
+        return content
+    local_master_db_id = _content_master_db_id(content)
+    if local_master_db_id is None:
+        raise StagingWriterError(
+            f"Track {track_id} local master DB identity is unavailable; {operation_label} is blocked.",
+            code="strong-db-identity-unavailable",
+        )
+    if local_master_db_id != master_db_id:
+        raise StagingWriterError(
+            f"Track {track_id} strong master DB identity does not match current local Rekordbox.",
+            code="strong-db-identity-mismatch",
+        )
     return content
+
+
+def _content_for_track(db: Any, track: PlannedTrack) -> Any:
+    """Resolve and verify the strongest persisted identity before cue mutation."""
+    return _content_for_strong_identity(
+        db,
+        track_id=track.track_id,
+        content_id=track.content_id,
+        master_db_id=track.master_db_id,
+        master_content_id=track.master_content_id,
+        operation_label="destructive apply",
+    )
 
 
 def _cue_rows_for_content(db: Any, content_id: str) -> list[Any]:

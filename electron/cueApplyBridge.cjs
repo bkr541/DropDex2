@@ -4,7 +4,7 @@ const path = require('node:path');
 const { existsSync } = require('node:fs');
 
 const RESULT_PREFIX = 'DROPDEX_BRIDGE_RESULT:';
-const PROTOCOL_VERSION = 2;
+const PROTOCOL_VERSION = 3;
 const MAX_PAYLOAD_BYTES = 1_500_000;
 const REQUEST_TIMEOUT_MS = 120_000;
 const FORBIDDEN_KEYS = new Set(['databasePath', 'database_path', 'dbPath', 'db_path', 'sql', 'shell', 'argv', 'path']);
@@ -18,6 +18,105 @@ function assertNoForbiddenKeys(value, location = 'payload') {
   for (const [key, nested] of Object.entries(value)) {
     if (FORBIDDEN_KEYS.has(key)) throw new Error(`Forbidden renderer field: ${location}.${key}`);
     assertNoForbiddenKeys(nested, `${location}.${key}`);
+  }
+}
+
+function assertExactKeys(value, expectedKeys, label) {
+  const actualKeys = Object.keys(value).sort();
+  const expected = [...expectedKeys].sort();
+  if (actualKeys.length !== expected.length || actualKeys.some((key, index) => key !== expected[index])) {
+    throw new Error(`${label} contains unsupported or missing fields.`);
+  }
+}
+
+const METADATA_DRAFT_KEYS = [
+  'id',
+  'userId',
+  'importId',
+  'trackId',
+  'field',
+  'schemaVersion',
+  'pendingValue',
+  'importedBaselineValue',
+  'currentBaselineValue',
+  'masterDbId',
+  'masterContentId',
+  'revision',
+  'draftFingerprint',
+];
+
+function validateSavedMetadataDrafts(savedDrafts) {
+  if (!Array.isArray(savedDrafts) || savedDrafts.length === 0 || savedDrafts.length > 5000) {
+    throw new Error('savedDrafts must contain between 1 and 5000 persisted metadata drafts.');
+  }
+  assertNoForbiddenKeys(savedDrafts);
+  let expectedUserId = null;
+  let expectedImportId = null;
+  const logicalTracks = new Set();
+  const masterTargets = new Set();
+  for (const row of savedDrafts) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('Each saved metadata draft must be an object.');
+    assertExactKeys(row, METADATA_DRAFT_KEYS, 'Saved metadata draft');
+    for (const field of ['id', 'userId', 'importId', 'trackId', 'masterDbId', 'masterContentId']) {
+      if (typeof row[field] !== 'string' || row[field].length < 1 || row[field].length > 256) {
+        throw new Error(`Saved metadata draft ${field} is invalid.`);
+      }
+    }
+    if (row.field !== 'genre') throw new Error('Only Genre metadata drafts are supported.');
+    if (row.schemaVersion !== 1) throw new Error('Saved metadata draft schema version is unsupported.');
+    if (!Number.isInteger(row.revision) || row.revision <= 0) throw new Error('Saved metadata draft revision is invalid.');
+    if (typeof row.draftFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(row.draftFingerprint)) {
+      throw new Error('Saved metadata draft fingerprint is invalid.');
+    }
+    for (const field of ['pendingValue', 'importedBaselineValue', 'currentBaselineValue']) {
+      if (row[field] != null && (typeof row[field] !== 'string' || row[field].length > 255)) {
+        throw new Error(`Saved metadata draft ${field} is invalid.`);
+      }
+    }
+    if (row.pendingValue != null && row.pendingValue.trim() !== row.pendingValue) {
+      throw new Error('Saved metadata draft pendingValue must already be normalized.');
+    }
+    if (expectedUserId == null) expectedUserId = row.userId;
+    if (expectedImportId == null) expectedImportId = row.importId;
+    if (row.userId !== expectedUserId) throw new Error('Metadata preflight cannot mix user identities.');
+    if (row.importId !== expectedImportId) throw new Error('Metadata preflight cannot mix import identities.');
+    const logicalKey = `${row.trackId}:genre`;
+    if (logicalTracks.has(logicalKey)) throw new Error('Metadata preflight contains duplicate logical draft identities.');
+    if (masterTargets.has(row.masterContentId)) throw new Error('Metadata preflight contains duplicate master ContentID targets.');
+    logicalTracks.add(logicalKey);
+    masterTargets.add(row.masterContentId);
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(savedDrafts), 'utf8');
+  if (bytes > MAX_PAYLOAD_BYTES) throw new Error('Metadata preflight payload is too large.');
+}
+
+function validateMetadataApplyScope(scope, savedDrafts) {
+  if (!scope || typeof scope !== 'object' || Array.isArray(scope)) throw new Error('Metadata apply scope is invalid.');
+  if (scope.kind !== 'track' && scope.kind !== 'all') throw new Error('Metadata apply scope kind is invalid.');
+  if (typeof scope.importId !== 'string' || scope.importId.length < 1 || scope.importId.length > 256) {
+    throw new Error('Metadata apply scope importId is invalid.');
+  }
+  const expectedKeys = scope.kind === 'track'
+    ? ['importId', 'kind', 'trackId']
+    : ['expectedDraftCount', 'importId', 'kind'];
+  assertExactKeys(scope, expectedKeys, 'Metadata apply scope');
+  for (const row of savedDrafts) {
+    if (row.importId !== scope.importId) throw new Error('Metadata apply scope does not match the saved draft import.');
+  }
+  if (scope.kind === 'track') {
+    if (typeof scope.trackId !== 'string' || scope.trackId.length < 1 || scope.trackId.length > 256) {
+      throw new Error('Metadata apply scope trackId is invalid.');
+    }
+    if (savedDrafts.length !== 1 || savedDrafts[0].trackId !== scope.trackId) {
+      throw new Error('Metadata Apply Track requires exactly the scoped saved draft.');
+    }
+    return;
+  }
+  if (!Number.isInteger(scope.expectedDraftCount) || scope.expectedDraftCount < 1 || scope.expectedDraftCount > 5000) {
+    throw new Error('Metadata Apply All expectedDraftCount is invalid.');
+  }
+  if (scope.expectedDraftCount !== savedDrafts.length) {
+    throw new Error('Metadata Apply All payload is incomplete.');
   }
 }
 
@@ -187,7 +286,7 @@ class CueApplyBridge {
   }
 
   async request(operation, payload = {}) {
-    if (!['availability', 'preflight', 'apply'].includes(operation)) throw new Error('Unsupported cue apply operation.');
+    if (!['availability', 'preflight', 'apply', 'metadataAvailability', 'metadataPreflight'].includes(operation)) throw new Error('Unsupported desktop bridge operation.');
     this._start();
     if (!this.child?.stdin?.writable) throw new Error(this.startError?.message || 'Rekordbox apply bridge is unavailable.');
     const requestId = crypto.randomUUID();
@@ -220,6 +319,31 @@ class CueApplyBridge {
     }
   }
 
+  async metadataAvailability() {
+    try {
+      const result = await this.request('metadataAvailability');
+      return {
+        available: result?.available === true,
+        reason: null,
+        metadataSchemaVersion: result?.metadataSchemaVersion ?? null,
+        genreMaxLength: result?.genreMaxLength ?? null,
+      };
+    } catch (error) {
+      return {
+        available: false,
+        reason: error instanceof Error ? error.message : String(error),
+        metadataSchemaVersion: null,
+        genreMaxLength: null,
+      };
+    }
+  }
+
+  metadataPreflight(scope, savedDrafts) {
+    validateSavedMetadataDrafts(savedDrafts);
+    validateMetadataApplyScope(scope, savedDrafts);
+    return this.request('metadataPreflight', { scope, savedDrafts });
+  }
+
   preflight(scope, savedDrafts) {
     validateSavedDrafts(savedDrafts);
     validateApplyScope(scope, savedDrafts);
@@ -240,4 +364,12 @@ class CueApplyBridge {
   }
 }
 
-module.exports = { CueApplyBridge, packagedBinaryPath, resolveLaunch, validateApplyScope, validateSavedDrafts };
+module.exports = {
+  CueApplyBridge,
+  packagedBinaryPath,
+  resolveLaunch,
+  validateApplyScope,
+  validateMetadataApplyScope,
+  validateSavedDrafts,
+  validateSavedMetadataDrafts,
+};

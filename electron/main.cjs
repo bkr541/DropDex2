@@ -509,6 +509,11 @@ function registerIpcHandlers() {
       finishRequest?.();
     }
   });
+  ipcMain.handle('dropdex:metadata-apply-availability', () => cueApplyBridge.metadataAvailability());
+  ipcMain.handle('dropdex:metadata-apply-preflight', async (_event, payload) => {
+    assertExactObject(payload, ['scope', 'savedDrafts'], 'Metadata apply preflight payload');
+    return cueApplyBridge.metadataPreflight(payload.scope, payload.savedDrafts);
+  });
   ipcMain.handle('dropdex:cue-apply-availability', () => cueApplyBridge.availability());
   ipcMain.handle('dropdex:cue-apply-preflight', async (_event, payload) => {
     assertExactObject(payload, ['scope', 'savedDrafts'], 'Cue apply preflight payload');

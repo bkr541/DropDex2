@@ -151,6 +151,61 @@ export interface DesktopCueApplyResult {
   recovery: Record<string, string> | null;
 }
 
+export interface DesktopMetadataDraft {
+  id: string;
+  userId: string;
+  importId: string;
+  trackId: string;
+  field: 'genre';
+  schemaVersion: 1;
+  pendingValue: string | null;
+  importedBaselineValue: string | null;
+  currentBaselineValue: string | null;
+  masterDbId: string;
+  masterContentId: string;
+  revision: number;
+  draftFingerprint: string;
+}
+
+export type DesktopMetadataApplyScope =
+  | { kind: 'track'; importId: string; trackId: string }
+  | { kind: 'all'; importId: string; expectedDraftCount: number };
+
+export interface DesktopMetadataPreflightTrack {
+  draft_id: string;
+  track_id: string;
+  field: 'genre';
+  content_id: string;
+  exists: boolean;
+  identity_comparison: 'match' | 'missing' | 'mismatch';
+  draft_revision: number;
+  draft_fingerprint: string;
+  expected_baseline_value: string | null;
+  current_value: string | null;
+  pending_value: string | null;
+  baseline_comparison: 'match' | 'diverged' | 'not-comparable';
+  desired_resolution: 'reuse' | 'create' | 'clear' | 'blocked';
+  existing_genre_id: string | null;
+}
+
+export interface DesktopMetadataDiagnostic {
+  code: string;
+  message: string;
+  context: { trackId?: string | null; expected?: string | null; current?: string | null; pending?: string | null } | null;
+}
+
+export interface DesktopMetadataPreflightResult {
+  ok: boolean;
+  preflight_id: string;
+  plan_fingerprint: string;
+  source_identity: string | null;
+  tracks: DesktopMetadataPreflightTrack[];
+  blockers: DesktopMetadataDiagnostic[];
+  warnings: DesktopMetadataDiagnostic[];
+  token: string | null;
+  expires_at: string | null;
+}
+
 export interface DropDexDesktopBridge {
   readonly isElectron: true;
   getRuntimeInfo(): Promise<{ platform: string; version: string }>;
@@ -160,6 +215,8 @@ export interface DropDexDesktopBridge {
   releaseUsb(): Promise<DesktopUsbReleaseResult>;
   disconnectUsb(): Promise<DesktopUsbReleaseResult>;
   resolveTrackSource(segments: string[]): Promise<DesktopTrackSourceResult>;
+  metadataApplyAvailability(): Promise<{ available: boolean; reason: string | null; metadataSchemaVersion: number | null; genreMaxLength: number | null }>;
+  metadataApplyPreflight(scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataPreflightResult>;
   cueApplyAvailability(): Promise<{ available: boolean; reason: string | null }>;
   cueApplyPreflight(scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyPreflightResult>;
   cueApply(token: string, scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyResult>;

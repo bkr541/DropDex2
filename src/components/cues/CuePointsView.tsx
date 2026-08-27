@@ -80,6 +80,8 @@ import type {
   DesktopCueApplyResult,
   DesktopCueDiffChange,
   DesktopCueDiffCue,
+  DesktopMetadataDraft,
+  DesktopMetadataPreflightResult,
 } from '../../types/dropdex-desktop';
 
 interface CuePointsViewProps {
@@ -1673,6 +1675,11 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [pendingMetadataTrackRetryNonce, setPendingMetadataTrackRetryNonce] = useState(0);
   const [discardingMetadataTrackIds, setDiscardingMetadataTrackIds] = useState<Set<string>>(new Set());
   const [metadataDraftActionError, setMetadataDraftActionError] = useState<string | null>(null);
+  const [metadataApplyBridgeAvailable, setMetadataApplyBridgeAvailable] = useState(false);
+  const [metadataApplyBridgeReason, setMetadataApplyBridgeReason] = useState<string | null>(null);
+  const [metadataApplyPreflight, setMetadataApplyPreflight] = useState<DesktopMetadataPreflightResult | null>(null);
+  const [metadataApplyBusy, setMetadataApplyBusy] = useState(false);
+  const [metadataApplyMessage, setMetadataApplyMessage] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
@@ -1725,6 +1732,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const cueDraftSaveInFlightRef = useRef(false);
   const genreSaveContextGenerationRef = useRef(0);
   const genreSaveInFlightRef = useRef<Set<string>>(new Set());
+  const metadataApplyGenerationRef = useRef(0);
 
   const selectedTrackId = selectedTrack?.id ?? null;
   selectedTrackIdRef.current = selectedTrackId;
@@ -1770,7 +1778,36 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setPendingMetadataTrackRetryNonce(0);
     setDiscardingMetadataTrackIds(new Set());
     setMetadataDraftActionError(null);
+    metadataApplyGenerationRef.current += 1;
+    setMetadataApplyPreflight(null);
+    setMetadataApplyMessage(null);
+    setMetadataApplyBusy(false);
   }, [importId, userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const desktop = window.dropdexDesktop;
+    if (!desktop?.isElectron || typeof desktop.metadataApplyAvailability !== 'function') {
+      setMetadataApplyBridgeAvailable(false);
+      setMetadataApplyBridgeReason('Metadata preflight is available in the current DropDex desktop app only.');
+      return;
+    }
+    void desktop.metadataApplyAvailability().then((result) => {
+      if (cancelled) return;
+      const compatible = result.available
+        && result.metadataSchemaVersion === 1
+        && result.genreMaxLength === REKORDBOX_GENRE_MAX_LENGTH;
+      setMetadataApplyBridgeAvailable(compatible);
+      setMetadataApplyBridgeReason(compatible
+        ? null
+        : result.reason ?? 'The desktop metadata protocol is incompatible with this renderer.');
+    }).catch((error) => {
+      if (cancelled) return;
+      setMetadataApplyBridgeAvailable(false);
+      setMetadataApplyBridgeReason(error instanceof Error ? error.message : String(error));
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2021,6 +2058,97 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const pendingMetadataCount = metadataDraftLoadStatus === 'loaded'
     ? [...genreDraftsByTrackId.values()].filter(metadataDraftNeedsApply).length
     : 0;
+
+  const pendingMetadataDraftIdentityKey = useMemo(() => [...genreDraftsByTrackId.values()]
+    .filter(metadataDraftNeedsApply)
+    .sort((a, b) => a.trackId.localeCompare(b.trackId) || a.id.localeCompare(b.id))
+    .map((draft) => `${draft.id}:${draft.revision}:${draft.draftFingerprint}`)
+    .join('|'), [genreDraftsByTrackId]);
+
+  useEffect(() => {
+    metadataApplyGenerationRef.current += 1;
+    setMetadataApplyPreflight(null);
+    setMetadataApplyMessage(null);
+    setMetadataApplyBusy(false);
+  }, [pendingMetadataDraftIdentityKey]);
+
+  const desktopMetadataDrafts = useCallback((rows: TrackMetadataDraftRow[]): DesktopMetadataDraft[] => rows.map((row) => {
+    if (row.field !== 'genre' || row.schemaVersion !== 1) {
+      throw new Error('A saved metadata draft uses an unsupported field or schema version. Reload DropDex before preflighting.');
+    }
+    return {
+      id: row.id,
+      userId: row.userId,
+      importId: row.importId,
+      trackId: row.trackId,
+      field: 'genre',
+      schemaVersion: 1,
+      pendingValue: row.pendingValue,
+      importedBaselineValue: row.importedBaselineValue,
+      currentBaselineValue: row.currentBaselineValue,
+      masterDbId: row.masterDbId,
+      masterContentId: row.masterContentId,
+      revision: row.revision,
+      draftFingerprint: row.draftFingerprint,
+    };
+  }), []);
+
+  const handleMetadataPreflightAll = useCallback(async () => {
+    const desktop = window.dropdexDesktop;
+    if (!desktop?.isElectron || !metadataApplyBridgeAvailable || !userId || !importId || metadataApplyBusy) return;
+    if (metadataDraftLoadStatus !== 'loaded') {
+      setMetadataApplyMessage('Load the complete pending metadata set before running preflight.');
+      return;
+    }
+
+    const generation = ++metadataApplyGenerationRef.current;
+    setMetadataApplyBusy(true);
+    setMetadataApplyPreflight(null);
+    setMetadataApplyMessage(null);
+    setMetadataDraftActionError(null);
+    try {
+      // Re-fetch through the Stage 1 exact-count paginator immediately before
+      // crossing the desktop boundary. This prevents Apply All from being
+      // scoped to the rendered/filtered page or a stale in-memory subset.
+      const freshRows = await fetchTrackMetadataDraftsForImport(userId, importId);
+      if (generation !== metadataApplyGenerationRef.current
+        || selectedUserIdRef.current !== userId
+        || selectedImportIdRef.current !== importId) return;
+      const pendingRows = freshRows
+        .filter(metadataDraftNeedsApply)
+        .sort((a, b) => a.trackId.localeCompare(b.trackId) || a.id.localeCompare(b.id));
+      const freshIdentityKey = pendingRows
+        .map((draft) => `${draft.id}:${draft.revision}:${draft.draftFingerprint}`)
+        .join('|');
+      if (freshIdentityKey !== pendingMetadataDraftIdentityKey) {
+        setGenreDraftsByTrackId(new Map(freshRows.map((row) => [row.trackId, row])));
+        setMetadataApplyMessage('Pending metadata changed before preflight. The review has been refreshed; run preflight again for the new complete set.');
+        return;
+      }
+      if (pendingRows.length === 0) {
+        setMetadataApplyMessage('There are no pending metadata changes to preflight.');
+        return;
+      }
+
+      const result = await desktop.metadataApplyPreflight(
+        { kind: 'all', importId, expectedDraftCount: pendingRows.length },
+        desktopMetadataDrafts(pendingRows),
+      );
+      if (generation !== metadataApplyGenerationRef.current
+        || selectedUserIdRef.current !== userId
+        || selectedImportIdRef.current !== importId) return;
+      setMetadataApplyPreflight(result);
+      setMetadataApplyMessage(result.ok
+        ? 'Read-only preflight passed. The plan is confirmation-ready, but Stage 4 intentionally performs no Rekordbox metadata write.'
+        : 'Read-only preflight found blockers. Pending Genre drafts were left unchanged.');
+    } catch (error) {
+      if (generation === metadataApplyGenerationRef.current) {
+        setMetadataApplyMessage(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      if (generation === metadataApplyGenerationRef.current) setMetadataApplyBusy(false);
+    }
+  }, [desktopMetadataDrafts, importId, metadataApplyBridgeAvailable, metadataApplyBusy, metadataDraftLoadStatus, pendingMetadataDraftIdentityKey, userId]);
 
   const trackIdsKey = useMemo(() => tracks.map((track) => track.id).join(','), [tracks]);
   useEffect(() => {
@@ -2957,10 +3085,16 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         rows={pendingMetadataReviewRows}
         discardingTrackIds={discardingMetadataTrackIds}
         actionError={metadataDraftActionError}
+        applyAvailable={metadataApplyBridgeAvailable}
+        applyAvailabilityReason={metadataApplyBridgeReason}
+        preflightBusy={metadataApplyBusy}
+        preflightResult={metadataApplyPreflight}
+        preflightMessage={metadataApplyMessage}
         onClose={() => setPendingMetadataReviewOpen(false)}
         onRetryDrafts={() => { setMetadataDraftActionError(null); setMetadataDraftRetryNonce((value) => value + 1); }}
         onRetryIdentities={() => setPendingMetadataTrackRetryNonce((value) => value + 1)}
         onDiscard={(draft) => { void discardPendingGenreDraft(draft); }}
+        onPreflightAll={() => { void handleMetadataPreflightAll(); }}
       />
 
       <CueWaveformPanel

@@ -224,11 +224,22 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('onClick={(event) => event.stopPropagation()}');
   });
 
-  it('loads Genre drafts once per import scope instead of issuing per-row metadata queries', () => {
-    expect(source.match(/fetchTrackMetadataDraftsForImport\(userId, importId\)/g)).toHaveLength(1);
+  it('loads Genre drafts by complete-set queries instead of issuing per-row metadata queries', () => {
+    expect(source.match(/fetchTrackMetadataDraftsForImport\(userId, importId\)/g)).toHaveLength(2);
+    expect(source).toContain('Re-fetch through the Stage 1 exact-count paginator immediately before');
     expect(source).not.toContain('fetchGenreMetadataDraft(');
     expect(source).toContain('[importId, metadataDraftRetryNonce, userId]');
     expect(source).toContain("metadataDraftLoadStatus !== 'loaded'");
+  });
+
+  it('wires Stage 4 metadata preflight through the desktop boundary without adding metadata mutation', () => {
+    expect(source).toContain('desktop.metadataApplyAvailability()');
+    expect(source).toContain('desktop.metadataApplyPreflight(');
+    expect(source).toContain("{ kind: 'all', importId, expectedDraftCount: pendingRows.length }");
+    expect(source).toContain('freshIdentityKey !== pendingMetadataDraftIdentityKey');
+    expect(source).toContain('Pending metadata changed before preflight.');
+    expect(source).toContain('Stage 4 intentionally performs no Rekordbox metadata write.');
+    expect(source).not.toContain('desktop.metadataApply(');
   });
 
   it('wires the Stage 3 Pending Changes review to the shared complete draft cache and revision-safe Discard path', () => {
