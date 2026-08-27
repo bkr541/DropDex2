@@ -165,6 +165,7 @@ class TestTrackMetadataFidelity:
         track = library.tracks[0]
         assert track.title == "(untitled)"
         assert track.source_title is None
+        assert track.genre == "Genre"
         assert track.duration_ms == 183456
         assert track.duration_seconds == 183
         assert track.file_path_normalized == "/Contents/Artist/Track.flac"
@@ -742,6 +743,18 @@ class TestInsertTracks:
         sb = _make_sb_mock("uuid-abc")
         result = _insert_tracks(sb, lib, "import-id-1")
         assert result == {"42": "uuid-abc"}
+
+    def test_reimported_genre_is_written_to_canonical_track_payload(self):
+        lib = ParsedLibrary(source_filename="exportLibrary.db")
+        track = _make_track("42")
+        track.genre = "Future Bass"
+        lib.tracks.append(track)
+        sb = _make_sb_mock()
+
+        _insert_tracks(sb, lib, "import-id-1")
+
+        inserted_row = sb.table.return_value.insert.call_args[0][0][0]
+        assert inserted_row["genre"] == "Future Bass"
 
     def test_analysis_fields_included_in_insert_payload(self):
         lib = ParsedLibrary(source_filename="exportLibrary.db")

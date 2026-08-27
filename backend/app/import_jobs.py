@@ -16,6 +16,7 @@ from .import_worker_registry import worker_registry
 from .retained_analysis_dependencies import (
     begin_rekordbox_hard_delete,
     reconcile_retained_analysis_dependencies,
+    rekordbox_metadata_delete_block,
 )
 from .supabase_pagination import fetch_all_rows
 
@@ -50,6 +51,56 @@ _STORAGE_REFERENCE_QUERY_CHUNK = 20
 
 
 _ACTIVE_ANALYSIS_STATES = frozenset({"awaiting_upload", "uploading", "uploaded", "parsing", "pause_requested", "stopping"})
+
+
+def _metadata_delete_http_exception(block: str) -> HTTPException:
+    if block == "recovery":
+        return HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "DELETE_METADATA_RECOVERY_LOCKED",
+                "detail": (
+                    "This library has a verified or unresolved local Genre apply that still needs "
+                    "cloud recovery. Resolve the Pending Changes recovery state before deleting it."
+                ),
+                "retryable": False,
+            },
+        )
+    return HTTPException(
+        status_code=409,
+        detail={
+            "error_code": "DELETE_METADATA_PENDING",
+            "detail": (
+                "This library still has pending Genre changes. Apply or discard those changes "
+                "before permanently deleting the library."
+            ),
+            "retryable": False,
+        },
+    )
+
+
+def _metadata_delete_block_from_exception(exc: Exception) -> str | None:
+    text = str(exc).lower()
+    marker = "metadata_delete_blocked:"
+    if marker not in text:
+        return None
+    suffix = text.split(marker, 1)[1]
+    if suffix.startswith("recovery"):
+        return "recovery"
+    if suffix.startswith("pending"):
+        return "pending"
+    return None
+
+
+def _ensure_metadata_delete_allowed(sb, import_id: str, user_id: str) -> None:
+    try:
+        block = rekordbox_metadata_delete_block(sb, import_id, user_id)
+    except Exception as exc:
+        if "import not found" in str(exc).lower():
+            raise HTTPException(status_code=404, detail="Import job not found") from exc
+        raise
+    if block is not None:
+        raise _metadata_delete_http_exception(block)
 
 
 def _terminal_consistency_updates(row: dict[str, Any], new_state: str) -> dict[str, Any]:
@@ -919,9 +970,13 @@ def _cleanup_after_worker_ack(
             },
         )
 
+    _ensure_metadata_delete_allowed(sb, import_id, user_id)
     try:
         dependency_gate_closed = begin_rekordbox_hard_delete(sb, import_id, user_id)
     except Exception as exc:
+        metadata_block = _metadata_delete_block_from_exception(exc)
+        if metadata_block is not None:
+            raise _metadata_delete_http_exception(metadata_block) from exc
         logger.exception("Could not begin hard-delete cleanup for import %s", import_id)
         _update_import_row(
             sb,
@@ -1136,6 +1191,7 @@ def delete_import_job(
         )
     sb = _create_supabase()
     row = get_import_job(import_id, user_id, sb=sb)
+    _ensure_metadata_delete_allowed(sb, import_id, user_id)
     current_status = str(row.get("status") or "")
     if current_status == "cancelled":
         return row
@@ -1242,6 +1298,20 @@ def delete_all_import_jobs(
     """
     sb = _create_supabase()
     rows = _list_user_rekordbox_imports(sb, user_id)
+    for row in rows:
+        import_id = str(row.get("id") or "")
+        if not import_id:
+            continue
+        try:
+            _ensure_metadata_delete_allowed(sb, import_id, user_id)
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                # A background finalizer may remove a row between list and
+                # preflight. The destructive pass already treats that race as
+                # success, so the metadata preflight must preserve that rule.
+                continue
+            raise
+
     deleted_count = 0
 
     for row in rows:

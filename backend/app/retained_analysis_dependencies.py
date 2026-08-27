@@ -119,6 +119,29 @@ def reconcile_retained_analysis_dependencies(sb: Any, import_id: str) -> int:
     return 0
 
 
+def rekordbox_metadata_delete_block(sb: Any, import_id: str, user_id: str) -> str | None:
+    """Return the server-owned metadata reason that blocks destructive import deletion."""
+    response = sb.rpc(
+        "rekordbox_import_metadata_delete_block_v1",
+        {
+            "p_import_id": import_id,
+            "p_user_id": user_id,
+        },
+    ).execute()
+    data = response.data if response is not None else None
+    if data is None:
+        return None
+    if isinstance(data, str):
+        return data or None
+    if isinstance(data, list) and len(data) == 1:
+        value = data[0]
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value or None
+    raise RuntimeError("Unexpected metadata delete-block response")
+
+
 def begin_rekordbox_hard_delete(sb: Any, import_id: str, user_id: str) -> bool:
     """Atomically close the dependency-registration gate for a source import."""
     response = sb.rpc(

@@ -235,6 +235,47 @@ class FakeRpc:
         self.payload = payload
 
     def execute(self):
+        def metadata_delete_block(import_id: str, user_id: str) -> str | None:
+            target = next(
+                (
+                    row
+                    for row in self.client.tables.setdefault("rekordbox_imports", [])
+                    if row.get("id") == import_id and row.get("user_id") == user_id
+                ),
+                None,
+            )
+            if target is None:
+                raise RuntimeError("Import not found")
+            drafts = [
+                row
+                for row in self.client.tables.setdefault("track_metadata_drafts", [])
+                if row.get("import_id") == import_id and row.get("user_id") == user_id
+            ]
+            if any(
+                row.get("last_apply_state")
+                in {
+                    "cloud-finalization-pending",
+                    "cloud-finalization-failed",
+                    "recovery-unverified",
+                }
+                for row in drafts
+            ):
+                return "recovery"
+            if any(
+                row.get("pending_value") != row.get("current_baseline_value")
+                for row in drafts
+            ):
+                return "pending"
+            return None
+
+        if self.name == "rekordbox_import_metadata_delete_block_v1":
+            return SimpleNamespace(
+                data=metadata_delete_block(
+                    self.payload["p_import_id"],
+                    self.payload["p_user_id"],
+                )
+            )
+
         if self.name == "reconcile_rekordbox_retained_analysis_dependencies":
             import_id = self.payload["p_import_id"]
             dependencies = self.client.tables.setdefault(
@@ -282,6 +323,9 @@ class FakeRpc:
             )
             if target is None:
                 raise RuntimeError("Import not found")
+            metadata_block = metadata_delete_block(import_id, user_id)
+            if metadata_block is not None:
+                raise RuntimeError(f"metadata_delete_blocked:{metadata_block}")
             dependencies = self.client.tables.setdefault(
                 "rekordbox_retained_analysis_dependencies", []
             )
@@ -306,6 +350,9 @@ class FakeRpc:
         )
         if target is None:
             raise RuntimeError("Import not found")
+        metadata_block = metadata_delete_block(import_id, user_id)
+        if metadata_block is not None:
+            raise RuntimeError(f"metadata_delete_blocked:{metadata_block}")
         dependencies = self.client.tables.setdefault(
             "rekordbox_retained_analysis_dependencies", []
         )
@@ -2098,3 +2145,114 @@ def test_restart_recovery_paginates_beyond_postgrest_row_cap(monkeypatch):
         row["analysis_status"] == "interrupted"
         for row in client.tables["rekordbox_imports"]
     )
+
+
+def test_delete_import_blocks_pending_genre_intent_before_worker_or_cleanup(monkeypatch):
+    import_id = "job-metadata-pending"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "completed",
+            "library_ready_at": "2026-08-27T12:00:00Z",
+        }
+    ])
+    client.tables["track_metadata_drafts"] = [
+        {
+            "id": "draft-pending",
+            "user_id": "u",
+            "import_id": import_id,
+            "track_id": "track-pending",
+            "field": "genre",
+            "pending_value": "Techno",
+            "current_baseline_value": "House",
+            "last_apply_state": "failed",
+        }
+    ]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    with pytest.raises(HTTPException) as exc:
+        import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail["error_code"] == "DELETE_METADATA_PENDING"
+    assert client.tables["rekordbox_imports"][0]["status"] == "completed"
+    assert client.tables["track_metadata_drafts"][0]["pending_value"] == "Techno"
+    assert client.storage.remove_calls == []
+
+
+def test_delete_import_blocks_local_success_recovery_evidence_before_cleanup(monkeypatch):
+    import_id = "job-metadata-recovery"
+    client = FakeClient([
+        {
+            "id": import_id,
+            "user_id": "u",
+            "status": "completed",
+            "library_ready_at": "2026-08-27T12:00:00Z",
+        }
+    ])
+    client.tables["track_metadata_drafts"] = [
+        {
+            "id": "draft-recovery",
+            "user_id": "u",
+            "import_id": import_id,
+            "track_id": "track-recovery",
+            "field": "genre",
+            "pending_value": "Techno",
+            "current_baseline_value": "House",
+            "last_apply_state": "cloud-finalization-failed",
+        }
+    ]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    with pytest.raises(HTTPException) as exc:
+        import_jobs.delete_import_job(import_id, "u", wait_timeout_seconds=0)
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail["error_code"] == "DELETE_METADATA_RECOVERY_LOCKED"
+    assert "Pending Changes recovery" in exc.value.detail["detail"]
+    assert client.tables["rekordbox_imports"][0]["status"] == "completed"
+    assert client.tables["track_metadata_drafts"][0]["last_apply_state"] == "cloud-finalization-failed"
+    assert client.storage.remove_calls == []
+
+
+def test_delete_all_preflights_every_metadata_draft_before_any_snapshot_is_destroyed(monkeypatch):
+    clean_id = "job-delete-all-clean-newer"
+    blocked_id = "job-delete-all-blocked-older"
+    client = FakeClient([
+        {
+            "id": clean_id,
+            "user_id": "u",
+            "status": "completed",
+            "library_ready_at": "2026-08-27T13:00:00Z",
+            "imported_at": "2026-08-27T13:00:00Z",
+        },
+        {
+            "id": blocked_id,
+            "user_id": "u",
+            "status": "completed",
+            "library_ready_at": "2026-08-27T12:00:00Z",
+            "imported_at": "2026-08-27T12:00:00Z",
+        },
+    ])
+    client.tables["track_metadata_drafts"] = [
+        {
+            "id": "draft-delete-all-block",
+            "user_id": "u",
+            "import_id": blocked_id,
+            "track_id": "track-delete-all-block",
+            "field": "genre",
+            "pending_value": None,
+            "current_baseline_value": "House",
+            "last_apply_state": None,
+        }
+    ]
+    monkeypatch.setattr(import_jobs, "_create_supabase", lambda: client)
+
+    with pytest.raises(HTTPException) as exc:
+        import_jobs.delete_all_import_jobs("u", wait_timeout_seconds=0)
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail["error_code"] == "DELETE_METADATA_PENDING"
+    assert {row["id"] for row in client.tables["rekordbox_imports"]} == {clean_id, blocked_id}
+    assert client.storage.remove_calls == []
