@@ -66,6 +66,7 @@ import {
 import {
   discardGenreMetadataDraft,
   fetchTrackMetadataDraftsForImport,
+  isTrackMetadataDraftRecoveryLocked,
   normalizeGenreMetadataDraftValue,
   REKORDBOX_GENRE_MAX_LENGTH,
   saveGenreMetadataDraft,
@@ -104,6 +105,7 @@ interface GenreSaveErrorState {
 }
 
 function metadataDraftNeedsApply(draft: TrackMetadataDraftRow): boolean {
+  if (isTrackMetadataDraftRecoveryLocked(draft)) return false;
   return normalizeGenreMetadataDraftValue(draft.pendingValue)
     !== normalizeGenreMetadataDraftValue(draft.currentBaselineValue);
 }

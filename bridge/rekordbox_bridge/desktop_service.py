@@ -20,6 +20,7 @@ from rekordbox_bridge.metadata_preflight import (
     metadata_preflight_availability,
     preflight_saved_metadata_drafts,
 )
+from rekordbox_bridge.metadata_recovery import verify_metadata_recovery
 
 PROTOCOL_VERSION = 3
 RESULT_PREFIX = "DROPDEX_BRIDGE_RESULT:"
@@ -153,6 +154,11 @@ def _handle(request: Mapping[str, Any]) -> Any:
             raise ValueError("savedDrafts must be an array")
         _validate_metadata_scope(request.get("scope"), saved_rows)
         return preflight_saved_metadata_drafts(saved_rows)
+    if operation == "metadataRecoveryVerify":
+        recovery = request.get("recovery")
+        if not isinstance(recovery, Mapping):
+            raise ValueError("metadata recovery payload is required")
+        return verify_metadata_recovery(recovery)
     if operation == "metadataApply":
         token = request.get("token")
         saved_rows = request.get("savedDrafts")

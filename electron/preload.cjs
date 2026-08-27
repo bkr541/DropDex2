@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('dropdexDesktop', Object.freeze({
   metadataApplyAvailability: () => ipcRenderer.invoke('dropdex:metadata-apply-availability'),
   metadataApplyPreflight: (scope, savedDrafts) => ipcRenderer.invoke('dropdex:metadata-apply-preflight', { scope, savedDrafts }),
   metadataApply: (token, scope, savedDrafts) => ipcRenderer.invoke('dropdex:metadata-apply', { token, scope, savedDrafts }),
+  metadataRecoveryVerify: (recovery) => ipcRenderer.invoke('dropdex:metadata-recovery-verify', { recovery }),
   cueApplyAvailability: () => ipcRenderer.invoke('dropdex:cue-apply-availability'),
   cueApplyPreflight: (scope, savedDrafts) => ipcRenderer.invoke('dropdex:cue-apply-preflight', { scope, savedDrafts }),
   cueApply: (token, scope, savedDrafts) => ipcRenderer.invoke('dropdex:cue-apply', { token, scope, savedDrafts }),

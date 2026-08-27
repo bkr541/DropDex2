@@ -7,6 +7,7 @@ const {
   resolveLaunch,
   validateApplyScope,
   validateMetadataApplyScope,
+  validateMetadataRecoveryRequest,
   validateSavedDrafts,
   validateSavedMetadataDrafts,
 } = require('./cueApplyBridge.cjs');
@@ -228,4 +229,41 @@ test('metadata apply method sends only the bound token, validated scope, and sav
     () => bridge.metadataApply('short', scope, [row]),
     /Metadata preflight token is invalid/,
   );
+});
+
+
+function metadataRecovery(overrides = {}) {
+  return {
+    operationId: 'metadata-operation-1',
+    trackId: 'track-1',
+    field: 'genre',
+    masterDbId: 'db-main',
+    masterContentId: '101',
+    appliedRevision: 2,
+    draftFingerprint: 'a'.repeat(64),
+    planFingerprint: 'b'.repeat(64),
+    appliedValue: 'Techno',
+    sourceIdentityAfter: 'c'.repeat(64),
+    ...overrides,
+  };
+}
+
+test('metadata recovery boundary is exact, strong-identity bound, and path-free', () => {
+  assert.doesNotThrow(() => validateMetadataRecoveryRequest(metadataRecovery()));
+  assert.throws(() => validateMetadataRecoveryRequest(metadataRecovery({ field: 'comment' })), /Only Genre/);
+  assert.throws(() => validateMetadataRecoveryRequest(metadataRecovery({ sourceIdentityAfter: 'bad' })), /sourceIdentityAfter/);
+  assert.throws(() => validateMetadataRecoveryRequest({ ...metadataRecovery(), databasePath: '/tmp/master.db' }), /Forbidden renderer field/);
+});
+
+test('metadata recovery method forwards only the validated evidence object', async () => {
+  const bridge = new CueApplyBridge({});
+  const captured = [];
+  bridge.request = async (operation, payload) => {
+    captured.push({ operation, payload });
+    return { ok: true, state: 'verified' };
+  };
+  const recovery = metadataRecovery();
+  const result = await bridge.metadataRecoveryVerify(recovery);
+  assert.deepEqual(result, { ok: true, state: 'verified' });
+  assert.deepEqual(captured, [{ operation: 'metadataRecoveryVerify', payload: { recovery } }]);
 });

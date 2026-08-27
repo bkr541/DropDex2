@@ -21,6 +21,7 @@ def test_desktop_service_keeps_operations_narrow():
     assert 'operation == "metadataAvailability"' in source
     assert 'operation == "metadataPreflight"' in source
     assert 'operation == "metadataApply"' in source
+    assert 'operation == "metadataRecoveryVerify"' in source
     assert "databasePath" not in source
     assert "db_path" not in source
     assert '_validate_scope(request.get("scope"), saved_rows)' in source
@@ -91,6 +92,8 @@ def test_electron_main_preserves_cue_channels_and_adds_separate_metadata_apply_c
     assert "metadataApplyPreflight" in preload
     assert "dropdex:metadata-apply'" in main
     assert "metadataApply:" in preload
+    assert "dropdex:metadata-recovery-verify" in main
+    assert "metadataRecoveryVerify" in preload
 
 
 def test_desktop_protocol_enforces_track_vs_all_scope():
@@ -239,3 +242,28 @@ def test_metadata_writer_dependency_matches_the_importer_pinned_pyrekordbox_revi
     )
     assert expected in pyproject
     assert expected in importer_requirements
+
+
+def test_metadata_recovery_dispatch_enters_production_service_boundary(monkeypatch):
+    recovery = {
+        "operationId": "operation-1",
+        "trackId": "track-1",
+        "field": "genre",
+        "masterDbId": "db-main",
+        "masterContentId": "101",
+        "appliedRevision": 2,
+        "draftFingerprint": "a" * 64,
+        "planFingerprint": "b" * 64,
+        "appliedValue": "Techno",
+        "sourceIdentityAfter": "c" * 64,
+    }
+    captured = {}
+
+    def fake_verify(payload):
+        captured["recovery"] = payload
+        return {"ok": True, "state": "verified"}
+
+    monkeypatch.setattr(desktop_service, "verify_metadata_recovery", fake_verify)
+    result = desktop_service._handle({"operation": "metadataRecoveryVerify", "recovery": recovery})
+    assert result == {"ok": True, "state": "verified"}
+    assert captured["recovery"] == recovery

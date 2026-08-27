@@ -90,6 +90,49 @@ function validateSavedMetadataDrafts(savedDrafts) {
   if (bytes > MAX_PAYLOAD_BYTES) throw new Error('Metadata preflight payload is too large.');
 }
 
+
+const METADATA_RECOVERY_KEYS = [
+  'operationId',
+  'trackId',
+  'field',
+  'masterDbId',
+  'masterContentId',
+  'appliedRevision',
+  'draftFingerprint',
+  'planFingerprint',
+  'appliedValue',
+  'sourceIdentityAfter',
+];
+
+function validateMetadataRecoveryRequest(recovery) {
+  if (!recovery || typeof recovery !== 'object' || Array.isArray(recovery)) {
+    throw new Error('Metadata recovery request is invalid.');
+  }
+  assertNoForbiddenKeys(recovery);
+  assertExactKeys(recovery, METADATA_RECOVERY_KEYS, 'Metadata recovery request');
+  for (const field of ['operationId', 'trackId', 'masterDbId', 'masterContentId']) {
+    if (typeof recovery[field] !== 'string' || recovery[field].length < 1 || recovery[field].length > 256) {
+      throw new Error(`Metadata recovery ${field} is invalid.`);
+    }
+  }
+  if (recovery.field !== 'genre') throw new Error('Only Genre metadata recovery is supported.');
+  if (!Number.isInteger(recovery.appliedRevision) || recovery.appliedRevision <= 0) {
+    throw new Error('Metadata recovery appliedRevision is invalid.');
+  }
+  for (const field of ['draftFingerprint', 'planFingerprint', 'sourceIdentityAfter']) {
+    if (typeof recovery[field] !== 'string' || !/^[0-9a-f]{64}$/.test(recovery[field])) {
+      throw new Error(`Metadata recovery ${field} is invalid.`);
+    }
+  }
+  if (recovery.appliedValue != null
+    && (typeof recovery.appliedValue !== 'string'
+      || recovery.appliedValue.length > 255
+      || recovery.appliedValue.trim() !== recovery.appliedValue
+      || recovery.appliedValue.length === 0)) {
+    throw new Error('Metadata recovery appliedValue is invalid.');
+  }
+}
+
 function validateMetadataApplyScope(scope, savedDrafts) {
   if (!scope || typeof scope !== 'object' || Array.isArray(scope)) throw new Error('Metadata apply scope is invalid.');
   if (scope.kind !== 'track' && scope.kind !== 'all') throw new Error('Metadata apply scope kind is invalid.');
@@ -286,7 +329,7 @@ class CueApplyBridge {
   }
 
   async request(operation, payload = {}) {
-    if (!['availability', 'preflight', 'apply', 'metadataAvailability', 'metadataPreflight', 'metadataApply'].includes(operation)) throw new Error('Unsupported desktop bridge operation.');
+    if (!['availability', 'preflight', 'apply', 'metadataAvailability', 'metadataPreflight', 'metadataApply', 'metadataRecoveryVerify'].includes(operation)) throw new Error('Unsupported desktop bridge operation.');
     this._start();
     if (!this.child?.stdin?.writable) throw new Error(this.startError?.message || 'Rekordbox apply bridge is unavailable.');
     const requestId = crypto.randomUUID();
@@ -346,6 +389,11 @@ class CueApplyBridge {
     return this.request('metadataPreflight', { scope, savedDrafts });
   }
 
+  metadataRecoveryVerify(recovery) {
+    validateMetadataRecoveryRequest(recovery);
+    return this.request('metadataRecoveryVerify', { recovery });
+  }
+
   metadataApply(token, scope, savedDrafts) {
     if (typeof token !== 'string' || token.length < 16 || token.length > 512) throw new Error('Metadata preflight token is invalid.');
     validateSavedMetadataDrafts(savedDrafts);
@@ -379,6 +427,7 @@ module.exports = {
   resolveLaunch,
   validateApplyScope,
   validateMetadataApplyScope,
+  validateMetadataRecoveryRequest,
   validateSavedDrafts,
   validateSavedMetadataDrafts,
 };

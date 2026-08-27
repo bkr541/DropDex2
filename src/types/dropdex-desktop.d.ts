@@ -236,6 +236,37 @@ export interface DesktopMetadataApplyResult {
   recovery: Record<string, string> | null;
 }
 
+
+export interface DesktopMetadataRecoveryRequest {
+  operationId: string;
+  trackId: string;
+  field: 'genre';
+  masterDbId: string;
+  masterContentId: string;
+  appliedRevision: number;
+  draftFingerprint: string;
+  planFingerprint: string;
+  appliedValue: string | null;
+  sourceIdentityAfter: string;
+}
+
+export interface DesktopMetadataRecoveryVerificationResult {
+  ok: boolean;
+  state: 'verified' | 'blocked';
+  operation_id: string;
+  track_id: string;
+  applied_revision: number;
+  draft_fingerprint: string;
+  plan_fingerprint: string;
+  expected_applied_value: string | null;
+  current_value: string | null;
+  source_identity_after_apply: string;
+  current_source_identity: string | null;
+  source_generation_comparison: 'match' | 'changed' | 'unavailable';
+  master_identity_comparison: 'match' | 'mismatch' | 'unavailable';
+  blockers: Array<{ code: string; message: string }>;
+}
+
 export interface DropDexDesktopBridge {
   readonly isElectron: true;
   getRuntimeInfo(): Promise<{ platform: string; version: string }>;
@@ -248,6 +279,7 @@ export interface DropDexDesktopBridge {
   metadataApplyAvailability(): Promise<{ available: boolean; reason: string | null; metadataSchemaVersion: number | null; genreMaxLength: number | null; metadataApplySupported: boolean }>;
   metadataApplyPreflight(scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataPreflightResult>;
   metadataApply(token: string, scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataApplyResult>;
+  metadataRecoveryVerify(recovery: DesktopMetadataRecoveryRequest): Promise<DesktopMetadataRecoveryVerificationResult>;
   cueApplyAvailability(): Promise<{ available: boolean; reason: string | null }>;
   cueApplyPreflight(scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyPreflightResult>;
   cueApply(token: string, scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyResult>;
