@@ -27,6 +27,11 @@ function draft(overrides: Partial<TrackMetadataDraftRow> = {}): TrackMetadataDra
     lastApplyOperationId: null,
     lastApplyState: null,
     lastApplySummary: null,
+    lastApplyDraftFingerprint: null,
+    lastApplyPlanFingerprint: null,
+    lastApplySourceIdentityBefore: null,
+    lastApplySourceIdentityAfter: null,
+    cloudFinalizedAt: null,
     ...overrides,
   };
 }
@@ -38,6 +43,8 @@ function renderReview(
   return renderToStaticMarkup(React.createElement(PendingMetadataChangesReview, {
     open: true,
     pendingCount: 1,
+    actionablePendingCount: 1,
+    recoveryCount: 0,
     draftLoadStatus: 'loaded',
     draftLoadError: null,
     identityLoadStatus: 'loaded',
@@ -53,11 +60,15 @@ function renderReview(
     preflightBusy: false,
     preflightResult: null,
     applyResult: null,
+    cloudOutcome: null,
+    recoveryBusyTrackId: null,
+    ordinaryActionsBlocked: false,
     preflightMessage: null,
     onClose: vi.fn(),
     onRetryDrafts: vi.fn(),
     onRetryIdentities: vi.fn(),
     onDiscard: vi.fn(),
+    onRecover: vi.fn(),
     onPreflightAll: vi.fn(),
     onApplyAll: vi.fn(),
     ...overrides,
@@ -90,6 +101,7 @@ describe('Pending metadata changes production review surface', () => {
   it('renders a true empty state only after the complete draft load succeeds', () => {
     const markup = renderReview(draft(), {
       pendingCount: 0,
+      actionablePendingCount: 0,
       rows: [],
       identityLoadStatus: 'loaded',
     });
@@ -101,6 +113,7 @@ describe('Pending metadata changes production review surface', () => {
   it('distinguishes a failed draft load from an empty pending list and exposes retry', () => {
     const markup = renderReview(draft(), {
       pendingCount: 0,
+      actionablePendingCount: 0,
       draftLoadStatus: 'failed',
       draftLoadError: 'Pending Genre changes could not be loaded: offline',
       identityLoadStatus: 'idle',
@@ -154,37 +167,43 @@ describe('Pending metadata changes production review surface', () => {
     expect(markup).toContain('create Genre during Stage 5 apply');
   });
 
-  it('surfaces verified local apply while retaining the Stage 6 cloud-finalization boundary', () => {
-    const markup = renderReview(draft(), {
-      applyResult: {
-        ok: true,
-        operation_id: 'operation-1',
-        state: 'applied',
-        plan_fingerprint: 'b'.repeat(64),
-        source_identity_before: 'before',
-        source_identity_after: 'after',
-        backup_identity: 'backup',
-        tracks: [{
-          draft_id: 'draft-1',
-          track_id: 'track-1',
-          content_id: 'content-1',
-          state: 'verified',
-          applied_revision: 2,
-          applied_fingerprint: 'a'.repeat(64),
-          normalized_applied_genre: 'Melodic Bass',
-          desired_resolution: 'create',
-          resolved_genre_id: 'genre-9',
-          verification_state: 'verified',
-          details: null,
-        }],
-        blockers: [],
-        warnings: [],
-        rollback_verified: null,
-        recovery: null,
-      },
+  it('does not claim success for verified local Apply until Stage 6A cloud finalization completes', () => {
+    const applyResult = {
+      ok: true,
+      operation_id: 'operation-1',
+      state: 'applied' as const,
+      plan_fingerprint: 'b'.repeat(64),
+      source_identity_before: 'c'.repeat(64),
+      source_identity_after: 'd'.repeat(64),
+      backup_identity: 'backup',
+      tracks: [{
+        draft_id: 'draft-1',
+        track_id: 'track-1',
+        content_id: 'content-1',
+        state: 'verified' as const,
+        applied_revision: 2,
+        applied_fingerprint: 'a'.repeat(64),
+        normalized_applied_genre: 'Melodic Bass',
+        desired_resolution: 'create' as const,
+        resolved_genre_id: 'genre-9',
+        verification_state: 'verified' as const,
+        details: null,
+      }],
+      blockers: [],
+      warnings: [],
+      rollback_verified: null,
+      recovery: null,
+    };
+    const localOnly = renderReview(draft(), { applyResult });
+    expect(localOnly).toContain('Local Rekordbox Genre verified for 1 metadata change.');
+    expect(localOnly).toContain('does not claim Apply success until Stage 6A cloud finalization completes');
+
+    const finalized = renderReview(draft(), {
+      applyResult,
+      cloudOutcome: { state: 'finalized', message: 'Finalized 1 Genre change in DropDex.' },
     });
-    expect(markup).toContain('Rekordbox Genre verified for 1 metadata change.');
-    expect(markup).toContain('pending DropDex draft remains until Stage 6 cloud finalization and canonical rebase');
+    expect(finalized).toContain('Metadata Apply finalized for 1 Genre change.');
+    expect(finalized).toContain('Metadata cloud finalization complete');
   });
 
   it('renders structured stale-baseline blockers and keeps the draft pending', () => {
@@ -225,6 +244,45 @@ describe('Pending metadata changes production review surface', () => {
     expect(markup).toContain('genre-baseline-stale');
     expect(markup).toContain('Pending Genre drafts were left unchanged.');
     expect(markup).toContain('Discard');
+  });
+
+  it('rehydrates cloud-finalization-pending rows as recovery-locked actions instead of ordinary pending edits', () => {
+    const recoveryDraft = draft({
+      appliedRevision: 2,
+      appliedValue: 'Melodic Bass',
+      appliedAt: '2026-08-27T00:00:02Z',
+      lastApplyOperationId: 'operation-1',
+      lastApplyState: 'cloud-finalization-failed',
+      lastApplyDraftFingerprint: 'a'.repeat(64),
+      lastApplyPlanFingerprint: 'b'.repeat(64),
+      lastApplySourceIdentityBefore: 'c'.repeat(64),
+      lastApplySourceIdentityAfter: 'd'.repeat(64),
+    });
+    const markup = renderReview(recoveryDraft, {
+      actionablePendingCount: 0,
+      recoveryCount: 1,
+    });
+    expect(markup).toContain('Cloud finalization failed after verified local Apply');
+    expect(markup).toContain('Retry Cloud Recovery');
+    expect(markup).toContain('read-only local verification');
+    expect(markup).toContain('Resolve Metadata Recovery (1)');
+    expect(markup).not.toContain('>Discard<');
+    expect(markup).not.toContain('Preflight Apply All Metadata Changes');
+  });
+
+  it('keeps recovery-unverified outcomes locked without offering an unsafe writer replay', () => {
+    const markup = renderReview(draft({
+      lastApplyOperationId: 'operation-1',
+      lastApplyState: 'recovery-unverified',
+      lastApplyDraftFingerprint: 'a'.repeat(64),
+      lastApplyPlanFingerprint: 'b'.repeat(64),
+    }), {
+      actionablePendingCount: 0,
+      recoveryCount: 1,
+    });
+    expect(markup).toContain('Local Rekordbox recovery is unverified');
+    expect(markup).toContain('Recovery locked');
+    expect(markup).not.toContain('Retry Cloud Recovery');
   });
 
 });

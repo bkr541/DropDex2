@@ -36,6 +36,7 @@ export function useRecentTracks(importId: string | null) {
 
 export function useLibraryStats(importId: string | null) {
   const [stats, setStats] = useState<LibraryStats | null>(null);
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,9 +66,10 @@ export function useLibraryStats(importId: string | null) {
     return () => {
       cancelled = true;
     };
-  }, [importId]);
+  }, [importId, refreshNonce]);
 
-  return { stats, loading, error };
+  const refresh = useCallback(() => setRefreshNonce((value) => value + 1), []);
+  return { stats, loading, error, refresh };
 }
 
 interface UseLibraryTracksOptions extends LibraryTrackFilters {
@@ -92,6 +94,7 @@ export function useLibraryTracks(
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const generationRef = useRef(0);
 
   const normalizedSearch = search?.trim() || null;
@@ -173,6 +176,7 @@ export function useLibraryTracks(
     normalizedArtist,
     debounceMs,
     pageSize,
+    refreshNonce,
   ]);
 
   const loadMore = useCallback(async () => {
@@ -209,6 +213,8 @@ export function useLibraryTracks(
     normalizedArtist,
   ]);
 
+  const refresh = useCallback(() => setRefreshNonce((value) => value + 1), []);
+
   return {
     tracks,
     total,
@@ -217,6 +223,7 @@ export function useLibraryTracks(
     error,
     hasMore: tracks.length < total,
     loadMore,
+    refresh,
   };
 }
 

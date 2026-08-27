@@ -1,6 +1,6 @@
 import { CircleDash, WarningAlt } from '@carbon/icons-react';
 import type { RekordboxTrack } from '../../types';
-import type { TrackMetadataDraftRow } from '../../lib/queries/trackMetadataDrafts';
+import { isTrackMetadataDraftRecoveryLocked, type TrackMetadataDraftRow } from '../../lib/queries/trackMetadataDrafts';
 import type { DesktopMetadataApplyResult, DesktopMetadataPreflightResult } from '../../types/dropdex-desktop';
 import { ControlButton } from '../ui/controls';
 import { Dialog } from '../ui/feedback/Dialog';
@@ -23,6 +23,8 @@ function pendingGenreLabel(value: string | null): string {
 export function PendingMetadataChangesReview({
   open,
   pendingCount,
+  actionablePendingCount,
+  recoveryCount,
   draftLoadStatus,
   draftLoadError,
   identityLoadStatus,
@@ -35,16 +37,22 @@ export function PendingMetadataChangesReview({
   preflightBusy,
   preflightResult,
   applyResult,
+  cloudOutcome,
+  recoveryBusyTrackId,
+  ordinaryActionsBlocked,
   preflightMessage,
   onClose,
   onRetryDrafts,
   onRetryIdentities,
   onDiscard,
+  onRecover,
   onPreflightAll,
   onApplyAll,
 }: {
   open: boolean;
   pendingCount: number;
+  actionablePendingCount: number;
+  recoveryCount: number;
   draftLoadStatus: PendingMetadataReviewLoadStatus;
   draftLoadError: string | null;
   identityLoadStatus: PendingMetadataReviewLoadStatus;
@@ -57,11 +65,15 @@ export function PendingMetadataChangesReview({
   preflightBusy: boolean;
   preflightResult: DesktopMetadataPreflightResult | null;
   applyResult: DesktopMetadataApplyResult | null;
+  cloudOutcome: { state: 'finalized' | 'recovery-required' | 'proof-mismatch' | 'persistence-failed'; message: string } | null;
+  recoveryBusyTrackId: string | null;
+  ordinaryActionsBlocked: boolean;
   preflightMessage: string | null;
   onClose: () => void;
   onRetryDrafts: () => void;
   onRetryIdentities: () => void;
   onDiscard: (draft: TrackMetadataDraftRow) => void;
+  onRecover: (draft: TrackMetadataDraftRow) => void;
   onPreflightAll: () => void;
   onApplyAll: () => void;
 }) {
@@ -137,6 +149,10 @@ export function PendingMetadataChangesReview({
           <div className="space-y-3" aria-label="Pending metadata changes list">
             {rows.map(({ draft, track }) => {
               const discarding = discardingTrackIds.has(draft.trackId);
+              const recoveryLocked = isTrackMetadataDraftRecoveryLocked(draft);
+              const cloudRecoverable = draft.lastApplyState === 'cloud-finalization-pending'
+                || draft.lastApplyState === 'cloud-finalization-failed';
+              const recovering = recoveryBusyTrackId === draft.trackId;
               return (
                 <article
                   key={draft.id}
@@ -165,15 +181,45 @@ export function PendingMetadataChangesReview({
                     </div>
                   </div>
 
+                  {recoveryLocked && (
+                    <div className="mt-3 rounded-lg border border-amber-300/25 bg-amber-300/[0.05] p-2.5 text-[10px] text-amber-100" role="status">
+                      <p className="font-black">
+                        {draft.lastApplyState === 'recovery-unverified'
+                          ? 'Local Rekordbox recovery is unverified'
+                          : draft.lastApplyState === 'cloud-finalization-failed'
+                            ? 'Cloud finalization failed after verified local Apply'
+                            : 'Cloud finalization is pending after verified local Apply'}
+                      </p>
+                      <p className="mt-1 text-amber-100/80">
+                        {draft.lastApplyState === 'recovery-unverified'
+                          ? 'Save, Discard, and ordinary Apply are locked. Inspect the Rekordbox recovery state before any further metadata write.'
+                          : 'Rekordbox is already written. Recovery performs read-only local verification, then retries Stage 6A cloud finalization without replaying the writer.'}
+                      </p>
+                    </div>
+                  )}
+
                   <div className="mt-3 flex justify-end">
-                    <ControlButton
-                      variant="ghost"
-                      disabled={discarding}
-                      onClick={() => onDiscard(draft)}
-                      aria-label={`Discard pending Genre change for ${track.title}`}
-                    >
-                      {discarding ? 'Discarding…' : 'Discard'}
-                    </ControlButton>
+                    {cloudRecoverable ? (
+                      <ControlButton
+                        variant="surface"
+                        disabled={recovering || recoveryBusyTrackId != null}
+                        onClick={() => onRecover(draft)}
+                        aria-label={`Retry cloud recovery for ${track.title}`}
+                      >
+                        {recovering ? 'Verifying Recovery…' : 'Retry Cloud Recovery'}
+                      </ControlButton>
+                    ) : recoveryLocked ? (
+                      <span className="text-[9px] font-semibold text-amber-200">Recovery locked</span>
+                    ) : (
+                      <ControlButton
+                        variant="ghost"
+                        disabled={discarding || ordinaryActionsBlocked}
+                        onClick={() => onDiscard(draft)}
+                        aria-label={`Discard pending Genre change for ${track.title}`}
+                      >
+                        {discarding ? 'Discarding…' : 'Discard'}
+                      </ControlButton>
+                    )}
                   </div>
                 </article>
               );
@@ -231,7 +277,9 @@ export function PendingMetadataChangesReview({
           >
             <p className="font-black">
               {applyResult.state === 'applied'
-                ? `Rekordbox Genre verified for ${applyResult.tracks.length} metadata change${applyResult.tracks.length === 1 ? '' : 's'}.`
+                ? cloudOutcome?.state === 'finalized'
+                  ? `Metadata Apply finalized for ${applyResult.tracks.length} Genre change${applyResult.tracks.length === 1 ? '' : 's'}.`
+                  : `Local Rekordbox Genre verified for ${applyResult.tracks.length} metadata change${applyResult.tracks.length === 1 ? '' : 's'}.`
                 : applyResult.state === 'rolled-back'
                   ? 'Metadata apply failed after replacement; the prior Rekordbox generation was restored and verified.'
                   : applyResult.state === 'recovery-unverified'
@@ -249,9 +297,32 @@ export function PendingMetadataChangesReview({
             )}
             {applyResult.ok && (
               <p className="mt-2 text-[10px] text-emerald-100/80">
-                Local Rekordbox is verified. The pending DropDex draft remains until Stage 6 cloud finalization and canonical rebase.
+                {cloudOutcome?.state === 'finalized'
+                  ? 'Stage 6A finalized canonical Genre and the moving baseline; refreshed cloud state now owns the UI.'
+                  : 'Local Rekordbox verification is complete, but DropDex does not claim Apply success until Stage 6A cloud finalization completes.'}
               </p>
             )}
+          </div>
+        )}
+
+        {cloudOutcome && (
+          <div
+            className={`rounded-lg border p-3 text-[11px] ${cloudOutcome.state === 'finalized'
+              ? 'border-emerald-300/25 bg-emerald-300/[0.05] text-emerald-100'
+              : 'border-amber-300/30 bg-amber-300/[0.06] text-amber-100'}`}
+            role={cloudOutcome.state === 'finalized' ? 'status' : 'alert'}
+            data-testid="metadata-cloud-outcome"
+          >
+            <p className="font-black">
+              {cloudOutcome.state === 'finalized'
+                ? 'Metadata cloud finalization complete'
+                : cloudOutcome.state === 'recovery-required'
+                  ? 'Metadata cloud recovery required'
+                  : cloudOutcome.state === 'proof-mismatch'
+                    ? 'Metadata operation proof mismatch'
+                    : 'Metadata recovery proof persistence failed'}
+            </p>
+            <p className="mt-1 break-words">{cloudOutcome.message}</p>
           </div>
         )}
 
@@ -262,12 +333,19 @@ export function PendingMetadataChangesReview({
         )}
 
         <div className="border-t border-[var(--color-border-subtle)] pt-4">
-          {preflightResult?.ok && preflightResult.token ? (
+          {recoveryCount > 0 ? (
+            <div className="space-y-2">
+              <ControlButton variant="surface" className="w-full justify-center" disabled>
+                Resolve Metadata Recovery ({recoveryCount})
+              </ControlButton>
+              <p className="text-center text-[9px] text-amber-200">Ordinary metadata Apply is locked until every unresolved recovery item above is reconciled.</p>
+            </div>
+          ) : preflightResult?.ok && preflightResult.token ? (
             <div className="space-y-2">
               <ControlButton
                 variant="primary"
                 className="w-full justify-center"
-                disabled={preflightBusy || !applyAvailable || discardingTrackIds.size > 0}
+                disabled={preflightBusy || !applyAvailable || discardingTrackIds.size > 0 || ordinaryActionsBlocked}
                 onClick={onApplyAll}
                 title="Apply the exact preflight-bound Genre plan through staging, verification, atomic replacement, and rollback protection."
               >
@@ -276,7 +354,7 @@ export function PendingMetadataChangesReview({
               <ControlButton
                 variant="surface"
                 className="w-full justify-center"
-                disabled={preflightBusy || !applyAvailable || discardingTrackIds.size > 0}
+                disabled={preflightBusy || !applyAvailable || discardingTrackIds.size > 0 || ordinaryActionsBlocked}
                 onClick={onPreflightAll}
               >
                 Run Preflight Again
@@ -291,15 +369,16 @@ export function PendingMetadataChangesReview({
                 || !applyAvailable
                 || draftLoadStatus !== 'loaded'
                 || identityLoadStatus !== 'loaded'
-                || pendingCount === 0
+                || actionablePendingCount === 0
                 || discardingTrackIds.size > 0
+                || ordinaryActionsBlocked
               }
               onClick={onPreflightAll}
               title={applyAvailable
                 ? 'Run a read-only Rekordbox metadata preflight for the complete pending set.'
                 : (applyAvailabilityReason ?? 'Metadata apply is unavailable in this desktop runtime.')}
             >
-              {preflightBusy ? 'Checking Metadata…' : `Preflight Apply All Metadata Changes${draftLoadStatus === 'loaded' ? ` (${pendingCount})` : ''}`}
+              {preflightBusy ? 'Checking Metadata…' : `Preflight Apply All Metadata Changes${draftLoadStatus === 'loaded' ? ` (${actionablePendingCount})` : ''}`}
             </ControlButton>
           )}
           <p className="mt-2 text-center text-[9px] text-muted-foreground">

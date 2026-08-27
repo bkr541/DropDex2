@@ -242,7 +242,36 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('Pending metadata changed before preflight.');
     expect(source).toContain('Pending metadata changed after preflight. No write was requested');
     expect(source).toContain('setMetadataApplyPreflight(null); // Stage 4 tokens are single-use even on rejection.');
-    expect(source).toContain('pending cloud draft is intentionally retained for Stage 6 finalization');
+    expect(source).toContain('validateVerifiedMetadataApplyResult({ drafts: pendingRows, preflight, result })');
+    expect(source).toContain("applyState: 'cloud-finalization-pending'");
+    expect(source).toContain('finalizeTrackMetadataApply({');
+  });
+
+  it('wires Stage 6B finalization, durable recovery hydration, and read-only retry without replaying the writer', () => {
+    expect(source).toContain('.filter(metadataDraftNeedsReview)');
+    expect(source).toContain('isTrackMetadataDraftRecoveryLocked(draft)');
+    expect(source).toContain('buildMetadataRecoveryRequest(draft)');
+    expect(source).toContain('desktop.metadataRecoveryVerify(request)');
+    expect(source).toContain('validateMetadataRecoveryVerification(request, verification)');
+    expect(source).toContain('refreshLibraryTracks();');
+    expect(source).toContain('refreshLibraryStats();');
+    expect(source).toContain("{genreRecoveryLocked ? 'Recovery' : 'Pending'}");
+
+    const recoveryStart = source.indexOf('const handleMetadataRecovery = useCallback');
+    const recoveryEnd = source.indexOf('const trackIdsKey = useMemo', recoveryStart);
+    const recoverySource = source.slice(recoveryStart, recoveryEnd);
+    expect(recoverySource).toContain('metadataRecoveryVerify(request)');
+    expect(recoverySource).toContain('finalizeTrackMetadataApply({');
+    expect(recoverySource).not.toContain('desktop.metadataApply(');
+  });
+
+  it('guards duplicate metadata apply/recovery actions and stale user/import completions', () => {
+    expect(source).toContain('|| metadataApplyBusy) return;');
+    expect(source).toContain('|| metadataRecoveryTrackId != null) return;');
+    expect(source).toContain('const contextIsCurrent = () => selectedUserIdRef.current === requestedUserId');
+    expect(source).toContain('selectedImportIdRef.current === requestedImportId');
+    expect(source).toContain('const generation = ++metadataApplyGenerationRef.current;');
+    expect(source).toContain('if (generation === metadataApplyGenerationRef.current) setMetadataApplyBusy(false);');
   });
 
   it('wires the Stage 3 Pending Changes review to the shared complete draft cache and revision-safe Discard path', () => {
@@ -251,6 +280,8 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('rows={pendingMetadataReviewRows}');
     expect(source).toContain('fetchTracksByIds(trackIds)');
     expect(source).toContain('.filter(metadataDraftNeedsApply).length');
+    expect(source).toContain('.filter(metadataDraftNeedsReview).length');
+    expect(source).toContain('recoveryCount={metadataRecoveryCount}');
     expect(source).toContain('draft.currentBaselineValue');
     expect(source).toContain('discardGenreMetadataDraft({');
     expect(source).toContain('expectedRevision: draft.revision');

@@ -66,7 +66,9 @@ import {
 import {
   discardGenreMetadataDraft,
   fetchTrackMetadataDraftsForImport,
+  finalizeTrackMetadataApply,
   isTrackMetadataDraftRecoveryLocked,
+  markTrackMetadataApplyOutcome,
   normalizeGenreMetadataDraftValue,
   REKORDBOX_GENRE_MAX_LENGTH,
   saveGenreMetadataDraft,
@@ -75,6 +77,13 @@ import {
   type TrackMetadataDraftRow,
 } from '../../lib/queries/trackMetadataDrafts';
 import { resolveCueApplySelection, type CueApplyScope } from '../../lib/cues/cueApplyScope';
+import {
+  buildMetadataRecoveryRequest,
+  MetadataApplyProofError,
+  validateMetadataApplyOutcomeEnvelope,
+  validateMetadataRecoveryVerification,
+  validateVerifiedMetadataApplyResult,
+} from '../../lib/metadata/metadataApplyOrchestration';
 import { PendingMetadataChangesReview } from './PendingMetadataChangesReview';
 import type {
   DesktopCueApplyPreflightResult,
@@ -97,6 +106,12 @@ type CueDraftStatus = 'Original' | 'Unsaved' | 'Saved' | 'Needs Verification' | 
 type TerminalCueLoadStatus = 'loaded-empty' | 'loaded-with-cues' | 'failed';
 type SelectedCueLoadStatus = 'idle' | 'loading' | TerminalCueLoadStatus;
 type MetadataDraftLoadStatus = 'idle' | 'loading' | 'loaded' | 'failed';
+type MetadataCloudOutcomeState = 'finalized' | 'recovery-required' | 'proof-mismatch' | 'persistence-failed';
+
+interface MetadataCloudOutcome {
+  state: MetadataCloudOutcomeState;
+  message: string;
+}
 
 interface GenreSaveErrorState {
   trackId: string;
@@ -108,6 +123,19 @@ function metadataDraftNeedsApply(draft: TrackMetadataDraftRow): boolean {
   if (isTrackMetadataDraftRecoveryLocked(draft)) return false;
   return normalizeGenreMetadataDraftValue(draft.pendingValue)
     !== normalizeGenreMetadataDraftValue(draft.currentBaselineValue);
+}
+
+function metadataDraftNeedsReview(draft: TrackMetadataDraftRow): boolean {
+  return metadataDraftNeedsApply(draft) || isTrackMetadataDraftRecoveryLocked(draft);
+}
+
+function metadataApplySafeSummary(result: DesktopMetadataApplyResult, code?: string) {
+  return {
+    code,
+    blockerCodes: result.blockers.map((blocker) => blocker.code),
+    warningCodes: result.warnings.map((warning) => warning.code),
+    rollbackVerified: result.rollback_verified ?? undefined,
+  };
 }
 
 interface CueRebaseRecoveryItem {
@@ -1684,6 +1712,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [metadataApplyResult, setMetadataApplyResult] = useState<DesktopMetadataApplyResult | null>(null);
   const [metadataApplyBusy, setMetadataApplyBusy] = useState(false);
   const [metadataApplyMessage, setMetadataApplyMessage] = useState<string | null>(null);
+  const [metadataCloudOutcome, setMetadataCloudOutcome] = useState<MetadataCloudOutcome | null>(null);
+  const [metadataRecoveryTrackId, setMetadataRecoveryTrackId] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
@@ -1743,7 +1773,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   selectedUserIdRef.current = userId;
   selectedImportIdRef.current = importId;
   workingCuesRef.current = workingCues;
-  const { stats } = useLibraryStats(importId);
+  const { stats, refresh: refreshLibraryStats } = useLibraryStats(importId);
   const bpmBounds = useMemo((): [number, number] => {
     const bpms = (stats?.bpmTotals ?? []).map((t) => t.bpm).filter((b) => b > 0);
     if (bpms.length === 0) return [60, 200];
@@ -1759,6 +1789,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     error,
     hasMore,
     loadMore,
+    refresh: refreshLibraryTracks,
   } = useLibraryTracks(importId, {
     search,
     genre: genre || null,
@@ -1786,6 +1817,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setMetadataApplyPreflight(null);
     setMetadataApplyResult(null);
     setMetadataApplyMessage(null);
+    setMetadataCloudOutcome(null);
+    setMetadataRecoveryTrackId(null);
     setMetadataApplyBusy(false);
   }, [importId, userId]);
 
@@ -1853,7 +1886,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
 
   const pendingMetadataDraftTrackIdsKey = useMemo(
     () => [...genreDraftsByTrackId.values()]
-      .filter(metadataDraftNeedsApply)
+      .filter(metadataDraftNeedsReview)
       .map((draft) => draft.trackId)
       .sort()
       .join(','),
@@ -1928,6 +1961,14 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     }
 
     const existingDraft = genreDraftsByTrackId.get(track.id) ?? null;
+    if (existingDraft && isTrackMetadataDraftRecoveryLocked(existingDraft)) {
+      setGenreSaveError({
+        trackId: track.id,
+        message: 'This Genre change is locked while metadata recovery reconciles verified local Rekordbox state with DropDex.',
+        revisionConflict: false,
+      });
+      return;
+    }
     const contextGeneration = genreSaveContextGenerationRef.current;
     const requestedUserId = userId;
     const requestedImportId = importId;
@@ -1988,6 +2029,10 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
 
   const discardPendingGenreDraft = useCallback(async (draft: TrackMetadataDraftRow) => {
     if (!userId || !importId || metadataDraftLoadStatus !== 'loaded') return;
+    if (isTrackMetadataDraftRecoveryLocked(draft)) {
+      setMetadataDraftActionError('This Genre change is locked for metadata recovery and cannot be discarded until Rekordbox and cloud state converge.');
+      return;
+    }
     const inFlightKey = `${userId}:${importId}:${draft.trackId}`;
     if (genreSaveInFlightRef.current.has(inFlightKey)) {
       setMetadataDraftActionError('This Genre change is already being updated. Wait for that request to finish, then try Discard again.');
@@ -2056,13 +2101,19 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const pendingMetadataReviewRows = useMemo(() => {
     if (metadataDraftLoadStatus !== 'loaded' || pendingMetadataTrackLoadStatus !== 'loaded') return [];
     return [...genreDraftsByTrackId.values()]
-      .filter(metadataDraftNeedsApply)
+      .filter(metadataDraftNeedsReview)
       .map((draft) => ({ draft, track: pendingMetadataTracksById.get(draft.trackId) }))
       .filter((row): row is { draft: TrackMetadataDraftRow; track: RekordboxTrack } => Boolean(row.track))
       .sort((a, b) => a.track.title.localeCompare(b.track.title) || (a.track.artist ?? '').localeCompare(b.track.artist ?? ''));
   }, [genreDraftsByTrackId, metadataDraftLoadStatus, pendingMetadataTrackLoadStatus, pendingMetadataTracksById]);
   const pendingMetadataCount = metadataDraftLoadStatus === 'loaded'
+    ? [...genreDraftsByTrackId.values()].filter(metadataDraftNeedsReview).length
+    : 0;
+  const actionableMetadataPendingCount = metadataDraftLoadStatus === 'loaded'
     ? [...genreDraftsByTrackId.values()].filter(metadataDraftNeedsApply).length
+    : 0;
+  const metadataRecoveryCount = metadataDraftLoadStatus === 'loaded'
+    ? [...genreDraftsByTrackId.values()].filter(isTrackMetadataDraftRecoveryLocked).length
     : 0;
 
   const pendingMetadataDraftIdentityKey = useMemo(() => [...genreDraftsByTrackId.values()]
@@ -2071,13 +2122,17 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     .map((draft) => `${draft.id}:${draft.revision}:${draft.draftFingerprint}`)
     .join('|'), [genreDraftsByTrackId]);
 
+  const metadataReviewStateKey = useMemo(() => [...genreDraftsByTrackId.values()]
+    .filter(metadataDraftNeedsReview)
+    .sort((a, b) => a.trackId.localeCompare(b.trackId) || a.id.localeCompare(b.id))
+    .map((draft) => `${draft.id}:${draft.revision}:${draft.draftFingerprint}:${draft.lastApplyState ?? ''}:${draft.lastApplyOperationId ?? ''}`)
+    .join('|'), [genreDraftsByTrackId]);
+
   useEffect(() => {
     metadataApplyGenerationRef.current += 1;
     setMetadataApplyPreflight(null);
-    setMetadataApplyResult(null);
-    setMetadataApplyMessage(null);
     setMetadataApplyBusy(false);
-  }, [pendingMetadataDraftIdentityKey]);
+  }, [metadataReviewStateKey]);
 
   const desktopMetadataDrafts = useCallback((rows: TrackMetadataDraftRow[]): DesktopMetadataDraft[] => rows.map((row) => {
     if (row.field !== 'genre' || row.schemaVersion !== 1) {
@@ -2100,6 +2155,29 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     };
   }), []);
 
+  const refreshMetadataCanonicalState = useCallback(async (
+    requestedUserId: string,
+    requestedImportId: string,
+    affectedTrackIds: string[],
+  ): Promise<TrackMetadataDraftRow[]> => {
+    const [draftRows, refreshedTracks] = await Promise.all([
+      fetchTrackMetadataDraftsForImport(requestedUserId, requestedImportId),
+      fetchTracksByIds(affectedTrackIds),
+    ]);
+    const sameContext = selectedUserIdRef.current === requestedUserId
+      && selectedImportIdRef.current === requestedImportId;
+    if (sameContext) {
+      setGenreDraftsByTrackId(new Map(draftRows.map((row) => [row.trackId, row])));
+      setPendingMetadataTrackRetryNonce((value) => value + 1);
+      refreshLibraryTracks();
+      refreshLibraryStats();
+      const selectedId = selectedTrackIdRef.current;
+      const refreshedSelected = selectedId ? refreshedTracks.find((track) => track.id === selectedId) : null;
+      if (refreshedSelected && refreshedSelected.import_id === requestedImportId) setSelectedTrack(refreshedSelected);
+    }
+    return draftRows;
+  }, [refreshLibraryStats, refreshLibraryTracks]);
+
   const handleMetadataPreflightAll = useCallback(async () => {
     const desktop = window.dropdexDesktop;
     if (!desktop?.isElectron || !metadataApplyBridgeAvailable || !userId || !importId || metadataApplyBusy) return;
@@ -2113,6 +2191,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setMetadataApplyPreflight(null);
     setMetadataApplyResult(null);
     setMetadataApplyMessage(null);
+    setMetadataCloudOutcome(null);
     setMetadataDraftActionError(null);
     try {
       // Re-fetch through the Stage 1 exact-count paginator immediately before
@@ -2122,6 +2201,12 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       if (generation !== metadataApplyGenerationRef.current
         || selectedUserIdRef.current !== userId
         || selectedImportIdRef.current !== importId) return;
+      const recoveryRows = freshRows.filter(isTrackMetadataDraftRecoveryLocked);
+      if (recoveryRows.length > 0) {
+        setGenreDraftsByTrackId(new Map(freshRows.map((row) => [row.trackId, row])));
+        setMetadataApplyMessage(`Resolve ${recoveryRows.length} metadata recovery item${recoveryRows.length === 1 ? '' : 's'} before starting another Rekordbox metadata Apply.`);
+        return;
+      }
       const pendingRows = freshRows
         .filter(metadataDraftNeedsApply)
         .sort((a, b) => a.trackId.localeCompare(b.trackId) || a.id.localeCompare(b.id));
@@ -2174,19 +2259,32 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       return;
     }
 
+    const requestedUserId = userId;
+    const requestedImportId = importId;
     const generation = ++metadataApplyGenerationRef.current;
+    const contextIsCurrent = () => selectedUserIdRef.current === requestedUserId
+      && selectedImportIdRef.current === requestedImportId;
+    let localApplyReturned = false;
     setMetadataApplyBusy(true);
     setMetadataApplyResult(null);
     setMetadataApplyMessage(null);
+    setMetadataCloudOutcome(null);
     setMetadataDraftActionError(null);
     try {
       // Re-read the persisted complete set immediately before mutation. The
       // opaque token is bound to these exact draft revisions/fingerprints, and
       // the Python bridge independently revalidates local Rekordbox state.
-      const freshRows = await fetchTrackMetadataDraftsForImport(userId, importId);
+      const freshRows = await fetchTrackMetadataDraftsForImport(requestedUserId, requestedImportId);
       if (generation !== metadataApplyGenerationRef.current
-        || selectedUserIdRef.current !== userId
-        || selectedImportIdRef.current !== importId) return;
+        || selectedUserIdRef.current !== requestedUserId
+        || selectedImportIdRef.current !== requestedImportId) return;
+      const recoveryRows = freshRows.filter(isTrackMetadataDraftRecoveryLocked);
+      if (recoveryRows.length > 0) {
+        setGenreDraftsByTrackId(new Map(freshRows.map((row) => [row.trackId, row])));
+        setMetadataApplyPreflight(null);
+        setMetadataApplyMessage('Metadata recovery is unresolved. No new Rekordbox metadata write was requested.');
+        return;
+      }
       const pendingRows = freshRows
         .filter(metadataDraftNeedsApply)
         .sort((a, b) => a.trackId.localeCompare(b.trackId) || a.id.localeCompare(b.id));
@@ -2203,32 +2301,354 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
 
       const result = await desktop.metadataApply(
         preflight.token,
-        { kind: 'all', importId, expectedDraftCount: pendingRows.length },
+        { kind: 'all', importId: requestedImportId, expectedDraftCount: pendingRows.length },
         desktopMetadataDrafts(pendingRows),
       );
-      if (generation !== metadataApplyGenerationRef.current
-        || selectedUserIdRef.current !== userId
-        || selectedImportIdRef.current !== importId) return;
-      setMetadataApplyPreflight(null); // Stage 4 tokens are single-use even on rejection.
-      setMetadataApplyResult(result);
-      setMetadataApplyMessage(result.state === 'applied'
-        ? 'Rekordbox Genre was staged, replaced, reopened, and semantically verified. The pending cloud draft is intentionally retained for Stage 6 finalization.'
-        : result.state === 'rolled-back'
-          ? 'The local Genre apply did not verify, so DropDex restored and verified the prior Rekordbox generation. The pending draft remains.'
-          : result.state === 'recovery-unverified'
-            ? 'Rollback could not be verified. Stop metadata writes and inspect the recovery details before retrying.'
-            : 'Metadata apply was rejected safely. The pending draft remains; run preflight again after resolving the blocker.');
+      localApplyReturned = true;
+      if (contextIsCurrent()) {
+        setMetadataApplyPreflight(null); // Stage 4 tokens are single-use even on rejection.
+        setMetadataApplyResult(result);
+      }
+
+      try {
+        validateMetadataApplyOutcomeEnvelope({ drafts: pendingRows, preflight, result });
+      } catch (error) {
+        if (contextIsCurrent()) {
+          setMetadataCloudOutcome({
+            state: 'proof-mismatch',
+            message: error instanceof Error ? error.message : 'Metadata apply returned invalid operation evidence.',
+          });
+          setMetadataApplyMessage('Metadata result evidence did not match the exact submitted plan. Cloud finalization was blocked; do not repeat the local write.');
+        }
+        return;
+      }
+
+      if (result.state !== 'applied') {
+        // Capture the narrowed state before the async map callback; TypeScript
+        // does not preserve discriminant narrowing across that closure boundary.
+        const nonFinalState: Exclude<DesktopMetadataApplyResult['state'], 'applied'> = result.state;
+        const persistence = await Promise.allSettled(pendingRows.map((draft) => markTrackMetadataApplyOutcome({
+          importId: requestedImportId,
+          trackId: draft.trackId,
+          revision: draft.revision,
+          draftFingerprint: draft.draftFingerprint,
+          operationId: result.operation_id,
+          planFingerprint: result.plan_fingerprint,
+          applyState: nonFinalState,
+          sourceIdentityBefore: result.source_identity_before,
+          sourceIdentityAfter: result.source_identity_after,
+          resultSummary: metadataApplySafeSummary(result, `local-${result.state}`),
+        })));
+        const persistenceFailures = persistence.filter((item) => item.status === 'rejected').length;
+        if (contextIsCurrent()) {
+          setMetadataApplyMessage(result.state === 'rolled-back'
+            ? 'The local Genre apply did not verify, so DropDex restored and verified the prior Rekordbox generation. The pending draft remains.'
+            : result.state === 'recovery-unverified'
+              ? 'Rollback could not be verified. Metadata editing and Apply are locked for the persisted recovery state; inspect Rekordbox before further writes.'
+              : 'Metadata apply was rejected safely. The pending draft remains; run preflight again after resolving the blocker.');
+          if (persistenceFailures > 0) {
+            setMetadataCloudOutcome({
+              state: 'persistence-failed',
+              message: `${persistenceFailures} metadata outcome record${persistenceFailures === 1 ? '' : 's'} could not be persisted.`,
+            });
+          }
+        }
+        try {
+          await refreshMetadataCanonicalState(requestedUserId, requestedImportId, pendingRows.map((draft) => draft.trackId));
+        } catch {
+          // The structured local outcome has already been persisted when possible;
+          // the normal draft retry remains available if this read refresh fails.
+        }
+        return;
+      }
+
+      let proof;
+      try {
+        proof = validateVerifiedMetadataApplyResult({ drafts: pendingRows, preflight, result });
+      } catch (error) {
+        // The operation envelope is bound to the submitted plan, but the local
+        // success proof is not exact enough to authorize cloud convergence.
+        // Persist a recovery lock instead of guessing or replaying the writer.
+        await Promise.allSettled(pendingRows.map((draft) => markTrackMetadataApplyOutcome({
+          importId: requestedImportId,
+          trackId: draft.trackId,
+          revision: draft.revision,
+          draftFingerprint: draft.draftFingerprint,
+          operationId: result.operation_id,
+          planFingerprint: result.plan_fingerprint,
+          applyState: 'recovery-unverified',
+          sourceIdentityBefore: result.source_identity_before,
+          sourceIdentityAfter: result.source_identity_after,
+          resultSummary: metadataApplySafeSummary(result, 'renderer-proof-mismatch'),
+        })));
+        if (contextIsCurrent()) {
+          setMetadataCloudOutcome({
+            state: 'proof-mismatch',
+            message: error instanceof Error ? error.message : 'Verified local metadata proof did not match the submitted plan.',
+          });
+          setMetadataApplyMessage('Rekordbox reported local success, but exact proof validation failed. Cloud finalization was blocked and the operation was locked for recovery; the writer will not be replayed.');
+        }
+        try {
+          await refreshMetadataCanonicalState(requestedUserId, requestedImportId, pendingRows.map((draft) => draft.trackId));
+        } catch {
+          // Preserve the critical message above; reload can rehydrate any lock
+          // that Stage 6A accepted before this refresh failed.
+        }
+        return;
+      }
+
+      // Persist every verified local-success receipt before finalizing any track.
+      // This ordering ensures a cloud finalizer failure is reload-recoverable and
+      // prevents one partially finalized Apply All from replaying the local writer.
+      const pendingPersistence = await Promise.allSettled(proof.tracks.map(({ draft, result: trackResult }) => (
+        markTrackMetadataApplyOutcome({
+          importId: requestedImportId,
+          trackId: draft.trackId,
+          revision: draft.revision,
+          draftFingerprint: draft.draftFingerprint,
+          operationId: proof.operationId,
+          planFingerprint: proof.planFingerprint,
+          applyState: 'cloud-finalization-pending',
+          appliedValue: trackResult.normalized_applied_genre,
+          sourceIdentityBefore: proof.sourceIdentityBefore,
+          sourceIdentityAfter: proof.sourceIdentityAfter,
+          resultSummary: metadataApplySafeSummary(result, 'local-verified'),
+        })
+      )));
+      const pendingFailures = pendingPersistence.filter((item) => item.status === 'rejected').length;
+      if (pendingFailures > 0) {
+        if (contextIsCurrent()) {
+          setMetadataCloudOutcome({
+            state: 'persistence-failed',
+            message: `${pendingFailures} verified local operation receipt${pendingFailures === 1 ? '' : 's'} could not be persisted, so cloud finalization was not attempted.`,
+          });
+          setMetadataApplyMessage('Local Rekordbox Genre is verified, but DropDex could not durably persist the complete cloud-recovery proof. Do not run Apply again. Reload/retry cloud state only after the recovery record is visible.');
+        }
+        try {
+          await refreshMetadataCanonicalState(requestedUserId, requestedImportId, pendingRows.map((draft) => draft.trackId));
+        } catch {
+          // The current renderer remains blocked by metadataCloudOutcome.
+        }
+        return;
+      }
+
+      const finalization = await Promise.allSettled(proof.tracks.map(({ draft, result: trackResult }) => (
+        finalizeTrackMetadataApply({
+          importId: requestedImportId,
+          trackId: draft.trackId,
+          revision: draft.revision,
+          draftFingerprint: draft.draftFingerprint,
+          operationId: proof.operationId,
+          planFingerprint: proof.planFingerprint,
+          appliedValue: trackResult.normalized_applied_genre,
+          expectedCurrentBaselineValue: draft.currentBaselineValue,
+          masterDbId: draft.masterDbId,
+          masterContentId: draft.masterContentId,
+          sourceIdentityAfter: proof.sourceIdentityAfter,
+        })
+      )));
+      const failedFinalizationIndexes = finalization.flatMap((item, index) => item.status === 'rejected' ? [index] : []);
+
+      if (failedFinalizationIndexes.length > 0) {
+        await Promise.allSettled(failedFinalizationIndexes.map((index) => {
+          const item = proof.tracks[index];
+          return markTrackMetadataApplyOutcome({
+            importId: requestedImportId,
+            trackId: item.draft.trackId,
+            revision: item.draft.revision,
+            draftFingerprint: item.draft.draftFingerprint,
+            operationId: proof.operationId,
+            planFingerprint: proof.planFingerprint,
+            applyState: 'cloud-finalization-failed',
+            appliedValue: item.result.normalized_applied_genre,
+            sourceIdentityBefore: proof.sourceIdentityBefore,
+            sourceIdentityAfter: proof.sourceIdentityAfter,
+            resultSummary: metadataApplySafeSummary(result, 'cloud-finalization-failed'),
+          });
+        }));
+      }
+
+      let refreshedDraftRows: TrackMetadataDraftRow[] | null = null;
+      let refreshFailure: unknown = null;
+      try {
+        refreshedDraftRows = await refreshMetadataCanonicalState(
+          requestedUserId,
+          requestedImportId,
+          pendingRows.map((draft) => draft.trackId),
+        );
+      } catch (error) {
+        refreshFailure = error;
+      }
+
+      // A lost finalizer response can still mean Stage 6A committed. Re-read the
+      // canonical durable state before presenting recovery so idempotent/lost-
+      // response finalization converges instead of displaying a false failure.
+      const refreshProvesFinalized = refreshedDraftRows != null && proof.tracks.every(({ draft }) => {
+        const refreshed = refreshedDraftRows?.find((row) => row.trackId === draft.trackId);
+        return refreshed?.lastApplyState === 'applied'
+          && refreshed.lastApplyOperationId === proof.operationId
+          && refreshed.appliedRevision === draft.revision
+          && normalizeGenreMetadataDraftValue(refreshed.appliedValue) === normalizeGenreMetadataDraftValue(draft.pendingValue);
+      });
+      const cloudFinalized = failedFinalizationIndexes.length === 0 || refreshProvesFinalized;
+
+      if (contextIsCurrent()) {
+        if (cloudFinalized) {
+          setMetadataCloudOutcome({
+            state: 'finalized',
+            message: `Finalized ${proof.tracks.length} Genre change${proof.tracks.length === 1 ? '' : 's'} in DropDex.`,
+          });
+          setMetadataApplyMessage('Metadata Apply finalized successfully. Canonical Genre, moving baselines, pending changes, the track list, and library Genre statistics were refreshed.');
+        } else {
+          setMetadataCloudOutcome({
+            state: 'recovery-required',
+            message: `${failedFinalizationIndexes.length} metadata change${failedFinalizationIndexes.length === 1 ? '' : 's'} still need cloud finalization recovery.`,
+          });
+          setMetadataApplyMessage('Rekordbox Genre is already verified. Some Supabase finalization calls remain unresolved, so those rows are locked for read-only recovery. Retry recovery will verify local Genre and will not rewrite Rekordbox.');
+        }
+        if (refreshFailure) {
+          setMetadataDraftActionError(refreshFailure instanceof Error
+            ? `Metadata finalization completed, but refreshed cloud state could not be loaded: ${refreshFailure.message}`
+            : 'Metadata finalization completed, but refreshed cloud state could not be loaded.');
+        }
+      }
     } catch (error) {
-      if (generation === metadataApplyGenerationRef.current) {
+      if (contextIsCurrent()) {
         // The desktop token may have been claimed before a transport-visible
         // failure, so force a new preflight rather than risking token replay.
         setMetadataApplyPreflight(null);
-        setMetadataApplyMessage(error instanceof Error ? error.message : String(error));
+        if (localApplyReturned) {
+          setMetadataApplyMessage(error instanceof Error ? error.message : String(error));
+        } else {
+          setMetadataCloudOutcome({
+            state: 'proof-mismatch',
+            message: 'The desktop Apply response was unavailable after the one-time token was submitted.',
+          });
+          setMetadataApplyMessage('The metadata Apply response was lost or unavailable. DropDex cannot safely infer whether Rekordbox changed, so do not replay Apply until the local state is inspected and a fresh preflight is safe.');
+        }
       }
     } finally {
       if (generation === metadataApplyGenerationRef.current) setMetadataApplyBusy(false);
     }
-  }, [desktopMetadataDrafts, importId, metadataApplyBridgeAvailable, metadataApplyBusy, metadataApplyPreflight, metadataDraftLoadStatus, pendingMetadataDraftIdentityKey, userId]);
+  }, [desktopMetadataDrafts, importId, metadataApplyBridgeAvailable, metadataApplyBusy, metadataApplyPreflight, metadataDraftLoadStatus, pendingMetadataDraftIdentityKey, refreshMetadataCanonicalState, userId]);
+
+  const handleMetadataRecovery = useCallback(async (draft: TrackMetadataDraftRow) => {
+    const desktop = window.dropdexDesktop;
+    if (!desktop?.isElectron
+      || typeof desktop.metadataRecoveryVerify !== 'function'
+      || !metadataApplyBridgeAvailable
+      || !userId
+      || !importId
+      || metadataApplyBusy
+      || metadataRecoveryTrackId != null) return;
+
+    const requestedUserId = userId;
+    const requestedImportId = importId;
+    if (draft.userId !== requestedUserId || draft.importId !== requestedImportId) return;
+
+    const generation = ++metadataApplyGenerationRef.current;
+    const contextIsCurrent = () => selectedUserIdRef.current === requestedUserId
+      && selectedImportIdRef.current === requestedImportId;
+    setMetadataApplyBusy(true);
+    setMetadataRecoveryTrackId(draft.trackId);
+    setMetadataApplyPreflight(null);
+    setMetadataApplyResult(null);
+    setMetadataApplyMessage(null);
+    setMetadataCloudOutcome(null);
+    setMetadataDraftActionError(null);
+    try {
+      const request = buildMetadataRecoveryRequest(draft);
+      const verification = await desktop.metadataRecoveryVerify(request);
+      if (!verification.ok || verification.state !== 'verified') {
+        if (contextIsCurrent()) {
+          const blockerText = verification.blockers.length > 0
+            ? verification.blockers.map((blocker) => `${blocker.code}: ${blocker.message}`).join(' ')
+            : 'Read-only recovery verification did not confirm the previously applied Genre.';
+          setMetadataCloudOutcome({ state: 'recovery-required', message: blockerText });
+          setMetadataApplyMessage('Cloud recovery is blocked because trusted local Rekordbox state no longer matches the persisted verified apply evidence. Rekordbox was not rewritten.');
+        }
+        return;
+      }
+
+      validateMetadataRecoveryVerification(request, verification);
+      let finalizationFailure: unknown = null;
+      try {
+        await finalizeTrackMetadataApply({
+          importId: requestedImportId,
+          trackId: draft.trackId,
+          revision: request.appliedRevision,
+          draftFingerprint: request.draftFingerprint,
+          operationId: request.operationId,
+          planFingerprint: request.planFingerprint,
+          appliedValue: request.appliedValue,
+          expectedCurrentBaselineValue: draft.currentBaselineValue,
+          masterDbId: request.masterDbId,
+          masterContentId: request.masterContentId,
+          sourceIdentityAfter: request.sourceIdentityAfter,
+        });
+      } catch (error) {
+        finalizationFailure = error;
+        await markTrackMetadataApplyOutcome({
+          importId: requestedImportId,
+          trackId: draft.trackId,
+          revision: request.appliedRevision,
+          draftFingerprint: request.draftFingerprint,
+          operationId: request.operationId,
+          planFingerprint: request.planFingerprint,
+          applyState: 'cloud-finalization-failed',
+          appliedValue: request.appliedValue,
+          sourceIdentityBefore: draft.lastApplySourceIdentityBefore,
+          sourceIdentityAfter: request.sourceIdentityAfter,
+          resultSummary: { code: 'cloud-recovery-finalization-failed' },
+        }).catch(() => undefined);
+      }
+
+      let refreshedDraftRows: TrackMetadataDraftRow[] | null = null;
+      let refreshFailure: unknown = null;
+      try {
+        refreshedDraftRows = await refreshMetadataCanonicalState(requestedUserId, requestedImportId, [draft.trackId]);
+      } catch (error) {
+        refreshFailure = error;
+      }
+      const refreshed = refreshedDraftRows?.find((row) => row.trackId === draft.trackId);
+      const refreshProvesFinalized = refreshed?.lastApplyState === 'applied'
+        && refreshed.lastApplyOperationId === request.operationId
+        && refreshed.appliedRevision === request.appliedRevision
+        && normalizeGenreMetadataDraftValue(refreshed.appliedValue) === normalizeGenreMetadataDraftValue(request.appliedValue);
+      const cloudFinalized = finalizationFailure == null || refreshProvesFinalized;
+
+      if (contextIsCurrent()) {
+        if (cloudFinalized) {
+          setMetadataCloudOutcome({ state: 'finalized', message: 'Cloud recovery finalized this verified Genre change.' });
+          setMetadataApplyMessage('Recovery succeeded after read-only local verification. Supabase is finalized and Rekordbox was not rewritten.');
+        } else {
+          setMetadataCloudOutcome({
+            state: 'recovery-required',
+            message: finalizationFailure instanceof Error ? finalizationFailure.message : 'Cloud finalization retry failed.',
+          });
+          setMetadataApplyMessage('Read-only local recovery verification passed, but Supabase finalization is still unresolved. Rekordbox was not rewritten; retry recovery later.');
+        }
+        if (refreshFailure) {
+          setMetadataDraftActionError(refreshFailure instanceof Error
+            ? `Recovery completed, but refreshed metadata could not be loaded: ${refreshFailure.message}`
+            : 'Recovery completed, but refreshed metadata could not be loaded.');
+        }
+      }
+    } catch (error) {
+      if (contextIsCurrent()) {
+        setMetadataCloudOutcome({
+          state: error instanceof MetadataApplyProofError ? 'proof-mismatch' : 'recovery-required',
+          message: error instanceof Error ? error.message : 'Metadata recovery could not be completed.',
+        });
+        setMetadataApplyMessage('Metadata recovery stopped safely before cloud finalization. Rekordbox was not rewritten.');
+      }
+    } finally {
+      if (generation === metadataApplyGenerationRef.current) {
+        setMetadataRecoveryTrackId(null);
+        setMetadataApplyBusy(false);
+      }
+    }
+  }, [importId, metadataApplyBridgeAvailable, metadataApplyBusy, metadataRecoveryTrackId, refreshMetadataCanonicalState, userId]);
 
   const trackIdsKey = useMemo(() => tracks.map((track) => track.id).join(','), [tracks]);
   useEffect(() => {
@@ -3158,6 +3578,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       <PendingMetadataChangesReview
         open={pendingMetadataReviewOpen}
         pendingCount={pendingMetadataCount}
+        actionablePendingCount={actionableMetadataPendingCount}
+        recoveryCount={metadataRecoveryCount}
         draftLoadStatus={metadataDraftLoadStatus}
         draftLoadError={metadataDraftLoadError}
         identityLoadStatus={pendingMetadataTrackLoadStatus}
@@ -3170,11 +3592,15 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         preflightBusy={metadataApplyBusy}
         preflightResult={metadataApplyPreflight}
         applyResult={metadataApplyResult}
+        cloudOutcome={metadataCloudOutcome}
+        recoveryBusyTrackId={metadataRecoveryTrackId}
+        ordinaryActionsBlocked={Boolean(metadataCloudOutcome && metadataCloudOutcome.state !== 'finalized')}
         preflightMessage={metadataApplyMessage}
         onClose={() => setPendingMetadataReviewOpen(false)}
         onRetryDrafts={() => { setMetadataDraftActionError(null); setMetadataDraftRetryNonce((value) => value + 1); }}
         onRetryIdentities={() => setPendingMetadataTrackRetryNonce((value) => value + 1)}
         onDiscard={(draft) => { void discardPendingGenreDraft(draft); }}
+        onRecover={(draft) => { void handleMetadataRecovery(draft); }}
         onPreflightAll={() => { void handleMetadataPreflightAll(); }}
         onApplyAll={() => { void handleMetadataApplyAll(); }}
       />
@@ -3489,7 +3915,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                     const genreEditingDirty = editingGenreTrackId === track.id
                       && normalizeGenreMetadataDraftValue(editingGenreValue) !== normalizeGenreMetadataDraftValue(effectiveGenre);
                     const genreSaving = savingGenreTrackIds.has(track.id);
-                    const genreEditingAvailable = metadataDraftLoadStatus === 'loaded';
+                    const genreRecoveryLocked = Boolean(genreDraft && isTrackMetadataDraftRecoveryLocked(genreDraft));
+                    const genreRuntimeBlocked = Boolean(metadataCloudOutcome && metadataCloudOutcome.state !== 'finalized');
+                    const genreEditingAvailable = metadataDraftLoadStatus === 'loaded' && !genreRecoveryLocked && !genreRuntimeBlocked;
                     return (
                       <tr
                         key={track.id}
@@ -3583,12 +4011,12 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                                         event.preventDefault();
                                         setEditingGenreTrackId(null);
                                         setGenreSaveError((current) => current?.trackId === track.id ? null : current);
-                                      } else if (event.key === 'Enter' && !event.repeat && genreEditingDirty && !genreSaving) {
+                                      } else if (event.key === 'Enter' && !event.repeat && genreEditingDirty && !genreSaving && genreEditingAvailable) {
                                         event.preventDefault();
                                         void saveInlineGenreDraft(track);
                                       }
                                     }}
-                                    disabled={genreSaving}
+                                    disabled={genreSaving || !genreEditingAvailable}
                                     aria-label={`Genre for ${track.title}`}
                                     className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/30 outline-none disabled:opacity-60"
                                     placeholder="Genre…"
@@ -3637,16 +4065,26 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                               {genreDraft && (
                                 <span
                                   className="shrink-0 rounded-full border border-amber-300/25 bg-amber-300/[0.08] px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-amber-200"
-                                  title="Pending Genre change. Not yet applied to Rekordbox."
-                                  aria-label="Pending Genre change, not yet applied to Rekordbox"
+                                  title={genreRecoveryLocked
+                                    ? 'Rekordbox Genre is already locally verified; cloud finalization recovery is required.'
+                                    : 'Pending Genre change. Not yet applied to Rekordbox.'}
+                                  aria-label={genreRecoveryLocked
+                                    ? 'Genre cloud finalization recovery required'
+                                    : 'Pending Genre change, not yet applied to Rekordbox'}
                                 >
-                                  Pending
+                                  {genreRecoveryLocked ? 'Recovery' : 'Pending'}
                                 </span>
                               )}
                               <button
                                 type="button"
                                 className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all disabled:cursor-not-allowed disabled:opacity-20 group-hover:disabled:opacity-20"
-                                title={genreEditingAvailable ? 'Edit Genre' : 'Pending Genre changes must finish loading before editing'}
+                                title={genreEditingAvailable
+                                  ? 'Edit Genre'
+                                  : genreRecoveryLocked
+                                    ? 'Genre editing is locked until metadata cloud recovery completes'
+                                    : genreRuntimeBlocked
+                                      ? 'Genre editing is blocked while the current metadata Apply outcome is unresolved'
+                                      : 'Pending Genre changes must finish loading before editing'}
                                 aria-label={`Edit Genre for ${track.title}`}
                                 disabled={!genreEditingAvailable}
                                 onClick={(e) => {
