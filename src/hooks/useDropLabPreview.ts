@@ -5,8 +5,10 @@ import { resolveUsbPath } from '../lib/rekordbox/usbPathResolver';
 import type { DropLabTimeSegment } from '../lib/music/dropLabSegments';
 import type { RekordboxTrack } from '../types';
 import { registerUsbPlaybackStopHandler } from '../lib/usb/usbPlaybackCoordinator';
-import type { UsbFileResolutionError } from '../lib/usb/resolveUsbFile';
 import { getDropLabPreviewPrerequisiteReason } from '../lib/music/dropLabPreviewPrerequisites';
+import { DecodedAudioCache } from '../lib/audio/decodedAudioCache';
+import { createBrowserAudioContext, closeAudioContext, scheduleAudioBufferClips, stopAndDisconnectAudioNodes } from '../lib/audio/webAudioScheduling';
+import { loadDropLabDecodedPair } from '../lib/music/dropLabPreviewAudio';
 
 type PreviewStatus = 'idle' | 'loading' | 'ready' | 'playing' | 'error';
 export type DropLabPreviewPhase = 'idle' | 'build' | 'drop';
@@ -30,14 +32,8 @@ export interface UseDropLabPreviewResult {
   stop: () => void;
 }
 
-const decodedCache = new Map<string, AudioBuffer>();
+const decodedCache = new DecodedAudioCache<AudioBuffer>(8);
 const PREVIEW_LOAD_TIMEOUT_MS = 30_000;
-
-function getAudioContext(): AudioContext {
-  const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextCtor) throw new Error('Web Audio is not supported in this browser.');
-  return new AudioContextCtor();
-}
 
 function loadWithTimeout<T>(promise: Promise<T>, onTimeout: () => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -99,10 +95,7 @@ export function useDropLabPreview(input: {
 
   const stop = useCallback(() => {
     cancelProgress();
-    for (const node of nodesRef.current) {
-      try { node.stop(); } catch { /* already stopped */ }
-      try { node.disconnect(); } catch { /* already disconnected */ }
-    }
+    stopAndDisconnectAudioNodes(nodesRef.current);
     nodesRef.current = [];
     setProgress(0);
     setPhase('idle');
@@ -111,11 +104,19 @@ export function useDropLabPreview(input: {
 
   useEffect(() => stop, [stop]);
 
+  useEffect(() => () => {
+    const context = audioCtxRef.current;
+    audioCtxRef.current = null;
+    decodedCache.clear();
+    void closeAudioContext(context);
+  }, []);
+
   useEffect(() => registerUsbPlaybackStopHandler(() => {
     requestIdRef.current += 1;
     fetchAbortRef.current?.abort();
     fetchAbortRef.current = null;
     stop();
+    decodedCache.clear();
     setDecoded(null);
     setError(null);
     setStatus('idle');
@@ -152,48 +153,28 @@ export function useDropLabPreview(input: {
     fetchAbortRef.current = fetchController;
     setStatus('loading');
 
-    async function decodeTrack(track: RekordboxTrack, segments: string[]): Promise<AudioBuffer> {
-      const cacheKey = track.id;
-      const cached = decodedCache.get(cacheKey);
-      if (cached) return cached;
-
-      const result = await usb.resolveTrackSource(segments, {
-        isCancelled: () => fetchController.signal.aborted || requestId !== requestIdRef.current,
-      });
-      if (!result.ok) {
-        const failure = result as { ok: false; error: UsbFileResolutionError };
-        if (failure.error.kind === 'abort') throw new DOMException('Audio request aborted.', 'AbortError');
-        throw new Error('Connect the Rekordbox USB drive to preview this transition.');
-      }
-
-      const arrayBuffer = result.source.kind === 'file'
-        ? await result.source.file.arrayBuffer()
-        : await fetch(result.source.url, { cache: 'no-store', signal: fetchController.signal }).then((response) => {
-            if (!response.ok) throw new Error(`Could not stream audio (${response.status}).`);
-            return response.arrayBuffer();
-          });
-      if (fetchController.signal.aborted || requestId !== requestIdRef.current) {
-        throw new DOMException('Audio request aborted.', 'AbortError');
-      }
-
-      const ctx = audioCtxRef.current ?? getAudioContext();
-      audioCtxRef.current = ctx;
-      const decodedBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
-      decodedCache.set(cacheKey, decodedBuffer);
-      if (decodedCache.size > 8) {
-        const firstKey = decodedCache.keys().next().value as string | undefined;
-        if (firstKey) decodedCache.delete(firstKey);
-      }
-      return decodedBuffer;
-    }
-
-    const loadPair = Promise.all([
-      decodeTrack(input.sourceTrack, sourcePath.segments),
-      decodeTrack(input.candidateTrack, candidatePath.segments),
-    ]);
+    const getContext = () => {
+      const context = audioCtxRef.current ?? createBrowserAudioContext();
+      audioCtxRef.current = context;
+      return context;
+    };
+    const isCancelled = () => fetchController.signal.aborted || requestId !== requestIdRef.current;
+    const loadPair = loadDropLabDecodedPair(
+      {
+        source: { cacheKey: input.sourceTrack.id, pathSegments: sourcePath.segments },
+        candidate: { cacheKey: input.candidateTrack.id, pathSegments: candidatePath.segments },
+      },
+      {
+        cache: decodedCache,
+        resolveSource: usb.resolveTrackSource,
+        getAudioContext: getContext,
+        isCancelled,
+        fetchImpl: (url, init) => fetch(url, { ...init, signal: fetchController.signal }),
+      },
+    );
 
     loadWithTimeout(loadPair, () => fetchController.abort())
-      .then(([source, candidate]) => {
+      .then(({ source, candidate }) => {
         if (requestId !== requestIdRef.current) return;
         if (fetchAbortRef.current === fetchController) fetchAbortRef.current = null;
         setDecoded({ source, candidate });
@@ -236,7 +217,7 @@ export function useDropLabPreview(input: {
     if (!decoded || !input.sourceSegment || !input.candidateSegment || prerequisiteReason) return;
 
     globalPlayer.stop();
-    const ctx = audioCtxRef.current ?? getAudioContext();
+    const ctx = audioCtxRef.current ?? createBrowserAudioContext();
     audioCtxRef.current = ctx;
     void ctx.resume();
 
@@ -256,24 +237,31 @@ export function useDropLabPreview(input: {
       return;
     }
 
-    const sourceNode = ctx.createBufferSource();
-    const candidateNode = ctx.createBufferSource();
-    sourceNode.buffer = decoded.source;
-    candidateNode.buffer = decoded.candidate;
-    sourceNode.connect(ctx.destination);
-    candidateNode.connect(ctx.destination);
-
-    const leadInSeconds = 0.05;
-    const startAt = ctx.currentTime + leadInSeconds;
+    let sourceNode: AudioBufferSourceNode;
+    let candidateNode: AudioBufferSourceNode;
+    let startAt: number;
 
     try {
-      sourceNode.start(startAt, sourceOffset, sourceDuration);
-      sourceNode.stop(startAt + sourceDuration);
-      candidateNode.start(startAt + sourceDuration, candidateOffset, candidateDuration);
-      candidateNode.stop(startAt + sourceDuration + candidateDuration);
+      const scheduled = scheduleAudioBufferClips(
+        ctx,
+        [
+          {
+            buffer: decoded.source,
+            offsetSeconds: sourceOffset,
+            durationSeconds: sourceDuration,
+          },
+          {
+            buffer: decoded.candidate,
+            offsetSeconds: candidateOffset,
+            durationSeconds: candidateDuration,
+            startOffsetSeconds: sourceDuration,
+          },
+        ],
+        { leadInSeconds: 0.05 },
+      );
+      [sourceNode, candidateNode] = scheduled.nodes;
+      startAt = scheduled.startAt;
     } catch (err) {
-      try { sourceNode.disconnect(); } catch { /* ignore */ }
-      try { candidateNode.disconnect(); } catch { /* ignore */ }
       setError(err instanceof Error ? err.message : 'Could not start the transition preview.');
       setStatus('error');
       return;
@@ -308,8 +296,7 @@ export function useDropLabPreview(input: {
       if (!nodesRef.current.includes(candidateNode)) return;
       cancelProgress();
       nodesRef.current = [];
-      try { sourceNode.disconnect(); } catch { /* ignore */ }
-      try { candidateNode.disconnect(); } catch { /* ignore */ }
+      stopAndDisconnectAudioNodes([sourceNode, candidateNode]);
       setProgress(0);
       setPhase('idle');
       setStatus('ready');
