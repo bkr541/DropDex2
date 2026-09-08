@@ -1,50 +1,55 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useReducer,
+  useRef,
   type ReactNode,
 } from 'react';
 import {
   createInitialRouletteSessionState,
   rouletteSessionReducer,
-  type RouletteCommand,
   type RouletteSessionState,
-  type RouletteSourceRole,
 } from './rouletteSession';
-
-export interface RouletteSessionActions {
-  replaceSource(role: RouletteSourceRole): boolean;
-  replaceBoth(): boolean;
-  play(): boolean;
-  stop(): boolean;
-}
+import {
+  createRouletteActionExecutor,
+  type RouletteSessionActions,
+} from './rouletteActions';
 
 interface RouletteSessionContextValue {
   state: RouletteSessionState;
-  runtimeAvailable: false;
+  matchingAvailable: true;
+  playbackAvailable: false;
   actions: RouletteSessionActions;
+  cancelPending(): void;
 }
 
 const RouletteSessionContext = createContext<RouletteSessionContextValue | null>(null);
 
-const unavailableCommand = (_command: RouletteCommand): boolean => false;
-
 export function RouletteSessionProvider({ children }: { children: ReactNode }) {
-  const [state] = useReducer(rouletteSessionReducer, undefined, createInitialRouletteSessionState);
+  const [state, dispatch] = useReducer(
+    rouletteSessionReducer,
+    undefined,
+    createInitialRouletteSessionState,
+  );
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
-  const actions = useMemo<RouletteSessionActions>(() => ({
-    replaceSource: (role) => unavailableCommand(role === 'vocal' ? 'replace-vocal' : 'replace-instrumental'),
-    replaceBoth: () => unavailableCommand('replace-both'),
-    play: () => unavailableCommand('play'),
-    stop: () => unavailableCommand('stop'),
+  const executor = useMemo(() => createRouletteActionExecutor({
+    getState: () => stateRef.current,
+    dispatch,
   }), []);
+
+  useEffect(() => () => executor.cancel(), [executor]);
 
   const value = useMemo<RouletteSessionContextValue>(() => ({
     state,
-    runtimeAvailable: false,
-    actions,
-  }), [actions, state]);
+    matchingAvailable: true,
+    playbackAvailable: false,
+    actions: executor.actions,
+    cancelPending: executor.cancel,
+  }), [executor, state]);
 
   return (
     <RouletteSessionContext.Provider value={value}>

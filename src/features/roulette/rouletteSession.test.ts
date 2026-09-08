@@ -44,7 +44,7 @@ describe('roulette session state', () => {
         vocal: { parentTrackId: null, stemRef: null, stemStatus: 'unavailable' },
         instrumental: { parentTrackId: null, stemRef: null, stemStatus: 'unavailable' },
       },
-      command: { active: null, status: 'idle', error: null },
+      command: { active: null, requestId: null, status: 'idle', error: null },
       transport: { status: 'stopped', masterBpm: null },
     });
   });
@@ -89,10 +89,12 @@ describe('roulette session state', () => {
     const loading = rouletteSessionReducer(state, {
       type: 'command-started',
       command: 'replace-both',
+      requestId: 'request-1',
     });
     const failed = rouletteSessionReducer(loading, {
       type: 'command-failed',
       command: 'replace-both',
+      requestId: 'request-1',
       error: 'No compatible pair found',
     });
 
@@ -100,8 +102,36 @@ describe('roulette session state', () => {
     expect(failed.sources).toEqual(state.sources);
     expect(failed.command).toEqual({
       active: null,
+      requestId: null,
       status: 'error',
       error: 'No compatible pair found',
     });
   });
+
+  it('ignores stale completion from an older request with the same command', () => {
+    const startedFirst = rouletteSessionReducer(readyPair(), {
+      type: 'command-started',
+      command: 'replace-vocal',
+      requestId: 'request-1',
+    });
+    const startedSecond = rouletteSessionReducer(startedFirst, {
+      type: 'command-started',
+      command: 'replace-vocal',
+      requestId: 'request-2',
+    });
+    const stale = rouletteSessionReducer(startedSecond, {
+      type: 'command-finished',
+      command: 'replace-vocal',
+      requestId: 'request-1',
+    });
+
+    expect(stale).toBe(startedSecond);
+    expect(stale.command).toEqual({
+      active: 'replace-vocal',
+      requestId: 'request-2',
+      status: 'loading',
+      error: null,
+    });
+  });
+
 });

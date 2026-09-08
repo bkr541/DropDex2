@@ -655,6 +655,33 @@ export async function fetchTrackVocalAnalysis(trackId: string): Promise<VocalAna
   return mapVocalAnalysisRow(data);
 }
 
+/** Fetch optional compact PVDI vocal evidence for multiple tracks, keyed by track ID. */
+export async function fetchTracksVocalAnalysis(
+  trackIds: string[],
+): Promise<Map<string, VocalAnalysisRow>> {
+  const uniqueIds = [...new Set(trackIds)].filter(Boolean);
+  const result = new Map<string, VocalAnalysisRow>();
+  if (uniqueIds.length === 0) return result;
+
+  const chunks = chunkIds(uniqueIds, WAVEFORM_CHUNK_SIZE);
+  await Promise.all(chunks.map(async (chunk) => {
+    const { data, error } = await supabase
+      .from('rekordbox_track_vocal_analysis')
+      .select(
+        'id, import_id, track_id, source_tag, source_header_length, source_u1, source_u2, ' +
+        'frame_duration_ms, frame_count, regions, integrity_status, complete, parse_warnings, parser_version'
+      )
+      .in('track_id', chunk);
+
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      const mapped = mapVocalAnalysisRow(row);
+      result.set(mapped.track_id, mapped);
+    }
+  }));
+  return result;
+}
+
 /** Fetch phrase segments for multiple tracks, keyed by track ID. */
 export async function fetchTracksPhrases(trackIds: string[]): Promise<Map<string, PhraseRow[]>> {
   const uniqueIds = [...new Set(trackIds)].filter(Boolean);

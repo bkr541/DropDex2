@@ -22,6 +22,7 @@ export interface RouletteSessionState {
   sources: Record<RouletteSourceRole, RouletteSourceSelection>;
   command: {
     active: RouletteCommand | null;
+    requestId: string | null;
     status: RouletteCommandStatus;
     error: string | null;
   };
@@ -32,15 +33,21 @@ export interface RouletteSessionState {
 }
 
 export type RouletteSessionAction =
-  | { type: 'commit-source'; role: RouletteSourceRole; selection: RouletteSourceSelection }
+  | {
+      type: 'commit-source';
+      role: RouletteSourceRole;
+      selection: RouletteSourceSelection;
+      requestId?: string;
+    }
   | {
       type: 'commit-pair';
       vocal: RouletteSourceSelection;
       instrumental: RouletteSourceSelection;
+      requestId?: string;
     }
-  | { type: 'command-started'; command: RouletteCommand }
-  | { type: 'command-finished'; command: RouletteCommand }
-  | { type: 'command-failed'; command: RouletteCommand; error: string }
+  | { type: 'command-started'; command: RouletteCommand; requestId: string }
+  | { type: 'command-finished'; command: RouletteCommand; requestId: string }
+  | { type: 'command-failed'; command: RouletteCommand; requestId: string; error: string }
   | { type: 'transport-changed'; status: RouletteTransportStatus; masterBpm?: number | null };
 
 const emptySource = (): RouletteSourceSelection => ({
@@ -57,6 +64,7 @@ export function createInitialRouletteSessionState(): RouletteSessionState {
     },
     command: {
       active: null,
+      requestId: null,
       status: 'idle',
       error: null,
     },
@@ -73,43 +81,45 @@ export function rouletteSessionReducer(
 ): RouletteSessionState {
   switch (action.type) {
     case 'commit-source':
+      if (action.requestId && state.command.requestId !== action.requestId) return state;
       return {
         ...state,
         sources: {
           ...state.sources,
           [action.role]: action.selection,
         },
-        command: { active: null, status: 'idle', error: null },
+        command: { active: null, requestId: null, status: 'idle', error: null },
       };
 
     case 'commit-pair':
+      if (action.requestId && state.command.requestId !== action.requestId) return state;
       return {
         ...state,
         sources: {
           vocal: action.vocal,
           instrumental: action.instrumental,
         },
-        command: { active: null, status: 'idle', error: null },
+        command: { active: null, requestId: null, status: 'idle', error: null },
       };
 
     case 'command-started':
       return {
         ...state,
-        command: { active: action.command, status: 'loading', error: null },
+        command: { active: action.command, requestId: action.requestId, status: 'loading', error: null },
       };
 
     case 'command-finished':
-      if (state.command.active !== action.command) return state;
+      if (state.command.active !== action.command || state.command.requestId !== action.requestId) return state;
       return {
         ...state,
-        command: { active: null, status: 'idle', error: null },
+        command: { active: null, requestId: null, status: 'idle', error: null },
       };
 
     case 'command-failed':
-      if (state.command.active !== action.command) return state;
+      if (state.command.active !== action.command || state.command.requestId !== action.requestId) return state;
       return {
         ...state,
-        command: { active: null, status: 'error', error: action.error },
+        command: { active: null, requestId: null, status: 'error', error: action.error },
       };
 
     case 'transport-changed':
