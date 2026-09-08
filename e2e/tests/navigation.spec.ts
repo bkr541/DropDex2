@@ -54,6 +54,34 @@ test.describe('durable navigation and recovery', () => {
     await expect(page.getByText('Sunrise Set', { exact: true }).first()).toBeVisible();
   });
 
+
+  test('Roulette is reachable from the production nav, direct-route safe, and exposes only disabled Stage 2 commands', async ({ page }) => {
+    await prepare(page);
+    await page.goto('/library');
+
+    const rouletteNav = page.locator('aside nav').getByRole('button', { name: 'Roulette', exact: true });
+    await expect(rouletteNav).toHaveCount(1);
+    await rouletteNav.click();
+    await expect(page).toHaveURL('/roulette');
+    await expect(page.getByRole('heading', { name: 'Roulette' })).toBeVisible();
+    await expect(page.getByTestId('roulette-vocal-lane')).toContainText('Vocal');
+    await expect(page.getByTestId('roulette-instrumental-lane')).toContainText('Instrumental');
+
+    for (const label of ['Play Roulette', 'Stop Roulette', 'Change Vocal', 'Change Instrumental', 'Roulette Both']) {
+      await expect(page.getByRole('button', { name: label, exact: true })).toBeDisabled();
+    }
+    await expect(page.getByTestId('roulette-screen').getByRole('status')).toContainText('not connected in this stage');
+
+    await page.reload();
+    await expect(page).toHaveURL('/roulette');
+    await expect(page.getByTestId('roulette-screen')).toBeVisible();
+
+    await page.goto('/review');
+    await expect(page.getByRole('heading', { name: 'Set Review Mode' })).toBeVisible();
+    await page.goto('/roulette');
+    await expect(page.getByTestId('roulette-screen')).toBeVisible();
+  });
+
   test('browser Back and Forward restore multiple DropDex screens', async ({ page }) => {
     await prepare(page);
     await page.goto('/library');

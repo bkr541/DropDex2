@@ -22,6 +22,12 @@ describe('app routes', () => {
     }
   });
 
+  it('round trips the Roulette production route', () => {
+    expect(parseAppRoute('/roulette')).toEqual({ name: 'roulette' });
+    expect(routeToUrl({ name: 'roulette' })).toBe('/roulette');
+    expect(routeBackFallback({ name: 'roulette' })).toEqual({ name: 'library', tab: 'overview', search: '' });
+  });
+
   it('round trips the cue workspace route', () => {
     expect(parseAppRoute('/cues')).toEqual({ name: 'cues' });
     expect(routeToUrl({ name: 'cues' })).toBe('/cues');

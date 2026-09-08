@@ -47,6 +47,7 @@ const SearchView = lazyWithRecovery('search', () => import('./components/search/
 const ReviewView = lazyWithRecovery('review', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewView })));
 const ReviewEmptyState = lazyWithRecovery('review-empty', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewEmptyState })));
 const CuePointsView = lazyWithRecovery('cue-points', () => import('./components/cues/CuePointsView').then(m => ({ default: m.CuePointsView })));
+const RouletteView = lazyWithRecovery('roulette', () => import('./components/roulette/RouletteView').then(m => ({ default: m.RouletteView })));
 const DropLabView = lazyWithRecovery('drop-lab', () => import('./components/drop-lab/DropLabView').then(m => ({ default: m.DropLabView })));
 
 import { LibraryView } from './components/library/LibraryView';
@@ -65,6 +66,7 @@ import type { ThemeId } from './theme/theme';
 import { ReusableComponentsView } from './components/reusable/ReusableComponentsView';
 import { CheckmarkFilled, ChevronLeft, CircleDash, Close, DataBase, Edit, Growth, Layers, Logout, Moon, Music, Radio, RecordingFilled, Renew, Search, Settings, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from './components/ui/controls';
+import { RouletteSessionProvider } from './features/roulette/RouletteSessionContext';
 
 type ThemeOption = {
   id: ThemeId;
@@ -88,7 +90,7 @@ function CuePointsNavIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'settings' | 'discovery' | 'search' | 'edit-profile' | 'drop-lab' | 'import' | 'reusable-components' | 'not-found';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'roulette' | 'settings' | 'discovery' | 'search' | 'edit-profile' | 'drop-lab' | 'import' | 'reusable-components' | 'not-found';
 
 type ImportNotice = {
   kind: 'success' | 'warning';
@@ -106,6 +108,7 @@ function viewForRoute(route: AppRoute): View {
     case 'import': return 'import';
     case 'review': return 'review';
     case 'cues': return 'cues';
+    case 'roulette': return 'roulette';
     case 'discovery': return 'discovery';
     case 'search': return 'search';
     case 'profile': return 'edit-profile';
@@ -783,6 +786,7 @@ export default function App() {
       case 'home': navigate(libraryRoute()); break;
       case 'review': navigate({ name: 'review' }); break;
       case 'cues': navigate({ name: 'cues' }); break;
+      case 'roulette': navigate({ name: 'roulette' }); break;
       case 'settings': navigate({ name: 'settings' }); break;
       case 'discovery': navigate({ name: 'discovery' }); break;
       case 'search': navigate({ name: 'search' }); break;
@@ -1081,6 +1085,7 @@ export default function App() {
     { view: 'home', icon: Music, label: libraryLabel, activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'review', icon: Growth, label: 'Review', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
     { view: 'cues', icon: CuePointsNavIcon, label: 'Cue Points', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
+    { view: 'roulette', icon: Renew, label: 'Roulette', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
     { view: 'discovery', icon: Radio, label: 'Discover', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'search', icon: Search, label: 'Search', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'reusable-components', icon: Layers, label: 'Reusable Components', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
@@ -1089,6 +1094,7 @@ export default function App() {
   return (
     <UsbConnectionProvider>
     <AudioPlayerProvider imports={allImports}>
+    <RouletteSessionProvider>
     <RootFailureProbe />
     <div className="flex h-screen overflow-hidden font-sans relative">
       {/* Background ambience */}
@@ -1221,6 +1227,17 @@ export default function App() {
                   <h2 className="text-2xl font-black italic">Track Intelligence</h2>
                 </div>
                 <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Deep Scan Results</p>
+              </div>
+            )}
+            {!routeBlocked && currentView === 'roulette' && (
+              <div>
+                <div className="flex items-center gap-2">
+                  <ControlButton variant="ghost" onClick={goBack}>
+                    <ChevronLeft size={20} />
+                  </ControlButton>
+                  <h2 className="text-2xl font-black italic">Roulette</h2>
+                </div>
+                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Vocal + Instrumental</p>
               </div>
             )}
             {!routeBlocked && currentView === 'review' && (
@@ -1572,6 +1589,21 @@ export default function App() {
                   onRetryDelete={() => handleDeleteImport(selectedImport)}
                   onBack={returnToLibrary}
                 />
+              </motion.div>
+            )}
+
+            {/* ── Roulette ── */}
+            {!routeBlocked && currentView === 'roulette' && (
+              <motion.div
+                key="roulette"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                className="pt-1"
+              >
+                <LazyFeature label="Loading Roulette…" boundaryKey={`${routeKey(route)}:roulette`} onReturnToLibrary={returnToLibrary}>
+                  <RouletteView />
+                </LazyFeature>
               </motion.div>
             )}
 
@@ -2099,6 +2131,7 @@ export default function App() {
         />
       )}
     </div>
+    </RouletteSessionProvider>
     </AudioPlayerProvider>
     </UsbConnectionProvider>
   );
