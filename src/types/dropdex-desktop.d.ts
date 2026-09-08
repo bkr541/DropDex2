@@ -54,6 +54,39 @@ export type DesktopTrackSourceResult =
     };
 
 
+
+export type DesktopStemAssetErrorKind =
+  | 'not_found'
+  | 'security'
+  | 'type_mismatch'
+  | 'invalid_locator'
+  | 'unexpected';
+
+export interface DesktopStemAssetError {
+  kind: DesktopStemAssetErrorKind;
+  message: string;
+}
+
+export type DesktopStemAssetInspectResult =
+  | { ok: true; asset: { size: number; mtimeMs: number } }
+  | { ok: false; error: DesktopStemAssetError };
+
+export type DesktopStemAssetSourceResult =
+  | {
+      ok: true;
+      source: {
+        kind: 'url';
+        url: string;
+        size: number;
+        mtimeMs: number;
+      };
+    }
+  | { ok: false; error: DesktopStemAssetError };
+
+export type DesktopStemAssetDeleteResult =
+  | { ok: true; deleted: boolean }
+  | { ok: false; error: DesktopStemAssetError };
+
 export interface DesktopCueApplyDraft {
   importId: string;
   trackId: string;
@@ -276,6 +309,9 @@ export interface DropDexDesktopBridge {
   releaseUsb(): Promise<DesktopUsbReleaseResult>;
   disconnectUsb(): Promise<DesktopUsbReleaseResult>;
   resolveTrackSource(segments: string[]): Promise<DesktopTrackSourceResult>;
+  inspectStemAsset(locator: string): Promise<DesktopStemAssetInspectResult>;
+  resolveStemAsset(locator: string): Promise<DesktopStemAssetSourceResult>;
+  deleteStemAsset(locator: string): Promise<DesktopStemAssetDeleteResult>;
   metadataApplyAvailability(): Promise<{ available: boolean; reason: string | null; metadataSchemaVersion: number | null; genreMaxLength: number | null; metadataApplySupported: boolean }>;
   metadataApplyPreflight(scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataPreflightResult>;
   metadataApply(token: string, scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataApplyResult>;

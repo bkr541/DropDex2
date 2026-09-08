@@ -5,6 +5,7 @@ import { StatusBadge } from '../ui/feedback';
 import { TransportButton } from '../ui/media';
 import { useRouletteSession } from '../../features/roulette/RouletteSessionContext';
 import type { RouletteSourceRole, RouletteStemStatus } from '../../features/roulette/rouletteSession';
+import { useRouletteStemReadiness } from '../../features/roulette/useRouletteStemReadiness';
 
 const SOURCE_COPY: Record<RouletteSourceRole, { label: string; position: string }> = {
   vocal: { label: 'Vocal', position: 'Top deck' },
@@ -22,7 +23,13 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
   const { state } = useRouletteSession();
   const source = state.sources[role];
   const copy = SOURCE_COPY[role];
-  const status = STEM_STATUS_COPY[source.stemStatus];
+  const stemReadiness = useRouletteStemReadiness(source.parentTrackId, role);
+  const effectiveStatus: RouletteStemStatus = stemReadiness.loading
+    ? 'preparing'
+    : stemReadiness.error
+      ? 'failed'
+      : stemReadiness.readiness?.status ?? source.stemStatus;
+  const status = STEM_STATUS_COPY[effectiveStatus];
 
   return (
     <div data-testid={`roulette-${role}-lane`}>
@@ -40,7 +47,14 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
           aria-label={`${copy.label} waveform area`}
         >
           <p className="text-xs text-muted-foreground">
-            {source.parentTrackId ? 'Stem preparation pending' : 'No source selected'}
+            {stemReadiness.error
+              ? stemReadiness.error
+              : stemReadiness.readiness?.reason
+                ?? (source.parentTrackId && effectiveStatus === 'ready'
+                  ? 'Ready for playback'
+                  : source.parentTrackId
+                    ? 'Stem preparation pending'
+                    : 'No source selected')}
           </p>
         </div>
       </SurfaceCard>

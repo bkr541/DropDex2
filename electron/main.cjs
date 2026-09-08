@@ -10,6 +10,10 @@ const {
   resolveContainedRealPath,
   validateUsbPathSegments,
 } = require('./usbPathSafety.cjs');
+const {
+  deleteStemAssetFile,
+  resolveStemAssetFile,
+} = require('./stemAssetStorage.cjs');
 
 const APP_SCHEME = 'dropdex-media';
 const USB_CONFIG_FILE = 'usb-connection.json';
@@ -328,16 +332,32 @@ function pruneMediaTokens() {
   }
 }
 
+function clearUsbMediaTokens() {
+  for (const [token, entry] of mediaTokens) {
+    if (entry.kind === 'usb') mediaTokens.delete(token);
+  }
+}
+
 async function handleMediaRequest(request) {
   let finishRequest = null;
+  let usbRequest = false;
   try {
-    finishRequest = usbStreams.beginRequest();
     const requestUrl = new URL(request.url);
     const token = decodeURIComponent(requestUrl.pathname.replace(/^\/+/, ''));
     const entry = mediaTokens.get(token);
-    if (!entry || !usbConnection || !isPathInsideRoot(usbConnection.rootPath, entry.filePath)) {
-      return new Response('Media source expired.', { status: 404 });
+    if (!entry) return new Response('Media source expired.', { status: 404 });
+
+    usbRequest = entry.kind === 'usb';
+    if (usbRequest) {
+      finishRequest = usbStreams.beginRequest();
+      if (!usbConnection || entry.rootPath !== usbConnection.rootPath) {
+        return new Response('Media source expired.', { status: 404 });
+      }
     }
+    if (!isPathInsideRoot(entry.rootPath, entry.filePath)) {
+      return new Response('Unsafe media path.', { status: 403 });
+    }
+
     entry.lastAccess = Date.now();
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -349,7 +369,7 @@ async function handleMediaRequest(request) {
         },
       });
     }
-    const realPath = await resolveContainedRealPath(usbConnection.rootPath, entry.filePath);
+    const realPath = await resolveContainedRealPath(entry.rootPath, entry.filePath);
     if (!realPath) {
       return new Response('Unsafe media path.', { status: 403 });
     }
@@ -378,22 +398,24 @@ async function handleMediaRequest(request) {
     if (request.method === 'HEAD') {
       return new Response(null, { status: range ? 206 : 200, headers });
     }
-    usbStreams.assertAcceptingRequests();
+    if (usbRequest) usbStreams.assertAcceptingRequests();
     const nodeStream = createReadStream(realPath, { start, end });
-    try {
-      usbStreams.track(nodeStream, { playback: true });
-    } catch (error) {
-      nodeStream.destroy();
-      throw error;
+    if (usbRequest) {
+      try {
+        usbStreams.track(nodeStream, { playback: true });
+      } catch (error) {
+        nodeStream.destroy();
+        throw error;
+      }
     }
-    finishRequest();
+    finishRequest?.();
     finishRequest = null;
     return new Response(Readable.toWeb(nodeStream), {
       status: range ? 206 : 200,
       headers,
     });
   } catch (error) {
-    const status = error && error.code === 'USB_RELEASING' ? 409 : 500;
+    const status = usbRequest && error && error.code === 'USB_RELEASING' ? 409 : 500;
     return new Response(error instanceof Error ? error.message : 'Media stream failed.', { status });
   } finally {
     finishRequest?.();
@@ -407,7 +429,7 @@ async function releaseUsbAccess({ disconnect = false } = {}) {
     ? { volumeName: usbConnection.volumeName, connectedAt: usbConnection.connectedAt }
     : releasedUsbMetadata;
   usbStreams.beginRelease();
-  mediaTokens.clear();
+  clearUsbMediaTokens();
   const streamResult = await usbStreams.release();
 
   if (streamResult.allStreamsClosed) {
@@ -459,7 +481,7 @@ async function selectUsbRoot() {
     connectedAt: new Date().toISOString(),
   };
   await persistUsbConnection();
-  mediaTokens.clear();
+  clearUsbMediaTokens();
   usbStreams.resetForConnection();
   cachedUsbState = disconnectedUsbState();
   return { cancelled: false, state: await desktopConnectionState() };
@@ -491,7 +513,12 @@ function registerIpcHandlers() {
       // Re-check admission before minting a token so no post-release URL exists.
       usbStreams.assertAcceptingRequests();
       const token = crypto.randomUUID();
-      mediaTokens.set(token, { filePath: resolved.filePath, lastAccess: Date.now() });
+      mediaTokens.set(token, {
+        kind: 'usb',
+        filePath: resolved.filePath,
+        rootPath: usbConnection.rootPath,
+        lastAccess: Date.now(),
+      });
       return {
         ok: true,
         source: {
@@ -508,6 +535,43 @@ function registerIpcHandlers() {
     } finally {
       finishRequest?.();
     }
+  });
+  ipcMain.handle('dropdex:inspect-stem-asset', async (_event, locator) => {
+    const resolved = await resolveStemAssetFile(app.getPath('userData'), locator);
+    if (!resolved.ok) return resolved;
+    return { ok: true, asset: { size: resolved.size, mtimeMs: resolved.mtimeMs } };
+  });
+  ipcMain.handle('dropdex:resolve-stem-asset', async (_event, locator) => {
+    pruneMediaTokens();
+    const resolved = await resolveStemAssetFile(app.getPath('userData'), locator);
+    if (!resolved.ok) return resolved;
+    const token = crypto.randomUUID();
+    mediaTokens.set(token, {
+      kind: 'stem',
+      filePath: resolved.filePath,
+      rootPath: resolved.rootPath,
+      lastAccess: Date.now(),
+    });
+    return {
+      ok: true,
+      source: {
+        kind: 'url',
+        url: `${APP_SCHEME}://stem/${encodeURIComponent(token)}`,
+        size: resolved.size,
+        mtimeMs: resolved.mtimeMs,
+      },
+    };
+  });
+  ipcMain.handle('dropdex:delete-stem-asset', async (_event, locator) => {
+    const resolved = await resolveStemAssetFile(app.getPath('userData'), locator);
+    if (resolved.ok) {
+      for (const [token, entry] of mediaTokens) {
+        if (entry.kind === 'stem' && entry.filePath === resolved.filePath) mediaTokens.delete(token);
+      }
+    } else if (resolved.error.kind !== 'not_found') {
+      return resolved;
+    }
+    return deleteStemAssetFile(app.getPath('userData'), locator);
   });
   ipcMain.handle('dropdex:metadata-apply-availability', () => cueApplyBridge.metadataAvailability());
   ipcMain.handle('dropdex:metadata-apply-preflight', async (_event, payload) => {
