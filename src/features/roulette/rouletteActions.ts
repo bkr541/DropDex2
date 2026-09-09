@@ -11,15 +11,13 @@ import {
   type RouletteResolvedSource,
 } from './rouletteMatchingEngine';
 
-export interface RouletteSessionActions {
+export interface RouletteMatchingActions {
   replaceSource(role: RouletteSourceRole): Promise<boolean>;
   replaceBoth(): Promise<boolean>;
-  play(): boolean;
-  stop(): boolean;
 }
 
 export interface RouletteActionExecutor {
-  actions: RouletteSessionActions;
+  actions: RouletteMatchingActions;
   cancel(): void;
 }
 
@@ -87,6 +85,8 @@ export function createRouletteActionExecutor({
   };
 
   const replaceSource = async (role: RouletteSourceRole): Promise<boolean> => {
+    const stateBeforeCommand = getState();
+    if (stateBeforeCommand.transport.status !== 'stopped' || stateBeforeCommand.command.status === 'loading') return false;
     const command = commandForRole(role);
     const { controller, requestId } = begin(command);
     try {
@@ -124,6 +124,8 @@ export function createRouletteActionExecutor({
   };
 
   const replaceBoth = async (): Promise<boolean> => {
+    const stateBeforeCommand = getState();
+    if (stateBeforeCommand.transport.status !== 'stopped' || stateBeforeCommand.command.status === 'loading') return false;
     const command: RouletteCommand = 'replace-both';
     const { controller, requestId } = begin(command);
     try {
@@ -160,8 +162,6 @@ export function createRouletteActionExecutor({
     actions: {
       replaceSource,
       replaceBoth,
-      play: () => false,
-      stop: () => false,
     },
     cancel: () => activeController?.abort(),
   };

@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
-import { Play, Stop } from '@carbon/icons-react';
-import { ControlButton } from '../ui/controls';
+import { Play, Stop, VolumeMute, VolumeUp } from '@carbon/icons-react';
+import { ControlButton, RangeControl } from '../ui/controls';
 import { SurfaceCard } from '../ui/display';
 import { StatusBadge } from '../ui/feedback';
 import { TransportButton } from '../ui/media';
+import { WaveformDisplay } from '../library/WaveformDisplay';
 import { useRouletteSession } from '../../features/roulette/RouletteSessionContext';
 import type { RouletteSourceRole, RouletteStemStatus } from '../../features/roulette/rouletteSession';
 import { useRouletteStemReadiness } from '../../features/roulette/useRouletteStemReadiness';
@@ -21,8 +22,62 @@ const STEM_STATUS_COPY: Record<RouletteStemStatus, { label: string; tone: 'neutr
   failed: { label: 'Stem failed', tone: 'error' },
 };
 
+function RouletteStemWaveform({
+  role,
+  seed,
+  fallback,
+}: {
+  role: RouletteSourceRole;
+  seed: string;
+  fallback: string;
+}) {
+  const { playback } = useRouletteSession();
+  const peaks = playback.waveforms[role];
+
+  if (peaks.length === 0) {
+    return (
+      <div
+        className="mt-5 flex min-h-24 items-center justify-center rounded-xl border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 text-center"
+        aria-label={`${SOURCE_COPY[role].label} waveform area`}
+      >
+        <p className="text-xs text-muted-foreground">{fallback}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="relative mt-5 h-24 overflow-hidden rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-2"
+      aria-label={`${SOURCE_COPY[role].label} stem waveform`}
+      data-testid={`roulette-${role}-waveform`}
+    >
+      <WaveformDisplay
+        peaks={peaks}
+        seed={seed}
+        barCount={peaks.length}
+        color={role === 'vocal' ? 'primary' : 'secondary'}
+        showFallbackLabel={false}
+      />
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        {playback.barFractions.map((fraction, index) => (
+          <span
+            key={`${fraction}-${index}`}
+            className="absolute bottom-0 top-0 w-px bg-foreground/10"
+            style={{ left: `${fraction * 100}%` }}
+          />
+        ))}
+        <span
+          className="absolute bottom-0 top-0 w-px bg-foreground shadow-[0_0_6px_currentColor]"
+          style={{ left: `${playback.progress * 100}%` }}
+          data-testid="roulette-shared-playhead"
+        />
+      </div>
+    </div>
+  );
+}
+
 function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
-  const { state } = useRouletteSession();
+  const { state, playback, actions } = useRouletteSession();
   const source = state.sources[role];
   const copy = SOURCE_COPY[role];
   const stemReadiness = useRouletteStemReadiness(source.parentTrackId, role);
@@ -33,6 +88,19 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
       ? 'failed'
       : stemReadiness.readiness?.status ?? source.stemStatus;
   const status = STEM_STATUS_COPY[effectiveStatus];
+  const deckMix = playback.mix[role];
+  const waveformFallback = sourceTrack.error
+    ? sourceTrack.error
+    : stemReadiness.error
+      ? stemReadiness.error
+      : stemReadiness.readiness?.reason
+        ?? (source.parentTrackId && effectiveStatus === 'ready'
+          ? playback.status === 'loading'
+            ? 'Decoding the real stem waveform…'
+            : 'Press Play to load the aligned stem waveform.'
+          : source.parentTrackId
+            ? 'Stem preparation pending'
+            : 'No source selected');
 
   return (
     <div data-testid={`roulette-${role}-lane`}>
@@ -57,22 +125,38 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
           <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
         </div>
 
-        <div
-          className="mt-5 flex min-h-20 items-center justify-center rounded-xl border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 text-center"
-          aria-label={`${copy.label} waveform area`}
-        >
-          <p className="text-xs text-muted-foreground">
-            {sourceTrack.error
-              ? sourceTrack.error
-              : stemReadiness.error
-                ? stemReadiness.error
-                : stemReadiness.readiness?.reason
-                  ?? (source.parentTrackId && effectiveStatus === 'ready'
-                    ? 'Stem ready'
-                    : source.parentTrackId
-                      ? 'Stem preparation pending'
-                      : 'No source selected')}
-          </p>
+        <RouletteStemWaveform
+          role={role}
+          seed={source.stemRef ?? `${role}-empty`}
+          fallback={waveformFallback}
+        />
+
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+          <RangeControl
+            value={Math.round(deckMix.gain * 100)}
+            min={0}
+            max={100}
+            label={`${copy.label} gain`}
+            onChange={(value) => actions.setDeckGain(role, value / 100)}
+          />
+          <div className="flex items-center gap-2">
+            <TransportButton
+              label={deckMix.muted ? `Unmute ${copy.label}` : `Mute ${copy.label}`}
+              tone="mute"
+              size="compact"
+              active={deckMix.muted}
+              onClick={() => actions.toggleDeckMute(role)}
+            >
+              {deckMix.muted ? <VolumeMute size={16} /> : <VolumeUp size={16} />}
+            </TransportButton>
+            <ControlButton
+              variant={deckMix.solo ? 'secondary' : 'surface'}
+              aria-pressed={deckMix.solo}
+              onClick={() => actions.toggleDeckSolo(role)}
+            >
+              Solo
+            </ControlButton>
+          </div>
         </div>
       </SurfaceCard>
     </div>
@@ -80,11 +164,24 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
 }
 
 export function RouletteView() {
-  const { state, matchingAvailable, playbackAvailable, actions, cancelPending } = useRouletteSession();
-  useEffect(() => () => cancelPending(), [cancelPending]);
+  const { state, playback, matchingAvailable, playbackAvailable, actions, cancelPending } = useRouletteSession();
+  useEffect(() => () => {
+    cancelPending();
+    actions.stop({ resetVisuals: true });
+  }, [actions.stop, cancelPending]);
+
   const matchingBusy = state.command.status === 'loading';
-  const canChangeVocal = matchingAvailable && Boolean(state.sources.instrumental.parentTrackId) && !matchingBusy;
-  const canChangeInstrumental = matchingAvailable && Boolean(state.sources.vocal.parentTrackId) && !matchingBusy;
+  const transportBusy = playback.status === 'loading' || playback.status === 'playing';
+  const canChangeVocal = matchingAvailable
+    && Boolean(state.sources.instrumental.parentTrackId)
+    && !matchingBusy
+    && !transportBusy;
+  const canChangeInstrumental = matchingAvailable
+    && Boolean(state.sources.vocal.parentTrackId)
+    && !matchingBusy
+    && !transportBusy;
+  const canPlay = playbackAvailable && !matchingBusy && !transportBusy;
+  const canStop = playback.status === 'loading' || playback.status === 'playing';
 
   return (
     <section className="mx-auto w-full max-w-6xl space-y-5 pb-10 pt-2" data-testid="roulette-screen">
@@ -99,15 +196,15 @@ export function RouletteView() {
             <TransportButton
               label="Play Roulette"
               tone="play"
-              disabled={!playbackAvailable}
-              onClick={() => actions.play()}
+              disabled={!canPlay}
+              onClick={() => { void actions.play(); }}
             >
               <Play size={18} fill="currentColor" />
             </TransportButton>
             <TransportButton
               label="Stop Roulette"
               tone="stop"
-              disabled={!playbackAvailable || state.transport.status === 'stopped'}
+              disabled={!canStop}
               onClick={() => actions.stop()}
             >
               <Stop size={17} fill="currentColor" />
@@ -137,7 +234,7 @@ export function RouletteView() {
             </ControlButton>
             <ControlButton
               variant="primary"
-              disabled={!matchingAvailable || matchingBusy}
+              disabled={!matchingAvailable || matchingBusy || transportBusy}
               title="Resolve and replace both compatible sources"
               onClick={() => { void actions.replaceBoth(); }}
             >
@@ -147,11 +244,19 @@ export function RouletteView() {
         </div>
 
         <p className="mt-4 text-[10px] text-muted-foreground" role="status" data-testid="roulette-command-status">
-          {state.command.status === 'loading'
-            ? 'Finding compatible stem-ready sources…'
-            : state.command.error
-              ? state.command.error
-              : 'Matching ready. Playback is not enabled in this stage.'}
+          {playback.status === 'loading'
+            ? 'Preparing and aligning both ready stems…'
+            : playback.status === 'playing'
+              ? 'Playing aligned vocal + instrumental stems from one shared clock.'
+              : playback.error
+                ? playback.error
+                : state.command.status === 'loading'
+                  ? 'Finding compatible stem-ready sources…'
+                  : state.command.error
+                    ? state.command.error
+                    : playbackAvailable
+                      ? 'Ready for synchronized dual-deck playback.'
+                      : 'Roulette a compatible stem-ready pair to enable playback.'}
         </p>
       </SurfaceCard>
     </section>

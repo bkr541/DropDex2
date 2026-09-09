@@ -132,4 +132,23 @@ describe('Roulette production action/state integration', () => {
     expect(resolveReplacement).not.toHaveBeenCalled();
     expect(test.state.command.error).toBe('Select an instrumental source before changing the vocal.');
   });
+
+  it('rejects source replacement while Roulette transport is playing', async () => {
+    const resolveReplacement = vi.fn(async () => ({
+      parentTrackId: 'vocal-b',
+      stemAsset: stem('vocal-b', 'vocals'),
+    }));
+    let playing = readyPairState();
+    playing = rouletteSessionReducer(playing, {
+      type: 'transport-changed',
+      status: 'playing',
+      masterBpm: 142,
+    });
+    const test = harness(matcher({ resolveReplacement }), playing);
+
+    await expect(test.executor.actions.replaceSource('vocal')).resolves.toBe(false);
+    expect(resolveReplacement).not.toHaveBeenCalled();
+    expect(test.state.sources).toBe(playing.sources);
+  });
+
 });
