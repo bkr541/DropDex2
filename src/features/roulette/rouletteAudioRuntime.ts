@@ -12,11 +12,23 @@ import {
   stopAndDisconnectAudioNodes,
   type ScheduledAudioClips,
 } from '../../lib/audio/webAudioScheduling';
-import { fetchTrackBeatGrid, type BeatGridRow } from '../../lib/queries/analysisData';
+import {
+  fetchTrackBeatGrid,
+  fetchTrackPhrases,
+  fetchTrackVocalAnalysis,
+  type BeatGridRow,
+  type PhraseRow,
+  type VocalAnalysisRow,
+} from '../../lib/queries/analysisData';
 import { fetchRouletteTrack } from '../../lib/queries/rouletteCandidates';
 import { rouletteStemAssetService, type StemAssetService } from './stemAssetService';
 import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole } from './stemAssets';
 import { buildRouletteBarFractions, resolveRouletteAlignment } from './rouletteAlignment';
+import {
+  ROULETTE_ANCHOR_WINDOW_BARS,
+  resolveRouletteMusicalAnchor,
+  type RouletteMusicalAnchor,
+} from './rouletteAnchors';
 import type { RouletteSourceRole, RouletteSourceSelection } from './rouletteSession';
 import { extractRouletteStemPeaks } from './rouletteWaveform';
 
@@ -39,6 +51,7 @@ export interface RoulettePlaybackResult {
   startAt: number;
   waveforms: Record<RouletteSourceRole, number[]>;
   barFractions: number[];
+  anchors: Record<RouletteSourceRole, RouletteMusicalAnchor>;
 }
 
 export interface RouletteAudioRuntime {
@@ -63,6 +76,8 @@ type RouletteDecodedSourceLoader = (
 interface RouletteRuntimeDependencies {
   loadTrack(trackId: string): Promise<RekordboxTrack | null>;
   loadBeatGrid(trackId: string): Promise<BeatGridRow | null>;
+  loadPhrases(trackId: string): Promise<PhraseRow[]>;
+  loadVocalAnalysis(trackId: string): Promise<VocalAnalysisRow | null>;
   stemAssets: Pick<StemAssetService, 'resolveReady'>;
   getAudioContext(): AudioContext;
   decodedCache: DecodedAudioCache<AudioBuffer>;
@@ -75,6 +90,8 @@ function defaultDependencies(): RouletteRuntimeDependencies {
   return {
     loadTrack: fetchRouletteTrack,
     loadBeatGrid: fetchTrackBeatGrid,
+    loadPhrases: fetchTrackPhrases,
+    loadVocalAnalysis: fetchTrackVocalAnalysis,
     stemAssets: rouletteStemAssetService,
     getAudioContext: createBrowserAudioContext,
     decodedCache: new DecodedAudioCache<AudioBuffer>(6),
@@ -180,11 +197,24 @@ export function createRouletteAudioRuntime(
       throw new Error('Roulette playback requires two selected, ready stem sources.');
     }
 
-    const [vocalTrack, instrumentalTrack, vocalGrid, instrumentalGrid, vocalMedia, instrumentalMedia] = await Promise.all([
+    const [
+      vocalTrack,
+      instrumentalTrack,
+      vocalGrid,
+      instrumentalGrid,
+      vocalPhrases,
+      instrumentalPhrases,
+      vocalAnalysis,
+      vocalMedia,
+      instrumentalMedia,
+    ] = await Promise.all([
       dependencies.loadTrack(sources.vocal.parentTrackId),
       dependencies.loadTrack(sources.instrumental.parentTrackId),
       dependencies.loadBeatGrid(sources.vocal.parentTrackId),
       dependencies.loadBeatGrid(sources.instrumental.parentTrackId),
+      dependencies.loadPhrases(sources.vocal.parentTrackId),
+      dependencies.loadPhrases(sources.instrumental.parentTrackId),
+      dependencies.loadVocalAnalysis(sources.vocal.parentTrackId),
       dependencies.stemAssets.resolveReady(sources.vocal.parentTrackId, stemTypeForRole('vocal'), { expectedSeparatorVersion: ROULETTE_SEPARATOR_VERSION }),
       dependencies.stemAssets.resolveReady(sources.instrumental.parentTrackId, stemTypeForRole('instrumental'), { expectedSeparatorVersion: ROULETTE_SEPARATOR_VERSION }),
     ]);
@@ -200,9 +230,30 @@ export function createRouletteAudioRuntime(
       throw new Error('A selected Roulette stem changed after matching. Roulette the source again.');
     }
 
+    const vocalAnchor = resolveRouletteMusicalAnchor({
+      role: 'vocal',
+      track: vocalTrack,
+      beatGrid: vocalGrid,
+      phrases: vocalPhrases,
+      vocalAnalysis,
+      durationMs: vocalMedia.asset.duration_ms,
+      requestedBars: ROULETTE_ANCHOR_WINDOW_BARS,
+    });
+    const instrumentalAnchor = resolveRouletteMusicalAnchor({
+      role: 'instrumental',
+      track: instrumentalTrack,
+      beatGrid: instrumentalGrid,
+      phrases: instrumentalPhrases,
+      durationMs: instrumentalMedia.asset.duration_ms,
+      requestedBars: ROULETTE_ANCHOR_WINDOW_BARS,
+    });
+    if (!vocalAnchor || !instrumentalAnchor) {
+      throw new Error(`Roulette could not resolve a ${ROULETTE_ANCHOR_WINDOW_BARS}-bar musical window for both parent tracks.`);
+    }
+
     const alignment = resolveRouletteAlignment(
-      { track: vocalTrack, beatGrid: vocalGrid },
-      { track: instrumentalTrack, beatGrid: instrumentalGrid },
+      { track: vocalTrack, beatGrid: vocalGrid, musicalAnchor: vocalAnchor },
+      { track: instrumentalTrack, beatGrid: instrumentalGrid, musicalAnchor: instrumentalAnchor },
     );
 
     const context = audioContext ?? dependencies.getAudioContext();
@@ -245,9 +296,13 @@ export function createRouletteAudioRuntime(
 
     const vocalAvailable = Math.max(0, vocalBuffer.duration - alignment.vocal.sourceOffsetSeconds);
     const instrumentalAvailable = Math.max(0, instrumentalBuffer.duration - alignment.instrumental.sourceOffsetSeconds);
-    const sharedDuration = Math.min(vocalAvailable, instrumentalAvailable);
+    const anchorWindowSeconds = Math.min(
+      vocalAnchor.usableWindowMs / 1000,
+      instrumentalAnchor.usableWindowMs / 1000,
+    );
+    const sharedDuration = Math.min(vocalAvailable, instrumentalAvailable, anchorWindowSeconds);
     if (!Number.isFinite(sharedDuration) || sharedDuration <= 0) {
-      throw new Error('The aligned Roulette downbeat falls outside one of the decoded stems.');
+      throw new Error('The resolved Roulette musical window falls outside one of the decoded stems.');
     }
 
     // Build visual data before scheduling any audible nodes. If decoded-buffer
@@ -332,6 +387,7 @@ export function createRouletteAudioRuntime(
       startAt: scheduled.startAt,
       waveforms,
       barFractions,
+      anchors: { vocal: vocalAnchor, instrumental: instrumentalAnchor },
     };
   };
 

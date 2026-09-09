@@ -1,4 +1,5 @@
 import type { RekordboxTrack } from '../../types';
+import type { RouletteMusicalAnchor } from './rouletteAnchors';
 import { isUsableBeatGrid, type BeatEntry } from '../../lib/music/beatGridHelpers';
 import type { BeatGridRow } from '../../lib/queries/analysisData';
 import { isRouletteDirectTempoCompatible } from './rouletteMatching';
@@ -6,10 +7,11 @@ import { isRouletteDirectTempoCompatible } from './rouletteMatching';
 export interface RouletteAlignmentSource {
   track: Pick<RekordboxTrack, 'id' | 'bpm'>;
   beatGrid: BeatGridRow | null;
+  musicalAnchor?: RouletteMusicalAnchor | null;
 }
 
 export interface RouletteDeckAlignment {
-  anchorBeat: BeatEntry;
+  anchorBeat: BeatEntry | null;
   sourceOffsetSeconds: number;
 }
 
@@ -52,10 +54,12 @@ export function resolveRouletteAlignment(
     throw new Error('Roulette playback requires an exact or nearly exact direct-tempo pair.');
   }
 
-  const vocalAnchor = firstRouletteDownbeat(vocal.beatGrid);
-  const instrumentalAnchor = firstRouletteDownbeat(instrumental.beatGrid);
-  if (!vocalAnchor || !instrumentalAnchor) {
-    throw new Error('Roulette playback requires a usable downbeat grid for both parent tracks.');
+  const vocalAnchor = vocal.musicalAnchor?.anchorBeat ?? firstRouletteDownbeat(vocal.beatGrid);
+  const instrumentalAnchor = instrumental.musicalAnchor?.anchorBeat ?? firstRouletteDownbeat(instrumental.beatGrid);
+  const vocalOffsetMs = vocal.musicalAnchor?.sourceTimeMs ?? vocalAnchor?.ms ?? null;
+  const instrumentalOffsetMs = instrumental.musicalAnchor?.sourceTimeMs ?? instrumentalAnchor?.ms ?? null;
+  if (vocalOffsetMs == null || instrumentalOffsetMs == null) {
+    throw new Error('Roulette playback requires a resolved musical anchor for both parent tracks.');
   }
 
   // The instrumental deck is the underlying mix bed and therefore owns the
@@ -64,11 +68,11 @@ export function resolveRouletteAlignment(
   return {
     vocal: {
       anchorBeat: vocalAnchor,
-      sourceOffsetSeconds: vocalAnchor.ms / 1000,
+      sourceOffsetSeconds: vocalOffsetMs / 1000,
     },
     instrumental: {
       anchorBeat: instrumentalAnchor,
-      sourceOffsetSeconds: instrumentalAnchor.ms / 1000,
+      sourceOffsetSeconds: instrumentalOffsetMs / 1000,
     },
     masterBpm,
     barDurationSeconds: 240 / masterBpm,

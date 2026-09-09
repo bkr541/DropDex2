@@ -8,6 +8,7 @@ import {
   type RoulettePlaybackSources,
 } from './rouletteAudioRuntime';
 import type { RouletteSessionAction, RouletteSourceRole } from './rouletteSession';
+import type { RouletteMusicalAnchor } from './rouletteAnchors';
 
 export interface RoulettePlaybackUiState {
   status: 'idle' | 'loading' | 'playing' | 'error';
@@ -16,6 +17,7 @@ export interface RoulettePlaybackUiState {
   durationSeconds: number;
   waveforms: Record<RouletteSourceRole, number[]>;
   barFractions: number[];
+  anchors: Record<RouletteSourceRole, RouletteMusicalAnchor | null>;
   mix: RouletteMixState;
 }
 
@@ -54,6 +56,7 @@ export function useRouletteAudioRuntime({
     durationSeconds: 0,
     waveforms: { vocal: [], instrumental: [] },
     barFractions: [],
+    anchors: { vocal: null, instrumental: null },
     mix: DEFAULT_MIX,
   });
   const playbackRef = useRef(playback);
@@ -86,6 +89,7 @@ export function useRouletteAudioRuntime({
       durationSeconds: options.resetVisuals ? 0 : previous.durationSeconds,
       waveforms: options.resetVisuals ? { vocal: [], instrumental: [] } : previous.waveforms,
       barFractions: options.resetVisuals ? [] : previous.barFractions,
+      anchors: options.resetVisuals ? { vocal: null, instrumental: null } : previous.anchors,
     }));
   }, [cancelProgress, dispatch]);
 
@@ -125,6 +129,7 @@ export function useRouletteAudioRuntime({
         durationSeconds: result.durationSeconds,
         waveforms: result.waveforms,
         barFractions: result.barFractions,
+        anchors: result.anchors,
       }));
 
       let lastUiUpdate = 0;

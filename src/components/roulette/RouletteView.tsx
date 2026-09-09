@@ -119,6 +119,23 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
                   {' · '}
                   {sourceTrack.track.bpm?.toFixed(1) ?? '—'} BPM
                 </p>
+                {playback.anchors[role] && (
+                  <p className="mt-1 truncate text-[10px] font-medium text-muted-foreground" data-testid={`roulette-${role}-anchor`}>
+                    {playback.anchors[role]!.sourceBar != null
+                      ? `Source bar ${playback.anchors[role]!.sourceBar}`
+                      : `Source ${Math.round(playback.anchors[role]!.sourceTimeMs / 100) / 10}s`}
+                    {' · '}
+                    {playback.anchors[role]!.provenance === 'pvdi-phrase'
+                      ? 'PVDI + phrase'
+                      : playback.anchors[role]!.provenance === 'pvdi-downbeat'
+                        ? 'PVDI + downbeat'
+                        : playback.anchors[role]!.provenance === 'phrase'
+                          ? 'Phrase'
+                          : playback.anchors[role]!.provenance === 'downbeat'
+                            ? 'Downbeat'
+                            : 'BPM fallback'}
+                  </p>
+                )}
               </div>
             )}
           </div>

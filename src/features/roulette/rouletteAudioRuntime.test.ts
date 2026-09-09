@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { RekordboxTrack } from '../../types';
-import type { BeatGridRow } from '../../lib/queries/analysisData';
+import type { BeatGridRow, PhraseRow, VocalAnalysisRow } from '../../lib/queries/analysisData';
 import { DecodedAudioCache } from '../../lib/audio/decodedAudioCache';
 import { createRouletteAudioRuntime, type RouletteMixState } from './rouletteAudioRuntime';
 import { STEM_ASSET_CONTRACT_VERSION, type StemAssetRecord } from './stemAssets';
@@ -60,23 +60,82 @@ function track(id: string, bpm = 142): RekordboxTrack {
 }
 
 function grid(trackId: string, downbeatMs: number): BeatGridRow {
+  const beatMs = 422;
+  const beats = Array.from({ length: 40 * 4 }, (_, index) => {
+    const beatInBar = (index % 4) + 1;
+    return {
+      seq: index + 1,
+      srcIdx: index + 1,
+      beatInBar,
+      bar: Math.floor(index / 4) + 1,
+      ms: downbeatMs + index * beatMs,
+      bpm: 142,
+      isDownbeat: beatInBar === 1,
+    };
+  });
   return {
     id: `grid-${trackId}`,
     import_id: 'import-1',
     track_id: trackId,
     source_tag: 'PQTZ',
-    beats: [
-      { seq: 1, srcIdx: 1, beatInBar: 1, bar: 1, ms: downbeatMs, bpm: 142, isDownbeat: true },
-      { seq: 2, srcIdx: 2, beatInBar: 2, bar: 1, ms: downbeatMs + 422, bpm: 142, isDownbeat: false },
-    ],
-    beat_count: 2,
-    downbeat_count: 1,
-    bar_count: 1,
+    beats,
+    beat_count: beats.length,
+    downbeat_count: 40,
+    bar_count: 40,
     first_beat_ms: downbeatMs,
     first_downbeat_ms: downbeatMs,
     minimum_bpm: 142,
     maximum_bpm: 142,
     is_variable_tempo: false,
+    parser_version: 'test',
+  };
+}
+
+function phraseAtBar(trackId: string, phraseIndex: number, bar: number): PhraseRow {
+  const startBeat = (bar - 1) * 4 + 1;
+  return {
+    id: `${trackId}-phrase-${phraseIndex}`,
+    import_id: 'import-1',
+    track_id: trackId,
+    phrase_index: phraseIndex,
+    source_mood: '2',
+    source_kind: '2',
+    source_bank: null,
+    normalized_label: 'verse',
+    start_beat: startBeat,
+    end_beat: startBeat + 63,
+    start_ms: (startBeat - 1) * 422,
+    end_ms: (startBeat + 62) * 422,
+    fill_start_beat: null,
+    fill_start_ms: null,
+    source_flags: {},
+    source_payload: {},
+    parser_version: 'test',
+  };
+}
+
+function vocalAnalysis(trackId: string, startMs: number): VocalAnalysisRow {
+  return {
+    id: `${trackId}-pvdi`,
+    import_id: 'import-1',
+    track_id: trackId,
+    source_tag: 'PVDI',
+    source_header_length: null,
+    source_u1: null,
+    source_u2: null,
+    frame_duration_ms: 100,
+    frame_count: 1000,
+    regions: [{
+      start_frame: Math.floor(startMs / 100),
+      end_frame_exclusive: Math.floor((startMs + 5000) / 100),
+      start_ms: startMs,
+      end_ms: startMs + 5000,
+      duration_ms: 5000,
+      peak_confidence: 4,
+    }],
+    integrity_status: 'valid',
+    complete: true,
+    parse_warnings: [],
     parser_version: 'test',
   };
 }
@@ -91,7 +150,7 @@ function asset(trackId: string, type: 'vocals' | 'instrumental'): StemAssetRecor
     source_fingerprint: `fingerprint-${trackId}`,
     separator_version: 'separator-v1',
     contract_version: STEM_ASSET_CONTRACT_VERSION,
-    duration_ms: 12000,
+    duration_ms: 60000,
     sample_rate_hz: 100,
     channel_count: 1,
     file_size_bytes: 1200,
@@ -130,14 +189,48 @@ function selection(trackId: string, type: 'vocals' | 'instrumental'): RouletteSo
 }
 
 describe('Roulette audio runtime', () => {
+  it('uses phrase/PVDI anchor resolution before Stage-5 shared-clock scheduling', async () => {
+    const audio = fakeAudioContext();
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      loadTrack: async (id) => track(id),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async (id) => id === 'vocal-a'
+        ? [phraseAtBar(id, 0, 9)]
+        : [phraseAtBar(id, 0, 5)],
+      loadVocalAnalysis: async (id) => id === 'vocal-a' ? vocalAnalysis(id, 14_000) : null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    const result = await runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+
+    expect(result.anchors.vocal).toMatchObject({ provenance: 'pvdi-phrase', sourceBar: 9 });
+    expect(result.anchors.instrumental).toMatchObject({ provenance: 'phrase', sourceBar: 5 });
+    expect(audio.sources[0].starts[0].offset).toBeCloseTo(13.504, 8);
+    expect(audio.sources[1].starts[0].offset).toBeCloseTo(6.752, 8);
+    expect(audio.sources[0].starts[0].when).toBe(audio.sources[1].starts[0].when);
+  });
+
   it('schedules two ready stems concurrently from one AudioContext clock with independent source offsets', async () => {
     const audio = fakeAudioContext();
-    const loadDecodedSources = vi.fn(async () => [buffer(12), buffer(12)]);
+    const loadDecodedSources = vi.fn(async () => [buffer(60), buffer(60)]);
     const runtime = createRouletteAudioRuntime({
       getAudioContext: () => audio.context,
       decodedCache: new DecodedAudioCache<AudioBuffer>(4),
       loadTrack: async (id) => track(id),
       loadBeatGrid: async (id) => grid(id, id === 'vocal-a' ? 1000 : 2500),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
       stemAssets: {
         resolveReady: async (id, type) => {
           const stem = asset(id, type);
@@ -160,9 +253,9 @@ describe('Roulette audio runtime', () => {
     expect(audio.sources[0].starts[0].when).toBeCloseTo(10.05, 8);
     expect(audio.sources[0].starts[0].offset).toBe(1);
     expect(audio.sources[1].starts[0].offset).toBe(2.5);
-    expect(audio.sources[0].starts[0].duration).toBeCloseTo(9.5, 8);
-    expect(audio.sources[1].starts[0].duration).toBeCloseTo(9.5, 8);
-    expect(result.durationSeconds).toBeCloseTo(9.5, 8);
+    expect(audio.sources[0].starts[0].duration).toBeCloseTo(27.008, 8);
+    expect(audio.sources[1].starts[0].duration).toBeCloseTo(27.008, 8);
+    expect(result.durationSeconds).toBeCloseTo(27.008, 8);
     expect(result.waveforms.vocal.length).toBeGreaterThan(0);
     expect(result.waveforms.instrumental.length).toBeGreaterThan(0);
     expect(result.masterBpm).toBe(142);
@@ -175,13 +268,15 @@ describe('Roulette audio runtime', () => {
       decodedCache: new DecodedAudioCache<AudioBuffer>(4),
       loadTrack: async (id) => track(id),
       loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
       stemAssets: {
         resolveReady: async (id, type) => ({
           asset: asset(id, type),
           source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
         }),
       },
-      loadDecodedSources: vi.fn(async () => [buffer(8), buffer(8)]),
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
     });
 
     await runtime.play({
@@ -208,6 +303,8 @@ describe('Roulette audio runtime', () => {
       decodedCache: new DecodedAudioCache<AudioBuffer>(4),
       loadTrack: async (id) => track(id),
       loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
       stemAssets: {
         resolveReady: async (id, type) => ({
           asset: asset(id, type),
@@ -223,7 +320,7 @@ describe('Roulette audio runtime', () => {
     }, mix);
     await Promise.resolve();
     runtime.stop();
-    resolveDecode([buffer(8), buffer(8)]);
+    resolveDecode([buffer(60), buffer(60)]);
 
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
     expect(audio.sources).toHaveLength(0);
@@ -236,8 +333,10 @@ describe('Roulette audio runtime', () => {
       decodedCache: new DecodedAudioCache<AudioBuffer>(4),
       loadTrack: async (id) => track(id),
       loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
       stemAssets: { resolveReady: async () => null },
-      loadDecodedSources: vi.fn(async () => [buffer(8), buffer(8)]),
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
     });
 
     await expect(runtime.play({

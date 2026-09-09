@@ -12,6 +12,9 @@ describe('Roulette production playback reachability', () => {
     expect(provider).toContain('useRouletteAudioRuntime');
     expect(provider).toContain('play: audio.play');
     expect(hook).toContain('runtimeRef.current!.play');
+    expect(runtime).toContain('resolveRouletteMusicalAnchor');
+    expect(runtime).toContain('loadPhrases');
+    expect(runtime).toContain('loadVocalAnalysis');
     expect(runtime).toContain('scheduleAudioBufferClips');
     expect(runtime).toContain('startOffsetSeconds: 0');
     expect(runtime.match(/startOffsetSeconds: 0/g)).toHaveLength(2);
