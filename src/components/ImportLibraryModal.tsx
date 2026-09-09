@@ -49,7 +49,7 @@ import {
   type UsbImportPhase,
   verifyUsbReleased,
 } from '../lib/rekordbox/localUsbLifecycle';
-import { ArrowRight, CheckmarkFilled, CircleDash, Close, DataBase, FolderOpen, Package, Pause, Renew, TrashCan, Upload, WarningAlt } from '@carbon/icons-react';
+import { ArrowLeft, ArrowRight, CheckmarkFilled, CircleDash, Close, DataBase, FolderOpen, Package, Pause, Renew, TrashCan, Upload, View, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from './ui/controls';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -207,6 +207,9 @@ export function ImportLibraryModal({
   const [abortDialogIntent, setAbortDialogIntent] = useState<AbortDialogIntent>('delete');
   const [usbReleaseConfirmed, setUsbReleaseConfirmed] = useState(false);
   const [cloudCancellationStarted, setCloudCancellationStarted] = useState(false);
+  const [issueViewOpen, setIssueViewOpen] = useState(false);
+  const [issueTracks, setIssueTracks] = useState<{ id: string; title: string; artist: string | null; analysis_parse_status: string }[] | null>(null);
+  const [issueTracksLoading, setIssueTracksLoading] = useState(false);
   const [rejectedCount, setRejectedCount] = useState(0);
   const [reuseStats, setReuseStats] = useState<ReuseStats | null>(null);
   const [reconciliation, setReconciliation] = useState<ManifestReconciliation | null>(null);
@@ -385,6 +388,9 @@ export function ImportLibraryModal({
     setFinalResult(null);
     setErrorMessage('');
     setErrorStructured(null);
+    setIssueViewOpen(false);
+    setIssueTracks(null);
+    setIssueTracksLoading(false);
     setShowAbortDialog(false);
     setAbortDialogIntent('delete');
     setRejectedCount(0);
@@ -2102,83 +2108,197 @@ export function ImportLibraryModal({
 
             {/* ── Partial success ── */}
             {phase === 'partial_success' && (
-              <div>
-                {/* Header */}
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-                      <CheckmarkFilled className="text-primary" size={20} />
-                    </div>
-                    <h2 className="text-xl font-bold">Import Complete</h2>
-                  </div>
-                  <ControlButton variant="ghost" onClick={handleDone}>
-                    <Close size={18} />
-                  </ControlButton>
-                </div>
-
-                {usbReleaseConfirmed && (
-                  <div className="mb-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
-                    <CheckmarkFilled size={16} className="mt-0.5 shrink-0 text-emerald-400" />
-                    <p className="text-xs leading-relaxed text-emerald-100">
-                      USB reading is complete. DropDex no longer needs the USB.
-                    </p>
-                  </div>
-                )}
-
-                {withAnalysis && (
-                  <>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      {withAnalysis.completed_count.toLocaleString()} tracks fully parsed ·{' '}
-                      <span className="font-semibold text-amber-400">
-                        {(
-                          withAnalysis.partial_count +
-                          withAnalysis.failed_count +
-                          withAnalysis.missing_required_count
-                        ).toLocaleString()}
-                      </span>{' '}
-                      with issues
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-2 mb-4">
-                      {[
-                        { label: 'Parsed', value: withAnalysis.completed_count.toLocaleString() },
-                        { label: 'Partial parse', value: withAnalysis.partial_count.toLocaleString() },
-                        { label: 'Parse failed', value: withAnalysis.failed_count.toLocaleString() },
-                        { label: 'Missing DAT', value: withAnalysis.missing_required_count.toLocaleString() },
-                      ].map(({ label, value }) => (
-                        <div key={label} className="glass rounded-xl p-3">
-                          <p className="text-lg font-black font-mono">{value}</p>
-                          <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">{label}</p>
+              <div className="relative overflow-hidden" style={{ minHeight: 420 }}>
+                <AnimatePresence initial={false} mode="wait">
+                  {!issueViewOpen ? (
+                    <motion.div
+                      key="summary"
+                      initial={{ x: '-100%', opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      exit={{ x: '-100%', opacity: 0 }}
+                      transition={{ duration: 0.22, ease: 'easeInOut' }}
+                    >
+                      {/* Header */}
+                      <div className="flex items-center justify-between mb-5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+                            <CheckmarkFilled className="text-primary" size={20} />
+                          </div>
+                          <h2 className="text-xl font-bold">Import Complete</h2>
                         </div>
-                      ))}
-                    </div>
-
-                    {reconciliation && (reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0 || withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
-                      <div className="mb-4 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)]">
-                        <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mb-2">File Summary</p>
-                        <div className="space-y-1">
-                          <SummaryRow label="Uploaded" value={reconciliation.successfullyUploadedFiles} />
-                          {reconciliation.failedFiles > 0 && <SummaryRow label="Failed after retries" value={reconciliation.failedFiles} warn />}
-                          {reconciliation.missingFiles > 0 && <SummaryRow label="Not found on USB" value={reconciliation.missingFiles} warn />}
-                          {withAnalysis.missing_optional_ext_count > 0 && <SummaryRow label="Missing color waveform (EXT)" value={withAnalysis.missing_optional_ext_count} />}
-                          {withAnalysis.missing_optional_2ex_count > 0 && <SummaryRow label="Optional .2EX not archived" value={withAnalysis.missing_optional_2ex_count} />}
-                        </div>
-                        {(reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0) && (
-                          <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
-                            Re-import from the same USB to retry — already-uploaded files are skipped.
-                          </p>
-                        )}
+                        <ControlButton variant="ghost" onClick={handleDone}>
+                          <Close size={18} />
+                        </ControlButton>
                       </div>
-                    )}
-                  </>
-                )}
 
-                <div className="flex justify-center mt-2">
-                  <ControlButton variant="primary" onClick={handleDone}>
-                    <CheckmarkFilled size={16} />
-                    Done
-                  </ControlButton>
-                </div>
+                      {usbReleaseConfirmed && (
+                        <div className="mb-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                          <CheckmarkFilled size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                          <p className="text-xs leading-relaxed text-emerald-100">
+                            USB reading is complete. DropDex no longer needs the USB.
+                          </p>
+                        </div>
+                      )}
+
+                      {withAnalysis && (() => {
+                        const issueCount = withAnalysis.partial_count + withAnalysis.failed_count + withAnalysis.missing_required_count;
+                        return (
+                          <>
+                            <div className="flex items-center gap-2 mb-4">
+                              <p className="text-sm text-muted-foreground">
+                                {withAnalysis.completed_count.toLocaleString()} tracks fully parsed
+                              </p>
+                              {issueCount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setIssueViewOpen(true);
+                                    if (!issueTracks) {
+                                      setIssueTracksLoading(true);
+                                      try {
+                                        const { data } = await supabase
+                                          .from('rekordbox_tracks')
+                                          .select('id, title, artist, analysis_parse_status')
+                                          .eq('import_id', withAnalysis.import_id)
+                                          .in('analysis_parse_status', ['partial', 'failed', 'missing_required'])
+                                          .order('title', { ascending: true });
+                                        setIssueTracks(data ?? []);
+                                      } catch {
+                                        setIssueTracks([]);
+                                      } finally {
+                                        setIssueTracksLoading(false);
+                                      }
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300 transition-colors hover:bg-amber-400/20"
+                                >
+                                  <span>{issueCount.toLocaleString()} {issueCount === 1 ? 'Issue' : 'Issues'}</span>
+                                  <View size={13} />
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 mb-4">
+                              {[
+                                { label: 'Parsed', value: withAnalysis.completed_count.toLocaleString() },
+                                { label: 'Partial parse', value: withAnalysis.partial_count.toLocaleString() },
+                                { label: 'Parse failed', value: withAnalysis.failed_count.toLocaleString() },
+                                { label: 'Missing DAT', value: withAnalysis.missing_required_count.toLocaleString() },
+                              ].map(({ label, value }) => (
+                                <div key={label} className="glass rounded-xl p-3">
+                                  <p className="text-lg font-black font-mono">{value}</p>
+                                  <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">{label}</p>
+                                </div>
+                              ))}
+                            </div>
+
+                            {reconciliation && (reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0 || withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
+                              <div className="mb-4 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)]">
+                                <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mb-2">File Summary</p>
+                                <div className="space-y-1">
+                                  <SummaryRow label="Uploaded" value={reconciliation.successfullyUploadedFiles} />
+                                  {reconciliation.failedFiles > 0 && <SummaryRow label="Failed after retries" value={reconciliation.failedFiles} warn />}
+                                  {reconciliation.missingFiles > 0 && <SummaryRow label="Not found on USB" value={reconciliation.missingFiles} warn />}
+                                  {withAnalysis.missing_optional_ext_count > 0 && <SummaryRow label="Missing color waveform (EXT)" value={withAnalysis.missing_optional_ext_count} />}
+                                  {withAnalysis.missing_optional_2ex_count > 0 && <SummaryRow label="Optional .2EX not archived" value={withAnalysis.missing_optional_2ex_count} />}
+                                </div>
+                                {(reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0) && (
+                                  <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
+                                    Re-import from the same USB to retry — already-uploaded files are skipped.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+
+                      <div className="flex justify-center mt-2">
+                        <ControlButton variant="primary" onClick={handleDone}>
+                          <CheckmarkFilled size={16} />
+                          Done
+                        </ControlButton>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="issues"
+                      initial={{ x: '100%', opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      exit={{ x: '100%', opacity: 0 }}
+                      transition={{ duration: 0.22, ease: 'easeInOut' }}
+                      className="flex flex-col"
+                      style={{ minHeight: 420 }}
+                    >
+                      {/* Issues header */}
+                      <div className="flex items-center justify-between mb-5">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIssueViewOpen(false)}
+                            className="flex items-center justify-center rounded-lg p-1 text-muted-foreground transition-colors hover:text-foreground hover:bg-white/[0.06]"
+                            aria-label="Back to summary"
+                          >
+                            <ArrowLeft size={20} />
+                          </button>
+                          <h2 className="text-xl font-bold">Track Issues</h2>
+                        </div>
+                        <ControlButton variant="ghost" onClick={handleDone}>
+                          <Close size={18} />
+                        </ControlButton>
+                      </div>
+
+                      {issueTracksLoading && (
+                        <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
+                          <CircleDash className="animate-spin" size={16} />
+                          Loading affected tracks…
+                        </div>
+                      )}
+
+                      {!issueTracksLoading && issueTracks && issueTracks.length === 0 && (
+                        <p className="text-sm text-muted-foreground">No track details available.</p>
+                      )}
+
+                      {!issueTracksLoading && issueTracks && issueTracks.length > 0 && (
+                        <div className="flex-1 overflow-y-auto rounded-xl border border-[var(--color-border-subtle)] divide-y divide-[var(--color-border-subtle)]" style={{ maxHeight: 320 }}>
+                          {issueTracks.map((track) => {
+                            const issueLabel =
+                              track.analysis_parse_status === 'partial' ? 'Partial parse' :
+                              track.analysis_parse_status === 'failed' ? 'Parse failed' :
+                              track.analysis_parse_status === 'missing_required' ? 'Missing DAT' :
+                              track.analysis_parse_status;
+                            const isWarning = track.analysis_parse_status === 'partial';
+                            return (
+                              <div key={track.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                                <div className="min-w-0">
+                                  <p className="truncate text-xs font-semibold text-foreground">{track.title}</p>
+                                  {track.artist && (
+                                    <p className="truncate text-[10px] text-muted-foreground">{track.artist}</p>
+                                  )}
+                                </div>
+                                <span className={cn(
+                                  'shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide',
+                                  isWarning
+                                    ? 'border border-amber-400/25 bg-amber-400/10 text-amber-300'
+                                    : 'border border-red-400/25 bg-red-400/10 text-red-300',
+                                )}>
+                                  {issueLabel}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div className="flex justify-center mt-4">
+                        <ControlButton variant="primary" onClick={handleDone}>
+                          <CheckmarkFilled size={16} />
+                          Done
+                        </ControlButton>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             )}
 

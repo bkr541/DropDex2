@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, CircleDash, Edit, Export, Idea, Music, Save, Search, Undo, Upload, WarningAlt } from '@carbon/icons-react';
+import { ChevronDown, CircleDash, Close, Edit, Export, Idea, Music, Save, Search, Undo, Upload, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -928,6 +928,9 @@ function CueWaveformPanel({
   applying,
   onApplyTrack,
   onApplyAll,
+  pendingMetadataCount,
+  metadataDraftLoadStatus,
+  onOpenPendingChanges,
 }: {
   track: RekordboxTrack | null;
   beatGrid: BeatGridRow | null;
@@ -960,6 +963,9 @@ function CueWaveformPanel({
   applying: boolean;
   onApplyTrack: () => void;
   onApplyAll: () => void;
+  pendingMetadataCount: number;
+  metadataDraftLoadStatus: MetadataDraftLoadStatus;
+  onOpenPendingChanges: () => void;
 }) {
   const { theme } = useTheme();
   const [labelsCollapsed, setLabelsCollapsed] = useState(false);
@@ -1206,8 +1212,8 @@ function CueWaveformPanel({
       <div className="flex flex-col gap-3 border-b border-[var(--color-border-subtle)] px-5 py-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
-          <h1 className="mt-1 truncate text-xl font-black tracking-tight md:text-2xl">{track.title}</h1>
-          <p className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+          <h1 className="mt-0.5 truncate text-xl font-black tracking-tight md:text-2xl">{track.title}</h1>
+          <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
             <span><span className="font-semibold text-foreground/60">BPM:</span> {bpmDisplay}</span>
             <span>
               <span className="font-semibold text-foreground/60">Key:</span>{' '}
@@ -1229,6 +1235,16 @@ function CueWaveformPanel({
                 options={[{ value: 'snap', label: 'Snap' }, { value: 'exact', label: 'Exact' }]}
               />
             </div>
+            <ControlButton
+              variant="surface"
+              onClick={onOpenPendingChanges}
+              aria-label={metadataDraftLoadStatus === 'loaded' ? `Open Pending Changes, ${pendingMetadataCount} pending` : 'Open Pending Changes'}
+              title={metadataDraftLoadStatus === 'failed' ? 'Pending metadata state failed to load. Open to retry.' : 'Review saved metadata changes'}
+            >
+              {metadataDraftLoadStatus === 'loaded'
+                ? `Pending ${pendingMetadataCount}`
+                : metadataDraftLoadStatus === 'failed' ? 'Pending (!)' : 'Pending…'}
+            </ControlButton>
             <ControlButton
               variant="surface"
               disabled={!autoCueReady}
@@ -1300,7 +1316,7 @@ function CueWaveformPanel({
         </div>
       )}
 
-      <div className="pl-0 pr-3 pb-2 pt-2 md:pr-4">
+      <div className="pl-5 pr-3 pb-2 pt-2 md:pr-4">
         <div className="overflow-x-auto">
           <div className="min-w-[980px]">
             <div className="relative">
@@ -1319,13 +1335,14 @@ function CueWaveformPanel({
               <div className="h-[40px] border-b border-[#1e2a30]">
                 <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Sections" color="#60a5fa" collapsed={labelsCollapsed} />
               </div>
-              <div className="relative h-[40px] overflow-hidden border-b border-[#1e2a30]">
+              <div className="h-[40px] border-b border-[#1e2a30]">
+                <div className="relative mx-3 h-full overflow-hidden">
                 {phraseLoading ? (
-                  <div className="flex h-full items-center px-5 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
+                  <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
                 ) : sections.length === 0 ? (
-                  <div className="absolute inset-0 flex items-center px-5">
+                  <div className="absolute inset-0 flex items-center px-2">
                     <div className="h-[30px] w-full rounded-[5px] border border-white/[0.035] bg-white/[0.015]" />
-                    <span className="absolute left-8 text-[10px] font-medium uppercase tracking-[0.12em] text-[#66717b]">
+                    <span className="absolute left-4 text-[10px] font-medium uppercase tracking-[0.12em] text-[#66717b]">
                       Sections unavailable
                     </span>
                   </div>
@@ -1354,16 +1371,18 @@ function CueWaveformPanel({
                     );
                   })
                 )}
+                </div>
               </div>
 
               <div className="h-[40px] border-b border-[#1e2a30]">
                 <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.25} />} label="Cues" color="#fb923c" collapsed={labelsCollapsed} />
               </div>
-              <div className="relative h-[40px] overflow-hidden border-b border-[#1e2a30]">
+              <div className="h-[40px] border-b border-[#1e2a30]">
+                <div className="relative mx-3 h-full overflow-hidden">
                 {cueLoading ? (
-                  <div className="flex h-full items-center px-5 text-[11px] font-medium text-[#707b85]">Loading cue points…</div>
+                  <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading cue points…</div>
                 ) : cueLoadStatus === 'failed' ? (
-                  <div className="flex h-full items-center justify-between gap-3 px-5 text-[10px] font-semibold text-red-300">
+                  <div className="flex h-full items-center justify-between gap-3 px-2 text-[10px] font-semibold text-red-300">
                     <span className="truncate">{cueLoadError ?? 'Cue points could not be loaded.'}</span>
                     <button
                       type="button"
@@ -1436,28 +1455,31 @@ function CueWaveformPanel({
                           }}
                         >
                         <span
-                          className="absolute top-0 bottom-0 left-1/2 w-px -translate-x-1/2"
+                          className="pointer-events-none absolute top-[4px] left-1/2 -translate-x-1/2 flex flex-col items-center rounded-[3px] px-[3px] pb-[2px] pt-[2px]"
                           style={{ backgroundColor: markerColor }}
                           aria-hidden="true"
-                        />
-                        <span
-                          className="pointer-events-none absolute top-[4px] left-1/2 -translate-x-1/2 whitespace-nowrap pl-1.5 font-mono text-[9px] font-bold leading-none"
-                          style={{ color: markerColor }}
                         >
-                          {cueTimelineLabel(cue, memoryIndex)}
+                          <span className="block text-[6px] font-black uppercase tracking-wide leading-none text-white">
+                            {cue.family === 'hot' ? 'CUE' : 'MEM'}
+                          </span>
+                          <span className="mt-[1px] block text-[8px] font-black uppercase leading-none text-white">
+                            {cue.family === 'hot' ? cueLabel(cue) : String(memoryIndex + 1)}
+                          </span>
                         </span>
                       </button>
                       );
                     })}
                   </>
                 )}
+                </div>
               </div>
 
               <div className="h-[88px] border-b border-[#1e2a30]">
                 <TimelineLaneLabel icon={<AudioWaveform size={20} strokeWidth={2.25} />} label="Waveform" color="#5dcfff" collapsed={labelsCollapsed} />
               </div>
+              <div className="h-[88px] border-b border-[#1e2a30]">
               <div
-                className="relative h-[88px] cursor-crosshair overflow-hidden border-b border-[#1e2a30]"
+                className="relative mx-3 h-full cursor-crosshair overflow-hidden"
                 onWheel={handleWheel}
                 onContextMenu={handleWaveformContextMenu}
                 title={timingMode === 'snap' ? 'Right-click to add a beat-snapped cue' : 'Right-click to add an exact millisecond cue'}
@@ -1559,15 +1581,17 @@ function CueWaveformPanel({
                   </div>
                 )}
               </div>
+              </div>
 
               <div className="h-[40px]">
                 <TimelineLaneLabel icon={<Grip size={19} strokeWidth={2.55} />} label="Beat Grid" color="#4ade80" collapsed={labelsCollapsed} />
               </div>
-              <div className="relative h-[40px] overflow-hidden">
+              <div className="h-[40px]">
+                <div className="relative mx-3 h-full overflow-hidden">
                 {beatGridLoading ? (
-                  <div className="flex h-full items-center px-5 text-[11px] font-medium text-[#707b85]">Loading beat grid…</div>
+                  <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading beat grid…</div>
                 ) : durationMs == null || rulerTicks.length === 0 ? (
-                  <div className="flex h-full items-center px-5 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">
+                  <div className="flex h-full items-center px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">
                     No beat grid
                   </div>
                 ) : (
@@ -1596,6 +1620,7 @@ function CueWaveformPanel({
                     ))}
                   </>
                 )}
+                </div>
               </div>
             </div>
             </div>
@@ -3605,6 +3630,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         onApplyAll={() => { void handleMetadataApplyAll(); }}
       />
 
+      <div className="sticky top-0 z-30">
       <CueWaveformPanel
         track={selectedTrack}
         beatGrid={beatGrid}
@@ -3642,7 +3668,11 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         applying={applyBusy}
         onApplyTrack={() => { void handleApplyPreflight('track'); }}
         onApplyAll={() => { void handleApplyPreflight('all'); }}
+        pendingMetadataCount={pendingMetadataCount}
+        metadataDraftLoadStatus={metadataDraftLoadStatus}
+        onOpenPendingChanges={() => setPendingMetadataReviewOpen(true)}
       />
+      </div>
 
       {(applyPreflight || applyResult || applyMessage || applyDraftLoadError || applyRebaseRecovery) && (
         <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4" role="status">
@@ -3757,8 +3787,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         </div>
       )}
 
-      <section className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
-        <div className="border-b border-[var(--color-border-subtle)] px-4 py-4 md:px-5">
+      <section className="glass rounded-2xl border border-[var(--color-border-subtle)]" style={{ overflow: 'clip' }}>
+        <div className="sticky top-0 z-20 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)] px-4 py-4 md:px-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="min-w-[200px] flex-1">
               <div className="pb-2 border-b border-white/15 hover:border-white/35 transition-colors focus-within:border-white/35">
@@ -3774,18 +3804,6 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
               </div>
             </div>
             <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
-              <ControlButton
-                variant="surface"
-                disabled={!userId}
-                onClick={() => setPendingMetadataReviewOpen(true)}
-                aria-label={metadataDraftLoadStatus === 'loaded' ? `Open Pending Changes, ${pendingMetadataCount} pending` : 'Open Pending Changes'}
-                title={metadataDraftLoadStatus === 'failed' ? 'Pending metadata state failed to load. Open to retry.' : 'Review saved metadata changes'}
-              >
-                <List size={14} />
-                {metadataDraftLoadStatus === 'loaded'
-                  ? `Pending Changes (${pendingMetadataCount})`
-                  : metadataDraftLoadStatus === 'failed' ? 'Pending Changes (!)' : 'Pending Changes (…)'}
-              </ControlButton>
               <CueFilterDropdown
                 label="Genre"
                 value={genre}
@@ -3895,7 +3913,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                       { col: 'cues', label: 'Cues', cls: 'px-3 py-2.5 text-center' },
                       { col: 'duration', label: 'Duration', cls: 'px-3 py-2.5 text-right w-[80px]' },
                     ] as const).map(({ col, label, cls }) => (
-                      <th key={col} className={cn(cls, 'select-none cursor-pointer hover:text-foreground transition-colors')}
+                      <th key={col} className={cn(cls, 'sticky top-[77px] z-10 bg-[var(--color-card)] select-none cursor-pointer hover:text-foreground transition-colors')}
                         onClick={() => handleColClick(col)}>
                         <span className="inline-flex items-center gap-1">
                           {label}
@@ -4037,6 +4055,20 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                                     {genreSaving ? <CircleDash className="animate-spin" size={13} /> : <Save size={13} />}
                                   </button>
                                 )}
+                                <button
+                                  type="button"
+                                  className="shrink-0 text-muted-foreground hover:text-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                                  title="Cancel genre edit"
+                                  aria-label={`Cancel genre edit for ${track.title}`}
+                                  disabled={genreSaving}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setEditingGenreTrackId(null);
+                                    setGenreSaveError((current) => current?.trackId === track.id ? null : current);
+                                  }}
+                                >
+                                  <Close size={13} />
+                                </button>
                               </div>
                               {genreSaveError?.trackId === track.id && (
                                 <div className="flex items-center justify-between gap-2 text-[10px] text-red-300" role="alert">
