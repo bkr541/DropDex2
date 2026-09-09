@@ -6,6 +6,7 @@ import {
   isRouletteDirectTempoCompatible,
   rankRouletteCandidates,
   rankRoulettePairs,
+  rankRoulettePairsBounded,
   ROULETTE_DIRECT_BPM_TOLERANCE,
   type RouletteCandidateAnalysis,
 } from './rouletteMatching';
@@ -162,6 +163,25 @@ describe('Roulette hard compatibility', () => {
     )).toBe('missing-beat-grid');
   });
 
+  it('rejects variable-tempo grids before pitch-locked matching', () => {
+    const referenceGrid = grid('reference');
+    referenceGrid.is_variable_tempo = true;
+    const reference = { track: track('reference'), beatGrid: referenceGrid };
+    expect(getRouletteHardFilterReason(
+      candidate('candidate', 'vocal'),
+      reference,
+      'vocal',
+    )).toBe('variable-tempo');
+
+    const candidateGrid = grid('candidate');
+    candidateGrid.is_variable_tempo = true;
+    expect(getRouletteHardFilterReason(
+      candidate('candidate', 'vocal', { beatGrid: candidateGrid }),
+      { track: track('reference'), beatGrid: grid('reference') },
+      'vocal',
+    )).toBe('variable-tempo');
+  });
+
   it('never forms a vocal/instrumental pair from the same parent track', () => {
     const vocal = candidate('same-parent', 'vocal');
     const instrumental = candidate('same-parent', 'instrumental');
@@ -174,5 +194,28 @@ describe('Roulette hard compatibility', () => {
     const a = candidate('a-id', 'vocal', { track: track('a-id', 142, '9A', 'Alpha') });
     expect(rankRouletteCandidates([z, a], reference, 'vocal').map((row) => row.candidate.track.id))
       .toEqual(['a-id', 'z-id']);
+  });
+
+  it('builds a bounded compatible pair pool instead of expanding the full Cartesian product', () => {
+    const vocals = Array.from({ length: 120 }, (_, index) => candidate(
+      `vocal-${index}`,
+      'vocal',
+      { track: track(`vocal-${index}`, 141.5 + (index % 4) * 0.2, '9A', `Vocal ${index}`) },
+    ));
+    const instrumentals = Array.from({ length: 160 }, (_, index) => candidate(
+      `inst-${index}`,
+      'instrumental',
+      { track: track(`inst-${index}`, 141.4 + (index % 5) * 0.2, '9A', `Inst ${index}`) },
+    ));
+
+    const pairs = rankRoulettePairsBounded(vocals, instrumentals, {
+      maxPairs: 40,
+      maxPartnersPerVocal: 2,
+    });
+
+    expect(pairs.length).toBeGreaterThan(0);
+    expect(pairs.length).toBeLessThanOrEqual(40);
+    expect(pairs.every((pair) => pair.vocal.track.id !== pair.instrumental.track.id)).toBe(true);
+    expect(pairs.every((pair) => Math.abs((pair.vocal.track.bpm ?? 0) - (pair.instrumental.track.bpm ?? 0)) <= 2)).toBe(true);
   });
 });

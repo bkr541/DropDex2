@@ -541,6 +541,39 @@ describe('Roulette audio runtime', () => {
   });
 
 
+  it('refuses variable-tempo grids before scheduling or pitch-locked DSP', async () => {
+    const audio = fakeAudioContext();
+    const prepare = vi.fn(async () => buffer(30));
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      stretchedCache: new DecodedAudioCache<AudioBuffer>(4),
+      createTempoProcessor: () => ({ prepare, cancel: vi.fn(), dispose: vi.fn() }),
+      loadTrack: async (id) => track(id, id === 'vocal-a' ? 140 : 142),
+      loadBeatGrid: async (id) => {
+        const beatGrid = grid(id, 0);
+        if (id === 'vocal-a') beatGrid.is_variable_tempo = true;
+        return beatGrid;
+      },
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    await expect(runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix)).rejects.toThrow(/variable-tempo beat grids/);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(audio.sources).toHaveLength(0);
+  });
+
   it('routes the summed decks through conservative headroom and a limiter', async () => {
     const audio = fakeAudioContext();
     const runtime = createRouletteAudioRuntime({

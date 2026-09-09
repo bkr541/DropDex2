@@ -70,6 +70,18 @@ describe('Roulette musical alignment', () => {
     )).toThrow(/direct-tempo pair/);
   });
 
+  it('fails closed before pitch-locking a variable-tempo Rekordbox grid', () => {
+    const variable = grid('vocal', 1000);
+    variable.is_variable_tempo = true;
+    variable.minimum_bpm = 138;
+    variable.maximum_bpm = 144;
+
+    expect(() => resolveRouletteAlignment(
+      { track: track('vocal', 142), beatGrid: variable },
+      { track: track('instrumental', 142), beatGrid: grid('instrumental', 1000) },
+    )).toThrow(/variable-tempo beat grids/);
+  });
+
   it('requires an exact stored downbeat instead of inventing an average-BPM anchor', () => {
     const malformed = grid('bad', 1000);
     malformed.beats = malformed.beats.map((beat) => ({ ...beat, isDownbeat: false }));

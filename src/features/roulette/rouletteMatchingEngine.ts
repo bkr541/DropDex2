@@ -5,7 +5,7 @@ import {
 } from '../../lib/queries/rouletteCandidates';
 import {
   rankRouletteCandidates,
-  rankRoulettePairs,
+  rankRoulettePairsBounded,
   type RouletteCandidateAnalysis,
   type RouletteCandidateReference,
   type RouletteCandidateScore,
@@ -186,7 +186,8 @@ export function createRouletteMatchingEngine(
     ]);
     throwIfAborted(input.signal);
 
-    const pool = eligiblePairPool(rankRoulettePairs(vocals, instrumentals), input);
+    const boundedPairs = rankRoulettePairsBounded(randomizedOrder(vocals, rng), instrumentals);
+    const pool = eligiblePairPool(boundedPairs, input);
     for (const pair of randomizedOrder(pool, rng)) {
       const vocal = await validateReadySource(pair.vocal, 'vocal', stemAssets, input.signal);
       if (!vocal) continue;

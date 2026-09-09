@@ -31,13 +31,20 @@ export interface RouletteSessionActions extends RouletteMatchingActions {
 interface RouletteSessionContextValue {
   state: RouletteSessionState;
   playback: RoulettePlaybackUiState;
-  matchingAvailable: true;
+  matchingAvailable: boolean;
+  matchingUnavailableReason: string | null;
   playbackAvailable: boolean;
   actions: RouletteSessionActions;
   cancelPending(): void;
 }
 
 const RouletteSessionContext = createContext<RouletteSessionContextValue | null>(null);
+
+export function rouletteDesktopMatchingAvailable(
+  desktop: Window['dropdexDesktop'] | undefined = typeof window !== 'undefined' ? window.dropdexDesktop : undefined,
+): boolean {
+  return desktop?.isElectron === true;
+}
 
 export function RouletteSessionProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(
@@ -73,6 +80,10 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
     && Boolean(state.sources.vocal.parentTrackId && state.sources.vocal.stemRef)
     && Boolean(state.sources.instrumental.parentTrackId && state.sources.instrumental.stemRef);
   const playbackAvailable = pairReady;
+  const matchingAvailable = rouletteDesktopMatchingAvailable();
+  const matchingUnavailableReason = matchingAvailable
+    ? null
+    : 'Roulette matching requires the DropDex desktop runtime.';
 
   const actions = useMemo<RouletteSessionActions>(() => ({
     ...matchingExecutor.actions,
@@ -93,11 +104,12 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
   const value = useMemo<RouletteSessionContextValue>(() => ({
     state,
     playback: audio.playback,
-    matchingAvailable: true,
+    matchingAvailable,
+    matchingUnavailableReason,
     playbackAvailable,
     actions,
     cancelPending: matchingExecutor.cancel,
-  }), [actions, audio.playback, matchingExecutor.cancel, playbackAvailable, state]);
+  }), [actions, audio.playback, matchingAvailable, matchingExecutor.cancel, matchingUnavailableReason, playbackAvailable, state]);
 
   return (
     <RouletteSessionContext.Provider value={value}>

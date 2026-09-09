@@ -56,6 +56,10 @@ export function resolveRouletteAlignment(
     throw new Error('Roulette playback requires a direct-tempo pair inside the supported BPM range.');
   }
 
+  if (vocal.beatGrid?.is_variable_tempo === true || instrumental.beatGrid?.is_variable_tempo === true) {
+    throw new Error('Roulette pitch-locked playback does not support variable-tempo beat grids.');
+  }
+
   const vocalAnchor = vocal.musicalAnchor?.anchorBeat ?? firstRouletteDownbeat(vocal.beatGrid);
   const instrumentalAnchor = instrumental.musicalAnchor?.anchorBeat ?? firstRouletteDownbeat(instrumental.beatGrid);
   const vocalOffsetMs = vocal.musicalAnchor?.sourceTimeMs ?? vocalAnchor?.ms ?? null;

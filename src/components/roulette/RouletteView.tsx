@@ -9,6 +9,7 @@ import { useRouletteSession } from '../../features/roulette/RouletteSessionConte
 import type { RouletteSourceRole, RouletteStemStatus } from '../../features/roulette/rouletteSession';
 import { useRouletteStemReadiness } from '../../features/roulette/useRouletteStemReadiness';
 import { useRouletteSourceTrack } from '../../features/roulette/useRouletteSourceTrack';
+import { useRouletteMatchingAvailability } from '../../features/roulette/useRouletteMatchingAvailability';
 
 const SOURCE_COPY: Record<RouletteSourceRole, { label: string; position: string }> = {
   vocal: { label: 'Vocal', position: 'Top deck' },
@@ -181,7 +182,8 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
 }
 
 export function RouletteView() {
-  const { state, playback, matchingAvailable, playbackAvailable, actions, cancelPending } = useRouletteSession();
+  const { state, playback, matchingAvailable, matchingUnavailableReason, playbackAvailable, actions, cancelPending } = useRouletteSession();
+  const candidateAvailability = useRouletteMatchingAvailability(matchingAvailable);
   useEffect(() => () => {
     cancelPending();
     actions.stop({ resetVisuals: true });
@@ -251,7 +253,7 @@ export function RouletteView() {
             </ControlButton>
             <ControlButton
               variant="primary"
-              disabled={!matchingAvailable || matchingBusy || transportBusy}
+              disabled={!matchingAvailable || candidateAvailability.loading || !candidateAvailability.available || matchingBusy || transportBusy}
               title="Resolve and replace both compatible sources"
               onClick={() => { void actions.replaceBoth(); }}
             >
@@ -271,9 +273,15 @@ export function RouletteView() {
                   ? 'Finding compatible stem-ready sources…'
                   : state.command.error
                     ? state.command.error
-                    : playbackAvailable
-                      ? 'Ready for synchronized dual-deck playback.'
-                      : 'Roulette a compatible stem-ready pair to enable playback.'}
+                    : !matchingAvailable && matchingUnavailableReason
+                      ? matchingUnavailableReason
+                      : !playbackAvailable && candidateAvailability.loading
+                        ? 'Checking prepared Roulette stems…'
+                        : !playbackAvailable && !candidateAvailability.available && candidateAvailability.reason
+                          ? candidateAvailability.reason
+                          : playbackAvailable
+                        ? 'Ready for synchronized dual-deck playback.'
+                        : 'Roulette a compatible stem-ready pair to enable playback.'}
         </p>
       </SurfaceCard>
     </section>

@@ -55,7 +55,7 @@ test.describe('durable navigation and recovery', () => {
   });
 
 
-  test('Roulette is reachable from the production nav, direct-route safe, and exposes only disabled Stage 2 commands', async ({ page }) => {
+  test('Roulette is reachable from the production nav and fails closed without the desktop stem runtime', async ({ page }) => {
     await prepare(page);
     await page.goto('/library');
 
@@ -70,7 +70,7 @@ test.describe('durable navigation and recovery', () => {
     for (const label of ['Play Roulette', 'Stop Roulette', 'Change Vocal', 'Change Instrumental', 'Roulette Both']) {
       await expect(page.getByRole('button', { name: label, exact: true })).toBeDisabled();
     }
-    await expect(page.getByTestId('roulette-screen').getByRole('status')).toContainText('not connected in this stage');
+    await expect(page.getByTestId('roulette-command-status')).toContainText('requires the DropDex desktop runtime');
 
     await page.reload();
     await expect(page).toHaveURL('/roulette');

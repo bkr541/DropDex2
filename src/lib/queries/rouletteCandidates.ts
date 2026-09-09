@@ -8,6 +8,38 @@ import { supabase } from '../supabase';
 
 const STEM_PAGE_SIZE = 500;
 
+const READY_STEM_PROBE_LIMIT = 32;
+
+export async function fetchReadyRouletteStemTrackIds(
+  stemType: StemAssetType,
+  limit = READY_STEM_PROBE_LIMIT,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('roulette_stem_assets')
+    .select('track_id')
+    .eq('stem_type', stemType)
+    .eq('status', 'ready')
+    .eq('separator_version', ROULETTE_SEPARATOR_VERSION)
+    .order('track_id', { ascending: true })
+    .limit(Math.max(1, Math.floor(limit)));
+  if (error) throw new Error(error.message);
+  return (data ?? [])
+    .map((row) => typeof row.track_id === 'string' ? row.track_id.trim() : '')
+    .filter(Boolean);
+}
+
+export async function hasRouletteReadyStemPairCandidates(): Promise<boolean> {
+  const [vocalTrackIds, instrumentalTrackIds] = await Promise.all([
+    fetchReadyRouletteStemTrackIds('vocals'),
+    fetchReadyRouletteStemTrackIds('instrumental'),
+  ]);
+  if (vocalTrackIds.length === 0 || instrumentalTrackIds.length === 0) return false;
+  const instrumentalIds = new Set(instrumentalTrackIds);
+  if (instrumentalIds.size > 1) return true;
+  const onlyInstrumental = instrumentalTrackIds[0];
+  return vocalTrackIds.some((trackId) => trackId !== onlyInstrumental);
+}
+
 export async function fetchReadyRouletteStemAssets(
   stemType: StemAssetType,
 ): Promise<StemAssetRecord[]> {
