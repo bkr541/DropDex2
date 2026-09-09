@@ -16,9 +16,15 @@ describe('Roulette production playback reachability', () => {
     expect(runtime).toContain('loadPhrases');
     expect(runtime).toContain('loadVocalAnalysis');
     expect(runtime).toContain('scheduleAudioBufferClips');
+    expect(runtime).toContain('createRouletteTimeStretchProcessor');
+    expect(runtime).toContain('tempoProcessor.prepare');
+    expect(runtime).toContain('alignment.tempo.vocal');
     expect(runtime).toContain('startOffsetSeconds: 0');
     expect(runtime.match(/startOffsetSeconds: 0/g)).toHaveLength(2);
     expect(runtime).not.toContain('.playbackRate');
+    const processor = readFileSync('src/features/roulette/wsolaTimeStretch.ts', 'utf8');
+    expect(processor).toContain('Waveform Similarity Overlap-Add');
+    expect(processor).not.toContain('playbackRate');
   });
 
   it('renders only decoded stem-derived waveform peaks with one shared playhead', () => {

@@ -3,6 +3,7 @@ import type { RouletteMusicalAnchor } from './rouletteAnchors';
 import { isUsableBeatGrid, type BeatEntry } from '../../lib/music/beatGridHelpers';
 import type { BeatGridRow } from '../../lib/queries/analysisData';
 import { isRouletteDirectTempoCompatible } from './rouletteMatching';
+import { resolveRouletteTempoPlan, type RouletteTempoPlan } from './rouletteTempoSync';
 
 export interface RouletteAlignmentSource {
   track: Pick<RekordboxTrack, 'id' | 'bpm'>;
@@ -20,6 +21,7 @@ export interface RouletteAlignment {
   instrumental: RouletteDeckAlignment;
   masterBpm: number;
   barDurationSeconds: number;
+  tempo: RouletteTempoPlan;
 }
 
 function validBpm(value: number | null | undefined): value is number {
@@ -51,7 +53,7 @@ export function resolveRouletteAlignment(
     throw new Error('Roulette playback requires BPM metadata for both parent tracks.');
   }
   if (!isRouletteDirectTempoCompatible(vocal.track.bpm, instrumental.track.bpm)) {
-    throw new Error('Roulette playback requires an exact or nearly exact direct-tempo pair.');
+    throw new Error('Roulette playback requires a direct-tempo pair inside the supported BPM range.');
   }
 
   const vocalAnchor = vocal.musicalAnchor?.anchorBeat ?? firstRouletteDownbeat(vocal.beatGrid);
@@ -62,9 +64,8 @@ export function resolveRouletteAlignment(
     throw new Error('Roulette playback requires a resolved musical anchor for both parent tracks.');
   }
 
-  // The instrumental deck is the underlying mix bed and therefore owns the
-  // virtual transport BPM until the later pitch-preserving tempo stage exists.
-  const masterBpm = instrumental.track.bpm;
+  const tempo = resolveRouletteTempoPlan(vocal.track.bpm, instrumental.track.bpm);
+  const masterBpm = tempo.masterBpm;
   return {
     vocal: {
       anchorBeat: vocalAnchor,
@@ -76,6 +77,7 @@ export function resolveRouletteAlignment(
     },
     masterBpm,
     barDurationSeconds: 240 / masterBpm,
+    tempo,
   };
 }
 

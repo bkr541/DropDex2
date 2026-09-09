@@ -5,7 +5,7 @@ import { createRouletteMatchingEngine } from './rouletteMatchingEngine';
 import type { RouletteCandidateAnalysis } from './rouletteMatching';
 import { STEM_ASSET_CONTRACT_VERSION, type StemAssetRecord } from './stemAssets';
 
-function track(id: string, title = id): RekordboxTrack {
+function track(id: string, title = id, bpm = 142): RekordboxTrack {
   return {
     id,
     import_id: 'import-1',
@@ -21,7 +21,7 @@ function track(id: string, title = id): RekordboxTrack {
     normalized_key_name: 'E minor',
     key_tonic: 'E',
     key_mode: 'minor',
-    bpm: 142,
+    bpm,
     duration_seconds: 180,
     rating: null,
     comments: null,
@@ -75,9 +75,14 @@ function asset(id: string, type: 'vocals' | 'instrumental', status: StemAssetRec
   };
 }
 
-function candidate(id: string, role: 'vocal' | 'instrumental', title = id): RouletteCandidateAnalysis {
+function candidate(
+  id: string,
+  role: 'vocal' | 'instrumental',
+  title = id,
+  bpm = 142,
+): RouletteCandidateAnalysis {
   return {
-    track: track(id, title),
+    track: track(id, title, bpm),
     stemAsset: asset(id, role === 'vocal' ? 'vocals' : 'instrumental'),
     beatGrid: grid(id),
     phraseCount: 1,
@@ -141,6 +146,31 @@ describe('Roulette matching engine', () => {
 
     expect(resolved?.vocal.parentTrackId).toBe('vocal-next');
     expect(resolved?.instrumental.parentTrackId).toBe('inst-next');
+  });
+
+  it('allows a 140 BPM replacement against a 142 BPM fixed deck through the production matching service', async () => {
+    const fixed = track('instrumental-fixed', 'Fixed', 142);
+    const stretchedVocal = candidate('vocal-140', 'vocal', 'Pitch Locked', 140);
+    const getReadiness = vi.fn(async (trackId: string, stemType: 'vocals' | 'instrumental') => ({
+      parentTrackId: trackId,
+      stemType,
+      status: 'ready' as const,
+      asset: asset(trackId, stemType),
+      reason: null,
+    }));
+    const engine = createRouletteMatchingEngine({
+      loadTrack: vi.fn(async () => fixed),
+      loadBeatGrid: vi.fn(async () => grid(fixed.id)),
+      loadCandidates: vi.fn(async () => [stretchedVocal]),
+      stemAssets: { getReadiness },
+    });
+
+    const resolved = await engine.resolveReplacement({
+      role: 'vocal',
+      fixedTrackId: fixed.id,
+    });
+
+    expect(resolved?.parentTrackId).toBe('vocal-140');
   });
 
   it('honors cancellation before candidate work commits', async () => {

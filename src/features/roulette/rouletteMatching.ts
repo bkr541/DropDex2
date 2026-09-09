@@ -5,12 +5,12 @@ import type { BeatGridRow } from '../../lib/queries/analysisData';
 import type { StemAssetRecord, StemAssetType } from './stemAssets';
 import { stemTypeForRole } from './stemAssets';
 import type { RouletteSourceRole } from './rouletteSession';
+import {
+  isRouletteTempoRatioSupported,
+  ROULETTE_DIRECT_BPM_TOLERANCE,
+} from './rouletteTempoSync';
 
-/**
- * Stage 4 deliberately allows only effectively-identical direct tempos. Wider
- * pitch-locked tempo synchronization is reserved for the later stretch/runtime stage.
- */
-export const ROULETTE_DIRECT_BPM_TOLERANCE = 0.1;
+export { ROULETTE_DIRECT_BPM_TOLERANCE } from './rouletteTempoSync';
 
 export interface RouletteCandidateAnalysis {
   track: RekordboxTrack;
@@ -46,6 +46,7 @@ export type RouletteHardFilterReason =
   | 'key-mismatch'
   | 'missing-bpm'
   | 'tempo-mismatch'
+  | 'tempo-ratio-out-of-range'
   | 'missing-beat-grid'
   | 'same-parent-track'
   | 'excluded-parent-track';
@@ -119,6 +120,9 @@ export function getRouletteHardFilterReason(
   if (!isRouletteDirectTempoCompatible(reference.track.bpm, candidate.track.bpm)) {
     return 'tempo-mismatch';
   }
+  if (!isRouletteTempoRatioSupported(candidate.track.bpm, reference.track.bpm)) {
+    return 'tempo-ratio-out-of-range';
+  }
 
   if (!hasUsableRouletteBeatGrid(reference.beatGrid) || !hasUsableRouletteBeatGrid(candidate.beatGrid)) {
     return 'missing-beat-grid';
@@ -139,7 +143,7 @@ export function scoreRouletteCandidate(
 ): number {
   const bpmDifference = rouletteDirectTempoDifference(reference.track.bpm, candidate.track.bpm) ?? Number.POSITIVE_INFINITY;
   const proximity = Number.isFinite(bpmDifference)
-    ? Math.max(0, 1 - bpmDifference / ROULETTE_DIRECT_BPM_TOLERANCE)
+    ? Math.max(0, 1 - bpmDifference / Math.max(ROULETTE_DIRECT_BPM_TOLERANCE, 1e-9))
     : 0;
 
   let score = proximity * 100;

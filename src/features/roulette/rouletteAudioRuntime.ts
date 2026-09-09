@@ -31,6 +31,15 @@ import {
 } from './rouletteAnchors';
 import type { RouletteSourceRole, RouletteSourceSelection } from './rouletteSession';
 import { extractRouletteStemPeaks } from './rouletteWaveform';
+import {
+  rouletteOutputDurationSeconds,
+  rouletteSourceDurationSeconds,
+  type RouletteDeckTempoPlan,
+} from './rouletteTempoSync';
+import {
+  createRouletteTimeStretchProcessor,
+  type RouletteTimeStretchProcessor,
+} from './rouletteTimeStretch';
 
 export interface RouletteDeckMix {
   gain: number;
@@ -81,6 +90,8 @@ interface RouletteRuntimeDependencies {
   stemAssets: Pick<StemAssetService, 'resolveReady'>;
   getAudioContext(): AudioContext;
   decodedCache: DecodedAudioCache<AudioBuffer>;
+  stretchedCache: DecodedAudioCache<AudioBuffer>;
+  createTempoProcessor(): RouletteTimeStretchProcessor;
   loadDecodedSources: RouletteDecodedSourceLoader;
   scheduleClips: typeof scheduleAudioBufferClips;
   fetchImpl: typeof fetch;
@@ -95,6 +106,8 @@ function defaultDependencies(): RouletteRuntimeDependencies {
     stemAssets: rouletteStemAssetService,
     getAudioContext: createBrowserAudioContext,
     decodedCache: new DecodedAudioCache<AudioBuffer>(6),
+    stretchedCache: new DecodedAudioCache<AudioBuffer>(4),
+    createTempoProcessor: createRouletteTimeStretchProcessor,
     loadDecodedSources: loadDecodedAudioSources,
     scheduleClips: scheduleAudioBufferClips,
     fetchImpl: fetch,
@@ -147,6 +160,7 @@ export function createRouletteAudioRuntime(
   overrides: Partial<RouletteRuntimeDependencies> = {},
 ): RouletteAudioRuntime {
   const dependencies = { ...defaultDependencies(), ...overrides };
+  const tempoProcessor = dependencies.createTempoProcessor();
   let audioContext: AudioContext | null = null;
   let activeGeneration = 0;
   let loadController: AbortController | null = null;
@@ -172,6 +186,7 @@ export function createRouletteAudioRuntime(
     activeGeneration += 1;
     loadController?.abort();
     loadController = null;
+    tempoProcessor.cancel();
     stopActiveGraph();
   };
 
@@ -294,32 +309,96 @@ export function createRouletteAudioRuntime(
     );
     throwIfCancelled(generation, activeGeneration, controller.signal);
 
-    const vocalAvailable = Math.max(0, vocalBuffer.duration - alignment.vocal.sourceOffsetSeconds);
-    const instrumentalAvailable = Math.max(0, instrumentalBuffer.duration - alignment.instrumental.sourceOffsetSeconds);
-    const anchorWindowSeconds = Math.min(
-      vocalAnchor.usableWindowMs / 1000,
+    const vocalSourceAvailable = Math.max(0, vocalBuffer.duration - alignment.vocal.sourceOffsetSeconds);
+    const instrumentalSourceAvailable = Math.max(0, instrumentalBuffer.duration - alignment.instrumental.sourceOffsetSeconds);
+    const vocalAvailable = rouletteOutputDurationSeconds(vocalSourceAvailable, alignment.tempo.vocal);
+    const instrumentalAvailable = rouletteOutputDurationSeconds(instrumentalSourceAvailable, alignment.tempo.instrumental);
+    const vocalAnchorWindow = rouletteOutputDurationSeconds(vocalAnchor.usableWindowMs / 1000, alignment.tempo.vocal);
+    const instrumentalAnchorWindow = rouletteOutputDurationSeconds(
       instrumentalAnchor.usableWindowMs / 1000,
+      alignment.tempo.instrumental,
     );
-    const sharedDuration = Math.min(vocalAvailable, instrumentalAvailable, anchorWindowSeconds);
-    if (!Number.isFinite(sharedDuration) || sharedDuration <= 0) {
+    const targetDuration = Math.min(
+      vocalAvailable,
+      instrumentalAvailable,
+      vocalAnchorWindow,
+      instrumentalAnchorWindow,
+    );
+    if (!Number.isFinite(targetDuration) || targetDuration <= 0) {
       throw new Error('The resolved Roulette musical window falls outside one of the decoded stems.');
     }
 
-    // Build visual data before scheduling any audible nodes. If decoded-buffer
-    // inspection fails, Play fails atomically instead of leaving audio running.
+    type PreparedDeck = { buffer: AudioBuffer; offsetSeconds: number };
+    const prepareDeck = async (
+      role: RouletteSourceRole,
+      buffer: AudioBuffer,
+      offsetSeconds: number,
+      plan: RouletteDeckTempoPlan,
+    ): Promise<PreparedDeck> => {
+      if (!plan.requiresPitchLockedProcessing) return { buffer, offsetSeconds };
+
+      const media = role === 'vocal' ? vocalMedia : instrumentalMedia;
+      const sourceDurationSeconds = Math.min(
+        Math.max(0, buffer.duration - offsetSeconds),
+        rouletteSourceDurationSeconds(targetDuration, plan),
+      );
+      const cacheKey = [
+        'roulette-tempo-v1',
+        media.asset.id,
+        Math.round(offsetSeconds * buffer.sampleRate),
+        plan.sourceBpm.toFixed(6),
+        plan.targetBpm.toFixed(6),
+        Math.round(sourceDurationSeconds * buffer.sampleRate),
+      ].join(':');
+      const processed = await dependencies.stretchedCache.getOrCreate(cacheKey, () => tempoProcessor.prepare({
+        context,
+        buffer,
+        offsetSeconds,
+        sourceDurationSeconds,
+        tempoRatio: plan.tempoRatio,
+        signal: controller.signal,
+      }));
+      throwIfCancelled(generation, activeGeneration, controller.signal);
+      return { buffer: processed, offsetSeconds: 0 };
+    };
+
+    let preparedVocal: PreparedDeck;
+    let preparedInstrumental: PreparedDeck;
+    try {
+      [preparedVocal, preparedInstrumental] = await Promise.all([
+        prepareDeck('vocal', vocalBuffer, alignment.vocal.sourceOffsetSeconds, alignment.tempo.vocal),
+        prepareDeck('instrumental', instrumentalBuffer, alignment.instrumental.sourceOffsetSeconds, alignment.tempo.instrumental),
+      ]);
+    } catch (error) {
+      tempoProcessor.cancel();
+      throw error;
+    }
+    throwIfCancelled(generation, activeGeneration, controller.signal);
+
+    const playbackDuration = Math.min(
+      targetDuration,
+      Math.max(0, preparedVocal.buffer.duration - preparedVocal.offsetSeconds),
+      Math.max(0, preparedInstrumental.buffer.duration - preparedInstrumental.offsetSeconds),
+    );
+    if (!Number.isFinite(playbackDuration) || playbackDuration <= 0) {
+      throw new Error('Roulette tempo preparation produced an unusable musical window.');
+    }
+
+    // Build visual data from the same prepared buffers that will be scheduled.
+    // A DSP failure therefore remains atomic and never leaves partial audio live.
     const waveforms = {
       vocal: extractRouletteStemPeaks(
-        vocalBuffer,
-        alignment.vocal.sourceOffsetSeconds,
-        sharedDuration,
+        preparedVocal.buffer,
+        preparedVocal.offsetSeconds,
+        playbackDuration,
       ),
       instrumental: extractRouletteStemPeaks(
-        instrumentalBuffer,
-        alignment.instrumental.sourceOffsetSeconds,
-        sharedDuration,
+        preparedInstrumental.buffer,
+        preparedInstrumental.offsetSeconds,
+        playbackDuration,
       ),
     };
-    const barFractions = buildRouletteBarFractions(sharedDuration, alignment.barDurationSeconds);
+    const barFractions = buildRouletteBarFractions(playbackDuration, alignment.barDurationSeconds);
 
     const masterGain = context.createGain();
     // Two full-scale stems can sum above unity. Reserve fixed headroom without
@@ -340,16 +419,16 @@ export function createRouletteAudioRuntime(
         context,
         [
           {
-            buffer: vocalBuffer,
-            offsetSeconds: alignment.vocal.sourceOffsetSeconds,
-            durationSeconds: sharedDuration,
+            buffer: preparedVocal.buffer,
+            offsetSeconds: preparedVocal.offsetSeconds,
+            durationSeconds: playbackDuration,
             startOffsetSeconds: 0,
             destination: vocalGain,
           },
           {
-            buffer: instrumentalBuffer,
-            offsetSeconds: alignment.instrumental.sourceOffsetSeconds,
-            durationSeconds: sharedDuration,
+            buffer: preparedInstrumental.buffer,
+            offsetSeconds: preparedInstrumental.offsetSeconds,
+            durationSeconds: playbackDuration,
             startOffsetSeconds: 0,
             destination: instrumentalGain,
           },
@@ -369,7 +448,7 @@ export function createRouletteAudioRuntime(
     }
 
     startAt = scheduled.startAt;
-    durationSeconds = sharedDuration;
+    durationSeconds = playbackDuration;
     loadController = null;
 
     const finalNode = scheduled.nodes.at(-1);
@@ -383,7 +462,7 @@ export function createRouletteAudioRuntime(
 
     return {
       masterBpm: alignment.masterBpm,
-      durationSeconds: sharedDuration,
+      durationSeconds: playbackDuration,
       startAt: scheduled.startAt,
       waveforms,
       barFractions,
@@ -400,10 +479,15 @@ export function createRouletteAudioRuntime(
       return Math.max(0, Math.min(durationSeconds, audioContext.currentTime - startAt));
     },
     getDurationSeconds: () => durationSeconds,
-    clearCache: () => dependencies.decodedCache.clear(),
+    clearCache: () => {
+      dependencies.decodedCache.clear();
+      dependencies.stretchedCache.clear();
+    },
     dispose: async () => {
       stop();
       dependencies.decodedCache.clear();
+      dependencies.stretchedCache.clear();
+      tempoProcessor.dispose();
       const context = audioContext;
       audioContext = null;
       await closeAudioContext(context);

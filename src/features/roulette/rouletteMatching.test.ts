@@ -99,10 +99,22 @@ function candidate(
 }
 
 describe('Roulette hard compatibility', () => {
-  it('accepts only direct, nearly-identical BPM and rejects half/double time', () => {
+  it('accepts the Stage-8 direct BPM window and rejects half/double time', () => {
+    expect(ROULETTE_DIRECT_BPM_TOLERANCE).toBe(2);
+    expect(isRouletteDirectTempoCompatible(140, 142)).toBe(true);
     expect(isRouletteDirectTempoCompatible(142, 142 + ROULETTE_DIRECT_BPM_TOLERANCE)).toBe(true);
+    expect(isRouletteDirectTempoCompatible(142, 144.01)).toBe(false);
     expect(isRouletteDirectTempoCompatible(142, 71)).toBe(false);
     expect(isRouletteDirectTempoCompatible(142, 284)).toBe(false);
+  });
+
+  it('reports an explicit ratio-bound failure even inside the absolute BPM window', () => {
+    const reference = { track: track('reference', 12), beatGrid: grid('reference') };
+    expect(getRouletteHardFilterReason(
+      candidate('ratio-outside', 'vocal', { track: track('ratio-outside', 10) }),
+      reference,
+      'vocal',
+    )).toBe('tempo-ratio-out-of-range');
   });
 
   it('enforces canonical exact Camelot key by default', () => {

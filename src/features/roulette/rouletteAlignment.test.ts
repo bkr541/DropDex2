@@ -50,6 +50,19 @@ describe('Roulette musical alignment', () => {
     expect(result.barDurationSeconds).toBeCloseTo(240 / 142, 8);
   });
 
+  it('keeps the instrumental as deterministic master and plans pitch-locked vocal sync', () => {
+    const result = resolveRouletteAlignment(
+      { track: track('vocal', 140), beatGrid: grid('vocal', 1200) },
+      { track: track('instrumental', 142), beatGrid: grid('instrumental', 2650) },
+    );
+
+    expect(result.tempo.masterRole).toBe('instrumental');
+    expect(result.masterBpm).toBe(142);
+    expect(result.tempo.vocal.tempoRatio).toBeCloseTo(142 / 140, 10);
+    expect(result.tempo.vocal.requiresPitchLockedProcessing).toBe(true);
+    expect(result.tempo.instrumental.requiresPitchLockedProcessing).toBe(false);
+  });
+
   it('fails closed when the pair is half-time related instead of direct-tempo compatible', () => {
     expect(() => resolveRouletteAlignment(
       { track: track('vocal', 71), beatGrid: grid('vocal', 1000) },

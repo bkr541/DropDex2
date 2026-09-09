@@ -345,4 +345,179 @@ describe('Roulette audio runtime', () => {
     }, mix)).rejects.toThrow(/missing or no longer ready/);
     expect(audio.sources).toHaveLength(0);
   });
+
+  it('routes a 140 BPM vocal through pitch-locked preparation against a 142 BPM instrumental master', async () => {
+    const audio = fakeAudioContext();
+    const prepare = vi.fn(async ({ sourceDurationSeconds, tempoRatio }: { sourceDurationSeconds: number; tempoRatio: number }) => (
+      buffer(sourceDurationSeconds / tempoRatio)
+    ));
+    const cancel = vi.fn();
+    const dispose = vi.fn();
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      stretchedCache: new DecodedAudioCache<AudioBuffer>(4),
+      createTempoProcessor: () => ({ prepare, cancel, dispose }),
+      loadTrack: async (id) => track(id, id === 'vocal-a' ? 140 : 142),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    const result = await runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+
+    expect(result.masterBpm).toBe(142);
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(prepare.mock.calls[0][0].tempoRatio).toBeCloseTo(142 / 140, 10);
+    expect(audio.sources).toHaveLength(2);
+    expect(audio.sources[0].starts[0].when).toBe(audio.sources[1].starts[0].when);
+    expect(audio.sources[0].starts[0].offset).toBe(0);
+    expect(audio.sources[1].starts[0].offset).toBe(0);
+    expect(audio.sources[0].starts[0].duration).toBeCloseTo(result.durationSeconds, 8);
+    expect(audio.sources[1].starts[0].duration).toBeCloseTo(result.durationSeconds, 8);
+  });
+
+  it('prepares a fresh ratio when the non-master vocal source is replaced', async () => {
+    const audio = fakeAudioContext();
+    const prepare = vi.fn(async ({ sourceDurationSeconds, tempoRatio }: { sourceDurationSeconds: number; tempoRatio: number }) => (
+      buffer(sourceDurationSeconds / tempoRatio)
+    ));
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      stretchedCache: new DecodedAudioCache<AudioBuffer>(4),
+      createTempoProcessor: () => ({ prepare, cancel: vi.fn(), dispose: vi.fn() }),
+      loadTrack: async (id) => track(id, id === 'vocal-a' ? 140 : id === 'vocal-b' ? 141 : 142),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    await runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+    await runtime.play({
+      vocal: selection('vocal-b', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+
+    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(prepare.mock.calls[0][0].tempoRatio).toBeCloseTo(142 / 140, 10);
+    expect(prepare.mock.calls[1][0].tempoRatio).toBeCloseTo(142 / 141, 10);
+  });
+
+  it('keeps exact-BPM playback on the no-processing path', async () => {
+    const audio = fakeAudioContext();
+    const prepare = vi.fn(async () => buffer(10));
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      stretchedCache: new DecodedAudioCache<AudioBuffer>(4),
+      createTempoProcessor: () => ({ prepare, cancel: vi.fn(), dispose: vi.fn() }),
+      loadTrack: async (id) => track(id, 142),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    await runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it('fails atomically when pitch-locked processor initialization fails', async () => {
+    const audio = fakeAudioContext();
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      stretchedCache: new DecodedAudioCache<AudioBuffer>(4),
+      createTempoProcessor: () => ({
+        prepare: vi.fn(async () => { throw new Error('processor init failed'); }),
+        cancel: vi.fn(),
+        dispose: vi.fn(),
+      }),
+      loadTrack: async (id) => track(id, id === 'vocal-a' ? 140 : 142),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    await expect(runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix)).rejects.toThrow(/processor init failed/);
+    expect(audio.sources).toHaveLength(0);
+  });
+
+  it('cancels in-flight pitch-locked preparation on stop and never schedules stale audio', async () => {
+    const audio = fakeAudioContext();
+    const cancel = vi.fn();
+    const prepare = vi.fn(({ signal }: { signal?: AbortSignal }) => new Promise<AudioBuffer>((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true });
+    }));
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      stretchedCache: new DecodedAudioCache<AudioBuffer>(4),
+      createTempoProcessor: () => ({ prepare, cancel, dispose: vi.fn() }),
+      loadTrack: async (id) => track(id, id === 'vocal-a' ? 140 : 142),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    const pending = runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+    await vi.waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+    runtime.stop();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(cancel).toHaveBeenCalled();
+    expect(audio.sources).toHaveLength(0);
+  });
+
 });
