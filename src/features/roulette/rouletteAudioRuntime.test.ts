@@ -32,9 +32,24 @@ class FakeGainNode {
   disconnect() { this.disconnected = true; }
 }
 
+
+class FakeCompressorNode {
+  threshold = { value: 0 };
+  knee = { value: 0 };
+  ratio = { value: 1 };
+  attack = { value: 0 };
+  release = { value: 0 };
+  connectedTo: unknown = null;
+  disconnected = false;
+
+  connect(destination: unknown) { this.connectedTo = destination; return destination; }
+  disconnect() { this.disconnected = true; }
+}
+
 function fakeAudioContext() {
   const sources: FakeSourceNode[] = [];
   const gains: FakeGainNode[] = [];
+  const compressors: FakeCompressorNode[] = [];
   const context = {
     currentTime: 10,
     state: 'running',
@@ -49,10 +64,15 @@ function fakeAudioContext() {
       gains.push(node);
       return node as unknown as GainNode;
     },
+    createDynamicsCompressor: () => {
+      const node = new FakeCompressorNode();
+      compressors.push(node);
+      return node as unknown as DynamicsCompressorNode;
+    },
     resume: vi.fn(async () => undefined),
     close: vi.fn(async () => undefined),
   } as unknown as AudioContext;
-  return { context, sources, gains };
+  return { context, sources, gains, compressors };
 }
 
 function track(id: string, bpm = 142): RekordboxTrack {
@@ -289,7 +309,7 @@ describe('Roulette audio runtime', () => {
     });
 
     expect(audio.gains).toHaveLength(3);
-    expect(audio.gains[0].gain.value).toBeCloseTo(0.72, 8);
+    expect(audio.gains[0].gain.value).toBeCloseTo(0.707, 8);
     expect(audio.gains[1].gain.value).toBeCloseTo(0.9, 8);
     expect(audio.gains[2].gain.value).toBe(0);
   });
@@ -518,6 +538,73 @@ describe('Roulette audio runtime', () => {
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
     expect(cancel).toHaveBeenCalled();
     expect(audio.sources).toHaveLength(0);
+  });
+
+
+  it('routes the summed decks through conservative headroom and a limiter', async () => {
+    const audio = fakeAudioContext();
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      loadTrack: async (id) => track(id),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    await runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+
+    expect(audio.gains[0].gain.value).toBeCloseTo(0.707, 8);
+    expect(audio.compressors).toHaveLength(1);
+    expect(audio.gains[0].connectedTo).toBe(audio.compressors[0]);
+    expect(audio.compressors[0].threshold.value).toBe(-1);
+    expect(audio.compressors[0].ratio.value).toBe(20);
+  });
+
+  it('preflights candidate media, anchors, and tempo processing without leaving scheduled audio active', async () => {
+    const audio = fakeAudioContext();
+    const prepare = vi.fn(async ({ sourceDurationSeconds, tempoRatio }: { sourceDurationSeconds: number; tempoRatio: number }) => (
+      buffer(sourceDurationSeconds / tempoRatio)
+    ));
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      stretchedCache: new DecodedAudioCache<AudioBuffer>(4),
+      createTempoProcessor: () => ({ prepare, cancel: vi.fn(), dispose: vi.fn() }),
+      loadTrack: async (id) => track(id, id === 'vocal-a' ? 140 : 142),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    await runtime.prepare({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    });
+
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(audio.sources).toHaveLength(2);
+    expect(audio.sources.every((source) => source.stops.length > 0 && source.disconnected)).toBe(true);
+    expect(audio.gains.every((gain) => gain.disconnected)).toBe(true);
+    expect(audio.compressors.every((compressor) => compressor.disconnected)).toBe(true);
+    expect(runtime.getDurationSeconds()).toBe(0);
   });
 
 });

@@ -40,4 +40,32 @@ describe('DecodedAudioCache', () => {
     expect(cache.size).toBe(0);
     expect(cache.get('late')).toBeUndefined();
   });
+
+  it('evicts least-recently-used values to stay within a byte budget', () => {
+    const cache = new DecodedAudioCache<{ bytes: number; id: string }>(10, {
+      maxBytes: 10,
+      sizeOf: (value) => value.bytes,
+    });
+    cache.set('a', { id: 'a', bytes: 4 });
+    cache.set('b', { id: 'b', bytes: 4 });
+    expect(cache.get('a')?.id).toBe('a');
+    cache.set('c', { id: 'c', bytes: 4 });
+
+    expect(cache.byteSize).toBe(8);
+    expect(cache.get('a')?.id).toBe('a');
+    expect(cache.get('b')).toBeUndefined();
+    expect(cache.get('c')?.id).toBe('c');
+  });
+
+  it('returns but does not retain one decoded value larger than the byte budget', async () => {
+    const cache = new DecodedAudioCache<{ bytes: number }>(4, {
+      maxBytes: 8,
+      sizeOf: (value) => value.bytes,
+    });
+
+    await expect(cache.getOrCreate('oversized', async () => ({ bytes: 12 }))).resolves.toEqual({ bytes: 12 });
+    expect(cache.size).toBe(0);
+    expect(cache.byteSize).toBe(0);
+  });
+
 });

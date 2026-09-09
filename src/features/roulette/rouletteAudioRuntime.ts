@@ -64,6 +64,7 @@ export interface RoulettePlaybackResult {
 }
 
 export interface RouletteAudioRuntime {
+  prepare(sources: RoulettePlaybackSources, signal?: AbortSignal): Promise<void>;
   play(
     sources: RoulettePlaybackSources,
     mix: RouletteMixState,
@@ -97,6 +98,15 @@ interface RouletteRuntimeDependencies {
   fetchImpl: typeof fetch;
 }
 
+export function rouletteAudioBufferByteSize(buffer: AudioBuffer): number {
+  return Math.max(0, buffer.length) * Math.max(0, buffer.numberOfChannels) * Float32Array.BYTES_PER_ELEMENT;
+}
+
+const MEBIBYTE = 1024 * 1024;
+const ROULETTE_DECODED_CACHE_BUDGET_BYTES = 192 * MEBIBYTE;
+const ROULETTE_STRETCHED_CACHE_BUDGET_BYTES = 96 * MEBIBYTE;
+const ROULETTE_MASTER_HEADROOM = 0.707;
+
 function defaultDependencies(): RouletteRuntimeDependencies {
   return {
     loadTrack: fetchRouletteTrack,
@@ -105,8 +115,14 @@ function defaultDependencies(): RouletteRuntimeDependencies {
     loadVocalAnalysis: fetchTrackVocalAnalysis,
     stemAssets: rouletteStemAssetService,
     getAudioContext: createBrowserAudioContext,
-    decodedCache: new DecodedAudioCache<AudioBuffer>(6),
-    stretchedCache: new DecodedAudioCache<AudioBuffer>(4),
+    decodedCache: new DecodedAudioCache<AudioBuffer>(8, {
+      maxBytes: ROULETTE_DECODED_CACHE_BUDGET_BYTES,
+      sizeOf: rouletteAudioBufferByteSize,
+    }),
+    stretchedCache: new DecodedAudioCache<AudioBuffer>(4, {
+      maxBytes: ROULETTE_STRETCHED_CACHE_BUDGET_BYTES,
+      sizeOf: rouletteAudioBufferByteSize,
+    }),
     createTempoProcessor: createRouletteTimeStretchProcessor,
     loadDecodedSources: loadDecodedAudioSources,
     scheduleClips: scheduleAudioBufferClips,
@@ -167,6 +183,7 @@ export function createRouletteAudioRuntime(
   let scheduledNodes: AudioBufferSourceNode[] = [];
   let deckGainNodes: Partial<Record<RouletteSourceRole, GainNode>> = {};
   let masterGainNode: GainNode | null = null;
+  let masterLimiterNode: DynamicsCompressorNode | null = null;
   let startAt = 0;
   let durationSeconds = 0;
 
@@ -176,8 +193,10 @@ export function createRouletteAudioRuntime(
     disconnectNode(deckGainNodes.vocal ?? null);
     disconnectNode(deckGainNodes.instrumental ?? null);
     disconnectNode(masterGainNode);
+    disconnectNode(masterLimiterNode);
     deckGainNodes = {};
     masterGainNode = null;
+    masterLimiterNode = null;
     startAt = 0;
     durationSeconds = 0;
   };
@@ -401,10 +420,21 @@ export function createRouletteAudioRuntime(
     const barFractions = buildRouletteBarFractions(playbackDuration, alignment.barDurationSeconds);
 
     const masterGain = context.createGain();
-    // Two full-scale stems can sum above unity. Reserve fixed headroom without
-    // introducing the later-stage limiter/effects surface.
-    masterGain.gain.value = 0.72;
-    masterGain.connect(context.destination);
+    masterGain.gain.value = ROULETTE_MASTER_HEADROOM;
+    const createLimiter = context.createDynamicsCompressor?.bind(context);
+    const limiter = createLimiter ? createLimiter() : null;
+    if (limiter) {
+      limiter.threshold.value = -1;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.1;
+      masterGain.connect(limiter);
+      limiter.connect(context.destination);
+      masterLimiterNode = limiter;
+    } else {
+      masterGain.connect(context.destination);
+    }
     const vocalGain = context.createGain();
     const instrumentalGain = context.createGain();
     vocalGain.connect(masterGain);
@@ -470,7 +500,26 @@ export function createRouletteAudioRuntime(
     };
   };
 
+  const prepare = async (sources: RoulettePlaybackSources, signal?: AbortSignal): Promise<void> => {
+    if (signal?.aborted) throw abortError();
+    const abort = () => stop();
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      await play(sources, {
+        vocal: { gain: 0, muted: true, solo: false },
+        instrumental: { gain: 0, muted: true, solo: false },
+      });
+      if (signal?.aborted) throw abortError();
+    } finally {
+      // play() schedules with a short lead-in. Always stop before returning so
+      // preflight validates decode/anchors/DSP without making the candidate audible.
+      stop();
+      signal?.removeEventListener('abort', abort);
+    }
+  };
+
   return {
+    prepare,
     play,
     stop,
     setMix,

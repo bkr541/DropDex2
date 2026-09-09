@@ -22,8 +22,8 @@ export interface RoulettePlaybackUiState {
 }
 
 const DEFAULT_MIX: RouletteMixState = {
-  vocal: { gain: 1, muted: false, solo: false },
-  instrumental: { gain: 1, muted: false, solo: false },
+  vocal: { gain: 0.85, muted: false, solo: false },
+  instrumental: { gain: 0.85, muted: false, solo: false },
 };
 
 function errorMessage(error: unknown): string {
@@ -93,6 +93,10 @@ export function useRouletteAudioRuntime({
     }));
   }, [cancelProgress, dispatch]);
 
+  const prepareSources = useCallback(async (sources: RoulettePlaybackSources, signal: AbortSignal): Promise<void> => {
+    await runtimeRef.current!.prepare(sources, signal);
+  }, []);
+
   const play = useCallback(async (): Promise<boolean> => {
     const requestId = ++requestRef.current;
     const sources = getSources();
@@ -154,6 +158,7 @@ export function useRouletteAudioRuntime({
       return true;
     } catch (error) {
       if (requestId !== requestRef.current) return false;
+      runtimeRef.current?.stop();
       if (isAbortError(error)) {
         activePlayCommandRef.current = null;
         dispatch({ type: 'command-finished', command: 'play', requestId: commandRequestId });
@@ -217,10 +222,11 @@ export function useRouletteAudioRuntime({
 
   return useMemo(() => ({
     playback,
+    prepareSources,
     play,
     stop,
     setDeckGain,
     toggleDeckMute,
     toggleDeckSolo,
-  }), [play, playback, setDeckGain, stop, toggleDeckMute, toggleDeckSolo]);
+  }), [play, playback, prepareSources, setDeckGain, stop, toggleDeckMute, toggleDeckSolo]);
 }

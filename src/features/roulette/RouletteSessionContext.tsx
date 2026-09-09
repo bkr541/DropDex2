@@ -48,13 +48,13 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const getSources = useCallback(() => stateRef.current.sources, []);
+  const audio = useRouletteAudioRuntime({ dispatch, getSources });
   const matchingExecutor = useMemo(() => createRouletteActionExecutor({
     getState: () => stateRef.current,
     dispatch,
-  }), []);
-
-  const getSources = useCallback(() => stateRef.current.sources, []);
-  const audio = useRouletteAudioRuntime({ dispatch, getSources });
+    prepareSources: audio.prepareSources,
+  }), [audio.prepareSources]);
   const sourceSignature = [
     state.sources.vocal.parentTrackId,
     state.sources.vocal.stemRef,

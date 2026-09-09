@@ -36,12 +36,16 @@ function stem(id: string, type: 'vocals' | 'instrumental'): StemAssetRecord {
   };
 }
 
-function harness(matcher: RouletteMatchingEngine, initial?: RouletteSessionState) {
+function harness(
+  matcher: RouletteMatchingEngine,
+  initial?: RouletteSessionState,
+  prepareSources: NonNullable<Parameters<typeof createRouletteActionExecutor>[0]['prepareSources']> = async () => undefined,
+) {
   let state = initial ?? createInitialRouletteSessionState();
   const dispatch = (action: RouletteSessionAction) => {
     state = rouletteSessionReducer(state, action);
   };
-  const executor = createRouletteActionExecutor({ getState: () => state, dispatch, matcher });
+  const executor = createRouletteActionExecutor({ getState: () => state, dispatch, matcher, prepareSources });
   return { executor, get state() { return state; } };
 }
 
@@ -149,6 +153,106 @@ describe('Roulette production action/state integration', () => {
     await expect(test.executor.actions.replaceSource('vocal')).resolves.toBe(false);
     expect(resolveReplacement).not.toHaveBeenCalled();
     expect(test.state.sources).toBe(playing.sources);
+  });
+
+
+  it('preflights the complete prospective pair before committing a one-sided replacement', async () => {
+    const resolveReplacement = vi.fn(async () => ({
+      parentTrackId: 'vocal-b',
+      stemAsset: stem('vocal-b', 'vocals'),
+    }));
+    const prepareSources = vi.fn(async () => undefined);
+    const test = harness(matcher({ resolveReplacement }), readyPairState(), prepareSources);
+
+    await expect(test.executor.actions.replaceSource('vocal')).resolves.toBe(true);
+
+    expect(prepareSources).toHaveBeenCalledWith({
+      vocal: selection('vocal-b', 'vocal-b-vocals'),
+      instrumental: selection('instrumental-a', 'instrumental-a-instrumental'),
+    }, expect.any(AbortSignal));
+    expect(test.state.sources.vocal.parentTrackId).toBe('vocal-b');
+  });
+
+  it('rolls back identity when candidate audio/anchor/tempo preflight fails', async () => {
+    const resolvePair = vi.fn(async () => ({
+      vocal: { parentTrackId: 'vocal-b', stemAsset: stem('vocal-b', 'vocals') },
+      instrumental: { parentTrackId: 'instrumental-b', stemAsset: stem('instrumental-b', 'instrumental') },
+    }));
+    const previous = readyPairState();
+    const previousSources = previous.sources;
+    const prepareSources = vi.fn(async () => { throw new Error('tempo processor failed'); });
+    const test = harness(matcher({ resolvePair }), previous, prepareSources);
+
+    await expect(test.executor.actions.replaceBoth()).resolves.toBe(false);
+
+    expect(prepareSources).toHaveBeenCalledTimes(1);
+    expect(test.state.sources).toBe(previousSources);
+    expect(test.state.command.error).toBe('tempo processor failed');
+  });
+
+  it('passes bounded recent history back into subsequent Roulette Both resolution', async () => {
+    const resolvePair = vi.fn()
+      .mockResolvedValueOnce({
+        vocal: { parentTrackId: 'vocal-b', stemAsset: stem('vocal-b', 'vocals') },
+        instrumental: { parentTrackId: 'instrumental-b', stemAsset: stem('instrumental-b', 'instrumental') },
+      })
+      .mockResolvedValueOnce({
+        vocal: { parentTrackId: 'vocal-c', stemAsset: stem('vocal-c', 'vocals') },
+        instrumental: { parentTrackId: 'instrumental-c', stemAsset: stem('instrumental-c', 'instrumental') },
+      });
+    const test = harness(matcher({ resolvePair }), readyPairState());
+
+    await expect(test.executor.actions.replaceBoth()).resolves.toBe(true);
+    await expect(test.executor.actions.replaceBoth()).resolves.toBe(true);
+
+    expect(resolvePair.mock.calls[1][0]).toEqual(expect.objectContaining({
+      recentVocalTrackIds: expect.arrayContaining(['vocal-a', 'vocal-b']),
+      recentInstrumentalTrackIds: expect.arrayContaining(['instrumental-a', 'instrumental-b']),
+      recentPairKeys: expect.arrayContaining([
+        'vocal-a\u0000instrumental-a',
+        'vocal-b\u0000instrumental-b',
+      ]),
+    }));
+  });
+
+
+  it('serializes rapid replacement commands while candidate preflight is still loading', async () => {
+    const resolvePair = vi.fn(async () => ({
+      vocal: { parentTrackId: 'vocal-b', stemAsset: stem('vocal-b', 'vocals') },
+      instrumental: { parentTrackId: 'instrumental-b', stemAsset: stem('instrumental-b', 'instrumental') },
+    }));
+    let finishPrepare!: () => void;
+    const prepareSources = vi.fn(() => new Promise<void>((resolve) => { finishPrepare = resolve; }));
+    const test = harness(matcher({ resolvePair }), readyPairState(), prepareSources);
+
+    const first = test.executor.actions.replaceBoth();
+    await vi.waitFor(() => expect(prepareSources).toHaveBeenCalledTimes(1));
+    await expect(test.executor.actions.replaceBoth()).resolves.toBe(false);
+    expect(resolvePair).toHaveBeenCalledTimes(1);
+
+    finishPrepare();
+    await expect(first).resolves.toBe(true);
+  });
+
+  it('cancels in-flight preflight without committing a partial replacement', async () => {
+    const resolvePair = vi.fn(async () => ({
+      vocal: { parentTrackId: 'vocal-b', stemAsset: stem('vocal-b', 'vocals') },
+      instrumental: { parentTrackId: 'instrumental-b', stemAsset: stem('instrumental-b', 'instrumental') },
+    }));
+    const prepareSources = vi.fn((_sources, signal: AbortSignal) => new Promise<void>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true });
+    }));
+    const initial = readyPairState();
+    const previousSources = initial.sources;
+    const test = harness(matcher({ resolvePair }), initial, prepareSources);
+
+    const pending = test.executor.actions.replaceBoth();
+    await vi.waitFor(() => expect(prepareSources).toHaveBeenCalledTimes(1));
+    test.executor.cancel();
+
+    await expect(pending).resolves.toBe(false);
+    expect(test.state.sources).toBe(previousSources);
+    expect(test.state.command.status).toBe('idle');
   });
 
 });

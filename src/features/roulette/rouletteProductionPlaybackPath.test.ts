@@ -36,4 +36,21 @@ describe('Roulette production playback reachability', () => {
     expect(view).toContain('roulette-shared-playhead');
     expect(view).not.toContain('fetchTrackPreviewWaveform');
   });
+
+  it('wires all three production replacement controls through matcher resolution and audio preflight before commit', () => {
+    const view = readFileSync('src/components/roulette/RouletteView.tsx', 'utf8');
+    const provider = readFileSync('src/features/roulette/RouletteSessionContext.tsx', 'utf8');
+    const actions = readFileSync('src/features/roulette/rouletteActions.ts', 'utf8');
+    const hook = readFileSync('src/features/roulette/useRouletteAudioRuntime.ts', 'utf8');
+
+    expect(view).toContain("actions.replaceSource('vocal')");
+    expect(view).toContain("actions.replaceSource('instrumental')");
+    expect(view).toContain('actions.replaceBoth()');
+    expect(provider).toContain('prepareSources: audio.prepareSources');
+    expect(actions).toContain('matcher.resolveReplacement');
+    expect(actions).toContain('matcher.resolvePair');
+    expect(actions).toContain('await prepareSources(nextSources, controller.signal)');
+    expect(hook).toContain('runtimeRef.current!.prepare(sources, signal)');
+  });
+
 });

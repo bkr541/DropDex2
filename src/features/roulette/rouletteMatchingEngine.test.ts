@@ -107,6 +107,7 @@ describe('Roulette matching engine', () => {
       loadBeatGrid: vi.fn(async () => grid(fixed.id)),
       loadCandidates: vi.fn(async () => [stale, valid]),
       stemAssets: { getReadiness },
+      rng: () => 0.999,
     });
 
     const resolved = await engine.resolveReplacement({
@@ -115,8 +116,12 @@ describe('Roulette matching engine', () => {
     });
 
     expect(resolved?.parentTrackId).toBe('vocal-b');
-    expect(getReadiness).toHaveBeenCalledWith('vocal-a', 'vocals');
-    expect(getReadiness).toHaveBeenCalledWith('vocal-b', 'vocals');
+    expect(getReadiness).toHaveBeenCalledWith('vocal-a', 'vocals', expect.objectContaining({
+      expectedSeparatorVersion: 'separator-v1',
+    }));
+    expect(getReadiness).toHaveBeenCalledWith('vocal-b', 'vocals', expect.objectContaining({
+      expectedSeparatorVersion: 'separator-v1',
+    }));
   });
 
   it('Roulette Both changes both identities when a current pair exists', async () => {
@@ -187,4 +192,52 @@ describe('Roulette matching engine', () => {
       name: 'AbortError',
     });
   });
+
+  it('uses injected RNG and recent-pair history to avoid immediate compatible repeats', async () => {
+    const vocals = [
+      candidate('vocal-a', 'vocal', 'Alpha'),
+      candidate('vocal-b', 'vocal', 'Beta'),
+      candidate('vocal-c', 'vocal', 'Charlie'),
+    ];
+    const instrumentals = [
+      candidate('inst-a', 'instrumental', 'Alpha'),
+      candidate('inst-b', 'instrumental', 'Beta'),
+      candidate('inst-c', 'instrumental', 'Charlie'),
+    ];
+    const getReadiness = vi.fn(async (trackId: string, stemType: 'vocals' | 'instrumental') => ({
+      parentTrackId: trackId,
+      stemType,
+      status: 'ready' as const,
+      asset: asset(trackId, stemType),
+      reason: null,
+    }));
+    const engine = createRouletteMatchingEngine({
+      loadTrack: vi.fn(async () => null),
+      loadBeatGrid: vi.fn(async () => null),
+      loadCandidates: vi.fn(async (role) => role === 'vocal' ? vocals : instrumentals),
+      stemAssets: { getReadiness },
+      rng: () => 0,
+    });
+
+    const first = await engine.resolvePair({
+      currentVocalTrackId: 'vocal-a',
+      currentInstrumentalTrackId: 'inst-a',
+    });
+    expect(first).not.toBeNull();
+
+    const recentPair = `${first!.vocal.parentTrackId}\u0000${first!.instrumental.parentTrackId}`;
+    const second = await engine.resolvePair({
+      currentVocalTrackId: 'vocal-a',
+      currentInstrumentalTrackId: 'inst-a',
+      recentVocalTrackIds: [first!.vocal.parentTrackId],
+      recentInstrumentalTrackIds: [first!.instrumental.parentTrackId],
+      recentPairKeys: [recentPair],
+    });
+
+    expect(second).not.toBeNull();
+    expect(`${second!.vocal.parentTrackId}\u0000${second!.instrumental.parentTrackId}`).not.toBe(recentPair);
+    expect(second!.vocal.parentTrackId).not.toBe(first!.vocal.parentTrackId);
+    expect(second!.instrumental.parentTrackId).not.toBe(first!.instrumental.parentTrackId);
+  });
+
 });

@@ -5,11 +5,13 @@ import {
   type RouletteSourceRole,
   type RouletteSourceSelection,
 } from './rouletteSession';
+import type { RoulettePlaybackSources } from './rouletteAudioRuntime';
 import {
   rouletteMatchingEngine,
   type RouletteMatchingEngine,
   type RouletteResolvedSource,
 } from './rouletteMatchingEngine';
+import { RouletteSelectionHistory } from './rouletteSelectionHistory';
 
 export interface RouletteMatchingActions {
   replaceSource(role: RouletteSourceRole): Promise<boolean>;
@@ -25,6 +27,8 @@ interface RouletteActionExecutorDependencies {
   getState(): RouletteSessionState;
   dispatch: (action: RouletteSessionAction) => void;
   matcher?: RouletteMatchingEngine;
+  prepareSources?: (sources: RoulettePlaybackSources, signal: AbortSignal) => Promise<void>;
+  selectionHistory?: RouletteSelectionHistory;
 }
 
 function selectionFor(resolved: RouletteResolvedSource): RouletteSourceSelection {
@@ -63,10 +67,19 @@ function noCandidateMessage(role: RouletteSourceRole): string {
     : 'No compatible stem-ready instrumental found.';
 }
 
+function currentPair(state: RouletteSessionState): RoulettePlaybackSources {
+  return {
+    vocal: state.sources.vocal,
+    instrumental: state.sources.instrumental,
+  };
+}
+
 export function createRouletteActionExecutor({
   getState,
   dispatch,
   matcher = rouletteMatchingEngine,
+  prepareSources = async () => undefined,
+  selectionHistory = new RouletteSelectionHistory(),
 }: RouletteActionExecutorDependencies): RouletteActionExecutor {
   let sequence = 0;
   let activeController: AbortController | null = null;
@@ -80,8 +93,20 @@ export function createRouletteActionExecutor({
     return { controller, requestId };
   };
 
-  const finishAbort = (command: RouletteCommand, requestId: string) => {
+  const clearController = (controller: AbortController) => {
+    if (activeController === controller) activeController = null;
+  };
+
+  const finishAbort = (command: RouletteCommand, requestId: string, controller: AbortController) => {
+    clearController(controller);
     dispatch({ type: 'command-finished', command, requestId });
+  };
+
+  const rememberCurrent = (state: RouletteSessionState) => {
+    selectionHistory.rememberPair(
+      state.sources.vocal.parentTrackId,
+      state.sources.instrumental.parentTrackId,
+    );
   };
 
   const replaceSource = async (role: RouletteSourceRole): Promise<boolean> => {
@@ -93,31 +118,51 @@ export function createRouletteActionExecutor({
       const state = getState();
       const fixedTrackId = state.sources[oppositeRole(role)].parentTrackId;
       if (!fixedTrackId) throw new Error(missingReferenceMessage(role));
+      rememberCurrent(state);
+      const history = selectionHistory.snapshot();
 
       const resolved = await matcher.resolveReplacement({
         role,
         fixedTrackId,
         currentTrackId: state.sources[role].parentTrackId,
+        recentTrackIds: role === 'vocal' ? history.vocalTrackIds : history.instrumentalTrackIds,
         signal: controller.signal,
       });
       if (controller.signal.aborted) {
-        finishAbort(command, requestId);
+        finishAbort(command, requestId, controller);
         return false;
       }
       if (!resolved) throw new Error(noCandidateMessage(role));
 
+      const nextSelection = selectionFor(resolved);
+      const nextSources: RoulettePlaybackSources = {
+        ...currentPair(state),
+        [role]: nextSelection,
+      };
+      await prepareSources(nextSources, controller.signal);
+      if (controller.signal.aborted) {
+        finishAbort(command, requestId, controller);
+        return false;
+      }
+
       dispatch({
         type: 'commit-source',
         role,
-        selection: selectionFor(resolved),
+        selection: nextSelection,
         requestId,
       });
+      selectionHistory.rememberPair(
+        nextSources.vocal.parentTrackId,
+        nextSources.instrumental.parentTrackId,
+      );
+      clearController(controller);
       return true;
     } catch (error) {
       if (isAbortError(error) || controller.signal.aborted) {
-        finishAbort(command, requestId);
+        finishAbort(command, requestId, controller);
         return false;
       }
+      clearController(controller);
       dispatch({ type: 'command-failed', command, requestId, error: errorMessage(error) });
       return false;
     }
@@ -130,29 +175,50 @@ export function createRouletteActionExecutor({
     const { controller, requestId } = begin(command);
     try {
       const state = getState();
+      rememberCurrent(state);
+      const history = selectionHistory.snapshot();
       const resolved = await matcher.resolvePair({
         currentVocalTrackId: state.sources.vocal.parentTrackId,
         currentInstrumentalTrackId: state.sources.instrumental.parentTrackId,
+        recentVocalTrackIds: history.vocalTrackIds,
+        recentInstrumentalTrackIds: history.instrumentalTrackIds,
+        recentPairKeys: history.pairKeys,
         signal: controller.signal,
       });
       if (controller.signal.aborted) {
-        finishAbort(command, requestId);
+        finishAbort(command, requestId, controller);
         return false;
       }
       if (!resolved) throw new Error('No compatible stem-ready pair found.');
 
-      dispatch({
-        type: 'commit-pair',
+      const nextSources: RoulettePlaybackSources = {
         vocal: selectionFor(resolved.vocal),
         instrumental: selectionFor(resolved.instrumental),
+      };
+      await prepareSources(nextSources, controller.signal);
+      if (controller.signal.aborted) {
+        finishAbort(command, requestId, controller);
+        return false;
+      }
+
+      dispatch({
+        type: 'commit-pair',
+        vocal: nextSources.vocal,
+        instrumental: nextSources.instrumental,
         requestId,
       });
+      selectionHistory.rememberPair(
+        nextSources.vocal.parentTrackId,
+        nextSources.instrumental.parentTrackId,
+      );
+      clearController(controller);
       return true;
     } catch (error) {
       if (isAbortError(error) || controller.signal.aborted) {
-        finishAbort(command, requestId);
+        finishAbort(command, requestId, controller);
         return false;
       }
+      clearController(controller);
       dispatch({ type: 'command-failed', command, requestId, error: errorMessage(error) });
       return false;
     }
