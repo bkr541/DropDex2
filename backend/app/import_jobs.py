@@ -428,17 +428,24 @@ _DELETE_CHUNK_SIZE = 200
 
 
 def _delete_table_chunked(sb, table: str, import_id: str) -> None:
-    """Delete all rows for import_id from table in chunks to stay under statement_timeout.
+    """Delete all rows for import_id in chunks to stay under statement_timeout.
 
-    supabase-py uses Prefer: return=minimal on DELETE so resp.data is always empty —
-    we cannot use the response to know whether more rows remain.  Instead we do a
-    cheap SELECT after each batch and stop when no rows are found.
+    SyncFilterRequestBuilder (returned by .delete()) has no .limit() method, so we
+    SELECT a batch of IDs first, then DELETE by those IDs. Loop until the SELECT
+    returns empty, indicating all rows are gone.
     """
     while True:
-        sb.table(table).delete().eq("import_id", import_id).limit(_DELETE_CHUNK_SIZE).execute()
-        remaining = sb.table(table).select("import_id").eq("import_id", import_id).limit(1).execute()
-        if not remaining.data:
+        rows = (
+            sb.table(table)
+            .select("id")
+            .eq("import_id", import_id)
+            .limit(_DELETE_CHUNK_SIZE)
+            .execute()
+        )
+        if not rows.data:
             break
+        ids = [row["id"] for row in rows.data]
+        sb.table(table).delete().in_("id", ids).execute()
 
 
 def _delete_import_children(sb, import_id: str, user_id: str) -> list[str]:
