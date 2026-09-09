@@ -424,7 +424,23 @@ def _is_missing_cleanup_relation(exc: Exception, table: str) -> bool:
     )
 
 
-def _delete_import_children(sb, import_id: str) -> list[str]:
+def _delete_import_children(sb, import_id: str, user_id: str) -> list[str]:
+    # Use the server-side RPC which runs with statement_timeout = 0.
+    # PostgREST delete calls inherit Supabase's pooler timeout (~8 s) and
+    # fail on large child tables (beat_grids, waveforms, tracks, etc.).
+    try:
+        sb.rpc(
+            "delete_rekordbox_import_children_v1",
+            {"p_import_id": import_id, "p_user_id": user_id},
+        ).execute()
+        return []
+    except Exception as exc:
+        logger.exception(
+            "delete_rekordbox_import_children_v1 RPC failed for import %s; "
+            "falling back to per-table deletes",
+            import_id,
+        )
+
     errors: list[str] = []
     for table in (
         "rekordbox_analysis_asset_references",
@@ -658,7 +674,7 @@ def cleanup_partial_import(
                 f"Import cleanup is incomplete: storage: {exc}",
             ) from exc
 
-    errors = _delete_import_children(client, import_id)
+    errors = _delete_import_children(client, import_id, user_id)
     if errors:
         raise ImportCleanupError(
             "database_children",
