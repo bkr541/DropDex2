@@ -424,10 +424,29 @@ def _is_missing_cleanup_relation(exc: Exception, table: str) -> bool:
     )
 
 
+_DELETE_CHUNK_SIZE = 200
+
+
+def _delete_table_chunked(sb, table: str, import_id: str) -> None:
+    """Delete all rows for import_id from table in chunks to stay under statement_timeout."""
+    while True:
+        resp = (
+            sb.table(table)
+            .delete()
+            .eq("import_id", import_id)
+            .limit(_DELETE_CHUNK_SIZE)
+            .execute()
+        )
+        deleted = len(resp.data) if resp.data else 0
+        if deleted < _DELETE_CHUNK_SIZE:
+            break
+
+
 def _delete_import_children(sb, import_id: str, user_id: str) -> list[str]:
-    # Use the server-side RPC which runs with statement_timeout = 0.
-    # PostgREST delete calls inherit Supabase's pooler timeout (~8 s) and
-    # fail on large child tables (beat_grids, waveforms, tracks, etc.).
+    # Try the server-side RPC first — it runs with statement_timeout = 0 so it
+    # can delete large tables in a single round-trip without hitting the pooler
+    # timeout. If the RPC is unavailable or fails, fall back to chunked deletes
+    # which stay well under the 8-second PostgREST statement_timeout per batch.
     try:
         sb.rpc(
             "delete_rekordbox_import_children_v1",
@@ -435,10 +454,11 @@ def _delete_import_children(sb, import_id: str, user_id: str) -> list[str]:
         ).execute()
         return []
     except Exception as exc:
-        logger.exception(
-            "delete_rekordbox_import_children_v1 RPC failed for import %s; "
-            "falling back to per-table deletes",
+        logger.warning(
+            "delete_rekordbox_import_children_v1 RPC failed for import %s (%s); "
+            "falling back to chunked per-table deletes",
             import_id,
+            exc,
         )
 
     errors: list[str] = []
@@ -455,7 +475,7 @@ def _delete_import_children(sb, import_id: str, user_id: str) -> list[str]:
         "rekordbox_tracks",
     ):
         try:
-            sb.table(table).delete().eq("import_id", import_id).execute()
+            _delete_table_chunked(sb, table, import_id)
         except Exception as exc:
             if _is_missing_cleanup_relation(exc, table):
                 logger.warning(
