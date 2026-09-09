@@ -8,8 +8,10 @@ import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import type { RekordboxTrack } from '../../types';
 import type { TrackPlaylistMembership } from '../../lib/queries/rekordbox';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { Calendar, Chemistry, FolderOpen, Information, Music, RecordingFilled, Tag, Time } from '@carbon/icons-react';
+import { Calendar, Chemistry, CircleDash, FolderOpen, Information, Music, Renew, Stop, RecordingFilled, Tag, Time } from '@carbon/icons-react';
 import { ControlButton } from '../ui/controls';
+import { StatusBadge } from '../ui/feedback';
+import { useRouletteTrackStemPreparation } from '../../features/roulette/useRouletteTrackStemPreparation';
 
 interface TrackDetailViewProps {
   track: RekordboxTrack;
@@ -61,6 +63,9 @@ export function TrackDetailView({
   const { activeTrack, status: playerStatus, seek, getAudioElement } = useAudioPlayer();
   const isActiveTrack = activeTrack?.id === track.id;
   const canSeek = isActiveTrack && !['idle', 'resolving', 'loading', 'error'].includes(playerStatus);
+  const roulettePreparation = useRouletteTrackStemPreparation(track);
+  const rouletteReady = roulettePreparation.status === 'ready';
+  const rouletteCanonicalPreparing = roulettePreparation.status === 'preparing' && !roulettePreparation.localBusy;
 
   const handleWaveformSeek = useCallback(
     (fraction: number) => {
@@ -147,6 +152,56 @@ export function TrackDetailView({
           >
             <Chemistry size={16} /> Open in Drop Lab
           </ControlButton>
+
+          <div className="space-y-2 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Roulette stems</p>
+              <StatusBadge
+                tone={rouletteReady ? 'success' : roulettePreparation.status === 'failed' ? 'error' : roulettePreparation.status === 'preparing' ? 'amber' : 'neutral'}
+              >
+                {rouletteReady
+                  ? 'Ready'
+                  : roulettePreparation.status === 'loading'
+                    ? 'Checking'
+                    : roulettePreparation.status === 'preparing'
+                      ? 'Processing'
+                      : roulettePreparation.status === 'failed'
+                        ? 'Failed'
+                        : 'Not prepared'}
+              </StatusBadge>
+            </div>
+            <ControlButton
+              type="button"
+              variant={roulettePreparation.localBusy ? 'surface' : rouletteReady ? 'neutral' : 'secondary'}
+              disabled={roulettePreparation.status === 'loading' || rouletteReady || !track.file_path}
+              className="w-full"
+              onClick={() => {
+                if (roulettePreparation.localBusy) {
+                  void roulettePreparation.cancel();
+                } else {
+                  void roulettePreparation.prepare();
+                }
+              }}
+              aria-label={roulettePreparation.localBusy ? `Cancel Roulette preparation for ${track.title}` : `Prepare ${track.title} for Roulette`}
+            >
+              {roulettePreparation.localBusy
+                ? <><Stop size={14} /> Cancel Preparation</>
+                : rouletteReady
+                  ? <>Roulette Ready</>
+                  : roulettePreparation.status === 'loading'
+                    ? <><CircleDash size={14} className="animate-spin" /> Checking…</>
+                    : rouletteCanonicalPreparing
+                      ? <><Renew size={14} /> Resume Preparation</>
+                      : roulettePreparation.status === 'failed'
+                        ? <><Renew size={14} /> Retry Preparation</>
+                        : <><Chemistry size={14} /> Prepare for Roulette</>}
+            </ControlButton>
+            {(roulettePreparation.message || !track.file_path) && (
+              <p className="text-[10px] leading-relaxed text-muted-foreground" role="status">
+                {track.file_path ? roulettePreparation.message : 'No local media path is available for this track.'}
+              </p>
+            )}
+          </div>
         </aside>
 
         <div className="min-w-0 space-y-6">

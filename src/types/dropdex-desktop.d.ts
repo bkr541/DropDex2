@@ -87,6 +87,55 @@ export type DesktopStemAssetDeleteResult =
   | { ok: true; deleted: boolean }
   | { ok: false; error: DesktopStemAssetError };
 
+
+export type DesktopRouletteStemPreparationErrorKind =
+  | 'not_found'
+  | 'permission_denied'
+  | 'security'
+  | 'type_mismatch'
+  | 'runtime_unavailable'
+  | 'processing_failed'
+  | 'source_changed'
+  | 'validation_failed'
+  | 'cancelled'
+  | 'unexpected';
+
+export interface DesktopRoulettePreparedStem {
+  locator: string;
+  durationMs: number;
+  sampleRateHz: number;
+  channelCount: number;
+  size: number;
+  mtimeMs: number;
+}
+
+export interface DesktopRouletteStemPreparationInput {
+  trackId: string;
+  sourceSegments: string[];
+  sourceFingerprint: string;
+  separatorVersion: string;
+  expectedDurationMs: number | null;
+}
+
+export type DesktopRouletteStemPreparationResult =
+  | {
+      ok: true;
+      separatorVersion: string;
+      outputs: {
+        vocals: DesktopRoulettePreparedStem;
+        instrumental: DesktopRoulettePreparedStem;
+      };
+    }
+  | {
+      ok: false;
+      error: { kind: DesktopRouletteStemPreparationErrorKind; message: string };
+    };
+
+export interface DesktopRouletteStemCancellationResult {
+  ok: boolean;
+  cancelled: boolean;
+}
+
 export interface DesktopCueApplyDraft {
   importId: string;
   trackId: string;
@@ -312,6 +361,8 @@ export interface DropDexDesktopBridge {
   inspectStemAsset(locator: string): Promise<DesktopStemAssetInspectResult>;
   resolveStemAsset(locator: string): Promise<DesktopStemAssetSourceResult>;
   deleteStemAsset(locator: string): Promise<DesktopStemAssetDeleteResult>;
+  prepareRouletteStems(input: DesktopRouletteStemPreparationInput): Promise<DesktopRouletteStemPreparationResult>;
+  cancelRouletteStems(trackId: string): Promise<DesktopRouletteStemCancellationResult>;
   metadataApplyAvailability(): Promise<{ available: boolean; reason: string | null; metadataSchemaVersion: number | null; genreMaxLength: number | null; metadataApplySupported: boolean }>;
   metadataApplyPreflight(scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataPreflightResult>;
   metadataApply(token: string, scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataApplyResult>;

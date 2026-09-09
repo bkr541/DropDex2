@@ -14,6 +14,7 @@ const {
   deleteStemAssetFile,
   resolveStemAssetFile,
 } = require('./stemAssetStorage.cjs');
+const { StemSeparationBridge } = require('./stemSeparationBridge.cjs');
 
 const APP_SCHEME = 'dropdex-media';
 const USB_CONFIG_FILE = 'usb-connection.json';
@@ -39,6 +40,14 @@ const cueApplyBridge = new CueApplyBridge({
   get appPath() { return app.getAppPath(); },
   env: process.env,
   platform: process.platform,
+});
+const stemSeparationBridge = new StemSeparationBridge({
+  get isPackaged() { return app.isPackaged; },
+  get resourcesPath() { return process.resourcesPath; },
+  get appPath() { return app.getAppPath(); },
+  env: process.env,
+  platform: process.platform,
+  userDataPath: () => app.getPath('userData'),
 });
 
 protocol.registerSchemesAsPrivileged([
@@ -573,6 +582,31 @@ function registerIpcHandlers() {
     }
     return deleteStemAssetFile(app.getPath('userData'), locator);
   });
+  ipcMain.handle('dropdex:prepare-roulette-stems', async (_event, payload) => {
+    assertExactObject(
+      payload,
+      ['trackId', 'sourceSegments', 'sourceFingerprint', 'separatorVersion', 'expectedDurationMs'],
+      'Roulette stem preparation payload',
+    );
+    if (!validateUsbPathSegments(payload.sourceSegments)) {
+      return { ok: false, error: { kind: 'security', message: 'Unsafe Roulette source path was rejected.' } };
+    }
+    const resolved = await resolveUsbTrackPath(payload.sourceSegments);
+    if (!resolved.ok) return resolved;
+    return stemSeparationBridge.prepare({
+      trackId: payload.trackId,
+      sourceFingerprint: payload.sourceFingerprint,
+      separatorVersion: payload.separatorVersion,
+      expectedDurationMs: payload.expectedDurationMs ?? null,
+      sourceFilePath: resolved.filePath,
+    });
+  });
+  ipcMain.handle('dropdex:cancel-roulette-stems', (_event, trackId) => {
+    if (typeof trackId !== 'string' || !trackId || trackId.length > 256) {
+      return { ok: false, cancelled: false };
+    }
+    return stemSeparationBridge.cancel(trackId);
+  });
   ipcMain.handle('dropdex:metadata-apply-availability', () => cueApplyBridge.metadataAvailability());
   ipcMain.handle('dropdex:metadata-apply-preflight', async (_event, payload) => {
     assertExactObject(payload, ['scope', 'savedDrafts'], 'Metadata apply preflight payload');
@@ -663,6 +697,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', (event) => {
   cueApplyBridge.close();
+  stemSeparationBridge.close();
   if (quittingAfterUsbRelease) return;
   const activity = usbStreams.snapshot();
   if (activity.activeStreamCount === 0 && activity.pendingRequestCount === 0) return;

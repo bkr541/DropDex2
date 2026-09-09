@@ -36,3 +36,6 @@ select = ["E", "F", "I", "UP", "BLE"]
 build = [
     "pyinstaller>=6.15,<7",
 ]
+stem = [
+    "demucs==4.0.1",
+]

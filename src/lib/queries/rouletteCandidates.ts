@@ -1,7 +1,7 @@
 import type { RekordboxTrack } from '../../types';
 import type { RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
 import type { RouletteSourceRole } from '../../features/roulette/rouletteSession';
-import { stemTypeForRole, type StemAssetRecord, type StemAssetType } from '../../features/roulette/stemAssets';
+import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole, type StemAssetRecord, type StemAssetType } from '../../features/roulette/stemAssets';
 import { fetchTrackBeatGrids, fetchTracksPhrases, fetchTracksVocalAnalysis } from './analysisData';
 import { fetchTracksByIds } from './rekordbox';
 import { supabase } from '../supabase';
@@ -18,6 +18,7 @@ export async function fetchReadyRouletteStemAssets(
       .select('*')
       .eq('stem_type', stemType)
       .eq('status', 'ready')
+      .eq('separator_version', ROULETTE_SEPARATOR_VERSION)
       .order('track_id', { ascending: true })
       .range(offset, offset + STEM_PAGE_SIZE - 1);
     if (error) throw new Error(error.message);

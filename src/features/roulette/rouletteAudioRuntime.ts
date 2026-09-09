@@ -15,7 +15,7 @@ import {
 import { fetchTrackBeatGrid, type BeatGridRow } from '../../lib/queries/analysisData';
 import { fetchRouletteTrack } from '../../lib/queries/rouletteCandidates';
 import { rouletteStemAssetService, type StemAssetService } from './stemAssetService';
-import { stemTypeForRole } from './stemAssets';
+import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole } from './stemAssets';
 import { buildRouletteBarFractions, resolveRouletteAlignment } from './rouletteAlignment';
 import type { RouletteSourceRole, RouletteSourceSelection } from './rouletteSession';
 import { extractRouletteStemPeaks } from './rouletteWaveform';
@@ -185,8 +185,8 @@ export function createRouletteAudioRuntime(
       dependencies.loadTrack(sources.instrumental.parentTrackId),
       dependencies.loadBeatGrid(sources.vocal.parentTrackId),
       dependencies.loadBeatGrid(sources.instrumental.parentTrackId),
-      dependencies.stemAssets.resolveReady(sources.vocal.parentTrackId, stemTypeForRole('vocal')),
-      dependencies.stemAssets.resolveReady(sources.instrumental.parentTrackId, stemTypeForRole('instrumental')),
+      dependencies.stemAssets.resolveReady(sources.vocal.parentTrackId, stemTypeForRole('vocal'), { expectedSeparatorVersion: ROULETTE_SEPARATOR_VERSION }),
+      dependencies.stemAssets.resolveReady(sources.instrumental.parentTrackId, stemTypeForRole('instrumental'), { expectedSeparatorVersion: ROULETTE_SEPARATOR_VERSION }),
     ]);
     throwIfCancelled(generation, activeGeneration, controller.signal);
 

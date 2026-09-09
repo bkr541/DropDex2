@@ -71,6 +71,27 @@ function harness(initial: StemAssetRecord | null = makeAsset()) {
     asset = { ...asset, status, ...updates };
     return asset;
   });
+  const commitReadyPair: StemAssetRepository['commitReadyPair'] = vi.fn(async (input) => {
+    const now = '2026-09-08T00:00:00Z';
+    return [
+      makeAsset({
+        track_id: input.trackId, stem_type: 'vocals', status: 'ready',
+        storage_locator: input.vocals.locator, source_fingerprint: input.sourceFingerprint,
+        separator_version: input.separatorVersion, duration_ms: input.vocals.durationMs,
+        sample_rate_hz: input.vocals.sampleRateHz, channel_count: input.vocals.channelCount,
+        file_size_bytes: input.vocals.fileSizeBytes, file_mtime_ms: input.vocals.fileMtimeMs,
+        updated_at: now,
+      }),
+      makeAsset({
+        id: 'asset-2', track_id: input.trackId, stem_type: 'instrumental', status: 'ready',
+        storage_locator: input.instrumental.locator, source_fingerprint: input.sourceFingerprint,
+        separator_version: input.separatorVersion, duration_ms: input.instrumental.durationMs,
+        sample_rate_hz: input.instrumental.sampleRateHz, channel_count: input.instrumental.channelCount,
+        file_size_bytes: input.instrumental.fileSizeBytes, file_mtime_ms: input.instrumental.fileMtimeMs,
+        updated_at: now,
+      }),
+    ];
+  });
   const deleteAsset = vi.fn(async () => { asset = null; });
   const repository: StemAssetRepository = {
     getAsset,
@@ -78,6 +99,7 @@ function harness(initial: StemAssetRecord | null = makeAsset()) {
     getCurrentSourceFingerprint,
     upsertAsset,
     updateStatus,
+    commitReadyPair,
     deleteAsset,
   };
 
@@ -211,6 +233,23 @@ describe('Roulette stem asset service', () => {
       source_fingerprint: 'source-current',
       failure_code: 'separator_crashed',
     });
+  });
+
+  it('commits both validated worker outputs through the atomic repository pair operation', async () => {
+    const test = harness(null);
+    const rows = await test.service.commitReadyPair({
+      trackId: 'track-1',
+      sourceFingerprint: 'source-current',
+      separatorVersion: 'separator-v1',
+      outputs: {
+        vocals: { locator: 'generated/a/b/vocals.wav', durationMs: 120000, sampleRateHz: 48000, channelCount: 2, size: 2048, mtimeMs: 4567 },
+        instrumental: { locator: 'generated/a/b/instrumental.wav', durationMs: 120000, sampleRateHz: 48000, channelCount: 2, size: 2048, mtimeMs: 4567 },
+      },
+    });
+
+    expect(test.desktop.inspectStemAsset).toHaveBeenCalledTimes(2);
+    expect(test.repository.commitReadyPair).toHaveBeenCalledTimes(1);
+    expect(rows.map((row) => row.stem_type)).toEqual(['vocals', 'instrumental']);
   });
 
   it('deletes local managed media before removing the durable record', async () => {

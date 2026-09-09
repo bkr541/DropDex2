@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { rouletteStemAssetService } from './stemAssetService';
 import {
+  ROULETTE_SEPARATOR_VERSION,
   stemTypeForRole,
   type StemAssetReadiness,
 } from './stemAssets';
@@ -33,7 +34,9 @@ export function useRouletteStemReadiness(
     const controller = new AbortController();
     setState({ parentTrackId, loading: true, readiness: null, error: null });
     rouletteStemAssetService
-      .getReadiness(parentTrackId, stemTypeForRole(role))
+      .getReadiness(parentTrackId, stemTypeForRole(role), {
+        expectedSeparatorVersion: ROULETTE_SEPARATOR_VERSION,
+      })
       .then((readiness) => {
         if (!controller.signal.aborted) {
           setState({ parentTrackId, loading: false, readiness, error: null });

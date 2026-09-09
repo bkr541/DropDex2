@@ -1,5 +1,6 @@
 import {
   rouletteStemAssetRepository,
+  type CommitStemReadyPairInput,
   type RegisterStemAssetRecordInput,
   type StemAssetRepository,
 } from '../../lib/queries/rouletteStemAssets';
@@ -36,6 +37,31 @@ export interface RegisterStemAssetInput {
   failureMessage?: string | null;
 }
 
+
+export interface CommitReadyStemPairInput {
+  trackId: string;
+  sourceFingerprint: string;
+  separatorVersion: string;
+  outputs: {
+    vocals: {
+      locator: string;
+      durationMs: number;
+      sampleRateHz: number;
+      channelCount: number;
+      size: number;
+      mtimeMs: number;
+    };
+    instrumental: {
+      locator: string;
+      durationMs: number;
+      sampleRateHz: number;
+      channelCount: number;
+      size: number;
+      mtimeMs: number;
+    };
+  };
+}
+
 export interface StemAssetService {
   getReadiness(
     trackId: string,
@@ -43,6 +69,7 @@ export interface StemAssetService {
     options?: StemAssetValidationOptions,
   ): Promise<StemAssetReadiness>;
   register(input: RegisterStemAssetInput): Promise<StemAssetRecord>;
+  commitReadyPair(input: CommitReadyStemPairInput): Promise<StemAssetRecord[]>;
   markFailed(
     trackId: string,
     stemType: StemAssetType,
@@ -297,6 +324,66 @@ export function createStemAssetService(
     });
   };
 
+  const commitReadyPair = async (input: CommitReadyStemPairInput): Promise<StemAssetRecord[]> => {
+    const desktop = getDesktopBridge();
+    if (!desktop) throw new Error('Ready stem assets can only be committed in the DropDex desktop runtime.');
+    const currentSourceFingerprint = await repository.getCurrentSourceFingerprint(input.trackId);
+    if (currentSourceFingerprint !== input.sourceFingerprint) {
+      throw new Error('Parent track media changed while Roulette stems were being prepared.');
+    }
+    const [vocalsInspection, instrumentalInspection] = await Promise.all([
+      desktop.inspectStemAsset(input.outputs.vocals.locator),
+      desktop.inspectStemAsset(input.outputs.instrumental.locator),
+    ]);
+    if (!vocalsInspection.ok) {
+      const failure = vocalsInspection as Extract<typeof vocalsInspection, { ok: false }>;
+      throw new Error(failure.error.message);
+    }
+    if (!instrumentalInspection.ok) {
+      const failure = instrumentalInspection as Extract<typeof instrumentalInspection, { ok: false }>;
+      throw new Error(failure.error.message);
+    }
+    if (
+      vocalsInspection.asset.size !== input.outputs.vocals.size
+      || vocalsInspection.asset.mtimeMs !== input.outputs.vocals.mtimeMs
+      || instrumentalInspection.asset.size !== input.outputs.instrumental.size
+      || instrumentalInspection.asset.mtimeMs !== input.outputs.instrumental.mtimeMs
+    ) {
+      throw new Error('Generated stem files changed before the canonical pair commit.');
+    }
+    if (Math.abs(input.outputs.vocals.durationMs - input.outputs.instrumental.durationMs) > 2) {
+      throw new Error('Generated stem durations do not align.');
+    }
+    if (
+      input.outputs.vocals.sampleRateHz !== input.outputs.instrumental.sampleRateHz
+      || input.outputs.vocals.channelCount !== input.outputs.instrumental.channelCount
+    ) {
+      throw new Error('Generated stem sample properties do not align.');
+    }
+    const pair: CommitStemReadyPairInput = {
+      trackId: input.trackId,
+      sourceFingerprint: input.sourceFingerprint,
+      separatorVersion: input.separatorVersion,
+      vocals: {
+        locator: input.outputs.vocals.locator,
+        durationMs: input.outputs.vocals.durationMs,
+        sampleRateHz: input.outputs.vocals.sampleRateHz,
+        channelCount: input.outputs.vocals.channelCount,
+        fileSizeBytes: input.outputs.vocals.size,
+        fileMtimeMs: input.outputs.vocals.mtimeMs,
+      },
+      instrumental: {
+        locator: input.outputs.instrumental.locator,
+        durationMs: input.outputs.instrumental.durationMs,
+        sampleRateHz: input.outputs.instrumental.sampleRateHz,
+        channelCount: input.outputs.instrumental.channelCount,
+        fileSizeBytes: input.outputs.instrumental.size,
+        fileMtimeMs: input.outputs.instrumental.mtimeMs,
+      },
+    };
+    return repository.commitReadyPair(pair);
+  };
+
   const markFailed = async (
     trackId: string,
     stemType: StemAssetType,
@@ -375,6 +462,7 @@ export function createStemAssetService(
   return {
     getReadiness,
     register,
+    commitReadyPair,
     markFailed,
     resolveReady,
     invalidate,

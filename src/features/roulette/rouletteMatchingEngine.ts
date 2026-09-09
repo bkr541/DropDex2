@@ -10,7 +10,7 @@ import {
   type RouletteCandidateReference,
 } from './rouletteMatching';
 import { rouletteStemAssetService, type StemAssetService } from './stemAssetService';
-import { stemTypeForRole, type StemAssetRecord } from './stemAssets';
+import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole, type StemAssetRecord } from './stemAssets';
 import type { RouletteSourceRole } from './rouletteSession';
 
 export interface RouletteResolvedSource {
@@ -59,7 +59,9 @@ async function validateReadySource(
   signal?: AbortSignal,
 ): Promise<RouletteResolvedSource | null> {
   throwIfAborted(signal);
-  const readiness = await stemAssets.getReadiness(candidate.track.id, stemTypeForRole(role));
+  const readiness = await stemAssets.getReadiness(candidate.track.id, stemTypeForRole(role), {
+    expectedSeparatorVersion: ROULETTE_SEPARATOR_VERSION,
+  });
   throwIfAborted(signal);
   if (readiness.status !== 'ready' || !readiness.asset) return null;
   return { parentTrackId: candidate.track.id, stemAsset: readiness.asset };
@@ -91,6 +93,7 @@ export function createRouletteMatchingEngine(
     const fixedReadiness = await stemAssets.getReadiness(
       fixedTrack.id,
       stemTypeForRole(fixedRole),
+      { expectedSeparatorVersion: ROULETTE_SEPARATOR_VERSION },
     );
     throwIfAborted(input.signal);
     if (fixedReadiness.status !== 'ready' || !fixedReadiness.asset) return null;

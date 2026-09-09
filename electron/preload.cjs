@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('dropdexDesktop', Object.freeze({
   inspectStemAsset: (locator) => ipcRenderer.invoke('dropdex:inspect-stem-asset', locator),
   resolveStemAsset: (locator) => ipcRenderer.invoke('dropdex:resolve-stem-asset', locator),
   deleteStemAsset: (locator) => ipcRenderer.invoke('dropdex:delete-stem-asset', locator),
+  prepareRouletteStems: (input) => ipcRenderer.invoke('dropdex:prepare-roulette-stems', input),
+  cancelRouletteStems: (trackId) => ipcRenderer.invoke('dropdex:cancel-roulette-stems', trackId),
   metadataApplyAvailability: () => ipcRenderer.invoke('dropdex:metadata-apply-availability'),
   metadataApplyPreflight: (scope, savedDrafts) => ipcRenderer.invoke('dropdex:metadata-apply-preflight', { scope, savedDrafts }),
   metadataApply: (token, scope, savedDrafts) => ipcRenderer.invoke('dropdex:metadata-apply', { token, scope, savedDrafts }),

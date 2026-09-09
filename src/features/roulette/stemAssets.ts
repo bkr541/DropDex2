@@ -2,6 +2,7 @@ import type { RekordboxTrack } from '../../types';
 import type { RouletteSourceRole, RouletteStemStatus } from './rouletteSession';
 
 export const STEM_ASSET_CONTRACT_VERSION = 1 as const;
+export const ROULETTE_SEPARATOR_VERSION = 'demucs-4.0.1-htdemucs-two-stem-v1' as const;
 
 export type StemAssetType = 'vocals' | 'instrumental';
 export type StemAssetProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed';

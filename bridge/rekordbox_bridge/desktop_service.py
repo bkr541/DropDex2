@@ -187,6 +187,11 @@ def _handle(request: Mapping[str, Any]) -> Any:
 
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "--roulette-separate":
+        from rekordbox_bridge.stem_separator import main as stem_separator_main
+
+        return stem_separator_main(sys.argv[2:])
+
     for raw_line in sys.stdin.buffer:
         request: Mapping[str, Any] | None = None
         if len(raw_line) > MAX_REQUEST_BYTES:

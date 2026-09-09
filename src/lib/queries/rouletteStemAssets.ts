@@ -34,6 +34,24 @@ export interface RegisterStemAssetRecordInput {
   failureMessage?: string | null;
 }
 
+
+export interface StemReadyPairOutputMetadata {
+  locator: string;
+  durationMs: number;
+  sampleRateHz: number;
+  channelCount: number;
+  fileSizeBytes: number;
+  fileMtimeMs: number;
+}
+
+export interface CommitStemReadyPairInput {
+  trackId: string;
+  sourceFingerprint: string;
+  separatorVersion: string;
+  vocals: StemReadyPairOutputMetadata;
+  instrumental: StemReadyPairOutputMetadata;
+}
+
 export interface StemAssetRepository {
   getAsset(trackId: string, stemType: StemAssetType): Promise<StemAssetRecord | null>;
   getAssets(trackId: string): Promise<StemAssetRecord[]>;
@@ -57,6 +75,7 @@ export interface StemAssetRepository {
       | 'source_fingerprint'
     >>,
   ): Promise<StemAssetRecord>;
+  commitReadyPair(input: CommitStemReadyPairInput): Promise<StemAssetRecord[]>;
   deleteAsset(trackId: string, stemType: StemAssetType): Promise<void>;
 }
 
@@ -152,6 +171,33 @@ export async function updateStemAssetStatus(
   return data as StemAssetRecord;
 }
 
+
+export async function commitStemReadyPair(
+  input: CommitStemReadyPairInput,
+): Promise<StemAssetRecord[]> {
+  const { data, error } = await supabase.rpc('commit_roulette_stem_pair', {
+    p_track_id: input.trackId,
+    p_source_fingerprint: input.sourceFingerprint,
+    p_separator_version: input.separatorVersion,
+    p_vocals_locator: input.vocals.locator,
+    p_vocals_duration_ms: input.vocals.durationMs,
+    p_vocals_sample_rate_hz: input.vocals.sampleRateHz,
+    p_vocals_channel_count: input.vocals.channelCount,
+    p_vocals_file_size_bytes: input.vocals.fileSizeBytes,
+    p_vocals_file_mtime_ms: input.vocals.fileMtimeMs,
+    p_instrumental_locator: input.instrumental.locator,
+    p_instrumental_duration_ms: input.instrumental.durationMs,
+    p_instrumental_sample_rate_hz: input.instrumental.sampleRateHz,
+    p_instrumental_channel_count: input.instrumental.channelCount,
+    p_instrumental_file_size_bytes: input.instrumental.fileSizeBytes,
+    p_instrumental_file_mtime_ms: input.instrumental.fileMtimeMs,
+  });
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as StemAssetRecord[];
+  if (rows.length !== 2) throw new Error('Roulette stem pair commit did not return both canonical assets.');
+  return rows;
+}
+
 export async function deleteStemAssetRecord(
   trackId: string,
   stemType: StemAssetType,
@@ -170,5 +216,6 @@ export const rouletteStemAssetRepository: StemAssetRepository = {
   getCurrentSourceFingerprint: fetchCurrentStemSourceFingerprint,
   upsertAsset: upsertStemAsset,
   updateStatus: updateStemAssetStatus,
+  commitReadyPair: commitStemReadyPair,
   deleteAsset: deleteStemAssetRecord,
 };

@@ -37,3 +37,4 @@ supabase/.temp/
 bridge/runtime/
 bridge/.pyinstaller/
 bridge/.desktop-build-venv/
+bridge/.desktop-stem-model-cache/
