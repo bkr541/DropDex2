@@ -428,17 +428,16 @@ _DELETE_CHUNK_SIZE = 200
 
 
 def _delete_table_chunked(sb, table: str, import_id: str) -> None:
-    """Delete all rows for import_id from table in chunks to stay under statement_timeout."""
+    """Delete all rows for import_id from table in chunks to stay under statement_timeout.
+
+    supabase-py uses Prefer: return=minimal on DELETE so resp.data is always empty —
+    we cannot use the response to know whether more rows remain.  Instead we do a
+    cheap SELECT after each batch and stop when no rows are found.
+    """
     while True:
-        resp = (
-            sb.table(table)
-            .delete()
-            .eq("import_id", import_id)
-            .limit(_DELETE_CHUNK_SIZE)
-            .execute()
-        )
-        deleted = len(resp.data) if resp.data else 0
-        if deleted < _DELETE_CHUNK_SIZE:
+        sb.table(table).delete().eq("import_id", import_id).limit(_DELETE_CHUNK_SIZE).execute()
+        remaining = sb.table(table).select("import_id").eq("import_id", import_id).limit(1).execute()
+        if not remaining.data:
             break
 
 
