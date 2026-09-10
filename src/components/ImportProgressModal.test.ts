@@ -10,13 +10,13 @@ import {
 // ── Stable structure ──────────────────────────────────────────────────────────
 
 describe('ImportProgressModal', () => {
-  it('renders a fixed-height dialog shell', () => {
+  it('renders a dialog shell with correct ARIA attributes', () => {
     const html = renderToStaticMarkup(
       createElement(ImportProgressModal, {}, createElement('p', {}, 'content')),
     );
     expect(html).toContain('role="dialog"');
     expect(html).toContain('aria-modal="true"');
-    expect(html).toContain('height:560');
+    expect(html).toContain('aria-labelledby="import-progress-title"');
   });
 
   it('renders children inside the scrollable region', () => {

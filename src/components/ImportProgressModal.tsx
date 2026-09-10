@@ -28,8 +28,7 @@ export function ImportProgressModal({
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0.9, opacity: 0 }}
-      className="relative w-full max-w-xl bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-3xl shadow-2xl flex flex-col overflow-hidden"
-      style={{ height: 560 }}
+      className="relative w-full max-w-xl bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-3xl shadow-2xl overflow-hidden"
       role="dialog"
       aria-modal="true"
       aria-labelledby="import-progress-title"
@@ -48,8 +47,7 @@ export function ImportProgressModal({
         )}
       </AnimatePresence>
 
-      {/* min-h-0 lets flex-1 shrink so overflow-y-auto actually scrolls */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-8">
+      <div className="p-8">
         {children}
       </div>
     </motion.div>

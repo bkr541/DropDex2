@@ -1715,8 +1715,6 @@ export function ImportLibraryModal({
                 key="progress-dialog"
                 abortOverlay={abortDialogContent}
               >
-                <div className="flex flex-col min-h-full">
-
             {/* ── Local USB access ── */}
             {phase === 'uploading_usb_data' && (
               <div className="text-center py-4">
@@ -1807,21 +1805,33 @@ export function ImportLibraryModal({
               phase === 'pausing_cloud_work') && (
               <div className="space-y-5 py-4">
                 <div className="text-center">
-                  <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-                    {usbReleaseConfirmed ? (
-                      <CheckmarkFilled className="text-emerald-400" size={28} />
-                    ) : (
-                      <CircleDash className="animate-spin text-amber-400" size={28} />
-                    )}
-                  </div>
-                  <h2 className="text-xl font-bold mb-2">
-                    {usbReleaseConfirmed ? 'USB Access Released' : 'Stopping USB Reads…'}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {usbReleaseConfirmed
-                      ? 'USB reading is complete. DropDex is continuing from uploaded copies and no longer needs the USB.'
-                      : 'Waiting only for active local upload requests to stop. No new batch or retry can begin.'}
-                  </p>
+                  {(() => {
+                    const cloudStepActive = cloudCancellationStarted || phase === 'deleting_import' || phase === 'pausing_cloud_work';
+                    const showSpinner = !usbReleaseConfirmed || cloudStepActive;
+                    return (
+                      <>
+                        <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
+                          {showSpinner ? (
+                            <CircleDash className="animate-spin text-amber-400" size={28} />
+                          ) : (
+                            <CheckmarkFilled className="text-emerald-400" size={28} />
+                          )}
+                        </div>
+                        <h2 className="text-xl font-bold mb-2">
+                          {!usbReleaseConfirmed
+                            ? 'Stopping USB Reads…'
+                            : cloudStepActive
+                              ? 'Stopping Cloud Analysis…'
+                              : 'USB Access Released'}
+                        </h2>
+                        <p className="text-sm text-muted-foreground">
+                          {usbReleaseConfirmed
+                            ? 'USB reading is complete. DropDex is continuing from uploaded copies and no longer needs the USB.'
+                            : 'Waiting only for active local upload requests to stop. No new batch or retry can begin.'}
+                        </p>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <div className="space-y-2 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4">
@@ -1947,7 +1957,7 @@ export function ImportLibraryModal({
                 <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left">
                   <CheckmarkFilled size={18} className="mt-0.5 shrink-0 text-emerald-400" />
                   <p className="text-xs leading-relaxed text-emerald-100">
-                    USB activity is zero. The cloud worker acknowledged that it stopped writing. Completed tracks and uploaded assets were retained for resume from Import History.
+                    Your progress is saved. You can pick up where you left off at any time from Import History.
                   </p>
                 </div>
                 <ControlButton type="button" variant="primary" onClick={handleDone}>
@@ -2366,7 +2376,6 @@ export function ImportLibraryModal({
                 </div>
               </div>
             )}
-                </div>
               </ImportProgressModal>
             )}
           </AnimatePresence>
