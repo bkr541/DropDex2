@@ -121,7 +121,9 @@ function canonicalCue(cue: WorkingCue): CueDraftCue {
     throw new Error('rekordboxColor must be -1 or a supported Memory Cue Color value from 1 through 7.');
   }
   const beatLoopNumerator = normalizedInteger(cue.beatLoopNumerator, 'beatLoopNumerator');
-  const beatLoopDenominator = normalizedInteger(cue.beatLoopDenominator, 'beatLoopDenominator');
+  // Rekordbox can export beat_loop_denominator = 0, which is semantically invalid (same as null).
+  const beatLoopDenominatorRaw = normalizedInteger(cue.beatLoopDenominator, 'beatLoopDenominator');
+  const beatLoopDenominator = beatLoopDenominatorRaw === 0 ? null : beatLoopDenominatorRaw;
   if (beatLoopNumerator != null && beatLoopNumerator < 0) throw new Error('beatLoopNumerator cannot be negative.');
   if (beatLoopDenominator != null && beatLoopDenominator <= 0) throw new Error('beatLoopDenominator must be positive.');
 

@@ -349,6 +349,12 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('focus', onFocus);
   }, [dispatchState, refreshDesktopState, runtime]);
 
+  useEffect(() => {
+    if (runtime !== 'electron') return;
+    const id = setInterval(() => void refreshDesktopState(), 5000);
+    return () => clearInterval(id);
+  }, [refreshDesktopState, runtime]);
+
   const chooseBrowserUsb = useCallback(async () => {
     const picker = getBrowserDirectoryPicker();
     if (!picker) {

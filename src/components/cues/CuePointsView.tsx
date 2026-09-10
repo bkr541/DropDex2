@@ -594,6 +594,7 @@ function CueInspector({
   onMoveCue,
   onEditCue,
   onMessage,
+  onClose,
   editable = true,
 }: {
   cue: WorkingCue;
@@ -602,6 +603,7 @@ function CueInspector({
   onMoveCue: (cueId: string, requestedMs: number, timingMode: CueTimingMode) => string | null;
   onEditCue: (cueId: string, action: CueEditAction) => string | null;
   onMessage: (message: string | null) => void;
+  onClose: () => void;
   editable?: boolean;
 }) {
   const occupiedByOther = useMemo(() => new Set(
@@ -667,14 +669,25 @@ function CueInspector({
 
   return (
     <div className="mx-3 mb-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3 md:mx-4" data-testid="selected-cue-inspector">
-      <div className="min-w-0">
-        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-muted-foreground">Selected cue</p>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          <span className="text-sm font-black">{cueDisplayName(cue)}</span>
-          <span className="rounded-md border border-white/10 px-2 py-0.5 font-mono text-[9px] text-muted-foreground">
-            {timingMode === 'snap' ? 'SNAP · Rekordbox grid' : 'EXACT · integer ms'}
-          </span>
+      <div className="flex items-start justify-between gap-2 min-w-0">
+        <div className="min-w-0">
+          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-muted-foreground">Selected cue</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="text-sm font-black">{cueDisplayName(cue)}</span>
+            <span className="rounded-md border border-white/10 px-2 py-0.5 font-mono text-[9px] text-muted-foreground">
+              {timingMode === 'snap' ? 'SNAP · Rekordbox grid' : 'EXACT · integer ms'}
+            </span>
+          </div>
         </div>
+        <button
+          type="button"
+          className="shrink-0 text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+          title="Dismiss cue inspector"
+          aria-label="Dismiss selected cue inspector"
+          onClick={onClose}
+        >
+          <Close size={15} />
+        </button>
       </div>
 
       <div className="mt-3 grid gap-2 rounded-lg border border-white/[0.06] bg-black/10 p-2.5 md:grid-cols-3" data-testid="cue-metadata-summary">
@@ -976,6 +989,7 @@ function CueWaveformPanel({
   const [selectedCueId, setSelectedCueId] = useState<string | null>(null);
   const viewRef = useRef({ start: 0, end: null as number | null });
   const wheelRafRef = useRef<number | null>(null);
+  const waveformDivRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<CueContextMenuState | null>(null);
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
   const [timingMode, setTimingMode] = useState<CueTimingMode>('snap');
@@ -1011,46 +1025,43 @@ function CueWaveformPanel({
   // Keep viewRef in sync so wheel handler always reads the latest view without stale closures
   useEffect(() => { viewRef.current = { start: viewStart, end: viewEnd }; }, [viewStart, viewEnd]);
 
-  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
-    if (!durationMs || durationMs <= 0) return;
-    e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const { start: vStart, end: vEndRaw } = viewRef.current;
-    const vEnd = vEndRaw ?? durationMs;
-    const viewRange = vEnd - vStart;
-
-    let newStart: number;
-    let newEnd: number;
-
-    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-      // Horizontal scroll → pan
-      const panMs = (e.deltaX / rect.width) * viewRange;
-      newStart = vStart + panMs;
-      newEnd = vEnd + panMs;
-    } else {
-      // Vertical scroll → zoom toward cursor, factor scaled by deltaY magnitude
-      const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      const focusMs = vStart + fraction * viewRange;
-      const factor = Math.exp(e.deltaY * 0.003);
-      const range = Math.max(2000, Math.min(durationMs, viewRange * factor));
-      newStart = focusMs - fraction * range;
-      newEnd = focusMs + (1 - fraction) * range;
-    }
-
-    if (newStart < 0) { newEnd = Math.min(durationMs, newEnd - newStart); newStart = 0; }
-    if (newEnd > durationMs) { newStart = Math.max(0, newStart - (newEnd - durationMs)); newEnd = durationMs; }
-
-    // Write to ref immediately so the next queued event reads the updated value
-    viewRef.current = { start: newStart, end: newEnd };
-
-    // Commit to state at most once per animation frame
-    if (!wheelRafRef.current) {
-      wheelRafRef.current = requestAnimationFrame(() => {
-        setViewStart(viewRef.current.start);
-        setViewEnd(viewRef.current.end);
-        wheelRafRef.current = null;
-      });
-    }
+  useEffect(() => {
+    const el = waveformDivRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!durationMs || durationMs <= 0) return;
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const { start: vStart, end: vEndRaw } = viewRef.current;
+      const vEnd = vEndRaw ?? durationMs;
+      const viewRange = vEnd - vStart;
+      let newStart: number;
+      let newEnd: number;
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        const panMs = (e.deltaX / rect.width) * viewRange;
+        newStart = vStart + panMs;
+        newEnd = vEnd + panMs;
+      } else {
+        const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const focusMs = vStart + fraction * viewRange;
+        const factor = Math.exp(e.deltaY * 0.003);
+        const range = Math.max(2000, Math.min(durationMs, viewRange * factor));
+        newStart = focusMs - fraction * range;
+        newEnd = focusMs + (1 - fraction) * range;
+      }
+      if (newStart < 0) { newEnd = Math.min(durationMs, newEnd - newStart); newStart = 0; }
+      if (newEnd > durationMs) { newStart = Math.max(0, newStart - (newEnd - durationMs)); newEnd = durationMs; }
+      viewRef.current = { start: newStart, end: newEnd };
+      if (!wheelRafRef.current) {
+        wheelRafRef.current = requestAnimationFrame(() => {
+          setViewStart(viewRef.current.start);
+          setViewEnd(viewRef.current.end);
+          wheelRafRef.current = null;
+        });
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
   }, [durationMs]);
 
   const sections = useMemo(
@@ -1479,8 +1490,8 @@ function CueWaveformPanel({
               </div>
               <div className="h-[88px] border-b border-[#1e2a30]">
               <div
+                ref={waveformDivRef}
                 className="relative mx-3 h-full cursor-crosshair overflow-hidden"
-                onWheel={handleWheel}
                 onContextMenu={handleWaveformContextMenu}
                 title={timingMode === 'snap' ? 'Right-click to add a beat-snapped cue' : 'Right-click to add an exact millisecond cue'}
               >
@@ -1636,6 +1647,7 @@ function CueWaveformPanel({
           onMoveCue={onMoveCue}
           onEditCue={onEditCue}
           onMessage={setEditorMessage}
+          onClose={() => setSelectedCueId(null)}
           editable={cueEditingAllowed}
         />
       )}
@@ -1764,6 +1776,10 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [applyBusy, setApplyBusy] = useState(false);
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
   const applyGenerationRef = useRef(0);
+  const waveformPanelWrapperRef = useRef<HTMLDivElement>(null);
+  const filterRowRef = useRef<HTMLDivElement>(null);
+  const [waveformPanelHeight, setWaveformPanelHeight] = useState(0);
+  const [filterRowHeight, setFilterRowHeight] = useState(0);
   const [workingCues, setWorkingCues] = useState<WorkingCue[]>([]);
   const [selectedCueLoading, setSelectedCueLoading] = useState(false);
   const [selectedCueLoadStatus, setSelectedCueLoadStatus] = useState<SelectedCueLoadStatus>('idle');
@@ -3581,6 +3597,22 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setDraftPersistenceMessage(null);
   }, [importedCueBaseline, savedCueBaseline, selectedCueBaselineComplete]);
 
+  useEffect(() => {
+    const el = waveformPanelWrapperRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setWaveformPanelHeight(entry.contentRect.height));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = filterRowRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setFilterRowHeight(entry.contentRect.height));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   if (!importId) {
     return (
       <div className="mx-auto max-w-3xl pt-8">
@@ -3630,7 +3662,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         onApplyAll={() => { void handleMetadataApplyAll(); }}
       />
 
-      <div className="sticky top-0 z-30">
+      <div ref={waveformPanelWrapperRef} className="sticky top-0 z-30">
       <CueWaveformPanel
         track={selectedTrack}
         beatGrid={beatGrid}
@@ -3788,8 +3820,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       )}
 
       <section className="glass rounded-2xl border border-[var(--color-border-subtle)]" style={{ overflow: 'clip' }}>
-        <div className="sticky top-0 z-20 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)] px-4 py-4 md:px-5">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div ref={filterRowRef} className="sticky z-20 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)] px-4 py-4 md:px-5" style={{ top: waveformPanelHeight }}>
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div className="min-w-[200px] flex-1">
               <div className="pb-2 border-b border-white/15 hover:border-white/35 transition-colors focus-within:border-white/35">
                 <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">Search</p>
@@ -3901,7 +3933,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className="overflow-auto" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
               <table className="w-full min-w-[900px] border-collapse text-left">
                 <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
                   <tr className="border-b border-[var(--color-border-faint)]">
@@ -3913,7 +3945,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                       { col: 'cues', label: 'Cues', cls: 'px-3 py-2.5 text-center' },
                       { col: 'duration', label: 'Duration', cls: 'px-3 py-2.5 text-right w-[80px]' },
                     ] as const).map(({ col, label, cls }) => (
-                      <th key={col} className={cn(cls, 'sticky top-[77px] z-10 bg-[var(--color-card)] select-none cursor-pointer hover:text-foreground transition-colors')}
+                      <th key={col} className={cn(cls, 'sticky top-0 z-10 bg-[var(--color-card)] select-none cursor-pointer hover:text-foreground transition-colors')}
                         onClick={() => handleColClick(col)}>
                         <span className="inline-flex items-center gap-1">
                           {label}
@@ -4013,7 +4045,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                           {editingGenreTrackId === track.id ? (
                             <div className="space-y-1.5" onClick={(event) => event.stopPropagation()}>
                               <div className="flex items-center gap-1.5">
-                                <div className="flex-1 border-b border-white/15 focus-within:border-white/35 transition-colors">
+                                <div className="flex-1 pb-2 border-b border-white/15 focus-within:border-white/35 transition-colors">
                                   <input
                                     type="text"
                                     autoFocus
