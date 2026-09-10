@@ -476,6 +476,8 @@ export default function App() {
   const deleteAllLibrariesSubmittingRef = useRef(false);
   const [deleteAllLibrariesError, setDeleteAllLibrariesError] = useState<string | null>(null);
   const [deleteAllLibrariesPass, setDeleteAllLibrariesPass] = useState(0);
+  const [deleteAllLibrariesInitialCount, setDeleteAllLibrariesInitialCount] = useState(0);
+  const [deleteAllLibrariesRemainingCount, setDeleteAllLibrariesRemainingCount] = useState(0);
   const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(() => new Set());
   const [settingsTab, setSettingsTab] = useState<'account' | 'appearance' | 'library' | 'about'>('account');
   const deleteExecutorRef = useRef<ConfirmedDeleteExecutor | null>(null);
@@ -963,10 +965,13 @@ export default function App() {
       return;
     }
 
+    const initialCount = allImports.length;
     deleteAllLibrariesSubmittingRef.current = true;
     setDeleteAllLibrariesSubmitting(true);
     setDeleteAllLibrariesError(null);
     setDeleteAllLibrariesPass(0);
+    setDeleteAllLibrariesInitialCount(initialCount);
+    setDeleteAllLibrariesRemainingCount(initialCount);
 
     try {
       // A bulk reset is a sequence of the existing durable hard-delete operation.
@@ -976,6 +981,7 @@ export default function App() {
       for (let pass = 1; pass <= MAX_BULK_DELETE_PASSES; pass++) {
         setDeleteAllLibrariesPass(pass);
         const result = await deleteAllRekordboxImports(token);
+        setDeleteAllLibrariesRemainingCount(result.remaining_count);
         refetchImportList();
         refetchImport();
 
@@ -2030,6 +2036,8 @@ export default function App() {
           visibleSnapshotCount={allImports.length}
           deleting={deleteAllLibrariesSubmitting}
           cleanupPass={deleteAllLibrariesPass}
+          initialCount={deleteAllLibrariesInitialCount}
+          remainingCount={deleteAllLibrariesRemainingCount}
           error={deleteAllLibrariesError}
           onClose={() => {
             if (deleteAllLibrariesSubmitting) return;
