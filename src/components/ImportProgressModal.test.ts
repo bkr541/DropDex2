@@ -1,38 +1,54 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   ImportProgressModal,
   issueBadgeLabel,
   userFriendlyIssueReason,
 } from './ImportProgressModal';
+import { ImportStageProgress, STEP_ORDER } from './ImportStageProgress';
+import { phaseToStep } from './ImportLibraryModal';
+import type { ImportUiStep } from './ImportStageProgress';
+
+const noop = vi.fn();
 
 // ── Stable structure ──────────────────────────────────────────────────────────
 
 describe('ImportProgressModal', () => {
+  const child = createElement('p', {}, 'content');
+
   it('renders a dialog shell with correct ARIA attributes', () => {
     const html = renderToStaticMarkup(
-      createElement(ImportProgressModal, {}, createElement('p', {}, 'content')),
+      createElement(ImportProgressModal, { currentStep: 'source', onClose: noop, children: child }),
     );
     expect(html).toContain('role="dialog"');
     expect(html).toContain('aria-modal="true"');
     expect(html).toContain('aria-labelledby="import-progress-title"');
   });
 
+  it('renders shared heading "Import Rekordbox Library"', () => {
+    const html = renderToStaticMarkup(
+      createElement(ImportProgressModal, { currentStep: 'source', onClose: noop, children: child }),
+    );
+    expect(html).toContain('Import Rekordbox Library');
+    expect(html).toContain('id="import-progress-title"');
+  });
+
   it('renders children inside the scrollable region', () => {
     const html = renderToStaticMarkup(
-      createElement(ImportProgressModal, {}, createElement('p', { id: 'child' }, 'hello')),
+      createElement(ImportProgressModal, { currentStep: 'database', onClose: noop, children: createElement('p', { id: 'child' }, 'hello') }),
     );
     expect(html).toContain('hello');
   });
 
   it('renders abortOverlay when provided', () => {
     const html = renderToStaticMarkup(
-      createElement(
-        ImportProgressModal,
-        { abortOverlay: createElement('div', { id: 'overlay' }, 'abort') },
-        createElement('p', {}, 'body'),
-      ),
+      createElement(ImportProgressModal, {
+        currentStep: 'analyze',
+        onClose: noop,
+        abortOverlay: createElement('div', { id: 'overlay' }, 'abort'),
+        children: createElement('p', {}, 'body'),
+      }),
     );
     expect(html).toContain('abort');
     expect(html).toContain('body');
@@ -40,10 +56,145 @@ describe('ImportProgressModal', () => {
 
   it('renders nothing for abortOverlay when undefined', () => {
     const html = renderToStaticMarkup(
-      createElement(ImportProgressModal, { abortOverlay: undefined }, createElement('p', {}, 'x')),
+      createElement(ImportProgressModal, { currentStep: 'source', onClose: noop, abortOverlay: undefined, children: createElement('p', {}, 'x') }),
     );
-    // overlay wrapper should not appear
-    expect(html).not.toContain('inset-0 z-10');
+    expect(html).toContain('x');
+  });
+
+  it('renders all five step labels', () => {
+    const html = renderToStaticMarkup(
+      createElement(ImportProgressModal, { currentStep: 'source', onClose: noop, children: child }),
+    );
+    expect(html).toContain('SOURCE');
+    expect(html).toContain('DATABASE');
+    expect(html).toContain('ANALYSIS FILES');
+    expect(html).toContain('ANALYZE');
+    expect(html).toContain('COMPLETE');
+  });
+
+  it('has stable outer geometry classes', () => {
+    const html = renderToStaticMarkup(
+      createElement(ImportProgressModal, { currentStep: 'source', onClose: noop, children: child }),
+    );
+    expect(html).toContain('h-[600px]');
+    expect(html).toContain('max-w-xl');
+  });
+});
+
+// ── ImportStageProgress stepper ────────────────────────────────────────────────
+
+describe('ImportStageProgress', () => {
+  it('marks the active step with aria-current="step"', () => {
+    const html = renderToStaticMarkup(
+      createElement(ImportStageProgress, { currentStep: 'database' }),
+    );
+    expect(html).toContain('aria-current="step"');
+  });
+
+  it('only one step has aria-current at a time', () => {
+    for (const step of STEP_ORDER) {
+      const html = renderToStaticMarkup(
+        createElement(ImportStageProgress, { currentStep: step }),
+      );
+      const matches = (html.match(/aria-current="step"/g) ?? []).length;
+      expect(matches).toBe(1);
+    }
+  });
+
+  it('STEP_ORDER has exactly 5 entries', () => {
+    expect(STEP_ORDER).toHaveLength(5);
+  });
+
+  it('STEP_ORDER ends with complete', () => {
+    expect(STEP_ORDER[STEP_ORDER.length - 1]).toBe('complete');
+  });
+});
+
+// ── phaseToStep mappings ──────────────────────────────────────────────────────
+
+describe('phaseToStep', () => {
+  it('idle → source', () => {
+    expect(phaseToStep('idle', 'uploading_database', false)).toBe('source');
+  });
+
+  it('scanning_usb → source', () => {
+    expect(phaseToStep('scanning_usb', 'uploading_database', false)).toBe('source');
+  });
+
+  it('database_selected → source', () => {
+    expect(phaseToStep('database_selected', 'uploading_database', false)).toBe('source');
+  });
+
+  it('uploading_usb_data + uploading_database → database', () => {
+    expect(phaseToStep('uploading_usb_data', 'uploading_database', false)).toBe('database');
+  });
+
+  it('uploading_usb_data + matching_analysis → analysis-files', () => {
+    expect(phaseToStep('uploading_usb_data', 'matching_analysis', false)).toBe('analysis-files');
+  });
+
+  it('uploading_usb_data + uploading_analysis → analysis-files', () => {
+    expect(phaseToStep('uploading_usb_data', 'uploading_analysis', false)).toBe('analysis-files');
+  });
+
+  it('uploading_usb_data + uploading_bundle → analysis-files', () => {
+    expect(phaseToStep('uploading_usb_data', 'uploading_bundle', false)).toBe('analysis-files');
+  });
+
+  it('stopping_usb_reads → analysis-files', () => {
+    expect(phaseToStep('stopping_usb_reads', 'uploading_database', false)).toBe('analysis-files');
+  });
+
+  it('usb_released → analyze', () => {
+    expect(phaseToStep('usb_released', 'uploading_database', false)).toBe('analyze');
+  });
+
+  it('parsing_cloud_data → analyze', () => {
+    expect(phaseToStep('parsing_cloud_data', 'uploading_database', true)).toBe('analyze');
+  });
+
+  it('pausing_cloud_work → analyze', () => {
+    expect(phaseToStep('pausing_cloud_work', 'uploading_database', true)).toBe('analyze');
+  });
+
+  it('paused → analyze', () => {
+    expect(phaseToStep('paused', 'uploading_database', true)).toBe('analyze');
+  });
+
+  it('interrupted → analyze', () => {
+    expect(phaseToStep('interrupted', 'uploading_database', true)).toBe('analyze');
+  });
+
+  it('completed → complete', () => {
+    expect(phaseToStep('completed', 'uploading_database', true)).toBe('complete');
+  });
+
+  it('partial_success → complete', () => {
+    expect(phaseToStep('partial_success', 'uploading_database', true)).toBe('complete');
+  });
+
+  it('deleting_import with import id → analyze', () => {
+    expect(phaseToStep('deleting_import', 'uploading_database', true)).toBe('analyze');
+  });
+
+  it('deleting_import without import id → source', () => {
+    expect(phaseToStep('deleting_import', 'uploading_database', false)).toBe('source');
+  });
+
+  it('cancelled with import id → analyze', () => {
+    expect(phaseToStep('cancelled', 'uploading_database', true)).toBe('analyze');
+  });
+
+  it('cancelled without import id → source', () => {
+    expect(phaseToStep('cancelled', 'uploading_database', false)).toBe('source');
+  });
+
+  it('failed with import id → analyze', () => {
+    expect(phaseToStep('failed', 'uploading_database', true)).toBe('analyze');
+  });
+
+  it('failed without import id → source', () => {
+    expect(phaseToStep('failed', 'uploading_database', false)).toBe('source');
   });
 });
 

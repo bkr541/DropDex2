@@ -52,12 +52,51 @@ import {
 import { ArrowLeft, ArrowRight, CheckmarkFilled, CircleDash, Close, DataBase, FolderOpen, Package, Pause, Renew, TrashCan, Upload, View, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from './ui/controls';
 import { ImportProgressModal, issueBadgeLabel, userFriendlyIssueReason } from './ImportProgressModal';
+import type { ImportUiStep } from './ImportStageProgress';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Mode = 'usb_folder' | 'zip_bundle' | 'database_only';
 
-type LocalUsbStage = 'uploading_database' | 'matching_analysis' | 'uploading_analysis' | 'uploading_bundle';
+export type LocalUsbStage = 'uploading_database' | 'matching_analysis' | 'uploading_analysis' | 'uploading_bundle';
+
+/**
+ * Maps the active import phase + local USB sub-stage to one of the five
+ * user-facing progress steps.  Pure function — safe to unit-test in isolation.
+ */
+export function phaseToStep(
+  phase: UsbImportPhase,
+  localUsbStage: LocalUsbStage,
+  hasImportId: boolean,
+): ImportUiStep {
+  switch (phase) {
+    case 'idle':
+    case 'scanning_usb':
+    case 'database_selected':
+      return 'source';
+    case 'uploading_usb_data':
+      return localUsbStage === 'uploading_database' ? 'database' : 'analysis-files';
+    case 'stopping_usb_reads':
+      return 'analysis-files';
+    case 'usb_released':
+    case 'parsing_cloud_data':
+    case 'pausing_cloud_work':
+    case 'paused':
+    case 'interrupted':
+      return 'analyze';
+    case 'completed':
+    case 'partial_success':
+      return 'complete';
+    case 'deleting_import':
+    case 'cancelling_cloud_work':
+    case 'cancelled':
+      return hasImportId ? 'analyze' : 'source';
+    case 'failed':
+      return hasImportId ? 'analyze' : 'source';
+    default:
+      return 'source';
+  }
+}
 type AbortDialogIntent = 'pause' | 'delete' | 'close';
 
 interface FolderScan {
@@ -761,6 +800,16 @@ export function ImportLibraryModal({
   };
 
   const handleClose = () => {
+    // Terminal success/pause states: X behaves like Done (calls onSuccess)
+    if (
+      phase === 'completed' ||
+      phase === 'partial_success' ||
+      phase === 'paused' ||
+      phase === 'interrupted'
+    ) {
+      handleDone();
+      return;
+    }
     if (phase === 'parsing_cloud_data' || phase === 'usb_released') {
       handleContinueInBackground();
       return;
@@ -1442,7 +1491,7 @@ export function ImportLibraryModal({
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
-  // Abort confirmation overlay content — projected into ImportProgressModal
+  // Abort confirmation overlay — projects into ImportProgressModal covering header+stepper+body
   const abortDialogContent = showAbortDialog ? (
     <div className="bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-2xl p-6 text-center max-w-xs w-full">
       <WarningAlt className="mx-auto mb-3 text-amber-400" size={28} />
@@ -1483,6 +1532,8 @@ export function ImportLibraryModal({
     </div>
   ) : undefined;
 
+  const currentStep = phaseToStep(phase, localUsbStage, Boolean(importIdRef.current));
+
   const isSelectionPhase =
     phase === 'idle' || phase === 'database_selected' || phase === 'scanning_usb';
 
@@ -1490,39 +1541,19 @@ export function ImportLibraryModal({
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <AnimatePresence>
-            {/* ── Source-selection phases: variable-height dialog (unchanged) ── */}
-            {isSelectionPhase && (
-              <motion.div
-                key="selection-dialog"
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="relative w-full max-w-xl bg-[var(--color-panel)] border border-[var(--color-border-subtle)] p-8 rounded-3xl shadow-2xl"
-              >
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
-                      isReady
-                        ? 'bg-green-500/10 border border-green-500/30'
-                        : 'bg-primary/10',
-                    )}>
-                      {isReady
-                        ? <CheckmarkFilled className="text-green-500" size={20} />
-                        : <DataBase className="text-primary" size={20} />
-                      }
-                    </div>
-                    <h2 className="text-xl font-bold">Import Rekordbox Library</h2>
-                  </div>
-                  <ControlButton variant="ghost" onClick={handleClose}>
-                    <Close size={18} />
-                  </ControlButton>
-                </div>
+          {/* Single persistent modal shell — same dimensions on every phase */}
+          <ImportProgressModal
+            currentStep={currentStep}
+            onClose={handleClose}
+            abortOverlay={abortDialogContent}
+          >
 
+            {/* ── SOURCE: mode selection, folder/file picker ── */}
+            {isSelectionPhase && (
+              <div className="flex flex-col h-full">
                 {/* Mode selector */}
                 <div className={cn(
-                  'flex gap-1.5 p-1 rounded-xl mb-5 transition-colors',
+                  'flex gap-1.5 p-1 rounded-xl mb-4 transition-colors shrink-0',
                   isReady ? 'bg-green-500/5' : 'bg-[var(--color-surface)]',
                 )}>
                   {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
@@ -1544,7 +1575,7 @@ export function ImportLibraryModal({
                   ))}
                 </div>
 
-                <div className="mb-4">
+                <div className="mb-3 shrink-0">
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     {MODE_LABELS[mode].tip}
                   </p>
@@ -1556,20 +1587,21 @@ export function ImportLibraryModal({
                     <button
                       onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
                       className={cn(
-                        'flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors mb-2',
+                        'flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors mb-2 shrink-0',
                         !(phase === 'database_selected' && folderScan) && 'invisible pointer-events-none',
                       )}
                     >
                       <ArrowRight size={10} className="rotate-180 shrink-0" />
                       Choose different folder
                     </button>
-                    {phase === 'scanning_usb' ? (
-                      <div className="w-full py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] mb-4 flex flex-col items-center gap-2 text-muted-foreground">
-                        <CircleDash size={20} className="animate-spin text-primary" />
-                        <p className="text-sm">Scanning folder…</p>
-                      </div>
-                    ) : phase === 'database_selected' && folderScan ? (
-                      <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4 mb-4">
+                    <div className="flex-1 min-h-0 mb-4">
+                      {phase === 'scanning_usb' ? (
+                        <div className="h-full min-h-[80px] py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                          <CircleDash size={20} className="animate-spin text-primary" />
+                          <p className="text-sm">Scanning folder…</p>
+                        </div>
+                      ) : phase === 'database_selected' && folderScan ? (
+                        <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4">
                           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                             {folderScan.folderName}
                           </p>
@@ -1603,17 +1635,18 @@ export function ImportLibraryModal({
                             </div>
                           </div>
                         </div>
-                    ) : (
-                      <button
-                        onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
-                        className="w-full py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5 transition-all mb-4 text-center"
-                      >
-                        <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                          <FolderOpen size={20} />
-                          <p className="text-sm">Click to select USB drive folder</p>
-                        </div>
-                      </button>
-                    )}
+                      ) : (
+                        <button
+                          onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
+                          className="w-full h-full min-h-[80px] py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5 transition-all text-center"
+                        >
+                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                            <FolderOpen size={20} />
+                            <p className="text-sm">Click to select USB drive folder</p>
+                          </div>
+                        </button>
+                      )}
+                    </div>
 
                     <input
                       ref={folderInputRef}
@@ -1624,7 +1657,7 @@ export function ImportLibraryModal({
                       onChange={handleFolderChange}
                     />
 
-                    <div className="flex justify-center gap-3">
+                    <div className="flex justify-center gap-3 shrink-0">
                       <ControlButton variant="ghost" onClick={handleClose}>
                         <Close size={16} /> Cancel
                       </ControlButton>
@@ -1646,34 +1679,36 @@ export function ImportLibraryModal({
                 {/* ZIP Bundle / Database Only picker */}
                 {(mode === 'zip_bundle' || mode === 'database_only') && (
                   <>
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className={cn(
-                        'w-full py-5 px-4 rounded-2xl border-2 border-dashed transition-all mb-4 text-center',
-                        selectedFile
-                          ? 'border-primary/50 bg-primary/5'
-                          : 'border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5',
-                      )}
-                    >
-                      {selectedFile ? (
-                        <div>
-                          <p className="text-sm font-bold font-mono truncate">{selectedFile.name}</p>
-                          <p className="text-[10px] text-muted-foreground mt-1">
-                            {fmtBytes(selectedFile.size)} · Click to change
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                          <Upload size={20} />
-                          <p className="text-sm">
-                            Click to select {mode === 'zip_bundle' ? '.zip bundle' : 'exportLibrary.db'}
-                          </p>
-                        </div>
-                      )}
-                    </button>
+                    <div className="flex-1 min-h-0 mb-4">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className={cn(
+                          'w-full h-full min-h-[80px] py-5 px-4 rounded-2xl border-2 border-dashed transition-all text-center',
+                          selectedFile
+                            ? 'border-primary/50 bg-primary/5'
+                            : 'border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5',
+                        )}
+                      >
+                        {selectedFile ? (
+                          <div>
+                            <p className="text-sm font-bold font-mono truncate">{selectedFile.name}</p>
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              {fmtBytes(selectedFile.size)} · Click to change
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                            <Upload size={20} />
+                            <p className="text-sm">
+                              Click to select {mode === 'zip_bundle' ? '.zip bundle' : 'exportLibrary.db'}
+                            </p>
+                          </div>
+                        )}
+                      </button>
+                    </div>
 
                     {unexpectedDbName && (
-                      <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl mb-4">
+                      <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl mb-4 shrink-0">
                         <WarningAlt size={13} className="text-amber-400 shrink-0 mt-0.5" />
                         <p className="text-xs text-amber-300 leading-relaxed">
                           Unexpected filename. The standard rekordbox database is named{' '}
@@ -1691,7 +1726,7 @@ export function ImportLibraryModal({
                       accept={mode === 'zip_bundle' ? '.zip' : '.db'}
                     />
 
-                    <div className="flex justify-center gap-3">
+                    <div className="flex justify-center gap-3 shrink-0">
                       <ControlButton variant="ghost" onClick={handleClose}>
                         <Close size={16} /> Cancel
                       </ControlButton>
@@ -1706,29 +1741,23 @@ export function ImportLibraryModal({
                     </div>
                   </>
                 )}
-              </motion.div>
+              </div>
             )}
 
-            {/* ── Progress phases: stable 560px shell ── */}
-            {!isSelectionPhase && (
-              <ImportProgressModal
-                key="progress-dialog"
-                abortOverlay={abortDialogContent}
-              >
-            {/* ── Local USB access ── */}
+            {/* ── DATABASE / ANALYSIS FILES: local USB upload ── */}
             {phase === 'uploading_usb_data' && (
-              <div className="text-center py-4">
-                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CircleDash className="animate-spin text-primary" size={28} />
+              <div className="text-center">
+                <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CircleDash className="animate-spin text-primary" size={24} />
                 </div>
-                <h2 className="text-xl font-bold mb-2">
+                <h2 className="text-xl font-bold mb-3">
                   {localUsbStage === 'uploading_database' && 'Uploading Rekordbox Database…'}
                   {localUsbStage === 'matching_analysis' && 'Matching Analysis Files…'}
                   {localUsbStage === 'uploading_analysis' && 'Uploading Analysis Files…'}
                   {localUsbStage === 'uploading_bundle' && 'Uploading Bundle…'}
                 </h2>
 
-                <div className="mt-4 mb-5 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left">
+                <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left">
                   <WarningAlt size={18} className="mt-0.5 shrink-0 text-amber-400" />
                   <p className="text-xs leading-relaxed text-amber-100">
                     DropDex is currently reading this Rekordbox USB. Keep Rekordbox closed and do not eject the drive until DropDex confirms that USB access has ended.
@@ -1737,7 +1766,7 @@ export function ImportLibraryModal({
 
                 {(localUsbStage === 'uploading_analysis' || localUsbStage === 'uploading_bundle') && (
                   <>
-                    <div className="w-full h-2 bg-[var(--color-surface)] rounded-full overflow-hidden mb-3">
+                    <div className="w-full h-1.5 bg-[var(--color-surface)] rounded-full overflow-hidden mb-2">
                       <div
                         className="h-full bg-primary rounded-full transition-all duration-300"
                         style={{ width: `${uploadPct}%` }}
@@ -1767,8 +1796,8 @@ export function ImportLibraryModal({
                   </>
                 )}
 
-                <div className="mt-6 flex justify-center gap-3">
-                  <ControlButton variant="ghost" onClick={() => openAbortDialog('delete')}>
+                <div className="mt-4 flex justify-center gap-3">
+                  <ControlButton variant="ghost" onClick={() => openAbortDialog('delete')} className="whitespace-nowrap">
                     <Close size={16} /> Cancel import
                   </ControlButton>
                   {mode === 'usb_folder' && libraryMetadataReady && (
@@ -1776,6 +1805,7 @@ export function ImportLibraryModal({
                       type="button"
                       variant="primary"
                       onClick={handleContinueInBackground}
+                      className="whitespace-nowrap"
                     >
                       <ArrowRight size={16} />
                       Browse in Background
@@ -1785,11 +1815,11 @@ export function ImportLibraryModal({
               </div>
             )}
 
-            {/* ── Normal verified USB release ── */}
+            {/* ── ANALYSIS FILES → ANALYZE: USB teardown / USB released ── */}
             {phase === 'usb_released' && !cancelRequestedRef.current && (
-              <div className="space-y-4 py-4 text-center">
-                <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto">
-                  <CheckmarkFilled className="text-emerald-400" size={28} />
+              <div className="space-y-4 text-center">
+                <div className="w-14 h-14 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto">
+                  <CheckmarkFilled className="text-emerald-400" size={24} />
                 </div>
                 <h2 className="text-xl font-bold">USB Access Released</h2>
                 <p className="text-sm text-muted-foreground">
@@ -1798,23 +1828,22 @@ export function ImportLibraryModal({
               </div>
             )}
 
-            {/* ── Verified USB release / cancellation sequence ── */}
             {(phase === 'stopping_usb_reads' ||
               (phase === 'usb_released' && cancelRequestedRef.current) ||
               phase === 'deleting_import' ||
               phase === 'pausing_cloud_work') && (
-              <div className="space-y-5 py-4">
+              <div className="space-y-4">
                 <div className="text-center">
                   {(() => {
                     const cloudStepActive = cloudCancellationStarted || phase === 'deleting_import' || phase === 'pausing_cloud_work';
                     const showSpinner = !usbReleaseConfirmed || cloudStepActive;
                     return (
                       <>
-                        <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
+                        <div className="w-14 h-14 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
                           {showSpinner ? (
-                            <CircleDash className="animate-spin text-amber-400" size={28} />
+                            <CircleDash className="animate-spin text-amber-400" size={24} />
                           ) : (
-                            <CheckmarkFilled className="text-emerald-400" size={28} />
+                            <CheckmarkFilled className="text-emerald-400" size={24} />
                           )}
                         </div>
                         <h2 className="text-xl font-bold mb-2">
@@ -1867,27 +1896,27 @@ export function ImportLibraryModal({
               </div>
             )}
 
-            {/* ── Cloud parsing, no File objects retained ── */}
+            {/* ── ANALYZE: cloud analysis running ── */}
             {phase === 'parsing_cloud_data' && (
-              <div className="text-center py-4">
-                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CircleDash className="animate-spin text-primary" size={28} />
+              <div className="text-center">
+                <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <CircleDash className="animate-spin text-primary" size={24} />
                 </div>
-                <h2 className="text-xl font-bold mb-5">Analysis Running</h2>
-                <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 text-left text-xs">
+                <h2 className="text-xl font-bold mb-3">Analysis Running</h2>
+                <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3 text-left text-xs mb-0">
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Current stage</span>
                     <span className="font-semibold capitalize text-foreground">{progressiveReadiness.stage}</span>
                   </div>
-                  <div className="mt-2 flex justify-between gap-4">
+                  <div className="mt-1.5 flex justify-between gap-4">
                     <span className="text-muted-foreground">Tracks ready</span>
                     <span className="font-semibold text-foreground">{progressiveReadiness.tracksReady.toLocaleString()}</span>
                   </div>
-                  <div className="mt-2 flex justify-between gap-4">
+                  <div className="mt-1.5 flex justify-between gap-4">
                     <span className="text-muted-foreground">Tracks remaining</span>
                     <span className="font-semibold text-foreground">{progressiveReadiness.tracksRemaining.toLocaleString()}</span>
                   </div>
-                  <div className="mt-2 flex justify-between gap-4">
+                  <div className="mt-1.5 flex justify-between gap-4">
                     <span className="text-muted-foreground">Estimate</span>
                     <span className="font-semibold text-foreground">
                       {progressiveReadiness.estimatedSecondsRemaining != null
@@ -1895,23 +1924,23 @@ export function ImportLibraryModal({
                         : 'Measuring throughput…'}
                     </span>
                   </div>
-                  <div className="mt-2 flex justify-between gap-4">
+                  <div className="mt-1.5 flex justify-between gap-4">
                     <span className="text-muted-foreground">Raw DAT/EXT archive</span>
                     <span className="font-semibold capitalize text-foreground">{progressiveReadiness.rawArchivalStatus}</span>
                   </div>
                   {progressiveReadiness.optionalArchivalStatus !== 'skipped' && progressiveReadiness.optionalArchivalStatus !== 'not needed' && (
-                    <div className="mt-2 flex justify-between gap-4">
+                    <div className="mt-1.5 flex justify-between gap-4">
                       <span className="text-muted-foreground">Operator-enabled .2EX archive</span>
                       <span className="font-semibold capitalize text-foreground">{progressiveReadiness.optionalArchivalStatus}</span>
                     </div>
                   )}
                 </div>
-                <p className="mt-4 text-xs uppercase tracking-widest text-muted-foreground">Processing</p>
-                <p className="mt-1 text-sm font-semibold text-foreground leading-snug">
+                <p className="mt-3 text-xs uppercase tracking-widest text-muted-foreground">Processing</p>
+                <p className="mt-0.5 text-sm font-semibold text-foreground leading-snug">
                   {parseProgress.currentTrackLabel || 'queued tracks…'}
                 </p>
-                <div className="mt-5">
-                  <div className="w-full h-2 bg-[var(--color-surface)] rounded-full overflow-hidden mb-3">
+                <div className="mt-3">
+                  <div className="w-full h-1.5 bg-[var(--color-surface)] rounded-full overflow-hidden mb-1.5">
                     <div
                       className="h-full bg-primary rounded-full transition-all duration-500"
                       style={{ width: `${parseProgress.percent}%` }}
@@ -1928,11 +1957,12 @@ export function ImportLibraryModal({
                     )}
                   </p>
                 </div>
-                <div className="mt-6 flex items-center justify-center gap-2 flex-nowrap">
+                <div className="mt-4 flex items-center justify-center gap-2 flex-nowrap">
                   <ControlButton
                     type="button"
                     variant="neutral"
                     onClick={() => openAbortDialog('pause')}
+                    className="whitespace-nowrap shrink-0"
                   >
                     <Pause size={16} /> Pause Import
                   </ControlButton>
@@ -1940,6 +1970,7 @@ export function ImportLibraryModal({
                     type="button"
                     variant="primary"
                     onClick={handleContinueInBackground}
+                    className="whitespace-nowrap shrink-0"
                   >
                     <ArrowRight size={16} />
                     Continue in Background
@@ -1949,9 +1980,9 @@ export function ImportLibraryModal({
             )}
 
             {phase === 'paused' && (
-              <div className="space-y-5 py-4 text-center">
-                <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto">
-                  <CheckmarkFilled className="text-amber-300" size={28} />
+              <div className="space-y-5 text-center">
+                <div className="w-14 h-14 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto">
+                  <CheckmarkFilled className="text-amber-300" size={24} />
                 </div>
                 <h2 className="text-xl font-bold">Analysis Paused Safely</h2>
                 <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left">
@@ -1968,9 +1999,9 @@ export function ImportLibraryModal({
             )}
 
             {phase === 'interrupted' && (
-              <div className="space-y-5 py-4 text-center">
-                <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto">
-                  <WarningAlt className="text-amber-400" size={28} />
+              <div className="space-y-5 text-center">
+                <div className="w-14 h-14 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto">
+                  <WarningAlt className="text-amber-400" size={24} />
                 </div>
                 <h2 className="text-xl font-bold">Analysis Interrupted</h2>
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left">
@@ -1985,18 +2016,18 @@ export function ImportLibraryModal({
               </div>
             )}
 
-            {/* ── Success ── */}
+            {/* ── COMPLETE: success ── */}
             {phase === 'completed' && (
               <div className="text-center">
-                <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CheckmarkFilled className="text-emerald-400" size={28} />
+                <div className="w-14 h-14 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckmarkFilled className="text-emerald-400" size={24} />
                 </div>
                 <h2 className="text-xl font-bold mb-1">
                   {withAnalysis ? 'Book Imported with Analysis!' : 'Book Imported!'}
                 </h2>
 
                 {usbReleaseConfirmed && (
-                  <div className="my-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left">
+                  <div className="my-3 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left">
                     <CheckmarkFilled size={16} className="mt-0.5 shrink-0 text-emerald-400" />
                     <p className="text-xs leading-relaxed text-emerald-100">
                       USB reading is complete. DropDex no longer needs the USB.
@@ -2005,20 +2036,19 @@ export function ImportLibraryModal({
                 )}
 
                 {withAnalysis && (
-                  <p className="text-sm text-muted-foreground mb-5">
+                  <p className="text-sm text-muted-foreground mb-4">
                     {withAnalysis.completed_count.toLocaleString()} tracks fully analysed.
                   </p>
                 )}
                 {libraryOnly && (
-                  <p className="text-sm text-muted-foreground mb-5">
+                  <p className="text-sm text-muted-foreground mb-4">
                     <code className="font-mono text-xs">{libraryOnly.source_filename}</code> imported
                     successfully.
                   </p>
                 )}
 
-                {/* Stats grid */}
                 {withAnalysis && (
-                  <div className="grid grid-cols-3 gap-2 mb-5">
+                  <div className="grid grid-cols-3 gap-2 mb-4">
                     {[
                       { label: 'Tracks', value: withAnalysis.total_tracks.toLocaleString() },
                       { label: 'Analysed', value: withAnalysis.completed_count.toLocaleString() },
@@ -2036,9 +2066,8 @@ export function ImportLibraryModal({
                   </div>
                 )}
 
-                {/* Optional waveform/archival gaps never affect readiness. */}
                 {withAnalysis && (withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
-                  <div className="mb-4 p-3 rounded-xl bg-amber-500/8 border border-amber-500/20 text-left">
+                  <div className="mb-3 p-3 rounded-xl bg-amber-500/8 border border-amber-500/20 text-left">
                     <p className="text-[9px] uppercase tracking-widest text-amber-400/80 font-bold mb-2">
                       Optional Waveforms
                     </p>
@@ -2056,9 +2085,8 @@ export function ImportLibraryModal({
                   </div>
                 )}
 
-                {/* Reuse summary (only shown when incremental reuse occurred) */}
                 {reuseStats && reuseStats.tracksReused > 0 && (
-                  <div className="mb-5 p-3 rounded-xl bg-primary/5 border border-primary/15 text-left">
+                  <div className="mb-4 p-3 rounded-xl bg-primary/5 border border-primary/15 text-left">
                     <p className="text-[9px] uppercase tracking-widest text-primary/70 font-bold mb-2">
                       Reuse Summary
                     </p>
@@ -2081,7 +2109,7 @@ export function ImportLibraryModal({
 
                 {libraryOnly && (
                   <>
-                    <div className="grid grid-cols-2 gap-2 mb-5">
+                    <div className="grid grid-cols-2 gap-2 mb-4">
                       {[
                         { label: 'Tracks', value: libraryOnly.track_count.toLocaleString() },
                         { label: 'Playlists', value: libraryOnly.playlist_count },
@@ -2096,7 +2124,7 @@ export function ImportLibraryModal({
                     </div>
 
                     {libraryOnly.playlists.length > 0 && (
-                      <div className="text-left mb-5 max-h-40 overflow-y-auto space-y-1 pr-1">
+                      <div className="text-left mb-4 max-h-36 overflow-y-auto space-y-1 pr-1">
                         {libraryOnly.playlists.map((pl) => (
                           <div
                             key={`${pl.name}-${pl.track_count}`}
@@ -2120,9 +2148,9 @@ export function ImportLibraryModal({
               </div>
             )}
 
-            {/* ── Partial success ── */}
+            {/* ── COMPLETE: partial success (summary + track issues sub-view) ── */}
             {phase === 'partial_success' && (
-              <div className="relative overflow-hidden" style={{ minHeight: 420 }}>
+              <div className="relative overflow-hidden flex flex-col h-full">
                 <AnimatePresence initial={false} mode="wait">
                   {!issueViewOpen ? (
                     <motion.div
@@ -2131,22 +2159,10 @@ export function ImportLibraryModal({
                       animate={{ x: 0, opacity: 1 }}
                       exit={{ x: '-100%', opacity: 0 }}
                       transition={{ duration: 0.22, ease: 'easeInOut' }}
+                      className="flex flex-col"
                     >
-                      {/* Header */}
-                      <div className="flex items-center justify-between mb-5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-                            <CheckmarkFilled className="text-primary" size={20} />
-                          </div>
-                          <h2 className="text-xl font-bold">Import Complete</h2>
-                        </div>
-                        <ControlButton variant="ghost" onClick={handleDone}>
-                          <Close size={18} />
-                        </ControlButton>
-                      </div>
-
                       {usbReleaseConfirmed && (
-                        <div className="mb-4 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                        <div className="mb-3 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
                           <CheckmarkFilled size={16} className="mt-0.5 shrink-0 text-emerald-400" />
                           <p className="text-xs leading-relaxed text-emerald-100">
                             USB reading is complete. DropDex no longer needs the USB.
@@ -2158,7 +2174,7 @@ export function ImportLibraryModal({
                         const issueCount = withAnalysis.partial_count + withAnalysis.failed_count + withAnalysis.missing_required_count;
                         return (
                           <>
-                            <div className="flex items-center gap-2 mb-4">
+                            <div className="flex items-center gap-2 mb-3">
                               <p className="text-sm text-muted-foreground">
                                 {withAnalysis.completed_count.toLocaleString()} tracks fully parsed
                               </p>
@@ -2192,7 +2208,7 @@ export function ImportLibraryModal({
                               )}
                             </div>
 
-                            <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 text-left text-xs mb-4">
+                            <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3 text-left text-xs mb-3">
                               <div className="flex justify-between gap-4">
                                 <span className="text-muted-foreground">Tracks Ready</span>
                                 <span className="font-semibold text-foreground">{withAnalysis.completed_count.toLocaleString()}</span>
@@ -2212,7 +2228,7 @@ export function ImportLibraryModal({
                             </div>
 
                             {reconciliation && (reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0 || withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
-                              <div className="mb-4 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)]">
+                              <div className="mb-3 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)]">
                                 <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mb-2">File Summary</p>
                                 <div className="space-y-1">
                                   <SummaryRow label="Uploaded" value={reconciliation.successfullyUploadedFiles} />
@@ -2232,7 +2248,7 @@ export function ImportLibraryModal({
                         );
                       })()}
 
-                      <div className="flex justify-center mt-2">
+                      <div className="flex justify-center mt-1">
                         <ControlButton variant="primary" onClick={handleDone}>
                           <CheckmarkFilled size={16} />
                           Done
@@ -2246,25 +2262,19 @@ export function ImportLibraryModal({
                       animate={{ x: 0, opacity: 1 }}
                       exit={{ x: '100%', opacity: 0 }}
                       transition={{ duration: 0.22, ease: 'easeInOut' }}
-                      className="flex flex-col"
-                      style={{ minHeight: 420 }}
+                      className="flex flex-col h-full"
                     >
-                      {/* Issues header */}
-                      <div className="flex items-center justify-between mb-5">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setIssueViewOpen(false)}
-                            className="flex items-center justify-center rounded-lg p-1 text-muted-foreground transition-colors hover:text-foreground hover:bg-white/[0.06]"
-                            aria-label="Back to summary"
-                          >
-                            <ArrowLeft size={20} />
-                          </button>
-                          <h2 className="text-xl font-bold">Track Issues</h2>
-                        </div>
-                        <ControlButton variant="ghost" onClick={handleDone}>
-                          <Close size={18} />
-                        </ControlButton>
+                      {/* Issues sub-heading with back navigation — not a modal header */}
+                      <div className="flex items-center gap-2 mb-4 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setIssueViewOpen(false)}
+                          className="flex items-center justify-center rounded-lg p-1 text-muted-foreground transition-colors hover:text-foreground hover:bg-white/[0.06]"
+                          aria-label="Back to summary"
+                        >
+                          <ArrowLeft size={20} />
+                        </button>
+                        <h3 className="text-lg font-bold">Track Issues</h3>
                       </div>
 
                       {issueTracksLoading && (
@@ -2279,7 +2289,7 @@ export function ImportLibraryModal({
                       )}
 
                       {!issueTracksLoading && issueTracks && issueTracks.length > 0 && (
-                        <div className="flex-1 overflow-y-auto rounded-xl border border-[var(--color-border-subtle)] divide-y divide-[var(--color-border-subtle)]" style={{ maxHeight: 320 }}>
+                        <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-[var(--color-border-subtle)] divide-y divide-[var(--color-border-subtle)]">
                           {issueTracks.map((track) => {
                             const issueLabel = issueBadgeLabel(track.analysis_parse_status ?? '');
                             const isWarning = track.analysis_parse_status === 'partial';
@@ -2310,7 +2320,7 @@ export function ImportLibraryModal({
                         </div>
                       )}
 
-                      <div className="flex justify-center mt-4">
+                      <div className="flex justify-center mt-4 shrink-0">
                         <ControlButton variant="primary" onClick={handleDone}>
                           <CheckmarkFilled size={16} />
                           Done
@@ -2324,7 +2334,7 @@ export function ImportLibraryModal({
 
             {/* ── Cancellation ── */}
             {phase === 'cancelled' && (
-              <div className="space-y-4 py-4 text-center">
+              <div className="space-y-4 text-center">
                 <WarningAlt size={34} className="mx-auto text-amber-500" />
                 <div>
                   <h3 className="font-semibold">Import deleted</h3>
@@ -2333,7 +2343,7 @@ export function ImportLibraryModal({
                   </p>
                   {errorMessage && <p className="mt-2 text-sm text-destructive">{errorMessage}</p>}
                 </div>
-                <ControlButton type="button" variant="neutral" onClick={reset}>
+                <ControlButton type="button" variant="neutral" onClick={reset} className="whitespace-nowrap">
                   <Renew size={16} /> Start another import
                 </ControlButton>
               </div>
@@ -2341,8 +2351,8 @@ export function ImportLibraryModal({
 
             {phase === 'failed' && (
               <div className="text-center">
-                <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <WarningAlt className="text-red-400" size={28} />
+                <div className="w-14 h-14 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
+                  <WarningAlt className="text-red-400" size={24} />
                 </div>
                 <h2 className="text-xl font-bold mb-2">
                   {errorStructured ? 'Book Parsed, Save Failed' : 'Import Failed'}
@@ -2364,21 +2374,20 @@ export function ImportLibraryModal({
                     )}
                   </div>
                 )}
-                <div className="flex gap-3 mt-6 justify-center">
-                  <ControlButton variant="primary" onClick={reset}>
+                <div className="flex gap-3 mt-5 justify-center">
+                  <ControlButton variant="primary" onClick={reset} className="whitespace-nowrap">
                     <Renew size={16} />
                     Retry
                   </ControlButton>
-                  <ControlButton variant="neutral" onClick={() => { reset(); onClose(); }}>
+                  <ControlButton variant="neutral" onClick={() => { reset(); onClose(); }} className="whitespace-nowrap">
                     <Close size={16} />
                     Cancel
                   </ControlButton>
                 </div>
               </div>
             )}
-              </ImportProgressModal>
-            )}
-          </AnimatePresence>
+
+          </ImportProgressModal>
         </div>
       )}
     </AnimatePresence>
