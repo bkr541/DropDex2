@@ -1455,10 +1455,10 @@ export function ImportLibraryModal({
       </p>
       <p className="text-sm text-muted-foreground mb-5">
         {abortDialogIntent === 'pause'
-          ? 'The USB is already released. DropDex will stop the cloud worker at a safe checkpoint and retain completed tracks and uploaded assets for resume.'
+          ? 'Your progress is saved and the USB is no longer needed. DropDex will stop analysis at a safe point so you can resume later.'
           : localUsbAccessActive
-            ? 'DropDex will stop USB reads, prove the drive is released, wait for the cloud worker to acknowledge stop, then delete DropDex cloud data.'
-            : 'This permanently deletes the DropDex import, uploaded analysis assets, and parsed records after the worker acknowledges it has stopped writing.'}
+            ? 'DropDex will safely finish reading from the USB, release the drive, then delete this import and all its uploaded data.'
+            : 'This permanently deletes this import and all of its uploaded data. This cannot be undone.'}
       </p>
       <div className="flex gap-3">
         <ControlButton

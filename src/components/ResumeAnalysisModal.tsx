@@ -698,27 +698,32 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   <div>
                     <h2 className="text-xl font-bold">Analysis Updated</h2>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {completeResp.completed_count.toLocaleString()} fully parsed
-                      {completeResp.missing_required_count > 0 && ` · ${completeResp.missing_required_count.toLocaleString()} still missing required files`}.
+                      {completeResp.completed_count.toLocaleString()} tracks ready
+                      {completeResp.missing_required_count > 0 && ` · ${completeResp.missing_required_count.toLocaleString()} still need attention`}.
                     </p>
                   </div>
                 </div>
-                <div className="grid grid-cols-4 gap-2 mb-4">
-                  {[
-                    { label: 'Parsed', value: completeResp.completed_count.toLocaleString() },
-                    { label: 'Partial', value: completeResp.partial_count.toLocaleString() },
-                    { label: 'Missing DAT', value: completeResp.missing_required_count.toLocaleString() },
-                    { label: 'Failed', value: completeResp.failed_count.toLocaleString() },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="glass rounded-xl p-3">
-                      <p className="text-lg font-black font-mono">{value}</p>
-                      <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">{label}</p>
-                    </div>
-                  ))}
+                <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 text-left text-xs mb-4">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Tracks Ready</span>
+                    <span className="font-semibold text-foreground">{completeResp.completed_count.toLocaleString()}</span>
+                  </div>
+                  <div className="mt-2 flex justify-between gap-4">
+                    <span className="text-muted-foreground">Tracks with Issues</span>
+                    <span className={`font-semibold ${completeResp.partial_count > 0 ? 'text-amber-400' : 'text-foreground'}`}>{completeResp.partial_count.toLocaleString()}</span>
+                  </div>
+                  <div className="mt-2 flex justify-between gap-4">
+                    <span className="text-muted-foreground">Tracks Not Processed</span>
+                    <span className={`font-semibold ${completeResp.failed_count > 0 ? 'text-amber-400' : 'text-foreground'}`}>{completeResp.failed_count.toLocaleString()}</span>
+                  </div>
+                  <div className="mt-2 flex justify-between gap-4">
+                    <span className="text-muted-foreground">Missing Analysis Files</span>
+                    <span className={`font-semibold ${completeResp.missing_required_count > 0 ? 'text-amber-400' : 'text-foreground'}`}>{completeResp.missing_required_count.toLocaleString()}</span>
+                  </div>
                 </div>
                 {completeResp.missing_required_count > 0 && (
                   <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-                    Reconnect the USB and run Resume Analysis again to retry the {completeResp.missing_required_count.toLocaleString()} track{completeResp.missing_required_count !== 1 ? 's' : ''} still missing DAT files.
+                    Reconnect the USB and run Resume Analysis again to retry the {completeResp.missing_required_count.toLocaleString()} track{completeResp.missing_required_count !== 1 ? 's' : ''} still missing analysis files.
                   </p>
                 )}
                 <ControlButton variant="primary" onClick={handleDone}>

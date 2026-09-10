@@ -37,6 +37,11 @@ from .retained_analysis_dependencies import (
 logger = logging.getLogger(__name__)
 
 _FINAL_TRACK_STATUSES = frozenset({"completed", "partial", "reused", "skipped"})
+# Per-track parse timeout. Corrupt or pathological analysis files can cause the
+# binary parser to spin indefinitely. After this many seconds the track is
+# marked failed and the pipeline moves on. The stuck thread is abandoned
+# (executor.shutdown(wait=False)) so it cannot block overall progress.
+_TRACK_PARSE_TIMEOUT_S = 120
 _REQUIRED_ASSET_TYPES = frozenset({"DAT", "EXT"})
 _POSTGREST_IN_FILTER_CHUNK_SIZE = 100
 _BULK_WRITE_CHUNK_SIZE = 250
@@ -834,62 +839,102 @@ def _rolling_parse_results(
 
     def produce() -> None:
         iterator = iter(tracks)
+        executor = ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="dropdex-anlz",
+        )
+        futures: dict[Future[ParsedTrack], dict[str, Any]] = {}
+        future_submitted_at: dict[Future[ParsedTrack], float] = {}
         try:
-            with ThreadPoolExecutor(
-                max_workers=max_workers,
-                thread_name_prefix="dropdex-anlz",
-            ) as executor:
-                futures: dict[Future[ParsedTrack], dict[str, Any]] = {}
+            def submit_next() -> bool:
+                if stop_requested.is_set():
+                    return False
+                try:
+                    track = next(iterator)
+                except StopIteration:
+                    return False
+                track_id = str(track["id"])
+                checkpoint("queueing_track", track_id)
+                future = executor.submit(
+                    _parse_track,
+                    track,
+                    assets_by_track.get(track_id, []),
+                    temp_root,
+                )
+                futures[future] = track
+                future_submitted_at[future] = time.monotonic()
+                return True
 
-                def submit_next() -> bool:
-                    if stop_requested.is_set():
-                        return False
-                    try:
-                        track = next(iterator)
-                    except StopIteration:
-                        return False
-                    track_id = str(track["id"])
-                    checkpoint("queueing_track", track_id)
-                    future = executor.submit(
-                        _parse_track,
-                        track,
-                        assets_by_track.get(track_id, []),
-                        temp_root,
+            for _ in range(max_workers):
+                if not submit_next():
+                    break
+
+            while futures:
+                done, _ = wait(
+                    tuple(futures),
+                    return_when=FIRST_COMPLETED,
+                    timeout=_TRACK_PARSE_TIMEOUT_S,
+                )
+
+                if not done:
+                    # No future completed within the timeout window. Find the
+                    # oldest running future and mark it failed so the pipeline
+                    # can continue. Its thread is abandoned — executor.shutdown
+                    # below uses wait=False so it cannot block overall progress.
+                    oldest = min(futures, key=lambda f: future_submitted_at.get(f, 0.0))
+                    track = futures.pop(oldest)
+                    future_submitted_at.pop(oldest, None)
+                    logger.warning(
+                        "Parse timeout after %ds for track %s (%s) — marking as failed",
+                        _TRACK_PARSE_TIMEOUT_S,
+                        track.get("id"),
+                        track.get("title", "unknown"),
                     )
-                    futures[future] = track
-                    return True
+                    timed_out = ParsedTrack(
+                        track=track,
+                        assets=assets_by_track.get(str(track["id"]), []),
+                        parse_status="failed",
+                        warnings=[{
+                            "code": "PARSE_TIMEOUT",
+                            "asset_type": "BUNDLE",
+                            "message": f"Analysis file processing timed out after {_TRACK_PARSE_TIMEOUT_S}s.",
+                            "detail": "TIMEOUT",
+                        }],
+                    )
+                    if not put_result(timed_out):
+                        return
+                    submit_next()
+                    continue
 
-                for _ in range(max_workers):
-                    if not submit_next():
-                        break
-
-                while futures:
-                    done, _ = wait(tuple(futures), return_when=FIRST_COMPLETED)
-                    for future in done:
-                        track = futures.pop(future)
-                        try:
-                            parsed = future.result()
-                        except Exception as exc:
-                            logger.exception(
-                                "Isolated parser failure for track %s", track.get("id")
-                            )
-                            parsed = ParsedTrack(
-                                track=track,
-                                assets=assets_by_track.get(str(track["id"]), []),
-                                parse_status="failed",
-                                warnings=[{
-                                    "code": "PARSE_ERROR",
-                                    "asset_type": "BUNDLE",
-                                    "message": "The analysis files for this track could not be parsed.",
-                                    "detail": type(exc).__name__,
-                                }],
-                            )
-                        if not put_result(parsed):
-                            return
-                        submit_next()
+                for future in done:
+                    track = futures.pop(future)
+                    future_submitted_at.pop(future, None)
+                    try:
+                        parsed = future.result()
+                    except Exception as exc:
+                        logger.exception(
+                            "Isolated parser failure for track %s", track.get("id")
+                        )
+                        parsed = ParsedTrack(
+                            track=track,
+                            assets=assets_by_track.get(str(track["id"]), []),
+                            parse_status="failed",
+                            warnings=[{
+                                "code": "PARSE_ERROR",
+                                "asset_type": "BUNDLE",
+                                "message": "The analysis files for this track could not be parsed.",
+                                "detail": type(exc).__name__,
+                            }],
+                        )
+                    if not put_result(parsed):
+                        return
+                    submit_next()
         except BaseException as exc:  # propagate coordinator setup/checkpoint failures
             coordinator_error.append(exc)
         finally:
+            # wait=False: abandoned threads from timed-out tracks must not block
+            # the pipeline from reaching its sentinel and finishing normally.
+            executor.shutdown(wait=False)
             put_result(sentinel)
 
     coordinator = threading.Thread(
