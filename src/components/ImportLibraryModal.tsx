@@ -1594,59 +1594,56 @@ export function ImportLibraryModal({
                       <ArrowRight size={10} className="rotate-180 shrink-0" />
                       Choose different folder
                     </button>
-                    <div className="mb-4">
-                      {phase === 'scanning_usb' ? (
-                        <div className="py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                          <CircleDash size={20} className="animate-spin text-primary" />
-                          <p className="text-sm">Scanning folder…</p>
-                        </div>
-                      ) : phase === 'database_selected' && folderScan ? (
-                        <div className="rounded-2xl border border-[var(--color-border-subtle)] p-4">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                            {folderScan.folderName}
-                          </p>
-                          <div className="space-y-2">
-                            {folderScan.dbFile ? (
-                              <div className="flex items-center gap-2 text-sm">
-                                <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
-                                <span className="font-mono text-xs truncate">
-                                  {folderScan.dbFile.name}
-                                </span>
-                                <span className="text-muted-foreground text-xs shrink-0">
-                                  {fmtBytes(folderScan.dbFile.size)}
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2 text-sm">
-                                <WarningAlt size={14} className="text-red-400 shrink-0" />
-                                <span className="text-red-400 text-xs">exportLibrary.db not found</span>
-                              </div>
-                            )}
+                    {phase === 'scanning_usb' ? (
+                      <div className="mb-4 py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                        <CircleDash size={20} className="animate-spin text-primary" />
+                        <p className="text-sm">Scanning folder…</p>
+                      </div>
+                    ) : phase === 'database_selected' && folderScan ? (
+                      <div className="mb-4 rounded-2xl border border-[var(--color-border-subtle)] p-4">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                          {folderScan.folderName}
+                        </p>
+                        <div className="space-y-2">
+                          {folderScan.dbFile ? (
                             <div className="flex items-center gap-2 text-sm">
-                              {folderScan.anlzFiles.length > 0 ? (
-                                <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
-                              ) : (
-                                <WarningAlt size={14} className="text-amber-400 shrink-0" />
-                              )}
-                              <span className="text-xs">
-                                {folderScan.anlzFiles.length.toLocaleString()} required DAT/EXT analysis file
-                                {folderScan.anlzFiles.length !== 1 ? 's' : ''} found
+                              <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
+                              <span className="font-mono text-xs truncate">
+                                {folderScan.dbFile.name}
+                              </span>
+                              <span className="text-muted-foreground text-xs shrink-0">
+                                {fmtBytes(folderScan.dbFile.size)}
                               </span>
                             </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-sm">
+                              <WarningAlt size={14} className="text-red-400 shrink-0" />
+                              <span className="text-red-400 text-xs">exportLibrary.db not found</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 text-sm">
+                            {folderScan.anlzFiles.length > 0 ? (
+                              <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
+                            ) : (
+                              <WarningAlt size={14} className="text-amber-400 shrink-0" />
+                            )}
+                            <span className="text-xs">
+                              {folderScan.anlzFiles.length.toLocaleString()} required DAT/EXT analysis file
+                              {folderScan.anlzFiles.length !== 1 ? 's' : ''} found
+                            </span>
                           </div>
                         </div>
-                      ) : (
-                        <button
-                          onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
-                          className="w-full py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5 transition-all text-center"
-                        >
-                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                            <FolderOpen size={20} />
-                            <p className="text-sm">Click to select USB drive folder</p>
-                          </div>
-                        </button>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      /* idle: button fills all available space between tip and buttons */
+                      <button
+                        onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
+                        className="flex-1 w-full mb-4 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-2 text-muted-foreground"
+                      >
+                        <FolderOpen size={20} />
+                        <p className="text-sm">Click to select USB drive folder</p>
+                      </button>
+                    )}
 
                     <input
                       ref={folderInputRef}
@@ -1679,33 +1676,30 @@ export function ImportLibraryModal({
                 {/* ZIP Bundle / Database Only picker */}
                 {(mode === 'zip_bundle' || mode === 'database_only') && (
                   <>
-                    <div className="mb-4">
+                    {selectedFile ? (
+                      <div className="mb-4 py-5 px-4 rounded-2xl border-2 border-dashed border-primary/50 bg-primary/5 text-center cursor-pointer"
+                        onClick={() => fileInputRef.current?.click()}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
+                      >
+                        <p className="text-sm font-bold font-mono truncate">{selectedFile.name}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          {fmtBytes(selectedFile.size)} · Click to change
+                        </p>
+                      </div>
+                    ) : (
+                      /* no file yet: button fills all available space */
                       <button
                         onClick={() => fileInputRef.current?.click()}
-                        className={cn(
-                          'w-full py-5 px-4 rounded-2xl border-2 border-dashed transition-all text-center',
-                          selectedFile
-                            ? 'border-primary/50 bg-primary/5'
-                            : 'border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5',
-                        )}
+                        className="flex-1 w-full mb-4 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-2 text-muted-foreground"
                       >
-                        {selectedFile ? (
-                          <div>
-                            <p className="text-sm font-bold font-mono truncate">{selectedFile.name}</p>
-                            <p className="text-[10px] text-muted-foreground mt-1">
-                              {fmtBytes(selectedFile.size)} · Click to change
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                            <Upload size={20} />
-                            <p className="text-sm">
-                              Click to select {mode === 'zip_bundle' ? '.zip bundle' : 'exportLibrary.db'}
-                            </p>
-                          </div>
-                        )}
+                        <Upload size={20} />
+                        <p className="text-sm">
+                          Click to select {mode === 'zip_bundle' ? '.zip bundle' : 'exportLibrary.db'}
+                        </p>
                       </button>
-                    </div>
+                    )}
 
                     {unexpectedDbName && (
                       <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl mb-4 shrink-0">
