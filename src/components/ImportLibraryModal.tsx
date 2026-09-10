@@ -51,6 +51,7 @@ import {
 } from '../lib/rekordbox/localUsbLifecycle';
 import { ArrowLeft, ArrowRight, CheckmarkFilled, CircleDash, Close, DataBase, FolderOpen, Package, Pause, Renew, TrashCan, Upload, View, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from './ui/controls';
+import { ImportProgressModal, issueBadgeLabel, userFriendlyIssueReason } from './ImportProgressModal';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -208,7 +209,7 @@ export function ImportLibraryModal({
   const [usbReleaseConfirmed, setUsbReleaseConfirmed] = useState(false);
   const [cloudCancellationStarted, setCloudCancellationStarted] = useState(false);
   const [issueViewOpen, setIssueViewOpen] = useState(false);
-  const [issueTracks, setIssueTracks] = useState<{ id: string; title: string; artist: string | null; analysis_parse_status: string }[] | null>(null);
+  const [issueTracks, setIssueTracks] = useState<{ id: string; title: string; artist: string | null; analysis_parse_status: string; analysis_failure_reason: string | null }[] | null>(null);
   const [issueTracksLoading, setIssueTracksLoading] = useState(false);
   const [rejectedCount, setRejectedCount] = useState(0);
   const [reuseStats, setReuseStats] = useState<ReuseStats | null>(null);
@@ -1441,69 +1442,64 @@ export function ImportLibraryModal({
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
+  // Abort confirmation overlay content — projected into ImportProgressModal
+  const abortDialogContent = showAbortDialog ? (
+    <div className="bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-2xl p-6 text-center max-w-xs w-full">
+      <WarningAlt className="mx-auto mb-3 text-amber-400" size={28} />
+      <p className="font-bold text-lg mb-2">
+        {abortDialogIntent === 'pause'
+          ? 'Pause analysis?'
+          : abortDialogIntent === 'close'
+            ? 'Close and delete import?'
+            : 'Permanently delete import?'}
+      </p>
+      <p className="text-sm text-muted-foreground mb-5">
+        {abortDialogIntent === 'pause'
+          ? 'The USB is already released. DropDex will stop the cloud worker at a safe checkpoint and retain completed tracks and uploaded assets for resume.'
+          : localUsbAccessActive
+            ? 'DropDex will stop USB reads, prove the drive is released, wait for the cloud worker to acknowledge stop, then delete DropDex cloud data.'
+            : 'This permanently deletes the DropDex import, uploaded analysis assets, and parsed records after the worker acknowledges it has stopped writing.'}
+      </p>
+      <div className="flex gap-3">
+        <ControlButton
+          onClick={confirmAbort}
+          variant={abortDialogIntent === 'pause' ? 'primary' : 'danger'}
+          className="flex-1 whitespace-nowrap"
+        >
+          {abortDialogIntent === 'pause' ? (
+            <><Pause size={16} /> Pause</>
+          ) : (
+            <><TrashCan size={16} /> {abortDialogIntent === 'close' ? 'Stop and delete' : 'Delete Import and Data'}</>
+          )}
+        </ControlButton>
+        <ControlButton
+          onClick={() => setShowAbortDialog(false)}
+          variant="neutral"
+          className="flex-1 whitespace-nowrap"
+        >
+          <ArrowRight size={16} /> Keep going
+        </ControlButton>
+      </div>
+    </div>
+  ) : undefined;
+
+  const isSelectionPhase =
+    phase === 'idle' || phase === 'database_selected' || phase === 'scanning_usb';
+
   return (
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            className="relative w-full max-w-xl bg-[var(--color-panel)] border border-[var(--color-border-subtle)] p-8 rounded-3xl shadow-2xl"
-          >
-            {/* ── Abort confirmation overlay ── */}
-            <AnimatePresence>
-              {showAbortDialog && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 rounded-3xl p-8"
-                >
-                  <div className="bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-2xl p-6 text-center max-w-xs w-full">
-                    <WarningAlt className="mx-auto mb-3 text-amber-400" size={28} />
-                    <p className="font-bold text-lg mb-2">
-                      {abortDialogIntent === 'pause'
-                        ? 'Pause analysis?'
-                        : abortDialogIntent === 'close'
-                          ? 'Close and delete import?'
-                          : 'Permanently delete import?'}
-                    </p>
-                    <p className="text-sm text-muted-foreground mb-5">
-                      {abortDialogIntent === 'pause'
-                        ? 'The USB is already released. DropDex will stop the cloud worker at a safe checkpoint and retain completed tracks and uploaded assets for resume.'
-                        : localUsbAccessActive
-                          ? 'DropDex will stop USB reads, prove the drive is released, wait for the cloud worker to acknowledge stop, then delete DropDex cloud data.'
-                          : 'This permanently deletes the DropDex import, uploaded analysis assets, and parsed records after the worker acknowledges it has stopped writing.'}
-                    </p>
-                    <div className="flex gap-3">
-                      <ControlButton
-                        onClick={confirmAbort}
-                        variant={abortDialogIntent === 'pause' ? 'primary' : 'danger'}
-                        className="flex-1"
-                      >
-                        {abortDialogIntent === 'pause' ? (
-                          <><Pause size={16} /> Pause</>
-                        ) : (
-                          <><TrashCan size={16} /> {abortDialogIntent === 'close' ? 'Stop and delete' : 'Delete Import and Data'}</>
-                        )}
-                      </ControlButton>
-                      <ControlButton
-                        onClick={() => setShowAbortDialog(false)}
-                        variant="neutral"
-                        className="flex-1"
-                      >
-                        <ArrowRight size={16} /> Keep going
-                      </ControlButton>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* ── Header + Mode tabs (idle / selected) ── */}
-            {(phase === 'idle' || phase === 'database_selected' || phase === 'scanning_usb') && (
-              <>
+          <AnimatePresence>
+            {/* ── Source-selection phases: variable-height dialog (unchanged) ── */}
+            {isSelectionPhase && (
+              <motion.div
+                key="selection-dialog"
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="relative w-full max-w-xl bg-[var(--color-panel)] border border-[var(--color-border-subtle)] p-8 rounded-3xl shadow-2xl"
+              >
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-3">
                     <div className={cn(
@@ -1710,8 +1706,16 @@ export function ImportLibraryModal({
                     </div>
                   </>
                 )}
-              </>
+              </motion.div>
             )}
+
+            {/* ── Progress phases: stable 560px shell ── */}
+            {!isSelectionPhase && (
+              <ImportProgressModal
+                key="progress-dialog"
+                abortOverlay={abortDialogContent}
+              >
+                <div className="flex flex-col min-h-full">
 
             {/* ── Local USB access ── */}
             {phase === 'uploading_usb_data' && (
@@ -2158,7 +2162,7 @@ export function ImportLibraryModal({
                                       try {
                                         const { data } = await supabase
                                           .from('rekordbox_tracks')
-                                          .select('id, title, artist, analysis_parse_status')
+                                          .select('id, title, artist, analysis_parse_status, analysis_failure_reason')
                                           .eq('import_id', withAnalysis.import_id)
                                           .in('analysis_parse_status', ['partial', 'failed', 'missing_required'])
                                           .order('title', { ascending: true });
@@ -2178,18 +2182,23 @@ export function ImportLibraryModal({
                               )}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2 mb-4">
-                              {[
-                                { label: 'Parsed', value: withAnalysis.completed_count.toLocaleString() },
-                                { label: 'Partial parse', value: withAnalysis.partial_count.toLocaleString() },
-                                { label: 'Parse failed', value: withAnalysis.failed_count.toLocaleString() },
-                                { label: 'Missing DAT', value: withAnalysis.missing_required_count.toLocaleString() },
-                              ].map(({ label, value }) => (
-                                <div key={label} className="glass rounded-xl p-3">
-                                  <p className="text-lg font-black font-mono">{value}</p>
-                                  <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">{label}</p>
-                                </div>
-                              ))}
+                            <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 text-left text-xs mb-4">
+                              <div className="flex justify-between gap-4">
+                                <span className="text-muted-foreground">Tracks Ready</span>
+                                <span className="font-semibold text-foreground">{withAnalysis.completed_count.toLocaleString()}</span>
+                              </div>
+                              <div className="mt-2 flex justify-between gap-4">
+                                <span className="text-muted-foreground">Tracks with Issues</span>
+                                <span className="font-semibold text-amber-400">{withAnalysis.partial_count.toLocaleString()}</span>
+                              </div>
+                              <div className="mt-2 flex justify-between gap-4">
+                                <span className="text-muted-foreground">Tracks Not Processed</span>
+                                <span className="font-semibold text-amber-400">{withAnalysis.failed_count.toLocaleString()}</span>
+                              </div>
+                              <div className="mt-2 flex justify-between gap-4">
+                                <span className="text-muted-foreground">Missing Analysis Files</span>
+                                <span className="font-semibold text-amber-400">{withAnalysis.missing_required_count.toLocaleString()}</span>
+                              </div>
                             </div>
 
                             {reconciliation && (reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0 || withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
@@ -2262,22 +2271,23 @@ export function ImportLibraryModal({
                       {!issueTracksLoading && issueTracks && issueTracks.length > 0 && (
                         <div className="flex-1 overflow-y-auto rounded-xl border border-[var(--color-border-subtle)] divide-y divide-[var(--color-border-subtle)]" style={{ maxHeight: 320 }}>
                           {issueTracks.map((track) => {
-                            const issueLabel =
-                              track.analysis_parse_status === 'partial' ? 'Partial parse' :
-                              track.analysis_parse_status === 'failed' ? 'Parse failed' :
-                              track.analysis_parse_status === 'missing_required' ? 'Missing DAT' :
-                              track.analysis_parse_status;
+                            const issueLabel = issueBadgeLabel(track.analysis_parse_status ?? '');
                             const isWarning = track.analysis_parse_status === 'partial';
+                            const reason = userFriendlyIssueReason(
+                              track.analysis_parse_status ?? '',
+                              track.analysis_failure_reason,
+                            );
                             return (
-                              <div key={track.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                              <div key={track.id} className="flex items-start justify-between gap-3 px-3 py-2.5">
                                 <div className="min-w-0">
                                   <p className="truncate text-xs font-semibold text-foreground">{track.title}</p>
                                   {track.artist && (
                                     <p className="truncate text-[10px] text-muted-foreground">{track.artist}</p>
                                   )}
+                                  <p className="mt-0.5 text-[10px] text-muted-foreground leading-snug">{reason}</p>
                                 </div>
                                 <span className={cn(
-                                  'shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide',
+                                  'shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap',
                                   isWarning
                                     ? 'border border-amber-400/25 bg-amber-400/10 text-amber-300'
                                     : 'border border-red-400/25 bg-red-400/10 text-red-300',
@@ -2356,7 +2366,10 @@ export function ImportLibraryModal({
                 </div>
               </div>
             )}
-          </motion.div>
+                </div>
+              </ImportProgressModal>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </AnimatePresence>

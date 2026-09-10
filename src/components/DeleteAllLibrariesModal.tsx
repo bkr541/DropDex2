@@ -126,7 +126,7 @@ export function DeleteAllLibrariesModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-all-libraries-title"
-          className="w-full max-w-2xl rounded-3xl border border-red-500/25 bg-[var(--color-panel)] p-6 shadow-2xl"
+          className="relative w-full max-w-2xl rounded-3xl border border-red-500/25 bg-[var(--color-panel)] p-6 shadow-2xl"
         >
           {deleting ? (
             /* ── Deletion in progress: progress view ── */
@@ -175,6 +175,14 @@ export function DeleteAllLibrariesModal({
           ) : (
             /* ── Confirmation view ── */
             <>
+              <button
+                type="button"
+                onClick={onClose}
+                className="absolute top-4 right-4 flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-white/[0.06]"
+                aria-label="Close"
+              >
+                <Close size={18} />
+              </button>
               <div className="flex min-w-0 items-start gap-4">
                 <div className="shrink-0 rounded-2xl bg-red-500/10 p-3 text-red-400">
                   <WarningAlt size={22} />
@@ -193,17 +201,17 @@ export function DeleteAllLibrariesModal({
               {/* Drag-to-confirm slider */}
               <div className="mt-5">
                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-                  Slide to enable deletion
+                  Slide to delete
                 </p>
                 <div
                   ref={trackRef}
-                  className="relative h-[52px] overflow-hidden rounded-full border border-red-500/20 select-none"
+                  className="relative h-[52px] overflow-hidden rounded-full border border-red-500/50 select-none"
                 >
                   {/* Fill — only visible when confirmed */}
                   {confirmed && (
                     <div
                       className="pointer-events-none absolute inset-0"
-                      style={{ background: 'linear-gradient(90deg, #7f1619 0%, #b01318 100%)' }}
+                      style={{ background: 'linear-gradient(90deg, #dc2626 0%, #ef4444 100%)' }}
                     />
                   )}
                   {/* Idle label */}
@@ -211,15 +219,15 @@ export function DeleteAllLibrariesModal({
                     className="pointer-events-none absolute inset-0 flex items-center justify-center"
                     style={{ opacity: Math.max(0, 1 - progress * 2.5) }}
                   >
-                    <span className="text-[11px] font-semibold tracking-wider text-red-400/40">
+                    <span className="text-[11px] font-semibold tracking-wider text-red-400/70">
                       Drag to confirm
                     </span>
                   </div>
                   {/* Confirmed label */}
                   {confirmed && (
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                      <span className="text-[11px] font-semibold tracking-wider text-red-300/80">
-                        Ready — press Delete All
+                      <span className="text-[11px] font-semibold tracking-wider text-white/90">
+                        Ready for Delete
                       </span>
                     </div>
                   )}
