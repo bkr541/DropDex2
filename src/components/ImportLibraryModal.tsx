@@ -1746,57 +1746,94 @@ export function ImportLibraryModal({
 
             {/* ── DATABASE / ANALYSIS FILES: local USB upload ── */}
             {phase === 'uploading_usb_data' && (
-              <div className="text-center">
-                <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CircleDash className="animate-spin text-primary" size={24} />
+              <div className="flex flex-col h-full">
+                {/* Spinner + heading */}
+                <div className="text-center mb-4">
+                  <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CircleDash className="animate-spin text-primary" size={24} />
+                  </div>
+                  <h2 className="text-xl font-bold">
+                    {localUsbStage === 'uploading_database' && 'Uploading Rekordbox Database…'}
+                    {localUsbStage === 'matching_analysis' && 'Matching Analysis Files…'}
+                    {localUsbStage === 'uploading_analysis' && 'Uploading Analysis Files…'}
+                    {localUsbStage === 'uploading_bundle' && 'Uploading Bundle…'}
+                  </h2>
                 </div>
-                <h2 className="text-xl font-bold mb-3">
-                  {localUsbStage === 'uploading_database' && 'Uploading Rekordbox Database…'}
-                  {localUsbStage === 'matching_analysis' && 'Matching Analysis Files…'}
-                  {localUsbStage === 'uploading_analysis' && 'Uploading Analysis Files…'}
-                  {localUsbStage === 'uploading_bundle' && 'Uploading Bundle…'}
-                </h2>
 
-                <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left">
+                {/* USB safety warning */}
+                <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left shrink-0">
                   <WarningAlt size={18} className="mt-0.5 shrink-0 text-amber-400" />
                   <p className="text-xs leading-relaxed text-amber-100">
                     DropDex is currently reading this Rekordbox USB. Keep Rekordbox closed and do not eject the drive until DropDex confirms that USB access has ended.
                   </p>
                 </div>
 
+                {/* Stats box — always visible, mirrors the Analysis Running info grid */}
+                <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3 text-left text-xs mb-4">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Stage</span>
+                    <span className="font-semibold text-foreground capitalize">
+                      {localUsbStage === 'uploading_database' && 'Uploading database'}
+                      {localUsbStage === 'matching_analysis' && 'Matching analysis files'}
+                      {localUsbStage === 'uploading_analysis' && 'Uploading analysis files'}
+                      {localUsbStage === 'uploading_bundle' && 'Uploading bundle'}
+                    </span>
+                  </div>
+                  {(localUsbStage === 'uploading_analysis' || localUsbStage === 'uploading_bundle') && (
+                    <>
+                      {mode !== 'zip_bundle' && progress.filesTotal > 0 && (
+                        <div className="mt-1.5 flex justify-between gap-4">
+                          <span className="text-muted-foreground">Files accepted</span>
+                          <span className="font-semibold text-foreground">
+                            {progress.filesUploaded.toLocaleString()} / {progress.filesTotal.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+                      {progress.bytesTotal > 0 && (
+                        <div className="mt-1.5 flex justify-between gap-4">
+                          <span className="text-muted-foreground">Data uploaded</span>
+                          <span className="font-semibold text-foreground">
+                            {fmtBytes(progress.bytesUploaded)} / {fmtBytes(progress.bytesTotal)}
+                          </span>
+                        </div>
+                      )}
+                      {mode === 'zip_bundle' && selectedFile && (
+                        <div className="mt-1.5 flex justify-between gap-4">
+                          <span className="text-muted-foreground">Bundle size</span>
+                          <span className="font-semibold text-foreground">{fmtBytes(selectedFile.size)}</span>
+                        </div>
+                      )}
+                      {rejectedCount > 0 && (
+                        <div className="mt-1.5 flex justify-between gap-4">
+                          <span className="text-muted-foreground">Rejected</span>
+                          <span className="font-semibold text-amber-400">{rejectedCount.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {retryingCount > 0 && (
+                        <div className="mt-1.5 flex justify-between gap-4">
+                          <span className="text-muted-foreground">Retrying</span>
+                          <span className="font-semibold text-amber-400">{retryingCount.toLocaleString()}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Progress bar */}
                 {(localUsbStage === 'uploading_analysis' || localUsbStage === 'uploading_bundle') && (
-                  <>
-                    <div className="w-full h-1.5 bg-[var(--color-surface)] rounded-full overflow-hidden mb-2">
+                  <div className="mb-4 shrink-0">
+                    <div className="w-full h-1.5 bg-[var(--color-surface)] rounded-full overflow-hidden mb-1.5">
                       <div
                         className="h-full bg-primary rounded-full transition-all duration-300"
                         style={{ width: `${uploadPct}%` }}
                       />
                     </div>
-                    <p className="text-sm text-muted-foreground mb-1">{uploadPct}%</p>
-                    {mode !== 'zip_bundle' && progress.filesTotal > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        {progress.filesUploaded.toLocaleString()} /{' '}
-                        {progress.filesTotal.toLocaleString()} files accepted
-                        {progress.bytesTotal > 0 && (
-                          <> · {fmtBytes(progress.bytesUploaded)} / {fmtBytes(progress.bytesTotal)}</>
-                        )}
-                        {rejectedCount > 0 && (
-                          <span className="text-amber-400"> · {rejectedCount.toLocaleString()} rejected</span>
-                        )}
-                      </p>
-                    )}
-                    {retryingCount > 0 && (
-                      <p className="text-xs text-amber-400 mt-1">
-                        Retrying {retryingCount} failed file{retryingCount !== 1 ? 's' : ''}…
-                      </p>
-                    )}
-                    {mode === 'zip_bundle' && selectedFile && (
-                      <p className="text-xs text-muted-foreground">{fmtBytes(selectedFile.size)}</p>
-                    )}
-                  </>
+                    <p className="text-sm text-center text-muted-foreground">{uploadPct}%</p>
+                  </div>
                 )}
 
-                <div className="mt-4 flex justify-center gap-3">
+                {/* Buttons pinned to bottom */}
+                <div className="mt-auto flex justify-center gap-3 pt-2">
                   <ControlButton variant="ghost" onClick={() => openAbortDialog('delete')} className="whitespace-nowrap">
                     <Close size={16} /> Cancel import
                   </ControlButton>
