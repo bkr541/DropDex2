@@ -73,12 +73,9 @@ export function ImportProgressModal({
       </div>
 
       {/* Five-stage progress indicator */}
-      <div className="px-7 pt-4 pb-0 shrink-0">
+      <div className="px-7 pt-6 pb-0 shrink-0">
         <ImportStageProgress currentStep={currentStep} />
       </div>
-
-      {/* Divider */}
-      <div className="h-px bg-[var(--color-border-subtle)] mx-0 mt-3 shrink-0" />
 
       {/* Scrollable phase body */}
       <div className="flex-1 min-h-0 overflow-y-auto px-7 py-4">

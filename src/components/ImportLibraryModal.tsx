@@ -1595,12 +1595,12 @@ export function ImportLibraryModal({
                       Choose different folder
                     </button>
                     {phase === 'scanning_usb' ? (
-                      <div className="mb-4 py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                      <div className="flex-1 mb-4 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] flex flex-col items-center justify-center gap-2 text-muted-foreground">
                         <CircleDash size={20} className="animate-spin text-primary" />
                         <p className="text-sm">Scanning folder…</p>
                       </div>
                     ) : phase === 'database_selected' && folderScan ? (
-                      <div className="mb-4 rounded-2xl border border-[var(--color-border-subtle)] p-4">
+                      <div className="flex-1 mb-4 rounded-2xl border border-[var(--color-border-subtle)] p-4">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                           {folderScan.folderName}
                         </p>

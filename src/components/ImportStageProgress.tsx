@@ -41,17 +41,9 @@ export function ImportStageProgress({ currentStep }: { currentStep: ImportUiStep
               className="flex flex-col items-center gap-1"
               aria-current={isActive ? 'step' : undefined}
             >
-              <div
-                className={cn(
-                  'relative w-8 h-8 rounded-full flex items-center justify-center shrink-0',
-                  isActive &&
-                    'bg-[#168cff]/15 border border-[#168cff]/50 shadow-[0_0_8px_rgba(22,140,255,0.22)]',
-                  isCompleted && 'bg-[#168cff]/10 border border-[#168cff]/20',
-                  !isActive && !isCompleted && 'bg-white/[0.04] border border-white/[0.07]',
-                )}
-              >
+              <div className="relative flex items-center justify-center shrink-0">
                 <Icon
-                  size={14}
+                  size={20}
                   className={cn(
                     isActive
                       ? 'text-[#168cff]'
