@@ -1594,9 +1594,9 @@ export function ImportLibraryModal({
                       <ArrowRight size={10} className="rotate-180 shrink-0" />
                       Choose different folder
                     </button>
-                    <div className="flex-1 min-h-0 mb-4">
+                    <div className="mb-4">
                       {phase === 'scanning_usb' ? (
-                        <div className="h-full min-h-[80px] py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                        <div className="py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] flex flex-col items-center justify-center gap-2 text-muted-foreground">
                           <CircleDash size={20} className="animate-spin text-primary" />
                           <p className="text-sm">Scanning folder…</p>
                         </div>
@@ -1638,7 +1638,7 @@ export function ImportLibraryModal({
                       ) : (
                         <button
                           onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
-                          className="w-full h-full min-h-[80px] py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5 transition-all text-center"
+                          className="w-full py-5 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5 transition-all text-center"
                         >
                           <div className="flex flex-col items-center gap-2 text-muted-foreground">
                             <FolderOpen size={20} />
@@ -1657,7 +1657,7 @@ export function ImportLibraryModal({
                       onChange={handleFolderChange}
                     />
 
-                    <div className="flex justify-center gap-3 shrink-0">
+                    <div className="mt-auto flex justify-center gap-3">
                       <ControlButton variant="ghost" onClick={handleClose}>
                         <Close size={16} /> Cancel
                       </ControlButton>
@@ -1679,11 +1679,11 @@ export function ImportLibraryModal({
                 {/* ZIP Bundle / Database Only picker */}
                 {(mode === 'zip_bundle' || mode === 'database_only') && (
                   <>
-                    <div className="flex-1 min-h-0 mb-4">
+                    <div className="mb-4">
                       <button
                         onClick={() => fileInputRef.current?.click()}
                         className={cn(
-                          'w-full h-full min-h-[80px] py-5 px-4 rounded-2xl border-2 border-dashed transition-all text-center',
+                          'w-full py-5 px-4 rounded-2xl border-2 border-dashed transition-all text-center',
                           selectedFile
                             ? 'border-primary/50 bg-primary/5'
                             : 'border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5',
@@ -1726,7 +1726,7 @@ export function ImportLibraryModal({
                       accept={mode === 'zip_bundle' ? '.zip' : '.db'}
                     />
 
-                    <div className="flex justify-center gap-3 shrink-0">
+                    <div className="mt-auto flex justify-center gap-3">
                       <ControlButton variant="ghost" onClick={handleClose}>
                         <Close size={16} /> Cancel
                       </ControlButton>
@@ -1761,15 +1761,15 @@ export function ImportLibraryModal({
                 </div>
 
                 {/* USB safety warning */}
-                <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left shrink-0">
-                  <WarningAlt size={18} className="mt-0.5 shrink-0 text-amber-400" />
+                <div className="mb-3 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left shrink-0">
+                  <WarningAlt size={16} className="mt-0.5 shrink-0 text-amber-400" />
                   <p className="text-xs leading-relaxed text-amber-100">
-                    DropDex is currently reading this Rekordbox USB. Keep Rekordbox closed and do not eject the drive until DropDex confirms that USB access has ended.
+                    Keep Rekordbox closed and do not eject this drive until DropDex confirms USB access has ended.
                   </p>
                 </div>
 
                 {/* Stats box — always visible, mirrors the Analysis Running info grid */}
-                <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3 text-left text-xs mb-4">
+                <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3 text-left text-xs mb-3">
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Stage</span>
                     <span className="font-semibold text-foreground capitalize">
@@ -1782,7 +1782,7 @@ export function ImportLibraryModal({
                   {(localUsbStage === 'uploading_analysis' || localUsbStage === 'uploading_bundle') && (
                     <>
                       {mode !== 'zip_bundle' && progress.filesTotal > 0 && (
-                        <div className="mt-1.5 flex justify-between gap-4">
+                        <div className="mt-1 flex justify-between gap-4">
                           <span className="text-muted-foreground">Files accepted</span>
                           <span className="font-semibold text-foreground">
                             {progress.filesUploaded.toLocaleString()} / {progress.filesTotal.toLocaleString()}
@@ -1790,7 +1790,7 @@ export function ImportLibraryModal({
                         </div>
                       )}
                       {progress.bytesTotal > 0 && (
-                        <div className="mt-1.5 flex justify-between gap-4">
+                        <div className="mt-1 flex justify-between gap-4">
                           <span className="text-muted-foreground">Data uploaded</span>
                           <span className="font-semibold text-foreground">
                             {fmtBytes(progress.bytesUploaded)} / {fmtBytes(progress.bytesTotal)}
@@ -1798,19 +1798,19 @@ export function ImportLibraryModal({
                         </div>
                       )}
                       {mode === 'zip_bundle' && selectedFile && (
-                        <div className="mt-1.5 flex justify-between gap-4">
+                        <div className="mt-1 flex justify-between gap-4">
                           <span className="text-muted-foreground">Bundle size</span>
                           <span className="font-semibold text-foreground">{fmtBytes(selectedFile.size)}</span>
                         </div>
                       )}
                       {rejectedCount > 0 && (
-                        <div className="mt-1.5 flex justify-between gap-4">
+                        <div className="mt-1 flex justify-between gap-4">
                           <span className="text-muted-foreground">Rejected</span>
                           <span className="font-semibold text-amber-400">{rejectedCount.toLocaleString()}</span>
                         </div>
                       )}
                       {retryingCount > 0 && (
-                        <div className="mt-1.5 flex justify-between gap-4">
+                        <div className="mt-1 flex justify-between gap-4">
                           <span className="text-muted-foreground">Retrying</span>
                           <span className="font-semibold text-amber-400">{retryingCount.toLocaleString()}</span>
                         </div>
@@ -1821,7 +1821,7 @@ export function ImportLibraryModal({
 
                 {/* Progress bar */}
                 {(localUsbStage === 'uploading_analysis' || localUsbStage === 'uploading_bundle') && (
-                  <div className="mb-4 shrink-0">
+                  <div className="shrink-0">
                     <div className="w-full h-1.5 bg-[var(--color-surface)] rounded-full overflow-hidden mb-1.5">
                       <div
                         className="h-full bg-primary rounded-full transition-all duration-300"
