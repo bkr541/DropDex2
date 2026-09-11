@@ -313,9 +313,9 @@ def _reparse_track(sb, track: dict) -> str:
 
         # Cues
         try:
-            from .cue_parser import parse_anlz_cues, CUE_MATCH_TOLERANCE_MS  # noqa: PLC0415
+            from .cue_parser import parse_anlz_cues  # noqa: PLC0415
             cue_entries, _ = parse_anlz_cues(bundle.dat, bundle.ext)
-            _reconcile_cues(sb, import_id, track_id, cue_entries, CUE_MATCH_TOLERANCE_MS)
+            _reconcile_cues(sb, import_id, track_id, cue_entries, 0.0)
             feature_statuses["cues"] = "completed"
         except Exception as exc:
             logger.error("Cue write failed for track %s: %s", track_id, exc)

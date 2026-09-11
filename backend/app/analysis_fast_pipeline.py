@@ -42,7 +42,7 @@ _FINAL_TRACK_STATUSES = frozenset({"completed", "partial", "reused", "skipped"})
 # marked failed and the pipeline moves on. The stuck thread is abandoned
 # (executor.shutdown(wait=False)) so it cannot block overall progress.
 _TRACK_PARSE_TIMEOUT_S = 120
-_REQUIRED_ASSET_TYPES = frozenset({"DAT", "EXT"})
+_REQUIRED_ASSET_TYPES = frozenset({"DAT"})
 _POSTGREST_IN_FILTER_CHUNK_SIZE = 100
 _BULK_WRITE_CHUNK_SIZE = 250
 
@@ -586,7 +586,6 @@ def _phrase_rows(import_id: str, parsed: ParsedTrack, parser_version: str) -> li
 
 
 def _reconcile_cues_bulk(sb: Any, import_id: str, parsed_batch: Sequence[ParsedTrack]) -> None:
-    from dropdex_importer.cue_parser import CUE_MATCH_TOLERANCE_MS
     from dropdex_importer.cue_reconciliation import (
         CueReconciliationPlan,
         apply_cue_reconciliation_plan,
@@ -620,7 +619,6 @@ def _reconcile_cues_bulk(sb: Any, import_id: str, parsed_batch: Sequence[ParsedT
             parsed.cue_entries,
             import_id=import_id,
             track_id=track_id,
-            tolerance_ms=CUE_MATCH_TOLERANCE_MS,
         )
         upsert_rows.extend(plan.upsert_rows)
         delete_ids.extend(plan.delete_ids)

@@ -153,7 +153,6 @@ def reconcile_and_write_cues(
     warnings: List[Any],        # List[AnalysisParseWarning] (unused here but kept for callers)
 ) -> CueWriteResult:
     """Reconcile one track without collapsing persistence failure into success."""
-    from dropdex_importer.cue_parser import CUE_MATCH_TOLERANCE_MS  # noqa: PLC0415
     from dropdex_importer.cue_reconciliation import (  # noqa: PLC0415
         CueReconciliationPersistenceError,
         apply_cue_reconciliation_plan,
@@ -172,7 +171,6 @@ def reconcile_and_write_cues(
             anlz_entries,
             import_id=import_id,
             track_id=track_id,
-            tolerance_ms=CUE_MATCH_TOLERANCE_MS,
         )
         applied = apply_cue_reconciliation_plan(sb, plan)
         return CueWriteResult(

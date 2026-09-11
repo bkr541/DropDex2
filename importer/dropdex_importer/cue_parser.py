@@ -1,22 +1,26 @@
 """
 Cue point extraction from ANLZ PCOB and PCO2 tags.
 
-Preference order:
-  PCO2 from EXT — carries color, comment, beat loop ratios (preferred)
-  PCOB from DAT — basic timing, type, hot-cue slot (fallback)
-  PCOB from EXT — checked last if neither PCO2 nor DAT PCOB is available
+Hot Cue source priority:
+  1. All PCO2 tags from EXT — explicit slot, richer metadata (preferred)
+  2. Fallback: PCOB Hot Cue entries from DAT + EXT combined by explicit slot
 
-Reconciliation rules
---------------------
-- PCO2 and PCOB represent the same cue in different formats.
-  Do NOT treat the same cue from both tags as two separate cues.
-- Match DB cue to ANLZ by hot_cue_slot (for hot cues) AND start timing (±10 ms).
-- Memory cues match by timing only (they have no fixed slot).
-- Do not match by array index alone.
-- Color resolution: explicit PCO2 RGB → color_id table → null.
-- Do not derive colors from cue slot letters.
+Memory Cue source:
+  Base: ALL PCOB tags from DAT (hot_cue == 0 entries)
+  Enrichment: PCO2 Memory entries from EXT replace PCOB when the whole list
+              agrees exactly on count, start_ms, point_type, and end_ms.
+              On any conflict → PCOB entries are kept and a warning is emitted.
+
+Design rules
+------------
+- Use get_all_tags() — never get_first_tag() — so every PCOB/PCO2 tag is read.
+- DAT files carry two PCOB tags: tag[0] = Hot Cue list, tag[1] = Memory Cue list.
 - hot_cue == 0  → memory cue (cue_family='memory', hot_cue_slot=None)
 - hot_cue 1..8  → hot cue  (cue_family='hot',    hot_cue_slot=1..8)
+- Timestamp is cue content, not cue identity.  Two cues at the same start_ms
+  are distinct objects and must not be collapsed.
+- rekordbox_cue_id remains null for all ANLZ-derived cues (no fabrication).
+- Color resolution: explicit PCO2 RGB → color_id table → null.
 """
 
 from __future__ import annotations
@@ -26,12 +30,9 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from .analysis_models import AnalysisParseWarning, ParsedAnalysisAsset
-from .anlz_parser import get_first_tag
+from .anlz_parser import get_all_tags
 
 logger = logging.getLogger(__name__)
-
-# Maximum ms difference for matching an ANLZ cue to an existing DB cue row.
-CUE_MATCH_TOLERANCE_MS = 10.0
 
 # Rekordbox color_id → CSS hex color string.
 # ID 0 = no color; IDs 1–8 are the fixed cue colors in the Rekordbox UI.
@@ -54,10 +55,12 @@ class AnlzCueEntry:
     One cue point extracted from ANLZ PCOB or PCO2 data.
 
     This model is intentionally flat so it can be used directly for
-    DB reconciliation without further parsing.
+    persistence without further parsing.
     """
-    source_index: int               # 0-based index in source tag entry list
+    source_index: int               # 0-based entry index within source tag
     source_tag: str                 # "PCO2" | "PCOB"
+    asset_type: str                 # "DAT" | "EXT" | "unknown"
+    tag_occurrence: int             # 0-based tag-instance index within the file
     hot_cue_slot: Optional[int]     # None for memory cues, 1–8 for hot cue slots
     cue_family: str                 # "hot" | "memory"
     point_type: str                 # "cue" | "loop"
@@ -78,35 +81,63 @@ def parse_anlz_cues(
     ext_asset: Optional[ParsedAnalysisAsset],
 ) -> Tuple[List[AnlzCueEntry], List[AnalysisParseWarning]]:
     """
-    Extract cue entries from ANLZ data, preferring PCO2 (EXT) over PCOB.
+    Extract all cue entries from ANLZ data with correct hot/memory separation.
+
+    Hot Cue source priority:
+      1. All PCO2 tags from EXT (preferred — explicit slot, richer metadata).
+      2. Fallback: PCOB Hot Cue entries from DAT + EXT combined by explicit slot.
+
+    Memory Cue source:
+      All PCOB tags from DAT → entries with hot_cue == 0.
+      PCO2 Memory from EXT replaces PCOB when the whole list agrees exactly.
 
     Returns (entries, warnings).
     """
     warnings: List[AnalysisParseWarning] = []
 
+    # ── Parse all PCO2 tags from EXT ─────────────────────────────────────────
+    pco2_entries: List[AnlzCueEntry] = []
     if ext_asset is not None:
-        tag = get_first_tag(ext_asset, "PCO2")
-        if tag is not None:
-            entries, w = _parse_pco2(tag, ext_asset)
+        for tag_occ, tag in enumerate(get_all_tags(ext_asset, "PCO2")):
+            entries, w = _parse_pco2(tag, ext_asset, asset_type="EXT", tag_occurrence=tag_occ)
+            pco2_entries.extend(entries)
             warnings.extend(w)
-            return entries, warnings
 
+    pco2_hot = [e for e in pco2_entries if e.cue_family == "hot"]
+    pco2_memory = [e for e in pco2_entries if e.cue_family == "memory"]
+
+    # ── Parse all PCOB tags from DAT ─────────────────────────────────────────
+    dat_pcob_all: List[AnlzCueEntry] = []
     if dat_asset is not None:
-        tag = get_first_tag(dat_asset, "PCOB")
-        if tag is not None:
-            entries, w = _parse_pcob(tag, dat_asset)
+        for tag_occ, tag in enumerate(get_all_tags(dat_asset, "PCOB")):
+            entries, w = _parse_pcob(tag, dat_asset, asset_type="DAT", tag_occurrence=tag_occ)
+            dat_pcob_all.extend(entries)
             warnings.extend(w)
-            return entries, warnings
 
-    # Last resort: PCOB from EXT
+    # ── Parse all PCOB tags from EXT (for hot-cue fallback slots) ────────────
+    ext_pcob_all: List[AnlzCueEntry] = []
     if ext_asset is not None:
-        tag = get_first_tag(ext_asset, "PCOB")
-        if tag is not None:
-            entries, w = _parse_pcob(tag, ext_asset)
+        for tag_occ, tag in enumerate(get_all_tags(ext_asset, "PCOB")):
+            entries, w = _parse_pcob(tag, ext_asset, asset_type="EXT", tag_occurrence=tag_occ)
+            ext_pcob_all.extend(entries)
             warnings.extend(w)
-            return entries, warnings
 
-    return [], warnings
+    # ── Select canonical hot cues ─────────────────────────────────────────────
+    if pco2_hot:
+        canonical_hot = pco2_hot
+    else:
+        dat_hot = [e for e in dat_pcob_all if e.cue_family == "hot"]
+        ext_hot = [e for e in ext_pcob_all if e.cue_family == "hot"]
+        canonical_hot = _merge_pcob_hot_by_slot(dat_hot, ext_hot)
+
+    # ── Select canonical memory cues ──────────────────────────────────────────
+    pcob_memory = [e for e in dat_pcob_all if e.cue_family == "memory"]
+    canonical_memory = _select_memory_cues(pcob_memory, pco2_memory, warnings)
+
+    return canonical_hot + canonical_memory, warnings
+
+
+# ── Internal helpers ──────────────────────────────────────────────────────────
 
 
 def _classify_cue_family(hot_cue: int) -> Tuple[str, Optional[int]]:
@@ -114,6 +145,83 @@ def _classify_cue_family(hot_cue: int) -> Tuple[str, Optional[int]]:
     if hot_cue == 0:
         return "memory", None
     return "hot", int(hot_cue)
+
+
+def _merge_pcob_hot_by_slot(
+    dat_hot: List[AnlzCueEntry],
+    ext_hot: List[AnlzCueEntry],
+) -> List[AnlzCueEntry]:
+    """
+    Combine DAT and EXT PCOB hot cue entries by explicit slot.
+
+    When the same slot appears in both sources, DAT takes precedence.
+    EXT contributes any slots that DAT does not have (e.g. D-H when DAT only has A-C).
+    """
+    by_slot: Dict[int, AnlzCueEntry] = {}
+    for entry in ext_hot:
+        if entry.hot_cue_slot is not None:
+            by_slot[entry.hot_cue_slot] = entry
+    for entry in dat_hot:
+        if entry.hot_cue_slot is not None:
+            by_slot[entry.hot_cue_slot] = entry
+    return sorted(by_slot.values(), key=lambda e: e.hot_cue_slot or 0)
+
+
+def _memory_lists_agree(
+    pcob: List[AnlzCueEntry],
+    pco2: List[AnlzCueEntry],
+) -> bool:
+    """
+    Return True when PCO2 and PCOB memory lists agree on the whole-list level.
+
+    Agreement requires: same count, same start_ms, same point_type, same end_ms
+    for every pair when both lists are sorted by start_ms.
+    No per-entry tolerance — exact positional match only.
+    """
+    if len(pcob) != len(pco2):
+        return False
+    for p_pcob, p_pco2 in zip(
+        sorted(pcob, key=lambda e: e.start_ms),
+        sorted(pco2, key=lambda e: e.start_ms),
+    ):
+        if p_pcob.start_ms != p_pco2.start_ms:
+            return False
+        if p_pcob.point_type != p_pco2.point_type:
+            return False
+        if p_pcob.end_ms != p_pco2.end_ms:
+            return False
+    return True
+
+
+def _select_memory_cues(
+    pcob_memory: List[AnlzCueEntry],
+    pco2_memory: List[AnlzCueEntry],
+    warnings: List[AnalysisParseWarning],
+) -> List[AnlzCueEntry]:
+    """
+    Return the canonical memory cue list.
+
+    Base source: PCOB memory entries from DAT.
+    If PCO2 memory is non-empty and the whole-list agrees exactly with PCOB,
+    use PCO2 entries for richer metadata (comment, color).
+    On any conflict: emit a warning and keep PCOB.
+    """
+    if not pco2_memory:
+        return pcob_memory
+    if not pcob_memory:
+        # No PCOB memory baseline; PCO2 memory is the only source — use it.
+        return pco2_memory
+    if not _memory_lists_agree(pcob_memory, pco2_memory):
+        warnings.append(AnalysisParseWarning(
+            code="CUE_MEMORY_CONFLICT",
+            asset_type="EXT",
+            message=(
+                "PCO2 and PCOB Memory Cue lists differ; "
+                "using PCOB entries as safe fallback."
+            ),
+        ))
+        return pcob_memory
+    return pco2_memory
 
 
 def _resolve_pco2_color(entry: Any) -> Optional[str]:
@@ -155,7 +263,11 @@ def _loop_end_ms(entry: Any) -> Optional[float]:
 
 
 def _parse_pco2(
-    tag: Any, asset: ParsedAnalysisAsset
+    tag: Any,
+    asset: ParsedAnalysisAsset,
+    *,
+    asset_type: str = "unknown",
+    tag_occurrence: int = 0,
 ) -> Tuple[List[AnlzCueEntry], List[AnalysisParseWarning]]:
     """Parse a PCO2 tag into AnlzCueEntry objects."""
     warnings: List[AnalysisParseWarning] = []
@@ -208,6 +320,8 @@ def _parse_pco2(
 
         source_payload: Dict[str, Any] = {
             "tag": "PCO2",
+            "asset_type": asset_type,
+            "tag_occurrence": tag_occurrence,
             "src_idx": src_idx,
             "hot_cue": hot_cue,
             "type": point_type_raw,
@@ -222,6 +336,8 @@ def _parse_pco2(
         entries.append(AnlzCueEntry(
             source_index=src_idx,
             source_tag="PCO2",
+            asset_type=asset_type,
+            tag_occurrence=tag_occurrence,
             hot_cue_slot=slot,
             cue_family=cue_family,
             point_type=point_type,
@@ -240,7 +356,11 @@ def _parse_pco2(
 
 
 def _parse_pcob(
-    tag: Any, asset: ParsedAnalysisAsset
+    tag: Any,
+    asset: ParsedAnalysisAsset,
+    *,
+    asset_type: str = "unknown",
+    tag_occurrence: int = 0,
 ) -> Tuple[List[AnlzCueEntry], List[AnalysisParseWarning]]:
     """Parse a PCOB tag into AnlzCueEntry objects."""
     warnings: List[AnalysisParseWarning] = []
@@ -281,6 +401,8 @@ def _parse_pcob(
 
         source_payload: Dict[str, Any] = {
             "tag": "PCOB",
+            "asset_type": asset_type,
+            "tag_occurrence": tag_occurrence,
             "src_idx": src_idx,
             "hot_cue": hot_cue,
         }
@@ -294,6 +416,8 @@ def _parse_pcob(
         entries.append(AnlzCueEntry(
             source_index=src_idx,
             source_tag="PCOB",
+            asset_type=asset_type,
+            tag_occurrence=tag_occurrence,
             hot_cue_slot=slot,
             cue_family=cue_family,
             point_type=point_type,

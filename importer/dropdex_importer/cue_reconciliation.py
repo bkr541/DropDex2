@@ -83,7 +83,9 @@ def _row_sort_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
 
 
 def _anlz_key(import_id: str, entry: Any) -> str:
-    return f"anlz:{import_id}:{entry.source_tag}:{entry.source_index}"
+    asset_type = str(getattr(entry, "asset_type", "unknown"))
+    tag_occurrence = int(getattr(entry, "tag_occurrence", 0))
+    return f"anlz:{import_id}:{asset_type}:{entry.source_tag}:{tag_occurrence}:{entry.source_index}"
 
 
 def _anlz_evidence(entry: Any) -> dict[str, Any]:
@@ -214,8 +216,15 @@ def _candidate_rows(
     entry: Any,
     rows: Sequence[dict[str, Any]],
     matched_ids: set[str],
-    tolerance_ms: float,
+    tolerance_ms: float = 0.0,  # retained for call-site compatibility; not used for identity
 ) -> list[tuple[tuple[int, float], dict[str, Any]]]:
+    """
+    Return rows that are candidates for matching to an ANLZ entry.
+
+    Only previously-merged hot-cue rows (source_anlz_present=True with a known
+    slot) qualify — they are re-matched by slot identity, not by timestamp.
+    Timestamp proximity is not used as a cue identity mechanism.
+    """
     candidates: list[tuple[tuple[int, float], dict[str, Any]]] = []
     entry_ms = float(entry.start_ms)
 
@@ -228,20 +237,16 @@ def _candidate_rows(
         row_slot = row.get("hot_cue_slot")
         row_has_anlz = bool(row.get("source_anlz_present"))
 
-        # A previously ANLZ-identified Hot slot is a strong source identity. It
-        # can survive a timing correction, but a different known Hot slot is a
-        # distinct cue and must not be stolen by timing proximity.
+        # A previously ANLZ-identified Hot slot is a stable source identity.
+        # Re-match by slot so timing corrections are absorbed without conflict.
+        # A different known Hot slot is a distinct cue — never stolen by proximity.
         if entry.cue_family == "hot" and row_has_anlz and row_slot is not None:
             if int(row_slot) == int(entry.hot_cue_slot or 0):
                 delta = abs(row_ms - entry_ms) if row_ms is not None else float("inf")
                 candidates.append(((0, delta), row))
             continue
 
-        if row_ms is None:
-            continue
-        delta = abs(row_ms - entry_ms)
-        if delta <= tolerance_ms:
-            candidates.append(((1, delta), row))
+        # Timestamp proximity is not used to establish cross-source cue identity.
 
     return candidates
 
@@ -387,7 +392,7 @@ def build_cue_reconciliation_plan(
     *,
     import_id: str,
     track_id: str,
-    tolerance_ms: float,
+    tolerance_ms: float = 0.0,
 ) -> CueReconciliationPlan:
     """Return deterministic persistence operations for one track.
 

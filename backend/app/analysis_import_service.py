@@ -84,7 +84,7 @@ from .validation import validate
 logger = logging.getLogger(__name__)
 
 _VALID_ANLZ_SUFFIXES = frozenset({".dat", ".ext", ".2ex"})
-_REQUIRED_ANLZ_SUFFIXES = frozenset({".dat", ".ext"})
+_REQUIRED_ANLZ_SUFFIXES = frozenset({".dat"})
 _ASSET_EXT_MAP = {"DAT": ".DAT", "EXT": ".EXT", "2EX": ".2EX"}
 _ANALYSIS_BUCKET = "rekordbox-analysis-assets"
 
@@ -425,7 +425,8 @@ def _required_asset_types_for_status(status: str) -> frozenset[str]:
         return frozenset()
     if normalized == "needs_ext":
         return frozenset({"EXT"})
-    return frozenset({"DAT", "EXT"})
+    # EXT is preferred but optional; DAT is the only blocking required asset.
+    return frozenset({"DAT"})
 
 
 def _track_source_fingerprint(track: dict, manifest_entry: ManifestEntryResponse) -> str:
@@ -519,11 +520,20 @@ def _build_path_map(tracks: List[dict]) -> Dict[str, dict]:
             str(track.get("analysis_manifest_status") or "needs_analysis")
         )
         for path, asset_type in ((dat_path, "DAT"), (ext_path, "EXT")):
-            if asset_type in required_types:
+            # DAT: required when in required_types.
+            # EXT: accepted (preferred but optional) when DAT is required, or
+            #      required when needs_ext status puts it explicitly in required_types.
+            #      Never accepted for no-upload tracks (metadata_only, reused, etc.)
+            #      where required_types is empty.
+            should_include = (
+                asset_type in required_types
+                or (asset_type == "EXT" and "DAT" in required_types)
+            )
+            if should_include:
                 path_map[path.lower()] = {
                     "track_id": track["id"],
                     "asset_type": asset_type,
-                    "required": True,
+                    "required": asset_type in required_types,
                     "source_fingerprint": track.get("analysis_source_fingerprint"),
                 }
         if settings.analysis_archive_2ex and two_ex_path:
@@ -3432,7 +3442,9 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
         specs = []
         if "DAT" in requested_types:
             specs.append((dat_path, "DAT", True))
-        if "EXT" in requested_types:
+        # EXT is preferred but optional — always track for missing_optional_ext;
+        # required only when the manifest status is needs_ext.
+        if ext_path:
             specs.append((ext_path, "EXT", manifest_status == "needs_ext"))
 
         for relative_path, asset_type, required in specs:

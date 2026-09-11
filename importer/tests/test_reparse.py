@@ -320,7 +320,7 @@ class TestReparseTrackBehavior:
 class TestWaveformReparseWriter:
     def test_detail_path_is_parser_versioned(self):
         path = _detail_storage_path("user-1", "import-1", "track-1")
-        assert path.endswith("/detail.v2.1.0.json.gz")
+        assert path.endswith("/detail.v3.0.0.json.gz")
 
     def test_uploads_regenerated_detail_before_database_update(self):
         events: list[str] = []
@@ -358,13 +358,13 @@ class TestWaveformReparseWriter:
         assert events == ["upload", "upsert"]
         storage.upload.assert_called_once()
         upload_kwargs = storage.upload.call_args.kwargs
-        assert upload_kwargs["path"].endswith("/detail.v2.1.0.json.gz")
+        assert upload_kwargs["path"].endswith("/detail.v3.0.0.json.gz")
         assert upload_kwargs["file"] == b"gzip-detail"
 
         row = query.upsert.call_args.args[0]
         assert row["detail_format"] == "PWV5"
         assert row["detail_column_count"] == 1
-        assert row["detail_storage_path"].endswith("/detail.v2.1.0.json.gz")
+        assert row["detail_storage_path"].endswith("/detail.v3.0.0.json.gz")
 
     def test_upload_failure_preserves_existing_waveform_row(self):
         sb = MagicMock()

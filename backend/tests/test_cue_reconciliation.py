@@ -1,4 +1,9 @@
-"""Stage 2 canonical DB + ANLZ cue reconciliation regression coverage."""
+"""Stage 2 canonical DB + ANLZ cue reconciliation regression coverage.
+
+Tests the ANLZ-first canonical architecture: timestamp proximity is NOT used for
+cue identity. Only slot-based re-matching of previously-merged hot cue rows
+(source_anlz_present=True) is supported.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +17,7 @@ from app.analysis_fast_pipeline import (
     _reconcile_cues_bulk,
 )
 from app.analysis_feature_writer import reconcile_and_write_cues
-from dropdex_importer.cue_parser import AnlzCueEntry, CUE_MATCH_TOLERANCE_MS
+from dropdex_importer.cue_parser import AnlzCueEntry
 from dropdex_importer.cue_reconciliation import (
     CueReconciliationPersistenceError,
     apply_cue_reconciliation_plan,
@@ -36,10 +41,14 @@ def anlz(
     loop_den: int | None = None,
     source_tag: str = "PCO2",
     source_index: int = 0,
+    asset_type: str = "EXT",
+    tag_occurrence: int = 0,
 ) -> AnlzCueEntry:
     return AnlzCueEntry(
         source_index=source_index,
         source_tag=source_tag,
+        asset_type=asset_type,
+        tag_occurrence=tag_occurrence,
         hot_cue_slot=slot,
         cue_family=family,
         point_type=point_type,
@@ -53,6 +62,8 @@ def anlz(
         beat_loop_denominator=loop_den,
         source_payload={
             "tag": source_tag,
+            "asset_type": asset_type,
+            "tag_occurrence": tag_occurrence,
             "src_idx": source_index,
             "hot_cue": 0 if family == "memory" else slot,
         },
@@ -114,7 +125,7 @@ def apply_plan(existing: list[dict[str, Any]], entries: list[AnlzCueEntry]) -> l
         entries,
         import_id="imp-1",
         track_id="track-1",
-        tolerance_ms=CUE_MATCH_TOLERANCE_MS,
+        tolerance_ms=0.0,
     )
     sb.apply_plan(plan)
     return sb.rows
@@ -234,173 +245,198 @@ def projection(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 class TestCanonicalAuthority:
-    def test_provisional_memory_merges_into_authoritative_hot_a(self):
-        rows = apply_plan(
-            [db_cue(family="memory", color_table_index=0)],
-            [anlz(family="hot", slot=1)],
-        )
+    def test_anlz_entry_creates_anlz_row_when_no_db_match(self):
+        """With no DB rows, ANLZ entry creates a new anlz: row."""
+        rows = apply_plan([], [anlz(family="hot", slot=1, start_ms=1000.0)])
         assert len(rows) == 1
         row = rows[0]
-        assert row["dedupe_key"] == "db:db-1"
+        assert row["dedupe_key"].startswith("anlz:")
         assert row["cue_family"] == "hot"
         assert row["cue_family_authority"] == "anlz"
         assert row["hot_cue_slot"] == 1
+        assert row["source_db_present"] is False
+        assert row["source_anlz_present"] is True
+        assert row["source_conflict"] is False
+        assert row["rekordbox_cue_id"] is None
+
+    def test_db_row_without_anlz_stays_db_only_when_no_slot_match(self):
+        """DB row with source_anlz_present=False is not merged with any ANLZ entry."""
+        rows = apply_plan(
+            [db_cue(family="memory", comment="DB-only")],
+            [anlz(family="hot", slot=1)],
+        )
+        # DB row stays unchanged; ANLZ entry creates its own new row.
+        assert len(rows) == 2
+        db_rows = [r for r in rows if r.get("source_db_present")]
+        anlz_rows = [r for r in rows if not r.get("source_db_present")]
+        assert len(db_rows) == 1
+        assert len(anlz_rows) == 1
+        assert db_rows[0]["comment"] == "DB-only"
+        assert anlz_rows[0]["cue_family"] == "hot"
+
+    def test_slot_based_rematch_merges_previously_merged_hot_row(self):
+        """Previously ANLZ-merged hot cue row (source_anlz_present=True) re-merges via slot."""
+        rows = apply_plan(
+            [db_cue(family="hot", slot=1, source_anlz_present=True)],
+            [anlz(family="hot", slot=1, start_ms=1000.0)],
+        )
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["cue_family"] == "hot"
+        assert row["hot_cue_slot"] == 1
+        assert row["cue_family_authority"] == "anlz"
         assert row["source_db_present"] is True
         assert row["source_anlz_present"] is True
         assert row["source_conflict"] is False
 
-    def test_provisional_hot_merges_into_authoritative_memory(self):
-        rows = apply_plan(
-            [db_cue(family="hot", color_table_index=3)],
-            [anlz(family="memory", slot=None)],
-        )
-        assert len(rows) == 1
-        assert rows[0]["cue_family"] == "memory"
-        assert rows[0]["hot_cue_slot"] is None
-        assert rows[0]["cue_family_authority"] == "anlz"
-
-    def test_hot_h_with_zero_color_index_remains_hot(self):
-        rows = apply_plan(
-            [db_cue(family="memory", color_table_index=0)],
-            [anlz(family="hot", slot=8, color_id=0)],
-        )
-        assert rows[0]["cue_family"] == "hot"
-        assert rows[0]["hot_cue_slot"] == 8
-        assert rows[0]["color_table_index"] == 0
-
-    def test_anlz_owns_loop_shape_but_preserves_db_active_loop(self):
-        rows = apply_plan(
-            [db_cue(family="memory", start_ms=1002, point_type="cue")],
-            [
-                anlz(
-                    family="memory",
-                    slot=None,
-                    start_ms=1000,
-                    end_ms=3000,
-                    point_type="loop",
-                    active_loop=None,
-                    loop_num=8,
-                    loop_den=1,
-                )
-            ],
-        )
-        row = rows[0]
-        assert row["point_type"] == "loop"
-        assert row["start_ms"] == 1000
-        assert row["end_ms"] == 3000
-        assert row["is_active_loop"] is False
-        assert row["beat_loop_numerator"] == 8
-        assert row["beat_loop_denominator"] == 1
-        # Raw DB timing remains preserved as DB-only evidence.
-        assert row["start_usec"] == 1_002_000
-
-    def test_db_active_loop_true_survives_matching_anlz_loop(self):
-        rows = apply_plan(
-            [db_cue(family="hot", slot=1, point_type="loop", end_ms=3000, active_loop=True)],
-            [anlz(family="hot", slot=1, point_type="loop", end_ms=3000, active_loop=None)],
-        )
-        assert rows[0]["point_type"] == "loop"
-        assert rows[0]["is_active_loop"] is True
-
     def test_anlz_only_loop_keeps_active_loop_unknown(self):
+        """ANLZ-only loop cue does not fabricate an active_loop value."""
         rows = apply_plan([], [anlz(family="hot", slot=2, point_type="loop", end_ms=3000)])
         assert len(rows) == 1
         assert rows[0]["source_db_present"] is False
         assert rows[0]["is_active_loop"] is None
 
-    def test_pco2_color_id_does_not_overwrite_db_color_table_index(self):
+    def test_slot_based_merge_preserves_db_active_loop(self):
+        """When slot-based merge fires, the DB is_active_loop value is preserved."""
         rows = apply_plan(
-            [db_cue(family="hot", slot=1, color_table_index=3)],
-            [anlz(family="hot", slot=1, color_id=6, color_hex="#0000FF")],
-        )
-        assert rows[0]["color_table_index"] == 3
-        assert rows[0]["color_hex"] == "#0000FF"
-        evidence = rows[0]["source_payload"]["_dropdex_cue_reconciliation"]
-        assert evidence["db"]["color_table_index"] == 3
-        assert evidence["anlz"]["color_id"] == 6
-
-    def test_preserved_raw_db_payload_wins_when_building_reconciliation_evidence(self):
-        row = db_cue(
-            family="hot", slot=1, point_type="loop", end_ms=3000,
-            color_table_index=9, comment="row value", active_loop=True,
-        )
-        row["source_payload"].update({
-            "is_active_loop": False,
-            "color_table_index": 4,
-            "comment": "preserved DB value",
-            "beat_loop_numerator": 8,
-            "beat_loop_denominator": 1,
-        })
-        rows = apply_plan(
-            [row],
+            [db_cue(family="hot", slot=1, point_type="loop", end_ms=3000, active_loop=True, source_anlz_present=True)],
             [anlz(family="hot", slot=1, point_type="loop", end_ms=3000, active_loop=None)],
         )
+        assert rows[0]["point_type"] == "loop"
+        assert rows[0]["is_active_loop"] is True
 
-        evidence = rows[0]["source_payload"]["_dropdex_cue_reconciliation"]["db"]
-        assert evidence["is_active_loop"] is False
-        assert evidence["color_table_index"] == 4
-        assert evidence["comment"] == "preserved DB value"
-        assert evidence["beat_loop_numerator"] == 8
-        assert evidence["beat_loop_denominator"] == 1
-
-    def test_db_only_fields_survive_authoritative_merge(self):
+    def test_slot_based_merge_writes_anlz_color_hex(self):
+        """Merged row gets color_hex from the ANLZ entry."""
         rows = apply_plan(
-            [db_cue(comment="DB-only label")],
-            [anlz(comment=None)],
+            [db_cue(family="hot", slot=1, color_table_index=3, source_anlz_present=True)],
+            [anlz(family="hot", slot=1, color_id=6, color_hex="#0000FF")],
         )
-        assert rows[0]["rekordbox_cue_id"] == "rb-db-1"
-        assert rows[0]["comment"] == "DB-only label"
+        assert rows[0]["color_table_index"] == 3   # DB-owned; not overwritten
+        assert rows[0]["color_hex"] == "#0000FF"   # ANLZ color_hex written
 
+    def test_anlz_only_row_has_null_rekordbox_cue_id(self):
+        """ANLZ-derived rows never have a fabricated rekordbox_cue_id."""
+        rows = apply_plan([], [anlz(family="memory", slot=None, start_ms=2000.0)])
+        assert rows[0]["rekordbox_cue_id"] is None
 
-class TestDeterminismAndConflicts:
-    def test_reconciliation_is_idempotent_without_duplicates(self):
-        first = apply_plan([db_cue()], [anlz(family="hot", slot=1)])
-        second = apply_plan(first, [anlz(family="hot", slot=1)])
-        assert projection(second) == projection(first)
-        assert len(second) == 1
-
-    def test_two_distinct_nearby_cues_remain_distinct(self):
-        first = db_cue(cue_id="one", start_ms=1000)
-        second = db_cue(cue_id="two", start_ms=1008)
+    def test_anlz_loop_fields_written_to_new_row(self):
+        """Loop start/end and beat-loop ratio are persisted in ANLZ-only row."""
         rows = apply_plan(
-            [first, second],
+            [],
+            [anlz(family="hot", slot=1, point_type="loop", end_ms=4000.0, loop_num=8, loop_den=1)],
+        )
+        row = rows[0]
+        assert row["point_type"] == "loop"
+        assert row["end_ms"] == 4000.0
+        assert row["beat_loop_numerator"] == 8
+        assert row["beat_loop_denominator"] == 1
+
+    def test_anlz_comment_written_to_new_row(self):
+        rows = apply_plan([], [anlz(comment="intro", family="memory", slot=None)])
+        assert rows[0]["comment"] == "intro"
+
+    def test_stale_parser_row_deleted_on_rematch(self):
+        """Old anlz:-keyed row that matches no current ANLZ entry is deleted."""
+        stale = {
+            "id": "stale-1",
+            "import_id": "imp-1",
+            "track_id": "track-1",
+            "dedupe_key": "anlz:imp-1:EXT:PCO2:0:99",
+            "cue_family": "hot",
+            "cue_family_authority": "anlz",
+            "hot_cue_slot": 5,
+            "point_type": "cue",
+            "start_ms": 9999.0,
+            "end_ms": None,
+            "source_db_present": False,
+            "source_anlz_present": True,
+            "source_conflict": False,
+            "rekordbox_cue_id": None,
+            "source_payload": {},
+        }
+        rows = apply_plan([stale], [anlz(family="hot", slot=1, start_ms=1000.0)])
+        # Stale row deleted; new ANLZ row created for slot 1.
+        assert len(rows) == 1
+        assert rows[0]["dedupe_key"] != "anlz:imp-1:EXT:PCO2:0:99"
+
+    def test_memory_cue_anlz_row_created_independently(self):
+        """Memory cue ANLZ entries always create their own anlz: rows."""
+        rows = apply_plan(
+            [],
             [
-                anlz(family="hot", slot=1, start_ms=1000, source_index=0),
-                anlz(family="memory", slot=None, start_ms=1008, source_index=1),
+                anlz(family="hot", slot=1, start_ms=1000.0, source_index=0),
+                anlz(family="memory", slot=None, start_ms=1000.0, source_index=1),
             ],
         )
         assert len(rows) == 2
-        by_key = {row["dedupe_key"]: row for row in rows}
-        assert by_key["db:one"]["start_ms"] == 1000
-        assert by_key["db:two"]["start_ms"] == 1008
-        assert {row["cue_family"] for row in rows} == {"hot", "memory"}
+        families = {r["cue_family"] for r in rows}
+        assert families == {"hot", "memory"}
 
-    def test_equal_timing_ambiguity_becomes_explicit_conflict(self):
+    def test_slot_mismatch_does_not_merge_different_slots(self):
+        """Slot-based match: DB slot=1 does not absorb ANLZ slot=2.
+
+        The DB row (previously merged, slot=1) is restored to provisional state
+        when slot=1 is no longer provided by the current ANLZ run.
+        The ANLZ slot=2 creates its own new row.
+        """
         rows = apply_plan(
-            [db_cue(cue_id="one", start_ms=1000), db_cue(cue_id="two", start_ms=1000)],
-            [anlz(family="hot", slot=1, start_ms=1000)],
+            [db_cue(family="hot", slot=1, source_anlz_present=True)],
+            [anlz(family="hot", slot=2)],
         )
-        assert len(rows) == 3
-        assert all(row["source_conflict"] for row in rows)
-        anlz_only = next(row for row in rows if row["dedupe_key"].startswith("anlz:"))
-        conflict = anlz_only["source_payload"]["_dropdex_cue_reconciliation"]["conflict"]
-        assert conflict["reason"] == "ambiguous_db_timing_match"
-        assert conflict["candidate_ids"] == ["one", "two"]
+        assert len(rows) == 2
+        # ANLZ slot=2 row exists
+        anlz_rows = [r for r in rows if r.get("dedupe_key", "").startswith("anlz:")]
+        assert len(anlz_rows) == 1
+        assert anlz_rows[0]["hot_cue_slot"] == 2
+        # DB row was restored; not merged with slot=2
+        db_rows = [r for r in rows if r.get("source_db_present")]
+        assert not any(r.get("hot_cue_slot") == 2 for r in db_rows)
 
-    def test_input_order_does_not_change_output(self):
-        existing = [db_cue(cue_id="one", start_ms=1000), db_cue(cue_id="two", start_ms=1200)]
+
+class TestDeterminismAndConflicts:
+    def test_anlz_only_idempotent_across_two_runs(self):
+        """Re-running with same ANLZ entries on existing anlz: rows is idempotent."""
+        entry = anlz(family="hot", slot=1, start_ms=1000.0)
+        first = apply_plan([], [entry])
+        second = apply_plan(first, [entry])
+        assert projection(second) == projection(first)
+        assert len(second) == 1
+
+    def test_input_order_does_not_change_anlz_output(self):
+        """Same ANLZ entries in different order produce identical projection."""
         entries = [
-            anlz(family="hot", slot=1, start_ms=1000, source_index=0),
-            anlz(family="memory", slot=None, start_ms=1200, source_index=1),
+            anlz(family="hot", slot=1, start_ms=1000.0, source_index=0),
+            anlz(family="memory", slot=None, start_ms=2000.0, source_index=1),
         ]
-        forward = apply_plan(existing, entries)
-        reversed_inputs = apply_plan(list(reversed(existing)), list(reversed(entries)))
+        forward = apply_plan([], entries)
+        reversed_inputs = apply_plan([], list(reversed(entries)))
         assert projection(forward) == projection(reversed_inputs)
+
+    def test_two_different_anlz_entries_produce_two_rows(self):
+        """Two ANLZ entries with different source_index produce two distinct rows."""
+        rows = apply_plan(
+            [],
+            [
+                anlz(family="hot", slot=1, start_ms=1000.0, source_index=0),
+                anlz(family="hot", slot=2, start_ms=2000.0, source_index=1),
+            ],
+        )
+        assert len(rows) == 2
+        keys = {r["dedupe_key"] for r in rows}
+        assert len(keys) == 2  # distinct dedupe keys
+
+    def test_same_anlz_entry_idempotent_on_parser_row(self):
+        """Running with the same entry against an existing anlz: row re-merges (idempotent)."""
+        entry = anlz(family="hot", slot=1, start_ms=1000.0, comment="label")
+        first = apply_plan([], [entry])
+        assert first[0]["comment"] == "label"
+        second = apply_plan(first, [entry])
+        assert len(second) == 1
+        assert second[0]["comment"] == "label"
 
 
 class TestProductionPathParity:
     def test_initial_fast_and_reparse_produce_equivalent_rows(self):
-        existing = [db_cue(family="memory", color_table_index=0)]
         entries = [
             anlz(
                 family="hot",
@@ -415,12 +451,12 @@ class TestProductionPathParity:
             )
         ]
 
-        normal = FakeCueSb(existing)
+        normal = FakeCueSb([])
         result = reconcile_and_write_cues(normal, "imp-1", "track-1", entries, [])
         assert result.complete is True
         assert result.state == "complete"
 
-        fast = FakeCueSb(existing)
+        fast = FakeCueSb([])
         _reconcile_cues_bulk(
             fast,
             "imp-1",
@@ -434,8 +470,8 @@ class TestProductionPathParity:
             ],
         )
 
-        reparse = FakeCueSb(existing)
-        _reconcile_cues(reparse, "imp-1", "track-1", entries, CUE_MATCH_TOLERANCE_MS)
+        reparse = FakeCueSb([])
+        _reconcile_cues(reparse, "imp-1", "track-1", entries, 0.0)
 
         assert projection(normal.rows) == projection(fast.rows) == projection(reparse.rows)
         # The fast route keeps the existing bulk write shape: one preload + one batch upsert.
@@ -444,12 +480,23 @@ class TestProductionPathParity:
 
 class TestCuePersistenceIntegrity:
     def test_partial_delete_failure_is_structured_and_never_complete(self):
-        stale = db_cue(cue_id="stale", start_ms=2000, source_anlz_present=True)
-        stale.update({
-            "rekordbox_cue_id": None,
+        stale = {
+            "id": "stale",
+            "import_id": "imp-1",
+            "track_id": "track-1",
             "dedupe_key": "anlz:stale",
+            "cue_family": "hot",
+            "cue_family_authority": "anlz",
+            "hot_cue_slot": 5,
+            "point_type": "cue",
+            "start_ms": 2000.0,
+            "end_ms": None,
             "source_db_present": False,
-        })
+            "source_anlz_present": True,
+            "source_conflict": False,
+            "rekordbox_cue_id": None,
+            "source_payload": {},
+        }
         existing = [
             db_cue(cue_id="keep", start_ms=1000),
             stale,
@@ -459,7 +506,7 @@ class TestCuePersistenceIntegrity:
             [anlz(start_ms=1000)],
             import_id="imp-1",
             track_id="track-1",
-            tolerance_ms=CUE_MATCH_TOLERANCE_MS,
+            tolerance_ms=0.0,
         )
         assert plan.upsert_rows
         assert plan.delete_ids == ("stale",)
@@ -475,12 +522,23 @@ class TestCuePersistenceIntegrity:
             assert exc.result.applied_deletes == 0
 
     def test_feature_writer_reports_partial_persistence_as_failed_result(self):
-        stale = db_cue(cue_id="stale", start_ms=2000, source_anlz_present=True)
-        stale.update({
-            "rekordbox_cue_id": None,
+        stale = {
+            "id": "stale",
+            "import_id": "imp-1",
+            "track_id": "track-1",
             "dedupe_key": "anlz:stale",
+            "cue_family": "hot",
+            "cue_family_authority": "anlz",
+            "hot_cue_slot": 5,
+            "point_type": "cue",
+            "start_ms": 2000.0,
+            "end_ms": None,
             "source_db_present": False,
-        })
+            "source_anlz_present": True,
+            "source_conflict": False,
+            "rekordbox_cue_id": None,
+            "source_payload": {},
+        }
         existing = [
             db_cue(cue_id="keep", start_ms=1000),
             stale,

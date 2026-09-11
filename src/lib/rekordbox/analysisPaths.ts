@@ -105,12 +105,11 @@ export function isAnlzFile(file: File): boolean {
   return ANLZ_EXTS.has(file.name.slice(dotIdx).toLowerCase());
 }
 
-/** True only for DAT/EXT files used by the initial fast-path import. */
+/** True only for DAT files, which block analysis when absent. EXT is preferred but optional. */
 export function isBlockingAnlzFile(file: File): boolean {
   const dotIdx = file.name.lastIndexOf('.');
   if (dotIdx === -1) return false;
-  const extension = file.name.slice(dotIdx).toLowerCase();
-  return extension === '.dat' || extension === '.ext';
+  return file.name.slice(dotIdx).toLowerCase() === '.dat';
 }
 
 /** Find exportLibrary.db within a FileList (case-insensitive). */
@@ -148,7 +147,8 @@ export function requiredAssetTypesForManifestEntry(
     );
   }
   if (entry.manifest_status === 'needs_ext') return ['EXT'];
-  return ['DAT', 'EXT'];
+  // EXT is preferred but optional — only DAT is required/blocking.
+  return ['DAT'];
 }
 
 export interface ManifestWorkSummary {
