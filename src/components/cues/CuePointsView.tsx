@@ -61,6 +61,7 @@ import {
   markCueDraftApplied,
   markCueDraftApplyOutcome,
   saveCueDraft,
+  updateCueBaselineFingerprint,
   type CueDraftRow,
 } from '../../lib/queries/cueDrafts';
 import {
@@ -3266,6 +3267,55 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setApplyScope(null);
     setApplySnapshot([]);
     try {
+      // For ANLZ-only tracks (no local DB evidence), the current baseline
+      // fingerprint was never established from imported data. Before preflight
+      // can run, a live desktop observation must prove the current master.db state.
+      if (
+        kind === 'track'
+        && selectedTrack
+        && draftRevision != null
+        && draftCurrentBaselineLocalCueFingerprint == null
+        && draftDesiredFingerprint != null
+        && draftImportedBaselineFingerprint != null
+      ) {
+        const verifyDraft = {
+          importId: selectedTrack.import_id,
+          trackId: selectedTrackId as string,
+          rekordboxContentId: selectedTrack.rekordbox_content_id,
+          revision: draftRevision,
+          desiredFingerprint: draftDesiredFingerprint,
+          importedBaselineFingerprint: draftImportedBaselineFingerprint,
+          importedBaselineLocalCueFingerprint: null,
+          masterDbId: selectedTrack.master_db_id,
+          masterContentId: selectedTrack.master_content_id,
+          desiredDocument: {
+            schemaVersion: 1,
+            importId: selectedTrack.import_id,
+            trackId: selectedTrackId as string,
+            rekordboxContentId: selectedTrack.rekordbox_content_id,
+            cues: [],
+          },
+        };
+        const verifyResult = await desktop.cueBaselineVerify(scope, [verifyDraft]);
+        if (generation !== applyGenerationRef.current) return;
+        const verifiedTrack = verifyResult.tracks.find((t) => t.content_id === selectedTrack.rekordbox_content_id);
+        if (!verifiedTrack || verifiedTrack.identity_comparison !== 'match' || !verifiedTrack.current_cue_fingerprint) {
+          setApplyMessage(
+            verifiedTrack?.identity_error
+            ?? 'Could not verify the current Rekordbox baseline. Make sure Rekordbox is closed and the track is in your local library, then try again.',
+          );
+          return;
+        }
+        const updated = await updateCueBaselineFingerprint({
+          importId: selectedTrack.import_id,
+          trackId: selectedTrackId as string,
+          revision: draftRevision,
+          currentBaselineLocalCueFingerprint: verifiedTrack.current_cue_fingerprint,
+        });
+        if (generation !== applyGenerationRef.current) return;
+        setDraftCurrentBaselineLocalCueFingerprint(updated.currentBaselineLocalCueFingerprint);
+      }
+
       const rows = await refreshApplyDrafts();
       const selection = resolveCueApplySelection(rows, scope);
       if (selection.error) {
@@ -3288,7 +3338,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     } finally {
       if (generation === applyGenerationRef.current) setApplyBusy(false);
     }
-  }, [applyBridgeAvailable, applyRebaseRecovery, desktopDrafts, importId, refreshApplyDrafts, selectedCueBaselineEditable, selectedCueBlockReason, selectedTrackId, userId]);
+  }, [applyBridgeAvailable, applyRebaseRecovery, desktopDrafts, draftCurrentBaselineLocalCueFingerprint, draftDesiredFingerprint, draftImportedBaselineFingerprint, draftRevision, importId, refreshApplyDrafts, selectedCueBaselineEditable, selectedCueBlockReason, selectedTrack, selectedTrackId, userId]);
 
   const handleConfirmApply = useCallback(async () => {
     const desktop = window.dropdexDesktop;
@@ -3714,7 +3764,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           && !applyBlockedByPendingRebase
           && Boolean(selectedTrackId)
           && selectedCueBaselineEditable
-          && applyDrafts.some((row) => row.trackId === selectedTrackId)}
+          && (applyDrafts.some((row) => row.trackId === selectedTrackId) || baselineProofRefreshNeeded)}
         applyAllCount={applyBridgeAvailable && !applyDraftLoadError && !applyBlockedByPendingRebase ? applyDrafts.length : 0}
         applying={applyBusy}
         onApplyTrack={() => { void handleApplyPreflight('track'); }}

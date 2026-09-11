@@ -22,6 +22,7 @@ def test_desktop_service_keeps_operations_narrow():
     assert 'operation == "metadataPreflight"' in source
     assert 'operation == "metadataApply"' in source
     assert 'operation == "metadataRecoveryVerify"' in source
+    assert 'operation == "cueBaselineVerify"' in source
     assert "databasePath" not in source
     assert "db_path" not in source
     assert '_validate_scope(request.get("scope"), saved_rows)' in source
@@ -267,3 +268,69 @@ def test_metadata_recovery_dispatch_enters_production_service_boundary(monkeypat
     result = desktop_service._handle({"operation": "metadataRecoveryVerify", "recovery": recovery})
     assert result == {"ok": True, "state": "verified"}
     assert captured["recovery"] == recovery
+
+
+def cue_verify_row(**overrides):
+    row = {
+        "importId": "import-1",
+        "trackId": "track-1",
+        "desiredDocument": {"importId": "import-1", "trackId": "track-1"},
+    }
+    row.update(overrides)
+    return row
+
+
+def test_cue_baseline_verify_dispatch_enters_service_boundary_without_issuing_token(monkeypatch):
+    """cueBaselineVerify reaches verify_cue_baseline and returns its result without a token."""
+    row = cue_verify_row()
+    captured = {}
+
+    def fake_verify(saved_rows):
+        captured["rows"] = saved_rows
+        source_identity = "d" * 64
+        from rekordbox_bridge.apply_service import VerifyCueBaselineTrackResult
+        track = VerifyCueBaselineTrackResult(
+            content_id="content-1",
+            exists=True,
+            current_cue_fingerprint="e" * 64,
+            identity_comparison="match",
+        )
+        return source_identity, (track,)
+
+    monkeypatch.setattr(desktop_service, "verify_cue_baseline", fake_verify)
+    request = {
+        "operation": "cueBaselineVerify",
+        "scope": {"kind": "track", "importId": "import-1", "trackId": "track-1"},
+        "savedDrafts": [row],
+    }
+    result = desktop_service._handle(request)
+
+    assert "token" not in result
+    assert result["source_identity"] == "d" * 64
+    assert len(result["tracks"]) == 1
+    assert result["tracks"][0]["content_id"] == "content-1"
+    assert result["tracks"][0]["current_cue_fingerprint"] == "e" * 64
+    assert result["tracks"][0]["identity_comparison"] == "match"
+    assert captured["rows"] == [row]
+
+
+def test_cue_baseline_verify_scope_validation_blocks_mismatched_track_id(monkeypatch):
+    """cueBaselineVerify enforces the same scope constraints as preflight and apply."""
+    row = cue_verify_row()
+    monkeypatch.setattr(desktop_service, "verify_cue_baseline", lambda _rows: (("x" * 64), ()))
+
+    mismatched_scope = {
+        "operation": "cueBaselineVerify",
+        "scope": {"kind": "track", "importId": "import-1", "trackId": "other-track"},
+        "savedDrafts": [row],
+    }
+    with pytest.raises(ValueError, match="track scope"):
+        desktop_service._handle(mismatched_scope)
+
+    too_many = {
+        "operation": "cueBaselineVerify",
+        "scope": {"kind": "track", "importId": "import-1", "trackId": "track-1"},
+        "savedDrafts": [row, row],
+    }
+    with pytest.raises(ValueError, match="exactly one"):
+        desktop_service._handle(too_many)

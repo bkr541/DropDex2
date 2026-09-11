@@ -329,7 +329,7 @@ class CueApplyBridge {
   }
 
   async request(operation, payload = {}) {
-    if (!['availability', 'preflight', 'apply', 'metadataAvailability', 'metadataPreflight', 'metadataApply', 'metadataRecoveryVerify'].includes(operation)) throw new Error('Unsupported desktop bridge operation.');
+    if (!['availability', 'preflight', 'apply', 'metadataAvailability', 'metadataPreflight', 'metadataApply', 'metadataRecoveryVerify', 'cueBaselineVerify'].includes(operation)) throw new Error('Unsupported desktop bridge operation.');
     this._start();
     if (!this.child?.stdin?.writable) throw new Error(this.startError?.message || 'Rekordbox apply bridge is unavailable.');
     const requestId = crypto.randomUUID();
@@ -399,6 +399,12 @@ class CueApplyBridge {
     validateSavedMetadataDrafts(savedDrafts);
     validateMetadataApplyScope(scope, savedDrafts);
     return this.request('metadataApply', { token, scope, savedDrafts });
+  }
+
+  verifyCueBaseline(scope, savedDrafts) {
+    validateSavedDrafts(savedDrafts);
+    validateApplyScope(scope, savedDrafts);
+    return this.request('cueBaselineVerify', { scope, savedDrafts });
   }
 
   preflight(scope, savedDrafts) {

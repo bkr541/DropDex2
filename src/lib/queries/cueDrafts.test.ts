@@ -20,7 +20,7 @@ vi.mock('../supabase', () => ({
 }));
 
 import { createCueDraftDocument } from '../cues/cueDraftDocument';
-import { CueDraftRevisionConflictError, cueDraftNeedsApply, fetchCueDraft, fetchCueDraftsForApply, markCueDraftApplied, markCueDraftApplyOutcome, saveCueDraft } from './cueDrafts';
+import { CueDraftRevisionConflictError, cueDraftNeedsApply, fetchCueDraft, fetchCueDraftsForApply, markCueDraftApplied, markCueDraftApplyOutcome, saveCueDraft, updateCueBaselineFingerprint } from './cueDrafts';
 
 const desiredDocument = createCueDraftDocument({
   importId: 'import-1',
@@ -258,6 +258,79 @@ describe('cue draft production persistence queries', () => {
     expect(result.lastApplyOperationId).toBe('op-failed');
     expect(result.lastApplyState).toBe('rolled-back');
     expect(result.appliedRevision).toBeNull();
+  });
+
+  it('keeps an ANLZ-only draft out of Apply All until a live verify sets the local cue fingerprint', () => {
+    expect(cueDraftNeedsApply({
+      id: 'anlz', userId: 'user-1', importId: 'import-1', trackId: 'track-1', rekordboxContentId: 'content-1',
+      schemaVersion: 1, desiredDocument, desiredFingerprint: 'desired',
+      importedBaselineFingerprint: 'baseline',
+      importedBaselineLocalCueFingerprint: null,
+      currentBaselineFingerprint: 'baseline',
+      currentBaselineLocalCueFingerprint: null,
+      masterDbId: null, masterContentId: null, revision: 1,
+      strategyVersion: null, strategySettings: null,
+      createdAt: row.created_at, updatedAt: row.updated_at,
+      appliedRevision: null, appliedFingerprint: null, appliedAt: null,
+      lastApplyOperationId: null, lastApplyState: null, lastApplySummary: null,
+    })).toBe(false);
+  });
+
+  it('admits an ANLZ-only draft into Apply All once the live verify fingerprint is set', () => {
+    const verifiedFingerprint = 'a'.repeat(64);
+    expect(cueDraftNeedsApply({
+      id: 'anlz-verified', userId: 'user-1', importId: 'import-1', trackId: 'track-1', rekordboxContentId: 'content-1',
+      schemaVersion: 1, desiredDocument, desiredFingerprint: 'desired',
+      importedBaselineFingerprint: 'baseline',
+      importedBaselineLocalCueFingerprint: null,
+      currentBaselineFingerprint: 'baseline',
+      currentBaselineLocalCueFingerprint: verifiedFingerprint,
+      masterDbId: null, masterContentId: null, revision: 1,
+      strategyVersion: null, strategySettings: null,
+      createdAt: row.created_at, updatedAt: row.updated_at,
+      appliedRevision: null, appliedFingerprint: null, appliedAt: null,
+      lastApplyOperationId: null, lastApplyState: null, lastApplySummary: null,
+    })).toBe(true);
+  });
+
+  it('writes only the current local cue fingerprint through the narrow verify RPC', async () => {
+    const verifiedFingerprint = 'b'.repeat(64);
+    const verifiedRow = {
+      ...row,
+      current_baseline_local_cue_fingerprint: verifiedFingerprint,
+    };
+    mocks.single.mockResolvedValue({ data: verifiedRow, error: null });
+
+    const result = await updateCueBaselineFingerprint({
+      importId: 'import-1',
+      trackId: 'track-1',
+      revision: 2,
+      currentBaselineLocalCueFingerprint: verifiedFingerprint,
+    });
+
+    expect(mocks.rpc).toHaveBeenCalledWith('update_cue_baseline_fingerprint', {
+      p_import_id: 'import-1',
+      p_track_id: 'track-1',
+      p_revision: 2,
+      p_current_baseline_local_cue_fingerprint: verifiedFingerprint,
+    });
+    expect(result.currentBaselineLocalCueFingerprint).toBe(verifiedFingerprint);
+    expect(result.importedBaselineLocalCueFingerprint).toBe('local-baseline');
+    expect(result.importedBaselineFingerprint).toBe('baseline');
+  });
+
+  it('raises a revision conflict when a concurrent save has advanced the draft revision before verify completes', async () => {
+    mocks.single.mockResolvedValue({
+      data: null,
+      error: { message: 'cue_draft_revision_conflict' },
+    });
+
+    await expect(updateCueBaselineFingerprint({
+      importId: 'import-1',
+      trackId: 'track-1',
+      revision: 1,
+      currentBaselineLocalCueFingerprint: 'c'.repeat(64),
+    })).rejects.toBeInstanceOf(CueDraftRevisionConflictError);
   });
 
   it('rebases only the moving comparison baseline through the import-scoped verified post-apply RPC', async () => {

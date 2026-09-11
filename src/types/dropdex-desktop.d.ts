@@ -319,6 +319,19 @@ export interface DesktopMetadataApplyResult {
 }
 
 
+export interface DesktopCueBaselineVerifyTrack {
+  content_id: string;
+  exists: boolean;
+  current_cue_fingerprint: string | null;
+  identity_comparison: 'match' | 'missing' | 'mismatch' | 'not-comparable';
+  identity_error: string | null;
+}
+
+export interface DesktopCueBaselineVerifyResult {
+  source_identity: string;
+  tracks: DesktopCueBaselineVerifyTrack[];
+}
+
 export interface DesktopMetadataRecoveryRequest {
   operationId: string;
   trackId: string;
@@ -368,6 +381,7 @@ export interface DropDexDesktopBridge {
   metadataApply(token: string, scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataApplyResult>;
   metadataRecoveryVerify(recovery: DesktopMetadataRecoveryRequest): Promise<DesktopMetadataRecoveryVerificationResult>;
   cueApplyAvailability(): Promise<{ available: boolean; reason: string | null }>;
+  cueBaselineVerify(scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueBaselineVerifyResult>;
   cueApplyPreflight(scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyPreflightResult>;
   cueApply(token: string, scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyResult>;
   openExternal(url: string): Promise<boolean>;

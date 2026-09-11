@@ -243,7 +243,9 @@ describe('loadCueEditorBaseline', () => {
   });
 
 
-  it('blocks provisional cue-family authority with a specific comparability diagnostic', async () => {
+  it('permits display of provisional cue-family authority without blocking edit access', async () => {
+    // Provisional authority only blocks Apply fingerprinting (inspectImportedLocalCueBaseline),
+    // not display/edit/save. The Apply gate (cueDraftNeedsApply) handles this separately.
     vi.mocked(fetchTrackCueState).mockResolvedValue({
       status: 'loaded-with-cues',
       trackId: track.id,
@@ -254,12 +256,98 @@ describe('loadCueEditorBaseline', () => {
 
     expect(result.status).toBe('loaded-with-cues');
     if (result.status !== 'failed') {
-      expect(result.integrity).toMatchObject({
-        status: 'invalid',
-        error: expect.stringMatching(/authority is provisional.*ANLZ reconciliation/i),
-      });
+      expect(result.integrity).toMatchObject({ status: 'valid', error: null });
+      expect(result.workingCues).toHaveLength(1);
     }
-    expect(fetchCueDraft).not.toHaveBeenCalled();
+    expect(fetchCueDraft).toHaveBeenCalledWith('user-1', 'track-1');
+  });
+
+  it('loads an ANLZ-only cue (no DB row evidence) as a valid editable baseline', async () => {
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [{ ...cueRow, source_db_present: false, source_anlz_present: true }],
+    });
+
+    const result = await loadCueEditorBaseline(track, 'user-1');
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.integrity).toMatchObject({ status: 'valid', error: null });
+      expect(result.workingCues).toHaveLength(1);
+      expect(result.workingCues[0].sourceDbPresent).toBe(false);
+      expect(result.workingCues[0].sourceAnlzPresent).toBe(true);
+    }
+  });
+
+  it('loads a draft for an ANLZ-only track with null importedBaselineLocalCueFingerprint', async () => {
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [{ ...cueRow, source_db_present: false, source_anlz_present: true }],
+    });
+    vi.mocked(fetchCueDraft).mockResolvedValue({
+      ...mockDraft({
+        schemaVersion: 1,
+        importId: 'import-1',
+        trackId: 'track-1',
+        rekordboxContentId: 'rb-1',
+        cues: [draftCue({ sourceDbPresent: false, sourceAnlzPresent: true })],
+      }),
+      importedBaselineLocalCueFingerprint: null,
+      currentBaselineLocalCueFingerprint: null,
+    });
+
+    const result = await loadCueEditorBaseline(track, 'user-1');
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.integrity).toMatchObject({ status: 'valid', error: null });
+      expect(result.draftImportedBaselineLocalCueFingerprint).toBeNull();
+      expect(result.draftCurrentBaselineLocalCueFingerprint).toBeNull();
+    }
+  });
+
+  it('loads draft with null currentBaselineLocalCueFingerprint when no local DB evidence exists', async () => {
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [cueRow],
+    });
+    vi.mocked(fetchCueDraft).mockResolvedValue({
+      ...mockDraft({
+        schemaVersion: 1,
+        importId: 'import-1',
+        trackId: 'track-1',
+        rekordboxContentId: 'rb-1',
+        cues: [draftCue()],
+      }),
+      importedBaselineLocalCueFingerprint: null,
+      currentBaselineLocalCueFingerprint: null,
+    });
+
+    const result = await loadCueEditorBaseline(track, 'user-1');
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.draftCurrentBaselineLocalCueFingerprint).toBeNull();
+    }
+  });
+
+  it('returns loaded-empty for an ANLZ-only track with zero cues', async () => {
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-empty',
+      trackId: track.id,
+      cues: [],
+    });
+
+    const result = await loadCueEditorBaseline(track, null);
+
+    expect(result.status).toBe('loaded-empty');
+    if (result.status !== 'failed') {
+      expect(result.integrity).toMatchObject({ status: 'valid', error: null });
+      expect(result.workingCues).toHaveLength(0);
+    }
   });
 
   it('blocks a successfully queryable cue table when reconciliation is known incomplete', async () => {

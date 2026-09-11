@@ -276,6 +276,45 @@ def _observe_live_without_mutation(
     return after, observed
 
 
+@dataclass(frozen=True)
+class VerifyCueBaselineTrackResult:
+    content_id: str
+    exists: bool
+    current_cue_fingerprint: Optional[str]
+    identity_comparison: str
+    identity_error: Optional[str] = None
+
+
+def verify_cue_baseline(
+    saved_rows: Sequence[Mapping[str, Any]],
+    *,
+    discover_target: Callable[[], tuple[Path, Any]] = discover_trusted_writer_target,
+    require_closed: Callable[[], Any] = require_rekordbox_closed,
+    database_factory: Optional[Callable[[str], Any]] = None,
+) -> tuple[str, tuple[VerifyCueBaselineTrackResult, ...]]:
+    """Read-only live observation to establish current_baseline_local_cue_fingerprint.
+
+    Requires Rekordbox closed. Proves strong track identity. Issues NO token.
+    """
+    plan = adapt_saved_cue_drafts(saved_rows)
+    source, _ = discover_target()
+    require_closed()
+    source_identity, observed = _observe_live_without_mutation(
+        source, plan, database_factory=database_factory
+    )
+    results = tuple(
+        VerifyCueBaselineTrackResult(
+            content_id=obs.content_id,
+            exists=obs.exists,
+            current_cue_fingerprint=obs.cue_fingerprint,
+            identity_comparison=obs.identity_comparison,
+            identity_error=obs.identity_error,
+        )
+        for obs in observed
+    )
+    return source_identity, results
+
+
 def _draft_identity(plan: CueApplyPlan) -> tuple[tuple[str, int, str], ...]:
     return tuple(
         (track.content_id, track.draft_revision, track.desired_fingerprint)

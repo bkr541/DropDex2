@@ -207,6 +207,27 @@ export async function fetchCueDraftsForApply(userId: string, importId: string): 
   return rows.map(mapCueDraftRow).filter(cueDraftNeedsApply);
 }
 
+export async function updateCueBaselineFingerprint(input: {
+  importId: string;
+  trackId: string;
+  revision: number;
+  currentBaselineLocalCueFingerprint: string;
+}): Promise<CueDraftRow> {
+  const { data, error } = await supabase
+    .rpc('update_cue_baseline_fingerprint', {
+      p_import_id: input.importId,
+      p_track_id: input.trackId,
+      p_revision: input.revision,
+      p_current_baseline_local_cue_fingerprint: input.currentBaselineLocalCueFingerprint,
+    })
+    .single();
+  if (error) {
+    if (/cue_draft_revision_conflict/i.test(error.message)) throw new CueDraftRevisionConflictError();
+    throw new Error(error.message);
+  }
+  return mapCueDraftRow(data);
+}
+
 export async function markCueDraftApplied(input: {
   importId: string;
   trackId: string;

@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('dropdexDesktop', Object.freeze({
   metadataApply: (token, scope, savedDrafts) => ipcRenderer.invoke('dropdex:metadata-apply', { token, scope, savedDrafts }),
   metadataRecoveryVerify: (recovery) => ipcRenderer.invoke('dropdex:metadata-recovery-verify', { recovery }),
   cueApplyAvailability: () => ipcRenderer.invoke('dropdex:cue-apply-availability'),
+  cueBaselineVerify: (scope, savedDrafts) => ipcRenderer.invoke('dropdex:cue-baseline-verify', { scope, savedDrafts }),
   cueApplyPreflight: (scope, savedDrafts) => ipcRenderer.invoke('dropdex:cue-apply-preflight', { scope, savedDrafts }),
   cueApply: (token, scope, savedDrafts) => ipcRenderer.invoke('dropdex:cue-apply', { token, scope, savedDrafts }),
   openExternal: (url) => ipcRenderer.invoke('dropdex:open-external', url),

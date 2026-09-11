@@ -4,12 +4,10 @@ import { fetchCueDraft } from '../queries/cueDrafts';
 import type { RekordboxTrack } from '../../types';
 import { cueSourceCompletenessError } from './cueReadiness';
 import {
-  createCueDraftDocument,
   hydrateCueDraftDocument,
   validateCueDraftWorkingSet,
   type CueDraftValidationResult,
 } from './cueDraftDocument';
-import { inspectImportedLocalCueBaseline } from './localCueBaseline';
 
 type TerminalCueLoadState = Exclude<CueLoadState, { status: 'loading' }>;
 
@@ -52,23 +50,12 @@ function loadedStatus(cues: WorkingCue[]): LoadedCueEditorBaseline['status'] {
 }
 
 function validateBaseline(track: RekordboxTrack, cues: WorkingCue[]): CueDraftValidationResult {
-  const input = {
+  return validateCueDraftWorkingSet({
     importId: track.import_id,
     trackId: track.id,
     rekordboxContentId: track.rekordbox_content_id,
     cues,
-  };
-  const semanticIntegrity = validateCueDraftWorkingSet(input);
-  if (semanticIntegrity.status !== 'valid') return semanticIntegrity;
-
-  const localBaseline = inspectImportedLocalCueBaseline(createCueDraftDocument(input));
-  if (localBaseline.blockingReason) {
-    return {
-      status: 'invalid',
-      error: `Cue apply baseline is not comparable: ${localBaseline.blockingReason} Refresh or re-run track analysis before editing, saving, or applying this track.`,
-    };
-  }
-  return semanticIntegrity;
+  });
 }
 
 function queryFailure(trackId: string, state: Extract<TerminalCueLoadState, { status: 'failed' }>): FailedCueEditorBaseline {

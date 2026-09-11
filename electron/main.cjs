@@ -621,6 +621,10 @@ function registerIpcHandlers() {
     return cueApplyBridge.metadataApply(payload.token, payload.scope, payload.savedDrafts);
   });
   ipcMain.handle('dropdex:cue-apply-availability', () => cueApplyBridge.availability());
+  ipcMain.handle('dropdex:cue-baseline-verify', async (_event, payload) => {
+    assertExactObject(payload, ['scope', 'savedDrafts'], 'Cue baseline verify payload');
+    return cueApplyBridge.verifyCueBaseline(payload.scope, payload.savedDrafts);
+  });
   ipcMain.handle('dropdex:cue-apply-preflight', async (_event, payload) => {
     assertExactObject(payload, ['scope', 'savedDrafts'], 'Cue apply preflight payload');
     return cueApplyBridge.preflight(payload.scope, payload.savedDrafts);

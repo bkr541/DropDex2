@@ -11,7 +11,7 @@ import sys
 from dataclasses import asdict, is_dataclass
 from typing import Any, Mapping
 
-from rekordbox_bridge.apply_service import apply_saved_cue_drafts, preflight_saved_cue_drafts
+from rekordbox_bridge.apply_service import apply_saved_cue_drafts, preflight_saved_cue_drafts, verify_cue_baseline
 from rekordbox_bridge.metadata_apply import (
     apply_saved_metadata_drafts,
     metadata_apply_availability,
@@ -168,6 +168,25 @@ def _handle(request: Mapping[str, Any]) -> Any:
             raise ValueError("savedDrafts must be an array")
         _validate_metadata_scope(request.get("scope"), saved_rows)
         return apply_saved_metadata_drafts(token, saved_rows)
+    if operation == "cueBaselineVerify":
+        saved_rows = request.get("savedDrafts")
+        if not isinstance(saved_rows, list):
+            raise ValueError("savedDrafts must be an array")
+        _validate_scope(request.get("scope"), saved_rows)
+        source_identity, tracks = verify_cue_baseline(saved_rows)
+        return {
+            "source_identity": source_identity,
+            "tracks": [
+                {
+                    "content_id": t.content_id,
+                    "exists": t.exists,
+                    "current_cue_fingerprint": t.current_cue_fingerprint,
+                    "identity_comparison": t.identity_comparison,
+                    "identity_error": t.identity_error,
+                }
+                for t in tracks
+            ],
+        }
     if operation == "preflight":
         saved_rows = request.get("savedDrafts")
         if not isinstance(saved_rows, list):
