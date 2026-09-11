@@ -1741,17 +1741,17 @@ export function ImportLibraryModal({
             {/* ── DATABASE / ANALYSIS FILES: local USB upload ── */}
             {phase === 'uploading_usb_data' && (
               <div className="flex flex-col h-full">
-                {/* Spinner + heading */}
+                {/* Heading + spinner */}
                 <div className="text-center mb-4">
-                  <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CircleDash className="animate-spin text-primary" size={24} />
-                  </div>
-                  <h2 className="text-xl font-bold">
+                  <h2 className="text-xl font-bold mb-4">
                     {localUsbStage === 'uploading_database' && 'Uploading Rekordbox Database…'}
                     {localUsbStage === 'matching_analysis' && 'Matching Analysis Files…'}
                     {localUsbStage === 'uploading_analysis' && 'Uploading Analysis Files…'}
                     {localUsbStage === 'uploading_bundle' && 'Uploading Bundle…'}
                   </h2>
+                  <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+                    <CircleDash className="animate-spin text-primary" size={24} />
+                  </div>
                 </div>
 
                 {/* USB safety warning */}

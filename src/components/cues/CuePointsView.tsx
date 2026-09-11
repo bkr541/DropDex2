@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, CircleDash, Close, Edit, Export, Idea, Music, Save, Search, Undo, Upload, WarningAlt } from '@carbon/icons-react';
+import { ChevronDown, CircleDash, Close, Edit, Export, Grid, Idea, Music, Save, Search, Undo, Upload, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -993,6 +993,7 @@ function CueWaveformPanel({
   const [contextMenu, setContextMenu] = useState<CueContextMenuState | null>(null);
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
   const [timingMode, setTimingMode] = useState<CueTimingMode>('snap');
+  const [showGrid, setShowGrid] = useState(true);
   const dragStateRef = useRef<{ cueId: string; pointerId: number; startX: number; moved: boolean } | null>(null);
   const effectiveViewEnd = viewEnd ?? durationMs ?? 0;
 
@@ -1044,7 +1045,7 @@ function CueWaveformPanel({
       } else {
         const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
         const focusMs = vStart + fraction * viewRange;
-        const factor = Math.exp(e.deltaY * 0.003);
+        const factor = Math.exp(e.deltaY * 0.005);
         const range = Math.max(2000, Math.min(durationMs, viewRange * factor));
         newStart = focusMs - fraction * range;
         newEnd = focusMs + (1 - fraction) * range;
@@ -1222,7 +1223,7 @@ function CueWaveformPanel({
     <section className="glass rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-[var(--color-border-subtle)] px-5 py-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
+          <p className="truncate text-sm font-semibold text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
           <h1 className="mt-0.5 truncate text-xl font-black tracking-tight md:text-2xl">{track.title}</h1>
           <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
             <span><span className="font-semibold text-foreground/60">BPM:</span> {bpmDisplay}</span>
@@ -1255,6 +1256,15 @@ function CueWaveformPanel({
               {metadataDraftLoadStatus === 'loaded'
                 ? `Pending ${pendingMetadataCount}`
                 : metadataDraftLoadStatus === 'failed' ? 'Pending (!)' : 'Pending…'}
+            </ControlButton>
+            <ControlButton
+              variant={showGrid ? 'surface' : 'ghost'}
+              onClick={() => setShowGrid((v) => !v)}
+              aria-label={showGrid ? 'Hide beat grid overlay' : 'Show beat grid overlay'}
+              aria-pressed={showGrid}
+              title={showGrid ? 'Hide beat grid overlay' : 'Show beat grid overlay'}
+            >
+              <Grid size={17} />
             </ControlButton>
             <ControlButton
               variant="surface"
@@ -1327,7 +1337,7 @@ function CueWaveformPanel({
         </div>
       )}
 
-      <div className="pl-5 pr-3 pb-2 pt-2 md:pr-4">
+      <div className="px-11 pb-2 pt-2">
         <div className="overflow-x-auto">
           <div className="min-w-[980px]">
             <div className="relative">
@@ -1347,7 +1357,7 @@ function CueWaveformPanel({
                 <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Sections" color="#60a5fa" collapsed={labelsCollapsed} />
               </div>
               <div className="h-[40px] border-b border-[#1e2a30]">
-                <div className="relative mx-3 h-full overflow-hidden">
+                <div className="relative mx-5 h-full overflow-hidden">
                 {phraseLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
                 ) : sections.length === 0 ? (
@@ -1388,8 +1398,8 @@ function CueWaveformPanel({
               <div className="h-[40px] border-b border-[#1e2a30]">
                 <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.25} />} label="Cues" color="#fb923c" collapsed={labelsCollapsed} />
               </div>
-              <div className="h-[40px] border-b border-[#1e2a30]">
-                <div className="relative mx-3 h-full overflow-hidden">
+              <div className="h-[40px] overflow-hidden border-b border-[#1e2a30]">
+                <div className="relative mx-5 h-full overflow-visible">
                 {cueLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading cue points…</div>
                 ) : cueLoadStatus === 'failed' ? (
@@ -1466,14 +1476,23 @@ function CueWaveformPanel({
                           }}
                         >
                         <span
-                          className="pointer-events-none absolute top-[4px] left-1/2 -translate-x-1/2 flex flex-col items-center rounded-[3px] px-[3px] pb-[2px] pt-[2px]"
-                          style={{ backgroundColor: markerColor }}
+                          className="pointer-events-none absolute top-[2px] left-1/2 -translate-x-1/2 flex items-center justify-center"
+                          style={{ width: 28, height: 32 }}
                           aria-hidden="true"
                         >
-                          <span className="block text-[6px] font-black uppercase tracking-wide leading-none text-white">
-                            {cue.family === 'hot' ? 'CUE' : 'MEM'}
-                          </span>
-                          <span className="mt-[1px] block text-[8px] font-black uppercase leading-none text-white">
+                          <svg
+                            viewBox="0 0 256 256"
+                            width={28}
+                            height={32}
+                            xmlns="http://www.w3.org/2000/svg"
+                            style={{ fill: 'none', stroke: markerColor, strokeWidth: 14, transform: 'rotate(90deg)', display: 'block', flexShrink: 0 }}
+                          >
+                            <path d="M187.71875,203.99963H40a12.01312,12.01312,0,0,1-12-12v-128a12.01312,12.01312,0,0,1,12-12H187.71875a11.976,11.976,0,0,1,9.98437,5.34375l45.625,68.4375a4.00066,4.00066,0,0,1,0,4.4375l-45.625,68.43848A11.97381,11.97381,0,0,1,187.71875,203.99963Z" />
+                          </svg>
+                          <span
+                            className="absolute font-black uppercase leading-none"
+                            style={{ fontSize: 10, top: '44%', left: '50%', transform: 'translate(-50%, -50%)', color: markerColor }}
+                          >
                             {cue.family === 'hot' ? cueLabel(cue) : String(memoryIndex + 1)}
                           </span>
                         </span>
@@ -1491,7 +1510,7 @@ function CueWaveformPanel({
               <div className="h-[88px] border-b border-[#1e2a30]">
               <div
                 ref={waveformDivRef}
-                className="relative mx-3 h-full cursor-crosshair overflow-hidden"
+                className="relative mx-5 h-full cursor-crosshair overflow-hidden"
                 onContextMenu={handleWaveformContextMenu}
                 title={timingMode === 'snap' ? 'Right-click to add a beat-snapped cue' : 'Right-click to add an exact millisecond cue'}
               >
@@ -1532,7 +1551,7 @@ function CueWaveformPanel({
                 )}
                 {durationMs != null && durationMs > 0 && (
                   <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-                    {gridLines.map((beat) => (
+                    {showGrid && gridLines.map((beat) => (
                       <span
                         key={`wave-grid-${beat.seq}`}
                         className={cn(
@@ -1598,7 +1617,7 @@ function CueWaveformPanel({
                 <TimelineLaneLabel icon={<Grip size={19} strokeWidth={2.55} />} label="Beat Grid" color="#4ade80" collapsed={labelsCollapsed} />
               </div>
               <div className="h-[40px]">
-                <div className="relative mx-3 h-full overflow-hidden">
+                <div className="relative mx-5 h-full overflow-hidden">
                 {beatGridLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading beat grid…</div>
                 ) : durationMs == null || rulerTicks.length === 0 ? (
@@ -3933,7 +3952,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           </div>
         ) : (
           <>
-            <div className="overflow-auto" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
+            <div className="overflow-y-auto overflow-x-hidden scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
               <table className="w-full min-w-[900px] border-collapse text-left">
                 <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
                   <tr className="border-b border-[var(--color-border-faint)]">
@@ -4001,7 +4020,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                             <div className="flex min-w-0 flex-1 items-center gap-8">
                               <div className="w-[500px] shrink-0">
                                 <p className={cn('truncate text-sm font-bold', selected && 'text-primary')}>{track.title}</p>
-                                <p className="mt-0.5 truncate text-xs text-muted-foreground">{track.artist ?? 'Artist Not Stored'}</p>
+                                <p className="mt-0.5 truncate text-xs text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
                               </div>
                               {(() => {
                                 const ws = getWaveformState(track.id);

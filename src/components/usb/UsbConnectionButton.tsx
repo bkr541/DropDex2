@@ -91,7 +91,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
     } else if (status === 'wrong_root') {
       // User selected the wrong folder — always open picker.
       void selectNewUsb();
-    } else if (status === 'error') {
+    } else if (status === 'released' || status === 'error') {
       void reconnect();
     } else {
       void connect();

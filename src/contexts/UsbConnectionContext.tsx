@@ -99,16 +99,6 @@ function desktopStateToUsbState(
   state: DesktopUsbState,
   activity?: DesktopUsbActivityState,
 ): UsbState {
-  if (activity?.released && state.status !== 'disconnected') {
-    return {
-      ...initial,
-      status: 'released',
-      volumeName: state.volumeName,
-      connectedAt: state.connectedAt,
-      structureWarning: state.structureWarning,
-      error: activity.lastError,
-    };
-  }
   switch (state.status) {
     case 'released':
       return {
@@ -314,7 +304,7 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
       ]);
       setActivity(nextActivity);
       dispatchState({ type: 'SET_DESKTOP_STATE', state: next, activity: nextActivity });
-      return nextActivity.released && next.status !== 'disconnected' ? 'released' : next.status;
+      return next.status;
     } catch (error) {
       dispatchState({ type: 'SET_ERROR', error: error instanceof Error ? error.message : String(error) });
       return 'error';
@@ -435,10 +425,9 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
   const reconnect = useCallback(async () => {
     dispatchState({ type: 'SET_CONNECTING' });
     if (runtime === 'electron') {
-      if (stateRef.current.status === 'released') {
+      const refreshedStatus = await refreshDesktopState();
+      if (refreshedStatus !== 'connected') {
         await connect();
-      } else {
-        await refreshDesktopState();
       }
       return;
     }
