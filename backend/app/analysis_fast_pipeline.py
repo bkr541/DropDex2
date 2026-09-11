@@ -714,18 +714,33 @@ def _write_batch(
             asset_rows, on_conflict="import_id,relative_path"
         ).execute()
 
+    _CUE_CONFLICT_CODES = frozenset({"CUE_MEMORY_CONFLICT", "CUE_HOT_PCO2_CONFLICT"})
+    cue_conflict_track_ids: set[str] = set()
+    for parsed in parsed_batch:
+        for w in parsed.cue_warnings:
+            code = w.code if hasattr(w, "code") else (w.get("code") if isinstance(w, dict) else "")
+            if code in _CUE_CONFLICT_CODES:
+                cue_conflict_track_ids.add(str(parsed.track["id"]))
+
     status_rows: list[dict[str, Any]] = []
     for parsed in parsed_batch:
+        track_id = str(parsed.track["id"])
+        all_warnings = list(parsed.warnings)
+        for w in parsed.cue_warnings:
+            all_warnings.append(w.as_dict() if hasattr(w, "as_dict") else (w if isinstance(w, dict) else {}))
         reason = None
         if parsed.parse_status in {"failed", "missing_required"}:
-            reason = next((warning.get("message") for warning in parsed.warnings if warning.get("message")), None)
+            reason = next((warning.get("message") for warning in all_warnings if warning.get("message")), None)
+        is_parse_failure = parsed.parse_status in {"failed", "missing_required"}
+        cue_status = "failed" if (is_parse_failure or track_id in cue_conflict_track_ids) else "completed"
         status_rows.append({
             "track_id": parsed.track["id"],
             "analysis_parse_status": parsed.parse_status,
-            "analysis_parse_warnings": parsed.warnings,
+            "analysis_parse_warnings": all_warnings,
             "analysis_failure_reason": reason,
             "analysis_feature_schema_version": feature_schema_version,
             "analysis_completed_at": now_iso,
+            "analysis_feature_statuses": {"cues": cue_status},
         })
     _bulk_track_status(sb, import_id, status_rows)
 

@@ -411,6 +411,24 @@ describe('buildMatchedFiles', () => {
     }]);
     expect(result.map((file) => file.assetType)).toEqual(['EXT']);
   });
+
+  it('returns both DAT and EXT for needs_analysis entries when both files are available', () => {
+    // Regression: EXT was silently dropped when requiredAssetTypesForManifestEntry
+    // only returned ['DAT'] for normal entries. Both must be included.
+    const files = [
+      mockFile('ANLZ0000.DAT', 'USB/PIONEER/USBANLZ/P001/ANLZ0000.DAT'),
+      mockFile('ANLZ0000.EXT', 'USB/PIONEER/USBANLZ/P001/ANLZ0000.EXT'),
+    ];
+    const result = buildMatchedFiles(files, [{
+      track_id: 't1',
+      dat_path: 'PIONEER/USBANLZ/P001/ANLZ0000.DAT',
+      ext_path: 'PIONEER/USBANLZ/P001/ANLZ0000.EXT',
+      two_ex_path: null,
+      manifest_status: 'needs_analysis',
+    }]);
+    const types = result.map((f) => f.assetType).sort();
+    expect(types).toEqual(['DAT', 'EXT']);
+  });
 });
 
 describe('summarizeManifestWork operation counts', () => {

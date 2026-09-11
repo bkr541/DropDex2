@@ -23,6 +23,7 @@ from dropdex_importer.cue_parser import (
     _parse_pco2,
     _resolve_pco2_color,
     _select_memory_cues,
+    _validate_and_merge_pco2_hot,
     parse_anlz_cues,
 )
 
@@ -558,8 +559,10 @@ class TestParseAnlzCues:
         ext = _make_asset("EXT")
         ext.asset_type = "EXT"
 
+        # PCOB and PCO2 agree on slot 1 / time 1000 (coherent) so PCO2 wins.
+        # The PCOB entry uses the same position so validation passes.
         pco2 = _pco2_tag([_pco2_entry(hot_cue=1, time=1000)])
-        pcob_hot = _pcob_tag([_pcob_entry(hot_cue=1, time=2000)])
+        pcob_hot = _pcob_tag([_pcob_entry(hot_cue=1, time=1000)])
 
         with patch("dropdex_importer.cue_parser.get_all_tags") as mock_tags:
             def side_effect(asset, code):
@@ -572,7 +575,7 @@ class TestParseAnlzCues:
             mock_tags.side_effect = side_effect
             entries, _ = parse_anlz_cues(dat, ext)
 
-        # PCO2 from EXT is preferred; PCOB from DAT not used for hot cues
+        # PCO2 from EXT is preferred when it agrees with PCOB
         assert len(entries) == 1
         assert entries[0].source_tag == "PCO2"
         assert entries[0].asset_type == "EXT"
@@ -1062,3 +1065,319 @@ class TestParseAnlzCues:
         entries, warnings = parse_anlz_cues(None, None)
         assert entries == []
         assert warnings == []
+
+    # ── PCO2 Hot Cue conflict (Req 11-17 integration) ────────────────────────
+
+    def test_pco2_pcob_agreement_selects_pco2_for_hot(self):
+        """Req 11: coherent PCO2+PCOB selects PCO2 as canonical hot source."""
+        dat = _make_asset("DAT")
+        ext = _make_asset("EXT")
+        pco2 = _pco2_tag([_pco2_entry(hot_cue=1, time=1000, comment="PCO2 cue")])
+        pcob_hot = _pcob_tag([_pcob_entry(hot_cue=1, time=1000)])
+
+        with patch("dropdex_importer.cue_parser.get_all_tags") as mock_tags:
+            def side_effect(asset, code):
+                if asset is ext and code == "PCO2":
+                    return [pco2]
+                if asset is dat and code == "PCOB":
+                    return [pcob_hot]
+                return []
+            mock_tags.side_effect = side_effect
+            entries, warnings = parse_anlz_cues(dat, ext)
+
+        hot = [e for e in entries if e.cue_family == "hot"]
+        assert len(hot) == 1
+        assert hot[0].source_tag == "PCO2"
+        assert not any(w.code == "CUE_HOT_PCO2_CONFLICT" for w in warnings)
+
+    def test_pco2_partial_preserves_pcob_only_slots(self):
+        """Req 14: sparse PCO2 (slots 1-2 only) → PCOB-only slot 4 preserved."""
+        dat = _make_asset("DAT")
+        ext = _make_asset("EXT")
+        # PCO2 covers slots 1 and 2 only
+        pco2 = _pco2_tag([
+            _pco2_entry(hot_cue=1, time=1000),
+            _pco2_entry(hot_cue=2, time=2000),
+        ])
+        dat_pcob = _pcob_tag([
+            _pcob_entry(hot_cue=1, time=1000),  # agrees with PCO2
+            _pcob_entry(hot_cue=2, time=2000),  # agrees with PCO2
+        ])
+        ext_pcob = _pcob_tag([
+            _pcob_entry(hot_cue=4, time=4000),  # PCOB-only slot
+        ])
+
+        with patch("dropdex_importer.cue_parser.get_all_tags") as mock_tags:
+            def side_effect(asset, code):
+                if asset is ext and code == "PCO2":
+                    return [pco2]
+                if asset is dat and code == "PCOB":
+                    return [dat_pcob]
+                if asset is ext and code == "PCOB":
+                    return [ext_pcob]
+                return []
+            mock_tags.side_effect = side_effect
+            entries, warnings = parse_anlz_cues(dat, ext)
+
+        hot = [e for e in entries if e.cue_family == "hot"]
+        slots = {e.hot_cue_slot for e in hot}
+        assert 1 in slots
+        assert 2 in slots
+        assert 4 in slots  # PCOB-only slot preserved
+        assert not any(w.code == "CUE_HOT_PCO2_CONFLICT" for w in warnings)
+
+    def test_pco2_pcob_hot_conflict_fails_closed(self):
+        """Req 15: material PCO2/PCOB hot cue conflict fails closed; CUE_HOT_PCO2_CONFLICT emitted."""
+        dat = _make_asset("DAT")
+        ext = _make_asset("EXT")
+        pco2 = _pco2_tag([_pco2_entry(hot_cue=1, time=1000)])
+        pcob_hot = _pcob_tag([_pcob_entry(hot_cue=1, time=2000)])  # different position
+
+        with patch("dropdex_importer.cue_parser.get_all_tags") as mock_tags:
+            def side_effect(asset, code):
+                if asset is ext and code == "PCO2":
+                    return [pco2]
+                if asset is dat and code == "PCOB":
+                    return [pcob_hot]
+                return []
+            mock_tags.side_effect = side_effect
+            entries, warnings = parse_anlz_cues(dat, ext)
+
+        hot = [e for e in entries if e.cue_family == "hot"]
+        assert len(hot) == 0
+        conflict_warnings = [w for w in warnings if w.code == "CUE_HOT_PCO2_CONFLICT"]
+        assert len(conflict_warnings) == 1
+
+    def test_pco2_hot_conflict_no_timestamp_tolerance(self):
+        """Req 16: 1ms position difference triggers conflict; no tolerance."""
+        dat = _make_asset("DAT")
+        ext = _make_asset("EXT")
+        pco2 = _pco2_tag([_pco2_entry(hot_cue=1, time=1000)])
+        pcob_hot = _pcob_tag([_pcob_entry(hot_cue=1, time=1001)])  # 1ms off
+
+        with patch("dropdex_importer.cue_parser.get_all_tags") as mock_tags:
+            def side_effect(asset, code):
+                if asset is ext and code == "PCO2":
+                    return [pco2]
+                if asset is dat and code == "PCOB":
+                    return [pcob_hot]
+                return []
+            mock_tags.side_effect = side_effect
+            entries, warnings = parse_anlz_cues(dat, ext)
+
+        hot = [e for e in entries if e.cue_family == "hot"]
+        assert len(hot) == 0
+        assert any(w.code == "CUE_HOT_PCO2_CONFLICT" for w in warnings)
+
+    def test_pco2_hot_no_pcob_uses_pco2_unconditionally(self):
+        """Req 17: PCO2 hot cues without any PCOB evidence are canonical as-is."""
+        dat = _make_asset("DAT")
+        ext = _make_asset("EXT")
+        pco2 = _pco2_tag([_pco2_entry(hot_cue=3, time=3000)])
+
+        with patch("dropdex_importer.cue_parser.get_all_tags") as mock_tags:
+            mock_tags.side_effect = lambda asset, code: [pco2] if asset is ext and code == "PCO2" else []
+            entries, warnings = parse_anlz_cues(dat, ext)
+
+        hot = [e for e in entries if e.cue_family == "hot"]
+        assert len(hot) == 1
+        assert hot[0].hot_cue_slot == 3
+        assert hot[0].source_tag == "PCO2"
+        assert not any(w.code == "CUE_HOT_PCO2_CONFLICT" for w in warnings)
+
+
+# ── _validate_and_merge_pco2_hot unit tests ───────────────────────────────────
+
+class TestValidateAndMergePco2Hot:
+    """Direct unit tests for _validate_and_merge_pco2_hot (Req 11-17)."""
+
+    def test_empty_pcob_returns_pco2_as_is_no_conflict(self):
+        """When PCOB is empty, PCO2 is canonical with no conflict."""
+        pco2 = [_anlz_entry(family="hot", slot=1, start_ms=1000.0, source_tag="PCO2")]
+        result, had_conflict = _validate_and_merge_pco2_hot(pco2, [], [])
+        assert result is pco2
+        assert had_conflict is False
+
+    def test_agreeing_common_slot_uses_pco2(self):
+        """Common slot with matching position → PCO2 selected, no conflict."""
+        pco2 = [_anlz_entry(family="hot", slot=1, start_ms=1000.0, source_tag="PCO2")]
+        pcob = [_anlz_entry(family="hot", slot=1, start_ms=1000.0, source_tag="PCOB")]
+        warnings: list = []
+        result, had_conflict = _validate_and_merge_pco2_hot(pco2, pcob, warnings)
+        assert had_conflict is False
+        assert len(warnings) == 0
+        assert result[0].source_tag == "PCO2"
+
+    def test_disagreeing_common_slot_fails_closed(self):
+        """Common slot with different start_ms → empty result, had_conflict=True, warning emitted."""
+        pco2 = [_anlz_entry(family="hot", slot=1, start_ms=1000.0, source_tag="PCO2")]
+        pcob = [_anlz_entry(family="hot", slot=1, start_ms=2000.0, source_tag="PCOB")]
+        warnings: list = []
+        result, had_conflict = _validate_and_merge_pco2_hot(pco2, pcob, warnings)
+        assert had_conflict is True
+        assert result == []
+        assert len(warnings) == 1
+        assert warnings[0].code == "CUE_HOT_PCO2_CONFLICT"
+
+    def test_disagreeing_point_type_fails_closed(self):
+        """Common slot with different point_type → conflict."""
+        pco2 = [_anlz_entry(family="hot", slot=1, start_ms=1000.0, point_type="cue", source_tag="PCO2")]
+        pcob = [_anlz_entry(family="hot", slot=1, start_ms=1000.0, point_type="loop", end_ms=3000.0, source_tag="PCOB")]
+        warnings: list = []
+        result, had_conflict = _validate_and_merge_pco2_hot(pco2, pcob, warnings)
+        assert had_conflict is True
+        assert result == []
+
+    def test_pcob_only_slots_appended_when_pco2_partial(self):
+        """PCOB-only slots (slot 4) are appended when PCO2 covers different slots."""
+        pco2 = [_anlz_entry(family="hot", slot=1, start_ms=1000.0, source_tag="PCO2")]
+        pcob = [
+            _anlz_entry(family="hot", slot=1, start_ms=1000.0, source_tag="PCOB"),
+            _anlz_entry(family="hot", slot=4, start_ms=4000.0, source_tag="PCOB"),
+        ]
+        warnings: list = []
+        result, had_conflict = _validate_and_merge_pco2_hot(pco2, pcob, warnings)
+        assert had_conflict is False
+        slots = {e.hot_cue_slot for e in result}
+        assert 1 in slots  # from PCO2
+        assert 4 in slots  # PCOB-only
+
+    def test_one_ms_position_difference_triggers_conflict(self):
+        """No timestamp tolerance: even 1ms difference on a common slot fails closed."""
+        pco2 = [_anlz_entry(family="hot", slot=2, start_ms=1000.0, source_tag="PCO2")]
+        pcob = [_anlz_entry(family="hot", slot=2, start_ms=1001.0, source_tag="PCOB")]
+        warnings: list = []
+        result, had_conflict = _validate_and_merge_pco2_hot(pco2, pcob, warnings)
+        assert had_conflict is True
+        assert result == []
+        assert any(w.code == "CUE_HOT_PCO2_CONFLICT" for w in warnings)
+
+    def test_non_overlapping_slots_all_preserved_no_conflict(self):
+        """PCO2 slot 1 and PCOB slot 4 — no common slots — all entries preserved."""
+        pco2 = [_anlz_entry(family="hot", slot=1, start_ms=1000.0, source_tag="PCO2")]
+        pcob = [_anlz_entry(family="hot", slot=4, start_ms=4000.0, source_tag="PCOB")]
+        warnings: list = []
+        result, had_conflict = _validate_and_merge_pco2_hot(pco2, pcob, warnings)
+        assert had_conflict is False
+        slots = {e.hot_cue_slot for e in result}
+        assert slots == {1, 4}
+        assert len(warnings) == 0
+
+    def test_result_is_sorted_by_slot(self):
+        """Output is sorted ascending by slot number regardless of input order."""
+        pco2 = [_anlz_entry(family="hot", slot=3, start_ms=3000.0, source_tag="PCO2")]
+        pcob = [
+            _anlz_entry(family="hot", slot=3, start_ms=3000.0, source_tag="PCOB"),
+            _anlz_entry(family="hot", slot=1, start_ms=1000.0, source_tag="PCOB"),
+        ]
+        warnings: list = []
+        result, had_conflict = _validate_and_merge_pco2_hot(pco2, pcob, warnings)
+        assert had_conflict is False
+        assert [e.hot_cue_slot for e in result] == [1, 3]
+
+
+# ── Enriched source_payload tests (Req 29-35) ─────────────────────────────────
+
+class TestPco2SourcePayloadEnrichment:
+    """PCO2 source_payload carries cue_family, RGB, comment, and loop fields."""
+
+    def test_pco2_source_payload_includes_cue_family_hot(self):
+        """Req 29: cue_family is persisted in source_payload."""
+        entry = _pco2_entry(hot_cue=1, time=1000)
+        tag = _pco2_tag([entry])
+        entries, _ = _parse_pco2(tag, _make_asset("EXT"), asset_type="EXT", tag_occurrence=0)
+        assert entries[0].source_payload["cue_family"] == "hot"
+
+    def test_pco2_source_payload_includes_cue_family_memory(self):
+        """Req 29: memory cue_family is also persisted."""
+        entry = _pco2_entry(hot_cue=0, time=1000)
+        tag = _pco2_tag([entry])
+        entries, _ = _parse_pco2(tag, _make_asset("EXT"), asset_type="EXT", tag_occurrence=0)
+        assert entries[0].source_payload["cue_family"] == "memory"
+
+    def test_pco2_source_payload_includes_rgb_colors(self):
+        """Req 33: PCO2 raw RGB channels are stored in source_payload."""
+        entry = _pco2_entry(color_red=200, color_green=100, color_blue=50)
+        tag = _pco2_tag([entry])
+        entries, _ = _parse_pco2(tag, _make_asset("EXT"), asset_type="EXT", tag_occurrence=0)
+        payload = entries[0].source_payload
+        assert payload["color_red"] == 200
+        assert payload["color_green"] == 100
+        assert payload["color_blue"] == 50
+
+    def test_pco2_source_payload_includes_comment(self):
+        """Req 30: PCO2 comment persists in source_payload."""
+        entry = _pco2_entry(comment="breakdown start")
+        tag = _pco2_tag([entry])
+        entries, _ = _parse_pco2(tag, _make_asset("EXT"), asset_type="EXT", tag_occurrence=0)
+        assert entries[0].source_payload.get("comment") == "breakdown start"
+
+    def test_pco2_source_payload_loop_fields_present(self):
+        """Req 31: loop_enumerator and loop_denominator persist for loops."""
+        entry = _pco2_entry(type_=2, loop_time=4000, loop_enumerator=3, loop_denominator=8)
+        tag = _pco2_tag([entry])
+        entries, _ = _parse_pco2(tag, _make_asset("EXT"), asset_type="EXT", tag_occurrence=0)
+        payload = entries[0].source_payload
+        assert payload.get("loop_enumerator") == 3
+        assert payload.get("loop_denominator") == 8
+
+    def test_pco2_source_payload_includes_raw_time_fields(self):
+        """Req 31: raw time and loop_time stored in source_payload."""
+        entry = _pco2_entry(time=5000, loop_time=8000)
+        tag = _pco2_tag([entry])
+        entries, _ = _parse_pco2(tag, _make_asset("EXT"), asset_type="EXT", tag_occurrence=0)
+        payload = entries[0].source_payload
+        assert payload["time"] == 5000
+        assert payload["loop_time"] == 8000
+
+    def test_pco2_source_payload_asset_type_recorded(self):
+        """Req 29: asset_type is stored in PCO2 source_payload."""
+        entry = _pco2_entry(hot_cue=1, time=1000)
+        tag = _pco2_tag([entry])
+        entries, _ = _parse_pco2(tag, _make_asset("EXT"), asset_type="EXT", tag_occurrence=0)
+        assert entries[0].source_payload["asset_type"] == "EXT"
+
+
+class TestPcobSourcePayloadEnrichment:
+    """PCOB source_payload carries cue_family, status, order, and raw fields."""
+
+    def test_pcob_source_payload_includes_cue_family(self):
+        """Req 32: PCOB cue_family stored in source_payload."""
+        entry = _pcob_entry(hot_cue=1, time=1000)
+        tag = _pcob_tag([entry])
+        entries, _ = _parse_pcob(tag, _make_asset("DAT"), asset_type="DAT", tag_occurrence=0)
+        assert entries[0].source_payload["cue_family"] == "hot"
+
+    def test_pcob_source_payload_includes_status_when_present(self):
+        """Req 32: PCOB status field is stored in source_payload when attribute exists."""
+        entry = SimpleNamespace(hot_cue=1, time=1000, type="single", loop_time=0xFFFFFFFF, status=0, order=0)
+        tag = _pcob_tag([entry])
+        entries, _ = _parse_pcob(tag, _make_asset("DAT"), asset_type="DAT", tag_occurrence=0)
+        assert "status" in entries[0].source_payload
+        assert entries[0].source_payload["status"] == 0
+
+    def test_pcob_source_payload_includes_order_when_present(self):
+        """Req 32: PCOB order field is stored in source_payload when attribute exists."""
+        entry = SimpleNamespace(hot_cue=0, time=3000, type="single", loop_time=0xFFFFFFFF, status=1, order=2)
+        tag = _pcob_tag([entry])
+        entries, _ = _parse_pcob(tag, _make_asset("DAT"), asset_type="DAT", tag_occurrence=1)
+        assert "order" in entries[0].source_payload
+        assert entries[0].source_payload["order"] == 2
+
+    def test_pcob_source_payload_includes_tag_and_asset_type(self):
+        """Req 30: PCOB tag and asset_type stored in source_payload."""
+        entry = _pcob_entry(hot_cue=2, time=2000)
+        tag = _pcob_tag([entry])
+        entries, _ = _parse_pcob(tag, _make_asset("EXT"), asset_type="EXT", tag_occurrence=0)
+        payload = entries[0].source_payload
+        assert payload["tag"] == "PCOB"
+        assert payload["asset_type"] == "EXT"
+
+    def test_pcob_source_payload_raw_time_stored(self):
+        """Req 31: raw time and loop_time stored in PCOB source_payload."""
+        entry = _pcob_entry(hot_cue=0, time=5000, type_str="loop", loop_time=9000)
+        tag = _pcob_tag([entry])
+        entries, _ = _parse_pcob(tag, _make_asset("DAT"), asset_type="DAT", tag_occurrence=0)
+        payload = entries[0].source_payload
+        assert payload["time"] == 5000
+        assert payload["loop_time"] == 9000

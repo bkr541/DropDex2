@@ -123,12 +123,19 @@ def parse_anlz_cues(
             warnings.extend(w)
 
     # ── Select canonical hot cues ─────────────────────────────────────────────
+    dat_hot = [e for e in dat_pcob_all if e.cue_family == "hot"]
+    ext_hot = [e for e in ext_pcob_all if e.cue_family == "hot"]
+    pcob_hot_combined = _merge_pcob_hot_by_slot(dat_hot, ext_hot)
+
     if pco2_hot:
-        canonical_hot = pco2_hot
+        canonical_hot, hot_conflict = _validate_and_merge_pco2_hot(
+            pco2_hot, pcob_hot_combined, warnings
+        )
+        if hot_conflict:
+            canonical_hot = []
     else:
-        dat_hot = [e for e in dat_pcob_all if e.cue_family == "hot"]
-        ext_hot = [e for e in ext_pcob_all if e.cue_family == "hot"]
-        canonical_hot = _merge_pcob_hot_by_slot(dat_hot, ext_hot)
+        canonical_hot = pcob_hot_combined
+        hot_conflict = False
 
     # ── Select canonical memory cues ──────────────────────────────────────────
     pcob_memory = [e for e in dat_pcob_all if e.cue_family == "memory"]
@@ -165,6 +172,59 @@ def _merge_pcob_hot_by_slot(
         if entry.hot_cue_slot is not None:
             by_slot[entry.hot_cue_slot] = entry
     return sorted(by_slot.values(), key=lambda e: e.hot_cue_slot or 0)
+
+
+def _validate_and_merge_pco2_hot(
+    pco2_hot: List[AnlzCueEntry],
+    pcob_hot_combined: List[AnlzCueEntry],
+    warnings: List[AnalysisParseWarning],
+) -> Tuple[List[AnlzCueEntry], bool]:
+    """
+    Validate PCO2 Hot Cue entries against PCOB evidence and produce the canonical list.
+
+    Rules:
+    - For slots present in BOTH PCO2 and PCOB: compare start_ms, point_type, end_ms exactly
+      (no tolerance). If any common slot disagrees: emit CUE_HOT_PCO2_CONFLICT warning,
+      return ([], True).
+    - For slots that agree on common entries: PCO2 entries are used (richer metadata).
+      PCOB-only slots (e.g. D-H absent from PCO2) are appended from PCOB.
+    - If no PCOB evidence: PCO2 is canonical as-is (no validation possible).
+
+    Returns (canonical_hot_entries, had_conflict).
+    """
+    if not pcob_hot_combined:
+        return pco2_hot, False
+
+    pco2_by_slot: Dict[int, AnlzCueEntry] = {
+        e.hot_cue_slot: e for e in pco2_hot if e.hot_cue_slot is not None
+    }
+    pcob_by_slot: Dict[int, AnlzCueEntry] = {
+        e.hot_cue_slot: e for e in pcob_hot_combined if e.hot_cue_slot is not None
+    }
+
+    common_slots = set(pco2_by_slot) & set(pcob_by_slot)
+    for slot in sorted(common_slots):
+        p2 = pco2_by_slot[slot]
+        pb = pcob_by_slot[slot]
+        if p2.start_ms != pb.start_ms or p2.point_type != pb.point_type or p2.end_ms != pb.end_ms:
+            warnings.append(AnalysisParseWarning(
+                code="CUE_HOT_PCO2_CONFLICT",
+                asset_type="EXT",
+                message=(
+                    f"PCO2 Hot Cue slot {slot} conflicts with PCOB on position/type "
+                    f"(PCO2 start={p2.start_ms} type={p2.point_type}, "
+                    f"PCOB start={pb.start_ms} type={pb.point_type}); "
+                    "failing Hot Cue family closed."
+                ),
+            ))
+            return [], True
+
+    # Common slots agree — use PCO2 entries; add any PCOB-only slots
+    result = list(pco2_hot)
+    for slot, pcob_entry in pcob_by_slot.items():
+        if slot not in pco2_by_slot:
+            result.append(pcob_entry)
+    return sorted(result, key=lambda e: e.hot_cue_slot or 0), False
 
 
 def _memory_lists_agree(
@@ -324,6 +384,7 @@ def _parse_pco2(
             "tag_occurrence": tag_occurrence,
             "src_idx": src_idx,
             "hot_cue": hot_cue,
+            "cue_family": cue_family,
             "type": point_type_raw,
             "color_id": color_id,
         }
@@ -332,6 +393,18 @@ def _parse_pco2(
             source_payload["loop_time"] = int(raw.loop_time)
         except AttributeError:
             pass
+        try:
+            source_payload["color_red"] = int(raw.color_red)
+            source_payload["color_green"] = int(raw.color_green)
+            source_payload["color_blue"] = int(raw.color_blue)
+        except AttributeError:
+            pass
+        if comment:
+            source_payload["comment"] = comment
+        if loop_num is not None:
+            source_payload["loop_enumerator"] = loop_num
+        if loop_den is not None:
+            source_payload["loop_denominator"] = loop_den
 
         entries.append(AnlzCueEntry(
             source_index=src_idx,
@@ -405,11 +478,20 @@ def _parse_pcob(
             "tag_occurrence": tag_occurrence,
             "src_idx": src_idx,
             "hot_cue": hot_cue,
+            "cue_family": cue_family,
         }
         try:
             source_payload["type"] = str(raw.type)
             source_payload["time"] = int(raw.time)
             source_payload["loop_time"] = int(raw.loop_time)
+        except AttributeError:
+            pass
+        try:
+            source_payload["status"] = int(raw.status)
+        except AttributeError:
+            pass
+        try:
+            source_payload["order"] = int(raw.order)
         except AttributeError:
             pass
 

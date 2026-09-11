@@ -105,11 +105,17 @@ export function isAnlzFile(file: File): boolean {
   return ANLZ_EXTS.has(file.name.slice(dotIdx).toLowerCase());
 }
 
-/** True only for DAT files, which block analysis when absent. EXT is preferred but optional. */
+/**
+ * True for DAT and EXT files — the two asset types retained in the initial
+ * fast-path folder scan. DAT is required/blocking; EXT is optional for blocking
+ * but preferred for import and must be retained when present. 2EX is archival
+ * work and is never retained in the initial folder scan.
+ */
 export function isBlockingAnlzFile(file: File): boolean {
   const dotIdx = file.name.lastIndexOf('.');
   if (dotIdx === -1) return false;
-  return file.name.slice(dotIdx).toLowerCase() === '.dat';
+  const ext = file.name.slice(dotIdx).toLowerCase();
+  return ext === '.dat' || ext === '.ext';
 }
 
 /** Find exportLibrary.db within a FileList (case-insensitive). */
@@ -147,8 +153,10 @@ export function requiredAssetTypesForManifestEntry(
     );
   }
   if (entry.manifest_status === 'needs_ext') return ['EXT'];
-  // EXT is preferred but optional — only DAT is required/blocking.
-  return ['DAT'];
+  // DAT is required/blocking. EXT is preferred for import — include it whenever
+  // the manifest knows about it so the upload list always carries both.
+  // Absence of EXT is not a failure; the backend handles DAT-only parse correctly.
+  return ['DAT', 'EXT'];
 }
 
 export interface ManifestWorkSummary {
