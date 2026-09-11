@@ -77,7 +77,7 @@ describe('ImportProgressModal', () => {
       createElement(ImportProgressModal, { currentStep: 'source', onClose: noop, children: child }),
     );
     expect(html).toContain('h-[600px]');
-    expect(html).toContain('max-w-xl');
+    expect(html).toContain('max-w-[624px]');
   });
 });
 

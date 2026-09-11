@@ -37,7 +37,7 @@ export function ImportProgressModal({
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0.9, opacity: 0 }}
-      className="relative w-full max-w-xl h-[600px] max-h-[calc(100dvh-2rem)] overflow-hidden bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-3xl shadow-2xl flex flex-col"
+      className="relative w-full max-w-[624px] h-[600px] max-h-[calc(100dvh-2rem)] overflow-hidden bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-3xl shadow-2xl flex flex-col"
       role="dialog"
       aria-modal="true"
       aria-labelledby="import-progress-title"
@@ -60,10 +60,10 @@ export function ImportProgressModal({
       {/* Shared header — identical on every phase */}
       <div className="flex items-center justify-between px-7 pt-5 pb-0 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-            <DataBase className="text-primary" size={20} aria-hidden />
+          <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+            <DataBase className="text-primary" size={24} aria-hidden />
           </div>
-          <h2 id="import-progress-title" className="text-lg font-bold leading-tight">
+          <h2 id="import-progress-title" className="text-xl font-bold leading-tight">
             Import Rekordbox Library
           </h2>
         </div>
@@ -72,14 +72,25 @@ export function ImportProgressModal({
         </ControlButton>
       </div>
 
-      {/* Five-stage progress indicator */}
-      <div className="px-7 pt-6 pb-0 shrink-0">
+      {/* Five-stage progress indicator — fixed width centered in the wider modal */}
+      <div className="px-[52px] pt-6 pb-0 shrink-0">
         <ImportStageProgress currentStep={currentStep} />
       </div>
 
-      {/* Scrollable phase body */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-7 py-4">
-        {children}
+      {/* Scrollable phase body — overflow-hidden clips x so the slide is visible */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={currentStep}
+            initial={{ opacity: 0, x: 18 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -18 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="h-full overflow-y-auto px-7 py-4"
+          >
+            {children}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </motion.div>
   );
