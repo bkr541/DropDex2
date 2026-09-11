@@ -1554,7 +1554,7 @@ export function ImportLibraryModal({
                 {/* Mode selector */}
                 <div className={cn(
                   'flex gap-1.5 p-1 rounded-xl mb-4 transition-colors shrink-0',
-                  isReady ? 'bg-green-500/5' : 'bg-[var(--color-surface)]',
+                  isReady ? 'bg-emerald-400/10' : 'bg-[var(--color-surface)]',
                 )}>
                   {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
                     <button
@@ -1564,7 +1564,7 @@ export function ImportLibraryModal({
                         'flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-semibold transition-all',
                         mode === m
                           ? isReady
-                            ? 'bg-green-500 text-white shadow-sm'
+                            ? 'bg-emerald-400 text-white shadow-sm'
                             : 'bg-primary text-white shadow-sm'
                           : 'text-muted-foreground hover:text-foreground',
                       )}
@@ -1600,7 +1600,7 @@ export function ImportLibraryModal({
                         <p className="text-sm">Scanning folder…</p>
                       </div>
                     ) : phase === 'database_selected' && folderScan ? (
-                      <div className="flex-1 mb-4 rounded-2xl border border-[var(--color-border-subtle)] p-4">
+                      <div className="flex-1 mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                           {folderScan.folderName}
                         </p>
@@ -1677,7 +1677,7 @@ export function ImportLibraryModal({
                 {(mode === 'zip_bundle' || mode === 'database_only') && (
                   <>
                     {selectedFile ? (
-                      <div className="mb-4 py-5 px-4 rounded-2xl border-2 border-dashed border-primary/50 bg-primary/5 text-center cursor-pointer"
+                      <div className="mb-4 py-5 px-4 rounded-2xl border-2 border-dashed border-emerald-500/30 bg-emerald-500/5 text-center cursor-pointer"
                         onClick={() => fileInputRef.current?.click()}
                         role="button"
                         tabIndex={0}
