@@ -257,6 +257,47 @@ class TestTrackMetadataFidelity:
         assert any("outside 0-5" in warning for warning in library.parse_warnings)
 
 
+    def test_zero_length_is_stored_as_null_duration(self):
+        # Rekordbox sometimes exports Content.length = 0 for unananalyzed or
+        # placeholder tracks. Zero is not a valid duration — store null so the
+        # frontend shows '—' instead of '0:00'.
+        content = types.SimpleNamespace(
+            content_id=42,
+            title="Track",
+            artist_name=None,
+            remixer_name=None,
+            album_name=None,
+            genre_name=None,
+            label_name=None,
+            color=None,
+            key=None,
+            bpmx100=0,
+            length=0,
+            rating=None,
+            djComment=None,
+            path=None,
+            fileType=None,
+            dateAdded=None,
+            masterDbId=None,
+            masterContentId=None,
+            analysisDataFilePath=None,
+            analysedBits=None,
+            cueUpdateCount=None,
+            analysisDataUpdateCount=None,
+            informationUpdateCount=None,
+            to_dict=lambda: {"content_id": 42},
+        )
+        db = MagicMock()
+        db.get_content.return_value.all.return_value = [content]
+        library = ParsedLibrary()
+
+        _extract_tracks(db, library)
+
+        assert library.tracks[0].duration_ms is None
+        assert library.tracks[0].duration_seconds is None
+        assert any("non-positive" in w for w in library.parse_warnings)
+
+
 class TestDeriveAnlzSiblings:
     def test_dat_input_produces_three_paths(self):
         dat, ext, two_ex = _derive_anlz_siblings("/PIONEER/USBANLZ/P001/ANLZ0000.DAT")

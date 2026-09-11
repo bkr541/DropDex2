@@ -192,34 +192,21 @@ function durationMsForTrack(
 ): number | null {
   if (!track) return null;
 
-  // Do not blindly trust one duration field. Some Rekordbox exports contain a
-  // suspiciously small CONTENT length while PQTZ still contains a complete
-  // multi-minute beat grid. The timeline must use the longest trustworthy
-  // track/beat extent or every beat collapses against the right edge.
-  const trackCandidates = [
-    typeof track.duration_ms === 'number' && Number.isFinite(track.duration_ms) && track.duration_ms > 0
-      ? track.duration_ms
-      : null,
-    typeof track.duration_seconds === 'number' && Number.isFinite(track.duration_seconds) && track.duration_seconds > 0
-      ? track.duration_seconds * 1000
-      : null,
-  ].filter((value): value is number => value != null);
+  // Rekordbox Content.length is the single source of truth. Use it directly
+  // and do not override it with beat-grid data. Beat-grid and phrases are
+  // fallbacks only when no valid stored duration is available.
+  if (typeof track.duration_ms === 'number' && Number.isFinite(track.duration_ms) && track.duration_ms > 0) {
+    return track.duration_ms;
+  }
+  if (typeof track.duration_seconds === 'number' && Number.isFinite(track.duration_seconds) && track.duration_seconds > 0) {
+    return track.duration_seconds * 1000;
+  }
 
+  // Stored duration absent — fall back to beat-grid, then phrases.
   const beats = beatGrid?.beats ?? [];
   const lastBeat = beats[beats.length - 1];
-  const beatGridDuration = lastBeat && Number.isFinite(lastBeat.ms)
-    ? lastBeat.ms + (lastBeat.bpm > 0 ? 60_000 / lastBeat.bpm : 500)
-    : null;
-
-  const authoritativeCandidates = [
-    ...trackCandidates,
-    beatGridDuration != null && Number.isFinite(beatGridDuration) && beatGridDuration > 0
-      ? beatGridDuration
-      : null,
-  ].filter((value): value is number => value != null);
-
-  if (authoritativeCandidates.length > 0) {
-    return Math.max(...authoritativeCandidates);
+  if (lastBeat && Number.isFinite(lastBeat.ms) && lastBeat.ms > 0) {
+    return lastBeat.ms + (lastBeat.bpm > 0 ? 60_000 / lastBeat.bpm : 500);
   }
 
   const phraseCandidates = phrases.flatMap((phrase) => {

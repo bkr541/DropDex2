@@ -332,9 +332,9 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
 
         # Duration is stored in milliseconds.
         duration_ms = _int_or_none(c.length)
-        if duration_ms is not None and duration_ms < 0:
+        if duration_ms is not None and duration_ms <= 0:
             library.parse_warnings.append(
-                f"Track {c.content_id} has a negative duration; storing no duration."
+                f"Track {c.content_id} has a non-positive duration ({duration_ms!r}); storing no duration."
             )
             duration_ms = None
         duration_seconds = duration_ms // 1000 if duration_ms is not None else None

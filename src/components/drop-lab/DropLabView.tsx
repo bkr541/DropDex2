@@ -193,8 +193,8 @@ export function DropLabView({
 
   const sourceDetail = useDropLabDetailWaveform(importId, sourceTrack?.id ?? null, sourceAnalysis?.waveformState);
   const candidateDetail = useDropLabDetailWaveform(importId, activeCandidate?.id ?? null, candidateAnalysis?.waveformState);
-  const sourceDuration = sourceTrack ? resolveTrackDurationMs(sourceTrack, sourceAnalysis?.beatGrid?.beats ?? []).durationMs : null;
-  const candidateDuration = activeCandidate ? resolveTrackDurationMs(activeCandidate, candidateAnalysis?.beatGrid?.beats ?? []).durationMs : null;
+  const sourceDuration = sourceTrack ? resolveTrackDurationMs(sourceTrack).durationMs : null;
+  const candidateDuration = activeCandidate ? resolveTrackDurationMs(activeCandidate).durationMs : null;
   const sourceDisplayWaveform = sourceDetail.displayState.status === 'loaded' ? sourceDetail.displayState.waveform : null;
   const candidateDisplayWaveform = candidateDetail.displayState.status === 'loaded' ? candidateDetail.displayState.waveform : null;
 

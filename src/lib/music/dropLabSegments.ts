@@ -13,7 +13,7 @@ export type DropLabBeatOffset = -1 | 0 | 1;
 
 export interface TrackTiming {
   durationMs: number | null;
-  usedDurationSource: 'track' | 'beat-grid' | 'none';
+  usedDurationSource: 'track' | 'none';
 }
 
 export type DropLabTimeSegment = MusicalTimeWindow;
@@ -26,7 +26,6 @@ export interface DropLabSegments {
 
 export function resolveTrackDurationMs(
   track: RekordboxTrack,
-  beats: BeatEntry[] = [],
 ): TrackTiming {
   if (track.duration_ms != null && track.duration_ms > 0) {
     return { durationMs: track.duration_ms, usedDurationSource: 'track' };
@@ -36,10 +35,6 @@ export function resolveTrackDurationMs(
       durationMs: track.duration_seconds * 1000,
       usedDurationSource: 'track',
     };
-  }
-  const lastBeatMs = beats.at(-1)?.ms;
-  if (lastBeatMs != null && lastBeatMs > 0) {
-    return { durationMs: lastBeatMs, usedDurationSource: 'beat-grid' };
   }
   return { durationMs: null, usedDurationSource: 'none' };
 }
@@ -59,14 +54,8 @@ export function buildDropLabSegments(input: {
   barCount: DropLabBarCount;
   beatOffset: DropLabBeatOffset;
 }): DropLabSegments {
-  const sourceDuration = resolveTrackDurationMs(
-    input.sourceTrack,
-    input.sourceBeats,
-  ).durationMs;
-  const candidateDuration = resolveTrackDurationMs(
-    input.candidateTrack,
-    input.candidateBeats,
-  ).durationMs;
+  const sourceDuration = resolveTrackDurationMs(input.sourceTrack).durationMs;
+  const candidateDuration = resolveTrackDurationMs(input.candidateTrack).durationMs;
   if (!input.sourceDrop || !input.candidateDrop) {
     return { source: null, candidate: null, candidateDropMs: null };
   }

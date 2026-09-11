@@ -20,7 +20,7 @@ export interface DropLabTrackAnalysis {
   phrases: PhraseRow[];
   waveformState: WaveformLoadState;
   durationMs: number | null;
-  durationSource: 'track' | 'beat-grid' | 'none';
+  durationSource: 'track' | 'none';
   dropPoints: DropPoint[];
 }
 
@@ -87,7 +87,7 @@ export function useDropLabAnalysis(sourceTrack: RekordboxTrack | null, candidate
           error: 'Waveform request completed without a track-scoped result.',
           retryable: true as const,
         };
-        const timing = resolveTrackDurationMs(track, beatGrid?.beats ?? []);
+        const timing = resolveTrackDurationMs(track);
         const dropPoints = resolveDropPoints({
           cues: trackCues,
           phrases: trackPhrases,

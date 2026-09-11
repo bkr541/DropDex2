@@ -352,12 +352,12 @@ describe('buildDropLabSegments', () => {
       duration_seconds: 183,
       duration_ms: 183_456,
     };
-    expect(resolveTrackDurationMs(t, []).durationMs).toBe(183_456);
+    expect(resolveTrackDurationMs(t).durationMs).toBe(183_456);
   });
 
-  it('resolves duration from the final beat grid timestamp when stored duration is absent', () => {
+  it('returns null duration when no stored duration is available, regardless of beat-grid', () => {
     const t = { ...track('source'), duration_seconds: 0 };
-    expect(resolveTrackDurationMs(t, beats(4)).durationMs).toBe(7500);
+    expect(resolveTrackDurationMs(t).durationMs).toBeNull();
   });
 });
 
