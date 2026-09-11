@@ -264,7 +264,7 @@ describe('cue draft canonical document', () => {
       pointType: 'loop',
       startMs: 1111,
       endMs: 4444,
-      colorTableIndex: 6,
+      colorTableIndex: 5,
       colorHex: '#00FFFF',
       colorName: 'Aqua',
       comment: 'Exact drop loop',
@@ -285,9 +285,18 @@ describe('cue draft canonical document', () => {
       cues: [cue({ colorTableIndex: -1 })],
     })).toThrow(/colorTableIndex cannot be negative/);
 
-    expect(() => createCueDraftDocument({
+    // 0 is a Rekordbox export artifact meaning "no beat loop" — it is silently coerced
+    // to null rather than rejected, because Rekordbox itself exports it this way.
+    const withZeroDenominator = createCueDraftDocument({
       ...identity,
       cues: [cue({ pointType: 'loop', endMs: 2000, beatLoopDenominator: 0 })],
+    });
+    expect(withZeroDenominator.cues[0].beatLoopDenominator).toBeNull();
+
+    // A genuinely negative denominator is invalid and must be rejected.
+    expect(() => createCueDraftDocument({
+      ...identity,
+      cues: [cue({ pointType: 'loop', endMs: 2000, beatLoopDenominator: -1 })],
     })).toThrow(/beatLoopDenominator must be positive/);
   });
 

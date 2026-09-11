@@ -58,6 +58,20 @@ describe('cue summary filter semantics', () => {
 });
 
 
+describe('zero-cue loaded-empty contract', () => {
+  it('treats a track with no persisted cue rows as successfully loaded, not as a failure', () => {
+    // A track that was successfully parsed but has zero cues (empty ANLZ, or a track
+    // with no cue points set) must produce loaded-empty, not loaded-with-cues and not failed.
+    // loaded-empty is the canonical "cue analysis complete, no cues" state.
+    expect(empty.status).toBe('loaded-empty');
+    expect(cueLoadCount(empty)).toBe(0);
+    // Usable in the "without-cues" filter — not hidden from the library view
+    expect(cueFilterMatches(empty, 'without-cues')).toBe(true);
+    // Not a failure that requires re-import
+    expect(cueFilterMatches(empty, 'all')).toBe(true);
+  });
+});
+
 describe('cue baseline request ownership', () => {
   const owner = { trackId: 'track-a', userId: 'user-a' };
 

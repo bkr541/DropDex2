@@ -70,4 +70,22 @@ describe('Cue Points analysis readiness', () => {
     expect(cueAnalysisReady(value)).toBe(false);
     expect(cueAnalysisLabel(value)).toBe('Partial');
   });
+
+  it('passes readiness for ANLZ-only cue parse where no database cue rows exist', () => {
+    // source_db_present=false / source_anlz_present=true tracks have no DjmdCue DB row.
+    // Readiness is determined by analysis_feature_statuses.cues on the track row, not by
+    // the presence or count of rekordbox_cues rows. A successful ANLZ-only parse that
+    // records cues='completed' must be ready for display and editing.
+    const anlzOnly = track({ analysis_feature_statuses: { cues: 'completed' } });
+    expect(cueAnalysisReady(anlzOnly)).toBe(true);
+    expect(cueAnalysisLabel(anlzOnly)).toBe('Ready');
+  });
+
+  it('passes readiness when EXT is absent and DAT-only parse succeeds', () => {
+    // A DAT-only ANLZ parse can fully complete cue analysis; EXT is optional.
+    // When the backend records cues='completed' after a DAT-only parse, the track must
+    // be ready — absence of EXT is not a failure condition for cue readiness.
+    const datOnly = track({ analysis_feature_statuses: { cues: 'completed' } });
+    expect(cueAnalysisReady(datOnly)).toBe(true);
+  });
 });

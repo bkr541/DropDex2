@@ -60,6 +60,8 @@ def test_reconciliation_contract_flows_through_saved_draft_to_real_preflight(tmp
     anlz = AnlzCueEntry(
         source_index=0,
         source_tag="PCO2",
+        asset_type="EXT",
+        tag_occurrence=0,
         hot_cue_slot=1,
         cue_family="hot",
         point_type="loop",
@@ -77,12 +79,23 @@ def test_reconciliation_contract_flows_through_saved_draft_to_real_preflight(tmp
     plan = build_cue_reconciliation_plan(
         [db_row], [anlz], import_id="import-1", track_id="track-101", tolerance_ms=10.0
     )
+    # The DB row has hot_cue_slot=None (old-style provisional entry) while the ANLZ
+    # has slot=1 — slots do not match, so reconciliation produces one ANLZ-sourced new
+    # row rather than a merged row. The ANLZ row carries ANLZ semantics.
     assert len(plan.upsert_rows) == 1
     reconciled = plan.upsert_rows[0]
     assert reconciled["point_type"] == "loop"
     assert reconciled["hot_cue_slot"] == 1
-    assert reconciled["is_active_loop"] is False
-    assert reconciled["color_table_index"] == 3
+    # ANLZ entries carry is_active_loop=None; the active-loop state is a live DjmdCue
+    # attribute, not derivable from ANLZ. It will be resolved against master.db at apply.
+    assert reconciled["is_active_loop"] is None
+    # ANLZ-only new row: color_table_index is None (PCO2 color goes into color_hex).
+    assert reconciled["color_table_index"] is None
+    # ANLZ properties are preserved in the row.
+    assert reconciled["color_hex"] == "#FF0000"
+    assert reconciled["comment"] == "anlz-label"
+    assert reconciled["source_anlz_present"] is True
+    assert reconciled["source_db_present"] is False
 
     # Model the saved Cue Points desired document using the exact bridge contract
     # consumed by the production apply preflight.
@@ -93,7 +106,6 @@ def test_reconciliation_contract_flows_through_saved_draft_to_real_preflight(tmp
         startMs=reconciled["start_ms"],
         endMs=reconciled["end_ms"],
         colorTableIndex=reconciled["color_table_index"],
-        colorName=reconciled["color_name"],
         comment=reconciled["comment"],
         isActiveLoop=reconciled["is_active_loop"],
         rekordboxKind=1,
