@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RekordboxTrack } from '../../types';
-import { cueAnalysisLabel, cueAnalysisReady, cueSourceCompletenessError } from './cueReadiness';
+import { cueAnalysisLabel, cueAnalysisReady, cueFeatureExplicitlyCompleted, cueSourceCompletenessError } from './cueReadiness';
 
 function track(overrides: Partial<RekordboxTrack> = {}): RekordboxTrack {
   return {
@@ -79,6 +79,21 @@ describe('Cue Points analysis readiness', () => {
     const anlzOnly = track({ analysis_feature_statuses: { cues: 'completed' } });
     expect(cueAnalysisReady(anlzOnly)).toBe(true);
     expect(cueAnalysisLabel(anlzOnly)).toBe('Ready');
+  });
+
+  it('cueFeatureExplicitlyCompleted is true only when cues=completed is set on the track', () => {
+    expect(cueFeatureExplicitlyCompleted(track({ analysis_feature_statuses: { cues: 'completed' } }))).toBe(true);
+    expect(cueFeatureExplicitlyCompleted(track())).toBe(false);
+    expect(cueFeatureExplicitlyCompleted(track({ analysis_feature_statuses: {} }))).toBe(false);
+    expect(cueFeatureExplicitlyCompleted(track({ analysis_feature_statuses: { cues: 'failed' } }))).toBe(false);
+    expect(cueFeatureExplicitlyCompleted(track({ analysis_feature_statuses: { cues: 'queued' } }))).toBe(false);
+  });
+
+  it('cueFeatureExplicitlyCompleted false for legacy completed rows with no feature status', () => {
+    // Legacy tracks analyzed before cues feature status was recorded must not be
+    // filtered as if they are anlz-complete; backward-compatible behavior must apply.
+    expect(cueFeatureExplicitlyCompleted(track({ analysis_parse_status: 'completed' }))).toBe(false);
+    expect(cueFeatureExplicitlyCompleted(track({ analysis_parse_status: 'reused' }))).toBe(false);
   });
 
   it('passes readiness when EXT is absent and DAT-only parse succeeds', () => {

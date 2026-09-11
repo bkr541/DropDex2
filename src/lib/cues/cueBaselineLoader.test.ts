@@ -508,4 +508,212 @@ describe('loadCueEditorBaseline', () => {
     expect(second.status).toBe('loaded-empty');
     expect(fetchCueDraft).toHaveBeenCalledTimes(2);
   });
+
+  // ── Canonical editor row selection (Req 1-9) ───────────────────────────────
+
+  it('returns only anlz-authority rows as editor cues when cue analysis is explicitly completed', async () => {
+    const anlzRow = { ...cueRow, id: 'cue-anlz', cue_family_authority: 'anlz' as const, start_ms: 1000 };
+    const provisionalRow = {
+      ...cueRow,
+      id: 'cue-provisional',
+      cue_family_authority: 'provisional' as const,
+      source_anlz_present: false,
+      start_ms: 1000,
+    };
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [anlzRow, provisionalRow],
+    });
+
+    const result = await loadCueEditorBaseline(
+      { ...track, analysis_feature_statuses: { cues: 'completed' } },
+      null,
+    );
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.workingCues).toHaveLength(1);
+      expect(result.workingCues[0].importedCueId).toBe('cue-anlz');
+    }
+  });
+
+  it('excludes a DB-only provisional row from the canonical editor set when cue analysis is completed', async () => {
+    const provisionalRow = {
+      ...cueRow,
+      id: 'cue-db-only',
+      cue_family_authority: 'provisional' as const,
+      source_anlz_present: false,
+      source_db_present: true,
+    };
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [provisionalRow],
+    });
+
+    const result = await loadCueEditorBaseline(
+      { ...track, analysis_feature_statuses: { cues: 'completed' } },
+      null,
+    );
+
+    expect(result.status).toBe('loaded-empty');
+    if (result.status !== 'failed') {
+      expect(result.workingCues).toHaveLength(0);
+    }
+  });
+
+  it('preserves provisional rows when cue analysis has not been explicitly completed', async () => {
+    const provisionalRow = {
+      ...cueRow,
+      id: 'cue-provisional',
+      cue_family_authority: 'provisional' as const,
+      source_anlz_present: false,
+    };
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [provisionalRow],
+    });
+
+    // No analysis_feature_statuses.cues set — legacy / pre-analysis behavior
+    const result = await loadCueEditorBaseline(track, null);
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.workingCues).toHaveLength(1);
+    }
+  });
+
+  it('keeps Memory Cue and Hot Cue at identical timestamps as two distinct canonical editor cues', async () => {
+    const hotRow = {
+      ...cueRow,
+      id: 'cue-hot',
+      cue_family: 'hot' as const,
+      cue_family_authority: 'anlz' as const,
+      start_ms: 30000,
+      hot_cue_slot: 1,
+    };
+    const memRow = {
+      ...cueRow,
+      id: 'cue-mem',
+      cue_family: 'memory' as const,
+      cue_family_authority: 'anlz' as const,
+      start_ms: 30000,
+      hot_cue_slot: null,
+    };
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [hotRow, memRow],
+    });
+
+    const result = await loadCueEditorBaseline(
+      { ...track, analysis_feature_statuses: { cues: 'completed' } },
+      null,
+    );
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.workingCues).toHaveLength(2);
+      const families = result.workingCues.map((c) => c.family).sort();
+      expect(families).toEqual(['hot', 'memory']);
+    }
+  });
+
+  it('keeps two Memory Cues at identical timestamps as separate canonical editor cues', async () => {
+    const mem1 = {
+      ...cueRow,
+      id: 'cue-m1',
+      cue_family: 'memory' as const,
+      cue_family_authority: 'anlz' as const,
+      start_ms: 45000,
+      hot_cue_slot: null,
+    };
+    const mem2 = {
+      ...cueRow,
+      id: 'cue-m2',
+      cue_family: 'memory' as const,
+      cue_family_authority: 'anlz' as const,
+      start_ms: 45000,
+      hot_cue_slot: null,
+    };
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [mem1, mem2],
+    });
+
+    const result = await loadCueEditorBaseline(
+      { ...track, analysis_feature_statuses: { cues: 'completed' } },
+      null,
+    );
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.workingCues).toHaveLength(2);
+    }
+  });
+
+  it('canonical selection does not merge rows by start_ms or use nearest matching', async () => {
+    // Two anlz rows at completely different positions are both returned as-is.
+    const row1 = { ...cueRow, id: 'cue-a', cue_family_authority: 'anlz' as const, start_ms: 1000 };
+    const row2 = { ...cueRow, id: 'cue-b', cue_family_authority: 'anlz' as const, start_ms: 1001, hot_cue_slot: 2 };
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [row1, row2],
+    });
+
+    const result = await loadCueEditorBaseline(
+      { ...track, analysis_feature_statuses: { cues: 'completed' } },
+      null,
+    );
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.workingCues).toHaveLength(2);
+      const positions = result.workingCues.map((c) => c.startMs).sort((a, b) => (a ?? 0) - (b ?? 0));
+      expect(positions).toEqual([1000, 1001]);
+    }
+  });
+
+  it('returns loaded-empty when cues=completed but no anlz rows exist', async () => {
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-empty',
+      trackId: track.id,
+      cues: [],
+    });
+
+    const result = await loadCueEditorBaseline(
+      { ...track, analysis_feature_statuses: { cues: 'completed' } },
+      null,
+    );
+
+    expect(result.status).toBe('loaded-empty');
+    if (result.status !== 'failed') {
+      expect(result.workingCues).toHaveLength(0);
+      expect(result.integrity).toMatchObject({ status: 'valid', error: null });
+    }
+  });
+
+  it('still loads after original USB assets are gone when cue rows exist in database', async () => {
+    // USB assets unavailable is an import-side state; the cue query goes to Supabase,
+    // not the local filesystem, so prior completed analysis remains accessible.
+    vi.mocked(fetchTrackCueState).mockResolvedValue({
+      status: 'loaded-with-cues',
+      trackId: track.id,
+      cues: [{ ...cueRow, cue_family_authority: 'anlz' as const }],
+    });
+
+    const result = await loadCueEditorBaseline(
+      { ...track, analysis_feature_statuses: { cues: 'completed' } },
+      null,
+    );
+
+    expect(result.status).toBe('loaded-with-cues');
+    if (result.status !== 'failed') {
+      expect(result.workingCues).toHaveLength(1);
+    }
+  });
 });

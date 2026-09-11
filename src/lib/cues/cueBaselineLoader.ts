@@ -2,7 +2,7 @@ import { normalizeImportedCues, type WorkingCue } from '../music/cueEditorState'
 import { fetchTrackCueState, type CueLoadState } from '../queries/analysisData';
 import { fetchCueDraft } from '../queries/cueDrafts';
 import type { RekordboxTrack } from '../../types';
-import { cueSourceCompletenessError } from './cueReadiness';
+import { cueFeatureExplicitlyCompleted, cueSourceCompletenessError } from './cueReadiness';
 import {
   hydrateCueDraftDocument,
   validateCueDraftWorkingSet,
@@ -95,7 +95,13 @@ export async function loadCueEditorBaseline(
   const cueState = await fetchTrackCueState(track.id);
   if (cueState.status === 'failed') return queryFailure(track.id, cueState);
 
-  const importedCues = normalizeImportedCues(track.id, cueState.cues);
+  // When ANLZ cue analysis is explicitly completed, only canonical ANLZ-authoritative
+  // rows are editor cues. Provisional DB-only evidence rows are source material and
+  // must not appear as duplicates alongside their canonical counterparts.
+  const canonicalRows = cueFeatureExplicitlyCompleted(track)
+    ? cueState.cues.filter((row) => row.cue_family_authority === 'anlz')
+    : cueState.cues;
+  const importedCues = normalizeImportedCues(track.id, canonicalRows);
   const importedIntegrity = validateBaseline(track, importedCues);
   if (!userId || importedIntegrity.status !== 'valid') {
     return {

@@ -57,6 +57,7 @@ import { cueAnalysisLabel, cueAnalysisReady } from '../../lib/cues/cueReadiness'
 import { cueFilterMatches, cueLoadCount, cueLoadOwnerMatches, type CueLoadOwner } from '../../lib/cues/cueLoadState';
 import {
   CueDraftRevisionConflictError,
+  cueDraftHasVerifiedBaseline,
   fetchCueDraftsForApply,
   markCueDraftApplied,
   markCueDraftApplyOutcome,
@@ -3316,8 +3317,43 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         setDraftCurrentBaselineLocalCueFingerprint(updated.currentBaselineLocalCueFingerprint);
       }
 
-      const rows = await refreshApplyDrafts();
-      const selection = resolveCueApplySelection(rows, scope);
+      let applyRows = await refreshApplyDrafts();
+      if (generation !== applyGenerationRef.current || selectedUserIdRef.current !== userId || selectedImportIdRef.current !== importId) return;
+
+      // Apply All: enroll any unverified baselines before destructive preflight.
+      // Changed drafts without a current local fingerprint are Apply All candidates
+      // that need a read-only live observation before the bridge can validate TOCTOU state.
+      if (kind === 'all') {
+        const unverifiedRows = applyRows.filter((row) => !cueDraftHasVerifiedBaseline(row));
+        if (unverifiedRows.length > 0) {
+          for (const unverifiedRow of unverifiedRows) {
+            const verifyResult = await desktop.cueBaselineVerify(scope, desktopDrafts([unverifiedRow]));
+            if (generation !== applyGenerationRef.current || selectedUserIdRef.current !== userId || selectedImportIdRef.current !== importId) return;
+            const verifiedTrack = verifyResult.tracks.find(
+              (t) => t.content_id === (unverifiedRow.masterContentId ?? unverifiedRow.rekordboxContentId),
+            );
+            if (!verifiedTrack || verifiedTrack.identity_comparison !== 'match' || !verifiedTrack.current_cue_fingerprint) {
+              setApplyMessage(
+                (verifiedTrack?.identity_error ?? 'Baseline verification failed for one or more tracks.')
+                + ' No Rekordbox changes were made. Make sure Rekordbox is closed and all tracks are in your local library, then try again.',
+              );
+              return;
+            }
+            await updateCueBaselineFingerprint({
+              importId: unverifiedRow.importId,
+              trackId: unverifiedRow.trackId,
+              revision: unverifiedRow.revision,
+              currentBaselineLocalCueFingerprint: verifiedTrack.current_cue_fingerprint,
+            });
+            if (generation !== applyGenerationRef.current) return;
+          }
+          // Reload drafts so the preflight sees the newly enrolled fingerprints.
+          applyRows = await refreshApplyDrafts();
+          if (generation !== applyGenerationRef.current || selectedUserIdRef.current !== userId || selectedImportIdRef.current !== importId) return;
+        }
+      }
+
+      const selection = resolveCueApplySelection(applyRows, scope);
       if (selection.error) {
         setApplyMessage(selection.error);
         return;

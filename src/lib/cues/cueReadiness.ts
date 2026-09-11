@@ -44,6 +44,15 @@ export function cueAnalysisLabel(track: RekordboxTrack): string {
   }
 }
 
+/**
+ * True only when the per-track cue-analysis feature status is explicitly
+ * recorded as 'completed'. A null/absent status (legacy tracks) returns false
+ * so that backward-compatible display logic is preserved.
+ */
+export function cueFeatureExplicitlyCompleted(track: RekordboxTrack): boolean {
+  return track.analysis_feature_statuses?.cues === 'completed';
+}
+
 export function cueSourceCompletenessError(track: RekordboxTrack): string | null {
   const status = cueFeatureStatus(track);
   if (status != null && status !== 'completed') {

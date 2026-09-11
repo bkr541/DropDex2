@@ -104,7 +104,7 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('<span>Apply All ({applyAllCount})</span>');
     expect(source).toContain("handleApplyPreflight('track')");
     expect(source).toContain("handleApplyPreflight('all')");
-    expect(source).toContain("resolveCueApplySelection(rows, scope)");
+    expect(source).toContain("resolveCueApplySelection(applyRows, scope)");
     expect(source).toContain('desktop.cueApplyPreflight(scope, desktopDrafts(selection.rows))');
     expect(source).toContain('desktop.cueApply(preflight.token, scope, desktopDrafts(applySnapshot))');
     expect(source).toContain("scope.kind === 'track' && selectedTrackId !== scope.trackId");
@@ -291,6 +291,52 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('setMetadataDraftRetryNonce((value) => value + 1)');
     expect(source).toContain('setPendingMetadataTrackRetryNonce((value) => value + 1)');
     expect(source).toContain('Pending Changes (${pendingMetadataCount})');
+  });
+
+  it('uses cueDraftHasVerifiedBaseline to partition Apply All drafts before live enrollment', () => {
+    // Req 17: the Apply All path must call cueDraftHasVerifiedBaseline to separate
+    // drafts that already have a local fingerprint from those that need enrollment.
+    expect(source).toContain('cueDraftHasVerifiedBaseline');
+    expect(source).toContain('cueDraftHasVerifiedBaseline(row)');
+    expect(source).toContain('unverifiedRows');
+  });
+
+  it('calls cueBaselineVerify for each unverified draft before cueApplyPreflight in Apply All', () => {
+    // Req 14-16: enrollment must happen before the destructive preflight bridge call.
+    // Source order is verified: the enrollment loop must appear before cueApplyPreflight.
+    expect(source).toContain('desktop.cueBaselineVerify(scope, desktopDrafts([unverifiedRow]))');
+    expect(source).toContain('desktop.cueApplyPreflight(scope, desktopDrafts(selection.rows))');
+    const enrollIndex = source.indexOf('desktop.cueBaselineVerify(scope, desktopDrafts([unverifiedRow]))');
+    const preflightIndex = source.indexOf('desktop.cueApplyPreflight(scope, desktopDrafts(selection.rows))');
+    expect(enrollIndex).toBeGreaterThan(-1);
+    expect(preflightIndex).toBeGreaterThan(enrollIndex);
+  });
+
+  it('calls updateCueBaselineFingerprint to persist each newly enrolled fingerprint in Apply All', () => {
+    // Req 18: after a successful cueBaselineVerify, the fingerprint is persisted
+    // so subsequent refreshApplyDrafts sees the enrolled row as verified.
+    expect(source).toContain("verifiedTrack.current_cue_fingerprint");
+    expect(source).toContain('updateCueBaselineFingerprint({');
+    expect(source).toContain('currentBaselineLocalCueFingerprint: verifiedTrack.current_cue_fingerprint');
+  });
+
+  it('reloads apply drafts after enrollment before passing them to cueApplyPreflight', () => {
+    // Req 19: drafts are refreshed after the enrollment loop so preflight sees
+    // the newly enrolled fingerprints rather than the stale unverified rows.
+    expect(source).toContain('applyRows = await refreshApplyDrafts()');
+    // The reload must appear between the enrollment block and resolveCueApplySelection
+    const enrollLoopEnd = source.lastIndexOf('applyRows = await refreshApplyDrafts()');
+    const selectionCall = source.indexOf('const selection = resolveCueApplySelection(applyRows, scope)');
+    expect(enrollLoopEnd).toBeGreaterThan(-1);
+    expect(selectionCall).toBeGreaterThan(enrollLoopEnd);
+  });
+
+  it('blocks all of Apply All when any single track fails identity check during enrollment', () => {
+    // Req 20: one failed identity check must abort Apply All — no partial apply.
+    expect(source).toContain("verifiedTrack.identity_comparison !== 'match'");
+    expect(source).toContain('verifiedTrack?.identity_error');
+    expect(source).toContain('Baseline verification failed for one or more tracks.');
+    expect(source).toContain('No Rekordbox changes were made.');
   });
 
   it('renders Stage 6 loop ranges, canonical colors, metadata, and conflict provenance in the production Cue Points path', () => {

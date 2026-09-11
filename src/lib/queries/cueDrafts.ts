@@ -142,10 +142,20 @@ export async function saveCueDraft(input: {
   return mapCueDraftRow(data);
 }
 
+/** True when the desired cues differ from the current semantic baseline. */
+export function cueDraftHasPendingChanges(row: CueDraftRow): boolean {
+  return row.desiredFingerprint !== row.currentBaselineFingerprint;
+}
+
+/** True when a live desktop observation has enrolled the current local cue fingerprint. */
+export function cueDraftHasVerifiedBaseline(row: CueDraftRow): boolean {
+  return row.currentBaselineLocalCueFingerprint != null;
+}
+
 export function cueDraftNeedsApply(row: CueDraftRow): boolean {
-  // Apply eligibility is based only on the Stage 10 verified moving baseline.
-  // Legacy applied_revision/applied_fingerprint bookkeeping is not proof of the
-  // current local Rekordbox database and must never suppress a pending Apply.
+  // Destructive Apply eligibility requires both pending changes AND a verified
+  // current local fingerprint. Apply All candidacy uses cueDraftHasPendingChanges
+  // separately so unverified changed drafts are not silently excluded.
   if (row.currentBaselineLocalCueFingerprint == null) return false;
   return row.desiredFingerprint !== row.currentBaselineFingerprint;
 }
@@ -204,7 +214,10 @@ export async function fetchCueDraftsForApply(userId: string, importId: string): 
   if (rows.length !== expectedCount) {
     throw new Error(`Cue draft retrieval is incomplete: loaded ${rows.length} of ${expectedCount ?? 0} rows.`);
   }
-  return rows.map(mapCueDraftRow).filter(cueDraftNeedsApply);
+  // Filter by pending changes only — not by verified baseline. Unverified
+  // changed drafts are Apply All candidates that the preflight flow will enroll
+  // before the destructive bridge operation runs.
+  return rows.map(mapCueDraftRow).filter(cueDraftHasPendingChanges);
 }
 
 export async function updateCueBaselineFingerprint(input: {

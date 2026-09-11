@@ -20,7 +20,7 @@ vi.mock('../supabase', () => ({
 }));
 
 import { createCueDraftDocument } from '../cues/cueDraftDocument';
-import { CueDraftRevisionConflictError, cueDraftNeedsApply, fetchCueDraft, fetchCueDraftsForApply, markCueDraftApplied, markCueDraftApplyOutcome, saveCueDraft, updateCueBaselineFingerprint } from './cueDrafts';
+import { CueDraftRevisionConflictError, cueDraftHasPendingChanges, cueDraftHasVerifiedBaseline, cueDraftNeedsApply, fetchCueDraft, fetchCueDraftsForApply, markCueDraftApplied, markCueDraftApplyOutcome, saveCueDraft, updateCueBaselineFingerprint } from './cueDrafts';
 
 const desiredDocument = createCueDraftDocument({
   importId: 'import-1',
@@ -331,6 +331,131 @@ describe('cue draft production persistence queries', () => {
       revision: 1,
       currentBaselineLocalCueFingerprint: 'c'.repeat(64),
     })).rejects.toBeInstanceOf(CueDraftRevisionConflictError);
+  });
+
+  // ── cueDraftHasPendingChanges / cueDraftHasVerifiedBaseline (Req 11-12) ────
+
+  it('cueDraftHasPendingChanges is true when desired fingerprint differs from baseline regardless of local cue fingerprint', () => {
+    const changed = {
+      id: 'x', userId: 'user-1', importId: 'import-1', trackId: 'track-1', rekordboxContentId: 'content-1',
+      schemaVersion: 1, desiredDocument, desiredFingerprint: 'desired-v2',
+      importedBaselineFingerprint: 'baseline', importedBaselineLocalCueFingerprint: null,
+      currentBaselineFingerprint: 'baseline', currentBaselineLocalCueFingerprint: null,
+      masterDbId: null, masterContentId: null, revision: 1, strategyVersion: null, strategySettings: null,
+      createdAt: row.created_at, updatedAt: row.updated_at, appliedRevision: null, appliedFingerprint: null,
+      appliedAt: null, lastApplyOperationId: null, lastApplyState: null, lastApplySummary: null,
+    };
+    expect(cueDraftHasPendingChanges(changed)).toBe(true);
+  });
+
+  it('cueDraftHasPendingChanges is false when desired fingerprint matches current baseline fingerprint', () => {
+    const unchanged = {
+      id: 'x', userId: 'user-1', importId: 'import-1', trackId: 'track-1', rekordboxContentId: 'content-1',
+      schemaVersion: 1, desiredDocument, desiredFingerprint: 'same',
+      importedBaselineFingerprint: 'baseline', importedBaselineLocalCueFingerprint: null,
+      currentBaselineFingerprint: 'same', currentBaselineLocalCueFingerprint: null,
+      masterDbId: null, masterContentId: null, revision: 1, strategyVersion: null, strategySettings: null,
+      createdAt: row.created_at, updatedAt: row.updated_at, appliedRevision: null, appliedFingerprint: null,
+      appliedAt: null, lastApplyOperationId: null, lastApplyState: null, lastApplySummary: null,
+    };
+    expect(cueDraftHasPendingChanges(unchanged)).toBe(false);
+  });
+
+  it('cueDraftHasVerifiedBaseline is true when current local cue fingerprint is set', () => {
+    const verified = {
+      id: 'x', userId: 'user-1', importId: 'import-1', trackId: 'track-1', rekordboxContentId: 'content-1',
+      schemaVersion: 1, desiredDocument, desiredFingerprint: 'desired',
+      importedBaselineFingerprint: 'baseline', importedBaselineLocalCueFingerprint: null,
+      currentBaselineFingerprint: 'baseline', currentBaselineLocalCueFingerprint: 'a'.repeat(64),
+      masterDbId: null, masterContentId: null, revision: 1, strategyVersion: null, strategySettings: null,
+      createdAt: row.created_at, updatedAt: row.updated_at, appliedRevision: null, appliedFingerprint: null,
+      appliedAt: null, lastApplyOperationId: null, lastApplyState: null, lastApplySummary: null,
+    };
+    expect(cueDraftHasVerifiedBaseline(verified)).toBe(true);
+  });
+
+  it('cueDraftHasVerifiedBaseline is false when current local cue fingerprint is null', () => {
+    const unverified = {
+      id: 'x', userId: 'user-1', importId: 'import-1', trackId: 'track-1', rekordboxContentId: 'content-1',
+      schemaVersion: 1, desiredDocument, desiredFingerprint: 'desired',
+      importedBaselineFingerprint: 'baseline', importedBaselineLocalCueFingerprint: null,
+      currentBaselineFingerprint: 'baseline', currentBaselineLocalCueFingerprint: null,
+      masterDbId: null, masterContentId: null, revision: 1, strategyVersion: null, strategySettings: null,
+      createdAt: row.created_at, updatedAt: row.updated_at, appliedRevision: null, appliedFingerprint: null,
+      appliedAt: null, lastApplyOperationId: null, lastApplyState: null, lastApplySummary: null,
+    };
+    expect(cueDraftHasVerifiedBaseline(unverified)).toBe(false);
+  });
+
+  it('cueDraftNeedsApply remains false for unverified drafts — destructive Apply still requires an enrolled baseline', () => {
+    // cueDraftNeedsApply is the gate for the destructive bridge operation (Apply Track / final
+    // Apply preflight). Unverified drafts are Apply All candidates via cueDraftHasPendingChanges
+    // but they must not bypass the TOCTOU fingerprint check.
+    expect(cueDraftNeedsApply({
+      id: 'anlz', userId: 'user-1', importId: 'import-1', trackId: 'track-1', rekordboxContentId: 'content-1',
+      schemaVersion: 1, desiredDocument, desiredFingerprint: 'desired',
+      importedBaselineFingerprint: 'baseline', importedBaselineLocalCueFingerprint: null,
+      currentBaselineFingerprint: 'baseline', currentBaselineLocalCueFingerprint: null,
+      masterDbId: null, masterContentId: null, revision: 1, strategyVersion: null, strategySettings: null,
+      createdAt: row.created_at, updatedAt: row.updated_at, appliedRevision: null, appliedFingerprint: null,
+      appliedAt: null, lastApplyOperationId: null, lastApplyState: null, lastApplySummary: null,
+    })).toBe(false);
+  });
+
+  // ── fetchCueDraftsForApply Apply All candidacy (Req 10-12) ─────────────────
+
+  it('fetchCueDraftsForApply includes an unverified changed draft as an Apply All candidate', async () => {
+    // An ANLZ-only changed draft (null currentBaselineLocalCueFingerprint) is an
+    // Apply All candidate needing live enrollment before destructive preflight.
+    const unverifiedRow = {
+      ...row,
+      desired_fingerprint: 'changed',
+      current_baseline_fingerprint: 'baseline',
+      current_baseline_local_cue_fingerprint: null,
+      imported_baseline_local_cue_fingerprint: null,
+    };
+    mocks.range.mockResolvedValueOnce({ data: [unverifiedRow], error: null, count: 1 });
+
+    const result = await fetchCueDraftsForApply('user-1', 'import-1');
+    expect(result).toHaveLength(1);
+    expect(result[0].currentBaselineLocalCueFingerprint).toBeNull();
+  });
+
+  it('fetchCueDraftsForApply excludes an unchanged draft even when baseline fingerprint is set', async () => {
+    const unchangedRow = {
+      ...row,
+      desired_fingerprint: 'same',
+      current_baseline_fingerprint: 'same',
+      current_baseline_local_cue_fingerprint: 'local-baseline',
+    };
+    mocks.range.mockResolvedValueOnce({ data: [unchangedRow], error: null, count: 1 });
+
+    const result = await fetchCueDraftsForApply('user-1', 'import-1');
+    expect(result).toHaveLength(0);
+  });
+
+  it('fetchCueDraftsForApply includes both verified and unverified changed drafts in the same scope', async () => {
+    const verifiedRow = {
+      ...row,
+      id: 'draft-verified',
+      desired_fingerprint: 'v2',
+      current_baseline_fingerprint: 'v1',
+      current_baseline_local_cue_fingerprint: 'a'.repeat(64),
+    };
+    const unverifiedRow = {
+      ...row,
+      id: 'draft-unverified',
+      desired_fingerprint: 'v2',
+      current_baseline_fingerprint: 'v1',
+      current_baseline_local_cue_fingerprint: null,
+      imported_baseline_local_cue_fingerprint: null,
+    };
+    mocks.range.mockResolvedValueOnce({ data: [verifiedRow, unverifiedRow], error: null, count: 2 });
+
+    const result = await fetchCueDraftsForApply('user-1', 'import-1');
+    expect(result).toHaveLength(2);
+    const ids = result.map((r) => r.id).sort();
+    expect(ids).toEqual(['draft-unverified', 'draft-verified']);
   });
 
   it('rebases only the moving comparison baseline through the import-scoped verified post-apply RPC', async () => {
