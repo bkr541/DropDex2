@@ -446,6 +446,7 @@ async def rekordbox_analysis_resume(
 )
 async def rekordbox_analysis_status(
     import_id: str,
+    details: bool = True,
     user_id: str = Depends(get_current_user_id),
 ) -> AnalysisStatusResponse:
     """
@@ -454,7 +455,7 @@ async def rekordbox_analysis_status(
     Reports upload progress, parse counts, and which required DAT files have
     not yet been received.
     """
-    return await get_analysis_status(import_id, user_id)
+    return await get_analysis_status(import_id, user_id, include_details=details)
 
 
 @app.post(

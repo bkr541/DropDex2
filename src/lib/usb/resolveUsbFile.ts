@@ -183,8 +183,9 @@ async function getFileHandleCaseInsensitive(
  * exists it is used. If multiple entries match, an `ambiguous_case_match` error
  * is returned to avoid silently reading the wrong file.
  *
- * Privacy: returns an in-memory File object only. Callers must not persist,
- * upload, cache, or copy the file's contents.
+ * Read-only contract: this helper only obtains an in-memory File object and
+ * never writes to the selected filesystem. Callers own the lifecycle and any
+ * subsequent use of the returned File.
  */
 export async function resolveUsbFile(
   root: FileSystemDirectoryHandle,

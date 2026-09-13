@@ -22,7 +22,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, List, Optional
 
 from .models import NormalizedAnalysisManifestEntry, ParsedLibrary
 
@@ -367,8 +367,24 @@ def _create_import_row(sb: object, library: ParsedLibrary, owner_user_id: str) -
 
 def _insert_tracks(sb: object, library: ParsedLibrary, import_id: str) -> Dict[str, str]:
     """Insert tracks in batches. Returns {rekordbox_content_id: supabase_uuid}."""
-    rows = [
-        {
+    rb_to_sb: Dict[str, str] = {}
+    batch: List[dict] = []
+
+    def _flush() -> None:
+        if not batch:
+            return
+        response = sb.table("rekordbox_tracks").insert(list(batch)).execute()  # type: ignore[attr-defined]
+        if not response.data:
+            raise RuntimeError(
+                "Supabase returned no data after track insert — "
+                "check your service-role key and RLS policies."
+            )
+        for inserted in response.data:
+            rb_to_sb[inserted["rekordbox_content_id"]] = inserted["id"]
+        batch.clear()
+
+    for t in library.tracks:
+        batch.append({
             "import_id": import_id,
             "rekordbox_content_id": t.rekordbox_content_id,
             "title": t.title,
@@ -422,20 +438,11 @@ def _insert_tracks(sb: object, library: ParsedLibrary, import_id: str) -> Dict[s
             "cue_update_count": t.cue_update_count,
             "analysis_data_update_count": t.analysis_data_update_count,
             "information_update_count": t.information_update_count,
-        }
-        for t in library.tracks
-    ]
+        })
+        if len(batch) >= _BATCH_SIZE:
+            _flush()
 
-    rb_to_sb: Dict[str, str] = {}
-    for batch in _chunks(rows, _BATCH_SIZE):
-        response = sb.table("rekordbox_tracks").insert(batch).execute()  # type: ignore[attr-defined]
-        if not response.data:
-            raise RuntimeError(
-                "Supabase returned no data after track insert — "
-                "check your service-role key and RLS policies."
-            )
-        for row in response.data:
-            rb_to_sb[row["rekordbox_content_id"]] = row["id"]
+    _flush()
 
     return rb_to_sb
 
@@ -446,28 +453,35 @@ def _insert_playlists(sb: object, library: ParsedLibrary, import_id: str) -> Dic
     Returns {rekordbox_playlist_id: supabase_uuid}.
     Parent links are wired in _update_parent_playlist_ids().
     """
-    rows = [
-        {
+    rb_to_sb: Dict[str, str] = {}
+    batch: List[dict] = []
+
+    def _flush() -> None:
+        if not batch:
+            return
+        response = sb.table("rekordbox_playlists").insert(list(batch)).execute()  # type: ignore[attr-defined]
+        if not response.data:
+            raise RuntimeError(
+                "Supabase returned no data after playlist insert — "
+                "check your service-role key and RLS policies."
+            )
+        for inserted in response.data:
+            rb_to_sb[inserted["rekordbox_playlist_id"]] = inserted["id"]
+        batch.clear()
+
+    for p in library.playlists:
+        batch.append({
             "import_id": import_id,
             "rekordbox_playlist_id": p.rekordbox_playlist_id,
             "name": p.name,
             "parent_playlist_id": None,
             "sort_order": p.sort_order,
             "is_folder": p.is_folder,
-        }
-        for p in library.playlists
-    ]
+        })
+        if len(batch) >= _BATCH_SIZE:
+            _flush()
 
-    rb_to_sb: Dict[str, str] = {}
-    for batch in _chunks(rows, _BATCH_SIZE):
-        response = sb.table("rekordbox_playlists").insert(batch).execute()  # type: ignore[attr-defined]
-        if not response.data:
-            raise RuntimeError(
-                "Supabase returned no data after playlist insert — "
-                "check your service-role key and RLS policies."
-            )
-        for row in response.data:
-            rb_to_sb[row["rekordbox_playlist_id"]] = row["id"]
+    _flush()
 
     return rb_to_sb
 
@@ -512,8 +526,17 @@ def _insert_placements(
     for pc in library.placements:
         grouped[pc.rekordbox_playlist_id].append(pc)
 
-    rows: List[dict] = []
+    batch: List[dict] = []
+    inserted_count = 0
     skipped = 0
+
+    def _flush() -> None:
+        nonlocal inserted_count
+        if not batch:
+            return
+        sb.table("rekordbox_playlist_tracks").insert(list(batch)).execute()  # type: ignore[attr-defined]
+        inserted_count += len(batch)
+        batch.clear()
 
     for rb_playlist_id, pcs in grouped.items():
         playlist_sb_id = rb_to_sb_playlist.get(rb_playlist_id)
@@ -537,21 +560,22 @@ def _insert_placements(
                     pc.rekordbox_content_id,
                 )
                 continue
-            rows.append(
+            batch.append(
                 {
                     "playlist_id": playlist_sb_id,
                     "track_id": track_sb_id,
                     "position": new_pos,
                 }
             )
+            if len(batch) >= _BATCH_SIZE:
+                _flush()
 
     if skipped:
         logger.warning("Skipped %d placement(s) — UUID resolution failed", skipped)
 
-    for batch in _chunks(rows, _BATCH_SIZE):
-        sb.table("rekordbox_playlist_tracks").insert(batch).execute()  # type: ignore[attr-defined]
+    _flush()
 
-    return len(rows)
+    return inserted_count
 
 
 def _insert_cues(
@@ -561,8 +585,17 @@ def _insert_cues(
     rb_to_sb_track: Dict[str, str],
 ) -> int:
     """Insert cue rows. Returns the count of successfully inserted rows."""
-    rows: List[dict] = []
+    batch: List[dict] = []
+    inserted_count = 0
     skipped = 0
+
+    def _flush() -> None:
+        nonlocal inserted_count
+        if not batch:
+            return
+        sb.table("rekordbox_cues").insert(list(batch)).execute()  # type: ignore[attr-defined]
+        inserted_count += len(batch)
+        batch.clear()
 
     for cue in library.cues:
         track_sb_id = rb_to_sb_track.get(cue.rekordbox_content_id)
@@ -608,7 +641,7 @@ def _insert_cues(
             "out_number_of_sample_in_block": cue.out_number_of_sample_in_block,
         }
 
-        rows.append(
+        batch.append(
             {
                 "import_id": import_id,
                 "track_id": track_sb_id,
@@ -636,14 +669,15 @@ def _insert_cues(
                 "source_payload": source_payload,
             }
         )
+        if len(batch) >= _BATCH_SIZE:
+            _flush()
 
     if skipped:
         logger.warning("Skipped %d cue(s) — content_id resolution failed", skipped)
 
-    for batch in _chunks(rows, _BATCH_SIZE):
-        sb.table("rekordbox_cues").insert(batch).execute()  # type: ignore[attr-defined]
+    _flush()
 
-    return len(rows)
+    return inserted_count
 
 
 def _insert_recommendation_edges(
@@ -653,8 +687,17 @@ def _insert_recommendation_edges(
     rb_to_sb_track: Dict[str, str],
 ) -> int:
     """Insert recommendedLike rows. Returns the count of successfully inserted rows."""
-    rows: List[dict] = []
+    batch: List[dict] = []
+    inserted_count = 0
     skipped = 0
+
+    def _flush() -> None:
+        nonlocal inserted_count
+        if not batch:
+            return
+        sb.table("rekordbox_recommendation_edges").insert(list(batch)).execute()  # type: ignore[attr-defined]
+        inserted_count += len(batch)
+        batch.clear()
 
     for edge in library.recommendation_edges:
         source_sb_id = rb_to_sb_track.get(edge.source_rekordbox_content_id)
@@ -669,7 +712,7 @@ def _insert_recommendation_edges(
             )
             continue
 
-        rows.append(
+        batch.append(
             {
                 "import_id": import_id,
                 "source_track_id": source_sb_id,
@@ -683,14 +726,15 @@ def _insert_recommendation_edges(
                 "source_payload": edge.source_payload,
             }
         )
+        if len(batch) >= _BATCH_SIZE:
+            _flush()
 
     if skipped:
         logger.warning("Skipped %d recommendation edge(s) — UUID resolution failed", skipped)
 
-    for batch in _chunks(rows, _BATCH_SIZE):
-        sb.table("rekordbox_recommendation_edges").insert(batch).execute()  # type: ignore[attr-defined]
+    _flush()
 
-    return len(rows)
+    return inserted_count
 
 
 def _finalize_import(
@@ -727,6 +771,3 @@ def _mark_failed(sb: object, import_id: str, error_message: str) -> None:
         logger.error("Could not mark import as failed: %s", exc)
 
 
-def _chunks(lst: List, n: int) -> Iterator[List]:
-    for i in range(0, len(lst), n):
-        yield lst[i : i + n]

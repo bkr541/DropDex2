@@ -16,8 +16,13 @@ import {
 } from '../lib/api/rekordboxImport';
 import type { AnalysisStatusResponse, CompleteResponse } from '../lib/api/rekordboxImport';
 import { buildBatches, isAnlzFile, type MatchedAnalysisFile } from '../lib/rekordbox/analysisPaths';
-import { buildResumeTargets, buildResumeMatchResult, buildStatusSummary, resumeRequiresUsbSelection } from '../lib/rekordbox/resumeAnalysis';
+import { buildResumeTargets, buildResumeMatchResult, buildResumeMatchResultFromMatched, buildStatusSummary, resumeRequiresUsbSelection } from '../lib/rekordbox/resumeAnalysis';
 import type { ResumeTarget, ResumeStatusSummary } from '../lib/rekordbox/resumeAnalysis';
+import {
+  pickTargetedRekordboxUsb,
+  resolveRequestedAnalysisFiles,
+  supportsTargetedUsbDiscovery,
+} from '../lib/rekordbox/usbTargetedDiscovery';
 import { UploadAccumulator } from '../lib/rekordbox/analysisUploadResults';
 import { isAbortError, uploadBatchWithRetry } from '../lib/rekordbox/uploadBatch';
 import { AbortableTimerRegistry, waitForAbortableDelay } from '../lib/rekordbox/abortableRetry';
@@ -81,7 +86,7 @@ function pluralFiles(n: number) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Props) {
-  const { release: releaseUsb } = useUsbConnection();
+  const { release: releaseUsb, runtime: usbRuntime } = useUsbConnection();
   const [phase, setPhase] = useState<ResumePhase>('fetching_status');
   const [status, setStatus] = useState<AnalysisStatusResponse | null>(null);
   const [targets, setTargets] = useState<ResumeTarget[]>([]);
@@ -280,15 +285,16 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
     onClose();
   }
 
-  const handleFolderChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const processResumeSelection = useCallback(async (
+    files: File[],
+    exactMatches?: MatchedAnalysisFile[],
+  ) => {
     performResumeUsbCleanup();
     usbCleanupRef.current = new IdempotentUsbCleanup();
     retryTimersRef.current = new AbortableTimerRegistry();
     uploadQueueRuntimeRef.current = null;
 
-    const files = Array.from(e.target.files ?? []).filter(isAnlzFile);
     scannedFilesRef.current = files;
-    e.target.value = '';
 
     const requestedImportId = importId;
     const generation = ++requestGenerationRef.current;
@@ -296,7 +302,9 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
     const ac = new AbortController();
     controllerRef.current = ac;
 
-    const result = buildResumeMatchResult(files, targets);
+    const result = exactMatches
+      ? buildResumeMatchResultFromMatched(exactMatches, targets)
+      : buildResumeMatchResult(files, targets);
     matchedFilesRef.current = result.matched;
     if (!isCurrentOperation(requestedImportId, generation, ac)) return;
     setMatchSummary({
@@ -467,6 +475,46 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
     }
   }, [importId, isCurrentOperation, onClose, performResumeUsbCleanup, releaseUsbBeforeCloudParsing, runParsing, targets]);
 
+  const handleFolderChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []).filter(isAnlzFile);
+    e.target.value = '';
+    await processResumeSelection(files);
+  }, [processResumeSelection]);
+
+  const handleUsbFolderSelect = useCallback(async () => {
+    if (usbRuntime === 'browser' && supportsTargetedUsbDiscovery()) {
+      const requestedImportId = importId;
+      const generation = ++requestGenerationRef.current;
+      controllerRef.current?.abort();
+      const discoveryController = new AbortController();
+      controllerRef.current = discoveryController;
+      try {
+        const selection = await pickTargetedRekordboxUsb();
+        if (!isCurrentOperation(requestedImportId, generation, discoveryController)) return;
+        const resolution = await resolveRequestedAnalysisFiles(
+          selection.rootHandle,
+          targets.map((target) => ({
+            canonicalPath: target.path,
+            assetType: target.assetType,
+            trackId: target.trackId ?? '',
+          })),
+          { signal: discoveryController.signal },
+        );
+        if (!isCurrentOperation(requestedImportId, generation, discoveryController)) return;
+        await processResumeSelection(
+          resolution.matched.map((item) => item.file),
+          resolution.matched,
+        );
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setErrorMessage(error instanceof Error ? error.message : 'Could not read the selected USB.');
+        setPhase('error');
+      }
+      return;
+    }
+    folderInputRef.current?.click();
+  }, [importId, isCurrentOperation, processResumeSelection, targets, usbRuntime]);
+
   if (!isOpen) return null;
 
   return (
@@ -584,7 +632,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                 />
                 <ControlButton
                   variant="primary"
-                  onClick={() => folderInputRef.current?.click()}
+                  onClick={() => void handleUsbFolderSelect()}
                 >
                   <FolderOpen size={16} />
                   {wrongDrive ? 'Select Different Folder' : 'Select PIONEER Folder on USB'}

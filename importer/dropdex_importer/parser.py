@@ -41,6 +41,24 @@ _FOLDER_ATTRIBUTE = 1
 
 # Cue kind values as documented in pyrekordbox devicelib_plus models
 _CUE_KIND_LOOP = 4
+_PARSE_FETCH_BATCH_SIZE = 500
+
+
+def _iter_query_rows(query: object):
+    """Iterate SQLAlchemy rows in bounded batches when available.
+
+    pyrekordbox returns SQLAlchemy Query objects in production.  ``yield_per``
+    keeps those ORM rows from being materialized as one giant intermediate
+    list before DropDex normalizes them.  Test doubles and alternate query
+    implementations keep the legacy ``.all()`` fallback.
+    """
+    module_name = query.__class__.__module__
+    yield_per = getattr(query, "yield_per", None)
+    if callable(yield_per) and module_name.startswith("sqlalchemy"):
+        yield from yield_per(_PARSE_FETCH_BATCH_SIZE)
+        return
+    all_rows = getattr(query, "all")
+    yield from all_rows()
 
 
 def _str_or_none(value: object) -> Optional[str]:
@@ -300,10 +318,9 @@ def _extract_metadata(db: object, library: ParsedLibrary) -> None:
 
 
 def _extract_tracks(db: object, library: ParsedLibrary) -> None:
-    contents = db.get_content().all()  # type: ignore[attr-defined]
-    logger.debug("Raw content rows: %d", len(contents))
-
-    for c in contents:
+    row_count = 0
+    for c in _iter_query_rows(db.get_content()):  # type: ignore[attr-defined]
+        row_count += 1
         source_title = _str_or_none(c.title)
         title = source_title or "(untitled)"
 
@@ -436,6 +453,7 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
             )
         )
 
+    logger.debug("Raw content rows: %d", row_count)
     logger.info("Extracted %d tracks", len(library.tracks))
 
 
@@ -497,10 +515,9 @@ def _extract_analysis_manifest(library: ParsedLibrary) -> None:
 
 
 def _extract_playlists(db: object, library: ParsedLibrary) -> None:
-    playlists = db.get_playlist().all()  # type: ignore[attr-defined]
-    logger.debug("Raw playlist rows: %d", len(playlists))
-
-    for p in playlists:
+    row_count = 0
+    for p in _iter_query_rows(db.get_playlist()):  # type: ignore[attr-defined]
+        row_count += 1
         is_folder = p.attribute == _FOLDER_ATTRIBUTE
 
         # playlist_id_parent == None or 0 means top-level (no parent)
@@ -518,6 +535,7 @@ def _extract_playlists(db: object, library: ParsedLibrary) -> None:
             )
         )
 
+    logger.debug("Raw playlist rows: %d", row_count)
     folder_count = sum(1 for pl in library.playlists if pl.is_folder)
     logger.info(
         "Extracted %d playlists (%d folders, %d playable)",
@@ -528,10 +546,9 @@ def _extract_playlists(db: object, library: ParsedLibrary) -> None:
 
 
 def _extract_placements(db: object, library: ParsedLibrary) -> None:
-    placements = db.get_playlist_content().all()  # type: ignore[attr-defined]
-    logger.debug("Raw playlist_content rows: %d", len(placements))
-
-    for pc in placements:
+    row_count = 0
+    for pc in _iter_query_rows(db.get_playlist_content()):  # type: ignore[attr-defined]
+        row_count += 1
         library.placements.append(
             NormalizedPlacement(
                 rekordbox_playlist_id=str(pc.playlist_id),
@@ -540,6 +557,7 @@ def _extract_placements(db: object, library: ParsedLibrary) -> None:
             )
         )
 
+    logger.debug("Raw playlist_content rows: %d", row_count)
     logger.info("Extracted %d playlist-track placements", len(library.placements))
 
 
@@ -574,69 +592,68 @@ def _extract_cues(
     A failure on this optional table appends a warning and returns without
     raising so that the overall library import remains usable.
     """
+    row_count = 0
     try:
-        cue_rows = db.get_cue().all()  # type: ignore[attr-defined]
+        for c in _iter_query_rows(db.get_cue()):  # type: ignore[attr-defined]
+            row_count += 1
+            cti = c.colorTableIndex  # may be None, 0, or a positive integer
+            color_name: Optional[str] = None
+            if cti is not None and cti > 0:
+                color_name = color_map.get(int(cti))
+
+            # Compatibility-only provisional family. ColorTableIndex is a color
+            # reference, not authoritative Hot/Memory identity; reconciliation must
+            # ignore this label when ANLZ semantics are available.
+            cue_family = "hot" if (cti is not None and cti > 0) else "memory"
+
+            # Provisional point_type from the raw kind field.
+            point_type = "loop" if c.kind == _CUE_KIND_LOOP else "cue"
+
+            # Stable dedupe key — prefixed to distinguish from future ANLZ-sourced keys.
+            dedupe_key = f"db:{c.cue_id}"
+
+            is_active_loop: Optional[bool] = None
+            if c.isActiveLoop is not None:
+                is_active_loop = bool(c.isActiveLoop)
+
+            library.cues.append(
+                NormalizedCue(
+                    rekordbox_cue_id=str(c.cue_id),
+                    rekordbox_content_id=str(c.content_id),
+                    kind=c.kind if c.kind is not None else 0,
+                    color_table_index=int(cti) if cti is not None else None,
+                    cue_comment=_str_or_none(c.cueComment),
+                    is_active_loop=is_active_loop,
+                    beat_loop_numerator=c.beatLoopNumerator,
+                    beat_loop_denominator=c.beatLoopDenominator,
+                    in_usec=c.inUsec,
+                    out_usec=c.outUsec,
+                    in_150_frames_per_second=c.in150FramePerSec,
+                    out_150_frames_per_second=c.out150FramePerSec,
+                    in_mpeg_frame_number=c.inMpegFrameNumber,
+                    out_mpeg_frame_number=c.outMpegFrameNumber,
+                    in_mpeg_abs=c.inMpegAbs,
+                    out_mpeg_abs=c.outMpegAbs,
+                    in_decoding_start_frame_position=c.inDecodingStartFramePosition,
+                    out_decoding_start_frame_position=c.outDecodingStartFramePosition,
+                    in_file_offset_in_block=c.inFileOffsetInBlock,
+                    out_file_offset_in_block=c.outFileOffsetInBlock,
+                    in_number_of_sample_in_block=c.inNumberOfSampleInBlock,
+                    out_number_of_sample_in_block=c.outNumberOfSampleInBlock,
+                    color_name=color_name,
+                    cue_family=cue_family,
+                    point_type=point_type,
+                    hot_cue_slot=None,  # not determinable from DB; requires ANLZ
+                    dedupe_key=dedupe_key,
+                )
+            )
     except Exception as exc:
         msg = f"Could not load Cue table: {exc}"
         logger.warning(msg)
         library.parse_warnings.append(msg)
         return
 
-    logger.debug("Raw cue rows: %d", len(cue_rows))
-
-    for c in cue_rows:
-        cti = c.colorTableIndex  # may be None, 0, or a positive integer
-        color_name: Optional[str] = None
-        if cti is not None and cti > 0:
-            color_name = color_map.get(int(cti))
-
-        # Compatibility-only provisional family. ColorTableIndex is a color
-        # reference, not authoritative Hot/Memory identity; reconciliation must
-        # ignore this label when ANLZ semantics are available.
-        cue_family = "hot" if (cti is not None and cti > 0) else "memory"
-
-        # Provisional point_type from the raw kind field.
-        point_type = "loop" if c.kind == _CUE_KIND_LOOP else "cue"
-
-        # Stable dedupe key — prefixed to distinguish from future ANLZ-sourced keys.
-        dedupe_key = f"db:{c.cue_id}"
-
-        is_active_loop: Optional[bool] = None
-        if c.isActiveLoop is not None:
-            is_active_loop = bool(c.isActiveLoop)
-
-        library.cues.append(
-            NormalizedCue(
-                rekordbox_cue_id=str(c.cue_id),
-                rekordbox_content_id=str(c.content_id),
-                kind=c.kind if c.kind is not None else 0,
-                color_table_index=int(cti) if cti is not None else None,
-                cue_comment=_str_or_none(c.cueComment),
-                is_active_loop=is_active_loop,
-                beat_loop_numerator=c.beatLoopNumerator,
-                beat_loop_denominator=c.beatLoopDenominator,
-                in_usec=c.inUsec,
-                out_usec=c.outUsec,
-                in_150_frames_per_second=c.in150FramePerSec,
-                out_150_frames_per_second=c.out150FramePerSec,
-                in_mpeg_frame_number=c.inMpegFrameNumber,
-                out_mpeg_frame_number=c.outMpegFrameNumber,
-                in_mpeg_abs=c.inMpegAbs,
-                out_mpeg_abs=c.outMpegAbs,
-                in_decoding_start_frame_position=c.inDecodingStartFramePosition,
-                out_decoding_start_frame_position=c.outDecodingStartFramePosition,
-                in_file_offset_in_block=c.inFileOffsetInBlock,
-                out_file_offset_in_block=c.outFileOffsetInBlock,
-                in_number_of_sample_in_block=c.inNumberOfSampleInBlock,
-                out_number_of_sample_in_block=c.outNumberOfSampleInBlock,
-                color_name=color_name,
-                cue_family=cue_family,
-                point_type=point_type,
-                hot_cue_slot=None,  # not determinable from DB; requires ANLZ
-                dedupe_key=dedupe_key,
-            )
-        )
-
+    logger.debug("Raw cue rows: %d", row_count)
     logger.info("Extracted %d cues", len(library.cues))
 
 
@@ -646,46 +663,46 @@ def _extract_recommendations(db: object, library: ParsedLibrary) -> None:
     A failure on this optional table appends a warning and returns without
     raising so that the overall library import remains usable.
     """
+    row_count = 0
     try:
-        rows = db.get_recommended_like().all()  # type: ignore[attr-defined]
+        for r in _iter_query_rows(db.get_recommended_like()):  # type: ignore[attr-defined]
+            row_count += 1
+            source_created_at: Optional[str] = None
+            if r.createdDate is not None:
+                try:
+                    source_created_at = r.createdDate.strftime("%Y-%m-%dT%H:%M:%S")
+                except Exception:
+                    source_created_at = None
+
+            rating = _int_or_none(getattr(r, "rating", None))
+            if rating is not None and not 0 <= rating <= 5:
+                library.parse_warnings.append(
+                    "RecommendedLike edge "
+                    f"{r.content_id_1}->{r.content_id_2} has rating {rating!r} outside 0-5; "
+                    "storing no rating."
+                )
+                rating = None
+
+            library.recommendation_edges.append(
+                NormalizedRecommendationEdge(
+                    source_rekordbox_content_id=str(r.content_id_1),
+                    target_rekordbox_content_id=str(r.content_id_2),
+                    rating=rating,
+                    source_created_at=source_created_at,
+                    direction_preserved=True,
+                    source_payload={
+                        "content_id_1": r.content_id_1,
+                        "content_id_2": r.content_id_2,
+                        "rating": rating,
+                    },
+                )
+            )
     except Exception as exc:
         msg = f"Could not load RecommendedLike table: {exc}"
         logger.warning(msg)
         library.parse_warnings.append(msg)
         return
 
-    logger.debug("Raw recommendedLike rows: %d", len(rows))
-
-    for r in rows:
-        source_created_at: Optional[str] = None
-        if r.createdDate is not None:
-            try:
-                source_created_at = r.createdDate.strftime("%Y-%m-%dT%H:%M:%S")
-            except Exception:
-                source_created_at = None
-
-        rating = _int_or_none(getattr(r, "rating", None))
-        if rating is not None and not 0 <= rating <= 5:
-            library.parse_warnings.append(
-                "RecommendedLike edge "
-                f"{r.content_id_1}->{r.content_id_2} has rating {rating!r} outside 0-5; "
-                "storing no rating."
-            )
-            rating = None
-
-        library.recommendation_edges.append(
-            NormalizedRecommendationEdge(
-                source_rekordbox_content_id=str(r.content_id_1),
-                target_rekordbox_content_id=str(r.content_id_2),
-                rating=rating,
-                source_created_at=source_created_at,
-                direction_preserved=True,
-                source_payload={
-                    "content_id_1": r.content_id_1,
-                    "content_id_2": r.content_id_2,
-                    "rating": rating,
-                },
-            )
-        )
+    logger.debug("Raw recommendedLike rows: %d", row_count)
 
     logger.info("Extracted %d recommendation edges", len(library.recommendation_edges))

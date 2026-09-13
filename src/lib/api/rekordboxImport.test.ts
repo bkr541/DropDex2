@@ -36,6 +36,20 @@ describe('Rekordbox import API errors', () => {
     expect(isExpectedHardDeleteNotFound(caught, false)).toBe(false);
     expect(isUnauthorizedRekordboxImportError(caught)).toBe(false);
   });
+
+  it('supports lightweight analysis progress polling without detailed projections', async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ detail: 'Import not found.' }),
+      { status: 404, headers: { 'Content-Type': 'application/json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      fetchRekordboxAnalysisStatus('job-123', 'token', undefined, false),
+    ).rejects.toBeDefined();
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/analysis-status?details=false');
+  });
 });
 
 describe('Rekordbox import upload requests', () => {

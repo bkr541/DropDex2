@@ -828,6 +828,26 @@ class TestAnalysisStatus:
         assert "missing_required_paths" in body
         assert isinstance(body["missing_required_paths"], list)
 
+    def test_lightweight_status_skips_large_track_projection(self):
+        fake_sb = _FakeSb(import_row=_IMPORT_ROW, tracks=_TRACKS, assets=[])
+        with (
+            patch("app.analysis_import_service._create_supabase", return_value=fake_sb),
+            patch(
+                "app.analysis_import_service._get_tracks_for_analysis_status",
+                side_effect=AssertionError("lightweight polling must not load all tracks"),
+            ),
+            patch("app.analysis_import_service.get_worker_lease", return_value=None),
+        ):
+            resp = client.get(
+                f"/api/rekordbox/import/{IMPORT_ID}/analysis-status?details=false",
+                headers=_auth(USER_ID),
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["import_id"] == IMPORT_ID
+        assert body["unresolved_targets"] == []
+        assert body["missing_required_paths"] == []
+
     def test_missing_dat_appears_in_missing_paths(self):
         fake_sb = _FakeSb(import_row=_IMPORT_ROW, tracks=_TRACKS, assets=[])
         with patch("app.analysis_import_service._create_supabase", return_value=fake_sb):

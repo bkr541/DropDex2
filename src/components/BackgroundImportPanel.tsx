@@ -58,7 +58,7 @@ export function BackgroundImportPanel({
   const load = useCallback(async () => {
     if (hardDeleteCompleteRef.current) return;
     try {
-      const next = await fetchRekordboxAnalysisStatus(importId, accessToken);
+      const next = await fetchRekordboxAnalysisStatus(importId, accessToken, undefined, false);
       if (!mounted.current) return;
       setStatus(next);
       setError(null);

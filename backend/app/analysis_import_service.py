@@ -325,7 +325,9 @@ def _require_import_for_user(sb, import_id: str, user_id: str) -> dict:
             "required_analysis_file_count, optional_archival_file_count, "
             "optional_archival_status, raw_archival_status, performance_metrics, analysis_queue_track_count, "
             "analysis_running_track_count, analysis_throughput_tracks_per_second, "
-            "analysis_estimated_seconds_remaining, user_id"
+            "analysis_estimated_seconds_remaining, user_id, "
+            "analysis_worker_status, analysis_worker_stage, analysis_worker_heartbeat_at, "
+            "analysis_worker_stopped_acknowledged"
         )
         .eq("id", import_id)
         .eq("user_id", user_id)
@@ -3356,7 +3358,147 @@ async def resume_analysis_import(
     )
 
 
-def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusResponse:
+def _get_lightweight_analysis_status(
+    sb,
+    import_id: str,
+    import_row: dict,
+) -> AnalysisStatusResponse:
+    """Build the high-frequency progress view without scanning track/asset tables.
+
+    The import row already carries the counters and heartbeat fields needed by
+    active progress UIs.  Keeping polling on this O(1) path prevents a large
+    library from being re-read every few seconds.  Callers that need resume
+    targets or exact terminal breakdowns request the detailed view instead.
+    """
+    analysis_status = str(import_row.get("analysis_status") or "unknown")
+    persisted_progress = {
+        "processed_track_count": import_row.get("analysis_progress_processed_track_count"),
+        "total_track_count": import_row.get("analysis_progress_total_track_count"),
+        "current_track_id": import_row.get("analysis_current_track_id"),
+        "current_track_title": import_row.get("analysis_current_track_title"),
+        "current_track_artist": import_row.get("analysis_current_track_artist"),
+        "current_track_label": import_row.get("analysis_current_track_label"),
+    }
+    live_progress = persisted_progress
+    if analysis_status == "parsing":
+        memory_progress = _get_live_analysis_progress(import_id)
+        if memory_progress:
+            live_progress = {**persisted_progress, **memory_progress}
+
+    expected_track_count = int(import_row.get("analysis_expected_track_count") or 0)
+    live_total_track_count = int(live_progress.get("total_track_count") or 0)
+    if live_total_track_count > expected_track_count:
+        expected_track_count = live_total_track_count
+
+    parsed_track_count = max(
+        int(import_row.get("analysis_parsed_track_count") or 0),
+        int(live_progress.get("processed_track_count") or 0),
+    )
+    if expected_track_count > 0:
+        parsed_track_count = min(parsed_track_count, expected_track_count)
+        progress_percent = round((parsed_track_count / expected_track_count) * 100)
+    else:
+        progress_percent = 0
+    progress_percent = max(0, min(progress_percent, 100))
+
+    worker_snapshot = worker_registry.snapshot(import_id)
+    try:
+        durable_lease = get_worker_lease(sb, import_id, "analysis")
+    except Exception as exc:
+        logger.warning(
+            "Could not read durable analysis lease while polling %s: %s",
+            import_id,
+            exc,
+        )
+        durable_lease = None
+    durable_worker_active = lease_row_is_active(durable_lease)
+
+    return AnalysisStatusResponse(
+        import_id=import_id,
+        analysis_status=analysis_status,
+        expected_track_count=expected_track_count,
+        matched_track_count=int(import_row.get("analysis_matched_track_count") or 0),
+        parsed_track_count=parsed_track_count,
+        # Exact completed/partial splits require the detailed track projection.
+        # Progress-only callers do not consume these values and terminal callers
+        # perform one detailed refresh before rendering final counts.
+        completed_track_count=parsed_track_count,
+        partial_track_count=0,
+        failed_track_count=int(import_row.get("analysis_failed_track_count") or 0),
+        asset_count=int(import_row.get("analysis_asset_count") or 0),
+        missing_required_paths=[],
+        missing_optional_ext=[],
+        missing_optional_2ex=[],
+        parser_version=import_row.get("analysis_parser_version"),
+        warnings=import_row.get("analysis_warnings") or [],
+        current_track_id=(
+            str(live_progress.get("current_track_id"))
+            if live_progress.get("current_track_id")
+            else None
+        ),
+        current_track_title=live_progress.get("current_track_title"),
+        current_track_artist=live_progress.get("current_track_artist"),
+        current_track_label=live_progress.get("current_track_label"),
+        progress_percent=progress_percent,
+        unresolved_targets=[],
+        missing_required_count=0,
+        missing_optional_count=0,
+        failed_upload_count=0,
+        failed_parse_count=0,
+        affected_track_count=0,
+        job_status=str(import_row.get("status") or "unknown"),
+        worker_status=str(
+            worker_snapshot.get("worker_status")
+            or import_row.get("analysis_worker_status")
+            or "idle"
+        ),
+        worker_active=bool(worker_snapshot.get("active") or durable_worker_active),
+        worker_stage=(
+            worker_snapshot.get("current_stage")
+            or (durable_lease or {}).get("stage")
+            or import_row.get("analysis_worker_stage")
+        ),
+        worker_last_heartbeat=(
+            worker_snapshot.get("last_heartbeat")
+            or (durable_lease or {}).get("heartbeat_at")
+            or import_row.get("analysis_worker_heartbeat_at")
+        ),
+        worker_stopped_acknowledged=bool(
+            not durable_worker_active
+            and (
+                worker_snapshot.get("stopped_acknowledged")
+                or import_row.get("analysis_worker_stopped_acknowledged")
+            )
+        ),
+        library_ready=bool(import_row.get("library_ready_at")),
+        readiness_stage=str(import_row.get("readiness_stage") or "library_metadata_ready"),
+        required_analysis_file_count=int(import_row.get("required_analysis_file_count") or 0),
+        optional_archival_file_count=int(import_row.get("optional_archival_file_count") or 0),
+        tracks_ready_count=parsed_track_count,
+        tracks_remaining_count=max(0, expected_track_count - parsed_track_count),
+        tracks_queued_count=int(import_row.get("analysis_queue_track_count") or 0),
+        tracks_running_count=int(import_row.get("analysis_running_track_count") or 0),
+        optional_archival_status=str(import_row.get("optional_archival_status") or "skipped"),
+        raw_archival_status=str(import_row.get("raw_archival_status") or "skipped"),
+        measured_tracks_per_second=(
+            float(import_row["analysis_throughput_tracks_per_second"])
+            if import_row.get("analysis_throughput_tracks_per_second") is not None
+            else None
+        ),
+        estimated_seconds_remaining=(
+            int(import_row["analysis_estimated_seconds_remaining"])
+            if import_row.get("analysis_estimated_seconds_remaining") is not None
+            else None
+        ),
+        performance_metrics=import_row.get("performance_metrics") or {},
+    )
+
+
+def _get_analysis_status_sync(
+    import_id: str,
+    user_id: str,
+    include_details: bool = True,
+) -> AnalysisStatusResponse:
     """Return current analysis status for an import, including structured unresolved targets."""
     from dropdex_importer.analysis_paths import (  # noqa: PLC0415
         derive_anlz_siblings,
@@ -3367,6 +3509,9 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
 
     sb = _create_supabase()
     import_row = _require_import_for_user(sb, import_id, user_id)
+
+    if not include_details:
+        return _get_lightweight_analysis_status(sb, import_id, import_row)
 
     tracks = _get_tracks_for_analysis_status(sb, import_id)
 
@@ -3672,6 +3817,15 @@ def _get_analysis_status_sync(import_id: str, user_id: str) -> AnalysisStatusRes
     )
 
 
-async def get_analysis_status(import_id: str, user_id: str) -> AnalysisStatusResponse:
+async def get_analysis_status(
+    import_id: str,
+    user_id: str,
+    include_details: bool = True,
+) -> AnalysisStatusResponse:
     """Load the potentially large import status view outside the event loop."""
-    return await run_in_threadpool(_get_analysis_status_sync, import_id, user_id)
+    return await run_in_threadpool(
+        _get_analysis_status_sync,
+        import_id,
+        user_id,
+        include_details,
+    )

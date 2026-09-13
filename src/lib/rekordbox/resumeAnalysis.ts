@@ -190,6 +190,15 @@ export function buildResumeMatchResult(
     });
   }
 
+  return buildResumeMatchResultFromMatched(matched, targets);
+}
+
+/** Build the same resume summary when files were resolved by exact path. */
+export function buildResumeMatchResultFromMatched(
+  matched: MatchedAnalysisFile[],
+  targets: ResumeTarget[],
+): ResumeMatchResult {
+  const matchedPaths = new Set(matched.map((item) => item.canonicalPath.toLowerCase()));
   const stillMissing = targets.filter((t) => !matchedPaths.has(t.path.toLowerCase()));
   const stillMissingRequired = stillMissing.filter((t) => t.required);
   const stillMissingOptional = stillMissing.filter((t) => !t.required);

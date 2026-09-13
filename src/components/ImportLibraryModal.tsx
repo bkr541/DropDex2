@@ -38,6 +38,12 @@ import {
 import { UploadAccumulator, isTransientFileFailure } from '../lib/rekordbox/analysisUploadResults';
 import { buildManifestReconciliation } from '../lib/rekordbox/manifestReconciliation';
 import type { ManifestReconciliation } from '../lib/rekordbox/manifestReconciliation';
+import {
+  buildManifestAnalysisRequests,
+  pickTargetedRekordboxUsb,
+  resolveRequestedAnalysisFiles,
+  supportsTargetedUsbDiscovery,
+} from '../lib/rekordbox/usbTargetedDiscovery';
 import type { DeleteActiveStrategy } from '../lib/rekordbox/libraryDeletion';
 import { isAbortError, uploadBatchWithRetry } from '../lib/rekordbox/uploadBatch';
 import { AbortableTimerRegistry, waitForAbortableDelay } from '../lib/rekordbox/abortableRetry';
@@ -103,6 +109,7 @@ interface FolderScan {
   dbFile: File | null;
   anlzFiles: File[];
   folderName: string;
+  targetedHandle: FileSystemDirectoryHandle | null;
 }
 
 interface UploadProgress {
@@ -870,8 +877,44 @@ export function ImportLibraryModal({
       (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath
         ?.split('/')[0] ?? 'Selected folder';
 
-    setFolderScanResource({ dbFile, anlzFiles, folderName });
+    directoryHandlesRef.current = [];
+    setFolderScanResource({ dbFile, anlzFiles, folderName, targetedHandle: null });
     setPhase('database_selected');
+  };
+
+  const handleUsbSourceSelect = async () => {
+    setPhase('scanning_usb');
+
+    // Chromium's File System Access API lets DropDex open only the Rekordbox
+    // database now, then only the exact DAT/EXT paths requested by the parsed
+    // manifest. Electron and older browsers retain the existing folder input
+    // as a compatibility fallback.
+    if (usb.runtime === 'browser' && supportsTargetedUsbDiscovery()) {
+      const selectionOperation = ++operationRef.current;
+      try {
+        const selection = await pickTargetedRekordboxUsb();
+        if (!mountedRef.current || selectionOperation !== operationRef.current) return;
+        directoryHandlesRef.current = [selection.rootHandle];
+        setFolderScanResource({
+          dbFile: selection.dbFile,
+          anlzFiles: [],
+          folderName: selection.folderName,
+          targetedHandle: selection.rootHandle,
+        });
+        setPhase('database_selected');
+      } catch (error) {
+        if (!mountedRef.current || selectionOperation !== operationRef.current) return;
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          setPhase('idle');
+          return;
+        }
+        setErrorMessage(error instanceof Error ? error.message : 'Could not read the selected USB.');
+        setPhase('failed');
+      }
+      return;
+    }
+
+    folderInputRef.current?.click();
   };
 
   // ── ZIP / DB file mode ───────────────────────────────────────────────────────
@@ -955,7 +998,15 @@ export function ImportLibraryModal({
 
     setLocalUsbStage('matching_analysis');
     const matchingStartedAt = performance.now();
-    const matchedFiles = buildMatchedFiles(scan.anlzFiles, startResp.manifest);
+    const matchedFiles = scan.targetedHandle
+      ? (
+          await resolveRequestedAnalysisFiles(
+            scan.targetedHandle,
+            buildManifestAnalysisRequests(startResp.manifest),
+            { signal: controller.signal },
+          )
+        ).matched
+      : buildMatchedFiles(scan.anlzFiles, startResp.manifest);
     const matchingElapsedMs = performance.now() - matchingStartedAt;
     const batches = buildBatches(matchedFiles, BATCH_SIZE, MAX_BYTES_PER_BATCH);
     matchedFilesRef.current = matchedFiles;
@@ -1183,6 +1234,7 @@ export function ImportLibraryModal({
               context.importId,
               token,
               cloudController.signal,
+              false,
             ),
             fallbackToken,
           );
@@ -1239,12 +1291,27 @@ export function ImportLibraryModal({
         }
 
         if (['completed', 'partial', 'failed'].includes(status.analysis_status)) {
+          // Progress polling deliberately uses the lightweight status view.
+          // Fetch the exact track/asset breakdown once at terminal state so
+          // final counts remain authoritative without paying O(library size)
+          // every 2.5 seconds while analysis is active.
+          status = await requestWithAuthRetry(
+            (token) => fetchRekordboxAnalysisStatus(
+              context.importId,
+              token,
+              cloudController.signal,
+              true,
+            ),
+            fallbackToken,
+          );
+          const finalTotalTracks = status.expected_track_count || context.expectedTrackCount;
+          const finalParsedTracks = Math.max(0, status.parsed_track_count || 0);
           const completeResponse: CompleteResponse = {
             import_id: context.importId,
             analysis_status: status.analysis_status,
-            total_tracks: totalTracks,
+            total_tracks: finalTotalTracks,
             completed_count: status.completed_track_count
-              ?? Math.max(0, parsedTracks - status.failed_track_count),
+              ?? Math.max(0, finalParsedTracks - status.failed_track_count),
             partial_count: status.partial_track_count ?? 0,
             failed_count: status.failed_track_count,
             missing_required_count: status.missing_required_count,
@@ -1585,7 +1652,7 @@ export function ImportLibraryModal({
                 {mode === 'usb_folder' && (
                   <>
                     <button
-                      onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
+                      onClick={() => void handleUsbSourceSelect()}
                       className={cn(
                         'flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors mb-2 shrink-0',
                         !(phase === 'database_selected' && folderScan) && 'invisible pointer-events-none',
@@ -1622,22 +1689,31 @@ export function ImportLibraryModal({
                             </div>
                           )}
                           <div className="flex items-center gap-2 text-sm">
-                            {folderScan.anlzFiles.length > 0 ? (
+                            {folderScan.targetedHandle ? (
+                              <>
+                                <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
+                                <span className="text-xs">
+                                  Analysis files will be opened only when requested by the library manifest
+                                </span>
+                              </>
+                            ) : folderScan.anlzFiles.length > 0 ? (
                               <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
                             ) : (
                               <WarningAlt size={14} className="text-amber-400 shrink-0" />
                             )}
-                            <span className="text-xs">
-                              {folderScan.anlzFiles.length.toLocaleString()} required DAT/EXT analysis file
-                              {folderScan.anlzFiles.length !== 1 ? 's' : ''} found
-                            </span>
+                            {!folderScan.targetedHandle && (
+                              <span className="text-xs">
+                                {folderScan.anlzFiles.length.toLocaleString()} required DAT/EXT analysis file
+                                {folderScan.anlzFiles.length !== 1 ? 's' : ''} found
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
                     ) : (
                       /* idle: button fills all available space between tip and buttons */
                       <button
-                        onClick={() => { setPhase('scanning_usb'); folderInputRef.current?.click(); }}
+                        onClick={() => void handleUsbSourceSelect()}
                         className="flex-1 w-full mb-4 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-2 text-muted-foreground"
                       >
                         <FolderOpen size={20} />

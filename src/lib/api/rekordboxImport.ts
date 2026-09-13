@@ -766,9 +766,11 @@ export async function fetchRekordboxAnalysisStatus(
   importId: string,
   accessToken: string,
   signal?: AbortSignal,
+  details = true,
 ): Promise<AnalysisStatusResponse> {
+  const query = details ? '' : '?details=false';
   const response = await fetch(
-    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/analysis-status`,
+    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/analysis-status${query}`,
     { headers: { Authorization: `Bearer ${accessToken}` }, signal },
   );
   return parseResponse(response, validateAnalysisStatus);
