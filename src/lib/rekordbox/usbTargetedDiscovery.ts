@@ -1,6 +1,15 @@
 import type { AnalysisManifestWorkEntry, MatchedAnalysisFile } from './analysisPaths';
 import { normalizeAnlzPath, requiredAssetTypesForManifestEntry } from './analysisPaths';
-import { resolveUsbFile } from '../usb/resolveUsbFile';
+import {
+  resolveUsbFile,
+  type ResolveUsbFileOptions,
+  type UsbFileResult,
+} from '../usb/resolveUsbFile';
+
+export type UsbFileResolver = (
+  segments: string[],
+  options?: ResolveUsbFileOptions,
+) => Promise<UsbFileResult>;
 
 export interface TargetedUsbSelection {
   rootHandle: FileSystemDirectoryHandle;
@@ -20,6 +29,7 @@ export interface TargetedAnalysisResolution {
 }
 
 const DEFAULT_RESOLVE_CONCURRENCY = 8;
+const REKORDBOX_DB_SEGMENTS = ['PIONEER', 'rekordbox', 'exportLibrary.db'] as const;
 
 export function supportsTargetedUsbDiscovery(): boolean {
   return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function';
@@ -39,6 +49,8 @@ function pathSegmentsForSelectedRoot(
   return segments;
 }
 
+// Retained for the existing resume-analysis workflow. The normal import path
+// now selects through UsbConnectionContext so it shares the canonical USB root.
 export async function pickTargetedRekordboxUsb(): Promise<TargetedUsbSelection> {
   const picker = window.showDirectoryPicker;
   if (!picker) throw new Error('Targeted USB folder access is not supported in this browser.');
@@ -55,6 +67,19 @@ export async function pickTargetedRekordboxUsb(): Promise<TargetedUsbSelection> 
     dbFile: result.ok ? result.file : null,
     folderName: rootHandle.name || 'Selected USB',
   };
+}
+
+/** Resolve only the canonical Rekordbox database path from the connected USB root. */
+export async function resolveRekordboxDatabase(
+  resolveFile: UsbFileResolver,
+): Promise<File | null> {
+  const result = await resolveFile([...REKORDBOX_DB_SEGMENTS]);
+  if (result.ok) return result.file;
+  if (result.error.kind === 'not_found' || result.error.kind === 'type_mismatch') return null;
+  if (result.error.kind === 'abort') {
+    throw new DOMException(result.error.message, 'AbortError');
+  }
+  throw new Error(result.error.message);
 }
 
 export function buildManifestAnalysisRequests(
@@ -91,6 +116,27 @@ export async function resolveRequestedAnalysisFiles(
   requests: AnalysisFileRequest[],
   options: { signal?: AbortSignal; concurrency?: number } = {},
 ): Promise<TargetedAnalysisResolution> {
+  const resolveFromRoot: UsbFileResolver = (segments, resolveOptions) => resolveUsbFile(
+    root,
+    pathSegmentsForSelectedRoot(root, segments.join('/')),
+    resolveOptions,
+  );
+  return resolveRequestedAnalysisFilesWithResolver(resolveFromRoot, requests, {
+    ...options,
+    sourceRootName: root.name,
+  });
+}
+
+/**
+ * Resolve exact manifest-requested analysis files through the canonical USB
+ * resolver. This lets browser and Electron imports share the same root owner
+ * without recursively enumerating media folders.
+ */
+export async function resolveRequestedAnalysisFilesWithResolver(
+  resolveFile: UsbFileResolver,
+  requests: AnalysisFileRequest[],
+  options: { signal?: AbortSignal; concurrency?: number; sourceRootName?: string } = {},
+): Promise<TargetedAnalysisResolution> {
   if (requests.length === 0) return { matched: [], missing: [] };
 
   const signal = options.signal;
@@ -117,16 +163,14 @@ export async function resolveRequestedAnalysisFiles(
         continue;
       }
 
-      const result = await resolveUsbFile(
-        root,
-        pathSegmentsForSelectedRoot(root, canonicalPath),
-        { isCancelled },
-      );
+      const result = await resolveFile(canonicalPath.split('/').filter(Boolean), { isCancelled });
       if (result.ok) {
         results[index] = {
           file: result.file,
           canonicalPath,
-          originalBrowserPath: `${root.name}/${canonicalPath}`,
+          originalBrowserPath: options.sourceRootName
+            ? `${options.sourceRootName}/${canonicalPath}`
+            : canonicalPath,
           assetType: request.assetType,
           trackId: request.trackId,
         };

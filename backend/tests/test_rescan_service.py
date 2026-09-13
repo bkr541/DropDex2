@@ -18,6 +18,18 @@ def _set_paginated_rows(query, rows):
     ordered.range.side_effect = range_page
 
 
+def _set_prior_import_rows(sb, rows):
+    query = (
+        sb.table.return_value.select.return_value
+        .eq.return_value.eq.return_value.neq.return_value
+    )
+    first_order = query.order.return_value
+    second_order = first_order.order.return_value
+    third_order = second_order.order.return_value
+    third_order.execute.return_value.data = rows
+    return query
+
+
 def make_identity(**kwargs):
     defaults = dict(
         track_id="t1", import_id="imp1",
@@ -184,10 +196,7 @@ class TestDecideReuse:
 class TestMatchTracksToPriorImport:
     def _make_sb(self, prior_import_ids, prior_tracks):
         sb = MagicMock()
-        # Chain mocks for rekordbox_imports query
-        imports_chain = MagicMock()
-        imports_chain.execute.return_value.data = [{"id": iid} for iid in prior_import_ids]
-        sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value = imports_chain
+        _set_prior_import_rows(sb, [{"id": iid} for iid in prior_import_ids])
         # Chain mocks for rekordbox_tracks query — fetch_all_rows appends .order().range()
         tracks_chain = MagicMock()
         _set_paginated_rows(tracks_chain, prior_tracks)
@@ -198,7 +207,7 @@ class TestMatchTracksToPriorImport:
         # match_tracks_to_prior_import scopes by user_id — different user's tracks should not appear
         # because the import query includes eq("user_id", user_id)
         sb = MagicMock()
-        sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = []
+        _set_prior_import_rows(sb, [])
         result = match_tracks_to_prior_import(sb, "user-A", "new-imp", [])
         assert result == {}
 
@@ -214,7 +223,7 @@ class TestMatchTracksToPriorImport:
             "information_update_count": 2,
             "analysis_parse_status": "completed",
         }]
-        sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
+        _set_prior_import_rows(sb, [{"id": "prior-imp1"}])
         _set_paginated_rows(
             sb.table.return_value.select.return_value.in_.return_value,
             prior_tracks_data,
@@ -234,6 +243,73 @@ class TestMatchTracksToPriorImport:
         assert "new-t1" in result
         assert result["new-t1"].manifest_status == "reused"
 
+    def test_most_recent_completed_import_is_selected_deterministically(self):
+        sb = MagicMock()
+        import_query = _set_prior_import_rows(sb, [
+            {
+                "id": "prior-new",
+                "completed_at": "2026-09-12T12:00:00Z",
+                "created_at": "2026-09-12T11:00:00Z",
+            },
+            {
+                "id": "prior-old",
+                "completed_at": "2026-09-10T12:00:00Z",
+                "created_at": "2026-09-10T11:00:00Z",
+            },
+        ])
+        prior_tracks_data = [
+            {
+                "id": "a-old-track",
+                "import_id": "prior-old",
+                "master_db_id": "db1",
+                "master_content_id": "c1",
+                "rekordbox_content_id": "rc1",
+                "analysis_data_file_path": "/path.DAT",
+                "analysis_data_update_count": 5,
+                "cue_update_count": 3,
+                "information_update_count": 2,
+                "analysis_parse_status": "completed",
+            },
+            {
+                "id": "z-new-track",
+                "import_id": "prior-new",
+                "master_db_id": "db1",
+                "master_content_id": "c1",
+                "rekordbox_content_id": "rc1",
+                "analysis_data_file_path": "/path.DAT",
+                "analysis_data_update_count": 5,
+                "cue_update_count": 3,
+                "information_update_count": 2,
+                "analysis_parse_status": "completed",
+            },
+        ]
+        _set_paginated_rows(
+            sb.table.return_value.select.return_value.in_.return_value,
+            prior_tracks_data,
+        )
+
+        result = match_tracks_to_prior_import(sb, "user1", "new-imp", [{
+            "id": "new-t1",
+            "master_db_id": "db1",
+            "master_content_id": "c1",
+            "rekordbox_content_id": "rc1",
+            "analysis_data_file_path": "/path.DAT",
+            "analysis_data_update_count": 5,
+            "cue_update_count": 3,
+            "information_update_count": 2,
+        }])
+
+        assert result["new-t1"].reused_from_track_id == "z-new-track"
+        import_query.order.assert_called_once_with(
+            "completed_at", desc=True, nullsfirst=False
+        )
+        import_query.order.return_value.order.assert_called_once_with(
+            "created_at", desc=True, nullsfirst=False
+        )
+        import_query.order.return_value.order.return_value.order.assert_called_once_with(
+            "id", desc=True
+        )
+
     def test_secondary_id_match(self):
         """Falls back to rekordbox_content_id when master_db_id / master_content_id are absent."""
         sb = MagicMock()
@@ -247,7 +323,7 @@ class TestMatchTracksToPriorImport:
             "information_update_count": 2,
             "analysis_parse_status": "completed",
         }]
-        sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
+        _set_prior_import_rows(sb, [{"id": "prior-imp1"}])
         _set_paginated_rows(
             sb.table.return_value.select.return_value.in_.return_value,
             prior_tracks_data,
@@ -269,7 +345,7 @@ class TestMatchTracksToPriorImport:
 
     def test_no_prior_imports_returns_empty(self):
         sb = MagicMock()
-        sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = []
+        _set_prior_import_rows(sb, [])
         result = match_tracks_to_prior_import(sb, "user1", "new-imp", [{
             "id": "t1",
             "master_db_id": "db1",
@@ -295,7 +371,7 @@ class TestMatchTracksToPriorImport:
             "information_update_count": 2,
             "analysis_parse_status": "completed",
         }]
-        sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
+        _set_prior_import_rows(sb, [{"id": "prior-imp1"}])
         _set_paginated_rows(
             sb.table.return_value.select.return_value.in_.return_value,
             prior_tracks_data,
@@ -318,7 +394,7 @@ class TestMatchTracksToPriorImport:
 
     def test_empty_new_tracks_returns_empty(self):
         sb = MagicMock()
-        sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
+        _set_prior_import_rows(sb, [{"id": "prior-imp1"}])
         sb.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = []
         result = match_tracks_to_prior_import(sb, "user1", "new-imp", [])
         assert result == {}
@@ -336,7 +412,7 @@ class TestMatchTracksToPriorImport:
             "information_update_count": 2,
             "analysis_parse_status": "completed",
         }]
-        sb.table.return_value.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "prior-imp1"}]
+        _set_prior_import_rows(sb, [{"id": "prior-imp1"}])
         _set_paginated_rows(
             sb.table.return_value.select.return_value.in_.return_value,
             prior_tracks_data,

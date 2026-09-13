@@ -8,7 +8,7 @@ declare module 'react' {
 
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useUsbConnection } from '../contexts/UsbConnectionContext';
+import { useUsbConnection, type UsbConnectionContextValue } from '../contexts/UsbConnectionContext';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import {
@@ -40,9 +40,9 @@ import { buildManifestReconciliation } from '../lib/rekordbox/manifestReconcilia
 import type { ManifestReconciliation } from '../lib/rekordbox/manifestReconciliation';
 import {
   buildManifestAnalysisRequests,
-  pickTargetedRekordboxUsb,
-  resolveRequestedAnalysisFiles,
-  supportsTargetedUsbDiscovery,
+  resolveRekordboxDatabase,
+  resolveRequestedAnalysisFilesWithResolver,
+  type UsbFileResolver,
 } from '../lib/rekordbox/usbTargetedDiscovery';
 import type { DeleteActiveStrategy } from '../lib/rekordbox/libraryDeletion';
 import { isAbortError, uploadBatchWithRetry } from '../lib/rekordbox/uploadBatch';
@@ -109,7 +109,35 @@ interface FolderScan {
   dbFile: File | null;
   anlzFiles: File[];
   folderName: string;
-  targetedHandle: FileSystemDirectoryHandle | null;
+  targetedResolver: UsbFileResolver | null;
+}
+
+export async function selectRekordboxUsbDatabase(
+  usb: Pick<UsbConnectionContextValue, 'selectUsbRoot' | 'resolveImportFile'>,
+): Promise<{
+  cancelled: boolean;
+  error?: string;
+  dbFile: File | null;
+  folderName: string;
+  resolver: UsbFileResolver;
+}> {
+  const selection = await usb.selectUsbRoot();
+  if (selection.cancelled || selection.error) {
+    return {
+      cancelled: selection.cancelled,
+      error: selection.error,
+      dbFile: null,
+      folderName: selection.volumeName || 'Selected USB',
+      resolver: usb.resolveImportFile,
+    };
+  }
+
+  return {
+    cancelled: false,
+    dbFile: await resolveRekordboxDatabase(usb.resolveImportFile),
+    folderName: selection.volumeName || 'Selected USB',
+    resolver: usb.resolveImportFile,
+  };
 }
 
 interface UploadProgress {
@@ -878,43 +906,47 @@ export function ImportLibraryModal({
         ?.split('/')[0] ?? 'Selected folder';
 
     directoryHandlesRef.current = [];
-    setFolderScanResource({ dbFile, anlzFiles, folderName, targetedHandle: null });
+    setFolderScanResource({ dbFile, anlzFiles, folderName, targetedResolver: null });
     setPhase('database_selected');
   };
 
   const handleUsbSourceSelect = async () => {
     setPhase('scanning_usb');
 
-    // Chromium's File System Access API lets DropDex open only the Rekordbox
-    // database now, then only the exact DAT/EXT paths requested by the parsed
-    // manifest. Electron and older browsers retain the existing folder input
-    // as a compatibility fallback.
-    if (usb.runtime === 'browser' && supportsTargetedUsbDiscovery()) {
-      const selectionOperation = ++operationRef.current;
-      try {
-        const selection = await pickTargetedRekordboxUsb();
-        if (!mountedRef.current || selectionOperation !== operationRef.current) return;
-        directoryHandlesRef.current = [selection.rootHandle];
-        setFolderScanResource({
-          dbFile: selection.dbFile,
-          anlzFiles: [],
-          folderName: selection.folderName,
-          targetedHandle: selection.rootHandle,
-        });
-        setPhase('database_selected');
-      } catch (error) {
-        if (!mountedRef.current || selectionOperation !== operationRef.current) return;
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          setPhase('idle');
-          return;
-        }
-        setErrorMessage(error instanceof Error ? error.message : 'Could not read the selected USB.');
-        setPhase('failed');
+    const selectionOperation = ++operationRef.current;
+    try {
+      const selection = await selectRekordboxUsbDatabase(usb);
+      if (!mountedRef.current || selectionOperation !== operationRef.current) return;
+      if (selection.cancelled) {
+        setPhase('idle');
+        return;
       }
-      return;
-    }
+      if (selection.error) throw new Error(selection.error);
 
-    folderInputRef.current?.click();
+      directoryHandlesRef.current = [];
+      setFolderScanResource({
+        dbFile: selection.dbFile,
+        anlzFiles: [],
+        folderName: selection.folderName,
+        targetedResolver: selection.resolver,
+      });
+      setPhase('database_selected');
+    } catch (error) {
+      if (!mountedRef.current || selectionOperation !== operationRef.current) return;
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setPhase('idle');
+        return;
+      }
+      // Compatibility fallback for browsers without File System Access. This
+      // preserves the legacy webkitdirectory flow without making it the normal
+      // path on supported browser or Electron runtimes.
+      if (usb.runtime === 'browser' && typeof window.showDirectoryPicker !== 'function') {
+        folderInputRef.current?.click();
+        return;
+      }
+      setErrorMessage(error instanceof Error ? error.message : 'Could not read the selected USB.');
+      setPhase('failed');
+    }
   };
 
   // ── ZIP / DB file mode ───────────────────────────────────────────────────────
@@ -998,12 +1030,12 @@ export function ImportLibraryModal({
 
     setLocalUsbStage('matching_analysis');
     const matchingStartedAt = performance.now();
-    const matchedFiles = scan.targetedHandle
+    const matchedFiles = scan.targetedResolver
       ? (
-          await resolveRequestedAnalysisFiles(
-            scan.targetedHandle,
+          await resolveRequestedAnalysisFilesWithResolver(
+            scan.targetedResolver,
             buildManifestAnalysisRequests(startResp.manifest),
-            { signal: controller.signal },
+            { signal: controller.signal, sourceRootName: scan.folderName },
           )
         ).matched
       : buildMatchedFiles(scan.anlzFiles, startResp.manifest);
@@ -1689,7 +1721,7 @@ export function ImportLibraryModal({
                             </div>
                           )}
                           <div className="flex items-center gap-2 text-sm">
-                            {folderScan.targetedHandle ? (
+                            {folderScan.targetedResolver ? (
                               <>
                                 <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
                                 <span className="text-xs">
@@ -1701,7 +1733,7 @@ export function ImportLibraryModal({
                             ) : (
                               <WarningAlt size={14} className="text-amber-400 shrink-0" />
                             )}
-                            {!folderScan.targetedHandle && (
+                            {!folderScan.targetedResolver && (
                               <span className="text-xs">
                                 {folderScan.anlzFiles.length.toLocaleString()} required DAT/EXT analysis file
                                 {folderScan.anlzFiles.length !== 1 ? 's' : ''} found

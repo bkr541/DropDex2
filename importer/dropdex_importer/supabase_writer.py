@@ -491,7 +491,8 @@ def _update_parent_playlist_ids(
     library: ParsedLibrary,
     rb_to_sb: Dict[str, str],
 ) -> None:
-    """Second pass: resolve parent references and UPDATE each child playlist row."""
+    """Second pass: resolve parent references and update children in bounded groups."""
+    children_by_parent: Dict[str, List[str]] = defaultdict(list)
     for p in library.playlists:
         if not p.parent_rekordbox_playlist_id:
             continue
@@ -505,9 +506,16 @@ def _update_parent_playlist_ids(
                 p.parent_rekordbox_playlist_id,
             )
             continue
-        sb.table("rekordbox_playlists").update(  # type: ignore[attr-defined]
-            {"parent_playlist_id": parent_supabase_id}
-        ).eq("id", child_supabase_id).execute()
+        children_by_parent[parent_supabase_id].append(child_supabase_id)
+
+    # Siblings share the same parent value, so one bounded UPDATE can safely
+    # replace one request per child without changing the resulting hierarchy.
+    for parent_supabase_id, child_ids in children_by_parent.items():
+        for offset in range(0, len(child_ids), _BATCH_SIZE):
+            chunk = child_ids[offset : offset + _BATCH_SIZE]
+            sb.table("rekordbox_playlists").update(  # type: ignore[attr-defined]
+                {"parent_playlist_id": parent_supabase_id}
+            ).in_("id", chunk).execute()
 
 
 def _insert_placements(

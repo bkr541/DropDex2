@@ -642,42 +642,35 @@ def _bulk_track_status(sb: Any, import_id: str, rows: list[dict[str, Any]]) -> N
         return
     # Queue/parsing transitions touch every selected track at once. Bound RPC
     # payloads so large USB libraries do not replace the old query-string limit
-    # with a new oversized request-body failure. A failed chunk falls back only
-    # for that chunk, preserving successful bulk updates from earlier chunks.
+    # with a new oversized request-body failure. The bulk RPC is a required part
+    # of the production schema; failing loudly avoids an accidental N+1 storm.
     for row_chunk in _chunks(rows, _BULK_WRITE_CHUNK_SIZE):
         chunk = list(row_chunk)
-        rpc_succeeded = False
         try:
             sb.rpc(
                 "bulk_update_rekordbox_track_analysis",
                 {"p_import_id": import_id, "p_rows": chunk},
             ).execute()
-            rpc_succeeded = True
         except Exception as exc:
-            logger.warning(
-                "Bulk track status RPC unavailable for %d rows, using compatibility fallback: %s",
+            logger.exception(
+                "Bulk track status RPC failed for import %s (%d rows)",
+                import_id,
                 len(chunk),
-                exc,
             )
+            raise RuntimeError(
+                "Required bulk track-analysis update RPC is unavailable; "
+                "verify the production database migrations before retrying analysis."
+            ) from exc
 
-        if rpc_succeeded:
-            # The existing bulk RPC predates analysis_feature_statuses and ignores
-            # that key. Persist rare cue-integrity overrides explicitly rather
-            # than silently dropping the failure marker.
-            for row in chunk:
-                if "analysis_feature_statuses" not in row:
-                    continue
-                sb.table("rekordbox_tracks").update({
-                    "analysis_feature_statuses": row["analysis_feature_statuses"],
-                }).eq("id", row["track_id"]).eq("import_id", import_id).execute()
-            continue
-
+        # The existing bulk RPC predates analysis_feature_statuses and ignores
+        # that key. Persist rare cue-integrity overrides explicitly rather than
+        # silently dropping the failure marker.
         for row in chunk:
-            payload = dict(row)
-            track_id = payload.pop("track_id")
-            sb.table("rekordbox_tracks").update(payload).eq("id", track_id).eq(
-                "import_id", import_id
-            ).execute()
+            if "analysis_feature_statuses" not in row:
+                continue
+            sb.table("rekordbox_tracks").update({
+                "analysis_feature_statuses": row["analysis_feature_statuses"],
+            }).eq("id", row["track_id"]).eq("import_id", import_id).execute()
 
 
 def _write_batch(

@@ -35,8 +35,47 @@ from dropdex_importer.supabase_writer import (
     _insert_cues,
     _insert_recommendation_edges,
     _insert_tracks,
+    _update_parent_playlist_ids,
 )
 from dropdex_importer.validation import validate
+
+
+def test_parent_playlist_updates_are_grouped_by_parent_instead_of_row_at_a_time():
+    library = types.SimpleNamespace(playlists=[
+        types.SimpleNamespace(
+            name="Child A",
+            rekordbox_playlist_id="child-a",
+            parent_rekordbox_playlist_id="parent-1",
+        ),
+        types.SimpleNamespace(
+            name="Child B",
+            rekordbox_playlist_id="child-b",
+            parent_rekordbox_playlist_id="parent-1",
+        ),
+        types.SimpleNamespace(
+            name="Child C",
+            rekordbox_playlist_id="child-c",
+            parent_rekordbox_playlist_id="parent-2",
+        ),
+    ])
+    rb_to_sb = {
+        "parent-1": "parent-uuid-1",
+        "parent-2": "parent-uuid-2",
+        "child-a": "child-uuid-a",
+        "child-b": "child-uuid-b",
+        "child-c": "child-uuid-c",
+    }
+    sb = MagicMock()
+    update_chain = sb.table.return_value.update.return_value
+    update_chain.in_.return_value.execute.return_value.data = None
+
+    _update_parent_playlist_ids(sb, library, rb_to_sb)
+
+    assert sb.table.return_value.update.call_count == 2
+    assert update_chain.in_.call_args_list == [
+        call("id", ["child-uuid-a", "child-uuid-b"]),
+        call("id", ["child-uuid-c"]),
+    ]
 
 
 # ── Path normalization ────────────────────────────────────────────────────────

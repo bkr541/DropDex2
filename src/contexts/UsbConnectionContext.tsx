@@ -22,9 +22,10 @@ import {
   resolveUsbFile,
   checkRekordboxStructure,
   type ResolveUsbFileOptions,
+  type UsbFileResult,
   type UsbFileResolutionError,
 } from '../lib/usb/resolveUsbFile';
-import type { DesktopUsbActivityState, DesktopUsbReleaseResult, DesktopUsbState } from '../types/dropdex-desktop';
+import type { DropDexDesktopBridge, DesktopUsbActivityState, DesktopUsbReleaseResult, DesktopUsbState } from '../types/dropdex-desktop';
 import { stopUsbBackedPlayback } from '../lib/usb/usbPlaybackCoordinator';
 
 export type UsbStatus =
@@ -39,6 +40,12 @@ export type UsbStatus =
   | 'error';
 
 export type UsbRuntime = 'electron' | 'browser';
+
+export interface UsbRootSelectionResult {
+  cancelled: boolean;
+  volumeName: string | null;
+  error?: string;
+}
 
 export type UsbTrackSource =
   | { kind: 'file'; file: File }
@@ -208,15 +215,67 @@ export interface UsbConnectionContextValue extends UsbState {
   runtime: UsbRuntime;
   activity: DesktopUsbActivityState | null;
   connect(): Promise<void>;
+  selectUsbRoot(): Promise<UsbRootSelectionResult>;
   release(): Promise<DesktopUsbReleaseResult | null>;
   disconnect(): Promise<void>;
   reconnect(): Promise<void>;
   selectNewUsb(): Promise<void>;
   ensurePermission(): Promise<UsbStatus>;
   resolveTrackSource(segments: string[], options?: ResolveUsbFileOptions): Promise<UsbTrackSourceResult>;
+  resolveImportFile(segments: string[], options?: ResolveUsbFileOptions): Promise<UsbFileResult>;
 }
 
 const UsbConnectionContext = createContext<UsbConnectionContextValue | null>(null);
+
+export async function resolveDesktopImportFile(
+  desktop: Pick<DropDexDesktopBridge, 'resolveTrackSource'>,
+  segments: string[],
+  options: ResolveUsbFileOptions = {},
+  fetchFile: typeof fetch = fetch,
+): Promise<UsbFileResult> {
+  if (options.isCancelled?.()) {
+    return { ok: false, error: { kind: 'abort', message: 'USB file access was cancelled.' } };
+  }
+
+  const result = await desktop.resolveTrackSource(segments);
+  if (!result.ok) return result;
+  if (options.isCancelled?.()) {
+    return { ok: false, error: { kind: 'abort', message: 'USB file access was cancelled.' } };
+  }
+
+  try {
+    const response = await fetchFile(result.source.url, { cache: 'no-store' });
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: {
+          kind: 'unexpected',
+          message: `USB file read failed with HTTP ${response.status}.`,
+        },
+      };
+    }
+    const blob = await response.blob();
+    if (options.isCancelled?.()) {
+      return { ok: false, error: { kind: 'abort', message: 'USB file access was cancelled.' } };
+    }
+    const fileName = segments.at(-1) || 'usb-file';
+    return {
+      ok: true,
+      file: new File([blob], fileName, {
+        type: blob.type || 'application/octet-stream',
+        lastModified: Date.now(),
+      }),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: {
+        kind: 'unexpected',
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
 
 function getBrowserDirectoryPicker(): typeof window.showDirectoryPicker | null {
   if (typeof window === 'undefined') return null;
@@ -345,44 +404,58 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, [refreshDesktopState, runtime]);
 
-  const chooseBrowserUsb = useCallback(async () => {
-    const picker = getBrowserDirectoryPicker();
-    if (!picker) {
-      dispatchState({ type: 'SET_UNSUPPORTED' });
-      return;
-    }
-    const handle = await picker({ id: 'dropdex-rekordbox-usb', mode: 'read' });
-    const metadata: UsbConnectionMetadata = {
-      volumeName: handle.name,
-      connectedAt: new Date().toISOString(),
-    };
-    await saveUsbHandle(handle, metadata);
-    await applyPermissionCheck(handle, metadata, dispatchState);
-  }, [dispatchState]);
-
-  const connect = useCallback(async () => {
+  const selectUsbRoot = useCallback(async (): Promise<UsbRootSelectionResult> => {
     dispatchState({ type: 'SET_CONNECTING' });
     try {
       if (runtime === 'electron' && desktop) {
         const result = await desktop.selectUsbRoot();
+        if (result.cancelled) {
+          const nextActivity = await desktop.getUsbActivityState();
+          setActivity(nextActivity);
+          dispatchState({ type: 'SET_DESKTOP_STATE', state: result.state, activity: nextActivity });
+          return { cancelled: true, volumeName: result.state.volumeName };
+        }
         if (result.error) {
           dispatchState({ type: 'SET_ERROR', error: result.error });
-          return;
+          return { cancelled: false, volumeName: result.state.volumeName, error: result.error };
         }
         const nextActivity = await desktop.getUsbActivityState();
         setActivity(nextActivity);
         dispatchState({ type: 'SET_DESKTOP_STATE', state: result.state, activity: nextActivity });
-        return;
+        return { cancelled: false, volumeName: result.state.volumeName };
       }
-      await chooseBrowserUsb();
+      const picker = getBrowserDirectoryPicker();
+      if (!picker) {
+        dispatchState({ type: 'SET_UNSUPPORTED' });
+        return {
+          cancelled: false,
+          volumeName: null,
+          error: 'USB folder access is not supported in this browser.',
+        };
+      }
+      const handle = await picker({ id: 'dropdex-rekordbox-usb', mode: 'read' });
+      const metadata: UsbConnectionMetadata = {
+        volumeName: handle.name,
+        connectedAt: new Date().toISOString(),
+      };
+      await saveUsbHandle(handle, metadata);
+      await applyPermissionCheck(handle, metadata, dispatchState);
+      return { cancelled: false, volumeName: handle.name };
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
         void restoreFromStore(dispatchState);
+        return { cancelled: true, volumeName: stateRef.current.volumeName };
       } else {
-        dispatchState({ type: 'SET_ERROR', error: error instanceof Error ? error.message : String(error) });
+        const message = error instanceof Error ? error.message : String(error);
+        dispatchState({ type: 'SET_ERROR', error: message });
+        return { cancelled: false, volumeName: stateRef.current.volumeName, error: message };
       }
     }
-  }, [chooseBrowserUsb, desktop, dispatchState, runtime]);
+  }, [desktop, dispatchState, runtime]);
+
+  const connect = useCallback(async () => {
+    await selectUsbRoot();
+  }, [selectUsbRoot]);
 
   const release = useCallback(async (): Promise<DesktopUsbReleaseResult | null> => {
     const playbackErrors = await stopUsbBackedPlayback();
@@ -435,8 +508,8 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
   }, [connect, dispatchState, refreshDesktopState, runtime]);
 
   const selectNewUsb = useCallback(async () => {
-    await connect();
-  }, [connect]);
+    await selectUsbRoot();
+  }, [selectUsbRoot]);
 
   const ensurePermission = useCallback(async (): Promise<UsbStatus> => {
     if (runtime === 'electron') return refreshDesktopState();
@@ -515,17 +588,38 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
     return { ok: true, source: { kind: 'file', file: result.file } };
   }, [desktop, runtime]);
 
+  const resolveImportFile = useCallback(async (
+    segments: string[],
+    options: ResolveUsbFileOptions = {},
+  ): Promise<UsbFileResult> => {
+    if (options.isCancelled?.()) {
+      return { ok: false, error: { kind: 'abort', message: 'USB file access was cancelled.' } };
+    }
+
+    if (runtime === 'electron' && desktop) {
+      return resolveDesktopImportFile(desktop, segments, options);
+    }
+
+    const handle = handleRef.current;
+    if (!handle) {
+      return { ok: false, error: { kind: 'permission_denied', message: 'No USB drive is connected.' } };
+    }
+    return resolveUsbFile(handle, segments, options);
+  }, [desktop, runtime]);
+
   const value: UsbConnectionContextValue = {
     ...state,
     runtime,
     activity,
     connect,
+    selectUsbRoot,
     release,
     disconnect,
     reconnect,
     selectNewUsb,
     ensurePermission,
     resolveTrackSource,
+    resolveImportFile,
   };
 
   return (

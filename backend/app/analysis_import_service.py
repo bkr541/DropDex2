@@ -485,7 +485,9 @@ def _persist_track_manifest_state(sb, import_id: str, entries: Sequence[Manifest
     if not rows:
         return
     # Initial manifest planning can touch every track in a USB library. Keep the
-    # JSON RPC body bounded and degrade only a failed chunk to row-wise writes.
+    # JSON RPC body bounded. The bulk RPC is part of the production schema, so a
+    # missing/broken RPC is a backend deployment error rather than a reason to
+    # silently fan out into thousands of individual UPDATE requests.
     for offset in range(0, len(rows), 250):
         chunk = rows[offset : offset + 250]
         try:
@@ -493,19 +495,16 @@ def _persist_track_manifest_state(sb, import_id: str, entries: Sequence[Manifest
                 "bulk_update_rekordbox_track_analysis",
                 {"p_import_id": import_id, "p_rows": chunk},
             ).execute()
-            continue
         except Exception as exc:
-            logger.warning(
-                "Bulk manifest status RPC unavailable for %d rows, using bounded fallback: %s",
+            logger.exception(
+                "Bulk manifest status RPC failed for import %s (%d rows)",
+                import_id,
                 len(chunk),
-                exc,
             )
-        for row in chunk:
-            track_id = row["track_id"]
-            payload = {key: value for key, value in row.items() if key != "track_id"}
-            sb.table("rekordbox_tracks").update(payload).eq("id", track_id).eq(
-                "import_id", import_id
-            ).execute()
+            raise RuntimeError(
+                "Required bulk track-analysis update RPC is unavailable; "
+                "verify the production database migrations before retrying the import."
+            ) from exc
 
 
 def _build_path_map(tracks: List[dict]) -> Dict[str, dict]:

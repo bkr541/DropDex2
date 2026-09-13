@@ -177,10 +177,13 @@ def match_tracks_to_prior_import(
     # 1. Find all prior completed imports for this user (excluding the new import)
     prior_resp = (
         sb.table("rekordbox_imports")
-        .select("id")
+        .select("id, completed_at, created_at")
         .eq("user_id", user_id)
         .eq("status", "completed")
         .neq("id", new_import_id)
+        .order("completed_at", desc=True, nullsfirst=False)
+        .order("created_at", desc=True, nullsfirst=False)
+        .order("id", desc=True)
         .execute()
     )
 
@@ -203,6 +206,15 @@ def match_tracks_to_prior_import(
             .in_("import_id", prior_import_ids)
         ),
         order_column="id",
+    )
+    prior_import_rank = {
+        str(import_id): rank for rank, import_id in enumerate(prior_import_ids)
+    }
+    prior_tracks.sort(
+        key=lambda row: (
+            prior_import_rank.get(str(row.get("import_id") or ""), len(prior_import_rank)),
+            str(row.get("id") or ""),
+        )
     )
 
     # Load retained source provenance in bounded queries. Parser workers can

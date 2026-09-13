@@ -694,6 +694,19 @@ def test_bulk_track_status_persists_cue_integrity_override_ignored_by_legacy_rpc
     })
 
 
+def test_bulk_track_status_does_not_fall_back_to_row_writes_when_rpc_is_missing():
+    sb = MagicMock()
+    sb.rpc.return_value.execute.side_effect = RuntimeError("rpc missing")
+
+    with pytest.raises(RuntimeError, match="Required bulk track-analysis update RPC"):
+        fast._bulk_track_status(sb, "import-1", [
+            {"track_id": f"track-{index}", "analysis_parse_status": "queued"}
+            for index in range(500)
+        ])
+
+    sb.table.assert_not_called()
+
+
 def test_manifest_persistence_bounds_real_usb_scale_rpc_payloads():
     entries = [
         SimpleNamespace(
@@ -714,6 +727,26 @@ def test_manifest_persistence_bounds_real_usb_scale_rpc_payloads():
     assert len(rpc_rows) == math.ceil(2_213 / 250)
     assert max(map(len, rpc_rows)) <= 250
     assert sum(map(len, rpc_rows)) == 2_213
+
+
+def test_manifest_persistence_does_not_fall_back_to_row_writes_when_rpc_is_missing():
+    entries = [
+        SimpleNamespace(
+            track_id=f"track-{index}",
+            manifest_status="needs_dat",
+            reused_from_track_id=None,
+            source_fingerprint=f"fingerprint-{index}",
+            reuse_reason=None,
+        )
+        for index in range(500)
+    ]
+    sb = MagicMock()
+    sb.rpc.return_value.execute.side_effect = RuntimeError("rpc missing")
+
+    with pytest.raises(RuntimeError, match="Required bulk track-analysis update RPC"):
+        import_service._persist_track_manifest_state(sb, "import-1", entries)
+
+    sb.table.assert_not_called()
 
 
 def test_release_retained_dependencies_bounds_large_parser_upgrade_payloads():
