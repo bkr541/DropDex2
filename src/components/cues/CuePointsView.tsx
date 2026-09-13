@@ -2759,8 +2759,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       }
       else if (sortCol === 'analysis') { av = analysisReady(a) ? 1 : 0; bv = analysisReady(b) ? 1 : 0; }
       else if (sortCol === 'duration') {
-        av = a.duration_ms ?? (a.duration_seconds != null ? a.duration_seconds * 1000 : -1);
-        bv = b.duration_ms ?? (b.duration_seconds != null ? b.duration_seconds * 1000 : -1);
+        av = (typeof a.duration_ms === 'number' && a.duration_ms > 0) ? a.duration_ms : (a.duration_seconds != null && a.duration_seconds > 0 ? a.duration_seconds * 1000 : -1);
+        bv = (typeof b.duration_ms === 'number' && b.duration_ms > 0) ? b.duration_ms : (b.duration_seconds != null && b.duration_seconds > 0 ? b.duration_seconds * 1000 : -1);
       }
       if (av === null || av === bv) return 0;
       const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));

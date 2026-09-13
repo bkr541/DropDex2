@@ -27,10 +27,10 @@ export interface DropLabSegments {
 export function resolveTrackDurationMs(
   track: RekordboxTrack,
 ): TrackTiming {
-  if (track.duration_ms != null && track.duration_ms > 0) {
+  if (typeof track.duration_ms === 'number' && Number.isFinite(track.duration_ms) && track.duration_ms > 0) {
     return { durationMs: track.duration_ms, usedDurationSource: 'track' };
   }
-  if (track.duration_seconds != null && track.duration_seconds > 0) {
+  if (typeof track.duration_seconds === 'number' && Number.isFinite(track.duration_seconds) && track.duration_seconds > 0) {
     return {
       durationMs: track.duration_seconds * 1000,
       usedDurationSource: 'track',
