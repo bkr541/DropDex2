@@ -442,11 +442,12 @@ async function releaseUsbAccess({ disconnect = false } = {}) {
   const streamResult = await usbStreams.release();
 
   if (streamResult.allStreamsClosed) {
-    // A successful release is a true no-I/O handoff. Forget the mount path and
-    // remove its persisted copy. Reconnecting requires an explicit folder pick.
     usbConnection = null;
     releasedUsbMetadata = disconnect ? null : connectionMetadata;
-    await persistUsbConnection();
+    // Only wipe the persisted path on an explicit user-initiated disconnect.
+    // For import handoffs and app-quit releases, keep the file so the next
+    // startup can auto-reconnect without requiring a folder pick.
+    if (disconnect) await persistUsbConnection();
   }
 
   const state = disconnect
@@ -707,7 +708,7 @@ app.on('before-quit', (event) => {
   if (activity.activeStreamCount === 0 && activity.pendingRequestCount === 0) return;
   event.preventDefault();
   quittingAfterUsbRelease = true;
-  void releaseUsbAccess({ disconnect: true }).finally(() => app.exit(0));
+  void releaseUsbAccess({ disconnect: false }).finally(() => app.exit(0));
 });
 
 app.on('window-all-closed', () => {
