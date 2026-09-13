@@ -14,6 +14,7 @@ import {
 } from '../music/similarVibes';
 import { getCompatibleCamelotKeys } from '../music/camelot';
 import {
+  isBrowseableLibrarySnapshot,
   USABLE_LIBRARY_STATUSES,
   isPendingHardDelete,
   isUsableLibrarySnapshot,
@@ -181,7 +182,9 @@ export async function fetchActiveImport(userId: string): Promise<RekordboxImport
   const activeId = settings.active_import_id;
   const activeImport = await readImport(activeId);
   if (activeImport) {
-    if (isUsableLibrarySnapshot(activeImport)) return activeImport;
+    // A browseable import (metadata ready, not being destroyed) is returned
+    // directly — including processing imports whose deep analysis is still running.
+    if (isBrowseableLibrarySnapshot(activeImport)) return activeImport;
 
     // During an explicitly requested Start Over delete, the persisted strategy
     // outranks generic newest-library fallback. Returning null here prevents an
@@ -201,7 +204,7 @@ export async function fetchActiveImport(userId: string): Promise<RekordboxImport
   if (!refreshedSettings.active_import_id) return null;
   if (refreshedSettings.active_import_id !== activeId) {
     const refreshedImport = await readImport(refreshedSettings.active_import_id);
-    if (refreshedImport && isUsableLibrarySnapshot(refreshedImport)) return refreshedImport;
+    if (refreshedImport && isBrowseableLibrarySnapshot(refreshedImport)) return refreshedImport;
     if (refreshedImport && isPendingHardDelete(refreshedImport)
       && refreshedImport.delete_active_strategy === 'start_over') {
       return null;

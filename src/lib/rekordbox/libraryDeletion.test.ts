@@ -3,6 +3,7 @@ import type { RekordboxImport } from '../../types';
 import {
   getNextUsableLibrarySnapshot,
   getPersistedDeleteStrategy,
+  isBrowseableLibrarySnapshot,
   isDeleteConfirmationValid,
   isPendingHardDelete,
   isUsableLibrarySnapshot,
@@ -41,7 +42,7 @@ describe('library deletion decisions', () => {
     expect(isDeleteConfirmationValid('')).toBe(false);
   });
 
-  it('only treats activatable library snapshots as usable fallbacks', () => {
+  it('isUsableLibrarySnapshot — stable fallback/hard-delete gate only (completed/paused/interrupted)', () => {
     expect(isUsableLibrarySnapshot(snapshot('completed', 'completed'))).toBe(true);
     expect(isUsableLibrarySnapshot(snapshot('paused', 'paused'))).toBe(true);
     expect(isUsableLibrarySnapshot(snapshot('interrupted', 'interrupted'))).toBe(true);
@@ -49,9 +50,30 @@ describe('library deletion decisions', () => {
     expect(isUsableLibrarySnapshot(snapshot('cancelled', 'cancelled'))).toBe(false);
     expect(isUsableLibrarySnapshot(snapshot('stopping', 'stopping'))).toBe(false);
     expect(isUsableLibrarySnapshot(snapshot('deleting', 'deleting'))).toBe(false);
+    // processing is NOT a stable snapshot even with library_ready_at set
     expect(isUsableLibrarySnapshot(snapshot('processing', 'processing'))).toBe(false);
     expect(isUsableLibrarySnapshot(snapshot('pre-ready-paused', 'paused', false))).toBe(false);
     expect(isUsableLibrarySnapshot(snapshot('pre-ready-interrupted', 'interrupted', false))).toBe(false);
+  });
+
+  it('isBrowseableLibrarySnapshot — processing+library_ready_at is browseable, pre-ready and destroyed are not', () => {
+    // Stable statuses remain browseable
+    expect(isBrowseableLibrarySnapshot(snapshot('completed', 'completed'))).toBe(true);
+    expect(isBrowseableLibrarySnapshot(snapshot('paused', 'paused'))).toBe(true);
+    expect(isBrowseableLibrarySnapshot(snapshot('interrupted', 'interrupted'))).toBe(true);
+    // Processing with library_ready_at IS browseable (the key fix)
+    expect(isBrowseableLibrarySnapshot(snapshot('processing', 'processing'))).toBe(true);
+    // Pre-library-ready processing is NOT browseable
+    expect(isBrowseableLibrarySnapshot(snapshot('pre-ready-processing', 'processing', false))).toBe(false);
+    // Destroyed/cancellation statuses are NOT browseable even if library_ready_at was set
+    expect(isBrowseableLibrarySnapshot(snapshot('failed', 'failed'))).toBe(false);
+    expect(isBrowseableLibrarySnapshot(snapshot('cancelled', 'cancelled'))).toBe(false);
+    expect(isBrowseableLibrarySnapshot(snapshot('stopping', 'stopping'))).toBe(false);
+    expect(isBrowseableLibrarySnapshot(snapshot('deleting', 'deleting'))).toBe(false);
+    expect(isBrowseableLibrarySnapshot(snapshot('cancel_requested', 'cancel_requested'))).toBe(false);
+    // Pre-library-ready paused/interrupted are also not browseable
+    expect(isBrowseableLibrarySnapshot(snapshot('pre-ready-paused', 'paused', false))).toBe(false);
+    expect(isBrowseableLibrarySnapshot(snapshot('pre-ready-interrupted', 'interrupted', false))).toBe(false);
   });
 
   it('recognizes only persisted stopping/deleting rows as pending hard deletes', () => {

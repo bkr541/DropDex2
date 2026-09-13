@@ -815,6 +815,7 @@ export default function App() {
     setBackgroundImport({ importId: nextImportId, usbReleased });
     setIsImportModalOpen(false);
     refetchImportList();
+    refetchImport();
   };
 
   const handleSetActiveImport = async (nextImportId: string) => {

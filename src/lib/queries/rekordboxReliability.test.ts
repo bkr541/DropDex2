@@ -193,6 +193,225 @@ describe('large-library query reliability', () => {
     await expect(fetchActiveImport('user-1')).resolves.toMatchObject({ id: 'fallback' });
   });
 
+  // ── Browse-in-Background / processing import scenarios ──────────────────────
+
+  it('returns a processing import as the active library once library_ready_at is set (Test 1)', async () => {
+    const settingsBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: { active_import_id: 'import-a' }, error: null,
+      }),
+    };
+    settingsBuilder.select.mockReturnValue(settingsBuilder);
+    settingsBuilder.eq.mockReturnValue(settingsBuilder);
+
+    const importBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: 'import-a', status: 'processing', library_ready_at: '2026-08-16T12:01:00Z' },
+        error: null,
+      }),
+    };
+    importBuilder.select.mockReturnValue(importBuilder);
+    importBuilder.eq.mockReturnValue(importBuilder);
+
+    fromMock
+      .mockReturnValueOnce(settingsBuilder as never)
+      .mockReturnValueOnce(importBuilder as never);
+
+    await expect(fetchActiveImport('user-1')).resolves.toMatchObject({
+      id: 'import-a',
+      status: 'processing',
+    });
+    expect(fromMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a processing import when library_ready_at is null — not yet browseable (Test 2)', async () => {
+    const settingsBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: { active_import_id: 'import-a' }, error: null,
+      }),
+    };
+    settingsBuilder.select.mockReturnValue(settingsBuilder);
+    settingsBuilder.eq.mockReturnValue(settingsBuilder);
+
+    const importBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: 'import-a', status: 'processing', library_ready_at: null },
+        error: null,
+      }),
+    };
+    importBuilder.select.mockReturnValue(importBuilder);
+    importBuilder.eq.mockReturnValue(importBuilder);
+
+    const latestBuilder = {
+      select: vi.fn(), eq: vi.fn(), in: vi.fn(), not: vi.fn(), order: vi.fn(), limit: vi.fn(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    };
+    latestBuilder.select.mockReturnValue(latestBuilder);
+    latestBuilder.eq.mockReturnValue(latestBuilder);
+    latestBuilder.in.mockReturnValue(latestBuilder);
+    latestBuilder.not.mockReturnValue(latestBuilder);
+    latestBuilder.order.mockReturnValue(latestBuilder);
+    latestBuilder.limit.mockReturnValue(latestBuilder);
+
+    fromMock
+      .mockReturnValueOnce(settingsBuilder as never)
+      .mockReturnValueOnce(importBuilder as never)
+      .mockReturnValueOnce(latestBuilder as never);
+
+    await expect(fetchActiveImport('user-1')).resolves.toBeNull();
+  });
+
+  it('returns processing new import over old completed library when new library is ready (Test 3)', async () => {
+    const settingsBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: { active_import_id: 'import-b' }, error: null,
+      }),
+    };
+    settingsBuilder.select.mockReturnValue(settingsBuilder);
+    settingsBuilder.eq.mockReturnValue(settingsBuilder);
+
+    // New import B is the active import: processing but library_ready_at is set
+    const importBBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: 'import-b', status: 'processing', library_ready_at: '2026-08-16T13:00:00Z' },
+        error: null,
+      }),
+    };
+    importBBuilder.select.mockReturnValue(importBBuilder);
+    importBBuilder.eq.mockReturnValue(importBBuilder);
+
+    fromMock
+      .mockReturnValueOnce(settingsBuilder as never)
+      .mockReturnValueOnce(importBBuilder as never);
+
+    // Should return import-b, NOT fall back to the old completed library
+    await expect(fetchActiveImport('user-1')).resolves.toMatchObject({ id: 'import-b' });
+    // fetchLatestImport must NOT be called — old library must not silently take over
+    expect(fromMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not make processing imports eligible for the stable fallback query (fetchLatestImport)', async () => {
+    const latestBuilder = {
+      select: vi.fn(), eq: vi.fn(), in: vi.fn(), not: vi.fn(), order: vi.fn(), limit: vi.fn(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    };
+    latestBuilder.select.mockReturnValue(latestBuilder);
+    latestBuilder.eq.mockReturnValue(latestBuilder);
+    latestBuilder.in.mockReturnValue(latestBuilder);
+    latestBuilder.not.mockReturnValue(latestBuilder);
+    latestBuilder.order.mockReturnValue(latestBuilder);
+    latestBuilder.limit.mockReturnValue(latestBuilder);
+    fromMock.mockReturnValueOnce(latestBuilder as never);
+
+    await fetchLatestImport('user-1');
+
+    // Stable fallback must NOT include processing status
+    expect(latestBuilder.in).toHaveBeenCalledWith('status', ['completed', 'paused', 'interrupted']);
+  });
+
+  it('returns a completed import as the active library — processing→completed transition keeps the same import (Test 7)', async () => {
+    const settingsBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: { active_import_id: 'import-a' }, error: null,
+      }),
+    };
+    settingsBuilder.select.mockReturnValue(settingsBuilder);
+    settingsBuilder.eq.mockReturnValue(settingsBuilder);
+
+    const importBuilder = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: 'import-a', status: 'completed', library_ready_at: '2026-08-16T12:05:00Z' },
+        error: null,
+      }),
+    };
+    importBuilder.select.mockReturnValue(importBuilder);
+    importBuilder.eq.mockReturnValue(importBuilder);
+
+    fromMock
+      .mockReturnValueOnce(settingsBuilder as never)
+      .mockReturnValueOnce(importBuilder as never);
+
+    // After status flips from processing → completed, fetchActiveImport still returns it
+    await expect(fetchActiveImport('user-1')).resolves.toMatchObject({
+      id: 'import-a',
+      status: 'completed',
+    });
+    expect(fromMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns a paused or interrupted import as the active library — still browseable (Test 8)', async () => {
+    for (const status of ['paused', 'interrupted'] as const) {
+      vi.clearAllMocks();
+
+      const settingsBuilder = {
+        select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+          data: { active_import_id: 'import-a' }, error: null,
+        }),
+      };
+      settingsBuilder.select.mockReturnValue(settingsBuilder);
+      settingsBuilder.eq.mockReturnValue(settingsBuilder);
+
+      const importBuilder = {
+        select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+          data: { id: 'import-a', status, library_ready_at: '2026-08-16T12:05:00Z' },
+          error: null,
+        }),
+      };
+      importBuilder.select.mockReturnValue(importBuilder);
+      importBuilder.eq.mockReturnValue(importBuilder);
+
+      fromMock
+        .mockReturnValueOnce(settingsBuilder as never)
+        .mockReturnValueOnce(importBuilder as never);
+
+      // eslint-disable-next-line no-await-in-loop
+      await expect(fetchActiveImport('user-1')).resolves.toMatchObject({ id: 'import-a', status });
+    }
+  });
+
+  it('does not return a failed or cancelled import — not browseable even if library_ready_at was set (Test 9)', async () => {
+    for (const status of ['failed', 'cancelled'] as const) {
+      vi.clearAllMocks();
+
+      const settingsBuilder = {
+        select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+          data: { active_import_id: 'import-a' }, error: null,
+        }),
+      };
+      settingsBuilder.select.mockReturnValue(settingsBuilder);
+      settingsBuilder.eq.mockReturnValue(settingsBuilder);
+
+      const importBuilder = {
+        select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
+          // library_ready_at was set before it failed/was cancelled
+          data: { id: 'import-a', status, library_ready_at: '2026-08-16T12:05:00Z' },
+          error: null,
+        }),
+      };
+      importBuilder.select.mockReturnValue(importBuilder);
+      importBuilder.eq.mockReturnValue(importBuilder);
+
+      const latestBuilder = {
+        select: vi.fn(), eq: vi.fn(), in: vi.fn(), not: vi.fn(), order: vi.fn(), limit: vi.fn(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      };
+      latestBuilder.select.mockReturnValue(latestBuilder);
+      latestBuilder.eq.mockReturnValue(latestBuilder);
+      latestBuilder.in.mockReturnValue(latestBuilder);
+      latestBuilder.not.mockReturnValue(latestBuilder);
+      latestBuilder.order.mockReturnValue(latestBuilder);
+      latestBuilder.limit.mockReturnValue(latestBuilder);
+
+      fromMock
+        .mockReturnValueOnce(settingsBuilder as never)
+        .mockReturnValueOnce(importBuilder as never)
+        .mockReturnValueOnce(latestBuilder as never);
+
+      // eslint-disable-next-line no-await-in-loop
+      await expect(fetchActiveImport('user-1')).resolves.toBeNull();
+    }
+  });
+
   it('re-reads settings when the active row disappears across hard-delete finalization', async () => {
     const firstSettingsBuilder = {
       select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({
