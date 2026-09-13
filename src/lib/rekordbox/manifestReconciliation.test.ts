@@ -156,4 +156,18 @@ describe('buildManifestReconciliation', () => {
     expect(result.successfullyUploadedFiles).toBe(1);
     expect(result.failedFiles).toBe(0);
   });
+  it('accepts path-only match metadata from bounded targeted transfers', () => {
+    const dat = 'PIONEER\\USBANLZ\\P001\\A.DAT';
+    const uploaded = new Set(['pioneer/usbanlz/p001/a.dat']);
+    const result = buildManifestReconciliation(
+      [makeEntry('t1', dat)],
+      new Set(['pioneer/usbanlz/p001/a.dat']),
+      uploaded,
+    );
+
+    expect(result.successfullyUploadedFiles).toBe(1);
+    expect(result.failedFiles).toBe(0);
+    expect(result.missingFiles).toBe(0);
+  });
+
 });

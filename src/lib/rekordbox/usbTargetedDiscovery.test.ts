@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveUsbFile } from '../usb/resolveUsbFile';
 import {
+  buildManifestAnalysisRequests,
   resolveRekordboxDatabase,
   resolveRequestedAnalysisFilesWithResolver,
   type UsbFileResolver,
@@ -105,4 +106,58 @@ describe('targeted Rekordbox USB discovery', () => {
     expect(result.missing).toEqual([]);
     expect(resolver).toHaveBeenCalledTimes(1);
   });
+  it('builds only required DAT/EXT transfer requests and skips reused/retained/2EX work', () => {
+    const requests = buildManifestAnalysisRequests([
+      {
+        track_id: 'needs-both',
+        dat_path: 'PIONEER/USBANLZ/P001/A.DAT',
+        ext_path: 'PIONEER/USBANLZ/P001/A.EXT',
+        two_ex_path: 'PIONEER/USBANLZ/P001/A.2EX',
+        manifest_status: 'needs_analysis',
+        required_asset_types: ['DAT', 'EXT'],
+      },
+      {
+        track_id: 'reused',
+        dat_path: 'PIONEER/USBANLZ/P002/B.DAT',
+        ext_path: 'PIONEER/USBANLZ/P002/B.EXT',
+        two_ex_path: 'PIONEER/USBANLZ/P002/B.2EX',
+        manifest_status: 'reused',
+      },
+      {
+        track_id: 'retained',
+        dat_path: 'PIONEER/USBANLZ/P003/C.DAT',
+        ext_path: 'PIONEER/USBANLZ/P003/C.EXT',
+        two_ex_path: 'PIONEER/USBANLZ/P003/C.2EX',
+        manifest_status: 'reparse_from_retained',
+      },
+    ]);
+
+    expect(requests.map((item) => [item.assetType, item.canonicalPath])).toEqual([
+      ['DAT', 'PIONEER/USBANLZ/P001/A.DAT'],
+      ['EXT', 'PIONEER/USBANLZ/P001/A.EXT'],
+    ]);
+  });
+
+  it('deduplicates a shared canonical analysis path without broad discovery', () => {
+    const requests = buildManifestAnalysisRequests([
+      {
+        track_id: 'track-1',
+        dat_path: 'PIONEER/USBANLZ/P001/SHARED.DAT',
+        ext_path: null,
+        two_ex_path: null,
+        manifest_status: 'needs_dat',
+      },
+      {
+        track_id: 'track-2',
+        dat_path: 'pioneer/usbanlz/p001/shared.dat',
+        ext_path: null,
+        two_ex_path: null,
+        manifest_status: 'needs_dat',
+      },
+    ]);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].canonicalPath).toBe('PIONEER/USBANLZ/P001/SHARED.DAT');
+  });
+
 });

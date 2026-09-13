@@ -37,11 +37,11 @@ import {
 } from '../lib/rekordbox/analysisPaths';
 import { UploadAccumulator, isTransientFileFailure } from '../lib/rekordbox/analysisUploadResults';
 import { buildManifestReconciliation } from '../lib/rekordbox/manifestReconciliation';
+import { runTargetedAnalysisTransfer } from '../lib/rekordbox/targetedAnalysisTransfer';
 import type { ManifestReconciliation } from '../lib/rekordbox/manifestReconciliation';
 import {
   buildManifestAnalysisRequests,
   resolveRekordboxDatabase,
-  resolveRequestedAnalysisFilesWithResolver,
   type UsbFileResolver,
 } from '../lib/rekordbox/usbTargetedDiscovery';
 import type { DeleteActiveStrategy } from '../lib/rekordbox/libraryDeletion';
@@ -1029,145 +1029,220 @@ export function ImportLibraryModal({
     }
 
     setLocalUsbStage('matching_analysis');
-    const matchingStartedAt = performance.now();
-    const matchedFiles = scan.targetedResolver
-      ? (
-          await resolveRequestedAnalysisFilesWithResolver(
-            scan.targetedResolver,
-            buildManifestAnalysisRequests(startResp.manifest),
-            { signal: controller.signal, sourceRootName: scan.folderName },
-          )
-        ).matched
-      : buildMatchedFiles(scan.anlzFiles, startResp.manifest);
-    const matchingElapsedMs = performance.now() - matchingStartedAt;
-    const batches = buildBatches(matchedFiles, BATCH_SIZE, MAX_BYTES_PER_BATCH);
-    matchedFilesRef.current = matchedFiles;
-    uploadBatchesRef.current = batches;
+    let matchingElapsedMs = 0;
+    let matchedCount = 0;
+    let totalBytes = 0;
+    let matchedPathSet = new Set<string>();
+    let accumulator: UploadAccumulator;
 
-    const totalBytes = matchedFiles.reduce((sum, item) => sum + item.file.size, 0);
-    setProgress({
-      filesUploaded: 0,
-      filesTotal: matchedFiles.length,
-      bytesUploaded: 0,
-      bytesTotal: totalBytes,
-      bundlePct: 0,
-    });
+    if (scan.targetedResolver) {
+      const requests = buildManifestAnalysisRequests(startResp.manifest);
+      setProgress({
+        filesUploaded: 0,
+        filesTotal: requests.length,
+        bytesUploaded: 0,
+        bytesTotal: 0,
+        bundlePct: 0,
+      });
 
-    setLocalUsbStage('uploading_analysis');
-    const accumulator = new UploadAccumulator();
-    const runtime = new UploadQueueRuntime(batches.length);
-    uploadQueueRuntimeRef.current = runtime;
-
-    const queueResult = await runCancellableUploadQueue<MatchedAnalysisFile[], BatchUploadResponse | null>({
-      batches,
-      maxConcurrent: MAX_CONCURRENT,
-      signal: controller.signal,
-      runtime,
-      isLocallyAborted: () => localAbortRequestedRef.current,
-      isAbortError,
-      isFailedResult: (response) => response === null,
-      runBatch: (batch) => uploadBatchWithRetry(
-        startResp.import_id,
-        batch,
-        accessTokenRef.current ?? token,
-        controller.signal,
-        3,
-        {
-          retryTimers: retryTimersRef.current,
-          isLocallyAborted: () => localAbortRequestedRef.current,
+      let uploadStagePublished = false;
+      const transfer = await runTargetedAnalysisTransfer({
+        resolver: scan.targetedResolver,
+        requests,
+        signal: controller.signal,
+        sourceRootName: scan.folderName,
+        maxFilesPerBatch: BATCH_SIZE,
+        maxBytesPerBatch: MAX_BYTES_PER_BATCH,
+        maxConcurrent: MAX_CONCURRENT,
+        resolveWindowSize: BATCH_SIZE * MAX_CONCURRENT,
+        isLocallyAborted: () => localAbortRequestedRef.current,
+        uploadBatch: (batch, maxAttempts) => uploadBatchWithRetry(
+          startResp.import_id,
+          batch,
+          accessTokenRef.current ?? token,
+          controller.signal,
+          maxAttempts,
+          {
+            retryTimers: retryTimersRef.current,
+            isLocallyAborted: () => localAbortRequestedRef.current,
+          },
+        ),
+        waitForRetryDelay: (delayMs) => waitForAbortableDelay(
+          delayMs,
+          controller.signal,
+          retryTimersRef.current,
+          () => localAbortRequestedRef.current,
+        ),
+        onResolutionWindow: () => {
+          if (uploadStagePublished) return;
+          uploadStagePublished = true;
+          setLocalUsbStage('uploading_analysis');
         },
-      ),
-      onBatchSuccess: (response, batch) => {
-        if (response) accumulator.addBatchResponse(response, batch);
-        if (!mountedRef.current || operation !== operationRef.current) return;
+        onRuntimeChange: (runtime) => {
+          uploadQueueRuntimeRef.current = runtime;
+        },
+        onRetryingCount: (count) => {
+          if (mountedRef.current && operation === operationRef.current) setRetryingCount(count);
+        },
+        onProgress: (snapshot) => {
+          if (!mountedRef.current || operation !== operationRef.current) return;
+          setProgress((current) => ({
+            ...current,
+            filesUploaded: Math.min(
+              snapshot.totalRequests,
+              snapshot.confirmedFiles + snapshot.missingFiles,
+            ),
+            bytesUploaded: snapshot.confirmedBytes,
+          }));
+          setRejectedCount(snapshot.rejectedFiles + snapshot.errorFiles);
+        },
+      });
+
+      if (!uploadStagePublished) setLocalUsbStage('uploading_analysis');
+      accumulator = transfer.accumulator;
+      matchingElapsedMs = transfer.resolutionElapsedMs;
+      matchedCount = transfer.matchedCount;
+      totalBytes = transfer.matchedBytes;
+      matchedPathSet = transfer.matchedPaths;
+    } else {
+      // Compatibility path for browsers that cannot expose a persistent
+      // directory handle. The browser has already materialized the legacy
+      // FileList at selection time, so preserve the existing matcher/uploader
+      // without changing unsupported-browser behavior.
+      const matchingStartedAt = performance.now();
+      const matchedFiles = buildMatchedFiles(scan.anlzFiles, startResp.manifest);
+      matchingElapsedMs = performance.now() - matchingStartedAt;
+      const batches = buildBatches(matchedFiles, BATCH_SIZE, MAX_BYTES_PER_BATCH);
+      matchedFilesRef.current = matchedFiles;
+      uploadBatchesRef.current = batches;
+      matchedCount = matchedFiles.length;
+      totalBytes = matchedFiles.reduce((sum, item) => sum + item.file.size, 0);
+      matchedPathSet = new Set(matchedFiles.map((file) => file.canonicalPath.toLowerCase()));
+
+      setProgress({
+        filesUploaded: 0,
+        filesTotal: matchedFiles.length,
+        bytesUploaded: 0,
+        bytesTotal: totalBytes,
+        bundlePct: 0,
+      });
+
+      setLocalUsbStage('uploading_analysis');
+      accumulator = new UploadAccumulator();
+      const runtime = new UploadQueueRuntime(batches.length);
+      uploadQueueRuntimeRef.current = runtime;
+
+      const queueResult = await runCancellableUploadQueue<MatchedAnalysisFile[], BatchUploadResponse | null>({
+        batches,
+        maxConcurrent: MAX_CONCURRENT,
+        signal: controller.signal,
+        runtime,
+        isLocallyAborted: () => localAbortRequestedRef.current,
+        isAbortError,
+        isFailedResult: (response) => response === null,
+        runBatch: (batch) => uploadBatchWithRetry(
+          startResp.import_id,
+          batch,
+          accessTokenRef.current ?? token,
+          controller.signal,
+          3,
+          {
+            retryTimers: retryTimersRef.current,
+            isLocallyAborted: () => localAbortRequestedRef.current,
+          },
+        ),
+        onBatchSuccess: (response, batch) => {
+          if (response) accumulator.addBatchResponse(response, batch);
+          if (!mountedRef.current || operation !== operationRef.current) return;
+          setProgress((current) => ({
+            ...current,
+            filesUploaded: accumulator.confirmedFiles,
+            bytesUploaded: accumulator.confirmedBytes,
+          }));
+          setRejectedCount(accumulator.summary.rejectedFiles + accumulator.summary.errorFiles);
+        },
+        onBatchFailure: (error, batch) => {
+          if (!isAbortError(error)) accumulator.recordFailedBatch(batch);
+        },
+      });
+
+      if (queueResult.cancelled || localAbortRequestedRef.current || controller.signal.aborted) {
+        throw new DOMException('USB upload cancelled', 'AbortError');
+      }
+
+      const filesByLowerPath = new Map<string, MatchedAnalysisFile>(
+        matchedFiles.map((file) => [file.canonicalPath.toLowerCase(), file]),
+      );
+      retryFilesByPathRef.current = filesByLowerPath;
+      const fileRetryDelaysMs = [500, 1000];
+
+      for (let retryIndex = 0; retryIndex < fileRetryDelaysMs.length; retryIndex += 1) {
+        throwIfLocalCancellationRequested(controller);
+        const retryPaths = accumulator.retryableFilePaths;
+        if (retryPaths.length === 0) break;
+        setRetryingCount(retryPaths.length);
+
+        await waitForAbortableDelay(
+          fileRetryDelaysMs[retryIndex],
+          controller.signal,
+          retryTimersRef.current,
+          () => localAbortRequestedRef.current,
+        );
+        throwIfLocalCancellationRequested(controller);
+
+        const retryBatch = retryPaths
+          .map((path) => filesByLowerPath.get(path))
+          .filter((file): file is MatchedAnalysisFile => file !== undefined);
+        if (retryBatch.length === 0) break;
+
+        const { data: { session: retrySession } } = await supabase.auth.getSession();
+        throwIfLocalCancellationRequested(controller);
+        const retryToken = retrySession?.access_token ?? accessTokenRef.current ?? token;
+        accessTokenRef.current = retryToken;
+
+        const retryResponse = await runTrackedLocalRequest(() => uploadBatchWithRetry(
+          startResp.import_id,
+          retryBatch,
+          retryToken,
+          controller.signal,
+          1,
+          {
+            retryTimers: retryTimersRef.current,
+            isLocallyAborted: () => localAbortRequestedRef.current,
+          },
+        ));
+        throwIfLocalCancellationRequested(controller);
+        if (retryResponse === null) break;
+
+        for (const fileResult of retryResponse.files) {
+          if (fileResult.status === 'received' || fileResult.status === 'already_received') {
+            accumulator.correctFileRetrySuccess(
+              fileResult.canonical_path,
+              fileResult.status,
+              fileResult.file_size,
+            );
+          }
+          if (
+            import.meta.env.DEV &&
+            fileResult.status !== 'received' &&
+            fileResult.status !== 'already_received'
+          ) {
+            console.debug('[ANLZ retry] File remains unresolved', {
+              path: fileResult.canonical_path,
+              status: fileResult.status,
+              reason: fileResult.reject_reason,
+              retryable: isTransientFileFailure(fileResult),
+            });
+          }
+        }
+
         setProgress((current) => ({
           ...current,
           filesUploaded: accumulator.confirmedFiles,
           bytesUploaded: accumulator.confirmedBytes,
         }));
         setRejectedCount(accumulator.summary.rejectedFiles + accumulator.summary.errorFiles);
-      },
-      onBatchFailure: (error, batch) => {
-        if (!isAbortError(error)) accumulator.recordFailedBatch(batch);
-      },
-    });
-
-    if (queueResult.cancelled || localAbortRequestedRef.current || controller.signal.aborted) {
-      throw new DOMException('USB upload cancelled', 'AbortError');
-    }
-
-    const filesByLowerPath = new Map<string, MatchedAnalysisFile>(
-      matchedFiles.map((file) => [file.canonicalPath.toLowerCase(), file]),
-    );
-    retryFilesByPathRef.current = filesByLowerPath;
-    const fileRetryDelaysMs = [500, 1000];
-
-    for (let retryIndex = 0; retryIndex < fileRetryDelaysMs.length; retryIndex += 1) {
-      throwIfLocalCancellationRequested(controller);
-      const retryPaths = accumulator.retryableFilePaths;
-      if (retryPaths.length === 0) break;
-      setRetryingCount(retryPaths.length);
-
-      await waitForAbortableDelay(
-        fileRetryDelaysMs[retryIndex],
-        controller.signal,
-        retryTimersRef.current,
-        () => localAbortRequestedRef.current,
-      );
-      throwIfLocalCancellationRequested(controller);
-
-      const retryBatch = retryPaths
-        .map((path) => filesByLowerPath.get(path))
-        .filter((file): file is MatchedAnalysisFile => file !== undefined);
-      if (retryBatch.length === 0) break;
-
-      const { data: { session: retrySession } } = await supabase.auth.getSession();
-      throwIfLocalCancellationRequested(controller);
-      const retryToken = retrySession?.access_token ?? accessTokenRef.current ?? token;
-      accessTokenRef.current = retryToken;
-
-      const retryResponse = await runTrackedLocalRequest(() => uploadBatchWithRetry(
-        startResp.import_id,
-        retryBatch,
-        retryToken,
-        controller.signal,
-        1,
-        {
-          retryTimers: retryTimersRef.current,
-          isLocallyAborted: () => localAbortRequestedRef.current,
-        },
-      ));
-      throwIfLocalCancellationRequested(controller);
-      if (retryResponse === null) break;
-
-      for (const fileResult of retryResponse.files) {
-        if (fileResult.status === 'received' || fileResult.status === 'already_received') {
-          accumulator.correctFileRetrySuccess(
-            fileResult.canonical_path,
-            fileResult.status,
-            fileResult.file_size,
-          );
-        }
-        if (
-          import.meta.env.DEV &&
-          fileResult.status !== 'received' &&
-          fileResult.status !== 'already_received'
-        ) {
-          console.debug('[ANLZ retry] File remains unresolved', {
-            path: fileResult.canonical_path,
-            status: fileResult.status,
-            reason: fileResult.reject_reason,
-            retryable: isTransientFileFailure(fileResult),
-          });
-        }
       }
-
-      setProgress((current) => ({
-        ...current,
-        filesUploaded: accumulator.confirmedFiles,
-        bytesUploaded: accumulator.confirmedBytes,
-      }));
-      setRejectedCount(accumulator.summary.rejectedFiles + accumulator.summary.errorFiles);
     }
 
     setRetryingCount(0);
@@ -1175,7 +1250,7 @@ export function ImportLibraryModal({
 
     setReconciliation(buildManifestReconciliation(
       startResp.manifest,
-      matchedFiles,
+      matchedPathSet,
       accumulator.successfullyUploadedPaths,
     ));
 
@@ -1188,7 +1263,7 @@ export function ImportLibraryModal({
       {
         timings_ms: { usb_file_matching: matchingElapsedMs },
         counts: {
-          usb_files_matched: matchedFiles.length,
+          usb_files_matched: matchedCount,
           affected_tracks: affectedTrackIds.length,
         },
         bytes: { required_analysis_files: totalBytes },

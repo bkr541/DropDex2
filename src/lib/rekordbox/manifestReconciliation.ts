@@ -1,5 +1,6 @@
 import type { ManifestEntry } from '../api/rekordboxImport';
 import {
+  normalizeAnlzPath,
   requiredAssetTypesForManifestEntry,
   type MatchedAnalysisFile,
 } from './analysisPaths';
@@ -42,10 +43,14 @@ export interface ManifestReconciliation {
 /** Reconcile only manifest-requested DAT/EXT work. .2EX never blocks readiness. */
 export function buildManifestReconciliation(
   manifest: ManifestEntry[],
-  matchedFiles: MatchedAnalysisFile[],
+  matchedFiles: Iterable<MatchedAnalysisFile | string>,
   uploadedPaths: Set<string>,
 ): ManifestReconciliation {
-  const matchedPathSet = new Set(matchedFiles.map((file) => file.canonicalPath.toLowerCase()));
+  const matchedPathSet = new Set(
+    Array.from(matchedFiles, (file) => (
+      typeof file === 'string' ? file : file.canonicalPath
+    ).toLowerCase()),
+  );
   const filesByType: Record<AssetType, FileTypeStats> = {
     DAT: { expected: 0, uploaded: 0, failed: 0, missing: 0 },
     EXT: { expected: 0, uploaded: 0, failed: 0, missing: 0 },
@@ -79,7 +84,7 @@ export function buildManifestReconciliation(
 
     for (const spec of specs) {
       if (!spec.path) continue;
-      const lower = spec.path.toLowerCase();
+      const lower = (normalizeAnlzPath(spec.path) ?? spec.path).toLowerCase();
       filesByType[spec.type].expected += 1;
       if (uploadedPaths.has(lower)) {
         filesByType[spec.type].uploaded += 1;

@@ -86,17 +86,27 @@ export function buildManifestAnalysisRequests(
   manifest: AnalysisManifestWorkEntry[],
 ): AnalysisFileRequest[] {
   const requests: AnalysisFileRequest[] = [];
+  const seen = new Set<string>();
+
+  const append = (request: AnalysisFileRequest) => {
+    const normalized = normalizeAnlzPath(request.canonicalPath) ?? request.canonicalPath;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    requests.push(request);
+  };
+
   for (const entry of manifest) {
     const required = requiredAssetTypesForManifestEntry(entry);
     if (required.includes('DAT') && entry.dat_path) {
-      requests.push({
+      append({
         canonicalPath: entry.dat_path,
         assetType: 'DAT',
         trackId: entry.track_id,
       });
     }
     if (required.includes('EXT') && entry.ext_path) {
-      requests.push({
+      append({
         canonicalPath: entry.ext_path,
         assetType: 'EXT',
         trackId: entry.track_id,
