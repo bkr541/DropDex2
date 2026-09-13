@@ -427,8 +427,8 @@ def _required_asset_types_for_status(status: str) -> frozenset[str]:
         return frozenset()
     if normalized == "needs_ext":
         return frozenset({"EXT"})
-    # EXT is preferred but optional; DAT is the only blocking required asset.
-    return frozenset({"DAT"})
+    # Both DAT and EXT are uploaded; DAT is the only parse-blocking asset.
+    return frozenset({"DAT", "EXT"})
 
 
 def _track_source_fingerprint(track: dict, manifest_entry: ManifestEntryResponse) -> str:
