@@ -124,6 +124,13 @@ if [[ ! -x "$ELECTRON_BIN" ]] || ! "$ELECTRON_BIN" --version >/dev/null 2>&1; th
   exit 1
 fi
 
+echo "--- Verifying Roulette local stem runtime ---"
+if ! npm run verify:roulette-runtime; then
+  echo "WARNING: Roulette stem runtime is unavailable. DropDex will start with local Roulette stem generation disabled."
+  echo "Provision it with: npm run setup:roulette-runtime"
+fi
+echo ""
+
 # ── Start backend ─────────────────────────────────────────────────
 
 echo "--- Starting backend (uvicorn 127.0.0.1:8000) ---"

@@ -165,6 +165,7 @@ function asset(trackId: string, type: 'vocals' | 'instrumental'): StemAssetRecor
     id: `${trackId}-${type}`,
     track_id: trackId,
     stem_type: type,
+    installation_id: 'installation-1',
     status: 'ready',
     storage_locator: `${trackId}/${type}.wav`,
     source_fingerprint: `fingerprint-${trackId}`,

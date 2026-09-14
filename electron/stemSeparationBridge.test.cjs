@@ -8,6 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const {
+  HEALTH_RESULT_PREFIX,
   RESULT_PREFIX,
   SEPARATOR_VERSION,
   StemSeparationBridge,
@@ -140,6 +141,147 @@ test('StemSeparationBridge cancellation terminates work and never returns ready 
     });
   } finally {
     bridge.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test('StemSeparationBridge health reports available only after runtime, model, decoder worker, and storage checks succeed', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dropdex-stem-health-'));
+  try {
+    const checkpointDir = path.join(root, 'bridge', 'runtime', 'stem-models', 'hub', 'checkpoints');
+    await mkdir(checkpointDir, { recursive: true });
+    await writeFile(path.join(checkpointDir, 'htdemucs.th'), 'model');
+    const spawn = () => {
+      const child = fakeChild();
+      process.nextTick(() => {
+        child.stdout.write(`${HEALTH_RESULT_PREFIX}${JSON.stringify({ ok: true, reason: null })}\n`);
+        child.emit('exit', 0, null);
+      });
+      return child;
+    };
+    const bridge = new StemSeparationBridge({
+      isPackaged: false,
+      resourcesPath: root,
+      appPath: root,
+      env: { DROPDEX_PYTHON: 'python3' },
+      platform: process.platform,
+      userDataPath: () => path.join(root, 'userData'),
+      spawn,
+    });
+
+    await assert.doesNotReject(async () => {
+      const health = await bridge.health();
+      assert.equal(health.available, true);
+      assert.equal(health.reason, null);
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('StemSeparationBridge health distinguishes an unprovisioned development runtime', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dropdex-stem-runtime-missing-'));
+  try {
+    const bridge = new StemSeparationBridge({
+      isPackaged: false,
+      resourcesPath: root,
+      appPath: root,
+      env: {},
+      platform: process.platform,
+      userDataPath: () => path.join(root, 'userData'),
+    });
+    const health = await bridge.health();
+    assert.deepEqual(health, {
+      available: false,
+      reason: 'runtime_missing',
+      message: 'The Roulette stem runtime has not been provisioned on this installation.',
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('StemSeparationBridge health distinguishes missing htdemucs model weights without running separation', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dropdex-stem-model-missing-'));
+  let spawnCount = 0;
+  try {
+    const spawn = () => {
+      spawnCount += 1;
+      const child = fakeChild();
+      process.nextTick(() => {
+        child.stdout.write(`${HEALTH_RESULT_PREFIX}${JSON.stringify({ ok: false, reason: 'model_missing', message: 'missing model' })}\n`);
+        child.emit('exit', 1, null);
+      });
+      return child;
+    };
+    const bridge = new StemSeparationBridge({
+      isPackaged: false,
+      resourcesPath: root,
+      appPath: root,
+      env: { DROPDEX_PYTHON: 'python3' },
+      platform: process.platform,
+      userDataPath: () => path.join(root, 'userData'),
+      spawn,
+    });
+    const health = await bridge.health();
+    assert.equal(health.available, false);
+    assert.equal(health.reason, 'model_missing');
+    assert.equal(spawnCount, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('StemSeparationBridge health preserves structured dependency reasons from the runtime worker', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dropdex-stem-dependency-health-'));
+  try {
+    const spawn = () => {
+      const child = fakeChild();
+      process.nextTick(() => {
+        child.stdout.write(`${HEALTH_RESULT_PREFIX}${JSON.stringify({ ok: false, reason: 'decoder_unavailable', message: 'ffmpeg missing' })}\n`);
+        child.emit('exit', 1, null);
+      });
+      return child;
+    };
+    const bridge = new StemSeparationBridge({
+      isPackaged: false,
+      resourcesPath: root,
+      appPath: root,
+      env: { DROPDEX_PYTHON: 'python3' },
+      platform: process.platform,
+      userDataPath: () => path.join(root, 'userData'),
+      spawn,
+    });
+    const health = await bridge.health();
+    assert.equal(health.available, false);
+    assert.equal(health.reason, 'decoder_unavailable');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('StemSeparationBridge health reports unwritable or invalid local stem storage deterministically', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dropdex-stem-storage-bad-'));
+  try {
+    const checkpointDir = path.join(root, 'bridge', 'runtime', 'stem-models', 'hub', 'checkpoints');
+    await mkdir(checkpointDir, { recursive: true });
+    await writeFile(path.join(checkpointDir, 'htdemucs.th'), 'model');
+    const userDataFile = path.join(root, 'not-a-directory');
+    await writeFile(userDataFile, 'file');
+    const bridge = new StemSeparationBridge({
+      isPackaged: false,
+      resourcesPath: root,
+      appPath: root,
+      env: { DROPDEX_PYTHON: 'python3' },
+      platform: process.platform,
+      userDataPath: () => userDataFile,
+      spawn: () => { throw new Error('health worker should not spawn'); },
+    });
+    const health = await bridge.health();
+    assert.equal(health.available, false);
+    assert.equal(health.reason, 'storage_unavailable');
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });

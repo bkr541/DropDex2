@@ -26,7 +26,7 @@ export interface RouletteStemPreparationOutcome {
 
 type DesktopPreparationBridge = Pick<
   NonNullable<Window['dropdexDesktop']>,
-  'prepareRouletteStems' | 'cancelRouletteStems' | 'deleteStemAsset'
+  'getRouletteRuntimeHealth' | 'prepareRouletteStems' | 'cancelRouletteStems' | 'deleteStemAsset'
 >;
 
 export interface RouletteStemPreparationDependencies {
@@ -131,6 +131,15 @@ export function createRouletteStemPreparationService(
     ]);
     if (vocalsReadiness.status === 'ready' && instrumentalReadiness.status === 'ready') {
       return { status: 'ready', cached: true, message: null };
+    }
+
+    const runtimeHealth = await desktop.getRouletteRuntimeHealth();
+    if (!runtimeHealth.available) {
+      return {
+        status: 'failed',
+        cached: false,
+        message: runtimeHealth.message,
+      };
     }
 
     let prepared: Extract<DesktopRouletteStemPreparationResult, { ok: true }> | null = null;

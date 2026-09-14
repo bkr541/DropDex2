@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('dropdexDesktop', Object.freeze({
   isElectron: true,
   getRuntimeInfo: () => ipcRenderer.invoke('dropdex:runtime-info'),
+  getInstallationId: () => ipcRenderer.invoke('dropdex:installation-id'),
+  getRouletteRuntimeHealth: () => ipcRenderer.invoke('dropdex:roulette-runtime-health'),
   getUsbState: () => ipcRenderer.invoke('dropdex:usb-state'),
   getUsbActivityState: () => ipcRenderer.invoke('dropdex:usb-activity-state'),
   selectUsbRoot: () => ipcRenderer.invoke('dropdex:select-usb-root'),

@@ -3,14 +3,16 @@
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const path = require('node:path');
-const { existsSync, promises: fs } = require('node:fs');
+const { constants, existsSync, promises: fs } = require('node:fs');
 const { isPathInsideRoot } = require('./usbPathSafety.cjs');
 const { stemStorageRoot } = require('./stemAssetStorage.cjs');
 
 const RESULT_PREFIX = 'DROPDEX_STEM_RESULT:';
+const HEALTH_RESULT_PREFIX = 'DROPDEX_STEM_HEALTH:';
 const SEPARATOR_VERSION = 'demucs-4.0.1-htdemucs-two-stem-v1';
 const STEM_MODEL_NAME = 'htdemucs';
 const JOB_TIMEOUT_MS = 30 * 60 * 1000;
+const HEALTH_TIMEOUT_MS = 20 * 1000;
 const MAX_CAPTURE_BYTES = 1_000_000;
 
 function hash(value) {
@@ -22,10 +24,24 @@ function packagedBinaryPath(resourcesPath, platform = process.platform) {
   return path.join(resourcesPath, 'rekordbox-bridge', filename);
 }
 
+function defaultDevelopmentPython(appPath, platform = process.platform) {
+  return path.join(
+    appPath,
+    'bridge',
+    '.roulette-runtime-venv',
+    platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
+  );
+}
+
 function defaultModelRoot({ isPackaged, resourcesPath, appPath, env }) {
   if (env.DROPDEX_STEM_MODEL_ROOT) return path.resolve(env.DROPDEX_STEM_MODEL_ROOT);
   if (isPackaged) return path.join(resourcesPath, 'rekordbox-bridge', 'stem-models');
   return path.join(appPath, 'bridge', 'runtime', 'stem-models');
+}
+
+function resolveDevelopmentCommand({ appPath, env, platform }) {
+  if (env.DROPDEX_PYTHON) return env.DROPDEX_PYTHON;
+  return defaultDevelopmentPython(appPath, platform);
 }
 
 function resolveLaunch(options, workerArgs) {
@@ -49,11 +65,43 @@ function resolveLaunch(options, workerArgs) {
     };
   }
   return {
-    command: env.DROPDEX_PYTHON || (platform === 'win32' ? 'python' : 'python3'),
+    command: resolveDevelopmentCommand(options),
     args: ['-m', 'rekordbox_bridge.stem_separator', ...workerArgs],
     cwd: path.join(appPath, 'bridge'),
     packaged: false,
   };
+}
+
+function resolveHealthLaunch(options, modelRoot) {
+  const { isPackaged, resourcesPath, appPath, env, platform } = options;
+  if (isPackaged) {
+    const binary = packagedBinaryPath(resourcesPath, platform);
+    if (!existsSync(binary)) return null;
+    return {
+      command: binary,
+      args: ['--roulette-health', '--model-root', modelRoot],
+      cwd: path.dirname(binary),
+      packaged: true,
+    };
+  }
+  if (env.DROPDEX_STEM_SEPARATOR_BINARY) {
+    return {
+      command: env.DROPDEX_STEM_SEPARATOR_BINARY,
+      args: ['--roulette-health', '--model-root', modelRoot],
+      cwd: appPath,
+      packaged: false,
+    };
+  }
+  return {
+    command: resolveDevelopmentCommand(options),
+    args: ['-m', 'rekordbox_bridge.stem_separator', '--health-check', '--model-root', modelRoot],
+    cwd: path.join(appPath, 'bridge'),
+    packaged: false,
+  };
+}
+
+function unavailable(reason, message) {
+  return { available: false, reason, message };
 }
 
 function validateRequest(input) {
@@ -136,10 +184,56 @@ class StemSeparationBridge {
   constructor(options) {
     this.options = options;
     this.jobs = new Map();
+    this.healthPromise = null;
   }
 
   _jobKey(trackId, sourceFingerprint, separatorVersion) {
     return hash(`${trackId}\0${sourceFingerprint}\0${separatorVersion}`);
+  }
+
+  async health({ refresh = false } = {}) {
+    if (!refresh && this.healthPromise) return this.healthPromise;
+    const promise = this._checkHealth().catch((error) => unavailable(
+      'unexpected_failure',
+      error instanceof Error ? error.message : String(error),
+    ));
+    this.healthPromise = promise;
+    return promise;
+  }
+
+  async _checkHealth() {
+    const modelRoot = defaultModelRoot(this.options);
+    const launch = resolveHealthLaunch(this.options, modelRoot);
+    if (!launch) {
+      return unavailable('runtime_missing', 'The packaged Roulette stem runtime is unavailable.');
+    }
+
+    if (path.isAbsolute(launch.command)) {
+      try {
+        await fs.access(launch.command, this.options.platform === 'win32' ? constants.F_OK : constants.X_OK);
+      } catch {
+        return unavailable('runtime_missing', 'The Roulette stem runtime has not been provisioned on this installation.');
+      }
+    }
+
+    const root = stemStorageRoot(this.options.userDataPath());
+    let probeDir = null;
+    try {
+      await fs.mkdir(root, { recursive: true });
+      probeDir = await fs.mkdtemp(path.join(root, '.health-'));
+      const probeFile = path.join(probeDir, 'write-test');
+      await fs.writeFile(probeFile, 'ok', { flag: 'wx' });
+      await fs.unlink(probeFile);
+    } catch (error) {
+      return unavailable(
+        'storage_unavailable',
+        error instanceof Error ? `Local Roulette stem storage is not writable: ${error.message}` : 'Local Roulette stem storage is not writable.',
+      );
+    } finally {
+      if (probeDir) await fs.rm(probeDir, { recursive: true, force: true }).catch(() => {});
+    }
+
+    return this._spawnHealthWorker(launch);
   }
 
   async prepare(input) {
@@ -257,6 +351,74 @@ class StemSeparationBridge {
     }
   }
 
+  _spawnHealthWorker(launch) {
+    return new Promise((resolve) => {
+      const spawnProcess = this.options.spawn ?? spawn;
+      let child;
+      try {
+        child = spawnProcess(launch.command, launch.args, {
+          cwd: launch.cwd,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true,
+          env: {
+            ...process.env,
+            ...this.options.env,
+            PYTHONUNBUFFERED: '1',
+            TORCH_HOME: defaultModelRoot(this.options),
+          },
+        });
+      } catch (error) {
+        resolve(unavailable('runtime_missing', error instanceof Error ? error.message : String(error)));
+        return;
+      }
+
+      let stdout = '';
+      let stderr = '';
+      let settled = false;
+      let timer = null;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        resolve(value);
+      };
+      const appendCapped = (current, chunk) => {
+        const next = current + chunk;
+        return Buffer.byteLength(next, 'utf8') <= MAX_CAPTURE_BYTES ? next : next.slice(-MAX_CAPTURE_BYTES);
+      };
+      child.stdout.setEncoding('utf8');
+      child.stderr.setEncoding('utf8');
+      child.stdout.on('data', (chunk) => { stdout = appendCapped(stdout, chunk); });
+      child.stderr.on('data', (chunk) => { stderr = appendCapped(stderr, chunk); });
+      child.on('error', (error) => finish(unavailable('runtime_missing', `Roulette stem runtime failed to start: ${error.message}`)));
+      child.on('exit', () => {
+        const line = stdout.split(/\r?\n/).filter((value) => value.startsWith(HEALTH_RESULT_PREFIX)).at(-1);
+        if (line) {
+          try {
+            const payload = JSON.parse(line.slice(HEALTH_RESULT_PREFIX.length));
+            if (payload?.ok === true) {
+              finish({ available: true, reason: null, message: null, separatorVersion: SEPARATOR_VERSION });
+              return;
+            }
+            const allowedReasons = new Set(['model_missing', 'dependency_unavailable', 'decoder_unavailable', 'unexpected_failure']);
+            const reason = allowedReasons.has(payload?.reason) ? payload.reason : 'unexpected_failure';
+            finish(unavailable(reason, typeof payload?.message === 'string' ? payload.message : 'Roulette runtime health check failed.'));
+            return;
+          } catch { /* fall through to deterministic failure below */ }
+        }
+        const summary = stderr.split(/\r?\n/).map((value) => value.trim()).filter(Boolean).at(-1);
+        finish(unavailable(
+          'unexpected_failure',
+          summary ? `Roulette runtime health check failed: ${summary.slice(0, 300)}` : 'Roulette runtime health check returned no result.',
+        ));
+      });
+      timer = setTimeout(() => {
+        if (!child.killed) child.kill('SIGTERM');
+        finish(unavailable('unexpected_failure', 'Roulette runtime health check timed out.'));
+      }, HEALTH_TIMEOUT_MS);
+    });
+  }
+
   _spawnWorker(launch, job) {
     return new Promise((resolve) => {
       const spawnProcess = this.options.spawn ?? spawn;
@@ -330,12 +492,16 @@ class StemSeparationBridge {
 }
 
 module.exports = {
+  HEALTH_RESULT_PREFIX,
+  HEALTH_TIMEOUT_MS,
   JOB_TIMEOUT_MS,
   RESULT_PREFIX,
   SEPARATOR_VERSION,
   STEM_MODEL_NAME,
   StemSeparationBridge,
   atomicPublishDirectory,
+  defaultDevelopmentPython,
   defaultModelRoot,
+  resolveHealthLaunch,
   resolveLaunch,
 };

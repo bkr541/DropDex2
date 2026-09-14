@@ -2,6 +2,8 @@ import type { RekordboxTrack } from '../../types';
 import type { RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
 import type { RouletteSourceRole } from '../../features/roulette/rouletteSession';
 import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole, type StemAssetRecord, type StemAssetType } from '../../features/roulette/stemAssets';
+import { rouletteStemAssetService } from '../../features/roulette/stemAssetService';
+import { getCurrentInstallationId } from '../desktop/installationIdentity';
 import { fetchTrackBeatGrids, fetchTracksPhrases, fetchTracksVocalAnalysis } from './analysisData';
 import { fetchTracksByIds } from './rekordbox';
 import { supabase } from '../supabase';
@@ -14,18 +16,10 @@ export async function fetchReadyRouletteStemTrackIds(
   stemType: StemAssetType,
   limit = READY_STEM_PROBE_LIMIT,
 ): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('roulette_stem_assets')
-    .select('track_id')
-    .eq('stem_type', stemType)
-    .eq('status', 'ready')
-    .eq('separator_version', ROULETTE_SEPARATOR_VERSION)
-    .order('track_id', { ascending: true })
-    .limit(Math.max(1, Math.floor(limit)));
-  if (error) throw new Error(error.message);
-  return (data ?? [])
-    .map((row) => typeof row.track_id === 'string' ? row.track_id.trim() : '')
-    .filter(Boolean);
+  const assets = await fetchReadyRouletteStemAssets(stemType);
+  return assets
+    .slice(0, Math.max(1, Math.floor(limit)))
+    .map((asset) => asset.track_id);
 }
 
 export async function hasRouletteReadyStemPairCandidates(): Promise<boolean> {
@@ -43,7 +37,8 @@ export async function hasRouletteReadyStemPairCandidates(): Promise<boolean> {
 export async function fetchReadyRouletteStemAssets(
   stemType: StemAssetType,
 ): Promise<StemAssetRecord[]> {
-  const result: StemAssetRecord[] = [];
+  const installationId = await getCurrentInstallationId();
+  const rowsByTrackId = new Map<string, StemAssetRecord>();
   for (let offset = 0; ; offset += STEM_PAGE_SIZE) {
     const { data, error } = await supabase
       .from('roulette_stem_assets')
@@ -51,14 +46,35 @@ export async function fetchReadyRouletteStemAssets(
       .eq('stem_type', stemType)
       .eq('status', 'ready')
       .eq('separator_version', ROULETTE_SEPARATOR_VERSION)
+      .or(`installation_id.eq.${installationId},installation_id.is.null`)
       .order('track_id', { ascending: true })
       .range(offset, offset + STEM_PAGE_SIZE - 1);
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as StemAssetRecord[];
-    result.push(...rows);
+    for (const row of rows) {
+      const existing = rowsByTrackId.get(row.track_id);
+      if (!existing || (existing.installation_id == null && row.installation_id === installationId)) {
+        rowsByTrackId.set(row.track_id, row);
+      }
+    }
     if (rows.length < STEM_PAGE_SIZE) break;
   }
-  return result;
+
+  const candidates = [...rowsByTrackId.values()];
+  const locallyReady: StemAssetRecord[] = [];
+  const batchSize = 16;
+  for (let offset = 0; offset < candidates.length; offset += batchSize) {
+    const batch = candidates.slice(offset, offset + batchSize);
+    const readiness = await Promise.all(batch.map((asset) => (
+      rouletteStemAssetService.getReadiness(asset.track_id, stemType, {
+        expectedSeparatorVersion: ROULETTE_SEPARATOR_VERSION,
+      })
+    )));
+    for (const state of readiness) {
+      if (state.status === 'ready' && state.asset) locallyReady.push(state.asset);
+    }
+  }
+  return locallyReady;
 }
 
 export async function fetchRouletteTrack(trackId: string): Promise<RekordboxTrack | null> {

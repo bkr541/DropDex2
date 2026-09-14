@@ -38,3 +38,6 @@ bridge/runtime/
 bridge/.pyinstaller/
 bridge/.desktop-build-venv/
 bridge/.desktop-stem-model-cache/
+
+# Stage 1 local Roulette runtime environment
+bridge/.roulette-runtime-venv/

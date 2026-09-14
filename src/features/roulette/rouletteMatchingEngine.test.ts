@@ -58,6 +58,7 @@ function asset(id: string, type: 'vocals' | 'instrumental', status: StemAssetRec
     id: `${id}-${type}`,
     track_id: id,
     stem_type: type,
+    installation_id: 'installation-1',
     status,
     storage_locator: status === 'ready' ? `${id}/${type}.wav` : null,
     source_fingerprint: `fp-${id}`,

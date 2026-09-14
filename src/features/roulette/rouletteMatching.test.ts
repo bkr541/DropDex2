@@ -67,6 +67,7 @@ function asset(trackId: string, stemType: 'vocals' | 'instrumental', status: Ste
     id: `${trackId}-${stemType}`,
     track_id: trackId,
     stem_type: stemType,
+    installation_id: 'installation-1',
     status,
     storage_locator: status === 'ready' ? `${trackId}/${stemType}.wav` : null,
     source_fingerprint: `fingerprint-${trackId}`,

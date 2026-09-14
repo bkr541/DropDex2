@@ -87,6 +87,27 @@ export type DesktopStemAssetDeleteResult =
   | { ok: true; deleted: boolean }
   | { ok: false; error: DesktopStemAssetError };
 
+export type DesktopRouletteRuntimeUnavailableReason =
+  | 'runtime_missing'
+  | 'model_missing'
+  | 'dependency_unavailable'
+  | 'decoder_unavailable'
+  | 'storage_unavailable'
+  | 'unexpected_failure';
+
+export type DesktopRouletteRuntimeHealth =
+  | {
+      available: true;
+      reason: null;
+      message: null;
+      separatorVersion: string;
+    }
+  | {
+      available: false;
+      reason: DesktopRouletteRuntimeUnavailableReason;
+      message: string;
+    };
+
 
 export type DesktopRouletteStemPreparationErrorKind =
   | 'not_found'
@@ -365,6 +386,8 @@ export interface DesktopMetadataRecoveryVerificationResult {
 export interface DropDexDesktopBridge {
   readonly isElectron: true;
   getRuntimeInfo(): Promise<{ platform: string; version: string }>;
+  getInstallationId(): Promise<string>;
+  getRouletteRuntimeHealth(): Promise<DesktopRouletteRuntimeHealth>;
   getUsbState(): Promise<DesktopUsbState>;
   getUsbActivityState(): Promise<DesktopUsbActivityState>;
   selectUsbRoot(): Promise<{ cancelled: boolean; state: DesktopUsbState; error?: string }>;

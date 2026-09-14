@@ -19,6 +19,7 @@ function stem(id: string, type: 'vocals' | 'instrumental'): StemAssetRecord {
     id: `${id}-${type}`,
     track_id: id,
     stem_type: type,
+    installation_id: 'installation-1',
     status: 'ready',
     storage_locator: `${id}/${type}.wav`,
     source_fingerprint: `fingerprint-${id}`,

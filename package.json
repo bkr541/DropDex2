@@ -24,7 +24,9 @@
     "test:e2e:report": "playwright show-report",
     "check": "npm run typecheck && npm test",
     "analyze": "ANALYZE=true vite build",
-    "build:bridge": "node scripts/build-rekordbox-bridge.cjs"
+    "build:bridge": "node scripts/build-rekordbox-bridge.cjs",
+    "setup:roulette-runtime": "node scripts/setup-roulette-runtime.cjs",
+    "verify:roulette-runtime": "node scripts/verify-roulette-runtime.cjs"
   },
   "dependencies": {
     "@carbon/icons-react": "^11.86.0",

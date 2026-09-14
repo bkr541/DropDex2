@@ -11,6 +11,7 @@ export interface StemAssetRecord {
   id: string;
   track_id: string;
   stem_type: StemAssetType;
+  installation_id: string | null;
   status: StemAssetProcessingStatus;
   storage_locator: string | null;
   source_fingerprint: string;

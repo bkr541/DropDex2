@@ -20,6 +20,7 @@ function makeAsset(overrides: Partial<StemAssetRecord> = {}): StemAssetRecord {
     id: 'asset-1',
     track_id: 'track-1',
     stem_type: 'vocals',
+    installation_id: 'installation-1',
     status: 'ready',
     storage_locator: 'user-1/track-1/vocals/stem.wav',
     source_fingerprint: 'source-current',
@@ -47,6 +48,7 @@ function harness(initial: StemAssetRecord | null = makeAsset()) {
     asset = makeAsset({
       track_id: input.trackId,
       stem_type: input.stemType,
+      installation_id: 'installation-1',
       status: input.status,
       storage_locator: input.storageLocator ?? null,
       source_fingerprint: input.sourceFingerprint,
@@ -92,6 +94,11 @@ function harness(initial: StemAssetRecord | null = makeAsset()) {
       }),
     ];
   });
+  const claimLegacyAsset = vi.fn(async () => {
+    if (!asset) throw new Error('missing asset');
+    asset = { ...asset, installation_id: 'installation-1' };
+    return asset;
+  });
   const deleteAsset = vi.fn(async () => { asset = null; });
   const repository: StemAssetRepository = {
     getAsset,
@@ -101,6 +108,7 @@ function harness(initial: StemAssetRecord | null = makeAsset()) {
     updateStatus,
     commitReadyPair,
     deleteAsset,
+    claimLegacyAsset,
   };
 
   const inspectStemAsset = vi.fn(async (): Promise<DesktopStemAssetInspectResult> => ({
@@ -183,20 +191,22 @@ describe('Roulette stem asset service', () => {
     });
   });
 
-  it('invalidates a missing ready file instead of leaving it falsely ready', async () => {
+  it('treats ready metadata with a missing local file as unavailable without rewriting cloud history', async () => {
     const test = harness();
     test.desktop.inspectStemAsset.mockResolvedValueOnce({
       ok: false as const,
       error: { kind: 'not_found' as const, message: 'missing' },
     });
-    test.desktop.deleteStemAsset.mockResolvedValueOnce({ ok: true as const, deleted: false });
 
     const readiness = await test.service.getReadiness('track-1', 'vocals');
-    expect(readiness.status).toBe('preparing');
-    expect(test.currentAsset?.failure_code).toBe('missing_or_unsafe_asset');
+    expect(readiness.status).toBe('unavailable');
+    expect(readiness.reason).toContain('not available on this installation');
+    expect(test.currentAsset).toMatchObject({ status: 'ready', installation_id: 'installation-1' });
+    expect(test.repository.updateStatus).not.toHaveBeenCalled();
+    expect(test.desktop.deleteStemAsset).not.toHaveBeenCalled();
   });
 
-  it('invalidates a file whose registered size or mtime no longer matches', async () => {
+  it('treats a changed local file as unavailable without erasing the durable ready record', async () => {
     const test = harness();
     test.desktop.inspectStemAsset.mockResolvedValueOnce({
       ok: true as const,
@@ -204,8 +214,20 @@ describe('Roulette stem asset service', () => {
     });
 
     const readiness = await test.service.getReadiness('track-1', 'vocals');
-    expect(readiness.status).toBe('preparing');
-    expect(test.currentAsset?.failure_code).toBe('asset_fingerprint_mismatch');
+    expect(readiness.status).toBe('unavailable');
+    expect(test.currentAsset).toMatchObject({ status: 'ready', installation_id: 'installation-1' });
+    expect(test.repository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('claims a legacy unscoped row only after its local file is proven present', async () => {
+    const test = harness(makeAsset({ installation_id: null }));
+    const readiness = await test.service.getReadiness('track-1', 'vocals', {
+      expectedSeparatorVersion: 'separator-v1',
+    });
+
+    expect(readiness.status).toBe('ready');
+    expect(test.repository.claimLegacyAsset).toHaveBeenCalledWith('asset-1');
+    expect(readiness.asset?.installation_id).toBe('installation-1');
   });
 
   it('rejects a separator-version mismatch before returning playable media', async () => {
@@ -229,6 +251,7 @@ describe('Roulette stem asset service', () => {
     );
     expect(failed).toMatchObject({
       stem_type: 'instrumental',
+      installation_id: 'installation-1',
       status: 'failed',
       source_fingerprint: 'source-current',
       failure_code: 'separator_crashed',

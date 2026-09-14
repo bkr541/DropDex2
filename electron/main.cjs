@@ -15,6 +15,7 @@ const {
   resolveStemAssetFile,
 } = require('./stemAssetStorage.cjs');
 const { StemSeparationBridge } = require('./stemSeparationBridge.cjs');
+const { getOrCreateInstallationId } = require('./installationIdentity.cjs');
 
 const APP_SCHEME = 'dropdex-media';
 const USB_CONFIG_FILE = 'usb-connection.json';
@@ -33,6 +34,7 @@ let cachedUsbState = {
   error: null,
 };
 let quittingAfterUsbRelease = false;
+let installationIdPromise = null;
 const usbStreams = new UsbStreamRegistry({ closeTimeoutMs: 2500 });
 const cueApplyBridge = new CueApplyBridge({
   get isPackaged() { return app.isPackaged; },
@@ -49,6 +51,16 @@ const stemSeparationBridge = new StemSeparationBridge({
   platform: process.platform,
   userDataPath: () => app.getPath('userData'),
 });
+
+function getInstallationId() {
+  if (!installationIdPromise) {
+    installationIdPromise = getOrCreateInstallationId(app.getPath('userData')).catch((error) => {
+      installationIdPromise = null;
+      throw error;
+    });
+  }
+  return installationIdPromise;
+}
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -505,6 +517,8 @@ function assertExactObject(value, allowedKeys, label) {
 
 function registerIpcHandlers() {
   ipcMain.handle('dropdex:runtime-info', () => ({ platform: process.platform, version: app.getVersion() }));
+  ipcMain.handle('dropdex:installation-id', () => getInstallationId());
+  ipcMain.handle('dropdex:roulette-runtime-health', () => stemSeparationBridge.health({ refresh: true }));
   ipcMain.handle('dropdex:usb-state', () => desktopConnectionState());
   ipcMain.handle('dropdex:usb-activity-state', () => (
     usbStreams.snapshot({ connected: Boolean(usbConnection) })
@@ -589,6 +603,16 @@ function registerIpcHandlers() {
       ['trackId', 'sourceSegments', 'sourceFingerprint', 'separatorVersion', 'expectedDurationMs'],
       'Roulette stem preparation payload',
     );
+    const runtimeHealth = await stemSeparationBridge.health();
+    if (!runtimeHealth.available) {
+      return {
+        ok: false,
+        error: {
+          kind: 'runtime_unavailable',
+          message: runtimeHealth.message ?? 'The local Roulette stem runtime is unavailable.',
+        },
+      };
+    }
     if (!validateUsbPathSegments(payload.sourceSegments)) {
       return { ok: false, error: { kind: 'security', message: 'Unsafe Roulette source path was rejected.' } };
     }
@@ -691,6 +715,15 @@ app.setName('DropDex');
 app.whenReady().then(async () => {
   if (process.platform === 'win32') app.setAppUserModelId('com.dropdex.desktop');
   await loadUsbConnection();
+  try {
+    await getInstallationId();
+  } catch (error) {
+    console.warn(`[Roulette installation] ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const rouletteRuntimeHealth = await stemSeparationBridge.health();
+  if (!rouletteRuntimeHealth.available) {
+    console.warn(`[Roulette runtime] ${rouletteRuntimeHealth.reason}: ${rouletteRuntimeHealth.message}`);
+  }
   protocol.handle(APP_SCHEME, handleMediaRequest);
   registerIpcHandlers();
   createMainWindow();

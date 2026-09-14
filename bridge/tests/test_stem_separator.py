@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from rekordbox_bridge.stem_separator import separate_to_pair, validate_pair
+from rekordbox_bridge import stem_separator
+from rekordbox_bridge.stem_separator import check_runtime_health, separate_to_pair, validate_pair
 
 
 def write_test_wave(path: Path, *, frames: int = 4410, sample_rate: int = 44100, leading_silence: int = 441) -> None:
@@ -86,3 +87,36 @@ def test_failed_separator_never_leaves_publishable_pair_directory(tmp_path: Path
         )
 
     assert not (tmp_path / "stage" / "pair").exists()
+
+
+def test_runtime_health_reports_missing_model_without_starting_heavy_separation(tmp_path: Path) -> None:
+    result = check_runtime_health(tmp_path / "missing-model-root")
+    assert result["ok"] is False
+    assert result["reason"] == "model_missing"
+
+
+def test_runtime_health_rejects_unrelated_checkpoint_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    checkpoint_dir = tmp_path / "models" / "hub" / "checkpoints"
+    checkpoint_dir.mkdir(parents=True)
+    (checkpoint_dir / "unrelated-model.th").write_bytes(b"not-htdemucs")
+    monkeypatch.setattr(stem_separator.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(stem_separator.subprocess, "run", lambda *_args, **_kwargs: type("Result", (), {"returncode": 0})())
+
+    result = check_runtime_health(tmp_path / "models")
+    assert result["ok"] is False
+    assert result["reason"] == "model_missing"
+
+
+def test_runtime_health_accepts_exact_htdemucs_checkpoint_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    checkpoint_dir = tmp_path / "models" / "hub" / "checkpoints"
+    checkpoint_dir.mkdir(parents=True)
+    expected = stem_separator._expected_model_checkpoints("htdemucs")
+    assert expected
+    for filename in expected:
+        (checkpoint_dir / filename).write_bytes(b"present")
+    monkeypatch.setattr(stem_separator.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(stem_separator.subprocess, "run", lambda *_args, **_kwargs: type("Result", (), {"returncode": 0})())
+
+    result = check_runtime_health(tmp_path / "models")
+    assert result["ok"] is True
+    assert result["model"] == "htdemucs"

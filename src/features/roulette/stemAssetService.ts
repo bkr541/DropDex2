@@ -135,7 +135,7 @@ export function createStemAssetService(
     message: string,
   ): Promise<StemAssetRecord | null> => {
     const existing = await repository.getAsset(trackId, stemType);
-    if (!existing) return null;
+    if (!existing || existing.installation_id == null) return null;
     await removeLocalAsset(existing);
     const currentSourceFingerprint = await repository.getCurrentSourceFingerprint(trackId);
     return repository.updateStatus(trackId, stemType, 'pending', {
@@ -157,12 +157,21 @@ export function createStemAssetService(
     stemType: StemAssetType,
     options: StemAssetValidationOptions = {},
   ): Promise<StemAssetReadiness> => {
-    const asset = await repository.getAsset(trackId, stemType);
+    let asset = await repository.getAsset(trackId, stemType);
     if (!asset) return missingReadiness(trackId, stemType);
 
     const currentSourceFingerprint = await repository.getCurrentSourceFingerprint(trackId);
     const metadataState = isStemAssetMetadataCurrent(asset, currentSourceFingerprint, options);
     if (!metadataState.current) {
+      if (asset.installation_id == null) {
+        return {
+          parentTrackId: trackId,
+          stemType,
+          status: 'unavailable',
+          asset,
+          reason: metadataState.message,
+        };
+      }
       const invalidated = await invalidate(
         trackId,
         stemType,
@@ -189,6 +198,15 @@ export function createStemAssetService(
     }
 
     if (!asset.storage_locator || !asset.separator_version) {
+      if (asset.installation_id == null) {
+        return {
+          parentTrackId: trackId,
+          stemType,
+          status: 'unavailable',
+          asset,
+          reason: 'Ready stem metadata is incomplete.',
+        };
+      }
       const invalidated = await invalidate(
         trackId,
         stemType,
@@ -217,27 +235,14 @@ export function createStemAssetService(
 
     const inspection = await desktop.inspectStemAsset(asset.storage_locator);
     if (!inspection.ok) {
-      if (notFoundError(inspection.error.kind)) {
-        const invalidated = await invalidate(
-          trackId,
-          stemType,
-          'missing_or_unsafe_asset',
-          'Stem file is missing or no longer inside managed storage.',
-        );
-        return {
-          parentTrackId: trackId,
-          stemType,
-          status: rouletteStatusForStem(invalidated?.status ?? null),
-          asset: invalidated,
-          reason: 'Stem file is missing or no longer inside managed storage.',
-        };
-      }
       return {
         parentTrackId: trackId,
         stemType,
         status: 'unavailable',
         asset,
-        reason: inspection.error.message,
+        reason: notFoundError(inspection.error.kind)
+          ? 'Stem file is not available on this installation.'
+          : inspection.error.message,
       };
     }
 
@@ -245,19 +250,17 @@ export function createStemAssetService(
       (asset.file_size_bytes != null && asset.file_size_bytes !== inspection.asset.size)
       || (asset.file_mtime_ms != null && asset.file_mtime_ms !== inspection.asset.mtimeMs)
     ) {
-      const invalidated = await invalidate(
-        trackId,
-        stemType,
-        'asset_fingerprint_mismatch',
-        'Stem file changed after it was registered.',
-      );
       return {
         parentTrackId: trackId,
         stemType,
-        status: rouletteStatusForStem(invalidated?.status ?? null),
-        asset: invalidated,
-        reason: 'Stem file changed after it was registered.',
+        status: 'unavailable',
+        asset,
+        reason: 'Stem file changed after it was registered on this installation.',
       };
+    }
+
+    if (asset.installation_id == null && repository.claimLegacyAsset) {
+      asset = await repository.claimLegacyAsset(asset.id);
     }
 
     if (asset.file_size_bytes == null || asset.file_mtime_ms == null) {
@@ -394,7 +397,7 @@ export function createStemAssetService(
       repository.getAsset(trackId, stemType),
       repository.getCurrentSourceFingerprint(trackId),
     ]);
-    if (!existing) {
+    if (!existing || existing.installation_id == null) {
       return repository.upsertAsset({
         trackId,
         stemType,
@@ -426,29 +429,11 @@ export function createStemAssetService(
     const desktop = getDesktopBridge();
     if (!desktop) return null;
     const resolved = await desktop.resolveStemAsset(readiness.asset.storage_locator);
-    if (!resolved.ok) {
-      if (notFoundError(resolved.error.kind)) {
-        await invalidate(
-          trackId,
-          stemType,
-          'missing_or_unsafe_asset',
-          'Stem file is missing or no longer inside managed storage.',
-        );
-      }
-      return null;
-    }
+    if (!resolved.ok) return null;
     if (
       resolved.source.size !== readiness.asset.file_size_bytes
       || resolved.source.mtimeMs !== readiness.asset.file_mtime_ms
-    ) {
-      await invalidate(
-        trackId,
-        stemType,
-        'asset_fingerprint_mismatch',
-        'Stem file changed after it was registered.',
-      );
-      return null;
-    }
+    ) return null;
     return { asset: readiness.asset, source: resolved.source };
   };
 

@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 import wave
 from dataclasses import asdict, dataclass
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import Callable
 
 RESULT_PREFIX = "DROPDEX_STEM_RESULT:"
+HEALTH_RESULT_PREFIX = "DROPDEX_STEM_HEALTH:"
 TIMELINE_TOLERANCE_MS = 500
 
 
@@ -93,6 +95,118 @@ def _disable_model_downloads() -> Callable[[], None]:
         torch.hub.download_url_to_file = original
 
     return restore
+
+
+def _expected_model_checkpoints(model_name: str) -> list[str]:
+    import yaml
+    from demucs.pretrained import REMOTE_ROOT
+
+    model_manifest = REMOTE_ROOT / f"{model_name}.yaml"
+    if not model_manifest.is_file():
+        raise RuntimeError(f"Demucs model manifest is unavailable for {model_name}.")
+    manifest = yaml.safe_load(model_manifest.read_text(encoding="utf-8")) or {}
+    signatures = manifest.get("models")
+    if not isinstance(signatures, list) or not signatures or not all(isinstance(value, str) for value in signatures):
+        raise RuntimeError(f"Demucs model manifest is invalid for {model_name}.")
+
+    filename_by_signature: dict[str, str] = {}
+    for raw_line in (REMOTE_ROOT / "files.txt").read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line.startswith("root:"):
+            continue
+        filename_by_signature[line.split("-", 1)[0]] = line
+
+    expected = [filename_by_signature.get(signature) for signature in signatures]
+    if any(filename is None for filename in expected):
+        raise RuntimeError(f"Demucs checkpoint manifest is incomplete for {model_name}.")
+    return [filename for filename in expected if filename is not None]
+
+
+def check_runtime_health(model_root: Path) -> dict[str, object]:
+    try:
+        from demucs.separate import main as _demucs_main  # noqa: F401
+        expected_checkpoints = _expected_model_checkpoints("htdemucs")
+    except (ImportError, ModuleNotFoundError) as exc:
+        return {
+            "ok": False,
+            "reason": "dependency_unavailable",
+            "message": f"Demucs runtime could not be imported: {exc}",
+        }
+    except Exception as exc:  # noqa: BLE001 - malformed packaged dependency is unexpected
+        return {
+            "ok": False,
+            "reason": "unexpected_failure",
+            "message": f"Demucs runtime metadata could not be inspected: {exc}",
+        }
+
+    checkpoint_dir = model_root.resolve() / "hub" / "checkpoints"
+    missing_checkpoints = [
+        filename
+        for filename in expected_checkpoints
+        if not (checkpoint_dir / filename).is_file() or (checkpoint_dir / filename).stat().st_size <= 0
+    ]
+    if missing_checkpoints:
+        return {
+            "ok": False,
+            "reason": "model_missing",
+            "message": "Demucs htdemucs model weights are not provisioned.",
+        }
+
+    missing_decoder = [name for name in ("ffmpeg", "ffprobe") if shutil.which(name) is None]
+    if missing_decoder:
+        return {
+            "ok": False,
+            "reason": "decoder_unavailable",
+            "message": f"Required audio decoder tool is unavailable: {', '.join(missing_decoder)}",
+        }
+
+    for command in (
+        ["ffmpeg", "-version"],
+        ["ffprobe", "-version"],
+    ):
+        try:
+            completed = subprocess.run(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=5,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "ok": False,
+                "reason": "decoder_unavailable",
+                "message": f"Audio decoder probe failed: {exc}",
+            }
+        if completed.returncode != 0:
+            return {
+                "ok": False,
+                "reason": "decoder_unavailable",
+                "message": f"Audio decoder probe failed for {command[0]}.",
+            }
+
+    return {
+        "ok": True,
+        "reason": None,
+        "message": None,
+        "model": "htdemucs",
+    }
+
+
+def _health_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="dropdex-roulette-stem-health")
+    parser.add_argument("--model-root", required=True)
+    return parser
+
+
+def health_main(argv: list[str] | None = None) -> int:
+    args = _health_parser().parse_args(argv)
+    try:
+        payload = check_runtime_health(Path(args.model_root))
+    except Exception as exc:  # noqa: BLE001 - health contract must be deterministic
+        payload = {"ok": False, "reason": "unexpected_failure", "message": str(exc)}
+    print(HEALTH_RESULT_PREFIX + json.dumps(payload, separators=(",", ":")), flush=True)
+    return 0 if payload.get("ok") is True else 1
 
 
 def run_demucs(source: Path, work_dir: Path, model_root: Path, model_name: str) -> None:
@@ -172,6 +286,9 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "--health-check":
+        return health_main(argv[1:])
     args = _parser().parse_args(argv)
     try:
         outputs = separate_to_pair(

@@ -206,10 +206,13 @@ def _handle(request: Mapping[str, Any]) -> Any:
 
 
 def main() -> int:
-    if len(sys.argv) > 1 and sys.argv[1] == "--roulette-separate":
+    if len(sys.argv) > 1 and sys.argv[1] in {"--roulette-separate", "--roulette-health"}:
         from rekordbox_bridge.stem_separator import main as stem_separator_main
 
-        return stem_separator_main(sys.argv[2:])
+        stem_args = sys.argv[2:]
+        if sys.argv[1] == "--roulette-health":
+            stem_args = ["--health-check", *stem_args]
+        return stem_separator_main(stem_args)
 
     for raw_line in sys.stdin.buffer:
         request: Mapping[str, Any] | None = None

@@ -46,6 +46,7 @@ function asset(stemType: StemAssetType): StemAssetRecord {
     id: `asset-${stemType}`,
     track_id: 'track-1',
     stem_type: stemType,
+    installation_id: 'installation-1',
     status: 'ready',
     storage_locator: `generated/a/b/${stemType === 'vocals' ? 'vocals' : 'instrumental'}.wav`,
     source_fingerprint: 'source-current',
@@ -135,12 +136,18 @@ function harness(options: {
   } as unknown as Pick<StemAssetService, 'getReadiness' | 'register' | 'markFailed' | 'commitReadyPair'>;
 
   let resolvePrepare: ((value: DesktopRouletteStemPreparationResult) => void) | null = null;
+  const getRouletteRuntimeHealth = vi.fn(async () => ({
+    available: true as const,
+    reason: null,
+    message: null,
+    separatorVersion: ROULETTE_SEPARATOR_VERSION,
+  }));
   const prepareRouletteStems = vi.fn(async (_input: DesktopRouletteStemPreparationInput) => (
     options.prepareResult ?? successResult()
   ));
   const cancelRouletteStems = vi.fn(async () => ({ ok: true, cancelled: true }));
   const deleteStemAsset = vi.fn(async () => ({ ok: true as const, deleted: true }));
-  const desktop = { prepareRouletteStems, cancelRouletteStems, deleteStemAsset };
+  const desktop = { getRouletteRuntimeHealth, prepareRouletteStems, cancelRouletteStems, deleteStemAsset };
   const service = createRouletteStemPreparationService({
     repository,
     stemAssets,
@@ -198,6 +205,26 @@ describe('Roulette stem preparation service', () => {
     await vi.waitFor(() => expect(test.desktop.prepareRouletteStems).toHaveBeenCalledTimes(1));
     resolve(successResult());
     await expect(first).resolves.toMatchObject({ status: 'ready' });
+  });
+
+  it('leaves canonical asset state untouched when the local runtime health check is unavailable', async () => {
+    const test = harness();
+    test.desktop.getRouletteRuntimeHealth.mockResolvedValueOnce({
+      available: false as const,
+      reason: 'model_missing' as const,
+      message: 'The Demucs model is not provisioned.',
+    });
+
+    const outcome = await test.service.prepare(track());
+
+    expect(outcome).toEqual({
+      status: 'failed',
+      cached: false,
+      message: 'The Demucs model is not provisioned.',
+    });
+    expect(test.stemAssets.register).not.toHaveBeenCalled();
+    expect(test.stemAssets.markFailed).not.toHaveBeenCalled();
+    expect(test.desktop.prepareRouletteStems).not.toHaveBeenCalled();
   });
 
   it('marks both canonical assets failed and never commits ready on worker failure', async () => {

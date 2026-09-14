@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import type { RekordboxTrack } from '../../types';
+import { getCurrentInstallationId } from '../desktop/installationIdentity';
 import {
   STEM_ASSET_CONTRACT_VERSION,
   buildParentTrackSourceFingerprint,
@@ -33,7 +34,6 @@ export interface RegisterStemAssetRecordInput {
   failureCode?: string | null;
   failureMessage?: string | null;
 }
-
 
 export interface StemReadyPairOutputMetadata {
   locator: string;
@@ -77,9 +77,26 @@ export interface StemAssetRepository {
   ): Promise<StemAssetRecord>;
   commitReadyPair(input: CommitStemReadyPairInput): Promise<StemAssetRecord[]>;
   deleteAsset(trackId: string, stemType: StemAssetType): Promise<void>;
+  claimLegacyAsset?(assetId: string): Promise<StemAssetRecord>;
 }
 
-export async function fetchStemAsset(
+async function fetchScopedStemAsset(
+  trackId: string,
+  stemType: StemAssetType,
+  installationId: string,
+): Promise<StemAssetRecord | null> {
+  const { data, error } = await supabase
+    .from('roulette_stem_assets')
+    .select('*')
+    .eq('track_id', trackId)
+    .eq('stem_type', stemType)
+    .eq('installation_id', installationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as StemAssetRecord | null;
+}
+
+async function fetchLegacyStemAsset(
   trackId: string,
   stemType: StemAssetType,
 ): Promise<StemAssetRecord | null> {
@@ -88,19 +105,46 @@ export async function fetchStemAsset(
     .select('*')
     .eq('track_id', trackId)
     .eq('stem_type', stemType)
+    .is('installation_id', null)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data as StemAssetRecord | null;
 }
 
+export async function fetchStemAsset(
+  trackId: string,
+  stemType: StemAssetType,
+): Promise<StemAssetRecord | null> {
+  const installationId = await getCurrentInstallationId();
+  const scoped = await fetchScopedStemAsset(trackId, stemType, installationId);
+  if (scoped) return scoped;
+  return fetchLegacyStemAsset(trackId, stemType);
+}
+
 export async function fetchStemAssets(trackId: string): Promise<StemAssetRecord[]> {
-  const { data, error } = await supabase
-    .from('roulette_stem_assets')
-    .select('*')
-    .eq('track_id', trackId)
-    .order('stem_type');
-  if (error) throw new Error(error.message);
-  return (data ?? []) as StemAssetRecord[];
+  const installationId = await getCurrentInstallationId();
+  const [scopedResult, legacyResult] = await Promise.all([
+    supabase
+      .from('roulette_stem_assets')
+      .select('*')
+      .eq('track_id', trackId)
+      .eq('installation_id', installationId)
+      .order('stem_type'),
+    supabase
+      .from('roulette_stem_assets')
+      .select('*')
+      .eq('track_id', trackId)
+      .is('installation_id', null)
+      .order('stem_type'),
+  ]);
+  if (scopedResult.error) throw new Error(scopedResult.error.message);
+  if (legacyResult.error) throw new Error(legacyResult.error.message);
+
+  const scoped = (scopedResult.data ?? []) as StemAssetRecord[];
+  const legacy = (legacyResult.data ?? []) as StemAssetRecord[];
+  const scopedTypes = new Set(scoped.map((row) => row.stem_type));
+  return [...scoped, ...legacy.filter((row) => !scopedTypes.has(row.stem_type))]
+    .sort((left, right) => left.stem_type.localeCompare(right.stem_type));
 }
 
 export async function fetchCurrentStemSourceFingerprint(trackId: string): Promise<string> {
@@ -117,9 +161,11 @@ export async function fetchCurrentStemSourceFingerprint(trackId: string): Promis
 export async function upsertStemAsset(
   input: RegisterStemAssetRecordInput,
 ): Promise<StemAssetRecord> {
+  const installationId = await getCurrentInstallationId();
   const row = {
     track_id: input.trackId,
     stem_type: input.stemType,
+    installation_id: installationId,
     status: input.status,
     storage_locator: input.storageLocator ?? null,
     source_fingerprint: input.sourceFingerprint,
@@ -135,7 +181,7 @@ export async function upsertStemAsset(
   };
   const { data, error } = await supabase
     .from('roulette_stem_assets')
-    .upsert(row, { onConflict: 'track_id,stem_type' })
+    .upsert(row, { onConflict: 'track_id,stem_type,installation_id' })
     .select('*')
     .single();
   if (error) throw new Error(error.message);
@@ -160,23 +206,50 @@ export async function updateStemAssetStatus(
     | 'source_fingerprint'
   >> = {},
 ): Promise<StemAssetRecord> {
+  const installationId = await getCurrentInstallationId();
   const { data, error } = await supabase
     .from('roulette_stem_assets')
     .update({ status, ...updates })
     .eq('track_id', trackId)
     .eq('stem_type', stemType)
+    .eq('installation_id', installationId)
     .select('*')
     .single();
   if (error) throw new Error(error.message);
   return data as StemAssetRecord;
 }
 
+export async function claimLegacyStemAsset(assetId: string): Promise<StemAssetRecord> {
+  const installationId = await getCurrentInstallationId();
+  const { data: legacyData, error: legacyError } = await supabase
+    .from('roulette_stem_assets')
+    .select('*')
+    .eq('id', assetId)
+    .is('installation_id', null)
+    .single();
+  if (legacyError) throw new Error(legacyError.message);
+
+  const legacy = legacyData as StemAssetRecord;
+  const { id: _id, created_at: _createdAt, updated_at: _updatedAt, ...legacyFields } = legacy;
+  const { data, error } = await supabase
+    .from('roulette_stem_assets')
+    .upsert(
+      { ...legacyFields, installation_id: installationId },
+      { onConflict: 'track_id,stem_type,installation_id' },
+    )
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return data as StemAssetRecord;
+}
 
 export async function commitStemReadyPair(
   input: CommitStemReadyPairInput,
 ): Promise<StemAssetRecord[]> {
+  const installationId = await getCurrentInstallationId();
   const { data, error } = await supabase.rpc('commit_roulette_stem_pair', {
     p_track_id: input.trackId,
+    p_installation_id: installationId,
     p_source_fingerprint: input.sourceFingerprint,
     p_separator_version: input.separatorVersion,
     p_vocals_locator: input.vocals.locator,
@@ -202,11 +275,13 @@ export async function deleteStemAssetRecord(
   trackId: string,
   stemType: StemAssetType,
 ): Promise<void> {
+  const installationId = await getCurrentInstallationId();
   const { error } = await supabase
     .from('roulette_stem_assets')
     .delete()
     .eq('track_id', trackId)
-    .eq('stem_type', stemType);
+    .eq('stem_type', stemType)
+    .eq('installation_id', installationId);
   if (error) throw new Error(error.message);
 }
 
@@ -218,4 +293,5 @@ export const rouletteStemAssetRepository: StemAssetRepository = {
   updateStatus: updateStemAssetStatus,
   commitReadyPair: commitStemReadyPair,
   deleteAsset: deleteStemAssetRecord,
+  claimLegacyAsset: claimLegacyStemAsset,
 };

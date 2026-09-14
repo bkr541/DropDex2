@@ -12,6 +12,7 @@ const asset: StemAssetRecord = {
   id: 'asset-1',
   track_id: 'track-1',
   stem_type: 'vocals',
+  installation_id: 'installation-1',
   status: 'ready',
   storage_locator: 'user/track/vocals.wav',
   source_fingerprint: 'source-a',
