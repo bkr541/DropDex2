@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import multiprocessing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -318,15 +319,19 @@ def test_bulk_writer_bisects_and_isolates_one_malformed_track(monkeypatch):
     assert failed_statuses[0]["analysis_parse_status"] == "failed"
 
 
+def _error_on_track5(track, assets, temp_root):
+    """Raises for track-5; completes normally for all others. Module-level for fork pickling."""
+    if track["id"] == "track-5":
+        raise ValueError("malformed")
+    return fast.ParsedTrack(track=track, assets=[], parse_status="completed")
+
+
 def test_result_queue_is_bounded_and_failures_are_isolated(monkeypatch, tmp_path):
     tracks = [_track(index) for index in range(12)]
 
-    def parse(track, *_args):
-        if track["id"] == "track-5":
-            raise ValueError("malformed")
-        return fast.ParsedTrack(track=track, assets=[], parse_status="completed")
-
-    monkeypatch.setattr(fast, "_parse_track", parse)
+    # Fork context so the monkeypatched _parse_track is inherited by child processes.
+    monkeypatch.setattr(fast, "_mp_ctx", multiprocessing.get_context("fork"))
+    monkeypatch.setattr(fast, "_parse_track", _error_on_track5)
     results = list(
         fast._rolling_parse_results(
             tracks,
@@ -866,3 +871,113 @@ async def test_zero_pending_resume_durably_finalizes_parent_import(monkeypatch):
     assert updates["analysis_running_track_count"] == 0
     assert updates["analysis_worker_status"] == "completed"
     assert updates["analysis_worker_stopped_acknowledged"] is True
+
+
+# ─── Subprocess timeout tests ─────────────────────────────────────────────────
+# These use fork context so that monkeypatched _parse_track survives the process
+# boundary without requiring the patched function to be picklable by spawn.
+
+def _hung_parse(track, assets, temp_root):
+    """Module-level hung parse — simulates a pathological AnlzFile.parse()."""
+    import time as _t
+    _t.sleep(9999)
+
+
+def _selective_hung_parse_track0(track, assets, temp_root):
+    """Hangs for track-0 only; completes normally for all others."""
+    if track["id"] == "track-0":
+        import time as _t; _t.sleep(9999)
+    return fast.ParsedTrack(track=track, assets=[], parse_status="completed")
+
+
+def _selective_hung_parse_track2(track, assets, temp_root):
+    """Hangs for track-2 only; completes normally for all others."""
+    if track["id"] == "track-2":
+        import time as _t; _t.sleep(9999)
+    return fast.ParsedTrack(track=track, assets=[], parse_status="completed")
+
+
+def _selective_hung_parse_tracks01(track, assets, temp_root):
+    """Hangs for track-0 and track-1; completes normally for all others."""
+    if track["id"] in ("track-0", "track-1"):
+        import time as _t; _t.sleep(9999)
+    return fast.ParsedTrack(track=track, assets=[], parse_status="completed")
+
+
+def test_parse_timeout_terminates_hung_subprocess(monkeypatch, tmp_path):
+    """A subprocess that never returns is terminated and returns PARSE_TIMEOUT."""
+    monkeypatch.setattr(settings, "analysis_track_parse_timeout_seconds", 0.3)
+    monkeypatch.setattr(fast, "_mp_ctx", multiprocessing.get_context("fork"))
+    monkeypatch.setattr(fast, "_parse_track", _hung_parse)
+
+    results = list(fast._rolling_parse_results(
+        [_track(0)], {}, str(tmp_path),
+        workers=1, result_queue_size=2,
+        checkpoint=lambda *_: None,
+    ))
+
+    assert len(results) == 1
+    assert results[0].parse_status == "failed"
+    codes = {w.get("code") for w in results[0].warnings}
+    assert "PARSE_TIMEOUT" in codes
+
+
+def test_parse_timeout_starts_replacement_worker(monkeypatch, tmp_path):
+    """After a hung track is timed out, the freed slot processes the next track."""
+    monkeypatch.setattr(settings, "analysis_track_parse_timeout_seconds", 0.3)
+    monkeypatch.setattr(fast, "_mp_ctx", multiprocessing.get_context("fork"))
+    monkeypatch.setattr(fast, "_parse_track", _selective_hung_parse_track0)
+
+    results = list(fast._rolling_parse_results(
+        [_track(0), _track(1)], {}, str(tmp_path),
+        workers=1, result_queue_size=4,
+        checkpoint=lambda *_: None,
+    ))
+
+    assert len(results) == 2
+    by_id = {r.track["id"]: r for r in results}
+    assert by_id["track-0"].parse_status == "failed"
+    assert any(w.get("code") == "PARSE_TIMEOUT" for w in by_id["track-0"].warnings)
+    assert by_id["track-1"].parse_status == "completed"
+
+
+def test_multiple_hung_tracks_do_not_exhaust_worker_capacity(monkeypatch, tmp_path):
+    """Sequential hung tracks are each terminated; the pool never permanently shrinks."""
+    monkeypatch.setattr(settings, "analysis_track_parse_timeout_seconds", 0.3)
+    monkeypatch.setattr(fast, "_mp_ctx", multiprocessing.get_context("fork"))
+    monkeypatch.setattr(fast, "_parse_track", _selective_hung_parse_tracks01)
+
+    # 4 tracks: 2 hung, 2 good — 2 workers means both hung tracks can start concurrently
+    results = list(fast._rolling_parse_results(
+        [_track(i) for i in range(4)], {}, str(tmp_path),
+        workers=2, result_queue_size=4,
+        checkpoint=lambda *_: None,
+    ))
+
+    assert len(results) == 4
+    timed_out = [r for r in results if any(w.get("code") == "PARSE_TIMEOUT" for w in r.warnings)]
+    completed = [r for r in results if r.parse_status == "completed"]
+    assert len(timed_out) == 2
+    assert len(completed) == 2
+
+
+def test_non_hung_tracks_complete_when_one_worker_slot_is_occupied(monkeypatch, tmp_path):
+    """All good tracks finish even while one slot is tied up by a hung track."""
+    monkeypatch.setattr(settings, "analysis_track_parse_timeout_seconds", 0.3)
+    monkeypatch.setattr(fast, "_mp_ctx", multiprocessing.get_context("fork"))
+    monkeypatch.setattr(fast, "_parse_track", _selective_hung_parse_track2)
+
+    results = list(fast._rolling_parse_results(
+        [_track(i) for i in range(5)], {}, str(tmp_path),
+        workers=2, result_queue_size=4,
+        checkpoint=lambda *_: None,
+    ))
+
+    assert len(results) == 5
+    by_id = {r.track["id"]: r for r in results}
+    assert by_id["track-2"].parse_status == "failed"
+    assert any(w.get("code") == "PARSE_TIMEOUT" for w in by_id["track-2"].warnings)
+    assert all(
+        by_id[f"track-{i}"].parse_status == "completed"
+        for i in range(5) if i != 2
+    )

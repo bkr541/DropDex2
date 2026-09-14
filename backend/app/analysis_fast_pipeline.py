@@ -17,7 +17,7 @@ import shutil
 import tempfile
 import threading
 import time
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+import multiprocessing as _mp
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterator, Sequence
@@ -37,12 +37,11 @@ from .retained_analysis_dependencies import (
 logger = logging.getLogger(__name__)
 
 _FINAL_TRACK_STATUSES = frozenset({"completed", "partial", "reused", "skipped"})
-# Per-track parse timeout. Corrupt or pathological analysis files can cause the
-# binary parser to spin indefinitely. After this many seconds the track is
-# marked failed and the pipeline moves on. The stuck thread is abandoned
-# (executor.shutdown(wait=False)) so it cannot block overall progress.
-_TRACK_PARSE_TIMEOUT_S = 120
 _REQUIRED_ASSET_TYPES = frozenset({"DAT"})
+
+# Multiprocessing context — replaced with fork context in tests so monkeypatched
+# _parse_track survives the process boundary without pickling.
+_mp_ctx = _mp
 _POSTGREST_IN_FILTER_CHUNK_SIZE = 100
 _BULK_WRITE_CHUNK_SIZE = 250
 
@@ -494,6 +493,34 @@ def _parse_track(
     )
 
 
+def _parse_track_subprocess(
+    track: dict[str, Any],
+    assets: list[dict[str, Any]],
+    temp_root: str,
+    send_conn: Any,
+) -> None:
+    """Module-level entry point for parser subprocesses (required for macOS spawn pickling)."""
+    try:
+        result = _parse_track(track, assets, temp_root)
+        send_conn.send(("ok", result))
+    except Exception as exc:
+        send_conn.send(("error", type(exc).__name__, str(exc)))
+    finally:
+        send_conn.close()
+
+
+def _terminate_proc(proc: Any) -> None:
+    """Terminate a subprocess, escalating to SIGKILL if SIGTERM doesn't land within 5 s."""
+    try:
+        proc.terminate()
+        proc.join(timeout=5.0)
+        if proc.is_alive():
+            proc.kill()
+            proc.join()
+    except Exception:
+        pass
+
+
 def _beat_grid_row(import_id: str, parsed: ParsedTrack, parser_version: str) -> dict[str, Any] | None:
     result = parsed.beat_grid
     if result is None:
@@ -836,102 +863,118 @@ def _rolling_parse_results(
 
     def produce() -> None:
         iterator = iter(tracks)
-        executor = ThreadPoolExecutor(
-            max_workers=max_workers,
-            thread_name_prefix="dropdex-anlz",
-        )
-        futures: dict[Future[ParsedTrack], dict[str, Any]] = {}
-        future_submitted_at: dict[Future[ParsedTrack], float] = {}
-        try:
-            def submit_next() -> bool:
-                if stop_requested.is_set():
-                    return False
-                try:
-                    track = next(iterator)
-                except StopIteration:
-                    return False
-                track_id = str(track["id"])
-                checkpoint("queueing_track", track_id)
-                future = executor.submit(
-                    _parse_track,
-                    track,
-                    assets_by_track.get(track_id, []),
-                    temp_root,
-                )
-                futures[future] = track
-                future_submitted_at[future] = time.monotonic()
-                return True
+        timeout_s = float(settings.analysis_track_parse_timeout_seconds)
+        # Each slot: (process, track, track_assets, start_monotonic, recv_conn)
+        active: list[tuple] = []
+        more_tracks = True
 
+        def _launch_next() -> bool:
+            nonlocal more_tracks
+            if not more_tracks or stop_requested.is_set():
+                return False
+            try:
+                track = next(iterator)
+            except StopIteration:
+                more_tracks = False
+                return False
+            track_id = str(track["id"])
+            checkpoint("queueing_track", track_id)
+            track_assets = assets_by_track.get(track_id, [])
+            recv_conn, send_conn = _mp_ctx.Pipe(duplex=False)
+            proc = _mp_ctx.Process(
+                target=_parse_track_subprocess,
+                args=(track, track_assets, temp_root, send_conn),
+                daemon=True,
+            )
+            proc.start()
+            send_conn.close()  # parent never writes; close its send end immediately
+            active.append((proc, track, track_assets, time.monotonic(), recv_conn))
+            return True
+
+        try:
             for _ in range(max_workers):
-                if not submit_next():
+                if not _launch_next():
                     break
 
-            while futures:
-                done, _ = wait(
-                    tuple(futures),
-                    return_when=FIRST_COMPLETED,
-                    timeout=_TRACK_PARSE_TIMEOUT_S,
-                )
+            while active:
+                if stop_requested.is_set():
+                    break
 
-                if not done:
-                    # No future completed within the timeout window. Find the
-                    # oldest running future and mark it failed so the pipeline
-                    # can continue. Its thread is abandoned — executor.shutdown
-                    # below uses wait=False so it cannot block overall progress.
-                    oldest = min(futures, key=lambda f: future_submitted_at.get(f, 0.0))
-                    track = futures.pop(oldest)
-                    future_submitted_at.pop(oldest, None)
-                    logger.warning(
-                        "Parse timeout after %ds for track %s (%s) — marking as failed",
-                        _TRACK_PARSE_TIMEOUT_S,
-                        track.get("id"),
-                        track.get("title", "unknown"),
-                    )
-                    timed_out = ParsedTrack(
-                        track=track,
-                        assets=assets_by_track.get(str(track["id"]), []),
-                        parse_status="failed",
-                        warnings=[{
-                            "code": "PARSE_TIMEOUT",
-                            "asset_type": "BUNDLE",
-                            "message": f"Analysis file processing timed out after {_TRACK_PARSE_TIMEOUT_S}s.",
-                            "detail": "TIMEOUT",
-                        }],
-                    )
-                    if not put_result(timed_out):
-                        return
-                    submit_next()
+                now = time.monotonic()
+                remaining: list[tuple] = []
+                to_retire: list[tuple[bool, tuple]] = []  # (has_data, slot)
+                for slot in active:
+                    _, _t, _a, start_time, recv_conn = slot
+                    has_data = recv_conn.poll(0)
+                    if has_data or (now - start_time) > timeout_s:
+                        to_retire.append((has_data, slot))
+                    else:
+                        remaining.append(slot)
+                active[:] = remaining
+
+                if not to_retire:
+                    time.sleep(0.05)
                     continue
 
-                for future in done:
-                    track = futures.pop(future)
-                    future_submitted_at.pop(future, None)
-                    try:
-                        parsed = future.result()
-                    except Exception as exc:
-                        logger.exception(
-                            "Isolated parser failure for track %s", track.get("id")
+                for has_data, (proc, track, track_assets, start_time, recv_conn) in to_retire:
+                    if has_data:
+                        try:
+                            msg = recv_conn.recv()
+                        except Exception as exc:
+                            msg = ("error", type(exc).__name__, str(exc))
+                        finally:
+                            recv_conn.close()
+                        _terminate_proc(proc)
+                        if msg[0] == "ok":
+                            parsed = msg[1]
+                        else:
+                            logger.warning(
+                                "Isolated parser failure for track %s: %s: %s",
+                                track.get("id"), msg[1], msg[2],
+                            )
+                            parsed = ParsedTrack(
+                                track=track,
+                                assets=track_assets,
+                                parse_status="failed",
+                                warnings=[{
+                                    "code": "PARSE_ERROR",
+                                    "asset_type": "BUNDLE",
+                                    "message": "The analysis files for this track could not be parsed.",
+                                    "detail": msg[1],
+                                }],
+                            )
+                    else:
+                        elapsed = time.monotonic() - start_time
+                        logger.warning(
+                            "Parse timeout after %.0fs for track %s (%s) — killing subprocess",
+                            elapsed, track.get("id"), track.get("title", "unknown"),
                         )
+                        _terminate_proc(proc)
+                        recv_conn.close()
                         parsed = ParsedTrack(
                             track=track,
-                            assets=assets_by_track.get(str(track["id"]), []),
+                            assets=track_assets,
                             parse_status="failed",
                             warnings=[{
-                                "code": "PARSE_ERROR",
+                                "code": "PARSE_TIMEOUT",
                                 "asset_type": "BUNDLE",
-                                "message": "The analysis files for this track could not be parsed.",
-                                "detail": type(exc).__name__,
+                                "message": f"Analysis file processing timed out after {int(elapsed)}s.",
+                                "detail": "TIMEOUT",
                             }],
                         )
                     if not put_result(parsed):
                         return
-                    submit_next()
+                    _launch_next()
+
         except BaseException as exc:  # propagate coordinator setup/checkpoint failures
             coordinator_error.append(exc)
         finally:
-            # wait=False: abandoned threads from timed-out tracks must not block
-            # the pipeline from reaching its sentinel and finishing normally.
-            executor.shutdown(wait=False)
+            for proc, _, _, _, recv_conn in active:
+                _terminate_proc(proc)
+                try:
+                    recv_conn.close()
+                except Exception:
+                    pass
             put_result(sentinel)
 
     coordinator = threading.Thread(
