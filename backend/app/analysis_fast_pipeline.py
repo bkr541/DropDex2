@@ -662,15 +662,6 @@ def _bulk_track_status(sb: Any, import_id: str, rows: list[dict[str, Any]]) -> N
                 "verify the production database migrations before retrying analysis."
             ) from exc
 
-        # The existing bulk RPC predates analysis_feature_statuses and ignores
-        # that key. Persist rare cue-integrity overrides explicitly rather than
-        # silently dropping the failure marker.
-        for row in chunk:
-            if "analysis_feature_statuses" not in row:
-                continue
-            sb.table("rekordbox_tracks").update({
-                "analysis_feature_statuses": row["analysis_feature_statuses"],
-            }).eq("id", row["track_id"]).eq("import_id", import_id).execute()
 
 
 def _write_batch(
