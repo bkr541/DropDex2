@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import logging.handlers
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import List, Literal, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -54,6 +56,35 @@ from .related_tracks_service import import_related_tracks
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ── Rekordbox import dedicated log ────────────────────────────────────────────
+# Writes all pipeline modules to logs/rekordbox_import_log.log at the project
+# root, rotating at 10 MB with 5 backups retained. Captures import_id, track
+# counts, exception tracebacks, and batch-level failure details emitted by
+# analysis_fast_pipeline, analysis_import_service, import_jobs, and friends.
+_LOG_DIR = Path(__file__).parent.parent.parent / "logs"
+_LOG_DIR.mkdir(exist_ok=True)
+_rekordbox_handler = logging.handlers.RotatingFileHandler(
+    _LOG_DIR / "rekordbox_import_log.log",
+    maxBytes=10 * 1024 * 1024,  # 10 MB
+    backupCount=5,
+    encoding="utf-8",
+)
+_rekordbox_handler.setLevel(logging.DEBUG)
+_rekordbox_handler.setFormatter(logging.Formatter(
+    fmt="%(asctime)s.%(msecs)03d %(levelname)-8s %(name)s — %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+))
+for _rekordbox_logger_name in (
+    "backend.app.analysis_fast_pipeline",
+    "backend.app.analysis_import_service",
+    "backend.app.bundle_import_service",
+    "backend.app.import_jobs",
+    "backend.app.analysis_worker_lease",
+    "backend.app.analysis_raw_archival",
+):
+    logging.getLogger(_rekordbox_logger_name).addHandler(_rekordbox_handler)
+# ─────────────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="DropDex API",
