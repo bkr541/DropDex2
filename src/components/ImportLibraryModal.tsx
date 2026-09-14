@@ -1729,7 +1729,7 @@ export function ImportLibraryModal({
                 {/* Mode selector */}
                 <div className={cn(
                   'flex gap-1.5 p-1 rounded-xl mb-4 transition-colors shrink-0',
-                  isReady ? 'bg-emerald-400/10' : 'bg-[var(--color-surface)]',
+                  isReady ? 'bg-green-500/10' : 'bg-[var(--color-surface)]',
                 )}>
                   {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
                     <button
@@ -1739,7 +1739,7 @@ export function ImportLibraryModal({
                         'flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-semibold transition-all',
                         mode === m
                           ? isReady
-                            ? 'bg-emerald-400 text-white shadow-sm'
+                            ? 'bg-green-500 text-white shadow-sm'
                             : 'bg-primary text-white shadow-sm'
                           : 'text-muted-foreground hover:text-foreground',
                       )}
@@ -1775,14 +1775,14 @@ export function ImportLibraryModal({
                         <p className="text-sm">Scanning folder…</p>
                       </div>
                     ) : phase === 'database_selected' && folderScan ? (
-                      <div className="flex-1 mb-4 rounded-2xl border border-green-500/30 bg-green-500/10 p-4">
+                      <div className="flex-1 mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                           {folderScan.folderName}
                         </p>
                         <div className="space-y-2">
                           {folderScan.dbFile ? (
                             <div className="flex items-center gap-2 text-sm">
-                              <CheckmarkFilled size={14} className="text-green-500 shrink-0" />
+                              <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
                               <span className="font-mono text-xs truncate">
                                 {folderScan.dbFile.name}
                               </span>
@@ -1799,13 +1799,13 @@ export function ImportLibraryModal({
                           <div className="flex items-center gap-2 text-sm">
                             {folderScan.targetedResolver ? (
                               <>
-                                <CheckmarkFilled size={14} className="text-green-500 shrink-0" />
+                                <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
                                 <span className="text-xs">
                                   Analysis files will be opened only when requested by the library manifest
                                 </span>
                               </>
                             ) : folderScan.anlzFiles.length > 0 ? (
-                              <CheckmarkFilled size={14} className="text-green-500 shrink-0" />
+                              <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
                             ) : (
                               <WarningAlt size={14} className="text-amber-400 shrink-0" />
                             )}
