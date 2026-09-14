@@ -192,10 +192,12 @@ function durationMsForTrack(
 ): number | null {
   if (!track) return null;
 
-  // Rekordbox Content.length is the single source of truth. Use it directly
-  // and do not override it with beat-grid data. Beat-grid and phrases are
-  // fallbacks only when no valid stored duration is available.
-  if (typeof track.duration_ms === 'number' && Number.isFinite(track.duration_ms) && track.duration_ms > 0) {
+  // Rekordbox Content.length is the single source of truth, stored as duration_ms.
+  // Guard against the Device Library Plus unit bug where Content.length (seconds) was
+  // stored verbatim as duration_ms — a 95-second track would show as 95 ms. Any stored
+  // duration under 1,000 ms (1 s) is implausible for a DJ track and is treated as absent
+  // so beat-grid and phrase fallbacks can supply the correct value.
+  if (typeof track.duration_ms === 'number' && Number.isFinite(track.duration_ms) && track.duration_ms >= 1_000) {
     return track.duration_ms;
   }
   if (typeof track.duration_seconds === 'number' && Number.isFinite(track.duration_seconds) && track.duration_seconds > 0) {

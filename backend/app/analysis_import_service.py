@@ -229,10 +229,14 @@ def _get_live_analysis_progress(import_id: str) -> Dict[str, Any]:
 
 
 def _maybe_backfill_duration_from_beat_grid(sb: Any, track_id: str, beats: list) -> None:
-    """Update duration_ms/duration_seconds from the beat grid when the DB value is null or zero.
+    """Update duration_ms/duration_seconds from the beat grid when the stored value is absent or invalid.
 
-    Mirrors the frontend durationMsForTrack() fallback: last beat position + one beat interval.
-    Only fires when the track row has no usable duration from the Rekordbox XML metadata.
+    Fires when the track row has no usable duration (null, zero) or has an implausibly small
+    positive value (< 1,000 ms = < 1 second). The latter catches tracks imported before the
+    Device Library Plus Content.length unit bug was fixed, where length=95 (seconds) was stored
+    as duration_ms=95 instead of 95,000.
+
+    The inferred value is last-beat position + one beat interval, matching durationMsForTrack().
     """
     try:
         last_beat = beats[-1]
@@ -246,7 +250,7 @@ def _maybe_backfill_duration_from_beat_grid(sb: Any, track_id: str, beats: list)
             sb.table("rekordbox_tracks")
             .update({"duration_ms": inferred_ms, "duration_seconds": inferred_seconds})
             .eq("id", track_id)
-            .or_("duration_ms.is.null,duration_ms.lte.0")
+            .or_("duration_ms.is.null,duration_ms.lt.1000")
             .execute()
         )
     except Exception as exc:

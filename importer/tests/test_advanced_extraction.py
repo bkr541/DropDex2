@@ -163,7 +163,7 @@ class TestTrackMetadataFidelity:
             image_path="/PIONEER/ART/cover.jpg",
             key=SimpleNamespace(name="8A"),
             bpmx100=14225,
-            length=183456,
+            length=183,
             djComment="Comment",
             path=r"E:\\Contents\\Artist\\Track.flac",
             fileName="Track.flac",
@@ -190,7 +190,7 @@ class TestTrackMetadataFidelity:
             to_dict=lambda: {
                 "content_id": 42,
                 "title": None,
-                "length": 183456,
+                "length": 183,
                 "releaseDate": datetime(2026, 6, 1, tzinfo=timezone.utc),
                 "fileType": 99,
             },
@@ -205,7 +205,7 @@ class TestTrackMetadataFidelity:
         assert track.title == "(untitled)"
         assert track.source_title is None
         assert track.genre == "Genre"
-        assert track.duration_ms == 183456
+        assert track.duration_ms == 183_000  # Content.length=183 s → 183,000 ms
         assert track.duration_seconds == 183
         assert track.file_path_normalized == "/Contents/Artist/Track.flac"
         assert track.file_path_volume == "E:"
@@ -335,6 +335,51 @@ class TestTrackMetadataFidelity:
         assert library.tracks[0].duration_ms is None
         assert library.tracks[0].duration_seconds is None
         assert any("non-positive" in w for w in library.parse_warnings)
+
+    def test_content_length_is_in_seconds_not_milliseconds(self):
+        # Regression: Device Library Plus Content.length stores seconds.
+        # A track with length=95 is 95 seconds (≈95,000 ms), not 95 ms.
+        # Verified against beat-grid data spanning 48 ms – 95,648 ms.
+        for length_s, expected_ms, expected_s in [
+            (95, 95_000, 95),
+            (147, 147_000, 147),
+            (167, 167_000, 167),
+        ]:
+            content = types.SimpleNamespace(
+                content_id=42,
+                title="Track",
+                artist_name=None,
+                remixer_name=None,
+                album_name=None,
+                genre_name=None,
+                label_name=None,
+                color=None,
+                key=None,
+                bpmx100=0,
+                length=length_s,
+                rating=None,
+                djComment=None,
+                path=None,
+                fileType=None,
+                dateAdded=None,
+                masterDbId=None,
+                masterContentId=None,
+                analysisDataFilePath=None,
+                analysedBits=None,
+                cueUpdateCount=None,
+                analysisDataUpdateCount=None,
+                informationUpdateCount=None,
+                to_dict=lambda: {"content_id": 42},
+            )
+            db = MagicMock()
+            db.get_content.return_value.all.return_value = [content]
+            library = ParsedLibrary()
+
+            _extract_tracks(db, library)
+
+            track = library.tracks[0]
+            assert track.duration_ms == expected_ms, f"length={length_s}: expected duration_ms={expected_ms}"
+            assert track.duration_seconds == expected_s, f"length={length_s}: expected duration_seconds={expected_s}"
 
 
 class TestDeriveAnlzSiblings:

@@ -355,4 +355,13 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain("if (cueEditingAllowed && (event.key === 'Delete' || event.key === 'Backspace'))");
   });
 
+  it('rejects sub-1-second stored duration_ms values as implausible and falls back to beat-grid', () => {
+    // Regression guard: Device Library Plus Content.length (seconds) was previously stored
+    // verbatim as duration_ms, producing values like 95, 147, 167 ms. durationMsForTrack()
+    // must not trust those values as a 95 ms timeline scale.
+    expect(source).toContain('track.duration_ms >= 1_000');
+    // The beat-grid fallback must still be present so the function recovers the real duration.
+    expect(source).toContain('lastBeat.ms + (lastBeat.bpm > 0 ? 60_000 / lastBeat.bpm : 500)');
+  });
+
 });

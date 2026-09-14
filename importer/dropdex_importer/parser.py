@@ -347,14 +347,15 @@ def _extract_tracks(db: object, library: ParsedLibrary) -> None:
         if c.bpmx100:
             bpm = round(c.bpmx100 / 100.0, 2)
 
-        # Duration is stored in milliseconds.
-        duration_ms = _int_or_none(c.length)
-        if duration_ms is not None and duration_ms <= 0:
+        # Content.length in the Device Library Plus database is in seconds.
+        _length_s = _int_or_none(c.length)
+        if _length_s is not None and _length_s <= 0:
             library.parse_warnings.append(
-                f"Track {c.content_id} has a non-positive duration ({duration_ms!r}); storing no duration."
+                f"Track {c.content_id} has a non-positive duration ({_length_s!r}); storing no duration."
             )
-            duration_ms = None
-        duration_seconds = duration_ms // 1000 if duration_ms is not None else None
+            _length_s = None
+        duration_seconds = _length_s
+        duration_ms = _length_s * 1000 if _length_s is not None else None
 
         rating = _int_or_none(getattr(c, "rating", None))
         if rating is not None and not 0 <= rating <= 5:
