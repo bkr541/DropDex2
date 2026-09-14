@@ -281,6 +281,22 @@ def _create_supabase():
     return _sb.create_client(settings.supabase_url, settings.supabase_secret_key)
 
 
+def _create_analysis_worker_supabase():
+    """Return a service-role Supabase client with finite PostgREST and Storage timeouts.
+
+    Used only inside the fast analysis worker so individual write operations cannot
+    block a writer batch indefinitely. General application code uses _create_supabase().
+    """
+    import supabase as _sb  # noqa: PLC0415
+    from supabase.lib.client_options import SyncClientOptions  # noqa: PLC0415
+
+    options = SyncClientOptions(
+        postgrest_client_timeout=settings.analysis_postgrest_timeout_seconds,
+        storage_client_timeout=settings.analysis_storage_timeout_seconds,
+    )
+    return _sb.create_client(settings.supabase_url, settings.supabase_secret_key, options)
+
+
 # ── Shared helpers ─────────────────────────────────────────────────────────────
 
 
@@ -2625,7 +2641,7 @@ def _run_fast_analysis_import_sync(
     from .analysis_fast_pipeline import run_fast_analysis_import
 
     worker_registry.register(import_id)
-    sb = _create_supabase()
+    sb = _create_analysis_worker_supabase()
     started = time.perf_counter()
     last_durable_checkpoint = 0.0
     try:

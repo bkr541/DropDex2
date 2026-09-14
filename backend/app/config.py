@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     analysis_writer_batch_size: int = 32
     analysis_result_queue_size: int = 16
     analysis_track_parse_timeout_seconds: int = 120
+    analysis_postgrest_timeout_seconds: int = 60
+    analysis_storage_timeout_seconds: int = 60
     analysis_staging_root: str | None = Field(
         default=None,
         validation_alias=AliasChoices(

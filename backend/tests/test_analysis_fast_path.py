@@ -981,3 +981,132 @@ def test_non_hung_tracks_complete_when_one_worker_slot_is_occupied(monkeypatch, 
         by_id[f"track-{i}"].parse_status == "completed"
         for i in range(5) if i != 2
     )
+
+
+# ── Writer timeout tests ───────────────────────────────────────────────────────
+
+
+def test_storage_timeout_does_not_freeze_waveform_row():
+    """Storage upload raising TimeoutError is caught; _waveform_row returns a partial row."""
+    from dropdex_importer.waveform_parser import WaveformBundle, DetailWaveformResult
+
+    detail = DetailWaveformResult(
+        format="PWV5",
+        column_count=4,
+        compressed_bytes=b"\x1f\x8b...",
+        source_tag="EXT",
+    )
+    waveform = WaveformBundle(preview=None, detail=detail)
+    parsed = fast.ParsedTrack(
+        track={"id": "track-1"},
+        assets=[],
+        parse_status="completed",
+        waveform=waveform,
+    )
+
+    sb = MagicMock()
+    sb.storage.from_.return_value.upload.side_effect = TimeoutError("storage timed out")
+
+    row = fast._waveform_row(sb, "user-1", "import-1", parsed, "v1")
+
+    assert row is not None
+    # Detail fields must be absent — the storage upload failed
+    assert "detail_storage_path" not in row
+    assert "detail_format" not in row
+
+
+def test_waveform_archival_failure_does_not_block_other_features(monkeypatch):
+    """When waveform detail upload raises, _write_batch still writes beat-grid and phrases."""
+    parsed = [
+        fast.ParsedTrack(track=_track(0), assets=[], parse_status="completed"),
+    ]
+    written_tables: list[str] = []
+    status_rows: list[dict] = []
+
+    sb = MagicMock()
+    sb.storage.from_.return_value.upload.side_effect = TimeoutError("storage timed out")
+    sb.table.return_value.upsert.return_value.execute.side_effect = (
+        lambda: written_tables.append("upsert")
+    )
+    sb.table.return_value.select.return_value.in_.return_value.execute.return_value.data = []
+    sb.rpc.return_value.execute.return_value = None
+
+    monkeypatch.setattr(fast, "_reconcile_cues_bulk", lambda *_: None)
+    monkeypatch.setattr(
+        fast,
+        "_bulk_track_status",
+        lambda _sb, _imp, rows: status_rows.extend(rows),
+    )
+
+    fast._write_batch(sb, "user-1", "import-1", parsed, "v1", "schema-v1")
+
+    # _bulk_track_status must have been called: track status was persisted
+    assert len(status_rows) == 1
+    assert status_rows[0]["analysis_parse_status"] == "completed"
+
+
+def test_postgrest_timeout_reaches_write_batch_resilient(monkeypatch):
+    """A TimeoutError from _write_batch propagates to _write_batch_resilient and triggers bisection."""
+    parsed = [
+        fast.ParsedTrack(track=_track(i), assets=[], parse_status="completed")
+        for i in range(4)
+    ]
+    attempts: list[int] = []
+    written: list[str] = []
+    status_rows: list[dict] = []
+
+    def flaky_write(_sb, _user, _import, batch, *_versions):
+        attempts.append(len(batch))
+        ids = [str(item.track["id"]) for item in batch]
+        # Raise only on the first (full) batch call; succeed on smaller halves
+        if len(batch) == 4:
+            raise TimeoutError("PostgREST request timed out")
+        written.extend(ids)
+
+    monkeypatch.setattr(fast, "_write_batch", flaky_write)
+    monkeypatch.setattr(
+        fast,
+        "_bulk_track_status",
+        lambda _sb, _imp, rows: status_rows.extend(rows),
+    )
+
+    result_attempts = fast._write_batch_resilient(
+        object(), "user-1", "import-1", parsed, "v1", "schema-v1"
+    )
+
+    assert result_attempts > 1  # bisection occurred
+    assert set(written) == {"track-0", "track-1", "track-2", "track-3"}
+
+
+def test_write_batch_resilient_commits_unaffected_tracks_after_postgrest_timeout(monkeypatch):
+    """Tracks not involved in a timed-out write are still committed; the bad track is marked failed."""
+    parsed = [
+        fast.ParsedTrack(track=_track(i), assets=[], parse_status="completed")
+        for i in range(8)
+    ]
+    written: list[str] = []
+    failed_statuses: list[dict] = []
+
+    def flaky_write(_sb, _user, _import, batch, *_versions):
+        ids = [str(item.track["id"]) for item in batch]
+        if "track-5" in ids:
+            raise TimeoutError("PostgREST request timed out")
+        written.extend(ids)
+
+    monkeypatch.setattr(fast, "_write_batch", flaky_write)
+    monkeypatch.setattr(
+        fast,
+        "_bulk_track_status",
+        lambda _sb, _imp, rows: failed_statuses.extend(rows),
+    )
+
+    attempts = fast._write_batch_resilient(
+        object(), "user-1", "import-1", parsed, "v1", "schema-v1"
+    )
+
+    assert attempts > 1
+    assert set(written) == {f"track-{i}" for i in range(8)} - {"track-5"}
+    assert parsed[5].parse_status == "failed"
+    assert len(failed_statuses) == 1
+    assert failed_statuses[0]["track_id"] == "track-5"
+    assert failed_statuses[0]["analysis_parse_status"] == "failed"
