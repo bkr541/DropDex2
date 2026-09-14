@@ -76,12 +76,12 @@ _rekordbox_handler.setFormatter(logging.Formatter(
     datefmt="%Y-%m-%d %H:%M:%S",
 ))
 for _rekordbox_logger_name in (
-    "backend.app.analysis_fast_pipeline",
-    "backend.app.analysis_import_service",
-    "backend.app.bundle_import_service",
-    "backend.app.import_jobs",
-    "backend.app.analysis_worker_lease",
-    "backend.app.analysis_raw_archival",
+    "app.analysis_fast_pipeline",
+    "app.analysis_import_service",
+    "app.bundle_import_service",
+    "app.import_jobs",
+    "app.analysis_worker_lease",
+    "app.analysis_raw_archival",
 ):
     logging.getLogger(_rekordbox_logger_name).addHandler(_rekordbox_handler)
 # ─────────────────────────────────────────────────────────────────────────────

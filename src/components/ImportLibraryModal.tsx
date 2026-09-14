@@ -55,9 +55,9 @@ import {
   type UsbImportPhase,
   verifyUsbReleased,
 } from '../lib/rekordbox/localUsbLifecycle';
-import { ArrowLeft, ArrowRight, CheckmarkFilled, CircleDash, Close, DataBase, FolderOpen, Package, Pause, Renew, TrashCan, Upload, View, WarningAlt } from '@carbon/icons-react';
+import { ArrowLeft, ArrowRight, CheckmarkFilled, ChevronDown, CircleDash, Close, DataBase, FolderOpen, Package, Pause, Renew, TrashCan, Upload, View, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from './ui/controls';
-import { ImportProgressModal, issueBadgeLabel, userFriendlyIssueReason } from './ImportProgressModal';
+import { ImportProgressModal, issueBadgeLabel, trackExpandedDetail, userFriendlyIssueReason } from './ImportProgressModal';
 import type { ImportUiStep } from './ImportStageProgress';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -283,8 +283,9 @@ export function ImportLibraryModal({
   const [usbReleaseConfirmed, setUsbReleaseConfirmed] = useState(false);
   const [cloudCancellationStarted, setCloudCancellationStarted] = useState(false);
   const [issueViewOpen, setIssueViewOpen] = useState(false);
-  const [issueTracks, setIssueTracks] = useState<{ id: string; title: string; artist: string | null; analysis_parse_status: string; analysis_failure_reason: string | null }[] | null>(null);
+  const [issueTracks, setIssueTracks] = useState<{ id: string; title: string; artist: string | null; analysis_parse_status: string; analysis_failure_reason: string | null; analysis_parse_warnings: Array<{ code?: string }> | null }[] | null>(null);
   const [issueTracksLoading, setIssueTracksLoading] = useState(false);
+  const [expandedTrackIds, setExpandedTrackIds] = useState<Set<string>>(new Set());
   const [rejectedCount, setRejectedCount] = useState(0);
   const [reuseStats, setReuseStats] = useState<ReuseStats | null>(null);
   const [reconciliation, setReconciliation] = useState<ManifestReconciliation | null>(null);
@@ -2402,7 +2403,7 @@ export function ImportLibraryModal({
                                       try {
                                         const { data } = await supabase
                                           .from('rekordbox_tracks')
-                                          .select('id, title, artist, analysis_parse_status, analysis_failure_reason')
+                                          .select('id, title, artist, analysis_parse_status, analysis_failure_reason, analysis_parse_warnings')
                                           .eq('import_id', withAnalysis.import_id)
                                           .in('analysis_parse_status', ['partial', 'failed', 'missing_required'])
                                           .order('title', { ascending: true });
@@ -2511,23 +2512,56 @@ export function ImportLibraryModal({
                               track.analysis_parse_status ?? '',
                               track.analysis_failure_reason,
                             );
+                            const isExpanded = expandedTrackIds.has(track.id);
+                            const detail = trackExpandedDetail(
+                              track.analysis_parse_status ?? '',
+                              track.analysis_failure_reason,
+                              track.analysis_parse_warnings,
+                            );
                             return (
-                              <div key={track.id} className="flex items-start justify-between gap-3 px-3 py-2.5">
-                                <div className="min-w-0">
-                                  <p className="truncate text-xs font-semibold text-foreground">{track.title}</p>
-                                  {track.artist && (
-                                    <p className="truncate text-[10px] text-muted-foreground">{track.artist}</p>
-                                  )}
-                                  <p className="mt-0.5 text-[10px] text-muted-foreground leading-snug">{reason}</p>
-                                </div>
-                                <span className={cn(
-                                  'shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap',
-                                  isWarning
-                                    ? 'border border-amber-400/25 bg-amber-400/10 text-amber-300'
-                                    : 'border border-red-400/25 bg-red-400/10 text-red-300',
-                                )}>
-                                  {issueLabel}
-                                </span>
+                              <div key={track.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedTrackIds(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(track.id)) next.delete(track.id);
+                                    else next.add(track.id);
+                                    return next;
+                                  })}
+                                  className="w-full flex items-start justify-between gap-3 px-3 py-2.5 text-left hover:bg-white/[0.03] transition-colors"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xs font-semibold text-foreground">{track.title}</p>
+                                    {track.artist && (
+                                      <p className="truncate text-[10px] text-muted-foreground">{track.artist}</p>
+                                    )}
+                                    <p className="mt-0.5 text-[10px] text-muted-foreground leading-snug">{reason}</p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className={cn(
+                                      'rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap',
+                                      isWarning
+                                        ? 'border border-amber-400/25 bg-amber-400/10 text-amber-300'
+                                        : 'border border-red-400/25 bg-red-400/10 text-red-300',
+                                    )}>
+                                      {issueLabel}
+                                    </span>
+                                    <ChevronDown
+                                      size={12}
+                                      className={cn(
+                                        'text-muted-foreground transition-transform duration-200',
+                                        isExpanded && 'rotate-180',
+                                      )}
+                                    />
+                                  </div>
+                                </button>
+                                {isExpanded && (
+                                  <div className="px-3 pb-3 pt-0">
+                                    <p className="text-[11px] text-muted-foreground leading-relaxed rounded-lg bg-white/[0.04] px-3 py-2.5">
+                                      {detail}
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}

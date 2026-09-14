@@ -153,3 +153,44 @@ export function userFriendlyIssueReason(
   }
   return 'DropDex could not read the required Rekordbox analysis data for this track.';
 }
+
+export function trackExpandedDetail(
+  status: string,
+  failureReason: string | null | undefined,
+  warnings: Array<{ code?: string }> | null | undefined,
+): string {
+  const codes = new Set((warnings ?? []).map(w => w.code ?? ''));
+
+  if (status === 'missing_required') {
+    return "The analysis file for this track wasn't found on the USB drive. Without it, DropDex can't read the beat grid, waveform, or cue points. Try re-exporting your library from Rekordbox and importing again.";
+  }
+
+  if (status === 'failed') {
+    if (codes.has('FEATURE_WRITE_ERROR')) {
+      return "This track's analysis data was read successfully but couldn't be saved to your library. Re-importing or running the analysis again should fix it.";
+    }
+    const r = (failureReason ?? '').toLowerCase();
+    if (r.includes('parse') || r.includes('struct') || r.includes('corrupt') || r.includes('decode')) {
+      return "DropDex couldn't read the analysis file for this track — it may be from an unsupported Rekordbox version or the file may be damaged. Re-analyzing the track in Rekordbox and importing again may help.";
+    }
+    return "DropDex ran into an unexpected error while processing this track and had to skip it. Re-importing should fix it in most cases.";
+  }
+
+  if (status === 'partial') {
+    if (codes.has('WAVEFORM_PARSE_ERROR') || codes.has('WAVEFORM_TRUNCATED') || codes.has('WAVEFORM_COUNT_MISMATCH')) {
+      return "This track was imported, but there was a problem reading its waveform. Everything else — beat grid, cue points, and playback — should work normally.";
+    }
+    if (codes.has('BEAT_PARSE_ERROR') || codes.has('BEAT_COUNT_MISMATCH')) {
+      return "This track was imported, but the beat grid data couldn't be fully read. Tempo markers or beat positions may be missing or incomplete.";
+    }
+    if (codes.has('PHRASE_PARSE_ERROR') || codes.has('PHRASE_UNKNOWN_MOOD') || codes.has('PHRASE_UNKNOWN_KIND')) {
+      return "This track was imported successfully. The phrase and energy section data couldn't be fully read, but beat grid, waveform, and cue points are unaffected.";
+    }
+    if (codes.has('CUE_MEMORY_CONFLICT') || codes.has('CUE_HOT_PCO2_CONFLICT')) {
+      return "This track was imported, but two cue points were in the same position so one was removed. All other cue points and track data are intact.";
+    }
+    return "This track was imported, but some of its detailed analysis data — like waveform or beat markers — couldn't be fully read from the file.";
+  }
+
+  return "This track couldn't be fully processed. Re-importing may resolve the issue.";
+}
