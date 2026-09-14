@@ -236,6 +236,43 @@ def run_demucs(source: Path, work_dir: Path, model_root: Path, model_name: str) 
         restore_download()
 
 
+def extract_audio_window(
+    source: Path,
+    target: Path,
+    start_ms: int,
+    duration_ms: int,
+) -> None:
+    if start_ms < 0 or duration_ms <= 0:
+        raise RuntimeError("preview window is invalid")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-ss",
+        f"{start_ms / 1000:.6f}",
+        "-i",
+        str(source),
+        "-t",
+        f"{duration_ms / 1000:.6f}",
+        "-vn",
+        "-map",
+        "0:a:0",
+        "-c:a",
+        "pcm_s16le",
+        str(target),
+    ]
+    completed = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=False)
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", errors="replace").strip()[-400:]
+        raise RuntimeError(f"preview window extraction failed: {detail or 'ffmpeg exited unexpectedly'}")
+    metadata = inspect_wave(target)
+    if abs(metadata.durationMs - duration_ms) > TIMELINE_TOLERANCE_MS:
+        raise RuntimeError("preview window extraction did not preserve the requested duration")
+
+
 def separate_to_pair(
     source: Path,
     output_root: Path,
@@ -243,6 +280,9 @@ def separate_to_pair(
     model_name: str,
     expected_duration_ms: int | None,
     runner: Callable[[Path, Path, Path, str], None] = run_demucs,
+    window_start_ms: int | None = None,
+    window_duration_ms: int | None = None,
+    extractor: Callable[[Path, Path, int, int], None] = extract_audio_window,
 ) -> dict[str, dict[str, int]]:
     source = source.resolve(strict=True)
     if not source.is_file():
@@ -256,8 +296,15 @@ def separate_to_pair(
     shutil.rmtree(work_dir, ignore_errors=True)
     shutil.rmtree(pair_dir, ignore_errors=True)
 
+    clip_path = output_root / "preview-source.wav"
+    separation_source = source
     try:
-        runner(source, work_dir, model_root, model_name)
+        if window_start_ms is not None or window_duration_ms is not None:
+            if window_start_ms is None or window_duration_ms is None:
+                raise RuntimeError("preview window start and duration must be provided together")
+            extractor(source, clip_path, window_start_ms, window_duration_ms)
+            separation_source = clip_path
+        runner(separation_source, work_dir, model_root, model_name)
         vocals_generated = _find_single(work_dir, "vocals.wav")
         instrumental_generated = _find_single(work_dir, "no_vocals.wav")
         pair_dir.mkdir(parents=True, exist_ok=False)
@@ -273,6 +320,10 @@ def separate_to_pair(
         raise
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
+        try:
+            clip_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -282,6 +333,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-root", required=True)
     parser.add_argument("--model", default="htdemucs")
     parser.add_argument("--expected-duration-ms", type=int, default=None)
+    parser.add_argument("--window-start-ms", type=int, default=None)
+    parser.add_argument("--window-duration-ms", type=int, default=None)
     return parser
 
 
@@ -297,6 +350,8 @@ def main(argv: list[str] | None = None) -> int:
             Path(args.model_root),
             args.model,
             args.expected_duration_ms,
+            window_start_ms=args.window_start_ms,
+            window_duration_ms=args.window_duration_ms,
         )
         payload = {"ok": True, "outputs": outputs}
         print(RESULT_PREFIX + json.dumps(payload, separators=(",", ":")), flush=True)

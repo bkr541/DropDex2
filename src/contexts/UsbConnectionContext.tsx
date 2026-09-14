@@ -497,15 +497,18 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
 
   const reconnect = useCallback(async () => {
     dispatchState({ type: 'SET_CONNECTING' });
-    if (runtime === 'electron') {
-      const refreshedStatus = await refreshDesktopState();
-      if (refreshedStatus !== 'connected') {
+    if (runtime === 'electron' && desktop) {
+      const automatic = await desktop.reconnectUsb(stateRef.current.volumeName);
+      const nextActivity = await desktop.getUsbActivityState();
+      setActivity(nextActivity);
+      dispatchState({ type: 'SET_DESKTOP_STATE', state: automatic.state, activity: nextActivity });
+      if (!automatic.reconnected) {
         await connect();
       }
       return;
     }
     await restoreFromStore(dispatchState);
-  }, [connect, dispatchState, refreshDesktopState, runtime]);
+  }, [connect, desktop, dispatchState, runtime]);
 
   const selectNewUsb = useCallback(async () => {
     await selectUsbRoot();

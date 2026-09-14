@@ -10,6 +10,7 @@ const { stemStorageRoot } = require('./stemAssetStorage.cjs');
 const RESULT_PREFIX = 'DROPDEX_STEM_RESULT:';
 const HEALTH_RESULT_PREFIX = 'DROPDEX_STEM_HEALTH:';
 const SEPARATOR_VERSION = 'demucs-4.0.1-htdemucs-two-stem-v1';
+const PREVIEW_ALGORITHM_VERSION = 'demucs-4.0.1-htdemucs-16bar-preview-v1';
 const STEM_MODEL_NAME = 'htdemucs';
 const JOB_TIMEOUT_MS = 30 * 60 * 1000;
 const HEALTH_TIMEOUT_MS = 20 * 1000;
@@ -128,6 +129,29 @@ function validateRequest(input) {
   }
 }
 
+function validatePreviewRequest(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Preview separation request is invalid.');
+  if (typeof input.trackId !== 'string' || input.trackId.length < 1 || input.trackId.length > 256) {
+    throw new Error('Preview separation trackId is invalid.');
+  }
+  if (input.role !== 'vocal' && input.role !== 'instrumental') throw new Error('Preview separation role is invalid.');
+  if (typeof input.sourceFingerprint !== 'string' || input.sourceFingerprint.length < 1 || input.sourceFingerprint.length > 8192) {
+    throw new Error('Preview separation source fingerprint is invalid.');
+  }
+  if (input.algorithmVersion !== PREVIEW_ALGORITHM_VERSION) throw new Error('Preview separation version is unsupported.');
+  if (typeof input.sourceFilePath !== 'string' || !path.isAbsolute(input.sourceFilePath)) {
+    throw new Error('Preview separation source path is invalid.');
+  }
+  for (const field of ['windowStartMs', 'windowEndMs']) {
+    if (typeof input[field] !== 'number' || !Number.isFinite(input[field]) || input[field] < 0) {
+      throw new Error(`Preview separation ${field} is invalid.`);
+    }
+  }
+  if (input.windowEndMs <= input.windowStartMs || input.windowEndMs - input.windowStartMs > 10 * 60 * 1000) {
+    throw new Error('Preview separation window is invalid.');
+  }
+}
+
 async function statIdentity(filePath) {
   const stat = await fs.stat(filePath);
   if (!stat.isFile()) throw new Error('Stem separation source is not a file.');
@@ -184,6 +208,9 @@ class StemSeparationBridge {
   constructor(options) {
     this.options = options;
     this.jobs = new Map();
+    this.previewJobs = new Map();
+    this.previewQueue = [];
+    this.previewActive = null;
     this.healthPromise = null;
   }
 
@@ -248,6 +275,65 @@ class StemSeparationBridge {
     return job.promise;
   }
 
+  preparePreview(input) {
+    validatePreviewRequest(input);
+    const key = hash(`${input.trackId}\0${input.sourceFingerprint}\0${input.algorithmVersion}\0${input.windowStartMs}\0${input.windowEndMs}`);
+    const existing = this.previewJobs.get(key);
+    if (existing) return existing.promise;
+
+    let resolvePromise;
+    const promise = new Promise((resolve) => { resolvePromise = resolve; });
+    const job = {
+      key,
+      trackId: input.trackId,
+      input,
+      child: null,
+      cancelled: false,
+      started: false,
+      settled: false,
+      resolve: resolvePromise,
+      promise,
+    };
+    this.previewJobs.set(key, job);
+    this.previewQueue.push(job);
+    this._pumpPreviewQueue();
+    return promise;
+  }
+
+  _settlePreviewJob(job, result) {
+    if (job.settled) return;
+    job.settled = true;
+    this.previewJobs.delete(job.key);
+    job.resolve(result);
+  }
+
+  _pumpPreviewQueue() {
+    if (this.previewActive) return;
+    const job = this.previewQueue.shift();
+    if (!job) return;
+    if (job.settled) {
+      this._pumpPreviewQueue();
+      return;
+    }
+    if (job.cancelled) {
+      this._settlePreviewJob(job, { ok: false, error: { kind: 'cancelled', message: 'Preview preparation was cancelled.' } });
+      this._pumpPreviewQueue();
+      return;
+    }
+    job.started = true;
+    this.previewActive = job;
+    void this._runPreviewJob(job.input, job)
+      .then((result) => this._settlePreviewJob(job, result))
+      .catch((error) => this._settlePreviewJob(job, {
+        ok: false,
+        error: { kind: 'processing_failed', message: error instanceof Error ? error.message : String(error) },
+      }))
+      .finally(() => {
+        if (this.previewActive === job) this.previewActive = null;
+        this._pumpPreviewQueue();
+      });
+  }
+
   cancel(trackId) {
     let cancelled = false;
     for (const job of this.jobs.values()) {
@@ -256,6 +342,16 @@ class StemSeparationBridge {
       cancelled = true;
       if (job.child && !job.child.killed) job.child.kill('SIGTERM');
     }
+    for (const job of this.previewJobs.values()) {
+      if (job.trackId !== trackId) continue;
+      job.cancelled = true;
+      cancelled = true;
+      if (job.child && !job.child.killed) job.child.kill('SIGTERM');
+      if (!job.started) {
+        this._settlePreviewJob(job, { ok: false, error: { kind: 'cancelled', message: 'Preview preparation was cancelled.' } });
+      }
+    }
+    this.previewQueue = this.previewQueue.filter((job) => !job.settled);
     return { ok: true, cancelled };
   }
 
@@ -263,6 +359,150 @@ class StemSeparationBridge {
     for (const job of this.jobs.values()) {
       job.cancelled = true;
       if (job.child && !job.child.killed) job.child.kill('SIGTERM');
+    }
+    for (const job of this.previewJobs.values()) {
+      job.cancelled = true;
+      if (job.child && !job.child.killed) job.child.kill('SIGTERM');
+      if (!job.started) {
+        this._settlePreviewJob(job, { ok: false, error: { kind: 'cancelled', message: 'Preview preparation was cancelled.' } });
+      }
+    }
+    this.previewQueue = [];
+  }
+
+  async _loadCachedPreview(finalDir, finalLocatorDir, input) {
+    try {
+      const manifest = JSON.parse(await fs.readFile(path.join(finalDir, 'manifest.json'), 'utf8'));
+      if (
+        manifest?.algorithmVersion !== input.algorithmVersion
+        || manifest?.sourceFingerprint !== input.sourceFingerprint
+        || manifest?.windowStartMs !== input.windowStartMs
+        || manifest?.windowEndMs !== input.windowEndMs
+      ) return null;
+      const [vocals, instrumental] = await Promise.all([
+        inspectPublishedStem(path.join(finalDir, 'vocals.wav'), manifest.outputs?.vocals),
+        inspectPublishedStem(path.join(finalDir, 'instrumental.wav'), manifest.outputs?.instrumental),
+      ]);
+      for (const [name, metadata] of [['vocals', vocals], ['instrumental', instrumental]]) {
+        const expected = manifest.outputs?.[name];
+        if (!expected || metadata.size !== expected.size || metadata.mtimeMs !== expected.mtimeMs) return null;
+      }
+      return {
+        ok: true,
+        cached: true,
+        algorithmVersion: input.algorithmVersion,
+        sourceFingerprint: input.sourceFingerprint,
+        windowStartMs: input.windowStartMs,
+        windowEndMs: input.windowEndMs,
+        outputs: {
+          vocals: { locator: `${finalLocatorDir}/vocals.wav`, ...vocals },
+          instrumental: { locator: `${finalLocatorDir}/instrumental.wav`, ...instrumental },
+        },
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async _runPreviewJob(input, job) {
+    const userDataPath = this.options.userDataPath();
+    const root = stemStorageRoot(userDataPath);
+    const stagingRoot = path.join(root, '.staging');
+    const jobId = crypto.randomUUID();
+    const jobRoot = path.join(stagingRoot, `preview-${jobId}`);
+    const preparedDir = path.join(jobRoot, 'pair');
+    const trackDir = hash(input.trackId).slice(0, 20);
+    const identityDir = hash(`${input.sourceFingerprint}\0${input.algorithmVersion}\0${input.windowStartMs}\0${input.windowEndMs}`).slice(0, 24);
+    const finalLocatorDir = ['previews', trackDir, identityDir].join('/');
+    const finalDir = path.join(root, 'previews', trackDir, identityDir);
+    const modelRoot = defaultModelRoot(this.options);
+    const previewDurationMs = Math.round(input.windowEndMs - input.windowStartMs);
+
+    const cached = await this._loadCachedPreview(finalDir, finalLocatorDir, input);
+    if (cached) return cached;
+
+    const beforeIdentity = await statIdentity(input.sourceFilePath);
+    await fs.mkdir(jobRoot, { recursive: true });
+    try {
+      const workerArgs = [
+        '--source', input.sourceFilePath,
+        '--output', jobRoot,
+        '--model-root', modelRoot,
+        '--model', STEM_MODEL_NAME,
+        '--expected-duration-ms', String(previewDurationMs),
+        '--window-start-ms', String(Math.round(input.windowStartMs)),
+        '--window-duration-ms', String(previewDurationMs),
+      ];
+      if (job.cancelled) return { ok: false, error: { kind: 'cancelled', message: 'Preview preparation was cancelled.' } };
+      const launch = resolveLaunch(this.options, workerArgs);
+      if (!launch) {
+        return { ok: false, error: { kind: 'runtime_unavailable', message: 'The packaged Roulette stem separator is unavailable. Reinstall DropDex.' } };
+      }
+      const worker = await this._spawnWorker(launch, job);
+      if (!worker.ok) return worker;
+      if (job.cancelled) return { ok: false, error: { kind: 'cancelled', message: 'Preview preparation was cancelled.' } };
+
+      const afterIdentity = await statIdentity(input.sourceFilePath);
+      if (!sameIdentity(beforeIdentity, afterIdentity)) {
+        return { ok: false, error: { kind: 'source_changed', message: 'The source audio changed while the Roulette preview was being prepared.' } };
+      }
+
+      const vocalsPath = path.join(preparedDir, 'vocals.wav');
+      const instrumentalPath = path.join(preparedDir, 'instrumental.wav');
+      const [vocalsMeta, instrumentalMeta] = await Promise.all([
+        inspectPublishedStem(vocalsPath, worker.result?.outputs?.vocals),
+        inspectPublishedStem(instrumentalPath, worker.result?.outputs?.instrumental),
+      ]);
+      if (Math.abs(vocalsMeta.durationMs - previewDurationMs) > 500 || Math.abs(instrumentalMeta.durationMs - previewDurationMs) > 500) {
+        return { ok: false, error: { kind: 'validation_failed', message: 'Generated preview duration does not match the selected 16-bar window.' } };
+      }
+      if (Math.abs(vocalsMeta.durationMs - instrumentalMeta.durationMs) > 2) {
+        return { ok: false, error: { kind: 'validation_failed', message: 'Generated preview stem durations do not align.' } };
+      }
+
+      await fs.writeFile(path.join(preparedDir, 'manifest.json'), JSON.stringify({
+        contractVersion: 1,
+        algorithmVersion: input.algorithmVersion,
+        sourceFingerprint: input.sourceFingerprint,
+        windowStartMs: input.windowStartMs,
+        windowEndMs: input.windowEndMs,
+        outputs: { vocals: vocalsMeta, instrumental: instrumentalMeta },
+      }), 'utf8');
+      if (job.cancelled) return { ok: false, error: { kind: 'cancelled', message: 'Preview preparation was cancelled.' } };
+      await atomicPublishDirectory(preparedDir, finalDir);
+      const [publishedVocals, publishedInstrumental] = await Promise.all([
+        inspectPublishedStem(path.join(finalDir, 'vocals.wav'), vocalsMeta),
+        inspectPublishedStem(path.join(finalDir, 'instrumental.wav'), instrumentalMeta),
+      ]);
+      await fs.writeFile(path.join(finalDir, 'manifest.json'), JSON.stringify({
+        contractVersion: 1,
+        algorithmVersion: input.algorithmVersion,
+        sourceFingerprint: input.sourceFingerprint,
+        windowStartMs: input.windowStartMs,
+        windowEndMs: input.windowEndMs,
+        outputs: { vocals: publishedVocals, instrumental: publishedInstrumental },
+      }), 'utf8');
+      return {
+        ok: true,
+        cached: false,
+        algorithmVersion: input.algorithmVersion,
+        sourceFingerprint: input.sourceFingerprint,
+        windowStartMs: input.windowStartMs,
+        windowEndMs: input.windowEndMs,
+        outputs: {
+          vocals: { locator: `${finalLocatorDir}/vocals.wav`, ...publishedVocals },
+          instrumental: { locator: `${finalLocatorDir}/instrumental.wav`, ...publishedInstrumental },
+        },
+      };
+    } catch (error) {
+      if (job.cancelled) return { ok: false, error: { kind: 'cancelled', message: 'Preview preparation was cancelled.' } };
+      const code = error && typeof error === 'object' ? error.code : null;
+      if (code === 'ENOENT') {
+        return { ok: false, error: { kind: 'processing_failed', message: 'The source audio or local preview runtime is unavailable.' } };
+      }
+      return { ok: false, error: { kind: 'processing_failed', message: error instanceof Error ? error.message : String(error) } };
+    } finally {
+      await fs.rm(jobRoot, { recursive: true, force: true }).catch(() => {});
     }
   }
 
@@ -497,6 +737,7 @@ module.exports = {
   JOB_TIMEOUT_MS,
   RESULT_PREFIX,
   SEPARATOR_VERSION,
+  PREVIEW_ALGORITHM_VERSION,
   STEM_MODEL_NAME,
   StemSeparationBridge,
   atomicPublishDirectory,

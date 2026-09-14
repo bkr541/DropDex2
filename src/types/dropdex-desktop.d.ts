@@ -111,6 +111,8 @@ export type DesktopRouletteRuntimeHealth =
 
 export type DesktopRouletteStemPreparationErrorKind =
   | 'not_found'
+  | 'source_media_required'
+  | 'source_media_mismatch'
   | 'permission_denied'
   | 'security'
   | 'type_mismatch'
@@ -155,6 +157,64 @@ export type DesktopRouletteStemPreparationResult =
 export interface DesktopRouletteStemCancellationResult {
   ok: boolean;
   cancelled: boolean;
+}
+
+export const ROULETTE_PREVIEW_DESKTOP_CONTRACT_VERSION: 1;
+
+export type DesktopRoulettePreviewRole = 'vocal' | 'instrumental';
+
+export interface DesktopRoulettePreviewPreparationInput {
+  trackId: string;
+  role: DesktopRoulettePreviewRole;
+  sourceSegments: string[];
+  sourceFingerprint: string;
+  algorithmVersion: string;
+  windowStartMs: number;
+  windowEndMs: number;
+  expectedVolumeName: string | null;
+}
+
+export type DesktopRoulettePreviewPreparationErrorKind =
+  | 'source_media_required'
+  | 'source_media_mismatch'
+  | 'not_found'
+  | 'permission_denied'
+  | 'security'
+  | 'type_mismatch'
+  | 'runtime_unavailable'
+  | 'processing_failed'
+  | 'source_changed'
+  | 'validation_failed'
+  | 'cancelled'
+  | 'unexpected';
+
+export type DesktopRoulettePreviewPreparationResult =
+  | {
+      ok: true;
+      cached: boolean;
+      algorithmVersion: string;
+      sourceFingerprint: string;
+      windowStartMs: number;
+      windowEndMs: number;
+      outputs: {
+        vocals: DesktopRoulettePreparedStem;
+        instrumental: DesktopRoulettePreparedStem;
+      };
+    }
+  | {
+      ok: false;
+      error: {
+        kind: DesktopRoulettePreviewPreparationErrorKind;
+        message: string;
+        requiredVolumeName?: string | null;
+        connectedVolumeName?: string | null;
+      };
+    };
+
+export interface DesktopUsbReconnectResult {
+  reconnected: boolean;
+  state: DesktopUsbState;
+  reason: 'connected' | 'not_found' | 'volume_mismatch' | 'unavailable' | null;
 }
 
 export interface DesktopCueApplyDraft {
@@ -391,6 +451,7 @@ export interface DropDexDesktopBridge {
   getUsbState(): Promise<DesktopUsbState>;
   getUsbActivityState(): Promise<DesktopUsbActivityState>;
   selectUsbRoot(): Promise<{ cancelled: boolean; state: DesktopUsbState; error?: string }>;
+  reconnectUsb(expectedVolumeName?: string | null): Promise<DesktopUsbReconnectResult>;
   releaseUsb(): Promise<DesktopUsbReleaseResult>;
   disconnectUsb(): Promise<DesktopUsbReleaseResult>;
   resolveTrackSource(segments: string[]): Promise<DesktopTrackSourceResult>;
@@ -398,6 +459,7 @@ export interface DropDexDesktopBridge {
   resolveStemAsset(locator: string): Promise<DesktopStemAssetSourceResult>;
   deleteStemAsset(locator: string): Promise<DesktopStemAssetDeleteResult>;
   prepareRouletteStems(input: DesktopRouletteStemPreparationInput): Promise<DesktopRouletteStemPreparationResult>;
+  prepareRoulettePreview(input: DesktopRoulettePreviewPreparationInput): Promise<DesktopRoulettePreviewPreparationResult>;
   cancelRouletteStems(trackId: string): Promise<DesktopRouletteStemCancellationResult>;
   metadataApplyAvailability(): Promise<{ available: boolean; reason: string | null; metadataSchemaVersion: number | null; genreMaxLength: number | null; metadataApplySupported: boolean }>;
   metadataApplyPreflight(scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataPreflightResult>;

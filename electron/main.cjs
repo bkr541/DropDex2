@@ -475,6 +475,59 @@ async function releaseUsbAccess({ disconnect = false } = {}) {
   };
 }
 
+function normalizedVolumeIdentity(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().replace(/[\\/]+$/g, '').toLowerCase();
+  return normalized || null;
+}
+
+function connectedVolumeName() {
+  return usbConnection?.volumeName ?? null;
+}
+
+function volumeMatches(expectedVolumeName, actualVolumeName) {
+  const expected = normalizedVolumeIdentity(expectedVolumeName);
+  if (!expected) return true;
+  const actual = normalizedVolumeIdentity(actualVolumeName);
+  return Boolean(actual && actual === expected);
+}
+
+async function reconnectPersistedUsb(expectedVolumeName = null) {
+  if (usbConnection) {
+    const state = await desktopConnectionState();
+    if (state.status === 'connected' && volumeMatches(expectedVolumeName, connectedVolumeName())) {
+      return { reconnected: true, state, reason: 'connected' };
+    }
+    if (state.status === 'connected' && !volumeMatches(expectedVolumeName, connectedVolumeName())) {
+      return { reconnected: false, state, reason: 'volume_mismatch' };
+    }
+  }
+
+  try {
+    const raw = JSON.parse(await fs.readFile(configPath(), 'utf8'));
+    const candidate = sanitizeConnection(raw);
+    if (!candidate) return { reconnected: false, state: await desktopConnectionState(), reason: 'not_found' };
+    candidate.rootPath = await fs.realpath(candidate.rootPath);
+    candidate.volumeName = candidate.volumeName || path.basename(candidate.rootPath) || candidate.rootPath;
+    if (!volumeMatches(expectedVolumeName, candidate.volumeName)) {
+      return { reconnected: false, state: releasedUsbState(), reason: 'volume_mismatch' };
+    }
+    const check = await inspectUsbRoot(candidate.rootPath);
+    if (check.status !== 'available') {
+      return { reconnected: false, state: releasedUsbState(), reason: 'unavailable' };
+    }
+    usbConnection = candidate;
+    releasedUsbMetadata = null;
+    clearUsbMediaTokens();
+    usbStreams.resetForConnection();
+    cachedUsbState = disconnectedUsbState();
+    const state = await desktopConnectionState();
+    return { reconnected: state.status === 'connected', state, reason: state.status === 'connected' ? 'connected' : 'unavailable' };
+  } catch {
+    return { reconnected: false, state: await desktopConnectionState(), reason: 'not_found' };
+  }
+}
+
 async function selectUsbRoot() {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Select Rekordbox USB Root',
@@ -524,6 +577,12 @@ function registerIpcHandlers() {
     usbStreams.snapshot({ connected: Boolean(usbConnection) })
   ));
   ipcMain.handle('dropdex:select-usb-root', () => selectUsbRoot());
+  ipcMain.handle('dropdex:reconnect-usb', async (_event, expectedVolumeName = null) => {
+    if (expectedVolumeName != null && (typeof expectedVolumeName !== 'string' || expectedVolumeName.length > 512)) {
+      return { reconnected: false, state: await desktopConnectionState(), reason: 'volume_mismatch' };
+    }
+    return reconnectPersistedUsb(expectedVolumeName);
+  });
   ipcMain.handle('dropdex:release-usb', () => releaseUsbAccess({ disconnect: false }));
   ipcMain.handle('dropdex:disconnect-usb', () => releaseUsbAccess({ disconnect: true }));
   ipcMain.handle('dropdex:resolve-track-source', async (_event, segments) => {
@@ -626,6 +685,73 @@ function registerIpcHandlers() {
       sourceFilePath: resolved.filePath,
     });
   });
+  ipcMain.handle('dropdex:prepare-roulette-preview', async (_event, payload) => {
+    assertExactObject(
+      payload,
+      ['trackId', 'role', 'sourceSegments', 'sourceFingerprint', 'algorithmVersion', 'windowStartMs', 'windowEndMs', 'expectedVolumeName'],
+      'Roulette preview preparation payload',
+    );
+    if (!validateUsbPathSegments(payload.sourceSegments)) {
+      return { ok: false, error: { kind: 'security', message: 'Unsafe Roulette preview source path was rejected.' } };
+    }
+    const requiredVolumeName = typeof payload.expectedVolumeName === 'string' && payload.expectedVolumeName.trim()
+      ? payload.expectedVolumeName.trim()
+      : null;
+    if (!usbConnection || usbStreams.releasing || usbStreams.released) {
+      return {
+        ok: false,
+        error: {
+          kind: 'source_media_required',
+          message: 'Reconnect the Rekordbox USB that owns this track to continue preview preparation.',
+          requiredVolumeName,
+          connectedVolumeName: connectedVolumeName(),
+        },
+      };
+    }
+    if (!volumeMatches(requiredVolumeName, connectedVolumeName())) {
+      return {
+        ok: false,
+        error: {
+          kind: 'source_media_mismatch',
+          message: 'The connected USB does not match the source media for this track.',
+          requiredVolumeName,
+          connectedVolumeName: connectedVolumeName(),
+        },
+      };
+    }
+    const resolved = await resolveUsbTrackPath(payload.sourceSegments);
+    if (!resolved.ok) {
+      if (resolved.error.kind === 'permission_denied' || resolved.error.kind === 'not_found') {
+        return {
+          ok: false,
+          error: {
+            kind: 'source_media_required',
+            message: resolved.error.message,
+            requiredVolumeName,
+            connectedVolumeName: connectedVolumeName(),
+          },
+        };
+      }
+      return resolved;
+    }
+    const runtimeHealth = await stemSeparationBridge.health();
+    if (!runtimeHealth.available) {
+      return {
+        ok: false,
+        error: { kind: 'runtime_unavailable', message: runtimeHealth.message ?? 'The local Roulette stem runtime is unavailable.' },
+      };
+    }
+    return stemSeparationBridge.preparePreview({
+      trackId: payload.trackId,
+      role: payload.role,
+      sourceFingerprint: payload.sourceFingerprint,
+      algorithmVersion: payload.algorithmVersion,
+      windowStartMs: payload.windowStartMs,
+      windowEndMs: payload.windowEndMs,
+      sourceFilePath: resolved.filePath,
+    });
+  });
+
   ipcMain.handle('dropdex:cancel-roulette-stems', (_event, trackId) => {
     if (typeof trackId !== 'string' || !trackId || trackId.length > 256) {
       return { ok: false, cancelled: false };
