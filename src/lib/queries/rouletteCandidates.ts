@@ -1,15 +1,15 @@
 import type { RekordboxTrack } from '../../types';
-import type { RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
+import { rankRoulettePairsBounded, type RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
 import type { RouletteSourceRole } from '../../features/roulette/rouletteSession';
 import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole, type StemAssetRecord, type StemAssetType } from '../../features/roulette/stemAssets';
 import { rouletteStemAssetService } from '../../features/roulette/stemAssetService';
 import { getCurrentInstallationId } from '../desktop/installationIdentity';
 import { fetchTrackBeatGrids, fetchTracksPhrases, fetchTracksVocalAnalysis } from './analysisData';
-import { fetchTracksByIds } from './rekordbox';
+import { fetchActiveImport, fetchTracksByIds } from './rekordbox';
 import { supabase } from '../supabase';
 
 const STEM_PAGE_SIZE = 500;
-
+const TRACK_PAGE_SIZE = 500;
 const READY_STEM_PROBE_LIMIT = 32;
 
 export async function fetchReadyRouletteStemTrackIds(
@@ -22,16 +22,10 @@ export async function fetchReadyRouletteStemTrackIds(
     .map((asset) => asset.track_id);
 }
 
+/** @deprecated Stage 2 readiness is musical eligibility, not prepared-stem row counts. */
 export async function hasRouletteReadyStemPairCandidates(): Promise<boolean> {
-  const [vocalTrackIds, instrumentalTrackIds] = await Promise.all([
-    fetchReadyRouletteStemTrackIds('vocals'),
-    fetchReadyRouletteStemTrackIds('instrumental'),
-  ]);
-  if (vocalTrackIds.length === 0 || instrumentalTrackIds.length === 0) return false;
-  const instrumentalIds = new Set(instrumentalTrackIds);
-  if (instrumentalIds.size > 1) return true;
-  const onlyInstrumental = instrumentalTrackIds[0];
-  return vocalTrackIds.some((trackId) => trackId !== onlyInstrumental);
+  const result = await fetchRouletteCandidateReadiness();
+  return result.available;
 }
 
 export async function fetchReadyRouletteStemAssets(
@@ -82,33 +76,105 @@ export async function fetchRouletteTrack(trackId: string): Promise<RekordboxTrac
   return track ?? null;
 }
 
+async function resolveRouletteImportId(importId?: string): Promise<string | null> {
+  if (importId) return importId;
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw new Error(error.message);
+  const userId = data.session?.user.id;
+  if (!userId) return null;
+  const activeImport = await fetchActiveImport(userId);
+  return activeImport?.id ?? null;
+}
+
+async function fetchRouletteImportTracks(importId: string): Promise<RekordboxTrack[]> {
+  const tracks: RekordboxTrack[] = [];
+  for (let offset = 0; ; offset += TRACK_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('rekordbox_tracks')
+      .select('*')
+      .eq('import_id', importId)
+      .order('id', { ascending: true })
+      .range(offset, offset + TRACK_PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as RekordboxTrack[];
+    tracks.push(...rows);
+    if (rows.length < TRACK_PAGE_SIZE) break;
+  }
+  return tracks;
+}
+
 export async function fetchRouletteCandidateAnalysis(
   role: RouletteSourceRole,
+  importId?: string,
 ): Promise<RouletteCandidateAnalysis[]> {
-  const assets = await fetchReadyRouletteStemAssets(stemTypeForRole(role));
-  if (assets.length === 0) return [];
+  const resolvedImportId = await resolveRouletteImportId(importId);
+  if (!resolvedImportId) return [];
 
-  const trackIds = assets.map((asset) => asset.track_id);
-  const [tracks, beatGrids, phrases, vocalAnalysis] = await Promise.all([
-    fetchTracksByIds(trackIds),
+  const tracks = await fetchRouletteImportTracks(resolvedImportId);
+  if (tracks.length === 0) return [];
+  const trackIds = tracks.map((track) => track.id);
+  const [beatGrids, phrases, vocalAnalysis, readyAssets] = await Promise.all([
     fetchTrackBeatGrids(trackIds),
     fetchTracksPhrases(trackIds),
     fetchTracksVocalAnalysis(trackIds),
+    fetchReadyRouletteStemAssets(stemTypeForRole(role)).catch(() => [] as StemAssetRecord[]),
   ]);
-  const tracksById = new Map(tracks.map((track) => [track.id, track]));
-  const assetsByTrackId = new Map(assets.map((asset) => [asset.track_id, asset]));
+  const readyAssetsByTrackId = new Map(readyAssets.map((asset) => [asset.track_id, asset]));
 
-  return trackIds.flatMap((trackId) => {
-    const track = tracksById.get(trackId);
-    const stemAsset = assetsByTrackId.get(trackId);
-    if (!track || !stemAsset) return [];
-    return [{
+  return tracks.map((track) => {
+    const vocal = vocalAnalysis.get(track.id);
+    const vocalAnalysisAvailable = vocal?.integrity_status === 'valid' && vocal.complete === true;
+    const durationMs = track.duration_ms ?? (track.duration_seconds == null ? null : track.duration_seconds * 1000);
+    const vocalDurationMs = vocalAnalysisAvailable
+      ? vocal.regions.reduce((sum, region) => sum + Math.max(0, region.duration_ms), 0)
+      : null;
+    const vocalPresenceScore = vocalDurationMs != null && durationMs && durationMs > 0
+      ? Math.max(0, Math.min(1, vocalDurationMs / durationMs))
+      : null;
+    return {
       track,
-      stemAsset,
-      beatGrid: beatGrids.get(trackId) ?? null,
-      phraseCount: phrases.get(trackId)?.length ?? 0,
-      vocalAnalysisAvailable: vocalAnalysis.get(trackId)?.integrity_status === 'valid'
-        && vocalAnalysis.get(trackId)?.complete === true,
-    }];
+      stemAsset: readyAssetsByTrackId.get(track.id) ?? null,
+      beatGrid: beatGrids.get(track.id) ?? null,
+      phraseCount: phrases.get(track.id)?.length ?? 0,
+      vocalAnalysisAvailable,
+      vocalPresenceScore,
+    };
   });
+}
+
+export interface RouletteCandidateReadiness {
+  available: boolean;
+  importId: string | null;
+  vocalCandidateCount: number;
+  instrumentalCandidateCount: number;
+  compatiblePairCount: number;
+  reason: 'no-active-library' | 'no-eligible-pair' | null;
+}
+
+export async function fetchRouletteCandidateReadiness(importId?: string): Promise<RouletteCandidateReadiness> {
+  const resolvedImportId = await resolveRouletteImportId(importId);
+  if (!resolvedImportId) {
+    return {
+      available: false,
+      importId: null,
+      vocalCandidateCount: 0,
+      instrumentalCandidateCount: 0,
+      compatiblePairCount: 0,
+      reason: 'no-active-library',
+    };
+  }
+
+  const [vocals, instrumentals] = await Promise.all([
+    fetchRouletteCandidateAnalysis('vocal', resolvedImportId),
+    fetchRouletteCandidateAnalysis('instrumental', resolvedImportId),
+  ]);
+  const pairs = rankRoulettePairsBounded(vocals, instrumentals, { maxPairs: 512 });
+  return {
+    available: pairs.length > 0,
+    importId: resolvedImportId,
+    vocalCandidateCount: vocals.length,
+    instrumentalCandidateCount: instrumentals.length,
+    compatiblePairCount: pairs.length,
+    reason: pairs.length > 0 ? null : 'no-eligible-pair',
+  };
 }

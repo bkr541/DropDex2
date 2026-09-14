@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { hasRouletteReadyStemPairCandidates } from '../../lib/queries/rouletteCandidates';
+import { fetchRouletteCandidateReadiness } from '../../lib/queries/rouletteCandidates';
 
 export interface RouletteMatchingAvailabilityState {
   loading: boolean;
@@ -24,13 +24,17 @@ export function useRouletteMatchingAvailability(
 
     let cancelled = false;
     setState({ loading: true, available: false, reason: null });
-    void hasRouletteReadyStemPairCandidates()
-      .then((available) => {
+    void fetchRouletteCandidateReadiness()
+      .then((readiness) => {
         if (cancelled) return;
         setState({
           loading: false,
-          available,
-          reason: available ? null : 'Prepare Roulette stems for at least two different tracks.',
+          available: readiness.available,
+          reason: readiness.available
+            ? null
+            : readiness.reason === 'no-active-library'
+              ? 'Import a Rekordbox library to use Roulette.'
+              : 'No musically compatible Roulette pair is available yet.',
         });
       })
       .catch(() => {
@@ -38,7 +42,7 @@ export function useRouletteMatchingAvailability(
         setState({
           loading: false,
           available: false,
-          reason: 'Roulette could not verify prepared stem candidates.',
+          reason: 'Roulette could not verify musical candidate readiness.',
         });
       });
 

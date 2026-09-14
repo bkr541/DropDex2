@@ -101,35 +101,34 @@ function candidate(
 }
 
 describe('Roulette hard compatibility', () => {
-  it('accepts the Stage-8 direct BPM window and rejects half/double time', () => {
-    expect(ROULETTE_DIRECT_BPM_TOLERANCE).toBe(2);
-    expect(isRouletteDirectTempoCompatible(140, 142)).toBe(true);
-    expect(isRouletteDirectTempoCompatible(142, 142 + ROULETTE_DIRECT_BPM_TOLERANCE)).toBe(true);
-    expect(isRouletteDirectTempoCompatible(142, 144.01)).toBe(false);
+  it('accepts the Stage-2 ±5 BPM window and rejects half/double time', () => {
+    expect(ROULETTE_DIRECT_BPM_TOLERANCE).toBe(5);
+    expect(isRouletteDirectTempoCompatible(137, 142)).toBe(true);
+    expect(isRouletteDirectTempoCompatible(147, 142)).toBe(true);
+    expect(isRouletteDirectTempoCompatible(142, 147.01)).toBe(false);
     expect(isRouletteDirectTempoCompatible(142, 71)).toBe(false);
     expect(isRouletteDirectTempoCompatible(142, 284)).toBe(false);
   });
 
-  it('reports an explicit ratio-bound failure even inside the absolute BPM window', () => {
-    const reference = { track: track('reference', 12), beatGrid: grid('reference') };
+  it.each([
+    ['11A', '11A', null],
+    ['11A', '10A', null],
+    ['11A', '12A', null],
+    ['11A', '11B', null],
+    ['1A', '12A', null],
+    ['12B', '1B', null],
+    ['11A', '1A', 'key-mismatch'],
+    ['11A', '5B', 'key-mismatch'],
+  ] as const)('applies fixed Camelot MVP compatibility %s -> %s', (referenceKey, candidateKey, expected) => {
+    const reference = { track: track('reference', 142, referenceKey), beatGrid: grid('reference') };
     expect(getRouletteHardFilterReason(
-      candidate('ratio-outside', 'vocal', { track: track('ratio-outside', 10) }),
+      candidate(`candidate-${candidateKey}`, 'vocal', { track: track(`candidate-${candidateKey}`, 142, candidateKey) }),
       reference,
       'vocal',
-    )).toBe('tempo-ratio-out-of-range');
+    )).toBe(expected);
   });
 
-  it('enforces canonical exact Camelot key by default', () => {
-    const reference = { track: track('reference', 142, '9a'), beatGrid: grid('reference') };
-    expect(getRouletteHardFilterReason(candidate('exact', 'vocal'), reference, 'vocal')).toBeNull();
-    expect(getRouletteHardFilterReason(
-      candidate('relative', 'vocal', { track: track('relative', 142, '9B') }),
-      reference,
-      'vocal',
-    )).toBe('key-mismatch');
-  });
-
-  it('falls back to normalized key identity when Camelot metadata is unavailable', () => {
+  it('requires a valid Camelot key instead of silently falling back to another key system', () => {
     const referenceTrack = track('reference', 142, '9A');
     referenceTrack.camelot_key = null;
     referenceTrack.normalized_key_name = 'E Minor';
@@ -142,17 +141,17 @@ describe('Roulette hard compatibility', () => {
       candidate('candidate', 'vocal', { track: candidateTrack }),
       reference,
       'vocal',
-    )).toBeNull();
+    )).toBe('missing-key');
   });
 
-  it('rejects non-ready stems before soft ranking can matter', () => {
+  it('does not require pre-existing stems for candidate eligibility', () => {
     const reference = { track: track('reference'), beatGrid: grid('reference') };
-    const failed = candidate('failed', 'vocal', {
-      stemAsset: asset('failed', 'vocals', 'failed'),
-      phraseCount: 999,
+    const noStem = candidate('no-stem', 'vocal', {
+      stemAsset: null,
+      phraseCount: 2,
       vocalAnalysisAvailable: true,
     });
-    expect(rankRouletteCandidates([failed], reference, 'vocal')).toEqual([]);
+    expect(rankRouletteCandidates([noStem], reference, 'vocal')).toHaveLength(1);
   });
 
   it('requires a usable beat grid on both sides', () => {
@@ -217,6 +216,6 @@ describe('Roulette hard compatibility', () => {
     expect(pairs.length).toBeGreaterThan(0);
     expect(pairs.length).toBeLessThanOrEqual(40);
     expect(pairs.every((pair) => pair.vocal.track.id !== pair.instrumental.track.id)).toBe(true);
-    expect(pairs.every((pair) => Math.abs((pair.vocal.track.bpm ?? 0) - (pair.instrumental.track.bpm ?? 0)) <= 2)).toBe(true);
+    expect(pairs.every((pair) => Math.abs((pair.vocal.track.bpm ?? 0) - (pair.instrumental.track.bpm ?? 0)) <= 5)).toBe(true);
   });
 });

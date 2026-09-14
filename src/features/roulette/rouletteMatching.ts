@@ -1,23 +1,19 @@
 import type { RekordboxTrack } from '../../types';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
-import { parseCamelotKey } from '../../lib/music/camelot';
+import { classifyCamelotRelationship, parseCamelotKey } from '../../lib/music/camelot';
 import type { BeatGridRow } from '../../lib/queries/analysisData';
 import type { StemAssetRecord, StemAssetType } from './stemAssets';
 import { stemTypeForRole } from './stemAssets';
 import type { RouletteSourceRole } from './rouletteSession';
-import {
-  isRouletteTempoRatioSupported,
-  ROULETTE_DIRECT_BPM_TOLERANCE,
-} from './rouletteTempoSync';
-
-export { ROULETTE_DIRECT_BPM_TOLERANCE } from './rouletteTempoSync';
+export const ROULETTE_DIRECT_BPM_TOLERANCE = 5;
 
 export interface RouletteCandidateAnalysis {
   track: RekordboxTrack;
-  stemAsset: StemAssetRecord;
+  stemAsset: StemAssetRecord | null;
   beatGrid: BeatGridRow | null;
   phraseCount: number;
   vocalAnalysisAvailable: boolean;
+  vocalPresenceScore?: number | null;
 }
 
 export interface RouletteCandidateReference {
@@ -41,37 +37,33 @@ export interface RoulettePairScore {
 export type RouletteHardFilterReason =
   | 'invalid-parent-track'
   | 'wrong-stem-type'
-  | 'stem-not-ready'
   | 'missing-key'
   | 'key-mismatch'
   | 'missing-bpm'
   | 'tempo-mismatch'
-  | 'tempo-ratio-out-of-range'
   | 'variable-tempo'
   | 'missing-beat-grid'
   | 'same-parent-track'
-  | 'excluded-parent-track';
+  | 'excluded-parent-track'
+  | 'source-unavailable';
 
 function validBpm(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
-function exactKeyRelationship(
-  reference: Pick<RekordboxTrack, 'camelot_key' | 'normalized_key_name'>,
-  candidate: Pick<RekordboxTrack, 'camelot_key' | 'normalized_key_name'>,
-): 'exact' | 'mismatch' | 'missing' {
+function rouletteKeyRelationship(
+  reference: Pick<RekordboxTrack, 'camelot_key'>,
+  candidate: Pick<RekordboxTrack, 'camelot_key'>,
+): 'exact' | 'branch' | 'mismatch' | 'missing' {
   const referenceCamelot = parseCamelotKey(reference.camelot_key)?.code ?? null;
   const candidateCamelot = parseCamelotKey(candidate.camelot_key)?.code ?? null;
-  if (referenceCamelot && candidateCamelot) {
-    return referenceCamelot === candidateCamelot ? 'exact' : 'mismatch';
+  if (!referenceCamelot || !candidateCamelot) return 'missing';
+  const relationship = classifyCamelotRelationship(referenceCamelot, candidateCamelot);
+  if (relationship === 'exact') return 'exact';
+  if (relationship === 'relative' || relationship === 'adjacent_up' || relationship === 'adjacent_down') {
+    return 'branch';
   }
-
-  const referenceNormalized = reference.normalized_key_name?.trim().toLowerCase() || null;
-  const candidateNormalized = candidate.normalized_key_name?.trim().toLowerCase() || null;
-  if (referenceNormalized && candidateNormalized) {
-    return referenceNormalized === candidateNormalized ? 'exact' : 'mismatch';
-  }
-  return 'missing';
+  return 'mismatch';
 }
 
 export function rouletteDirectTempoDifference(
@@ -112,12 +104,13 @@ export function getRouletteHardFilterReason(
   const candidateId = candidate.track.id?.trim();
   const referenceId = reference.track.id?.trim();
   if (!candidateId || !referenceId) return 'invalid-parent-track';
-  if (candidate.stemAsset.stem_type !== expectedStemType(role)) return 'wrong-stem-type';
-  if (candidate.stemAsset.status !== 'ready') return 'stem-not-ready';
+  if (candidate.stemAsset && candidate.stemAsset.stem_type !== expectedStemType(role)) return 'wrong-stem-type';
   if (candidateId === referenceId) return 'same-parent-track';
   if (excludedTrackIds.has(candidateId)) return 'excluded-parent-track';
+  if (!(candidate.track.file_path_normalized ?? candidate.track.file_path)?.trim()
+    || !(reference.track.file_path_normalized ?? reference.track.file_path)?.trim()) return 'source-unavailable';
 
-  const keyRelationship = exactKeyRelationship(reference.track, candidate.track);
+  const keyRelationship = rouletteKeyRelationship(reference.track, candidate.track);
   if (keyRelationship === 'missing') return 'missing-key';
   if (keyRelationship === 'mismatch') return 'key-mismatch';
 
@@ -125,10 +118,6 @@ export function getRouletteHardFilterReason(
   if (!isRouletteDirectTempoCompatible(reference.track.bpm, candidate.track.bpm)) {
     return 'tempo-mismatch';
   }
-  if (!isRouletteTempoRatioSupported(candidate.track.bpm, reference.track.bpm)) {
-    return 'tempo-ratio-out-of-range';
-  }
-
   if (!hasStableRouletteTempoGrid(reference.beatGrid) || !hasStableRouletteTempoGrid(candidate.beatGrid)) {
     return 'variable-tempo';
   }
@@ -154,9 +143,16 @@ export function scoreRouletteCandidate(
     ? Math.max(0, 1 - bpmDifference / Math.max(ROULETTE_DIRECT_BPM_TOLERANCE, 1e-9))
     : 0;
 
-  let score = proximity * 100;
-  if (candidate.phraseCount > 0) score += 8;
-  if (role === 'vocal' && candidate.vocalAnalysisAvailable) score += 10;
+  const keyRelationship = rouletteKeyRelationship(reference.track, candidate.track);
+  let score = keyRelationship === 'exact' ? 140 : keyRelationship === 'branch' ? 110 : 0;
+  score += proximity * 60;
+  if (candidate.phraseCount > 0) score += 10;
+  if ((candidate.beatGrid?.downbeat_count ?? candidate.beatGrid?.beats.filter((beat) => beat.isDownbeat).length ?? 0) > 0) score += 6;
+  if (role === 'vocal' && candidate.vocalAnalysisAvailable) score += 8;
+  if (role === 'vocal' && candidate.vocalPresenceScore != null) {
+    score += Math.max(0, Math.min(1, candidate.vocalPresenceScore)) * 18;
+  }
+  if (candidate.stemAsset?.status === 'ready') score += 6;
 
   const referenceGenre = normalizedText(reference.track.genre);
   const candidateGenre = normalizedText(candidate.track.genre);
@@ -229,6 +225,69 @@ export function rankRoulettePairs(
 }
 
 
+export type RouletteCandidateDiagnosticReason =
+  | 'eligible'
+  | 'incompatible-key'
+  | 'bpm-outside-range'
+  | 'missing-invalid-beat-grid'
+  | 'variable-tempo'
+  | 'same-parent-conflict'
+  | 'source-unavailable';
+
+export type RouletteCandidateDiagnostics = Record<RouletteCandidateDiagnosticReason, number>;
+
+export function createRouletteCandidateDiagnostics(): RouletteCandidateDiagnostics {
+  return {
+    eligible: 0,
+    'incompatible-key': 0,
+    'bpm-outside-range': 0,
+    'missing-invalid-beat-grid': 0,
+    'variable-tempo': 0,
+    'same-parent-conflict': 0,
+    'source-unavailable': 0,
+  };
+}
+
+export function diagnosticReasonForRoulettePair(
+  vocal: RouletteCandidateAnalysis,
+  instrumental: RouletteCandidateAnalysis,
+): RouletteCandidateDiagnosticReason {
+  if (vocal.track.id === instrumental.track.id) return 'same-parent-conflict';
+  if (!(vocal.track.file_path_normalized ?? vocal.track.file_path)?.trim()
+    || !(instrumental.track.file_path_normalized ?? instrumental.track.file_path)?.trim()) {
+    return 'source-unavailable';
+  }
+  if (!hasStableRouletteTempoGrid(vocal.beatGrid) || !hasStableRouletteTempoGrid(instrumental.beatGrid)) {
+    return 'variable-tempo';
+  }
+  if (!hasUsableRouletteBeatGrid(vocal.beatGrid) || !hasUsableRouletteBeatGrid(instrumental.beatGrid)) {
+    return 'missing-invalid-beat-grid';
+  }
+  const relationship = rouletteKeyRelationship(vocal.track, instrumental.track);
+  if (relationship === 'missing' || relationship === 'mismatch') return 'incompatible-key';
+  if (!isRouletteDirectTempoCompatible(vocal.track.bpm, instrumental.track.bpm)) return 'bpm-outside-range';
+  return 'eligible';
+}
+
+export function chooseWeightedRoulettePair(
+  orderedPairs: readonly RoulettePairScore[],
+  rng: () => number = Math.random,
+): RoulettePairScore | null {
+  if (orderedPairs.length === 0) return null;
+  const floor = Math.min(...orderedPairs.map((pair) => pair.score));
+  const weights = orderedPairs.map((pair, index) => Math.max(1, pair.score - floor + 1) / (1 + index * 0.08));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  const rawSample = rng();
+  const sample = Math.min(0.999999999, Math.max(0, Number.isFinite(rawSample) ? rawSample : 0));
+  let cursor = sample * total;
+  for (let index = 0; index < orderedPairs.length; index += 1) {
+    cursor -= weights[index];
+    if (cursor <= 0) return orderedPairs[index];
+  }
+  return orderedPairs[orderedPairs.length - 1];
+}
+
+
 export const ROULETTE_PAIR_POOL_LIMIT = 512;
 export const ROULETTE_PAIR_PARTNERS_PER_VOCAL = 8;
 
@@ -237,13 +296,22 @@ export interface RoulettePairPoolOptions {
   maxPartnersPerVocal?: number;
 }
 
-function matchingKeyTokens(track: Pick<RekordboxTrack, 'camelot_key' | 'normalized_key_name'>): string[] {
-  const tokens: string[] = [];
-  const camelot = parseCamelotKey(track.camelot_key)?.code ?? null;
-  if (camelot) tokens.push(`camelot:${camelot}`);
-  const normalized = track.normalized_key_name?.trim().toLowerCase();
-  if (normalized) tokens.push(`normalized:${normalized}`);
-  return [...new Set(tokens)];
+function exactKeyToken(track: Pick<RekordboxTrack, 'camelot_key'>): string | null {
+  const key = parseCamelotKey(track.camelot_key);
+  return key ? `camelot:${key.code}` : null;
+}
+
+function compatibleKeyTokens(track: Pick<RekordboxTrack, 'camelot_key'>): string[] {
+  const key = parseCamelotKey(track.camelot_key);
+  if (!key) return [];
+  const wrap = (number: number) => ((number - 1 + 12) % 12) + 1;
+  const opposite = key.mode === 'A' ? 'B' : 'A';
+  return [
+    `camelot:${key.number}${key.mode}`,
+    `camelot:${wrap(key.number - 1)}${key.mode}`,
+    `camelot:${wrap(key.number + 1)}${key.mode}`,
+    `camelot:${key.number}${opposite}`,
+  ];
 }
 
 function compareCandidateBpm(left: RouletteCandidateAnalysis, right: RouletteCandidateAnalysis): number {
@@ -328,11 +396,11 @@ export function rankRoulettePairsBounded(
   const index = new Map<string, RouletteCandidateAnalysis[]>();
 
   for (const instrumental of instrumentals) {
-    for (const token of matchingKeyTokens(instrumental.track)) {
-      const bucket = index.get(token);
-      if (bucket) bucket.push(instrumental);
-      else index.set(token, [instrumental]);
-    }
+    const token = exactKeyToken(instrumental.track);
+    if (!token) continue;
+    const bucket = index.get(token);
+    if (bucket) bucket.push(instrumental);
+    else index.set(token, [instrumental]);
   }
   for (const bucket of index.values()) bucket.sort(compareCandidateBpm);
 
@@ -343,7 +411,7 @@ export function rankRoulettePairsBounded(
 
     const possible = new Map<string, RouletteCandidateAnalysis>();
     const probeLimit = maxPartnersPerVocal * 2;
-    for (const token of matchingKeyTokens(vocal.track)) {
+    for (const token of compatibleKeyTokens(vocal.track)) {
       const bucket = index.get(token);
       if (!bucket) continue;
       for (const instrumental of nearestTempoCandidates(bucket, vocal.track.bpm, probeLimit)) {
