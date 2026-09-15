@@ -1345,49 +1345,6 @@ function CueWaveformPanel({
               />
             <div className={cn('grid gap-x-[29px] gap-y-0 transition-[grid-template-columns] duration-200', labelsCollapsed ? 'grid-cols-[48px_minmax(0,1fr)]' : 'grid-cols-[150px_minmax(0,1fr)]')}>
               <div className="h-[40px] border-b border-[#1e2a30]">
-                <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Sections" color="#60a5fa" collapsed={labelsCollapsed} />
-              </div>
-              <div className="h-[40px] border-b border-[#1e2a30]">
-                <div className="relative mx-5 h-full overflow-hidden">
-                {phraseLoading ? (
-                  <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
-                ) : sections.length === 0 ? (
-                  <div className="absolute inset-0 flex items-center px-2">
-                    <div className="h-[30px] w-full rounded-[5px] border border-white/[0.035] bg-white/[0.015]" />
-                    <span className="absolute left-4 text-[10px] font-medium uppercase tracking-[0.12em] text-[#66717b]">
-                      Sections unavailable
-                    </span>
-                  </div>
-                ) : (
-                  sections.map((section) => {
-                    const left = percentageAt(section.startMs, viewStart, effectiveViewEnd);
-                    const right = percentageAt(section.endMs, viewStart, effectiveViewEnd);
-                    const width = Math.max(0, right - left);
-                    return (
-                      <div
-                        key={section.id}
-                        className="absolute top-[5px] h-[28px] flex flex-col justify-start pt-[5px] pl-1.5 overflow-hidden"
-                        style={{
-                          left: `${left}%`,
-                          width: `${width}%`,
-                          backgroundColor: section.panelColor,
-                        }}
-                        title={`${section.label} · ${formatTime(section.startMs)}–${formatTime(section.endMs)}`}
-                      >
-                        <span
-                          className="whitespace-nowrap font-mono text-[9px] font-bold leading-none"
-                          style={{ color: section.waveformColor }}
-                        >
-                          {section.label}
-                        </span>
-                      </div>
-                    );
-                  })
-                )}
-                </div>
-              </div>
-
-              <div className="h-[40px] border-b border-[#1e2a30]">
                 <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.25} />} label="Cues" color="#fb923c" collapsed={labelsCollapsed} />
               </div>
               <div className="h-[40px] overflow-hidden border-b border-[#1e2a30]">
@@ -1492,6 +1449,52 @@ function CueWaveformPanel({
                       );
                     })}
                   </>
+                )}
+                </div>
+              </div>
+
+              <div className="h-[40px] border-b border-[#1e2a30]">
+                <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Sections" color="#60a5fa" collapsed={labelsCollapsed} />
+              </div>
+              <div className="h-[40px] border-b border-[#1e2a30]">
+                <div className="relative mx-5 h-full overflow-hidden">
+                {phraseLoading ? (
+                  <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
+                ) : sections.length === 0 ? (
+                  <div className="absolute inset-0 flex items-center px-2">
+                    <div className="h-[30px] w-full rounded-[5px] border border-white/[0.035] bg-white/[0.015]" />
+                    <span className="absolute left-4 text-[10px] font-medium uppercase tracking-[0.12em] text-[#66717b]">
+                      Sections unavailable
+                    </span>
+                  </div>
+                ) : (
+                  sections.map((section) => {
+                    const left = percentageAt(section.startMs, viewStart, effectiveViewEnd);
+                    const right = percentageAt(section.endMs, viewStart, effectiveViewEnd);
+                    const width = Math.max(0, right - left);
+                    return (
+                      <div
+                        key={section.id}
+                        className="absolute top-[5px] h-[28px] flex items-center justify-center overflow-hidden"
+                        style={{
+                          left: `${left}%`,
+                          width: `${width}%`,
+                          backgroundColor: section.panelColor,
+                        }}
+                        title={`${section.label} · ${formatTime(section.startMs)}–${formatTime(section.endMs)}`}
+                      >
+                        <span
+                          className="whitespace-nowrap font-mono text-[9px] font-bold leading-none tracking-wide"
+                          style={{
+                            color: '#ffffff',
+                            textShadow: `0 1px 4px rgba(0,0,0,0.7), 0 0 8px ${section.waveformColor}99`,
+                          }}
+                        >
+                          {section.label}
+                        </span>
+                      </div>
+                    );
+                  })
                 )}
                 </div>
               </div>
