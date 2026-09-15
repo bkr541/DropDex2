@@ -1,4 +1,4 @@
-import { useState, useMemo, memo, useCallback, useRef, type ReactNode } from 'react';
+import { useState, useMemo, memo, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
@@ -32,6 +32,7 @@ import type {
   UserGenrePreference,
 } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
+import { supabase } from '../../lib/supabase';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
 import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Undo, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
@@ -823,6 +824,7 @@ function DesktopLibraryHero({
   largestPlaylistName,
   onImport,
   onResumeAnalysis,
+  onShowIncompleteAnalysis,
 }: {
   latestImport: RekordboxImport;
   profile: UserProfile | null;
@@ -832,6 +834,7 @@ function DesktopLibraryHero({
   largestPlaylistName: string | null;
   onImport: () => void;
   onResumeAnalysis?: (importId: string) => void;
+  onShowIncompleteAnalysis?: () => void;
 }) {
   const { volumeName } = useUsbConnection();
   const [heroBg, setHeroBg] = useState<string | null>(null);
@@ -931,7 +934,14 @@ function DesktopLibraryHero({
         </div>
 
         {/* Track Analysis */}
-        <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-4 py-3 w-[264px] shrink-0">
+        <div
+          className={cn(
+            'rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-4 py-3 w-[264px] shrink-0',
+            showAnalysisWarning && onShowIncompleteAnalysis && 'cursor-pointer hover:bg-white/[0.07] transition-colors',
+          )}
+          onClick={showAnalysisWarning && onShowIncompleteAnalysis ? onShowIncompleteAnalysis : undefined}
+          role={showAnalysisWarning && onShowIncompleteAnalysis ? 'button' : undefined}
+        >
           <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">Track Analysis</p>
           {showAnalysisWarning ? (
             <>
@@ -942,7 +952,7 @@ function DesktopLibraryHero({
                 </span>
               </div>
               {isActionable && onResumeAnalysis && (
-                <ControlButton variant="neutral" onClick={() => onResumeAnalysis(latestImport.id)} className="mt-1 w-full text-[10px]">
+                <ControlButton variant="neutral" onClick={(e) => { e.stopPropagation(); onResumeAnalysis(latestImport.id); }} className="mt-1 w-full text-[10px]">
                   <Renew size={11} /> Resume Analysis
                 </ControlButton>
               )}
@@ -1145,6 +1155,26 @@ export function LibraryView({
 
   const showSearch = searchQuery.trim().length >= 2;
 
+  // ── Incomplete analysis view ───────────────────────────────────────────────
+  const [showIncompleteAnalysis, setShowIncompleteAnalysis] = useState(false);
+  const [incompleteTracks, setIncompleteTracks] = useState<RekordboxTrack[]>([]);
+  const [incompleteFetching, setIncompleteFetching] = useState(false);
+
+  useEffect(() => {
+    if (!showIncompleteAnalysis || !importId) return;
+    setIncompleteFetching(true);
+    supabase
+      .from('rekordbox_tracks')
+      .select('*')
+      .eq('rekordbox_import_id', importId)
+      .not('analysis_parse_status', 'in', '("completed","reused")')
+      .order('title')
+      .then(({ data }) => {
+        setIncompleteTracks((data as RekordboxTrack[]) ?? []);
+        setIncompleteFetching(false);
+      });
+  }, [showIncompleteAnalysis, importId]);
+
   // ── Derived stats ──────────────────────────────────────────────────────────
 
   const genreStats = useMemo(
@@ -1303,6 +1333,7 @@ export function LibraryView({
                               largestPlaylistName={largestPlaylist?.name ?? null}
                               onImport={onImport}
                               onResumeAnalysis={onResumeAnalysis}
+                              onShowIncompleteAnalysis={() => setShowIncompleteAnalysis(true)}
                             />
                           </div>
                           <div className="lg:hidden">
@@ -1316,26 +1347,84 @@ export function LibraryView({
                         </div>
                       </div>
 
-                      {/* Tab bar */}
-                      <div className="flex items-center gap-1 overflow-x-auto scrollbar-none border-b border-[var(--color-border-subtle)]">
-                        {TABS.map((tab) => (
-                          <button
-                            key={tab.id}
-                            onClick={() => onActiveTabChange(tab.id)}
-                            className={cn(
-                              'shrink-0 px-4 py-2.5 text-sm font-bold transition-all border-b-2 -mb-px',
-                              activeTab === tab.id
-                                ? 'text-primary border-primary'
-                                : 'text-muted-foreground border-transparent hover:text-foreground',
-                            )}
-                          >
-                            {tab.label}
-                          </button>
-                        ))}
-                      </div>
+                      {/* Tab bar — hidden when viewing incomplete tracks */}
+                      {!showIncompleteAnalysis && (
+                        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none border-b border-[var(--color-border-subtle)]">
+                          {TABS.map((tab) => (
+                            <button
+                              key={tab.id}
+                              onClick={() => onActiveTabChange(tab.id)}
+                              className={cn(
+                                'shrink-0 px-4 py-2.5 text-sm font-bold transition-all border-b-2 -mb-px',
+                                activeTab === tab.id
+                                  ? 'text-primary border-primary'
+                                  : 'text-muted-foreground border-transparent hover:text-foreground',
+                              )}
+                            >
+                              {tab.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
+                    {/* ── Incomplete analysis track list ── */}
+                    {showIncompleteAnalysis && (
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => { setShowIncompleteAnalysis(false); setIncompleteTracks([]); }}
+                            className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            ← Back
+                          </button>
+                          <p className="text-xs font-bold text-foreground">Tracks with incomplete analysis</p>
+                        </div>
+                        {incompleteFetching ? (
+                          <div className="flex items-center justify-center py-16">
+                            <CircleDash className="animate-spin text-primary" size={28} />
+                          </div>
+                        ) : incompleteTracks.length === 0 ? (
+                          <p className="text-center py-12 text-muted-foreground text-sm">No tracks with incomplete analysis.</p>
+                        ) : (
+                          <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
+                            <div className="hidden sm:grid grid-cols-[36px_1fr_56px_56px_88px_88px] px-4 py-2.5 border-b border-[var(--color-border-faint)] gap-x-2">
+                              {['', 'Track', 'BPM', 'Key', 'Genre', 'Status'].map((col, i) => (
+                                <p
+                                  key={col || `col-${i}`}
+                                  className={cn(
+                                    'text-[9px] uppercase tracking-widest text-muted-foreground font-bold',
+                                    i === 2 || i === 3 ? 'text-center' : '',
+                                    i === 5 ? 'text-right' : '',
+                                  )}
+                                >
+                                  {col}
+                                </p>
+                              ))}
+                            </div>
+                            <div className="divide-y divide-[var(--color-border-faint)]">
+                              {incompleteTracks.map((t) => (
+                                <TrackRow
+                                  key={t.id}
+                                  track={t}
+                                  waveformState={getWaveformState(t.id)}
+                                  onRetryWaveform={() => retryWaveform([t.id])}
+                                  isActiveTrack={activeTrack?.id === t.id}
+                                  playerStatus={playerStatus}
+                                  playIntent={playIntent}
+                                  usbConnected={usbConnected}
+                                  onOpen={onTrackClick}
+                                  onPlay={handlePlay}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* ── Scrollable tab content ── */}
+                    {!showIncompleteAnalysis && (
                     <div className="mt-4">
                     <AnimatePresence mode="wait">
                     <motion.div
@@ -1595,6 +1684,7 @@ export function LibraryView({
                     </motion.div>
                   </AnimatePresence>
                 </div>
+                    )}
                   </>
                 )}
               </>
