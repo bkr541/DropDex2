@@ -278,27 +278,36 @@ def _parse_bundle(
 # ── Supabase client ────────────────────────────────────────────────────────────
 
 
+def _bounded_supabase_options():
+    """Return SyncClientOptions with finite PostgREST and Storage timeouts."""
+    from supabase.lib.client_options import SyncClientOptions  # noqa: PLC0415
+
+    return SyncClientOptions(
+        postgrest_client_timeout=settings.analysis_postgrest_timeout_seconds,
+        storage_client_timeout=settings.analysis_storage_timeout_seconds,
+    )
+
+
 def _create_supabase():
-    """Return a service-role Supabase client. Import is deferred so tests can patch."""
+    """Return a service-role Supabase client with finite PostgREST and Storage timeouts."""
     import supabase as _sb  # noqa: PLC0415
 
-    return _sb.create_client(settings.supabase_url, settings.supabase_secret_key)
+    return _sb.create_client(
+        settings.supabase_url, settings.supabase_secret_key, _bounded_supabase_options()
+    )
 
 
 def _create_analysis_worker_supabase():
     """Return a service-role Supabase client with finite PostgREST and Storage timeouts.
 
-    Used only inside the fast analysis worker so individual write operations cannot
-    block a writer batch indefinitely. General application code uses _create_supabase().
+    Used inside the fast analysis worker so individual write operations cannot
+    block a writer batch indefinitely.
     """
     import supabase as _sb  # noqa: PLC0415
-    from supabase.lib.client_options import SyncClientOptions  # noqa: PLC0415
 
-    options = SyncClientOptions(
-        postgrest_client_timeout=settings.analysis_postgrest_timeout_seconds,
-        storage_client_timeout=settings.analysis_storage_timeout_seconds,
+    return _sb.create_client(
+        settings.supabase_url, settings.supabase_secret_key, _bounded_supabase_options()
     )
-    return _sb.create_client(settings.supabase_url, settings.supabase_secret_key, options)
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -1440,6 +1449,22 @@ def _parse_file_metadata(raw: str | None) -> Dict[str, dict]:
     return result
 
 
+def _is_upstream_timeout(exc: BaseException) -> bool:
+    """Return True when exc is a timeout raised by httpx or the Python stdlib."""
+    type_name = type(exc).__name__
+    if type_name in ("TimeoutException", "ReadTimeout", "ConnectTimeout",
+                     "WriteTimeout", "PoolTimeout", "TimeoutError"):
+        return True
+    # httpx wraps some errors; check the module as well.
+    module = type(exc).__module__ or ""
+    if module.startswith("httpx") and "timeout" in type_name.lower():
+        return True
+    # Unwrap one level of chained cause in case the client wraps the raw error.
+    if exc.__cause__ is not None and _is_upstream_timeout(exc.__cause__):
+        return True
+    return False
+
+
 async def process_analysis_batch(
     import_id: str,
     user_id: str,
@@ -1454,6 +1479,23 @@ async def process_analysis_batch(
     except HTTPException:
         raise
     except Exception as exc:
+        if _is_upstream_timeout(exc):
+            logger.warning(
+                "process_analysis_batch upstream timeout for import %s: %s",
+                import_id,
+                exc,
+            )
+            raise HTTPException(
+                status_code=504,
+                detail={
+                    "error_code": "ANALYSIS_BATCH_UPSTREAM_TIMEOUT",
+                    "detail": (
+                        "The analysis batch timed out while waiting for the database."
+                        " Please retry."
+                    ),
+                    "retryable": True,
+                },
+            ) from exc
         logger.exception("process_analysis_batch failed for import %s", import_id)
         raise HTTPException(
             status_code=500,

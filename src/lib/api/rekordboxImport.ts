@@ -663,10 +663,19 @@ export async function startRekordboxImport(
   return parseResponse(response, validateImportStart);
 }
 
+/** Timeout in milliseconds for a single /analysis-batch request. */
+const ANALYSIS_BATCH_REQUEST_TIMEOUT_MS = 65_000;
+
 /**
  * Stage 2: upload a batch of ANLZ analysis files for an existing import.
  * The browser reads immutable File objects supplied by the folder picker; no
  * USB-side write, delete, rename, or database mutation API is used.
+ *
+ * Each request carries an internal 65-second timeout in addition to the
+ * caller-provided AbortSignal. When the internal timer fires the request
+ * is aborted and an Error with message 'ANALYSIS_BATCH_TIMEOUT' is thrown
+ * so the retry wrapper in uploadBatchWithRetry() treats it as retryable.
+ * A caller abort still propagates as a normal AbortError.
  */
 export async function uploadRekordboxAnalysisBatch(
   importId: string,
@@ -688,16 +697,37 @@ export async function uploadRekordboxAnalysisBatch(
   }
   throwIfSignalAborted(signal);
 
-  const response = await fetch(
-    `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/analysis-batch`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}` },
-      body: formData,
-      signal,
-    },
-  );
-  return parseResponse(response, validateBatchUpload);
+  const internal = new AbortController();
+  let timedOut = false;
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    internal.abort();
+  }, ANALYSIS_BATCH_REQUEST_TIMEOUT_MS);
+
+  const onCallerAbort = () => internal.abort();
+  signal?.addEventListener('abort', onCallerAbort, { once: true });
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/rekordbox/import/${encodeURIComponent(importId)}/analysis-batch`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: formData,
+        signal: internal.signal,
+      },
+    );
+    return parseResponse(response, validateBatchUpload);
+  } catch (err) {
+    if (timedOut) {
+      throw new Error('ANALYSIS_BATCH_TIMEOUT');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onCallerAbort);
+  }
 }
 
 /** Stage 3: trigger server-side ANLZ parsing and get per-track results. */

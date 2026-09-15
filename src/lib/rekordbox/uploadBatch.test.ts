@@ -83,4 +83,56 @@ describe('uploadBatchWithRetry cancellation', () => {
     expect(mocks.uploadRekordboxAnalysisBatch).toHaveBeenCalledTimes(1);
     expect(warning).not.toHaveBeenCalled();
   });
+
+  it('retries ANALYSIS_BATCH_TIMEOUT without treating it as user cancellation', async () => {
+    mocks.uploadRekordboxAnalysisBatch
+      .mockRejectedValueOnce(new Error('ANALYSIS_BATCH_TIMEOUT'))
+      .mockResolvedValueOnce({
+        import_id: 'import-1',
+        received_count: 1,
+        already_received_count: 0,
+        rejected_count: 0,
+        error_count: 0,
+        received_bytes: 4,
+        files: [],
+      });
+
+    const controller = new AbortController();
+    const timers = new AbortableTimerRegistry();
+    const result = uploadBatchWithRetry(
+      'import-1',
+      batch,
+      'fallback-token',
+      controller.signal,
+      3,
+      { retryTimers: timers },
+    );
+
+    // Wait for first attempt to fail, then advance through the backoff delay.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.runAllTimersAsync();
+
+    expect(await result).not.toBeNull();
+    expect(mocks.uploadRekordboxAnalysisBatch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry HTTP 401 or 403 errors', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const controller = new AbortController();
+
+    for (const status of [401, 403]) {
+      mocks.uploadRekordboxAnalysisBatch.mockRejectedValueOnce(
+        new Error(`HTTP ${status}`),
+      );
+      const result = await uploadBatchWithRetry(
+        'import-1', batch, 'fallback-token', controller.signal, 3,
+      );
+      expect(result).toBeNull();
+    }
+
+    expect(mocks.uploadRekordboxAnalysisBatch).toHaveBeenCalledTimes(2);
+    expect(warning).toHaveBeenCalledTimes(2);
+  });
 });

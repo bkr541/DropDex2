@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   deleteAllRekordboxImports,
   deleteRekordboxImport,
@@ -9,6 +9,7 @@ import {
   isUnauthorizedRekordboxImportError,
   pauseRekordboxAnalysis,
   resumeRekordboxAnalysis,
+  uploadRekordboxAnalysisBatch,
   uploadRekordboxDb,
   uploadRekordboxZipBundle,
 } from './rekordboxImport';
@@ -325,5 +326,124 @@ describe('Rekordbox bundle upload cancellation', () => {
     xhr.dispatch('load');
 
     await expect(upload).rejects.toThrow('invalid response');
+  });
+});
+
+// ── Analysis batch timeout ────────────────────────────────────────────────────
+
+const batchSuccessBody = {
+  import_id: 'import-1',
+  received_count: 1,
+  already_received_count: 0,
+  rejected_count: 0,
+  error_count: 0,
+  received_bytes: 4,
+  files: [{
+    canonical_path: 'PIONEER/USBANLZ/P001/ANLZ0000.DAT',
+    status: 'received',
+    sha256: 'a'.repeat(64),
+    file_size: 4,
+    reject_reason: null,
+  }],
+};
+
+describe('uploadRekordboxAnalysisBatch request timeout', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  const file = { file: new File(['anlz'], 'ANLZ0000.DAT'), canonicalPath: 'PIONEER/USBANLZ/P001/ANLZ0000.DAT' };
+
+  it('succeeds normally when the server responds before the timer fires', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify(batchSuccessBody), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      })
+    ));
+
+    const result = await uploadRekordboxAnalysisBatch('import-1', [file], 'token');
+    expect(result.import_id).toBe('import-1');
+    expect(result.received_count).toBe(1);
+  });
+
+  it('throws ANALYSIS_BATCH_TIMEOUT (not AbortError) when the internal timer fires', async () => {
+    // Signal-aware mock: rejects with AbortError when the fetch signal fires,
+    // mirroring real browser fetch behaviour.
+    vi.stubGlobal('fetch', vi.fn((_input: unknown, init?: RequestInit) =>
+      new Promise<never>((_, reject) => {
+        const signal = init?.signal;
+        if (signal?.aborted) { reject(new DOMException('aborted', 'AbortError')); return; }
+        signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      })
+    ));
+
+    const promise = uploadRekordboxAnalysisBatch('import-1', [file], 'token');
+    // Attach catch before advancing timers to avoid an unhandled rejection warning
+    // during the microtask gap between the abort cascade and the test assertion.
+    const settled = promise.catch((e: unknown) => e);
+
+    // Advance past the 65 s internal timeout.
+    await vi.advanceTimersByTimeAsync(66_000);
+
+    const err = await settled;
+    expect((err as Error).message).toBe('ANALYSIS_BATCH_TIMEOUT');
+    // Must NOT be an AbortError — the retry wrapper treats AbortError as user cancellation.
+    expect((err as { name?: string }).name).not.toBe('AbortError');
+  });
+
+  it('propagates a caller AbortError (not ANALYSIS_BATCH_TIMEOUT) when the caller signal fires', async () => {
+    const controller = new AbortController();
+    // Signal-aware mock.
+    vi.stubGlobal('fetch', vi.fn((_input: unknown, init?: RequestInit) =>
+      new Promise<never>((_, reject) => {
+        const signal = init?.signal;
+        if (signal?.aborted) { reject(new DOMException('aborted', 'AbortError')); return; }
+        signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      })
+    ));
+
+    const promise = uploadRekordboxAnalysisBatch('import-1', [file], 'token', controller.signal);
+
+    controller.abort();
+    // Do not advance timers — caller abort fires before any internal timeout.
+
+    await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('clears the timer and removes the abort listener after a successful response', async () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const controller = new AbortController();
+    const addEventSpy = vi.spyOn(controller.signal, 'addEventListener');
+    const removeEventSpy = vi.spyOn(controller.signal, 'removeEventListener');
+
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify(batchSuccessBody), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      })
+    ));
+
+    await uploadRekordboxAnalysisBatch('import-1', [file], 'token', controller.signal);
+
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    expect(addEventSpy).toHaveBeenCalledWith('abort', expect.any(Function), { once: true });
+    expect(removeEventSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+  });
+
+  it('clears the timer and removes the abort listener after a failed response', async () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const controller = new AbortController();
+    const removeEventSpy = vi.spyOn(controller.signal, 'removeEventListener');
+
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ detail: 'HTTP 500' }), {
+        status: 500, headers: { 'Content-Type': 'application/json' },
+      })
+    ));
+
+    await expect(
+      uploadRekordboxAnalysisBatch('import-1', [file], 'token', controller.signal),
+    ).rejects.toBeDefined();
+
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    expect(removeEventSpy).toHaveBeenCalledWith('abort', expect.any(Function));
   });
 });

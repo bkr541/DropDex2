@@ -20,6 +20,7 @@ export function isAbortError(err: unknown): boolean {
 function isRetryableError(err: unknown): boolean {
   if (!(err instanceof Error)) return true;
   const msg = err.message;
+  if (msg === 'ANALYSIS_BATCH_TIMEOUT') return true;
   if (msg.includes('HTTP 401') || msg.includes('HTTP 403') ||
       msg.includes('HTTP 404') || msg.includes('HTTP 413') ||
       msg.includes('HTTP 422')) return false;
