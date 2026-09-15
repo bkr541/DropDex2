@@ -1,13 +1,13 @@
-import { useEffect } from 'react';
-import { Play, Stop, VolumeMute, VolumeUp } from '@carbon/icons-react';
+import { useEffect, useRef } from 'react';
+import { Chemistry, Play, Renew, Stop, VolumeMute, VolumeUp } from '@carbon/icons-react';
 import { ControlButton, RangeControl } from '../ui/controls';
 import { SurfaceCard } from '../ui/display';
-import { StatusBadge } from '../ui/feedback';
+import { AlertBanner, ProgressBar, StatusBadge, StatusLoader } from '../ui/feedback';
 import { TransportButton } from '../ui/media';
 import { WaveformDisplay } from '../library/WaveformDisplay';
 import { useRouletteSession } from '../../features/roulette/RouletteSessionContext';
-import type { RouletteSourceRole, RouletteStemStatus } from '../../features/roulette/rouletteSession';
-import { useRouletteStemReadiness } from '../../features/roulette/useRouletteStemReadiness';
+import type { RouletteSourceRole } from '../../features/roulette/rouletteSession';
+import type { RoulettePreviewPreparationState } from '../../features/roulette/roulettePreview';
 import { useRouletteSourceTrack } from '../../features/roulette/useRouletteSourceTrack';
 import { useRouletteMatchingAvailability } from '../../features/roulette/useRouletteMatchingAvailability';
 
@@ -16,12 +16,24 @@ const SOURCE_COPY: Record<RouletteSourceRole, { label: string; position: string 
   instrumental: { label: 'Instrumental', position: 'Bottom deck' },
 };
 
-const STEM_STATUS_COPY: Record<RouletteStemStatus, { label: string; tone: 'neutral' | 'amber' | 'success' | 'error' }> = {
-  unavailable: { label: 'Stem unavailable', tone: 'neutral' },
-  preparing: { label: 'Preparing stem', tone: 'amber' },
-  ready: { label: 'Stem ready', tone: 'success' },
-  failed: { label: 'Stem failed', tone: 'error' },
-};
+function previewPresentation(
+  preview: RoulettePreviewPreparationState | null,
+  fallbackStatus: 'unavailable' | 'preparing' | 'ready' | 'failed',
+) {
+  if (preview?.status === 'ready') {
+    return preview.asset?.kind === 'hq'
+      ? { label: 'HQ ready', tone: 'success' as const }
+      : { label: 'Preview ready', tone: 'success' as const };
+  }
+  if (preview?.status === 'source-required') return { label: 'Source required', tone: 'amber' as const };
+  if (preview?.status === 'queued' || preview?.status === 'running') return { label: 'Preparing preview', tone: 'amber' as const };
+  if (preview?.status === 'failed') return { label: 'Preview failed', tone: 'error' as const };
+  if (preview?.status === 'cancelled') return { label: 'Cancelled', tone: 'neutral' as const };
+  if (fallbackStatus === 'ready') return { label: 'Ready', tone: 'success' as const };
+  if (fallbackStatus === 'preparing') return { label: 'Preparing preview', tone: 'amber' as const };
+  if (fallbackStatus === 'failed') return { label: 'Preview failed', tone: 'error' as const };
+  return { label: 'No source', tone: 'neutral' as const };
+}
 
 function RouletteStemWaveform({
   role,
@@ -78,33 +90,30 @@ function RouletteStemWaveform({
 }
 
 function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
-  const { state, playback, actions } = useRouletteSession();
+  const { state, playback, previewStates, actions } = useRouletteSession();
   const source = state.sources[role];
+  const preview = previewStates[role]?.trackId === source.parentTrackId ? previewStates[role] : null;
   const copy = SOURCE_COPY[role];
-  const stemReadiness = useRouletteStemReadiness(source.parentTrackId, role);
   const sourceTrack = useRouletteSourceTrack(source.parentTrackId);
-  const effectiveStatus: RouletteStemStatus = stemReadiness.loading
-    ? 'preparing'
-    : stemReadiness.error
-      ? 'failed'
-      : stemReadiness.readiness?.status ?? source.stemStatus;
-  const status = STEM_STATUS_COPY[effectiveStatus];
+  const status = previewPresentation(preview, source.stemStatus);
   const deckMix = playback.mix[role];
+  const preparing = preview?.status === 'queued' || preview?.status === 'running' || source.stemStatus === 'preparing';
+  const sourceRequired = preview?.status === 'source-required';
+  const retryable = preview?.status === 'failed' || preview?.status === 'cancelled';
   const waveformFallback = sourceTrack.error
-    ? sourceTrack.error
-    : stemReadiness.error
-      ? stemReadiness.error
-      : stemReadiness.readiness?.reason
-        ?? (source.parentTrackId && effectiveStatus === 'ready'
+    ?? preview?.message
+    ?? (source.parentTrackId
+      ? preparing
+        ? 'Preparing the 16-bar audition source…'
+        : source.stemStatus === 'ready'
           ? playback.status === 'loading'
-            ? 'Decoding the real stem waveform…'
-            : 'Press Play to load the aligned stem waveform.'
-          : source.parentTrackId
-            ? 'Stem preparation pending'
-            : 'No source selected');
+            ? 'Decoding the aligned waveform…'
+            : 'Press Play to load the aligned waveform.'
+          : 'Preview preparation pending'
+      : 'No source selected');
 
   return (
-    <div data-testid={`roulette-${role}-lane`}>
+    <div data-testid={`roulette-${role}-lane`} aria-busy={preparing || undefined}>
       <SurfaceCard className="min-h-44 rounded-2xl border border-[var(--color-border-subtle)] p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -149,6 +158,35 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
           fallback={waveformFallback}
         />
 
+        {preparing && (
+          <div className="mt-3 flex items-center gap-2 text-[10px] text-muted-foreground">
+            <StatusLoader variant="dots" tone="active" label={`Preparing ${copy.label.toLowerCase()} preview`} />
+            <span>{preview?.status === 'queued' ? 'Queued for preview preparation' : 'Preparing preview source'}</span>
+          </div>
+        )}
+
+        {sourceRequired && (
+          <div className="mt-4">
+            <AlertBanner
+              title="Source media required"
+              message={preview?.connectedVolumeName
+                ? `${preview.requiredVolumeName ?? 'The original Rekordbox USB'} is required; ${preview.connectedVolumeName} is connected.`
+                : `Reconnect ${preview?.requiredVolumeName ?? 'the original Rekordbox USB'} to continue.`}
+              actionLabel="Reconnect"
+              onAction={() => { void actions.reconnectSource(role); }}
+            />
+          </div>
+        )}
+
+        {retryable && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
+            <p className="min-w-0 truncate text-[10px] text-muted-foreground">{preview?.message ?? 'Preview preparation did not complete.'}</p>
+            <ControlButton variant="surface" onClick={() => { void actions.retrySource(role); }}>
+              <Renew size={13} /> Retry
+            </ControlButton>
+          </div>
+        )}
+
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
           <RangeControl
             value={Math.round(deckMix.gain * 100)}
@@ -182,8 +220,65 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
 }
 
 export function RouletteView() {
-  const { state, playback, matchingAvailable, matchingUnavailableReason, playbackAvailable, actions, cancelPending } = useRouletteSession();
+  const {
+    state,
+    playback,
+    previewStates,
+    hq,
+    matchingAvailable,
+    matchingUnavailableReason,
+    playbackAvailable,
+    actions,
+    cancelPending,
+  } = useRouletteSession();
   const candidateAvailability = useRouletteMatchingAvailability(matchingAvailable);
+  const initialLoadRequested = useRef(false);
+  const cancelledRecoveryRequested = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (
+      !initialLoadRequested.current
+      && matchingAvailable
+      && !candidateAvailability.loading
+      && candidateAvailability.available
+      && !state.sources.vocal.parentTrackId
+      && !state.sources.instrumental.parentTrackId
+      && state.command.status !== 'loading'
+    ) {
+      initialLoadRequested.current = true;
+      void actions.initialize();
+    }
+  }, [
+    actions,
+    candidateAvailability.available,
+    candidateAvailability.loading,
+    matchingAvailable,
+    state.command.status,
+    state.sources.instrumental.parentTrackId,
+    state.sources.vocal.parentTrackId,
+  ]);
+
+  useEffect(() => {
+    if (state.command.status === 'loading' || state.transport.status !== 'stopped') return;
+    for (const role of ['vocal', 'instrumental'] as const) {
+      const source = state.sources[role];
+      const preview = previewStates[role];
+      if (
+        source.parentTrackId
+        && source.stemStatus === 'preparing'
+        && preview?.trackId === source.parentTrackId
+        && preview.status === 'cancelled'
+      ) {
+        const key = `${role}:${source.parentTrackId}`;
+        if (!cancelledRecoveryRequested.current.has(key)) {
+          cancelledRecoveryRequested.current.add(key);
+          void actions.retrySource(role);
+        }
+        break;
+      }
+    }
+  }, [actions, previewStates, state.command.status, state.sources, state.transport.status]);
+
   useEffect(() => () => {
     cancelPending();
     actions.stop({ resetVisuals: true });
@@ -191,19 +286,81 @@ export function RouletteView() {
 
   const matchingBusy = state.command.status === 'loading';
   const transportBusy = playback.status === 'loading' || playback.status === 'playing';
+  const selectedVocalPreview = previewStates.vocal?.trackId === state.sources.vocal.parentTrackId
+    ? previewStates.vocal
+    : null;
+  const selectedInstrumentalPreview = previewStates.instrumental?.trackId === state.sources.instrumental.parentTrackId
+    ? previewStates.instrumental
+    : null;
+  const sourceRecoveryBusy = selectedVocalPreview?.status === 'running'
+    || selectedVocalPreview?.status === 'queued'
+    || selectedInstrumentalPreview?.status === 'running'
+    || selectedInstrumentalPreview?.status === 'queued';
+  const hqBusy = hq.status === 'preparing';
   const canChangeVocal = matchingAvailable
-    && Boolean(state.sources.instrumental.parentTrackId)
+    && candidateAvailability.available
+    && state.sources.instrumental.stemStatus === 'ready'
+    && Boolean(state.sources.instrumental.parentTrackId && state.sources.instrumental.stemRef)
     && !matchingBusy
-    && !transportBusy;
+    && !transportBusy
+    && !sourceRecoveryBusy
+    && !hqBusy;
   const canChangeInstrumental = matchingAvailable
-    && Boolean(state.sources.vocal.parentTrackId)
+    && candidateAvailability.available
+    && state.sources.vocal.stemStatus === 'ready'
+    && Boolean(state.sources.vocal.parentTrackId && state.sources.vocal.stemRef)
     && !matchingBusy
-    && !transportBusy;
-  const canPlay = playbackAvailable && !matchingBusy && !transportBusy;
+    && !transportBusy
+    && !sourceRecoveryBusy
+    && !hqBusy;
+  const canPlay = playbackAvailable && !matchingBusy && !transportBusy && !hqBusy;
   const canStop = playback.status === 'loading' || playback.status === 'playing';
+  const canPrepareHq = playbackAvailable && !matchingBusy && !transportBusy && !sourceRecoveryBusy;
+  const hasSourceRequired = selectedVocalPreview?.status === 'source-required'
+    || selectedInstrumentalPreview?.status === 'source-required';
+
+  const mainStatus = playback.status === 'loading'
+    ? 'Preparing aligned playback…'
+    : playback.status === 'playing'
+      ? 'Playing aligned vocal + instrumental stems from one shared clock.'
+      : playback.error
+        ? playback.error
+        : hq.status === 'preparing'
+          ? `Preparing ${hq.activeRole === 'vocal' ? 'vocal' : 'instrumental'} HQ stem…`
+          : hq.status === 'partial'
+            ? hq.message ?? 'One HQ stem is ready; retry the remaining stem when convenient.'
+            : hq.status === 'failed'
+              ? hq.message ?? 'HQ preparation failed.'
+              : state.command.status === 'loading'
+                ? 'Selecting and preparing compatible preview sources…'
+                : hasSourceRequired
+                  ? 'Reconnect the required Rekordbox source media to continue preview preparation.'
+                  : state.command.error
+                    ? state.command.error
+                    : !matchingAvailable && matchingUnavailableReason
+                      ? matchingUnavailableReason
+                      : candidateAvailability.loading
+                      ? 'Checking compatible Roulette candidates…'
+                      : !candidateAvailability.available && candidateAvailability.reason
+                        ? candidateAvailability.reason
+                        : playbackAvailable
+                          ? 'Ready for synchronized dual-deck playback.'
+                          : state.sources.vocal.parentTrackId || state.sources.instrumental.parentTrackId
+                            ? 'Finish preview preparation to enable playback.'
+                            : 'Selecting an intelligent compatible pair…';
 
   return (
     <section className="mx-auto w-full max-w-6xl space-y-5 pb-10 pt-2" data-testid="roulette-screen">
+      <div className="flex flex-wrap items-center gap-2 px-1" aria-label="Roulette readiness summary">
+        <StatusBadge tone={candidateAvailability.available ? 'success' : 'neutral'}>
+          {candidateAvailability.loading
+            ? 'Checking candidates'
+            : `${candidateAvailability.compatiblePairCount} compatible pair${candidateAvailability.compatiblePairCount === 1 ? '' : 's'}`}
+        </StatusBadge>
+        {hq.status === 'ready' && <StatusBadge tone="success">HQ ready</StatusBadge>}
+        {hq.status === 'partial' && <StatusBadge tone="amber">HQ partial</StatusBadge>}
+      </div>
+
       <div className="grid gap-4" aria-label="Roulette source decks">
         <RouletteSourceLane role="vocal" />
         <RouletteSourceLane role="instrumental" />
@@ -253,7 +410,7 @@ export function RouletteView() {
             </ControlButton>
             <ControlButton
               variant="primary"
-              disabled={!matchingAvailable || candidateAvailability.loading || !candidateAvailability.available || matchingBusy || transportBusy}
+              disabled={!matchingAvailable || candidateAvailability.loading || !candidateAvailability.available || matchingBusy || transportBusy || sourceRecoveryBusy || hqBusy}
               title="Resolve and replace both compatible sources"
               onClick={() => { void actions.replaceBoth(); }}
             >
@@ -262,26 +419,48 @@ export function RouletteView() {
           </div>
         </div>
 
+        <div className="mt-4 flex flex-col gap-3 border-t border-[var(--color-border-subtle)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">High-quality stems</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              {hq.status === 'ready'
+                ? 'Both decks will use HQ stems at the next safe playback boundary.'
+                : hq.status === 'partial'
+                  ? hq.message ?? 'One HQ stem is complete.'
+                  : hq.status === 'failed' || hq.status === 'cancelled'
+                    ? hq.message
+                    : 'Optional for the current pairing.'}
+            </p>
+          </div>
+          <ControlButton
+            variant={hqBusy ? 'surface' : 'secondary'}
+            disabled={!hqBusy && (!canPrepareHq || hq.status === 'ready')}
+            onClick={() => {
+              if (hqBusy) void actions.cancelHighQuality();
+              else void actions.prepareHighQuality();
+            }}
+            aria-label={hqBusy ? 'Cancel high-quality Roulette stem preparation' : 'Prepare high-quality Roulette stems'}
+          >
+            {hqBusy
+              ? <><Stop size={14} /> Cancel HQ</>
+              : hq.status === 'partial' || hq.status === 'failed' || hq.status === 'cancelled'
+                ? <><Renew size={14} /> Retry HQ Stems</>
+                : <><Chemistry size={14} /> Prepare HQ Stems</>}
+          </ControlButton>
+        </div>
+
+        {(hqBusy || hq.status === 'partial' || hq.status === 'ready') && (
+          <ProgressBar
+            className="mt-3"
+            value={hq.progress * 100}
+            tone={hq.status === 'ready' ? 'success' : hq.status === 'partial' ? 'warning' : 'active'}
+            showValue
+            label="High-quality Roulette stem preparation"
+          />
+        )}
+
         <p className="mt-4 text-[10px] text-muted-foreground" role="status" data-testid="roulette-command-status">
-          {playback.status === 'loading'
-            ? 'Preparing and aligning both ready stems…'
-            : playback.status === 'playing'
-              ? 'Playing aligned vocal + instrumental stems from one shared clock.'
-              : playback.error
-                ? playback.error
-                : state.command.status === 'loading'
-                  ? 'Finding compatible stem-ready sources…'
-                  : state.command.error
-                    ? state.command.error
-                    : !matchingAvailable && matchingUnavailableReason
-                      ? matchingUnavailableReason
-                      : !playbackAvailable && candidateAvailability.loading
-                        ? 'Checking prepared Roulette stems…'
-                        : !playbackAvailable && !candidateAvailability.available && candidateAvailability.reason
-                          ? candidateAvailability.reason
-                          : playbackAvailable
-                        ? 'Ready for synchronized dual-deck playback.'
-                        : 'Roulette a compatible stem-ready pair to enable playback.'}
+          {mainStatus}
         </p>
       </SurfaceCard>
     </section>

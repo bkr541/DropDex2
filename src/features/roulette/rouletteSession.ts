@@ -67,6 +67,10 @@ export type RouletteSessionAction =
       instrumental: RouletteSourceSelection;
       requestId?: string;
     }
+  | { type: 'stage-source'; role: RouletteSourceRole; selection: RouletteSourceSelection; requestId?: string }
+  | { type: 'stage-pair'; vocal: RouletteSourceSelection; instrumental: RouletteSourceSelection; requestId?: string }
+  | { type: 'update-source'; role: RouletteSourceRole; selection: RouletteSourceSelection; requestId?: string }
+  | { type: 'restore-sources'; sources: RouletteSessionState['sources']; requestId?: string }
   | { type: 'command-started'; command: RouletteCommand; requestId: string }
   | { type: 'command-finished'; command: RouletteCommand; requestId: string }
   | { type: 'command-failed'; command: RouletteCommand; requestId: string; error: string }
@@ -102,6 +106,40 @@ export function rouletteSessionReducer(
   action: RouletteSessionAction,
 ): RouletteSessionState {
   switch (action.type) {
+    case 'stage-source':
+      if (action.requestId && state.command.requestId !== action.requestId) return state;
+      return {
+        ...state,
+        sources: {
+          ...state.sources,
+          [action.role]: action.selection,
+        },
+      };
+
+    case 'stage-pair':
+      if (action.requestId && state.command.requestId !== action.requestId) return state;
+      return {
+        ...state,
+        sources: {
+          vocal: action.vocal,
+          instrumental: action.instrumental,
+        },
+      };
+
+    case 'update-source':
+      if (action.requestId && state.command.requestId !== action.requestId) return state;
+      return {
+        ...state,
+        sources: {
+          ...state.sources,
+          [action.role]: action.selection,
+        },
+      };
+
+    case 'restore-sources':
+      if (action.requestId && state.command.requestId !== action.requestId) return state;
+      return { ...state, sources: action.sources };
+
     case 'commit-source':
       if (action.requestId && state.command.requestId !== action.requestId) return state;
       return {

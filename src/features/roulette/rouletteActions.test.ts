@@ -384,4 +384,74 @@ describe('Roulette production action/state integration', () => {
     expect(test.state.command.status).toBe('idle');
   });
 
+  it('stages the intelligent initial pair before serial preview preparation finishes', async () => {
+    const resolvePair = vi.fn(async () => ({
+      vocal: { parentTrackId: 'vocal-preview', track: { id: 'vocal-preview' } as RouletteResolvedSource['track'], stemAsset: null },
+      instrumental: { parentTrackId: 'instrumental-preview', track: { id: 'instrumental-preview' } as RouletteResolvedSource['track'], stemAsset: null },
+    }));
+    let releaseVocal!: () => void;
+    const prepareResolvedSource = vi.fn((resolved: RouletteResolvedSource, role: 'vocal' | 'instrumental') => {
+      if (role === 'vocal') {
+        return new Promise<RouletteSourceSelection>((resolve) => {
+          releaseVocal = () => resolve(selection(resolved.parentTrackId, `preview:${resolved.parentTrackId}`));
+        });
+      }
+      return Promise.resolve(selection(resolved.parentTrackId, `preview:${resolved.parentTrackId}`));
+    });
+    const test = harness(matcher({ resolvePair }), undefined, async () => undefined, prepareResolvedSource);
+
+    const pending = test.executor.actions.initialize();
+    await vi.waitFor(() => expect(test.state.sources.vocal.parentTrackId).toBe('vocal-preview'));
+    expect(test.state.sources.instrumental.parentTrackId).toBe('instrumental-preview');
+    expect(test.state.sources.vocal.stemStatus).toBe('preparing');
+    expect(test.state.sources.instrumental.stemStatus).toBe('preparing');
+
+    releaseVocal();
+    await expect(pending).resolves.toBe(true);
+    expect(test.state.sources.vocal.stemStatus).toBe('ready');
+    expect(test.state.sources.instrumental.stemStatus).toBe('ready');
+  });
+
+  it('keeps the selected pair visible when preview preparation reports recoverable source media required', async () => {
+    const resolvePair = vi.fn(async () => ({
+      vocal: { parentTrackId: 'vocal-usb', track: { id: 'vocal-usb' } as RouletteResolvedSource['track'], stemAsset: null },
+      instrumental: { parentTrackId: 'instrumental-usb', track: { id: 'instrumental-usb' } as RouletteResolvedSource['track'], stemAsset: null },
+    }));
+    const prepareResolvedSource = vi.fn(async () => { throw new Error('Reconnect USB-A to continue.'); });
+    const test = harness(matcher({ resolvePair }), undefined, async () => undefined, prepareResolvedSource);
+
+    await expect(test.executor.actions.initialize()).resolves.toBe(false);
+    expect(test.state.sources.vocal.parentTrackId).toBe('vocal-usb');
+    expect(test.state.sources.instrumental.parentTrackId).toBe('instrumental-usb');
+    expect(test.state.command.error).toBe('Reconnect USB-A to continue.');
+  });
+
+  it('reuses an already-ready session on navigation return without launching duplicate matching or preparation jobs', async () => {
+    const resolvePair = vi.fn(async () => null);
+    const prepareSources = vi.fn(async () => undefined);
+    const test = harness(matcher({ resolvePair }), readyPairState(), prepareSources);
+
+    await expect(test.executor.actions.initialize()).resolves.toBe(true);
+    expect(resolvePair).not.toHaveBeenCalled();
+    expect(prepareSources).not.toHaveBeenCalled();
+  });
+
+  it('serializes same-tick Roulette clicks before React state can publish command busy state', async () => {
+    let releasePair!: () => void;
+    const resolvePair = vi.fn(() => new Promise<Awaited<ReturnType<RouletteMatchingEngine['resolvePair']>>>((resolve) => {
+      releasePair = () => resolve({
+        vocal: { parentTrackId: 'vocal-b', stemAsset: stem('vocal-b', 'vocals') },
+        instrumental: { parentTrackId: 'instrumental-b', stemAsset: stem('instrumental-b', 'instrumental') },
+      });
+    }));
+    const test = harness(matcher({ resolvePair }), readyPairState());
+
+    const first = test.executor.actions.replaceBoth();
+    await expect(test.executor.actions.replaceBoth()).resolves.toBe(false);
+    expect(resolvePair).toHaveBeenCalledTimes(1);
+
+    releasePair();
+    await expect(first).resolves.toBe(true);
+  });
+
 });

@@ -118,6 +118,10 @@ function currentPair(state: RouletteSessionState): RoulettePlaybackSources {
   };
 }
 
+function stagedSelection(parentTrackId: string): RouletteSourceSelection {
+  return { parentTrackId, stemRef: null, stemStatus: 'preparing', window: null };
+}
+
 export function createRouletteActionExecutor({
   getState,
   dispatch,
@@ -155,6 +159,7 @@ export function createRouletteActionExecutor({
   };
 
   const replaceSource = async (role: RouletteSourceRole): Promise<boolean> => {
+    if (activeController) return false;
     const stateBeforeCommand = getState();
     if (stateBeforeCommand.transport.status !== 'stopped' || stateBeforeCommand.command.status === 'loading') return false;
     const command = commandForRole(role);
@@ -179,7 +184,15 @@ export function createRouletteActionExecutor({
       }
       if (!resolved) throw new Error(noCandidateMessage(role));
 
+      dispatch({
+        type: 'stage-source',
+        role,
+        selection: stagedSelection(resolved.parentTrackId),
+        requestId,
+      });
+
       const nextSelection = await prepareResolvedSource(resolved, role, controller.signal);
+      dispatch({ type: 'update-source', role, selection: nextSelection, requestId });
       if (controller.signal.aborted) {
         finishAbort(command, requestId, controller);
         return false;
@@ -188,7 +201,12 @@ export function createRouletteActionExecutor({
         ...currentPair(state),
         [role]: nextSelection,
       };
-      await prepareSources(nextSources, controller.signal);
+      try {
+        await prepareSources(nextSources, controller.signal);
+      } catch (error) {
+        dispatch({ type: 'restore-sources', sources: state.sources, requestId });
+        throw error;
+      }
       if (controller.signal.aborted) {
         finishAbort(command, requestId, controller);
         return false;
@@ -218,6 +236,7 @@ export function createRouletteActionExecutor({
   };
 
   const resolveBoth = async (command: 'initialize' | 'replace-both'): Promise<boolean> => {
+    if (activeController) return false;
     const stateBeforeCommand = getState();
     if (stateBeforeCommand.transport.status !== 'stopped' || stateBeforeCommand.command.status === 'loading') return false;
     if (
@@ -257,10 +276,19 @@ export function createRouletteActionExecutor({
         throw new Error('Roulette rejected a same-parent vocal/instrumental pair.');
       }
 
+      dispatch({
+        type: 'stage-pair',
+        vocal: stagedSelection(resolved.vocal.parentTrackId),
+        instrumental: stagedSelection(resolved.instrumental.parentTrackId),
+        requestId,
+      });
+
       // Stage 3 intentionally serializes preview separation. Keep the command
       // boundary serial too so cancellation/source-required state stays unambiguous.
       const vocal = await prepareResolvedSource(resolved.vocal, 'vocal', controller.signal);
+      dispatch({ type: 'update-source', role: 'vocal', selection: vocal, requestId });
       const instrumental = await prepareResolvedSource(resolved.instrumental, 'instrumental', controller.signal);
+      dispatch({ type: 'update-source', role: 'instrumental', selection: instrumental, requestId });
       if (controller.signal.aborted) {
         finishAbort(command, requestId, controller);
         return false;
@@ -270,7 +298,12 @@ export function createRouletteActionExecutor({
       }
 
       const nextSources: RoulettePlaybackSources = { vocal, instrumental };
-      await prepareSources(nextSources, controller.signal);
+      try {
+        await prepareSources(nextSources, controller.signal);
+      } catch (error) {
+        dispatch({ type: 'restore-sources', sources: state.sources, requestId });
+        throw error;
+      }
       if (controller.signal.aborted) {
         finishAbort(command, requestId, controller);
         return false;

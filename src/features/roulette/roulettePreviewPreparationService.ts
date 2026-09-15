@@ -414,8 +414,8 @@ export function createRoulettePreviewPreparationService(
     if (!previous) return false;
     knownJobs.delete(key);
     requests.delete(key);
-    void prepare(previous.track, role);
-    return true;
+    const resumed = await prepare(previous.track, role);
+    return resumed.status === 'ready';
   };
 
   const resolvePreparedAsset = async (asset: RoulettePreparedAuditionAsset): Promise<ResolvedRouletteAuditionMedia | null> => {

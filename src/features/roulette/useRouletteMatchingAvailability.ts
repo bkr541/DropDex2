@@ -4,6 +4,9 @@ import { fetchRouletteCandidateReadiness } from '../../lib/queries/rouletteCandi
 export interface RouletteMatchingAvailabilityState {
   loading: boolean;
   available: boolean;
+  compatiblePairCount: number;
+  vocalCandidateCount: number;
+  instrumentalCandidateCount: number;
   reason: string | null;
 }
 
@@ -13,23 +16,29 @@ export function useRouletteMatchingAvailability(
   const [state, setState] = useState<RouletteMatchingAvailabilityState>({
     loading: desktopRuntimeAvailable,
     available: false,
+    compatiblePairCount: 0,
+    vocalCandidateCount: 0,
+    instrumentalCandidateCount: 0,
     reason: null,
   });
 
   useEffect(() => {
     if (!desktopRuntimeAvailable) {
-      setState({ loading: false, available: false, reason: null });
+      setState({ loading: false, available: false, compatiblePairCount: 0, vocalCandidateCount: 0, instrumentalCandidateCount: 0, reason: null });
       return undefined;
     }
 
     let cancelled = false;
-    setState({ loading: true, available: false, reason: null });
+    setState({ loading: true, available: false, compatiblePairCount: 0, vocalCandidateCount: 0, instrumentalCandidateCount: 0, reason: null });
     void fetchRouletteCandidateReadiness()
       .then((readiness) => {
         if (cancelled) return;
         setState({
           loading: false,
           available: readiness.available,
+          compatiblePairCount: readiness.compatiblePairCount,
+          vocalCandidateCount: readiness.vocalCandidateCount,
+          instrumentalCandidateCount: readiness.instrumentalCandidateCount,
           reason: readiness.available
             ? null
             : readiness.reason === 'no-active-library'
@@ -42,6 +51,9 @@ export function useRouletteMatchingAvailability(
         setState({
           loading: false,
           available: false,
+          compatiblePairCount: 0,
+          vocalCandidateCount: 0,
+          instrumentalCandidateCount: 0,
           reason: 'Roulette could not verify musical candidate readiness.',
         });
       });
