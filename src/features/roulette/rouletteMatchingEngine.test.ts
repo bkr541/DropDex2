@@ -93,23 +93,20 @@ function candidate(
 }
 
 describe('Roulette matching engine', () => {
-  it('revalidates ranked stem readiness and skips stale ready metadata', async () => {
+  it('selects a musically eligible candidate even when its playable asset still needs preparation', async () => {
     const fixed = track('instrumental-fixed');
-    const stale = candidate('vocal-a', 'vocal', 'Alpha');
-    const valid = candidate('vocal-b', 'vocal', 'Beta');
-    const getReadiness = vi.fn(async (trackId: string, stemType: 'vocals' | 'instrumental') => ({
-      parentTrackId: trackId,
-      stemType,
-      status: trackId === 'vocal-a' ? 'preparing' as const : 'ready' as const,
-      asset: trackId === 'vocal-a' ? null : asset(trackId, stemType),
-      reason: null,
-    }));
+    const unprepared = candidate('vocal-a', 'vocal', 'Alpha');
+    unprepared.stemAsset = null;
+    unprepared.vocalPresenceScore = 1;
+    const prepared = candidate('vocal-b', 'vocal', 'Beta');
+    prepared.vocalPresenceScore = 0;
+    const getReadiness = vi.fn(async () => { throw new Error('matching must not gate on stem readiness'); });
     const engine = createRouletteMatchingEngine({
       loadTrack: vi.fn(async () => fixed),
       loadBeatGrid: vi.fn(async () => grid(fixed.id)),
-      loadCandidates: vi.fn(async () => [stale, valid]),
+      loadCandidates: vi.fn(async () => [unprepared, prepared]),
       stemAssets: { getReadiness },
-      rng: () => 0.999,
+      rng: () => 0,
     });
 
     const resolved = await engine.resolveReplacement({
@@ -117,13 +114,9 @@ describe('Roulette matching engine', () => {
       fixedTrackId: fixed.id,
     });
 
-    expect(resolved?.parentTrackId).toBe('vocal-b');
-    expect(getReadiness).toHaveBeenCalledWith('vocal-a', 'vocals', expect.objectContaining({
-      expectedSeparatorVersion: 'separator-v1',
-    }));
-    expect(getReadiness).toHaveBeenCalledWith('vocal-b', 'vocals', expect.objectContaining({
-      expectedSeparatorVersion: 'separator-v1',
-    }));
+    expect(resolved?.parentTrackId).toBe('vocal-a');
+    expect(resolved?.stemAsset).toBeNull();
+    expect(getReadiness).not.toHaveBeenCalled();
   });
 
   it('Roulette Both changes both identities when a current pair exists', async () => {

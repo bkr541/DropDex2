@@ -5,6 +5,7 @@ import { DecodedAudioCache } from '../../lib/audio/decodedAudioCache';
 import { createRouletteAudioRuntime, type RouletteMixState } from './rouletteAudioRuntime';
 import { STEM_ASSET_CONTRACT_VERSION, type StemAssetRecord } from './stemAssets';
 import type { RouletteSourceSelection } from './rouletteSession';
+import { roulettePreparedAssetRef, type RoulettePreparedAuditionAsset } from './roulettePreview';
 
 class FakeSourceNode {
   buffer: AudioBuffer | null = null;
@@ -240,6 +241,97 @@ describe('Roulette audio runtime', () => {
     expect(result.anchors.instrumental).toMatchObject({ provenance: 'phrase', sourceBar: 5 });
     expect(audio.sources[0].starts[0].offset).toBeCloseTo(13.504, 8);
     expect(audio.sources[1].starts[0].offset).toBeCloseTo(6.752, 8);
+    expect(audio.sources[0].starts[0].when).toBe(audio.sources[1].starts[0].when);
+  });
+
+  it('plays a prepared preview from media offset zero while preserving its locked 16-bar parent-track anchor', async () => {
+    const audio = fakeAudioContext();
+    const lockedWindow = {
+      sourceTimeMs: 13_504,
+      windowEndMs: 40_512,
+      durationMs: 27_008,
+      sourceBar: 9,
+      sourceBeatSequence: 33,
+      requestedBars: 16,
+      provenance: 'pvdi-phrase' as const,
+    };
+    const previewAsset = {
+      kind: 'preview',
+      role: 'vocal',
+      trackId: 'vocal-a',
+      sourceFingerprint: 'fingerprint-vocal-a',
+      algorithmVersion: 'preview-test',
+      window: lockedWindow,
+      output: {
+        locator: 'preview/vocal-a.wav',
+        durationMs: lockedWindow.durationMs,
+        sampleRateHz: 48_000,
+        channelCount: 2,
+        size: 1200,
+        mtimeMs: 100,
+        metrics: {},
+      },
+      cached: true,
+    } as RoulettePreparedAuditionAsset;
+    const previewRef = roulettePreparedAssetRef(previewAsset);
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      loadTrack: async (id) => track(id),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async (id) => id === 'vocal-a' ? [phraseAtBar(id, 0, 2)] : [],
+      loadVocalAnalysis: async () => null,
+      previewAssets: {
+        getState: (trackId, role) => trackId === 'vocal-a' && role === 'vocal'
+          ? {
+              trackId,
+              role,
+              status: 'ready' as const,
+              progress: 1,
+              message: null,
+              requiredVolumeName: null,
+              connectedVolumeName: null,
+              window: lockedWindow,
+              asset: previewAsset,
+            }
+          : null,
+        resolvePreparedAsset: async (prepared) => prepared === previewAsset
+          ? {
+              assetKind: 'preview' as const,
+              role: 'vocal' as const,
+              trackId: 'vocal-a',
+              window: lockedWindow,
+              mediaStartMs: 0,
+              source: { kind: 'url' as const, url: 'dropdex://preview/vocal-a', size: 1200, mtimeMs: 100 },
+            }
+          : null,
+      },
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(27.008), buffer(60)]),
+    });
+
+    const result = await runtime.play({
+      vocal: {
+        parentTrackId: 'vocal-a',
+        stemRef: previewRef,
+        stemStatus: 'ready',
+        window: lockedWindow,
+      },
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+
+    expect(result.anchors.vocal).toMatchObject({
+      sourceTimeMs: lockedWindow.sourceTimeMs,
+      sourceBar: lockedWindow.sourceBar,
+      sourceBeatSequence: lockedWindow.sourceBeatSequence,
+      provenance: lockedWindow.provenance,
+    });
+    expect(audio.sources[0].starts[0].offset).toBe(0);
     expect(audio.sources[0].starts[0].when).toBe(audio.sources[1].starts[0].when);
   });
 

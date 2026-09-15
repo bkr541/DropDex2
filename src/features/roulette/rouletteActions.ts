@@ -11,9 +11,12 @@ import {
   type RouletteMatchingEngine,
   type RouletteResolvedSource,
 } from './rouletteMatchingEngine';
+import { roulettePreparedAssetRef } from './roulettePreview';
+import { roulettePreviewPreparationService } from './roulettePreviewPreparationService';
 import { RouletteSelectionHistory } from './rouletteSelectionHistory';
 
 export interface RouletteMatchingActions {
+  initialize(): Promise<boolean>;
   replaceSource(role: RouletteSourceRole): Promise<boolean>;
   replaceBoth(): Promise<boolean>;
 }
@@ -28,15 +31,56 @@ interface RouletteActionExecutorDependencies {
   dispatch: (action: RouletteSessionAction) => void;
   matcher?: RouletteMatchingEngine;
   prepareSources?: (sources: RoulettePlaybackSources, signal: AbortSignal) => Promise<void>;
+  prepareResolvedSource?: (
+    resolved: RouletteResolvedSource,
+    role: RouletteSourceRole,
+    signal: AbortSignal,
+  ) => Promise<RouletteSourceSelection>;
   selectionHistory?: RouletteSelectionHistory;
 }
 
-function selectionFor(resolved: RouletteResolvedSource): RouletteSourceSelection {
+function legacyReadySelection(resolved: RouletteResolvedSource): RouletteSourceSelection | null {
+  if (!resolved.stemAsset || resolved.stemAsset.status !== 'ready') return null;
   return {
     parentTrackId: resolved.parentTrackId,
     stemRef: resolved.stemAsset.id,
     stemStatus: 'ready',
   };
+}
+
+async function defaultPrepareResolvedSource(
+  resolved: RouletteResolvedSource,
+  role: RouletteSourceRole,
+  signal: AbortSignal,
+): Promise<RouletteSourceSelection> {
+  if (signal.aborted) throw new DOMException('Roulette replacement cancelled.', 'AbortError');
+
+  // Test and migration compatibility for an already-resolved legacy HQ source.
+  // Production matching always returns the parent track and goes through the
+  // Stage 3/4 preparation service so the exact 16-bar window is locked.
+  if (!resolved.track) {
+    const legacy = legacyReadySelection(resolved);
+    if (legacy) return legacy;
+    throw new Error('Roulette source metadata is unavailable for preparation.');
+  }
+
+  const onAbort = () => { void roulettePreviewPreparationService.cancel(resolved.parentTrackId, role); };
+  signal.addEventListener('abort', onAbort, { once: true });
+  try {
+    const preparation = await roulettePreviewPreparationService.prepare(resolved.track, role);
+    if (signal.aborted) throw new DOMException('Roulette replacement cancelled.', 'AbortError');
+    if (preparation.status !== 'ready' || !preparation.asset || !preparation.window) {
+      throw new Error(preparation.message ?? `Roulette could not prepare the ${role} audition source.`);
+    }
+    return {
+      parentTrackId: resolved.parentTrackId,
+      stemRef: roulettePreparedAssetRef(preparation.asset),
+      stemStatus: 'ready',
+      window: preparation.window,
+    };
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
 }
 
 function errorMessage(error: unknown): string {
@@ -63,8 +107,8 @@ function missingReferenceMessage(role: RouletteSourceRole): string {
 
 function noCandidateMessage(role: RouletteSourceRole): string {
   return role === 'vocal'
-    ? 'No compatible stem-ready vocal found.'
-    : 'No compatible stem-ready instrumental found.';
+    ? 'No compatible vocal candidate found.'
+    : 'No compatible instrumental candidate found.';
 }
 
 function currentPair(state: RouletteSessionState): RoulettePlaybackSources {
@@ -79,6 +123,7 @@ export function createRouletteActionExecutor({
   dispatch,
   matcher = rouletteMatchingEngine,
   prepareSources = async () => undefined,
+  prepareResolvedSource = defaultPrepareResolvedSource,
   selectionHistory = new RouletteSelectionHistory(),
 }: RouletteActionExecutorDependencies): RouletteActionExecutor {
   let sequence = 0;
@@ -134,7 +179,11 @@ export function createRouletteActionExecutor({
       }
       if (!resolved) throw new Error(noCandidateMessage(role));
 
-      const nextSelection = selectionFor(resolved);
+      const nextSelection = await prepareResolvedSource(resolved, role, controller.signal);
+      if (controller.signal.aborted) {
+        finishAbort(command, requestId, controller);
+        return false;
+      }
       const nextSources: RoulettePlaybackSources = {
         ...currentPair(state),
         [role]: nextSelection,
@@ -168,10 +217,19 @@ export function createRouletteActionExecutor({
     }
   };
 
-  const replaceBoth = async (): Promise<boolean> => {
+  const resolveBoth = async (command: 'initialize' | 'replace-both'): Promise<boolean> => {
     const stateBeforeCommand = getState();
     if (stateBeforeCommand.transport.status !== 'stopped' || stateBeforeCommand.command.status === 'loading') return false;
-    const command: RouletteCommand = 'replace-both';
+    if (
+      command === 'initialize'
+      && stateBeforeCommand.sources.vocal.parentTrackId
+      && stateBeforeCommand.sources.vocal.stemRef
+      && stateBeforeCommand.sources.vocal.stemStatus === 'ready'
+      && stateBeforeCommand.sources.instrumental.parentTrackId
+      && stateBeforeCommand.sources.instrumental.stemRef
+      && stateBeforeCommand.sources.instrumental.stemStatus === 'ready'
+    ) return true;
+
     const { controller, requestId } = begin(command);
     try {
       const state = getState();
@@ -189,28 +247,37 @@ export function createRouletteActionExecutor({
         finishAbort(command, requestId, controller);
         return false;
       }
-      if (!resolved) throw new Error('No compatible stem-ready pair found.');
+      if (!resolved) {
+        throw new Error(command === 'initialize'
+          ? 'No compatible Roulette pair is available for initial load.'
+          : 'No fully replaceable compatible Roulette pair found.');
+      }
 
-      const nextSources: RoulettePlaybackSources = {
-        vocal: selectionFor(resolved.vocal),
-        instrumental: selectionFor(resolved.instrumental),
-      };
+      if (resolved.vocal.parentTrackId === resolved.instrumental.parentTrackId) {
+        throw new Error('Roulette rejected a same-parent vocal/instrumental pair.');
+      }
+
+      // Stage 3 intentionally serializes preview separation. Keep the command
+      // boundary serial too so cancellation/source-required state stays unambiguous.
+      const vocal = await prepareResolvedSource(resolved.vocal, 'vocal', controller.signal);
+      const instrumental = await prepareResolvedSource(resolved.instrumental, 'instrumental', controller.signal);
+      if (controller.signal.aborted) {
+        finishAbort(command, requestId, controller);
+        return false;
+      }
+      if (vocal.parentTrackId === instrumental.parentTrackId) {
+        throw new Error('Roulette rejected a same-parent vocal/instrumental pair.');
+      }
+
+      const nextSources: RoulettePlaybackSources = { vocal, instrumental };
       await prepareSources(nextSources, controller.signal);
       if (controller.signal.aborted) {
         finishAbort(command, requestId, controller);
         return false;
       }
 
-      dispatch({
-        type: 'commit-pair',
-        vocal: nextSources.vocal,
-        instrumental: nextSources.instrumental,
-        requestId,
-      });
-      selectionHistory.rememberPair(
-        nextSources.vocal.parentTrackId,
-        nextSources.instrumental.parentTrackId,
-      );
+      dispatch({ type: 'commit-pair', vocal, instrumental, requestId });
+      selectionHistory.rememberPair(vocal.parentTrackId, instrumental.parentTrackId);
       clearController(controller);
       return true;
     } catch (error) {
@@ -226,8 +293,9 @@ export function createRouletteActionExecutor({
 
   return {
     actions: {
+      initialize: () => resolveBoth('initialize'),
       replaceSource,
-      replaceBoth,
+      replaceBoth: () => resolveBoth('replace-both'),
     },
     cancel: () => activeController?.abort(),
   };

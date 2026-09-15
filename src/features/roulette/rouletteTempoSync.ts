@@ -1,12 +1,13 @@
 import type { RouletteSourceRole } from './rouletteSession';
+import { isRouletteDirectTempoCompatible } from './rouletteMatching';
 
 /**
- * Stage 8 direct-tempo support. The BPM window remains intentionally narrow;
- * half-time/double-time relationships are not normalized into this range.
+ * WSOLA is only entered after the canonical Stage 2 direct-tempo filter passes.
+ * These broad sanity bounds protect DSP from corrupt metadata; they are not a
+ * second musical matching rule.
  */
-export const ROULETTE_DIRECT_BPM_TOLERANCE = 2;
-export const ROULETTE_MIN_TEMPO_RATIO = 0.94;
-export const ROULETTE_MAX_TEMPO_RATIO = 1.06;
+export const ROULETTE_MIN_TEMPO_RATIO = 0.5;
+export const ROULETTE_MAX_TEMPO_RATIO = 2;
 export const ROULETTE_TEMPO_RATIO_EPSILON = 1e-6;
 
 export interface RouletteDeckTempoPlan {
@@ -46,7 +47,8 @@ export function isRouletteTempoRatioSupported(
   const ratio = calculateRouletteTempoRatio(sourceBpm, targetBpm);
   return ratio != null
     && ratio >= ROULETTE_MIN_TEMPO_RATIO - ROULETTE_TEMPO_RATIO_EPSILON
-    && ratio <= ROULETTE_MAX_TEMPO_RATIO + ROULETTE_TEMPO_RATIO_EPSILON;
+    && ratio <= ROULETTE_MAX_TEMPO_RATIO + ROULETTE_TEMPO_RATIO_EPSILON
+    && isRouletteDirectTempoCompatible(sourceBpm, targetBpm);
 }
 
 function deckPlan(
@@ -56,7 +58,7 @@ function deckPlan(
 ): RouletteDeckTempoPlan {
   const tempoRatio = calculateRouletteTempoRatio(sourceBpm, targetBpm);
   if (tempoRatio == null || !isRouletteTempoRatioSupported(sourceBpm, targetBpm)) {
-    throw new Error(`Roulette cannot pitch-lock ${sourceBpm} BPM to ${targetBpm} BPM within the supported tempo ratio.`);
+    throw new Error(`Roulette cannot pitch-lock ${sourceBpm} BPM to ${targetBpm} BPM outside the canonical ±5 BPM domain.`);
   }
 
   return {
@@ -71,8 +73,7 @@ function deckPlan(
 
 /**
  * The instrumental is the stable underlying mix bed and owns Roulette's
- * transport BPM. This preserves the production ownership rule introduced by
- * the aligned-playback stage while making the vocal deck the stretch target.
+ * transport BPM. The vocal deck is pitch-preserving time-stretched to it.
  */
 export function resolveRouletteTempoPlan(
   vocalBpm: number | null | undefined,

@@ -24,13 +24,16 @@ import { fetchRouletteTrack } from '../../lib/queries/rouletteCandidates';
 import { rouletteStemAssetService, type StemAssetService } from './stemAssetService';
 import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole } from './stemAssets';
 import { buildRouletteBarFractions, resolveRouletteAlignment } from './rouletteAlignment';
+import { hasUsableRouletteBeatGrid } from './rouletteMatching';
 import {
   ROULETTE_ANCHOR_WINDOW_BARS,
   resolveRouletteMusicalAnchor,
   type RouletteMusicalAnchor,
 } from './rouletteAnchors';
-import type { RouletteSourceRole, RouletteSourceSelection } from './rouletteSession';
+import type { RouletteSourceRole, RouletteSourceSelection, RouletteSourceWindow } from './rouletteSession';
 import { extractRouletteStemPeaks } from './rouletteWaveform';
+import { roulettePreparedAssetRef, type ResolvedRouletteAuditionMedia } from './roulettePreview';
+import { roulettePreviewPreparationService, type RoulettePreviewPreparationService } from './roulettePreviewPreparationService';
 import {
   rouletteOutputDurationSeconds,
   rouletteSourceDurationSeconds,
@@ -89,6 +92,7 @@ interface RouletteRuntimeDependencies {
   loadPhrases(trackId: string): Promise<PhraseRow[]>;
   loadVocalAnalysis(trackId: string): Promise<VocalAnalysisRow | null>;
   stemAssets: Pick<StemAssetService, 'resolveReady'>;
+  previewAssets: Pick<RoulettePreviewPreparationService, 'getState' | 'resolvePreparedAsset'>;
   getAudioContext(): AudioContext;
   decodedCache: DecodedAudioCache<AudioBuffer>;
   stretchedCache: DecodedAudioCache<AudioBuffer>;
@@ -114,6 +118,7 @@ function defaultDependencies(): RouletteRuntimeDependencies {
     loadPhrases: fetchTrackPhrases,
     loadVocalAnalysis: fetchTrackVocalAnalysis,
     stemAssets: rouletteStemAssetService,
+    previewAssets: roulettePreviewPreparationService,
     getAudioContext: createBrowserAudioContext,
     decodedCache: new DecodedAudioCache<AudioBuffer>(8, {
       maxBytes: ROULETTE_DECODED_CACHE_BUDGET_BYTES,
@@ -171,6 +176,40 @@ function disconnectNode(node: AudioNode | null): void {
   try { node.disconnect(); } catch { /* already disconnected */ }
 }
 
+interface RouletteRuntimeMedia {
+  assetKind: 'hq' | 'preview' | 'legacy-hq';
+  assetRef: string;
+  source: { kind: 'url'; url: string; size: number; mtimeMs: number };
+  /** Seek offset in the resolved media. Preview clips begin at zero. */
+  mediaStartMs: number | null;
+  window: RouletteSourceWindow | null;
+  durationMs: number | null;
+}
+
+function anchorFromLockedWindow(
+  role: RouletteSourceRole,
+  parentTrackId: string,
+  beatGrid: BeatGridRow | null,
+  window: RouletteSourceWindow,
+): RouletteMusicalAnchor {
+  const anchorBeat = window.sourceBeatSequence == null
+    ? null
+    : beatGrid?.beats.find((beat) => beat.seq === window.sourceBeatSequence) ?? null;
+  return {
+    role,
+    parentTrackId,
+    sourceTimeMs: window.sourceTimeMs,
+    sourceBar: window.sourceBar,
+    sourceBeatSequence: window.sourceBeatSequence,
+    anchorBeat,
+    requestedBars: window.requestedBars,
+    windowEndMs: window.windowEndMs,
+    usableWindowMs: window.durationMs,
+    provenance: window.provenance,
+    reason: 'Locked Roulette source window selected during candidate preparation.',
+  };
+}
+
 /** Dedicated, memory-only Roulette Web Audio owner. */
 export function createRouletteAudioRuntime(
   overrides: Partial<RouletteRuntimeDependencies> = {},
@@ -217,6 +256,49 @@ export function createRouletteAudioRuntime(
     if (instrumentalNode) setGain(instrumentalNode, effectiveDeckGain('instrumental', mix), audioContext);
   };
 
+  const resolveSelectionMedia = async (
+    role: RouletteSourceRole,
+    selection: RouletteSourceSelection & { parentTrackId: string; stemRef: string },
+  ): Promise<RouletteRuntimeMedia | null> => {
+    const preparedState = dependencies.previewAssets.getState(selection.parentTrackId, role);
+    if (
+      preparedState?.status === 'ready'
+      && preparedState.asset
+      && roulettePreparedAssetRef(preparedState.asset) === selection.stemRef
+    ) {
+      const resolved: ResolvedRouletteAuditionMedia | null = await dependencies.previewAssets.resolvePreparedAsset(preparedState.asset);
+      if (!resolved) return null;
+      return {
+        assetKind: resolved.assetKind,
+        assetRef: selection.stemRef,
+        source: resolved.source,
+        mediaStartMs: resolved.mediaStartMs,
+        window: selection.window ?? resolved.window,
+        durationMs: preparedState.asset.kind === 'hq'
+          ? preparedState.asset.asset.duration_ms
+          : preparedState.asset.output.durationMs,
+      };
+    }
+
+    // Legacy/fallback path for ready HQ selections created before Stage 5 or in
+    // tests. Preview selections are never substituted with the full parent mix.
+    if (selection.stemRef.startsWith('preview:')) return null;
+    const ready = await dependencies.stemAssets.resolveReady(
+      selection.parentTrackId,
+      stemTypeForRole(role),
+      { expectedSeparatorVersion: ROULETTE_SEPARATOR_VERSION },
+    );
+    if (!ready || ready.asset.id !== selection.stemRef) return null;
+    return {
+      assetKind: 'legacy-hq',
+      assetRef: ready.asset.id,
+      source: ready.source,
+      mediaStartMs: null,
+      window: selection.window ?? null,
+      durationMs: ready.asset.duration_ms,
+    };
+  };
+
   const play = async (
     sources: RoulettePlaybackSources,
     mix: RouletteMixState,
@@ -249,8 +331,8 @@ export function createRouletteAudioRuntime(
       dependencies.loadPhrases(sources.vocal.parentTrackId),
       dependencies.loadPhrases(sources.instrumental.parentTrackId),
       dependencies.loadVocalAnalysis(sources.vocal.parentTrackId),
-      dependencies.stemAssets.resolveReady(sources.vocal.parentTrackId, stemTypeForRole('vocal'), { expectedSeparatorVersion: ROULETTE_SEPARATOR_VERSION }),
-      dependencies.stemAssets.resolveReady(sources.instrumental.parentTrackId, stemTypeForRole('instrumental'), { expectedSeparatorVersion: ROULETTE_SEPARATOR_VERSION }),
+      resolveSelectionMedia('vocal', sources.vocal),
+      resolveSelectionMedia('instrumental', sources.instrumental),
     ]);
     throwIfCancelled(generation, activeGeneration, controller.signal);
 
@@ -258,29 +340,36 @@ export function createRouletteAudioRuntime(
       throw new Error('Roulette parent-track metadata is unavailable.');
     }
     if (!vocalMedia || !instrumentalMedia) {
-      throw new Error('A selected Roulette stem is missing or no longer ready.');
+      throw new Error('A selected Roulette audition asset is missing or no longer ready.');
     }
-    if (vocalMedia.asset.id !== sources.vocal.stemRef || instrumentalMedia.asset.id !== sources.instrumental.stemRef) {
-      throw new Error('A selected Roulette stem changed after matching. Roulette the source again.');
+    if (!hasUsableRouletteBeatGrid(vocalGrid) || !hasUsableRouletteBeatGrid(instrumentalGrid)) {
+      throw new Error('Roulette playback requires a usable Rekordbox beat grid for both parent tracks.');
+    }
+    if (vocalMedia.assetRef !== sources.vocal.stemRef || instrumentalMedia.assetRef !== sources.instrumental.stemRef) {
+      throw new Error('A selected Roulette audition asset changed after matching. Roulette the source again.');
     }
 
-    const vocalAnchor = resolveRouletteMusicalAnchor({
-      role: 'vocal',
-      track: vocalTrack,
-      beatGrid: vocalGrid,
-      phrases: vocalPhrases,
-      vocalAnalysis,
-      durationMs: vocalMedia.asset.duration_ms,
-      requestedBars: ROULETTE_ANCHOR_WINDOW_BARS,
-    });
-    const instrumentalAnchor = resolveRouletteMusicalAnchor({
-      role: 'instrumental',
-      track: instrumentalTrack,
-      beatGrid: instrumentalGrid,
-      phrases: instrumentalPhrases,
-      durationMs: instrumentalMedia.asset.duration_ms,
-      requestedBars: ROULETTE_ANCHOR_WINDOW_BARS,
-    });
+    const vocalAnchor = vocalMedia.window
+      ? anchorFromLockedWindow('vocal', vocalTrack.id, vocalGrid, vocalMedia.window)
+      : resolveRouletteMusicalAnchor({
+        role: 'vocal',
+        track: vocalTrack,
+        beatGrid: vocalGrid,
+        phrases: vocalPhrases,
+        vocalAnalysis,
+        durationMs: vocalMedia.durationMs,
+        requestedBars: ROULETTE_ANCHOR_WINDOW_BARS,
+      });
+    const instrumentalAnchor = instrumentalMedia.window
+      ? anchorFromLockedWindow('instrumental', instrumentalTrack.id, instrumentalGrid, instrumentalMedia.window)
+      : resolveRouletteMusicalAnchor({
+        role: 'instrumental',
+        track: instrumentalTrack,
+        beatGrid: instrumentalGrid,
+        phrases: instrumentalPhrases,
+        durationMs: instrumentalMedia.durationMs,
+        requestedBars: ROULETTE_ANCHOR_WINDOW_BARS,
+      });
     if (!vocalAnchor || !instrumentalAnchor) {
       throw new Error(`Roulette could not resolve a ${ROULETTE_ANCHOR_WINDOW_BARS}-bar musical window for both parent tracks.`);
     }
@@ -302,7 +391,7 @@ export function createRouletteAudioRuntime(
     } as const;
     const cacheKeyFor = (role: RouletteSourceRole) => {
       const media = role === 'vocal' ? vocalMedia : instrumentalMedia;
-      return `roulette:${media.asset.id}:${media.source.size}:${media.source.mtimeMs}`;
+      return `roulette:${media.assetRef}:${media.source.size}:${media.source.mtimeMs}`;
     };
 
     const loadDependencies: AudioSourceLoadDependencies = {
@@ -328,8 +417,14 @@ export function createRouletteAudioRuntime(
     );
     throwIfCancelled(generation, activeGeneration, controller.signal);
 
-    const vocalSourceAvailable = Math.max(0, vocalBuffer.duration - alignment.vocal.sourceOffsetSeconds);
-    const instrumentalSourceAvailable = Math.max(0, instrumentalBuffer.duration - alignment.instrumental.sourceOffsetSeconds);
+    const vocalSourceOffsetSeconds = vocalMedia.mediaStartMs == null
+      ? alignment.vocal.sourceOffsetSeconds
+      : vocalMedia.mediaStartMs / 1000;
+    const instrumentalSourceOffsetSeconds = instrumentalMedia.mediaStartMs == null
+      ? alignment.instrumental.sourceOffsetSeconds
+      : instrumentalMedia.mediaStartMs / 1000;
+    const vocalSourceAvailable = Math.max(0, vocalBuffer.duration - vocalSourceOffsetSeconds);
+    const instrumentalSourceAvailable = Math.max(0, instrumentalBuffer.duration - instrumentalSourceOffsetSeconds);
     const vocalAvailable = rouletteOutputDurationSeconds(vocalSourceAvailable, alignment.tempo.vocal);
     const instrumentalAvailable = rouletteOutputDurationSeconds(instrumentalSourceAvailable, alignment.tempo.instrumental);
     const vocalAnchorWindow = rouletteOutputDurationSeconds(vocalAnchor.usableWindowMs / 1000, alignment.tempo.vocal);
@@ -363,7 +458,7 @@ export function createRouletteAudioRuntime(
       );
       const cacheKey = [
         'roulette-tempo-v1',
-        media.asset.id,
+        media.assetRef,
         Math.round(offsetSeconds * buffer.sampleRate),
         plan.sourceBpm.toFixed(6),
         plan.targetBpm.toFixed(6),
@@ -385,8 +480,8 @@ export function createRouletteAudioRuntime(
     let preparedInstrumental: PreparedDeck;
     try {
       [preparedVocal, preparedInstrumental] = await Promise.all([
-        prepareDeck('vocal', vocalBuffer, alignment.vocal.sourceOffsetSeconds, alignment.tempo.vocal),
-        prepareDeck('instrumental', instrumentalBuffer, alignment.instrumental.sourceOffsetSeconds, alignment.tempo.instrumental),
+        prepareDeck('vocal', vocalBuffer, vocalSourceOffsetSeconds, alignment.tempo.vocal),
+        prepareDeck('instrumental', instrumentalBuffer, instrumentalSourceOffsetSeconds, alignment.tempo.instrumental),
       ]);
     } catch (error) {
       tempoProcessor.cancel();

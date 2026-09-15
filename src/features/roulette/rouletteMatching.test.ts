@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RekordboxTrack } from '../../types';
 import type { BeatGridRow } from '../../lib/queries/analysisData';
 import {
+  chooseWeightedRouletteCandidate,
   getRouletteHardFilterReason,
   isRouletteDirectTempoCompatible,
   rankRouletteCandidates,
@@ -195,6 +196,22 @@ describe('Roulette hard compatibility', () => {
     const a = candidate('a-id', 'vocal', { track: track('a-id', 142, '9A', 'Alpha') });
     expect(rankRouletteCandidates([z, a], reference, 'vocal').map((row) => row.candidate.track.id))
       .toEqual(['a-id', 'z-id']);
+  });
+
+  it('keeps weighted variety deterministic when randomness is injected', () => {
+    const reference = { track: track('reference', 142, '9A'), beatGrid: grid('reference') };
+    const ranked = rankRouletteCandidates([
+      candidate('best', 'vocal', { track: track('best', 142, '9A', 'Best') }),
+      candidate('alternate', 'vocal', { track: track('alternate', 146.5, '9A', 'Alternate') }),
+    ], reference, 'vocal');
+
+    const topA = chooseWeightedRouletteCandidate(ranked, () => 0);
+    const topB = chooseWeightedRouletteCandidate(ranked, () => 0);
+    const alternate = chooseWeightedRouletteCandidate(ranked, () => 0.999999);
+
+    expect(topA?.candidate.track.id).toBe(ranked[0].candidate.track.id);
+    expect(topB?.candidate.track.id).toBe(topA?.candidate.track.id);
+    expect(alternate?.candidate.track.id).toBe(ranked.at(-1)?.candidate.track.id);
   });
 
   it('builds a bounded compatible pair pool instead of expanding the full Cartesian product', () => {

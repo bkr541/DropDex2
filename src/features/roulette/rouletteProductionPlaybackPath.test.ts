@@ -161,15 +161,31 @@ describe('Roulette production behavior integration', () => {
       );
       expect(alignment.tempo.masterRole).toBe('instrumental');
     });
+    const prepareResolvedSource = vi.fn(async (resolved, role: 'vocal' | 'instrumental') => ({
+      parentTrackId: resolved.parentTrackId,
+      stemRef: resolved.stemAsset?.id ?? `preview:${resolved.parentTrackId}:${role}`,
+      stemStatus: 'ready' as const,
+      window: {
+        sourceTimeMs: 0,
+        windowEndMs: 27_000,
+        durationMs: 27_000,
+        sourceBar: 1,
+        sourceBeatSequence: 1,
+        requestedBars: 16,
+        provenance: 'downbeat' as const,
+      },
+    }));
     const executor = createRouletteActionExecutor({
       getState: harness.getState,
       dispatch: harness.dispatch,
       matcher: matching,
       prepareSources: preflight,
+      prepareResolvedSource,
     });
 
-    await expect(executor.actions.replaceBoth()).resolves.toBe(true);
+    await expect(executor.actions.initialize()).resolves.toBe(true);
     expect(preflight).toHaveBeenCalledTimes(1);
+    expect(prepareResolvedSource).toHaveBeenCalledTimes(2);
     const firstPair = harness.getState().sources;
     expect(firstPair.vocal.parentTrackId).toBeTruthy();
     expect(firstPair.instrumental.parentTrackId).toBeTruthy();
@@ -213,6 +229,6 @@ describe('Roulette production behavior integration', () => {
 
     await expect(executor.actions.replaceBoth()).resolves.toBe(false);
     expect(preflight).not.toHaveBeenCalled();
-    expect(harness.getState().command.error).toBe('No compatible stem-ready pair found.');
+    expect(harness.getState().command.error).toBe('No fully replaceable compatible Roulette pair found.');
   });
 });

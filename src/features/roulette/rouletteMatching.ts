@@ -269,6 +269,27 @@ export function diagnosticReasonForRoulettePair(
   return 'eligible';
 }
 
+export function chooseWeightedRouletteCandidate(
+  orderedCandidates: readonly RouletteCandidateScore[],
+  rng: () => number = Math.random,
+): RouletteCandidateScore | null {
+  if (orderedCandidates.length === 0) return null;
+  const floor = Math.min(...orderedCandidates.map((candidate) => candidate.score));
+  const weights = orderedCandidates.map((candidate, index) => (
+    Math.max(1, candidate.score - floor + 1) / (1 + index * 0.08)
+  ));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  const rawSample = rng();
+  const sample = Math.min(0.999999999, Math.max(0, Number.isFinite(rawSample) ? rawSample : 0));
+  let cursor = sample * total;
+  for (let index = 0; index < orderedCandidates.length; index += 1) {
+    cursor -= weights[index];
+    if (cursor <= 0) return orderedCandidates[index];
+  }
+  return orderedCandidates[orderedCandidates.length - 1];
+}
+
+
 export function chooseWeightedRoulettePair(
   orderedPairs: readonly RoulettePairScore[],
   rng: () => number = Math.random,

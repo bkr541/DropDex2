@@ -5,8 +5,6 @@ import {
   resolveRouletteTempoPlan,
   rouletteOutputDurationSeconds,
   rouletteSourceDurationSeconds,
-  ROULETTE_MAX_TEMPO_RATIO,
-  ROULETTE_MIN_TEMPO_RATIO,
 } from './rouletteTempoSync';
 
 describe('Roulette pitch-locked tempo plan', () => {
@@ -28,12 +26,12 @@ describe('Roulette pitch-locked tempo plan', () => {
     expect(plan.vocal.requiresPitchLockedProcessing).toBe(false);
   });
 
-  it('enforces explicit processor ratio bounds', () => {
-    expect(isRouletteTempoRatioSupported(100, 100 * ROULETTE_MIN_TEMPO_RATIO)).toBe(true);
-    expect(isRouletteTempoRatioSupported(100, 100 * ROULETTE_MAX_TEMPO_RATIO)).toBe(true);
-    expect(isRouletteTempoRatioSupported(100, 93.9)).toBe(false);
-    expect(isRouletteTempoRatioSupported(100, 106.1)).toBe(false);
-    expect(calculateRouletteTempoRatio(140, 142)).toBeCloseTo(142 / 140, 12);
+  it('accepts the complete canonical ±5 BPM domain and rejects values beyond it', () => {
+    expect(isRouletteTempoRatioSupported(137, 142)).toBe(true);
+    expect(isRouletteTempoRatioSupported(147, 142)).toBe(true);
+    expect(isRouletteTempoRatioSupported(136.99, 142)).toBe(false);
+    expect(isRouletteTempoRatioSupported(147.01, 142)).toBe(false);
+    expect(calculateRouletteTempoRatio(137, 142)).toBeCloseTo(142 / 137, 12);
   });
 
   it('maps source and target durations without accumulating long-window drift', () => {

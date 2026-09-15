@@ -70,6 +70,13 @@ export interface ResolvedRouletteAuditionMedia {
   };
 }
 
+
+export function roulettePreparedAssetRef(asset: RoulettePreparedAuditionAsset): string {
+  return asset.kind === 'hq'
+    ? asset.asset.id
+    : `preview:${asset.output.locator}:${asset.output.size}:${asset.output.mtimeMs}`;
+}
+
 export function previewQueueKey(trackId: string, role: RouletteSourceRole): string {
   return `${trackId}:${role}`;
 }

@@ -2,13 +2,35 @@ export type RouletteSourceRole = 'vocal' | 'instrumental';
 
 export type RouletteStemStatus = 'unavailable' | 'preparing' | 'ready' | 'failed';
 
+export type RouletteSourceWindowProvenance =
+  | 'pvdi-phrase'
+  | 'pvdi-downbeat'
+  | 'phrase'
+  | 'downbeat'
+  | 'bpm-fallback';
+
+/** Parent-track window locked at selection time. Preview media may start at zero,
+ * but these values always remain in the parent Rekordbox timeline. */
+export interface RouletteSourceWindow {
+  sourceTimeMs: number;
+  windowEndMs: number;
+  durationMs: number;
+  sourceBar: number | null;
+  sourceBeatSequence: number | null;
+  requestedBars: number;
+  provenance: RouletteSourceWindowProvenance;
+}
+
 export interface RouletteSourceSelection {
   parentTrackId: string | null;
   stemRef: string | null;
   stemStatus: RouletteStemStatus;
+  /** Exact 16-bar parent-track source window chosen for this deck. */
+  window?: RouletteSourceWindow | null;
 }
 
 export type RouletteCommand =
+  | 'initialize'
   | 'replace-vocal'
   | 'replace-instrumental'
   | 'replace-both'
