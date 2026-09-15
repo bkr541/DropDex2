@@ -1,59 +1,65 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #0c0e1c;
-  --color-foreground: #f0ede9;
+  --color-background: #080b10;
+  --color-foreground: #eef3f8;
 
-  --color-card: #151729;
-  --color-card-foreground: #f0ede9;
+  --color-card: #0e141b;
+  --color-card-foreground: #eef3f8;
 
-  --color-popover: #151729;
-  --color-popover-foreground: #f0ede9;
+  --color-popover: #121a23;
+  --color-popover-foreground: #eef3f8;
 
-  --color-primary: #cf6b65;
+  --color-primary: #3b91ff;
   --color-brand-primary: #cf6b65;
   --color-primary-foreground: #ffffff;
 
-  --color-secondary: #e8937e;
+  --color-secondary: #38c3dc;
   --color-brand-secondary: #e8937e;
-  --color-secondary-foreground: #ffffff;
+  --color-secondary-foreground: #041217;
 
-  --color-accent: #cf6b65;
+  --color-accent: #3b91ff;
   --color-accent-foreground: #ffffff;
 
-  --color-muted: #1e2238;
-  --color-muted-foreground: #7e8598;
+  --color-muted: #151d27;
+  --color-muted-foreground: #8e9aa8;
 
-  --color-border: rgba(240, 237, 233, 0.10);
-  --color-input: rgba(240, 237, 233, 0.05);
-  --color-ring: #cf6b65;
+  --color-border: rgb(164 178 196 / 0.14);
+  --color-input: #111820;
+  --color-ring: #3b91ff;
 
   --font-sans: 'Blinker', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 /* Dark-mode defaults for surface/panel tokens */
 :root {
-  --color-panel: #0c0e1c;
-  --color-panel-alt: #151729;
-  --color-surface: rgba(240, 237, 233, 0.05);
-  --color-surface-hover: rgba(240, 237, 233, 0.10);
-  --color-border-subtle: rgba(240, 237, 233, 0.10);
-  --color-border-faint: rgba(240, 237, 233, 0.05);
-  --color-avatar-bg: #1e2238;
-  --color-text-subdued: #c4beba;
-  --color-primary-rgb: 207 107 101;
-  --color-secondary-rgb: 232 147 126;
+  --color-panel: #0e141b;
+  --color-panel-alt: #121a23;
+  --color-surface: #121a23;
+  --color-surface-hover: #17212c;
+  --color-border-subtle: rgb(164 178 196 / 0.14);
+  --color-border-faint: rgb(164 178 196 / 0.075);
+  --color-avatar-bg: #17202a;
+  --color-text-subdued: #b8c2cc;
+  --color-primary-rgb: 59 145 255;
+  --color-secondary-rgb: 56 195 220;
   --color-brand-primary-rgb: 207 107 101;
-  --color-review-glow-rgb: 168 85 247;
+  --color-review-glow-rgb: 56 195 220;
   --color-waveform-mono: #cf6b65;
   --color-waveform-secondary: #e8937e;
-  --color-waveform-playhead: #fff7f4;
-  --color-waveform-grid: #3b3543;
-  --color-waveform-surface: rgba(4, 5, 12, 0.32);
-  --color-waveform-border: rgba(240, 237, 233, 0.07);
-  --color-genre-badge-bg: rgba(240, 237, 233, 0.055);
-  --color-genre-badge-border: rgba(240, 237, 233, 0.12);
+  --color-waveform-playhead: #f7fbff;
+  --color-waveform-grid: #26323f;
+  --color-waveform-surface: #0b1016;
+  --color-waveform-border: rgb(164 178 196 / 0.10);
+  --color-genre-badge-bg: rgb(164 178 196 / 0.055);
+  --color-genre-badge-border: rgb(164 178 196 / 0.13);
+
+  /* Quiet structural primitives shared by app-level surfaces. */
+  --radius-panel: 10px;
+  --radius-popover: 8px;
+  --shadow-surface: 0 8px 22px rgb(0 0 0 / 0.18);
+  --motion-standard: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Reusable control foundation — Stage 1. Dark hardware surfaces are intentional
      across appearance themes; semantic app surfaces above remain theme-aware. */
@@ -76,7 +82,7 @@
   --color-control-red: #ff3647;
   --color-control-disabled: #e0e3e8;
   --color-control-disabled-text: #a8adb5;
-  --color-control-focus: #8f42e8;
+  --color-control-focus: #3b91ff;
   --color-control-blue-rgb: 31 125 255;
   --color-control-cyan-rgb: 18 191 224;
   --color-control-purple-rgb: 154 66 223;
@@ -173,23 +179,26 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-sans);
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     overscroll-behavior-y: none;
   }
 }
 
-/* Glassmorphism */
+/* Matte shared surface. Keep the class name for compatibility with existing screens. */
 .glass {
-  background: rgba(240, 237, 233, 0.03);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(240, 237, 233, 0.10);
+  background: var(--color-panel-alt);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-surface);
 }
 
 [data-theme="light"] .glass {
-  background: rgba(255, 255, 255, 0.75);
+  background: #ffffff;
   border: 1px solid rgba(26, 28, 46, 0.08);
+  box-shadow: 0 8px 22px rgb(26 28 46 / 0.07);
 }
 
 /* Compact metadata chips use the same surface language in every appearance. */
@@ -224,11 +233,9 @@
 .waveform-surface {
   width: 100%;
   border: 1px solid var(--color-waveform-border);
-  border-radius: 0.5rem;
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.018), transparent 48%),
-    var(--color-waveform-surface);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.02);
+  border-radius: var(--radius-popover);
+  background: var(--color-waveform-surface);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.012);
 }
 
 .waveform-surface[data-waveform-variant="detail"] {
@@ -236,8 +243,8 @@
 }
 
 .waveform-surface[data-waveform-variant="transport"] {
-  border-radius: 0.75rem;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.025), inset 0 0 18px rgb(0 0 0 / 0.12);
+  border-radius: var(--radius-panel);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.015), inset 0 0 12px rgb(0 0 0 / 0.08);
 }
 
 [data-theme="light"] .waveform-surface {
@@ -245,16 +252,16 @@
 }
 
 .neon-border {
-  box-shadow: 0 0 15px rgba(207, 107, 101, 0.3);
-  border: 1px solid rgba(207, 107, 101, 0.5);
+  box-shadow: 0 0 6px rgb(var(--color-primary-rgb) / 0.14);
+  border: 1px solid rgb(var(--color-primary-rgb) / 0.45);
 }
 
 .neon-text-blue {
-  text-shadow: 0 0 10px rgba(207, 107, 101, 0.6);
+  text-shadow: 0 0 5px rgb(var(--color-primary-rgb) / 0.22);
 }
 
 .neon-text-purple {
-  text-shadow: 0 0 10px rgba(232, 147, 126, 0.6);
+  text-shadow: 0 0 5px rgb(var(--color-secondary-rgb) / 0.20);
 }
 
 [data-theme="light"] .neon-text-blue,
@@ -266,33 +273,33 @@
   background: linear-gradient(135deg, var(--color-brand-secondary) 0%, var(--color-brand-primary) 100%);
 }
 
-/* Theme-aware shadows keep Dark and Light unchanged while allowing CDJ blue interaction light. */
+/* Theme-aware elevation is deliberately restrained in the default workstation theme. */
 .shadow-primary-banner {
-  box-shadow: 0 10px 35px rgb(var(--color-primary-rgb) / 0.08);
+  box-shadow: 0 10px 28px rgb(var(--color-primary-rgb) / 0.06);
 }
 
 .shadow-primary-selection {
-  box-shadow: 0 4px 20px rgb(var(--color-primary-rgb) / 0.15);
+  box-shadow: 0 4px 14px rgb(var(--color-primary-rgb) / 0.10);
 }
 
 .shadow-primary-card {
-  box-shadow: 0 8px 24px rgb(var(--color-primary-rgb) / 0.12);
+  box-shadow: 0 8px 18px rgb(var(--color-primary-rgb) / 0.08);
 }
 
 .shadow-primary-control {
-  box-shadow: 0 0 20px rgb(var(--color-primary-rgb) / 0.55);
+  box-shadow: 0 0 8px rgb(var(--color-primary-rgb) / 0.22);
 }
 
 .shadow-secondary-selection {
-  box-shadow: 0 4px 20px rgb(var(--color-review-glow-rgb) / 0.12);
+  box-shadow: 0 4px 14px rgb(var(--color-review-glow-rgb) / 0.09);
 }
 
 .shadow-brand-icon {
-  box-shadow: 0 0 20px rgb(var(--color-brand-primary-rgb) / 0.4);
+  box-shadow: 0 0 10px rgb(var(--color-brand-primary-rgb) / 0.24);
 }
 
 .shadow-brand-hero {
-  box-shadow: 0 0 24px rgb(var(--color-brand-primary-rgb) / 0.4);
+  box-shadow: 0 0 14px rgb(var(--color-brand-primary-rgb) / 0.24);
 }
 
 [data-theme="cdj"] body {
@@ -352,11 +359,12 @@
 
 /* Ambient background blobs — soften in light mode */
 .ambience-blob {
-  transition: opacity 0.3s;
+  opacity: 0.12;
+  transition: opacity var(--motion-standard);
 }
 
 [data-theme="light"] .ambience-blob {
-  opacity: 0.4;
+  opacity: 0.16;
 }
 
 /* Scrollbar */
