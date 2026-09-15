@@ -490,8 +490,9 @@ describe('Cue Points Stage 3 audio dock and playhead', () => {
     expect(source).toContain("import { MediaTransportControlGroup } from '../ui/media';");
     expect(source).toContain('data-testid="cue-audio-dock"');
     expect(source).toContain('ariaLabel="Cue Points transport controls"');
-    expect(source.indexOf('data-testid="cue-browser-source-tabs"')).toBeLessThan(source.indexOf('data-testid="cue-audio-dock"'));
-    expect(source.indexOf('data-testid="cue-audio-dock"')).toBeLessThan(source.indexOf('data-testid="cue-browser-filters"'));
+    expect(source.indexOf('data-testid="cue-browser-source-tabs"')).toBeLessThan(source.indexOf('<CuePointsAudioDock'));
+    expect(source.indexOf('<CuePointsAudioDock')).toBeLessThan(source.indexOf('data-testid="cue-browser-filters"'));
+    expect(source).toContain("import { TabNavigation } from '../ui/display/TabNavigation';");
   });
 
   it('keeps row selection and playback as separate intents', () => {

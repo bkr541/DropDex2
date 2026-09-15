@@ -38,13 +38,15 @@ import {
 } from '../../lib/queries/analysisData';
 import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { ControlButton, SearchControl, SegmentedControl, SelectControl, TextControl } from '../ui/controls';
+import { ControlButton, SearchControl, SelectControl, TextControl } from '../ui/controls';
 import { Artwork } from '../ui/display/Artwork';
+import { TabNavigation } from '../ui/display/TabNavigation';
 import { MediaTransportControlGroup } from '../ui/media';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import { clampCueTransportTime, cueAdjacentTrackIndex, cuePlaybackPlayheadPercent } from '../../lib/cues/cuePlaybackTransport';
 import type { RekordboxTrack } from '../../types';
+import './CuePointsView.css';
 import {
   createCueDraftDocument,
   cueDraftStrategySummary,
@@ -608,7 +610,7 @@ function CueFilterDropdown({
           role="listbox"
           aria-label={`${label} filter options`}
           onKeyDown={handleListboxKeyDown}
-          className="absolute top-full left-0 mt-1.5 z-50 min-w-full glass rounded-xl border border-[var(--color-border-subtle)] overflow-y-auto overscroll-contain shadow-2xl max-h-[320px]"
+          className="absolute top-full left-0 mt-1.5 z-50 min-w-full overflow-y-auto overscroll-contain rounded-md border border-[var(--color-control-border)] bg-[var(--color-control-surface)] shadow-[0_12px_28px_rgba(0,0,0,0.32)] max-h-[320px]"
         >
           {searchable && (
             <div className="dd-control-wrap sticky top-0 p-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)]">
@@ -785,7 +787,7 @@ function CuePointsAudioDock({
   return (
     <div
       data-testid="cue-audio-dock"
-      className="flex min-w-0 flex-1 flex-col gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2.5 py-2 xl:flex-row xl:items-center"
+      className="cue-audio-dock flex min-w-0 flex-1 flex-col gap-2 px-2.5 py-2 xl:flex-row xl:items-center"
       role="region"
       aria-label="Cue Points audio dock"
     >
@@ -1601,22 +1603,22 @@ function CueWaveformPanel({
   const applyAllDisabled = applyAllCount === 0 || applying;
 
   return (
-    <section className="relative overflow-visible border-y border-[var(--color-border-subtle)] bg-[var(--color-card)] shadow-[0_14px_30px_rgba(0,0,0,0.18)]" data-testid="cue-points-workstation">
-      <div className="flex flex-col gap-3 border-b border-[var(--color-border-subtle)] px-4 py-3 lg:px-5 xl:flex-row xl:items-center xl:justify-between">
+    <section className="cue-workstation relative overflow-visible border-y border-[var(--color-border-faint)]" data-testid="cue-points-workstation">
+      <div className="cue-workstation__header flex flex-col gap-3 border-b border-[var(--color-border-faint)] px-4 py-3 lg:px-5 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-3.5">
           <Artwork
             src={track.artwork_path}
             alt={`Artwork for ${track.title}`}
             fallbackTitle="No artwork"
-            className="h-[72px] w-[72px] shrink-0 rounded-[8px]"
+            className="h-16 w-16 shrink-0 rounded-[7px]"
           />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-primary/85">Editing Track</p>
-              <span className="rounded-full border border-[var(--color-border-faint)] bg-white/[0.025] px-2 py-0.5 text-[9px] font-bold text-muted-foreground">{draftStatus}</span>
+              <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-primary/75">Editing Track</p>
+              <span className="rounded-[4px] border border-[var(--color-border-faint)] bg-white/[0.015] px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">{draftStatus}</span>
             </div>
-            <h1 className="mt-1 truncate text-xl font-black tracking-[-0.02em] text-foreground md:text-[22px]">{track.title}</h1>
-            <p className="mt-0.5 truncate text-xs font-semibold text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
+            <h1 className="mt-1 truncate text-xl font-bold tracking-[-0.02em] text-foreground md:text-[21px]">{track.title}</h1>
+            <p className="mt-0.5 truncate text-xs font-medium text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-semibold text-muted-foreground">
               <span><span className="uppercase tracking-[0.08em] text-foreground/45">BPM</span> <strong className="ml-1 text-foreground/90">{bpmDisplay}</strong></span>
               <span><span className="uppercase tracking-[0.08em] text-foreground/45">Key</span> <strong className="ml-1" style={{ color: camelotColor(track.musical_key) }}>{keyDisplay}</strong></span>
@@ -1626,8 +1628,8 @@ function CueWaveformPanel({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 xl:max-w-[900px] xl:justify-end">
-          <label className="flex min-h-[34px] items-center gap-1.5 rounded-md border border-[var(--color-border-faint)] bg-white/[0.025] pl-2 text-[9px] font-black uppercase tracking-[0.1em] text-muted-foreground">
+        <div className="cue-workstation__actions flex flex-wrap items-center gap-1.5 xl:max-w-[900px] xl:justify-end">
+          <label className="cue-workstation__field flex min-h-[34px] items-center gap-1.5 pl-1.5 text-[9px] font-black uppercase tracking-[0.1em] text-muted-foreground">
             <span>Snap</span>
             <SelectControl
               aria-label="Snap resolution"
@@ -1641,7 +1643,7 @@ function CueWaveformPanel({
               <option value="4-beats">4 Beats</option>
             </SelectControl>
           </label>
-          <label className="flex min-h-[34px] items-center gap-1.5 rounded-md border border-[var(--color-border-faint)] bg-white/[0.025] pl-2 text-[9px] font-black uppercase tracking-[0.1em] text-muted-foreground">
+          <label className="cue-workstation__field flex min-h-[34px] items-center gap-1.5 pl-1.5 text-[9px] font-black uppercase tracking-[0.1em] text-muted-foreground">
             <span>Grid</span>
             <SelectControl
               aria-label="Grid display"
@@ -1654,7 +1656,7 @@ function CueWaveformPanel({
               <option value="bars">Bars</option>
             </SelectControl>
           </label>
-          <div className="flex overflow-hidden rounded-md border border-[var(--color-border-faint)]" aria-label="Waveform zoom controls">
+          <div className="cue-workstation__zoom flex overflow-hidden border-l border-[var(--color-border-faint)] pl-1.5" aria-label="Waveform zoom controls">
             <ControlButton
               className="min-h-[34px] w-[34px] rounded-none border-0 px-0"
               variant="surface"
@@ -1805,7 +1807,7 @@ function CueWaveformPanel({
       <div className="px-4 pb-3 pt-3 lg:px-5">
         <div className="overflow-x-auto">
           <div className="min-w-[920px]">
-            <div className="relative overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0d1318]">
+            <div className="cue-timeline relative overflow-hidden border-y border-[var(--color-border-faint)] bg-[var(--color-background)]">
               {/* Full-column click target keeps the useful collapse behavior without a dead gutter. */}
               <button
                 type="button"
@@ -1820,10 +1822,10 @@ function CueWaveformPanel({
                 labelsCollapsed={labelsCollapsed}
               />
             <div className={cn('grid gap-0 transition-[grid-template-columns] duration-200', labelsCollapsed ? 'grid-cols-[48px_minmax(0,1fr)]' : 'grid-cols-[150px_minmax(0,1fr)]')}>
-              <div className="h-[40px] border-b border-r border-[#1e2a30] bg-[#0a0f14]">
+              <div className="cue-timeline__rail h-[40px] border-b border-r border-[var(--color-border-faint)]">
                 <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.25} />} label="Cue Points" color="#fb923c" collapsed={labelsCollapsed} />
               </div>
-              <div className="h-[40px] overflow-hidden border-b border-[#1e2a30]">
+              <div className="h-[40px] overflow-hidden border-b border-[var(--color-border-faint)]">
                 <div className="relative h-full overflow-visible px-3">
                 {cueLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading cue points…</div>
@@ -1929,10 +1931,10 @@ function CueWaveformPanel({
                 </div>
               </div>
 
-              <div className="h-[40px] border-b border-r border-[#1e2a30] bg-[#0a0f14]">
+              <div className="cue-timeline__rail h-[40px] border-b border-r border-[var(--color-border-faint)]">
                 <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Track Sections" color="#60a5fa" collapsed={labelsCollapsed} />
               </div>
-              <div className="h-[40px] border-b border-[#1e2a30]">
+              <div className="h-[40px] border-b border-[var(--color-border-faint)]">
                 <div className="relative h-full overflow-hidden px-3">
                 {phraseLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
@@ -1975,10 +1977,10 @@ function CueWaveformPanel({
                 </div>
               </div>
 
-              <div className="h-[88px] border-b border-r border-[#1e2a30] bg-[#0a0f14]">
+              <div className="cue-timeline__rail h-[88px] border-b border-r border-[var(--color-border-faint)]">
                 <TimelineLaneLabel icon={<AudioWaveform size={20} strokeWidth={2.25} />} label="Waveform" color="#5dcfff" collapsed={labelsCollapsed} />
               </div>
-              <div className="h-[88px] border-b border-[#1e2a30]">
+              <div className="h-[88px] border-b border-[var(--color-border-faint)]">
               <div
                 ref={waveformDivRef}
                 className="relative h-full cursor-crosshair overflow-hidden px-3"
@@ -2084,7 +2086,7 @@ function CueWaveformPanel({
               </div>
               </div>
 
-              <div className="h-[40px] border-r border-[#1e2a30] bg-[#0a0f14]">
+              <div className="cue-timeline__rail h-[40px] border-r border-[var(--color-border-faint)]">
                 <TimelineLaneLabel icon={<Grip size={19} strokeWidth={2.55} />} label="Beat Grid" color="#4ade80" collapsed={labelsCollapsed} />
               </div>
               <div className="h-[40px]">
@@ -4262,7 +4264,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   if (!importId) {
     return (
       <div className="mx-auto max-w-3xl pt-8">
-        <div className="glass rounded-2xl border border-secondary/20 p-8 text-center">
+        <div className="border-y border-[var(--color-border-faint)] bg-[var(--color-card)]/55 p-8 text-center">
           <Music size={48} className="mx-auto mb-4 text-secondary opacity-60" />
           <h2 className="text-2xl font-black">Cue Points</h2>
           <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
@@ -4465,19 +4467,19 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         </div>
       )}
 
-      <section className="glass rounded-2xl border border-[var(--color-border-subtle)]" style={{ overflow: 'clip' }}>
-        <div ref={filterRowRef} className="sticky z-20 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)] px-4 py-3 md:px-5" style={{ top: waveformPanelHeight }}>
+      <section className="cue-browser border-y border-[var(--color-border-faint)]" style={{ overflow: 'clip' }}>
+        <div ref={filterRowRef} className="cue-browser__chrome sticky z-20 border-b border-[var(--color-border-faint)] px-4 py-2.5 md:px-5" style={{ top: waveformPanelHeight }}>
           <div className="flex flex-col gap-3">
             <div data-testid="cue-browser-command-bar" className="flex min-w-0 flex-wrap items-center gap-3">
-              <div data-testid="cue-browser-source-tabs">
-                <SegmentedControl
+              <div data-testid="cue-browser-source-tabs" className="min-w-[190px]">
+                <TabNavigation
                   ariaLabel="Cue Points browser source"
-                  variant="pill"
+                  variant="primary"
                   value={browserSource}
                   onChange={(value) => setBrowserSource(value as BrowserSource)}
                   options={[
-                    { value: 'library', label: 'Library' },
-                    { value: 'playlists', label: 'Playlists' },
+                    { id: 'library', label: 'Library' },
+                    { id: 'playlists', label: 'Playlists' },
                   ]}
                 />
               </div>
@@ -4505,7 +4507,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
               )}
             </div>
 
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+            <div className="cue-browser__transport-row flex flex-col gap-2.5 xl:flex-row xl:items-center">
               <CuePointsAudioDock
                 selectedTrack={selectedTrack}
                 orderedTracks={orderedVisibleTracks}
@@ -4521,7 +4523,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-end gap-x-6 gap-y-3 border-t border-[var(--color-border-faint)] pt-3" data-testid="cue-browser-filters">
+            <div className="cue-browser__filters flex flex-wrap items-end gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] pt-2.5" data-testid="cue-browser-filters">
               <CueFilterDropdown
                 label="Status"
                 value={statusFilter}
@@ -4638,15 +4640,15 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
         ) : (
           <>
             <div className="overflow-y-auto overflow-x-auto scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
-              <table className="w-full min-w-[1220px] border-collapse text-left" data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
+              <table className="cue-browser__table w-full min-w-[1220px] border-collapse text-left" data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
                 <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
                   <tr className="border-b border-[var(--color-border-faint)]">
-                    <th className="sticky top-0 z-10 w-[54px] bg-[var(--color-card)] px-3 py-2.5 text-center">#</th>
+                    <th className="sticky top-0 z-10 w-[54px] bg-[var(--color-background)] px-3 py-2 text-center">#</th>
                     {([
-                      { col: 'title', label: 'Title', cls: 'px-3 py-2.5 min-w-[260px]' },
-                      { col: 'artist', label: 'Artist', cls: 'px-3 py-2.5 min-w-[170px]' },
+                      { col: 'title', label: 'Title', cls: 'px-3 py-2 min-w-[260px]' },
+                      { col: 'artist', label: 'Artist', cls: 'px-3 py-2 min-w-[170px]' },
                     ] as const).map(({ col, label, cls }) => (
-                      <th key={col} className={cn(cls, 'sticky top-0 z-10 bg-[var(--color-card)] select-none')}>
+                      <th key={col} className={cn(cls, 'sticky top-0 z-10 bg-[var(--color-background)] select-none')}>
                         <button
                           type="button"
                           className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
@@ -4658,15 +4660,15 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                         </button>
                       </th>
                     ))}
-                    <th className="sticky top-0 z-10 w-[230px] bg-[var(--color-card)] px-3 py-2.5">Waveform</th>
+                    <th className="sticky top-0 z-10 w-[230px] bg-[var(--color-background)] px-3 py-2">Waveform</th>
                     {([
-                      { col: 'bpm', label: 'BPM', cls: 'px-3 py-2.5' },
-                      { col: 'key', label: 'Key', cls: 'px-3 py-2.5' },
-                      { col: 'genre', label: 'Genre', cls: 'px-3 py-2.5 w-[178px]' },
-                      { col: 'cues', label: 'Cues', cls: 'px-3 py-2.5 text-center' },
-                      { col: 'duration', label: 'Duration', cls: 'px-3 py-2.5 text-right w-[80px]' },
+                      { col: 'bpm', label: 'BPM', cls: 'px-3 py-2' },
+                      { col: 'key', label: 'Key', cls: 'px-3 py-2' },
+                      { col: 'genre', label: 'Genre', cls: 'px-3 py-2 w-[178px]' },
+                      { col: 'cues', label: 'Cues', cls: 'px-3 py-2 text-center' },
+                      { col: 'duration', label: 'Duration', cls: 'px-3 py-2 text-right w-[80px]' },
                     ] as const).map(({ col, label, cls }) => (
-                      <th key={col} className={cn(cls, 'sticky top-0 z-10 bg-[var(--color-card)] select-none')}>
+                      <th key={col} className={cn(cls, 'sticky top-0 z-10 bg-[var(--color-background)] select-none')}>
                         <button
                           type="button"
                           className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
@@ -4706,8 +4708,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                           }
                         }}
                         className={cn(
-                          'cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50',
-                          selected ? 'bg-primary/[0.08]' : 'hover:bg-[var(--color-surface-hover)]',
+                          'cue-browser__row cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50',
+                          selected ? 'cue-browser__row--selected' : 'hover:bg-[var(--color-surface-hover)]',
                         )}
                       >
                         <td className="w-[54px] px-3 py-1.5 text-center">
