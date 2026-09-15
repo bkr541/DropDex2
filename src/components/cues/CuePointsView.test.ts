@@ -468,3 +468,43 @@ describe('Cue Points Stage 2 browser workspace', () => {
     expect(source).toContain('void loadMoreActiveSource()');
   });
 });
+
+describe('Cue Points Stage 3 audio dock and playhead', () => {
+  it('places the shared-player Audio Dock between source selection and the existing filters/table workspace', () => {
+    expect(source).toContain("import { useAudioPlayer } from '../../contexts/AudioPlayerContext';");
+    expect(source).toContain("import { useWaveformProgress } from '../../hooks/useWaveformProgress';");
+    expect(source).toContain("import { MediaTransportControlGroup } from '../ui/media';");
+    expect(source).toContain('data-testid="cue-audio-dock"');
+    expect(source).toContain('ariaLabel="Cue Points transport controls"');
+    expect(source.indexOf('data-testid="cue-browser-source-tabs"')).toBeLessThan(source.indexOf('data-testid="cue-audio-dock"'));
+    expect(source.indexOf('data-testid="cue-audio-dock"')).toBeLessThan(source.indexOf('data-testid="cue-browser-filters"'));
+  });
+
+  it('keeps row selection and playback as separate intents', () => {
+    expect(source).toContain('onClick={() => setSelectedTrack(track)}');
+    expect(source).toContain('<CueTrackPlayButton track={track} />');
+    expect(source).toContain('event.stopPropagation();');
+    expect(source).toContain('void toggleTrack(track);');
+    expect(source).not.toContain('onClick={() => playTrack(track)}');
+  });
+
+  it('wires source-aware transport, exact ten-second seek, scrubber, volume, mute, and repeat to the shared player', () => {
+    expect(source).toContain('cueAdjacentTrackIndex(orderedTrackIds, activeTrack?.id, selectedTrack?.id, -1)');
+    expect(source).toContain('cueAdjacentTrackIndex(orderedTrackIds, activeTrack?.id, selectedTrack?.id, 1)');
+    expect(source).toContain('handleSeekBy(-10)');
+    expect(source).toContain('handleSeekBy(10)');
+    expect(source).toContain('onChange={(event) => seek(Number(event.target.value))}');
+    expect(source).toContain('onClick={toggleRepeat}');
+    expect(source).toContain('onClick={toggleMute}');
+    expect(source).toContain('onChange={(event) => setVolume(Number(event.target.value))}');
+  });
+
+  it('renders an isolated white playhead only through active shared playback and zoom-window geometry', () => {
+    expect(source).toContain('data-testid="cue-playback-playhead"');
+    expect(source).toContain("activeTrack?.id !== trackId || status === 'idle' || status === 'resolving' || status === 'loading' || status === 'error'");
+    expect(source).toContain('cuePlaybackPlayheadPercent(currentTimeMs, viewStartMs, viewEndMs)');
+    expect(source).toContain('pointer-events-none absolute bottom-0 top-0 z-30');
+    expect(source).toContain('viewStartMs={viewStart}');
+    expect(source).toContain('viewEndMs={effectiveViewEnd}');
+  });
+});

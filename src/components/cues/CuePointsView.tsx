@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, CircleDash, Close, Edit, Export, Grid, Idea, Music, Save, Search, Upload, WarningAlt } from '@carbon/icons-react';
+import { ChevronDown, CircleDash, Close, Edit, Export, Grid, Idea, Music, Pause, Play, Repeat, Save, Search, Upload, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -39,6 +39,10 @@ import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { ControlButton, SearchControl, SegmentedControl, SelectControl, TextControl } from '../ui/controls';
 import { Artwork } from '../ui/display/Artwork';
+import { MediaTransportControlGroup } from '../ui/media';
+import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
+import { useWaveformProgress } from '../../hooks/useWaveformProgress';
+import { clampCueTransportTime, cueAdjacentTrackIndex, cuePlaybackPlayheadPercent } from '../../lib/cues/cuePlaybackTransport';
 import type { RekordboxTrack } from '../../types';
 import {
   createCueDraftDocument,
@@ -555,6 +559,239 @@ function CueFilterDropdown({
 
 function percentageAt(ms: number, viewStart: number, viewEnd: number): number {
   return ((ms - viewStart) / (viewEnd - viewStart)) * 100;
+}
+
+function CueTrackPlayButton({ track }: { track: RekordboxTrack }) {
+  const { activeTrack, status, playIntent, toggleTrack } = useAudioPlayer();
+  const isActive = activeTrack?.id === track.id;
+  const isPlaying = isActive && playIntent && status !== 'error';
+  const isLoading = isActive && (status === 'resolving' || status === 'loading' || status === 'buffering' || status === 'seeking');
+
+  return (
+    <button
+      type="button"
+      aria-label={isPlaying ? `Pause ${track.title}` : `Play ${track.title}`}
+      title={track.file_path ? (isPlaying ? `Pause ${track.title}` : `Play ${track.title}`) : 'This track has no playable file path'}
+      className={cn(
+        'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-all',
+        isActive
+          ? 'border-primary/40 bg-primary/15 text-primary opacity-100'
+          : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+        'hover:border-primary/50 hover:bg-primary/15 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+      )}
+      onClick={(event) => {
+        event.stopPropagation();
+        void toggleTrack(track);
+      }}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {isLoading ? <CircleDash size={13} className="animate-spin" /> : isPlaying ? <Pause size={13} /> : <Play size={13} />}
+    </button>
+  );
+}
+
+function CueEditorPlaybackPlayhead({
+  trackId,
+  viewStartMs,
+  viewEndMs,
+  labelsCollapsed,
+}: {
+  trackId: string;
+  viewStartMs: number;
+  viewEndMs: number;
+  labelsCollapsed: boolean;
+}) {
+  const { activeTrack, status, getAudioElement } = useAudioPlayer();
+  const playbackProgress = useWaveformProgress(trackId);
+  if (activeTrack?.id !== trackId || status === 'idle' || status === 'resolving' || status === 'loading' || status === 'error' || playbackProgress === undefined) return null;
+
+  const audio = getAudioElement();
+  const currentTimeMs = audio && Number.isFinite(audio.currentTime) ? audio.currentTime * 1000 : Number.NaN;
+  const leftPercent = cuePlaybackPlayheadPercent(currentTimeMs, viewStartMs, viewEndMs);
+  if (leftPercent == null) return null;
+
+  return (
+    <div
+      data-testid="cue-playback-playhead-region"
+      className={cn(
+        'pointer-events-none absolute bottom-0 top-0 z-30 transition-[left] duration-200',
+        labelsCollapsed ? 'left-[48px]' : 'left-[150px]',
+      )}
+      style={{ right: 0 }}
+      aria-hidden="true"
+    >
+      <span
+        data-testid="cue-playback-playhead"
+        className="absolute bottom-0 top-0 w-px -translate-x-1/2 bg-white shadow-[0_0_7px_rgba(255,255,255,0.75)]"
+        style={{ left: `${leftPercent}%` }}
+      >
+        <span className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 -translate-y-[2px] rotate-45 rounded-[1px] bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]" />
+      </span>
+    </div>
+  );
+}
+
+function CuePointsAudioDock({
+  selectedTrack,
+  orderedTracks,
+  onSelectTrack,
+}: {
+  selectedTrack: RekordboxTrack | null;
+  orderedTracks: RekordboxTrack[];
+  onSelectTrack: (track: RekordboxTrack) => void;
+}) {
+  const {
+    activeTrack,
+    status,
+    playIntent,
+    volume,
+    muted,
+    repeat,
+    error,
+    playTrack,
+    toggleTrack,
+    seek,
+    setVolume,
+    toggleMute,
+    toggleRepeat,
+    getAudioElement,
+  } = useAudioPlayer();
+  const playbackProgress = useWaveformProgress(activeTrack?.id);
+  const orderedTrackIds = useMemo(() => orderedTracks.map((track) => track.id), [orderedTracks]);
+  const previousIndex = cueAdjacentTrackIndex(orderedTrackIds, activeTrack?.id, selectedTrack?.id, -1);
+  const nextIndex = cueAdjacentTrackIndex(orderedTrackIds, activeTrack?.id, selectedTrack?.id, 1);
+  const displayTrack = activeTrack ?? selectedTrack;
+  const audio = getAudioElement();
+  const durationSeconds = audio && Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+  const fallbackCurrentTime = playbackProgress != null && durationSeconds > 0 ? playbackProgress * durationSeconds : 0;
+  const currentSeconds = audio && Number.isFinite(audio.currentTime) ? audio.currentTime : fallbackCurrentTime;
+  const loading = status === 'resolving' || status === 'loading';
+  const seekable = Boolean(activeTrack && durationSeconds > 0 && status !== 'error' && !loading);
+  const playing = Boolean(activeTrack && playIntent && status !== 'error');
+
+  const playAdjacent = useCallback((index: number | null) => {
+    if (index == null) return;
+    const destination = orderedTracks[index];
+    if (!destination) return;
+    onSelectTrack(destination);
+    void playTrack(destination);
+  }, [onSelectTrack, orderedTracks, playTrack]);
+
+  const handleTogglePlay = useCallback(() => {
+    const target = activeTrack ?? selectedTrack;
+    if (!target || loading) return;
+    void toggleTrack(target);
+  }, [activeTrack, loading, selectedTrack, toggleTrack]);
+
+  const handleSeekBy = useCallback((deltaSeconds: number) => {
+    if (!seekable) return;
+    seek(clampCueTransportTime(currentSeconds, durationSeconds, deltaSeconds));
+  }, [currentSeconds, durationSeconds, seek, seekable]);
+
+  return (
+    <div
+      data-testid="cue-audio-dock"
+      className="flex min-w-0 flex-1 flex-col gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2.5 py-2 xl:flex-row xl:items-center"
+      role="region"
+      aria-label="Cue Points audio dock"
+    >
+      <div className="flex min-w-0 items-center gap-2.5 xl:w-[210px] xl:shrink-0">
+        {displayTrack ? (
+          <Artwork
+            src={displayTrack.artwork_path}
+            alt={`Artwork for ${displayTrack.title}`}
+            fallbackTitle="No artwork"
+            className="h-9 w-9 shrink-0 rounded-[6px]"
+          />
+        ) : (
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border border-[var(--color-border-faint)] bg-black/10 text-muted-foreground">
+            <Music size={16} />
+          </div>
+        )}
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5">
+            {loading && <CircleDash size={12} className="shrink-0 animate-spin text-primary" />}
+            <p className="truncate text-xs font-bold text-foreground">{displayTrack?.title ?? 'Select a track'}</p>
+          </div>
+          <p className={cn('truncate text-[10px]', status === 'error' ? 'text-amber-300' : 'text-muted-foreground')}>
+            {status === 'error' ? error ?? 'Playback unavailable' : displayTrack?.artist ?? 'Ready for playback'}
+          </p>
+        </div>
+      </div>
+
+      <MediaTransportControlGroup
+        compact
+        ariaLabel="Cue Points transport controls"
+        playing={playing}
+        onPrevious={() => playAdjacent(previousIndex)}
+        onRewind={() => handleSeekBy(-10)}
+        onTogglePlay={handleTogglePlay}
+        onForward={() => handleSeekBy(10)}
+        onNext={() => playAdjacent(nextIndex)}
+        previousDisabled={previousIndex == null}
+        rewindDisabled={!seekable}
+        playDisabled={!displayTrack || loading}
+        forwardDisabled={!seekable}
+        nextDisabled={nextIndex == null}
+      />
+
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="w-9 shrink-0 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
+          {formatTime(currentSeconds * 1000)}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={durationSeconds > 0 ? durationSeconds : 1}
+          step={0.1}
+          value={seekable ? Math.min(durationSeconds, Math.max(0, currentSeconds)) : 0}
+          disabled={!seekable}
+          onChange={(event) => seek(Number(event.target.value))}
+          aria-label="Cue Points playback position"
+          className="h-1.5 min-w-[120px] flex-1 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
+        />
+        <span className="w-9 shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+          {formatTime(durationSeconds > 0 ? durationSeconds * 1000 : null)}
+        </span>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          aria-label={repeat ? 'Disable repeat' : 'Repeat current track'}
+          aria-pressed={repeat}
+          disabled={!activeTrack || status === 'error'}
+          onClick={toggleRepeat}
+          className={cn(
+            'flex h-8 w-8 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-35',
+            repeat
+              ? 'border-primary/40 bg-primary/15 text-primary'
+              : 'border-[var(--color-border-subtle)] bg-[var(--color-card)] text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <Repeat size={14} />
+        </button>
+        <button
+          type="button"
+          aria-label={muted ? 'Unmute' : 'Mute'}
+          onClick={toggleMute}
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-card)] text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {muted || volume === 0 ? <VolumeMute size={14} /> : <VolumeUp size={14} />}
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.02}
+          value={volume}
+          onChange={(event) => setVolume(Number(event.target.value))}
+          aria-label="Cue Points playback volume"
+          className="h-1.5 w-20 cursor-pointer accent-primary"
+        />
+      </div>
+    </div>
+  );
 }
 
 function beatPositionLabel(beat: BeatEntry | undefined): string {
@@ -1358,6 +1595,12 @@ function CueWaveformPanel({
                 onClick={() => setLabelsCollapsed((v) => !v)}
                 className={cn('absolute bottom-0 left-0 top-0 z-20 cursor-pointer transition-[width] duration-200', labelsCollapsed ? 'w-[48px]' : 'w-[150px]')}
                 aria-label={labelsCollapsed ? 'Expand timeline lanes' : 'Collapse timeline lanes'}
+              />
+              <CueEditorPlaybackPlayhead
+                trackId={track.id}
+                viewStartMs={viewStart}
+                viewEndMs={effectiveViewEnd}
+                labelsCollapsed={labelsCollapsed}
               />
             <div className={cn('grid gap-0 transition-[grid-template-columns] duration-200', labelsCollapsed ? 'grid-cols-[48px_minmax(0,1fr)]' : 'grid-cols-[150px_minmax(0,1fr)]')}>
               <div className="h-[40px] border-b border-r border-[#1e2a30] bg-[#0a0f14]">
@@ -4006,49 +4249,50 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       <section className="glass rounded-2xl border border-[var(--color-border-subtle)]" style={{ overflow: 'clip' }}>
         <div ref={filterRowRef} className="sticky z-20 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)] px-4 py-3 md:px-5" style={{ top: waveformPanelHeight }}>
           <div className="flex flex-col gap-3">
-            <div
-              data-testid="cue-browser-command-bar"
-              className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
-            >
-              <div className="flex min-w-0 flex-wrap items-center gap-3">
-                <div data-testid="cue-browser-source-tabs">
-                  <SegmentedControl
-                    ariaLabel="Cue Points browser source"
-                    variant="pill"
-                    value={browserSource}
-                    onChange={(value) => setBrowserSource(value as BrowserSource)}
-                    options={[
-                      { value: 'library', label: 'Library' },
-                      { value: 'playlists', label: 'Playlists' },
-                    ]}
-                  />
-                </div>
-                {browserSource === 'playlists' && (
-                  <div className="min-w-[220px] max-w-[360px] flex-1" data-testid="cue-browser-playlist-selector">
-                    <SelectControl
-                      aria-label="Select Rekordbox playlist"
-                      value={selectedPlaylistId ?? ''}
-                      disabled={playlistsLoading || selectablePlaylists.length === 0}
-                      onChange={(event) => setSelectedPlaylistId(event.target.value || null)}
-                    >
-                      {playlistsLoading ? (
-                        <option value="">Loading playlists…</option>
-                      ) : selectablePlaylists.length === 0 ? (
-                        <option value="">No imported playlists</option>
-                      ) : (
-                        selectablePlaylists.map((playlist) => (
-                          <option key={playlist.id} value={playlist.id}>
-                            {playlist.name} ({playlist.track_count.toLocaleString()})
-                          </option>
-                        ))
-                      )}
-                    </SelectControl>
-                  </div>
-                )}
+            <div data-testid="cue-browser-command-bar" className="flex min-w-0 flex-wrap items-center gap-3">
+              <div data-testid="cue-browser-source-tabs">
+                <SegmentedControl
+                  ariaLabel="Cue Points browser source"
+                  variant="pill"
+                  value={browserSource}
+                  onChange={(value) => setBrowserSource(value as BrowserSource)}
+                  options={[
+                    { value: 'library', label: 'Library' },
+                    { value: 'playlists', label: 'Playlists' },
+                  ]}
+                />
               </div>
+              {browserSource === 'playlists' && (
+                <div className="min-w-[220px] max-w-[360px] flex-1" data-testid="cue-browser-playlist-selector">
+                  <SelectControl
+                    aria-label="Select Rekordbox playlist"
+                    value={selectedPlaylistId ?? ''}
+                    disabled={playlistsLoading || selectablePlaylists.length === 0}
+                    onChange={(event) => setSelectedPlaylistId(event.target.value || null)}
+                  >
+                    {playlistsLoading ? (
+                      <option value="">Loading playlists…</option>
+                    ) : selectablePlaylists.length === 0 ? (
+                      <option value="">No imported playlists</option>
+                    ) : (
+                      selectablePlaylists.map((playlist) => (
+                        <option key={playlist.id} value={playlist.id}>
+                          {playlist.name} ({playlist.track_count.toLocaleString()})
+                        </option>
+                      ))
+                    )}
+                  </SelectControl>
+                </div>
+              )}
+            </div>
 
-              {/* Stage 3 inserts the Audio Dock between the source controls and this search surface. */}
-              <div className="w-full lg:w-[320px] lg:shrink-0">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+              <CuePointsAudioDock
+                selectedTrack={selectedTrack}
+                orderedTracks={orderedVisibleTracks}
+                onSelectTrack={setSelectedTrack}
+              />
+              <div className="w-full xl:w-[320px] xl:shrink-0">
                 <SearchControl
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
@@ -4263,8 +4507,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                           </div>
                         </td>
                         <td className="min-w-[260px] px-3 py-1.5">
-                          <div className="flex min-w-0 items-center gap-2.5">
+                          <div className="group flex min-w-0 items-center gap-2.5">
                             <span className={cn('h-9 w-1 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
+                            <CueTrackPlayButton track={track} />
                             <Artwork
                               src={track.artwork_path}
                               alt={`Artwork for ${track.title}`}

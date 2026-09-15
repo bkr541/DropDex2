@@ -10,6 +10,15 @@ vi.mock('../../hooks/useAuthSession', () => ({
   }),
 }));
 
+vi.mock('../../contexts/UsbConnectionContext', () => ({
+  useUsbConnection: () => ({
+    status: 'connected',
+    connect: vi.fn(),
+    ensurePermission: vi.fn(),
+    resolveTrackSource: vi.fn(),
+  }),
+}));
+
 vi.mock('../../hooks/useRekordboxTracks', () => ({
   useLibraryStats: () => ({ stats: null, loading: false, error: null, refresh: vi.fn() }),
   useLibraryTracks: () => ({
@@ -56,15 +65,20 @@ vi.mock('../../hooks/useTrackPreviewWaveforms', () => ({
 }));
 
 let CuePointsView: typeof import('./CuePointsView').CuePointsView;
+let AudioPlayerProvider: typeof import('../../contexts/AudioPlayerContext').AudioPlayerProvider;
 
 beforeAll(async () => {
   ({ CuePointsView } = await import('./CuePointsView'));
+  ({ AudioPlayerProvider } = await import('../../contexts/AudioPlayerContext'));
 });
 
-describe('CuePointsView production Stage 2 render', () => {
+describe('CuePointsView production Stage 3 render', () => {
   it('renders Library as the default source with Playlists available in the real production component', () => {
     const markup = renderToStaticMarkup(
-      createElement(CuePointsView, { importId: 'import-test', onImport: vi.fn() }),
+      createElement(AudioPlayerProvider, {
+        imports: [],
+        children: createElement(CuePointsView, { importId: 'import-test', onImport: vi.fn() }),
+      }),
     );
 
     expect(markup).toContain('aria-label="Cue Points browser source"');
@@ -72,5 +86,7 @@ describe('CuePointsView production Stage 2 render', () => {
     expect(markup).toContain('aria-pressed="false">Playlists</button>');
     expect(markup).toContain('data-testid="cue-browser-command-bar"');
     expect(markup).toContain('aria-label="Search cue point tracks"');
+    expect(markup).toContain('data-testid="cue-audio-dock"');
+    expect(markup).toContain('aria-label="Cue Points transport controls"');
   });
 });

@@ -34,6 +34,7 @@ interface PlayerState {
   playIntent: boolean;
   volume: number;
   muted: boolean;
+  repeat: boolean;
   error: string | null;
   objectUrl: string | null;
 }
@@ -52,6 +53,7 @@ type PlayerAction =
   | { type: 'ERROR'; error: string; track?: RekordboxTrack | null }
   | { type: 'SET_VOLUME'; volume: number }
   | { type: 'SET_MUTED'; muted: boolean }
+  | { type: 'SET_REPEAT'; repeat: boolean }
   | { type: 'CLEAR_ERROR' };
 
 export interface AudioPlayerContextValue extends PlayerState {
@@ -62,6 +64,7 @@ export interface AudioPlayerContextValue extends PlayerState {
   seek(seconds: number): void;
   setVolume(value: number): void;
   toggleMute(): void;
+  toggleRepeat(): void;
   stop(): void;
   clearError(): void;
   getAudioElement(): HTMLAudioElement | null;
@@ -81,6 +84,7 @@ const initial: PlayerState = {
   playIntent: false,
   volume: 1,
   muted: false,
+  repeat: false,
   error: null,
   objectUrl: null,
 };
@@ -134,6 +138,8 @@ function reducer(state: PlayerState, action: PlayerAction): PlayerState {
       return { ...state, volume: action.volume };
     case 'SET_MUTED':
       return { ...state, muted: action.muted };
+    case 'SET_REPEAT':
+      return { ...state, repeat: action.repeat };
     case 'CLEAR_ERROR':
       return { ...initial, volume: state.volume, muted: state.muted };
     default:
@@ -155,6 +161,7 @@ function resetAudioElement(
   revokeUrl: boolean,
 ) {
   audio.pause();
+  audio.loop = false;
   audio.removeAttribute('src');
   audio.load();
   if (revokeUrl) safeRevokeUrl(oldUrl);
@@ -443,6 +450,7 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
     audio.src = newUrl;
     audio.volume = stateRef.current.volume;
     audio.muted = stateRef.current.muted;
+    audio.loop = stateRef.current.repeat;
     dispatch({ type: 'LOADED', track, objectUrl: newUrl });
     audio.load();
 
@@ -547,6 +555,12 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
     dispatch({ type: 'SET_MUTED', muted: next });
   }, []);
 
+  const toggleRepeat = useCallback(() => {
+    const next = !stateRef.current.repeat;
+    if (audioRef.current) audioRef.current.loop = next;
+    dispatch({ type: 'SET_REPEAT', repeat: next });
+  }, []);
+
   const stop = useCallback(() => {
     playRequestIdRef.current += 1;
     pendingPlayRef.current = null;
@@ -572,6 +586,7 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
     seek,
     setVolume,
     toggleMute,
+    toggleRepeat,
     stop,
     clearError,
     getAudioElement,

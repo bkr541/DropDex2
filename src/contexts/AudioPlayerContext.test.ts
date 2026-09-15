@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
   usbFileErrorMessage,
@@ -6,6 +7,8 @@ import {
   usbStatusPlaybackMessage,
 } from './AudioPlayerContext';
 import type { UsbFileResolutionError } from '../lib/usb/resolveUsbFile';
+
+const contextSource = readFileSync(new URL('./AudioPlayerContext.tsx', import.meta.url), 'utf8');
 
 // ── safeRevokeUrl ─────────────────────────────────────────────────────────────
 
@@ -308,5 +311,20 @@ describe('URL ownership: old request must not revoke new request URL', () => {
 
     expect(revoke).toHaveBeenCalledTimes(1);
     expect(revoke).toHaveBeenCalledWith(urlA);
+  });
+});
+
+
+describe('shared repeat ownership', () => {
+  it('owns repeat on the shared audio element and reapplies it when a new source is attached', () => {
+    expect(contextSource).toContain("| { type: 'SET_REPEAT'; repeat: boolean }");
+    expect(contextSource).toContain('audio.loop = stateRef.current.repeat;');
+    expect(contextSource).toContain("dispatch({ type: 'SET_REPEAT', repeat: next });");
+  });
+
+  it('clears native loop state during source cleanup so stopped/unmounted playback cannot retain a stale loop flag', () => {
+    expect(contextSource).toContain('audio.loop = false;');
+    expect(contextSource).toContain("const onEnded = () => {");
+    expect(contextSource).toContain("dispatch({ type: 'ENDED' })");
   });
 });
