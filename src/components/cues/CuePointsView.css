@@ -102,6 +102,29 @@
   min-width: 180px;
 }
 
+.cue-browser__filters [data-testid="cue-browser-source-tabs"] .dd-tab-nav {
+  flex: 1;
+  height: 100%;
+}
+
+.cue-browser__filters [data-testid="cue-browser-search"] .dd-text-control {
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 0.15);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cue-browser__filters [data-testid="cue-browser-search"] .dd-text-control:hover {
+  border-bottom-color: rgb(255 255 255 / 0.35);
+}
+
+.cue-browser__filters [data-testid="cue-browser-search"] .dd-text-control:focus {
+  border-bottom-color: var(--color-control-focus);
+  background: transparent;
+  box-shadow: none;
+}
+
 .cue-browser__table {
   background: var(--color-background);
 }

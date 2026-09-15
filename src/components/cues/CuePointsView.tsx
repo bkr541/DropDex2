@@ -4479,7 +4479,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
             </div>
 
             <div className="cue-browser__filters flex flex-wrap items-end gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] pt-2.5" data-testid="cue-browser-filters">
-              <div data-testid="cue-browser-source-tabs" className="min-w-[190px] self-end">
+              <div data-testid="cue-browser-source-tabs" className="min-w-[190px] self-stretch flex">
                 <TabNavigation
                   ariaLabel="Cue Points browser source"
                   variant="primary"
