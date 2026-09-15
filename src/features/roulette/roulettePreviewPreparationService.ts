@@ -299,6 +299,7 @@ export function createRoulettePreviewPreparationService(
         phrases,
         vocalAnalysis,
         durationMs: durationMsForTrack(track),
+        stemMetrics: hq.asset?.analysis_metrics ?? null,
       });
       if (!anchor || anchor.provenance === 'bpm-fallback') {
         return publish(initialState(track.id, role, 'failed', null, 'A complete 16-bar beat-grid window is required for Roulette preview preparation.'));

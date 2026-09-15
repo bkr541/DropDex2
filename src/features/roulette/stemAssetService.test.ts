@@ -14,6 +14,22 @@ import {
   type StemAssetType,
 } from './stemAssets';
 import { createStemAssetService } from './stemAssetService';
+import type { StemAudioMetrics } from './rouletteStemMetrics';
+
+
+function metrics(durationMs = 120000): StemAudioMetrics {
+  return {
+    version: 'roulette-stem-metrics-v1',
+    durationMs,
+    rms: 0.08,
+    signalRatio: 0.8,
+    usableNonSilentDurationMs: Math.round(durationMs * 0.8),
+    activityEvidence: 0.75,
+    energyStability: 0.9,
+    suitabilityScore: 0.82,
+    bins: [{ startMs: 0, endMs: durationMs, rms: 0.08, signalRatio: 0.8, nonSilentRatio: 0.8 }],
+  };
+}
 
 function makeAsset(overrides: Partial<StemAssetRecord> = {}): StemAssetRecord {
   return {
@@ -31,6 +47,7 @@ function makeAsset(overrides: Partial<StemAssetRecord> = {}): StemAssetRecord {
     channel_count: 2,
     file_size_bytes: 2048,
     file_mtime_ms: 4567,
+    analysis_metrics: null,
     failure_code: null,
     failure_message: null,
     created_at: '2026-09-08T00:00:00Z',
@@ -58,6 +75,7 @@ function harness(initial: StemAssetRecord | null = makeAsset()) {
       channel_count: input.channelCount ?? null,
       file_size_bytes: input.fileSizeBytes ?? null,
       file_mtime_ms: input.fileMtimeMs ?? null,
+      analysis_metrics: input.analysisMetrics ?? null,
       failure_code: input.failureCode ?? null,
       failure_message: input.failureMessage ?? null,
     });
@@ -82,7 +100,7 @@ function harness(initial: StemAssetRecord | null = makeAsset()) {
         separator_version: input.separatorVersion, duration_ms: input.vocals.durationMs,
         sample_rate_hz: input.vocals.sampleRateHz, channel_count: input.vocals.channelCount,
         file_size_bytes: input.vocals.fileSizeBytes, file_mtime_ms: input.vocals.fileMtimeMs,
-        updated_at: now,
+        analysis_metrics: input.vocals.analysisMetrics, updated_at: now,
       }),
       makeAsset({
         id: 'asset-2', track_id: input.trackId, stem_type: 'instrumental', status: 'ready',
@@ -90,7 +108,7 @@ function harness(initial: StemAssetRecord | null = makeAsset()) {
         separator_version: input.separatorVersion, duration_ms: input.instrumental.durationMs,
         sample_rate_hz: input.instrumental.sampleRateHz, channel_count: input.instrumental.channelCount,
         file_size_bytes: input.instrumental.fileSizeBytes, file_mtime_ms: input.instrumental.fileMtimeMs,
-        updated_at: now,
+        analysis_metrics: input.instrumental.analysisMetrics, updated_at: now,
       }),
     ];
   });
@@ -175,13 +193,11 @@ describe('Roulette stem asset service', () => {
     expect(resolved?.source.url).toBe('dropdex-media://stem/token-1');
   });
 
-  it('invalidates and deletes a stem when the parent source fingerprint changes', async () => {
+  it('invalidates metadata without auto-deleting HQ media when the parent source fingerprint changes', async () => {
     const test = harness(makeAsset({ source_fingerprint: 'source-old' }));
     const readiness = await test.service.getReadiness('track-1', 'vocals');
 
-    expect(test.desktop.deleteStemAsset).toHaveBeenCalledWith(
-      'user-1/track-1/vocals/stem.wav',
-    );
+    expect(test.desktop.deleteStemAsset).not.toHaveBeenCalled();
     expect(readiness.status).toBe('preparing');
     expect(test.currentAsset).toMatchObject({
       status: 'pending',
@@ -265,13 +281,17 @@ describe('Roulette stem asset service', () => {
       sourceFingerprint: 'source-current',
       separatorVersion: 'separator-v1',
       outputs: {
-        vocals: { locator: 'generated/a/b/vocals.wav', durationMs: 120000, sampleRateHz: 48000, channelCount: 2, size: 2048, mtimeMs: 4567 },
-        instrumental: { locator: 'generated/a/b/instrumental.wav', durationMs: 120000, sampleRateHz: 48000, channelCount: 2, size: 2048, mtimeMs: 4567 },
+        vocals: { locator: 'generated/a/b/vocals.wav', durationMs: 120000, sampleRateHz: 48000, channelCount: 2, size: 2048, mtimeMs: 4567, metrics: metrics() },
+        instrumental: { locator: 'generated/a/b/instrumental.wav', durationMs: 120000, sampleRateHz: 48000, channelCount: 2, size: 2048, mtimeMs: 4567, metrics: metrics() },
       },
     });
 
     expect(test.desktop.inspectStemAsset).toHaveBeenCalledTimes(2);
     expect(test.repository.commitReadyPair).toHaveBeenCalledTimes(1);
+    expect(test.repository.commitReadyPair).toHaveBeenCalledWith(expect.objectContaining({
+      vocals: expect.objectContaining({ analysisMetrics: expect.objectContaining({ version: 'roulette-stem-metrics-v1' }) }),
+      instrumental: expect.objectContaining({ analysisMetrics: expect.objectContaining({ version: 'roulette-stem-metrics-v1' }) }),
+    }));
     expect(rows.map((row) => row.stem_type)).toEqual(['vocals', 'instrumental']);
   });
 

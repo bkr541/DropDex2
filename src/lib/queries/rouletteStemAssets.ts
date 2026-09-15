@@ -8,6 +8,7 @@ import {
   type StemAssetRecord,
   type StemAssetType,
 } from '../../features/roulette/stemAssets';
+import type { StemAudioMetrics } from '../../features/roulette/rouletteStemMetrics';
 
 const PARENT_SOURCE_SELECT = [
   'rekordbox_content_id',
@@ -31,6 +32,7 @@ export interface RegisterStemAssetRecordInput {
   channelCount?: number | null;
   fileSizeBytes?: number | null;
   fileMtimeMs?: number | null;
+  analysisMetrics?: StemAudioMetrics | null;
   failureCode?: string | null;
   failureMessage?: string | null;
 }
@@ -42,6 +44,7 @@ export interface StemReadyPairOutputMetadata {
   channelCount: number;
   fileSizeBytes: number;
   fileMtimeMs: number;
+  analysisMetrics: StemAudioMetrics;
 }
 
 export interface CommitStemReadyPairInput {
@@ -70,6 +73,7 @@ export interface StemAssetRepository {
       | 'channel_count'
       | 'file_size_bytes'
       | 'file_mtime_ms'
+      | 'analysis_metrics'
       | 'failure_code'
       | 'failure_message'
       | 'source_fingerprint'
@@ -176,6 +180,7 @@ export async function upsertStemAsset(
     channel_count: input.channelCount ?? null,
     file_size_bytes: input.fileSizeBytes ?? null,
     file_mtime_ms: input.fileMtimeMs ?? null,
+    analysis_metrics: input.analysisMetrics ?? null,
     failure_code: input.failureCode ?? null,
     failure_message: input.failureMessage ?? null,
   };
@@ -201,6 +206,7 @@ export async function updateStemAssetStatus(
     | 'channel_count'
     | 'file_size_bytes'
     | 'file_mtime_ms'
+    | 'analysis_metrics'
     | 'failure_code'
     | 'failure_message'
     | 'source_fingerprint'
@@ -258,12 +264,14 @@ export async function commitStemReadyPair(
     p_vocals_channel_count: input.vocals.channelCount,
     p_vocals_file_size_bytes: input.vocals.fileSizeBytes,
     p_vocals_file_mtime_ms: input.vocals.fileMtimeMs,
+    p_vocals_analysis_metrics: input.vocals.analysisMetrics,
     p_instrumental_locator: input.instrumental.locator,
     p_instrumental_duration_ms: input.instrumental.durationMs,
     p_instrumental_sample_rate_hz: input.instrumental.sampleRateHz,
     p_instrumental_channel_count: input.instrumental.channelCount,
     p_instrumental_file_size_bytes: input.instrumental.fileSizeBytes,
     p_instrumental_file_mtime_ms: input.instrumental.fileMtimeMs,
+    p_instrumental_analysis_metrics: input.instrumental.analysisMetrics,
   });
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as StemAssetRecord[];

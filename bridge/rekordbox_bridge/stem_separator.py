@@ -8,7 +8,9 @@ published directly from this process.
 from __future__ import annotations
 
 import argparse
+from array import array
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -21,6 +23,12 @@ from typing import Callable
 RESULT_PREFIX = "DROPDEX_STEM_RESULT:"
 HEALTH_RESULT_PREFIX = "DROPDEX_STEM_HEALTH:"
 TIMELINE_TOLERANCE_MS = 500
+METRICS_VERSION = "roulette-stem-metrics-v1"
+METRICS_SAMPLE_RATE_HZ = 8_000
+METRICS_BIN_MS = 1_000
+METRICS_ACTIVITY_BLOCK_MS = 100
+SIGNAL_AMPLITUDE_THRESHOLD = 0.01
+NON_SILENT_RMS_THRESHOLD = 0.006
 
 
 @dataclass(frozen=True)
@@ -31,11 +39,44 @@ class WaveMetadata:
     frameCount: int
 
 
-def inspect_wave(path: Path) -> WaveMetadata:
-    with wave.open(str(path), "rb") as handle:
-        sample_rate = handle.getframerate()
-        channels = handle.getnchannels()
-        frames = handle.getnframes()
+def _ffprobe_wave_metadata(path: Path) -> WaveMetadata:
+    command = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "stream=sample_rate,channels,duration,duration_ts,time_base:format=duration",
+        "-of",
+        "json",
+        str(path),
+    ]
+    completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", errors="replace").strip()[-400:]
+        raise RuntimeError(f"separator WAV metadata probe failed: {detail or 'ffprobe exited unexpectedly'}")
+    try:
+        payload = json.loads(completed.stdout.decode("utf-8"))
+        stream = payload["streams"][0]
+        sample_rate = int(stream["sample_rate"])
+        channels = int(stream["channels"])
+        duration_seconds: float | None = None
+        duration_ts = stream.get("duration_ts")
+        time_base = stream.get("time_base")
+        if duration_ts is not None and isinstance(time_base, str) and "/" in time_base:
+            numerator, denominator = time_base.split("/", 1)
+            if float(denominator) != 0:
+                duration_seconds = float(duration_ts) * float(numerator) / float(denominator)
+        if duration_seconds is None and stream.get("duration") not in (None, "N/A"):
+            duration_seconds = float(stream["duration"])
+        if duration_seconds is None and payload.get("format", {}).get("duration") not in (None, "N/A"):
+            duration_seconds = float(payload["format"]["duration"])
+        if duration_seconds is None:
+            raise ValueError("duration is unavailable")
+        frames = round(duration_seconds * sample_rate)
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"separator WAV metadata probe returned invalid data: {exc}") from exc
     if sample_rate <= 0 or channels <= 0 or frames <= 0:
         raise RuntimeError("separator produced invalid WAV metadata")
     return WaveMetadata(
@@ -46,11 +87,157 @@ def inspect_wave(path: Path) -> WaveMetadata:
     )
 
 
+def inspect_wave(path: Path) -> WaveMetadata:
+    try:
+        with wave.open(str(path), "rb") as handle:
+            sample_rate = handle.getframerate()
+            channels = handle.getnchannels()
+            frames = handle.getnframes()
+        if sample_rate <= 0 or channels <= 0 or frames <= 0:
+            raise RuntimeError("separator produced invalid WAV metadata")
+        return WaveMetadata(
+            durationMs=round(frames * 1000 / sample_rate),
+            sampleRateHz=sample_rate,
+            channelCount=channels,
+            frameCount=frames,
+        )
+    except (wave.Error, EOFError):
+        # Demucs is intentionally invoked with --float32. Some Python runtimes
+        # cannot parse every IEEE-float/extensible WAV header, while ffprobe is
+        # already a required Roulette runtime dependency and handles them safely.
+        return _ffprobe_wave_metadata(path)
+
+
+def _unit(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def _decode_mono_pcm16(path: Path) -> tuple[array, int]:
+    command = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(path),
+        "-vn",
+        "-map",
+        "0:a:0",
+        "-ac",
+        "1",
+        "-ar",
+        str(METRICS_SAMPLE_RATE_HZ),
+        "-f",
+        "s16le",
+        "pipe:1",
+    ]
+    completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", errors="replace").strip()[-400:]
+        raise RuntimeError(f"stem metric decode failed: {detail or 'ffmpeg exited unexpectedly'}")
+    samples = array("h")
+    samples.frombytes(completed.stdout)
+    if sys.byteorder == "big":
+        samples.byteswap()
+    if not samples:
+        raise RuntimeError("stem metric decode returned no audio samples")
+    return samples, METRICS_SAMPLE_RATE_HZ
+
+
+def _rms(samples: array, start: int, end: int) -> float:
+    if end <= start:
+        return 0.0
+    scale = 32768.0
+    total = 0.0
+    for value in samples[start:end]:
+        normalized = value / scale
+        total += normalized * normalized
+    return math.sqrt(total / (end - start))
+
+
+def _signal_ratio(samples: array, start: int, end: int) -> float:
+    if end <= start:
+        return 0.0
+    threshold = int(round(SIGNAL_AMPLITUDE_THRESHOLD * 32767))
+    active = sum(1 for value in samples[start:end] if abs(value) >= threshold)
+    return active / (end - start)
+
+
+def _energy_stability(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    mean = sum(values) / len(values)
+    if mean <= 0.00001:
+        return 0.0
+    variance = sum((value - mean) ** 2 for value in values) / len(values)
+    return _unit(1.0 - (math.sqrt(variance) / mean))
+
+
+def calculate_audio_metrics(samples: array, sample_rate_hz: int, role: str) -> dict[str, object]:
+    if sample_rate_hz <= 0 or not samples:
+        raise RuntimeError("stem metric input is empty")
+    duration_ms = round(len(samples) * 1000 / sample_rate_hz)
+    overall_rms = _rms(samples, 0, len(samples))
+    overall_signal_ratio = _signal_ratio(samples, 0, len(samples))
+
+    block_frames = max(1, round(sample_rate_hz * METRICS_ACTIVITY_BLOCK_MS / 1000))
+    usable_ms = 0.0
+    for start in range(0, len(samples), block_frames):
+        end = min(len(samples), start + block_frames)
+        if _rms(samples, start, end) >= NON_SILENT_RMS_THRESHOLD:
+            usable_ms += (end - start) * 1000 / sample_rate_hz
+
+    bin_frames = max(1, round(sample_rate_hz * METRICS_BIN_MS / 1000))
+    bins: list[dict[str, object]] = []
+    bin_rms_values: list[float] = []
+    for start in range(0, len(samples), bin_frames):
+        end = min(len(samples), start + bin_frames)
+        rms = _rms(samples, start, end)
+        signal_ratio = _signal_ratio(samples, start, end)
+        block_start_ms = round(start * 1000 / sample_rate_hz)
+        block_end_ms = round(end * 1000 / sample_rate_hz)
+        non_silent_ratio = _unit(rms / max(NON_SILENT_RMS_THRESHOLD * 3.0, 0.00001))
+        bins.append({
+            "startMs": block_start_ms,
+            "endMs": block_end_ms,
+            "rms": round(_unit(rms), 6),
+            "signalRatio": round(_unit(signal_ratio), 6),
+            "nonSilentRatio": round(non_silent_ratio, 6),
+        })
+        bin_rms_values.append(rms)
+
+    usable_ratio = _unit(usable_ms / max(duration_ms, 1))
+    energy_evidence = _unit(overall_rms / 0.08)
+    activity_evidence = _unit((overall_signal_ratio * 0.55) + (energy_evidence * 0.45))
+    energy_stability = _energy_stability(bin_rms_values)
+    if role == "vocal":
+        suitability = _unit((0.40 * usable_ratio) + (0.35 * overall_signal_ratio) + (0.25 * activity_evidence))
+    else:
+        suitability = _unit((0.35 * usable_ratio) + (0.25 * overall_signal_ratio) + (0.20 * energy_evidence) + (0.20 * energy_stability))
+
+    return {
+        "version": METRICS_VERSION,
+        "durationMs": duration_ms,
+        "rms": round(_unit(overall_rms), 6),
+        "signalRatio": round(_unit(overall_signal_ratio), 6),
+        "usableNonSilentDurationMs": round(usable_ms),
+        "activityEvidence": round(activity_evidence, 6),
+        "energyStability": round(energy_stability, 6),
+        "suitabilityScore": round(suitability, 6),
+        "bins": bins,
+    }
+
+
+def analyze_wave(path: Path, role: str) -> dict[str, object]:
+    samples, sample_rate_hz = _decode_mono_pcm16(path)
+    return calculate_audio_metrics(samples, sample_rate_hz, role)
+
+
 def validate_pair(
     vocals_path: Path,
     instrumental_path: Path,
     expected_duration_ms: int | None,
-) -> dict[str, dict[str, int]]:
+) -> dict[str, dict[str, object]]:
     vocals = inspect_wave(vocals_path)
     instrumental = inspect_wave(instrumental_path)
     if vocals.sampleRateHz != instrumental.sampleRateHz:
@@ -66,8 +253,8 @@ def validate_pair(
                 f"within {TIMELINE_TOLERANCE_MS} ms"
             )
     return {
-        "vocals": asdict(vocals),
-        "instrumental": asdict(instrumental),
+        "vocals": {**asdict(vocals), "metrics": analyze_wave(vocals_path, "vocal")},
+        "instrumental": {**asdict(instrumental), "metrics": analyze_wave(instrumental_path, "instrumental")},
     }
 
 
@@ -283,7 +470,7 @@ def separate_to_pair(
     window_start_ms: int | None = None,
     window_duration_ms: int | None = None,
     extractor: Callable[[Path, Path, int, int], None] = extract_audio_window,
-) -> dict[str, dict[str, int]]:
+) -> dict[str, dict[str, object]]:
     source = source.resolve(strict=True)
     if not source.is_file():
         raise RuntimeError("source audio is not a file")

@@ -13,6 +13,20 @@ const {
   StemSeparationBridge,
 } = require('./stemSeparationBridge.cjs');
 
+function testMetrics(durationMs) {
+  return {
+    version: 'roulette-stem-metrics-v1',
+    durationMs,
+    rms: 0.05,
+    signalRatio: 0.8,
+    usableNonSilentDurationMs: durationMs,
+    activityEvidence: 0.7,
+    energyStability: 0.9,
+    suitabilityScore: 0.8,
+    bins: [{ startMs: 0, endMs: durationMs, rms: 0.05, signalRatio: 0.8, nonSilentRatio: 0.9 }],
+  };
+}
+
 function fakeChild() {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
@@ -55,8 +69,8 @@ function previewSpawn({ delayMs = 5, onStart = () => {}, onFinish = () => {} } =
       child.stdout.write(`${RESULT_PREFIX}${JSON.stringify({
         ok: true,
         outputs: {
-          vocals: { durationMs, sampleRateHz: 44100, channelCount: 2 },
-          instrumental: { durationMs, sampleRateHz: 44100, channelCount: 2 },
+          vocals: { durationMs, sampleRateHz: 44100, channelCount: 2, metrics: testMetrics(durationMs) },
+          instrumental: { durationMs, sampleRateHz: 44100, channelCount: 2, metrics: testMetrics(durationMs) },
         },
       })}\n`);
       onFinish(args);

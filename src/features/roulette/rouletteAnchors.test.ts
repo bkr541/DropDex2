@@ -79,6 +79,35 @@ function region(startMs: number, durationMs: number, confidence = 4): VocalRegio
   };
 }
 
+
+function stemMetrics(
+  durationMs: number,
+  scoreForMs: (startMs: number) => number,
+) {
+  const bins = Array.from({ length: Math.ceil(durationMs / 1000) }, (_, index) => {
+    const startMs = index * 1000;
+    const level = scoreForMs(startMs);
+    return {
+      startMs,
+      endMs: Math.min(durationMs, startMs + 1000),
+      rms: level * 0.08,
+      signalRatio: level,
+      nonSilentRatio: level,
+    };
+  });
+  return {
+    version: 'roulette-stem-metrics-v1',
+    durationMs,
+    rms: 0.04,
+    signalRatio: 0.5,
+    usableNonSilentDurationMs: durationMs / 2,
+    activityEvidence: 0.5,
+    energyStability: 0.5,
+    suitabilityScore: 0.5,
+    bins,
+  };
+}
+
 function pvdi(regions: VocalRegionRow[]): VocalAnalysisRow {
   return {
     id: 'pvdi-1',
@@ -153,6 +182,55 @@ describe('Roulette musical anchor resolver', () => {
     expect(result?.sourceBar).toBe(9);
     expect(result?.sourceBeatSequence).toBe(33);
     expect(result?.sourceTimeMs).toBe(16_000);
+  });
+
+  it('keeps Rekordbox PVDI as the primary vocal signal even when stem metrics favor a later phrase', () => {
+    const result = resolveRouletteMusicalAnchor({
+      role: 'vocal',
+      track: track(),
+      beatGrid: grid(),
+      phrases: [phrase(0, 5), phrase(1, 17)],
+      vocalAnalysis: pvdi([region(8_500, 4_000)]),
+      durationMs: 80_000,
+      requestedBars: 4,
+      stemMetrics: stemMetrics(80_000, (startMs) => (startMs >= 32_000 && startMs < 40_000 ? 1 : 0.05)),
+    });
+
+    expect(result?.provenance).toBe('pvdi-phrase');
+    expect(result?.sourceBar).toBe(5);
+  });
+
+  it('uses stem metrics only to rank otherwise valid phrase windows when PVDI is unavailable', () => {
+    const result = resolveRouletteMusicalAnchor({
+      role: 'vocal',
+      track: track(),
+      beatGrid: grid(),
+      phrases: [phrase(0, 5), phrase(1, 17)],
+      vocalAnalysis: null,
+      durationMs: 80_000,
+      requestedBars: 4,
+      stemMetrics: stemMetrics(80_000, (startMs) => (startMs >= 32_000 && startMs < 40_000 ? 0.95 : 0.1)),
+    });
+
+    expect(result?.provenance).toBe('phrase');
+    expect(result?.sourceBar).toBe(17);
+  });
+
+  it('does not hard-exclude an otherwise valid anchor when stem quality metrics are low', () => {
+    const result = resolveRouletteMusicalAnchor({
+      role: 'vocal',
+      track: track(),
+      beatGrid: grid(),
+      phrases: [phrase(0, 9)],
+      vocalAnalysis: null,
+      durationMs: 80_000,
+      requestedBars: 4,
+      stemMetrics: stemMetrics(80_000, () => 0),
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.provenance).toBe('phrase');
+    expect(result?.sourceBar).toBe(9);
   });
 
   it('falls back from missing PVDI to a viable non-outro phrase', () => {

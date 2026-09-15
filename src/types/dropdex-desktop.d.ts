@@ -123,6 +123,26 @@ export type DesktopRouletteStemPreparationErrorKind =
   | 'cancelled'
   | 'unexpected';
 
+export interface DesktopRouletteStemAudioMetricBin {
+  startMs: number;
+  endMs: number;
+  rms: number;
+  signalRatio: number;
+  nonSilentRatio: number;
+}
+
+export interface DesktopRouletteStemAudioMetrics {
+  version: string;
+  durationMs: number;
+  rms: number;
+  signalRatio: number;
+  usableNonSilentDurationMs: number;
+  activityEvidence: number;
+  energyStability: number;
+  suitabilityScore: number;
+  bins: DesktopRouletteStemAudioMetricBin[];
+}
+
 export interface DesktopRoulettePreparedStem {
   locator: string;
   durationMs: number;
@@ -130,6 +150,7 @@ export interface DesktopRoulettePreparedStem {
   channelCount: number;
   size: number;
   mtimeMs: number;
+  metrics: DesktopRouletteStemAudioMetrics;
 }
 
 export interface DesktopRouletteStemPreparationInput {
@@ -144,6 +165,7 @@ export type DesktopRouletteStemPreparationResult =
   | {
       ok: true;
       separatorVersion: string;
+      cached: boolean;
       outputs: {
         vocals: DesktopRoulettePreparedStem;
         instrumental: DesktopRoulettePreparedStem;

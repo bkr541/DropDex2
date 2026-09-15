@@ -1,5 +1,6 @@
 import type { RekordboxTrack } from '../../types';
 import type { RouletteSourceRole, RouletteStemStatus } from './rouletteSession';
+import type { StemAudioMetrics } from './rouletteStemMetrics';
 
 export const STEM_ASSET_CONTRACT_VERSION = 1 as const;
 export const ROULETTE_SEPARATOR_VERSION = 'demucs-4.0.1-htdemucs-two-stem-v1' as const;
@@ -22,6 +23,7 @@ export interface StemAssetRecord {
   channel_count: number | null;
   file_size_bytes: number | null;
   file_mtime_ms: number | null;
+  analysis_metrics: StemAudioMetrics | null;
   failure_code: string | null;
   failure_message: string | null;
   created_at: string;

@@ -12,6 +12,7 @@ const HEALTH_RESULT_PREFIX = 'DROPDEX_STEM_HEALTH:';
 const SEPARATOR_VERSION = 'demucs-4.0.1-htdemucs-two-stem-v1';
 const PREVIEW_ALGORITHM_VERSION = 'demucs-4.0.1-htdemucs-16bar-preview-v1';
 const STEM_MODEL_NAME = 'htdemucs';
+const STEM_MANIFEST_CONTRACT_VERSION = 1;
 const JOB_TIMEOUT_MS = 30 * 60 * 1000;
 const HEALTH_TIMEOUT_MS = 20 * 1000;
 const MAX_CAPTURE_BYTES = 1_000_000;
@@ -162,6 +163,49 @@ function sameIdentity(left, right) {
   return left.size === right.size && left.mtimeMs === right.mtimeMs;
 }
 
+function validateStemMetrics(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Separator audio metrics are missing.');
+  const numericFields = [
+    'durationMs',
+    'rms',
+    'signalRatio',
+    'usableNonSilentDurationMs',
+    'activityEvidence',
+    'energyStability',
+    'suitabilityScore',
+  ];
+  if (typeof value.version !== 'string' || !value.version.trim()) throw new Error('Separator audio metrics version is invalid.');
+  for (const field of numericFields) {
+    if (!Number.isFinite(value[field]) || value[field] < 0) throw new Error(`Separator audio metrics ${field} is invalid.`);
+  }
+  if (!Array.isArray(value.bins)) throw new Error('Separator audio metric bins are invalid.');
+  const bins = value.bins.map((bin) => {
+    if (!bin || typeof bin !== 'object' || Array.isArray(bin)) throw new Error('Separator audio metric bin is invalid.');
+    for (const field of ['startMs', 'endMs', 'rms', 'signalRatio', 'nonSilentRatio']) {
+      if (!Number.isFinite(bin[field]) || bin[field] < 0) throw new Error(`Separator audio metric bin ${field} is invalid.`);
+    }
+    if (bin.endMs <= bin.startMs) throw new Error('Separator audio metric bin range is invalid.');
+    return {
+      startMs: Math.round(bin.startMs),
+      endMs: Math.round(bin.endMs),
+      rms: Math.min(1, bin.rms),
+      signalRatio: Math.min(1, bin.signalRatio),
+      nonSilentRatio: Math.min(1, bin.nonSilentRatio),
+    };
+  });
+  return {
+    version: value.version,
+    durationMs: Math.round(value.durationMs),
+    rms: Math.min(1, value.rms),
+    signalRatio: Math.min(1, value.signalRatio),
+    usableNonSilentDurationMs: Math.round(value.usableNonSilentDurationMs),
+    activityEvidence: Math.min(1, value.activityEvidence),
+    energyStability: Math.min(1, value.energyStability),
+    suitabilityScore: Math.min(1, value.suitabilityScore),
+    bins,
+  };
+}
+
 async function inspectPublishedStem(filePath, workerMetadata) {
   const stat = await fs.stat(filePath);
   if (!stat.isFile()) throw new Error('Separator output is not a file.');
@@ -171,12 +215,21 @@ async function inspectPublishedStem(filePath, workerMetadata) {
       throw new Error(`Separator output ${field} is invalid.`);
     }
   }
+  const durationMs = Math.round(workerMetadata.durationMs);
+  const metrics = validateStemMetrics(workerMetadata.metrics);
+  if (Math.abs(metrics.durationMs - durationMs) > 500) {
+    throw new Error('Separator audio metrics do not match the output timeline.');
+  }
+  if (metrics.usableNonSilentDurationMs > metrics.durationMs + 500) {
+    throw new Error('Separator usable-audio metrics exceed the output duration.');
+  }
   return {
-    durationMs: Math.round(workerMetadata.durationMs),
+    durationMs,
     sampleRateHz: Math.round(workerMetadata.sampleRateHz),
     channelCount: Math.round(workerMetadata.channelCount),
     size: stat.size,
     mtimeMs: stat.mtimeMs,
+    metrics,
   };
 }
 
@@ -374,7 +427,8 @@ class StemSeparationBridge {
     try {
       const manifest = JSON.parse(await fs.readFile(path.join(finalDir, 'manifest.json'), 'utf8'));
       if (
-        manifest?.algorithmVersion !== input.algorithmVersion
+        manifest?.contractVersion !== STEM_MANIFEST_CONTRACT_VERSION
+        || manifest?.algorithmVersion !== input.algorithmVersion
         || manifest?.sourceFingerprint !== input.sourceFingerprint
         || manifest?.windowStartMs !== input.windowStartMs
         || manifest?.windowEndMs !== input.windowEndMs
@@ -461,7 +515,7 @@ class StemSeparationBridge {
       }
 
       await fs.writeFile(path.join(preparedDir, 'manifest.json'), JSON.stringify({
-        contractVersion: 1,
+        contractVersion: STEM_MANIFEST_CONTRACT_VERSION,
         algorithmVersion: input.algorithmVersion,
         sourceFingerprint: input.sourceFingerprint,
         windowStartMs: input.windowStartMs,
@@ -475,7 +529,7 @@ class StemSeparationBridge {
         inspectPublishedStem(path.join(finalDir, 'instrumental.wav'), instrumentalMeta),
       ]);
       await fs.writeFile(path.join(finalDir, 'manifest.json'), JSON.stringify({
-        contractVersion: 1,
+        contractVersion: STEM_MANIFEST_CONTRACT_VERSION,
         algorithmVersion: input.algorithmVersion,
         sourceFingerprint: input.sourceFingerprint,
         windowStartMs: input.windowStartMs,
@@ -506,6 +560,36 @@ class StemSeparationBridge {
     }
   }
 
+  async _loadCachedHq(finalDir, finalLocatorDir, input) {
+    try {
+      const manifest = JSON.parse(await fs.readFile(path.join(finalDir, 'manifest.json'), 'utf8'));
+      if (
+        manifest?.contractVersion !== STEM_MANIFEST_CONTRACT_VERSION
+        || manifest?.separatorVersion !== input.separatorVersion
+        || manifest?.sourceFingerprint !== input.sourceFingerprint
+      ) return null;
+      const [vocals, instrumental] = await Promise.all([
+        inspectPublishedStem(path.join(finalDir, 'vocals.wav'), manifest.outputs?.vocals),
+        inspectPublishedStem(path.join(finalDir, 'instrumental.wav'), manifest.outputs?.instrumental),
+      ]);
+      for (const [name, metadata] of [['vocals', vocals], ['instrumental', instrumental]]) {
+        const expected = manifest.outputs?.[name];
+        if (!expected || metadata.size !== expected.size || metadata.mtimeMs !== expected.mtimeMs) return null;
+      }
+      return {
+        ok: true,
+        cached: true,
+        separatorVersion: input.separatorVersion,
+        outputs: {
+          vocals: { locator: `${finalLocatorDir}/vocals.wav`, ...vocals },
+          instrumental: { locator: `${finalLocatorDir}/instrumental.wav`, ...instrumental },
+        },
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async _runJob(input, job) {
     const userDataPath = this.options.userDataPath();
     const root = stemStorageRoot(userDataPath);
@@ -518,6 +602,8 @@ class StemSeparationBridge {
     const finalLocatorDir = ['generated', trackDir, identityDir].join('/');
     const finalDir = path.join(root, 'generated', trackDir, identityDir);
     const modelRoot = defaultModelRoot(this.options);
+    const cached = await this._loadCachedHq(finalDir, finalLocatorDir, input);
+    if (cached) return cached;
     const beforeIdentity = await statIdentity(input.sourceFilePath);
 
     await fs.mkdir(jobRoot, { recursive: true });
@@ -560,14 +646,27 @@ class StemSeparationBridge {
         return { ok: false, error: { kind: 'validation_failed', message: 'Generated stem durations do not align.' } };
       }
 
+      await fs.writeFile(path.join(preparedDir, 'manifest.json'), JSON.stringify({
+        contractVersion: STEM_MANIFEST_CONTRACT_VERSION,
+        separatorVersion: input.separatorVersion,
+        sourceFingerprint: input.sourceFingerprint,
+        outputs: { vocals: vocalsMeta, instrumental: instrumentalMeta },
+      }), 'utf8');
       await atomicPublishDirectory(preparedDir, finalDir);
       const [publishedVocals, publishedInstrumental] = await Promise.all([
         inspectPublishedStem(path.join(finalDir, 'vocals.wav'), vocalsMeta),
         inspectPublishedStem(path.join(finalDir, 'instrumental.wav'), instrumentalMeta),
       ]);
+      await fs.writeFile(path.join(finalDir, 'manifest.json'), JSON.stringify({
+        contractVersion: STEM_MANIFEST_CONTRACT_VERSION,
+        separatorVersion: input.separatorVersion,
+        sourceFingerprint: input.sourceFingerprint,
+        outputs: { vocals: publishedVocals, instrumental: publishedInstrumental },
+      }), 'utf8');
 
       return {
         ok: true,
+        cached: false,
         separatorVersion: SEPARATOR_VERSION,
         outputs: {
           vocals: { locator: `${finalLocatorDir}/vocals.wav`, ...publishedVocals },

@@ -78,6 +78,7 @@ function asset(trackId: string, stemType: 'vocals' | 'instrumental', status: Ste
     channel_count: 2,
     file_size_bytes: 1000,
     file_mtime_ms: 100,
+    analysis_metrics: null,
     failure_code: null,
     failure_message: null,
     created_at: '2026-09-08T00:00:00Z',

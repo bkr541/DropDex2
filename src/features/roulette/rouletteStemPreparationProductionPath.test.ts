@@ -18,6 +18,8 @@ describe('Roulette Stage 6 production preparation reachability', () => {
     expect(detail).toContain('roulettePreparation.prepare()');
     expect(hook).toContain('rouletteStemPreparationService.prepare(track)');
     expect(service).toContain('desktop.prepareRouletteStems');
+    expect(service).toContain('preparePair');
+    expect(service).toContain('const vocal = await prepare(vocalTrack)');
     expect(preload).toContain("ipcRenderer.invoke('dropdex:prepare-roulette-stems'");
     expect(main).toContain("ipcMain.handle('dropdex:prepare-roulette-stems'");
     expect(main).toContain('resolveUsbTrackPath(payload.sourceSegments)');

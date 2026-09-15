@@ -1,8 +1,5 @@
 import type { RekordboxTrack } from '../../types';
-import type {
-  DesktopRoulettePreparedStem,
-  DesktopRouletteStemPreparationResult,
-} from '../../types/dropdex-desktop';
+import type { DesktopRoulettePreparedStem } from '../../types/dropdex-desktop';
 import { resolveUsbPath } from '../../lib/rekordbox/usbPathResolver';
 import {
   rouletteStemAssetRepository,
@@ -12,7 +9,7 @@ import {
   rouletteStemAssetService,
   type StemAssetService,
 } from './stemAssetService';
-import { ROULETTE_SEPARATOR_VERSION } from './stemAssets';
+import { ROULETTE_SEPARATOR_VERSION, type StemAssetType } from './stemAssets';
 
 export { ROULETTE_SEPARATOR_VERSION } from './stemAssets';
 
@@ -24,9 +21,15 @@ export interface RouletteStemPreparationOutcome {
   message: string | null;
 }
 
+export interface RouletteHqPairPreparationOutcome {
+  status: 'ready' | 'partial' | 'failed' | 'cancelled';
+  vocal: RouletteStemPreparationOutcome;
+  instrumental: RouletteStemPreparationOutcome;
+}
+
 type DesktopPreparationBridge = Pick<
   NonNullable<Window['dropdexDesktop']>,
-  'getRouletteRuntimeHealth' | 'prepareRouletteStems' | 'cancelRouletteStems' | 'deleteStemAsset'
+  'getRouletteRuntimeHealth' | 'prepareRouletteStems' | 'cancelRouletteStems'
 >;
 
 export interface RouletteStemPreparationDependencies {
@@ -39,7 +42,13 @@ export interface RouletteStemPreparationDependencies {
 }
 
 export interface RouletteStemPreparationService {
+  /** Canonical full-track HQ preparation used by Track Detail and Roulette. */
   prepare(track: RekordboxTrack): Promise<RouletteStemPreparationOutcome>;
+  /** Stage 5/6 command hook. HQ work is serialized and each parent track commits independently. */
+  preparePair(
+    vocalTrack: RekordboxTrack,
+    instrumentalTrack: RekordboxTrack,
+  ): Promise<RouletteHqPairPreparationOutcome>;
   cancel(trackId: string): Promise<boolean>;
 }
 
@@ -79,7 +88,18 @@ function asCommitOutput(output: DesktopRoulettePreparedStem) {
     channelCount: output.channelCount,
     size: output.size,
     mtimeMs: output.mtimeMs,
+    metrics: output.metrics,
   };
+}
+
+function pairStatus(
+  vocal: RouletteStemPreparationOutcome,
+  instrumental: RouletteStemPreparationOutcome,
+): RouletteHqPairPreparationOutcome['status'] {
+  if (vocal.status === 'ready' && instrumental.status === 'ready') return 'ready';
+  if (vocal.status === 'ready' || instrumental.status === 'ready') return 'partial';
+  if (vocal.status === 'cancelled' || instrumental.status === 'cancelled') return 'cancelled';
+  return 'failed';
 }
 
 export function createRouletteStemPreparationService(
@@ -91,22 +111,19 @@ export function createRouletteStemPreparationService(
 ): RouletteStemPreparationService {
   const { repository, stemAssets, getDesktopBridge } = dependencies;
   const inFlight = new Map<string, Promise<RouletteStemPreparationOutcome>>();
+  const cancelledBeforeStart = new Set<string>();
+  let queueTail: Promise<void> = Promise.resolve();
+  let activeTrackId: string | null = null;
 
-  const markPairFailed = async (trackId: string, code: string, message: string): Promise<void> => {
-    await Promise.allSettled([
-      stemAssets.markFailed(trackId, 'vocals', code, message),
-      stemAssets.markFailed(trackId, 'instrumental', code, message),
-    ]);
-  };
-
-  const removeUncommittedOutputs = async (
-    desktop: DesktopPreparationBridge,
-    result: Extract<DesktopRouletteStemPreparationResult, { ok: true }>,
+  const markMutableFailed = async (
+    trackId: string,
+    mutableStemTypes: readonly StemAssetType[],
+    code: string,
+    message: string,
   ): Promise<void> => {
-    await Promise.allSettled([
-      desktop.deleteStemAsset(result.outputs.vocals.locator),
-      desktop.deleteStemAsset(result.outputs.instrumental.locator),
-    ]);
+    await Promise.allSettled(
+      mutableStemTypes.map((stemType) => stemAssets.markFailed(trackId, stemType, code, message)),
+    );
   };
 
   const runPrepare = async (track: RekordboxTrack): Promise<RouletteStemPreparationOutcome> => {
@@ -133,6 +150,12 @@ export function createRouletteStemPreparationService(
       return { status: 'ready', cached: true, message: null };
     }
 
+    // Never overwrite a still-valid ready row with transient processing/failure state.
+    // The final per-track RPC atomically replaces both rows only after both files validate.
+    const mutableStemTypes: StemAssetType[] = [];
+    if (vocalsReadiness.status !== 'ready') mutableStemTypes.push('vocals');
+    if (instrumentalReadiness.status !== 'ready') mutableStemTypes.push('instrumental');
+
     const runtimeHealth = await desktop.getRouletteRuntimeHealth();
     if (!runtimeHealth.available) {
       return {
@@ -142,36 +165,19 @@ export function createRouletteStemPreparationService(
       };
     }
 
-    let prepared: Extract<DesktopRouletteStemPreparationResult, { ok: true }> | null = null;
     try {
-      await Promise.all([
-        stemAssets.register({
-          trackId: track.id,
-          stemType: 'vocals',
-          status: 'pending',
-          separatorVersion: ROULETTE_SEPARATOR_VERSION,
-        }),
-        stemAssets.register({
-          trackId: track.id,
-          stemType: 'instrumental',
-          status: 'pending',
-          separatorVersion: ROULETTE_SEPARATOR_VERSION,
-        }),
-      ]);
-      await Promise.all([
-        stemAssets.register({
-          trackId: track.id,
-          stemType: 'vocals',
-          status: 'processing',
-          separatorVersion: ROULETTE_SEPARATOR_VERSION,
-        }),
-        stemAssets.register({
-          trackId: track.id,
-          stemType: 'instrumental',
-          status: 'processing',
-          separatorVersion: ROULETTE_SEPARATOR_VERSION,
-        }),
-      ]);
+      await Promise.all(mutableStemTypes.map((stemType) => stemAssets.register({
+        trackId: track.id,
+        stemType,
+        status: 'pending',
+        separatorVersion: ROULETTE_SEPARATOR_VERSION,
+      })));
+      await Promise.all(mutableStemTypes.map((stemType) => stemAssets.register({
+        trackId: track.id,
+        stemType,
+        status: 'processing',
+        separatorVersion: ROULETTE_SEPARATOR_VERSION,
+      })));
 
       const result = await desktop.prepareRouletteStems({
         trackId: track.id,
@@ -181,12 +187,11 @@ export function createRouletteStemPreparationService(
         expectedDurationMs: durationMsForTrack(track),
       });
       if (!result.ok) {
-        const failure = result as Extract<DesktopRouletteStemPreparationResult, { ok: false }>;
+        const failure = result as Extract<typeof result, { ok: false }>;
         const status = failure.error.kind === 'cancelled' ? 'cancelled' : 'failed';
-        await markPairFailed(track.id, failure.error.kind, failure.error.message);
+        await markMutableFailed(track.id, mutableStemTypes, failure.error.kind, failure.error.message);
         return { status, cached: false, message: failure.error.message };
       }
-      prepared = result;
 
       if (result.separatorVersion !== ROULETTE_SEPARATOR_VERSION) {
         throw new Error('The local stem separator returned an unexpected processing version.');
@@ -205,12 +210,12 @@ export function createRouletteStemPreparationService(
           instrumental: asCommitOutput(result.outputs.instrumental),
         },
       });
-      prepared = null;
-      return { status: 'ready', cached: false, message: null };
+      return { status: 'ready', cached: result.cached, message: null };
     } catch (error) {
-      if (prepared) await removeUncommittedOutputs(desktop, prepared);
+      // Generated HQ files intentionally remain in managed local storage. A retry can
+      // reuse the validated manifest/cache; no partial DB ready records are published.
       const message = error instanceof Error ? error.message : String(error);
-      await markPairFailed(track.id, 'stem_preparation_failed', message);
+      await markMutableFailed(track.id, mutableStemTypes, 'stem_preparation_failed', message);
       return { status: 'failed', cached: false, message };
     }
   };
@@ -218,21 +223,51 @@ export function createRouletteStemPreparationService(
   const prepare = (track: RekordboxTrack): Promise<RouletteStemPreparationOutcome> => {
     const existing = inFlight.get(track.id);
     if (existing) return existing;
-    const promise = runPrepare(track).finally(() => {
-      if (inFlight.get(track.id) === promise) inFlight.delete(track.id);
-    });
+
+    let promise: Promise<RouletteStemPreparationOutcome>;
+    promise = queueTail
+      .catch(() => undefined)
+      .then(async () => {
+        if (cancelledBeforeStart.delete(track.id)) {
+          return { status: 'cancelled' as const, cached: false, message: 'Stem preparation was cancelled.' };
+        }
+        activeTrackId = track.id;
+        try {
+          return await runPrepare(track);
+        } finally {
+          if (activeTrackId === track.id) activeTrackId = null;
+        }
+      })
+      .finally(() => {
+        cancelledBeforeStart.delete(track.id);
+        if (inFlight.get(track.id) === promise) inFlight.delete(track.id);
+      });
     inFlight.set(track.id, promise);
+    queueTail = promise.then(() => undefined, () => undefined);
     return promise;
   };
 
-  const cancel = async (trackId: string): Promise<boolean> => {
-    const desktop = getDesktopBridge();
-    if (!desktop) return false;
-    const result = await desktop.cancelRouletteStems(trackId);
-    return result.ok && result.cancelled;
+  const preparePair = async (
+    vocalTrack: RekordboxTrack,
+    instrumentalTrack: RekordboxTrack,
+  ): Promise<RouletteHqPairPreparationOutcome> => {
+    const vocal = await prepare(vocalTrack);
+    const instrumental = vocalTrack.id === instrumentalTrack.id
+      ? vocal
+      : await prepare(instrumentalTrack);
+    return { status: pairStatus(vocal, instrumental), vocal, instrumental };
   };
 
-  return { prepare, cancel };
+  const cancel = async (trackId: string): Promise<boolean> => {
+    const queuedOrActive = inFlight.has(trackId);
+    if (queuedOrActive && activeTrackId !== trackId) cancelledBeforeStart.add(trackId);
+    const desktop = getDesktopBridge();
+    if (!desktop) return queuedOrActive;
+    const result = await desktop.cancelRouletteStems(trackId);
+    return queuedOrActive || (result.ok && result.cancelled);
+  };
+
+  return { prepare, preparePair, cancel };
 }
 
 export const rouletteStemPreparationService = createRouletteStemPreparationService();

@@ -176,6 +176,7 @@ function asset(trackId: string, type: 'vocals' | 'instrumental'): StemAssetRecor
     channel_count: 1,
     file_size_bytes: 1200,
     file_mtime_ms: 100,
+    analysis_metrics: null,
     failure_code: null,
     failure_message: null,
     created_at: '2026-09-08T00:00:00Z',

@@ -19,6 +19,7 @@ import type {
   VocalRegionRow,
 } from '../../lib/queries/analysisData';
 import type { RouletteSourceRole } from './rouletteSession';
+import { summarizeStemWindow } from './rouletteStemMetrics';
 
 export const ROULETTE_ANCHOR_WINDOW_BARS = 16;
 
@@ -51,6 +52,7 @@ export interface ResolveRouletteMusicalAnchorInput {
   vocalAnalysis?: VocalAnalysisRow | null;
   durationMs?: number | null;
   requestedBars?: number;
+  stemMetrics?: unknown;
 }
 
 interface CandidateWindow {
@@ -64,6 +66,7 @@ interface VocalCandidate extends CandidateWindow {
   overlapMs: number;
   peakConfidence: number;
   onsetDistanceMs: number;
+  metricScore: number | null;
 }
 
 function validBpm(value: number | null | undefined): value is number {
@@ -162,6 +165,18 @@ function usableWindowForBeat(
   return exactCandidateWindow(beats, beat, bars, durationMs);
 }
 
+function metricScoreForWindow(
+  input: ResolveRouletteMusicalAnchorInput,
+  window: CandidateWindow,
+): number | null {
+  return summarizeStemWindow(
+    input.stemMetrics,
+    window.startMs,
+    window.endMs,
+    input.role,
+  )?.score ?? null;
+}
+
 function vocalOverlapMs(regions: VocalRegionRow[], startMs: number, endMs: number): number {
   return regions.reduce((sum, region) => {
     const overlapStart = Math.max(startMs, region.start_ms);
@@ -243,6 +258,7 @@ function resolvePvdiVocalAnchor(
         overlapMs: vocalOverlapMs(regions, window.startMs, window.endMs),
         peakConfidence: peakConfidenceInWindow(regions, window.startMs, window.endMs),
         onsetDistanceMs: Math.abs(region.start_ms - window.startMs),
+        metricScore: metricScoreForWindow(input, window),
       };
       const key = `beat:${entry.beat.seq}`;
       const previous = candidates.get(key);
@@ -259,6 +275,7 @@ function resolvePvdiVocalAnchor(
           overlapMs: vocalOverlapMs(regions, window.startMs, window.endMs),
           peakConfidence: peakConfidenceInWindow(regions, window.startMs, window.endMs),
           onsetDistanceMs: Math.abs(region.start_ms - window.startMs),
+          metricScore: metricScoreForWindow(input, window),
         };
         const key = `beat:${downbeat.seq}`;
         const previous = candidates.get(key);
@@ -279,6 +296,7 @@ function compareVocalCandidates(left: VocalCandidate, right: VocalCandidate): nu
   return right.overlapMs - left.overlapMs
     || right.peakConfidence - left.peakConfidence
     || (left.provenance === 'pvdi-phrase' ? -1 : 1) - (right.provenance === 'pvdi-phrase' ? -1 : 1)
+    || (right.metricScore ?? -1) - (left.metricScore ?? -1)
     || left.onsetDistanceMs - right.onsetDistanceMs
     || left.startMs - right.startMs;
 }
@@ -294,20 +312,23 @@ function resolvePhraseAnchor(
     .filter((phrase) => !phraseIsOutro(phrase))
     .map((phrase) => ({ phrase, beat: phraseDownbeat(beats, phrase) }))
     .filter((entry): entry is { phrase: PhraseRow; beat: BeatEntry } => entry.beat != null)
-    .sort((left, right) => left.beat.ms - right.beat.ms || left.phrase.phrase_index - right.phrase.phrase_index);
+    .flatMap((entry) => {
+      const window = usableWindowForBeat(beats, entry.beat, bars, input.durationMs);
+      return window ? [{ ...entry, window, metricScore: metricScoreForWindow(input, window) }] : [];
+    })
+    .sort((left, right) => (right.metricScore ?? -1) - (left.metricScore ?? -1)
+      || left.beat.ms - right.beat.ms
+      || left.phrase.phrase_index - right.phrase.phrase_index);
 
-  for (const candidate of candidates) {
-    const window = usableWindowForBeat(beats, candidate.beat, bars, input.durationMs);
-    if (!window) continue;
-    return toAnchor(
-      input,
-      window,
-      'phrase',
-      `Rekordbox phrase ${candidate.phrase.phrase_index + 1} aligned to its source downbeat.`,
-      bars,
-    );
-  }
-  return null;
+  const candidate = candidates[0];
+  if (!candidate) return null;
+  return toAnchor(
+    input,
+    candidate.window,
+    'phrase',
+    `Rekordbox phrase ${candidate.phrase.phrase_index + 1} aligned to its source downbeat.`,
+    bars,
+  );
 }
 
 function resolveDownbeatAnchor(
@@ -320,13 +341,14 @@ function resolveDownbeatAnchor(
   const ordered = [
     ...downbeats.filter((beat) => beat.bar > 0),
     ...downbeats.filter((beat) => beat.bar <= 0),
-  ];
-  for (const beat of ordered) {
+  ].flatMap((beat) => {
     const window = usableWindowForBeat(beats, beat, bars, input.durationMs);
-    if (!window) continue;
-    return toAnchor(input, window, 'downbeat', 'First exact Rekordbox downbeat with the requested usable bar span.', bars);
-  }
-  return null;
+    return window ? [{ beat, window, metricScore: metricScoreForWindow(input, window) }] : [];
+  }).sort((left, right) => (right.metricScore ?? -1) - (left.metricScore ?? -1)
+    || left.beat.ms - right.beat.ms);
+  const selected = ordered[0];
+  if (!selected) return null;
+  return toAnchor(input, selected.window, 'downbeat', 'Exact Rekordbox downbeat with the requested usable bar span.', bars);
 }
 
 /**

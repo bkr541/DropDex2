@@ -15,6 +15,20 @@ const {
   atomicPublishDirectory,
 } = require('./stemSeparationBridge.cjs');
 
+function testMetrics(durationMs) {
+  return {
+    version: 'roulette-stem-metrics-v1',
+    durationMs,
+    rms: 0.05,
+    signalRatio: 0.8,
+    usableNonSilentDurationMs: durationMs,
+    activityEvidence: 0.7,
+    energyStability: 0.9,
+    suitabilityScore: 0.8,
+    bins: [{ startMs: 0, endMs: durationMs, rms: 0.05, signalRatio: 0.8, nonSilentRatio: 0.9 }],
+  };
+}
+
 function fakeChild() {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
@@ -68,8 +82,8 @@ test('StemSeparationBridge deduplicates identical work and publishes both manage
       child.stdout.write(`${RESULT_PREFIX}${JSON.stringify({
         ok: true,
         outputs: {
-          vocals: { durationMs: 1000, sampleRateHz: 44100, channelCount: 2 },
-          instrumental: { durationMs: 1000, sampleRateHz: 44100, channelCount: 2 },
+          vocals: { durationMs: 1000, sampleRateHz: 44100, channelCount: 2, metrics: testMetrics(1000) },
+          instrumental: { durationMs: 1000, sampleRateHz: 44100, channelCount: 2, metrics: testMetrics(1000) },
         },
       })}\n`);
       child.emit('exit', 0, null);
@@ -102,6 +116,14 @@ test('StemSeparationBridge deduplicates identical work and publishes both manage
     assert.deepEqual(second, first);
     assert.match(first.outputs.vocals.locator, /^generated\//);
     assert.match(first.outputs.instrumental.locator, /^generated\//);
+    assert.equal(first.cached, false);
+    assert.equal(first.outputs.vocals.metrics.version, 'roulette-stem-metrics-v1');
+
+    const cached = await bridge.prepare(input);
+    assert.equal(spawnCount, 1);
+    assert.equal(cached.ok, true);
+    assert.equal(cached.cached, true);
+    assert.equal(cached.outputs.instrumental.metrics.version, 'roulette-stem-metrics-v1');
   } finally {
     bridge.close();
     await rm(root, { recursive: true, force: true });

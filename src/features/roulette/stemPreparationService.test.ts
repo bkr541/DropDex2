@@ -12,6 +12,20 @@ import {
   createRouletteStemPreparationService,
 } from './stemPreparationService';
 
+function metrics(durationMs: number) {
+  return {
+    version: 'roulette-stem-metrics-v1',
+    durationMs,
+    rms: 0.05,
+    signalRatio: 0.8,
+    usableNonSilentDurationMs: durationMs,
+    activityEvidence: 0.7,
+    energyStability: 0.9,
+    suitabilityScore: 0.8,
+    bins: [{ startMs: 0, endMs: durationMs, rms: 0.05, signalRatio: 0.8, nonSilentRatio: 0.9 }],
+  };
+}
+
 function track(overrides: Partial<RekordboxTrack> = {}): RekordboxTrack {
   return {
     id: 'track-1',
@@ -57,6 +71,7 @@ function asset(stemType: StemAssetType): StemAssetRecord {
     channel_count: 2,
     file_size_bytes: 4096,
     file_mtime_ms: 1234,
+    analysis_metrics: null,
     failure_code: null,
     failure_message: null,
     created_at: '2026-09-08T00:00:00Z',
@@ -78,6 +93,7 @@ function successResult(): Extract<DesktopRouletteStemPreparationResult, { ok: tr
   return {
     ok: true,
     separatorVersion: ROULETTE_SEPARATOR_VERSION,
+    cached: false,
     outputs: {
       vocals: {
         locator: 'generated/a/b/vocals.wav',
@@ -86,6 +102,7 @@ function successResult(): Extract<DesktopRouletteStemPreparationResult, { ok: tr
         channelCount: 2,
         size: 4096,
         mtimeMs: 1234,
+        metrics: metrics(120000),
       },
       instrumental: {
         locator: 'generated/a/b/instrumental.wav',
@@ -94,6 +111,7 @@ function successResult(): Extract<DesktopRouletteStemPreparationResult, { ok: tr
         channelCount: 2,
         size: 4096,
         mtimeMs: 1234,
+        metrics: metrics(120000),
       },
     },
   };
@@ -255,7 +273,7 @@ describe('Roulette stem preparation service', () => {
     expect(test.desktop.cancelRouletteStems).toHaveBeenCalledWith('track-1');
   });
 
-  it('deletes uncommitted generated files if the source fingerprint changes before canonical commit', async () => {
+  it('keeps generated HQ cache files for retry if the source fingerprint changes before canonical commit', async () => {
     const test = harness();
     vi.mocked(test.repository.getCurrentSourceFingerprint)
       .mockResolvedValueOnce('source-current')
@@ -264,9 +282,86 @@ describe('Roulette stem preparation service', () => {
     const outcome = await test.service.prepare(track());
 
     expect(outcome.status).toBe('failed');
-    expect(test.desktop.deleteStemAsset).toHaveBeenCalledTimes(2);
+    expect(test.desktop.deleteStemAsset).not.toHaveBeenCalled();
     expect(test.stemAssets.commitReadyPair).not.toHaveBeenCalled();
     expect(test.stemAssets.markFailed).toHaveBeenCalledTimes(2);
+  });
+
+  it('serializes HQ work globally across different tracks', async () => {
+    const test = harness();
+    let releaseFirst!: (value: DesktopRouletteStemPreparationResult) => void;
+    test.desktop.prepareRouletteStems.mockImplementationOnce(() => new Promise((resolve) => {
+      releaseFirst = resolve;
+    }));
+
+    const first = test.service.prepare(track({ id: 'track-a', file_path: '/Contents/A.wav' }));
+    const second = test.service.prepare(track({ id: 'track-b', file_path: '/Contents/B.wav' }));
+    await vi.waitFor(() => expect(test.desktop.prepareRouletteStems).toHaveBeenCalledTimes(1));
+    expect(test.desktop.prepareRouletteStems.mock.calls[0]?.[0].trackId).toBe('track-a');
+
+    releaseFirst(successResult());
+    await vi.waitFor(() => expect(test.desktop.prepareRouletteStems).toHaveBeenCalledTimes(2));
+    expect(test.desktop.prepareRouletteStems.mock.calls[1]?.[0].trackId).toBe('track-b');
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { status: 'ready', cached: false, message: null },
+      { status: 'ready', cached: false, message: null },
+    ]);
+  });
+
+  it('cancels queued HQ work without starting a second separator job', async () => {
+    const test = harness();
+    let releaseFirst!: (value: DesktopRouletteStemPreparationResult) => void;
+    test.desktop.prepareRouletteStems.mockImplementationOnce(() => new Promise((resolve) => {
+      releaseFirst = resolve;
+    }));
+
+    const first = test.service.prepare(track({ id: 'track-a', file_path: '/Contents/A.wav' }));
+    const queued = test.service.prepare(track({ id: 'track-b', file_path: '/Contents/B.wav' }));
+    await vi.waitFor(() => expect(test.desktop.prepareRouletteStems).toHaveBeenCalledTimes(1));
+
+    await expect(test.service.cancel('track-b')).resolves.toBe(true);
+    releaseFirst(successResult());
+
+    await expect(first).resolves.toMatchObject({ status: 'ready' });
+    await expect(queued).resolves.toMatchObject({ status: 'cancelled' });
+    expect(test.desktop.prepareRouletteStems).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a valid ready stem row intact when regenerating its missing partner fails', async () => {
+    const test = harness({
+      readinessStatuses: ['ready', 'unavailable'],
+      prepareResult: { ok: false, error: { kind: 'processing_failed', message: 'Demucs failed.' } },
+    });
+
+    const outcome = await test.service.prepare(track());
+
+    expect(outcome.status).toBe('failed');
+    expect(test.stemAssets.register).toHaveBeenCalledTimes(2);
+    expect(test.stemAssets.register).toHaveBeenCalledWith(expect.objectContaining({ stemType: 'instrumental' }));
+    expect(test.stemAssets.register).not.toHaveBeenCalledWith(expect.objectContaining({ stemType: 'vocals' }));
+    expect(test.stemAssets.markFailed).toHaveBeenCalledTimes(1);
+    expect(test.stemAssets.markFailed).toHaveBeenCalledWith('track-1', 'instrumental', 'processing_failed', 'Demucs failed.');
+  });
+
+  it('prepares a Roulette pair one track at a time and preserves the first successful track on later failure', async () => {
+    const test = harness();
+    test.desktop.prepareRouletteStems
+      .mockResolvedValueOnce(successResult())
+      .mockResolvedValueOnce({ ok: false, error: { kind: 'processing_failed', message: 'Bottom failed.' } });
+
+    const outcome = await test.service.preparePair(
+      track({ id: 'vocal-track', file_path: '/Contents/Vocal.wav' }),
+      track({ id: 'instrumental-track', file_path: '/Contents/Instrumental.wav' }),
+    );
+
+    expect(outcome.status).toBe('partial');
+    expect(outcome.vocal.status).toBe('ready');
+    expect(outcome.instrumental.status).toBe('failed');
+    expect(test.stemAssets.commitReadyPair).toHaveBeenCalledTimes(1);
+    expect(test.desktop.prepareRouletteStems.mock.calls.map(([input]) => input.trackId)).toEqual([
+      'vocal-track',
+      'instrumental-track',
+    ]);
   });
 
   it('rejects unsupported or unsafe parent media paths before canonical processing state changes', async () => {

@@ -12,6 +12,20 @@ import { ROULETTE_SEPARATOR_VERSION } from './stemAssets';
 import { ROULETTE_PREVIEW_ALGORITHM_VERSION } from './roulettePreview';
 import { createRoulettePreviewPreparationService } from './roulettePreviewPreparationService';
 
+function metrics(durationMs: number) {
+  return {
+    version: 'roulette-stem-metrics-v1',
+    durationMs,
+    rms: 0.05,
+    signalRatio: 0.8,
+    usableNonSilentDurationMs: durationMs,
+    activityEvidence: 0.7,
+    energyStability: 0.9,
+    suitabilityScore: 0.8,
+    bins: [{ startMs: 0, endMs: durationMs, rms: 0.05, signalRatio: 0.8, nonSilentRatio: 0.9 }],
+  };
+}
+
 function track(id: string, overrides: Partial<RekordboxTrack> = {}): RekordboxTrack {
   return {
     id,
@@ -87,6 +101,7 @@ function hqAsset(trackId: string, stemType: StemAssetType): StemAssetRecord {
     channel_count: 2,
     file_size_bytes: 4096,
     file_mtime_ms: 1234,
+    analysis_metrics: null,
     failure_code: null,
     failure_message: null,
     created_at: '2026-09-14T00:00:00Z',
@@ -110,6 +125,7 @@ function previewSuccess(trackId: string): Extract<DesktopRoulettePreviewPreparat
         channelCount: 2,
         size: 100,
         mtimeMs: 10,
+        metrics: metrics(32_000),
       },
       instrumental: {
         locator: `previews/${trackId}/instrumental.wav`,
@@ -118,6 +134,7 @@ function previewSuccess(trackId: string): Extract<DesktopRoulettePreviewPreparat
         channelCount: 2,
         size: 100,
         mtimeMs: 10,
+        metrics: metrics(32_000),
       },
     },
   };
@@ -200,7 +217,13 @@ describe('Roulette fast preview preparation service', () => {
     const vocal = await test.service.prepare(track('top'), 'vocal');
     const instrumental = await test.service.prepare(track('bottom'), 'instrumental');
 
-    expect(vocal.asset).toMatchObject({ kind: 'preview', output: { locator: 'previews/top/vocals.wav' } });
+    expect(vocal.asset).toMatchObject({
+      kind: 'preview',
+      output: {
+        locator: 'previews/top/vocals.wav',
+        metrics: { version: 'roulette-stem-metrics-v1' },
+      },
+    });
     expect(instrumental.asset).toMatchObject({ kind: 'preview', output: { locator: 'previews/bottom/instrumental.wav' } });
     expect(test.desktop.prepareRoulettePreview).toHaveBeenNthCalledWith(1, expect.objectContaining({
       trackId: 'top',

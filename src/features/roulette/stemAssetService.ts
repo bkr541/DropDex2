@@ -13,6 +13,7 @@ import {
   type StemAssetType,
   type StemAssetValidationOptions,
 } from './stemAssets';
+import type { StemAudioMetrics } from './rouletteStemMetrics';
 
 type DesktopStemBridge = Pick<
   NonNullable<Window['dropdexDesktop']>,
@@ -33,6 +34,7 @@ export interface RegisterStemAssetInput {
   durationMs?: number | null;
   sampleRateHz?: number | null;
   channelCount?: number | null;
+  analysisMetrics?: StemAudioMetrics | null;
   failureCode?: string | null;
   failureMessage?: string | null;
 }
@@ -50,6 +52,7 @@ export interface CommitReadyStemPairInput {
       channelCount: number;
       size: number;
       mtimeMs: number;
+      metrics: StemAudioMetrics;
     };
     instrumental: {
       locator: string;
@@ -58,6 +61,7 @@ export interface CommitReadyStemPairInput {
       channelCount: number;
       size: number;
       mtimeMs: number;
+      metrics: StemAudioMetrics;
     };
   };
 }
@@ -136,7 +140,6 @@ export function createStemAssetService(
   ): Promise<StemAssetRecord | null> => {
     const existing = await repository.getAsset(trackId, stemType);
     if (!existing || existing.installation_id == null) return null;
-    await removeLocalAsset(existing);
     const currentSourceFingerprint = await repository.getCurrentSourceFingerprint(trackId);
     return repository.updateStatus(trackId, stemType, 'pending', {
       storage_locator: null,
@@ -146,6 +149,7 @@ export function createStemAssetService(
       channel_count: null,
       file_size_bytes: null,
       file_mtime_ms: null,
+      analysis_metrics: null,
       failure_code: code,
       failure_message: message,
       source_fingerprint: currentSourceFingerprint,
@@ -322,6 +326,7 @@ export function createStemAssetService(
       channelCount: input.channelCount ?? null,
       fileSizeBytes,
       fileMtimeMs,
+      analysisMetrics: input.analysisMetrics ?? null,
       failureCode: input.failureCode ?? null,
       failureMessage: input.failureMessage ?? null,
     });
@@ -374,6 +379,7 @@ export function createStemAssetService(
         channelCount: input.outputs.vocals.channelCount,
         fileSizeBytes: input.outputs.vocals.size,
         fileMtimeMs: input.outputs.vocals.mtimeMs,
+        analysisMetrics: input.outputs.vocals.metrics,
       },
       instrumental: {
         locator: input.outputs.instrumental.locator,
@@ -382,6 +388,7 @@ export function createStemAssetService(
         channelCount: input.outputs.instrumental.channelCount,
         fileSizeBytes: input.outputs.instrumental.size,
         fileMtimeMs: input.outputs.instrumental.mtimeMs,
+        analysisMetrics: input.outputs.instrumental.metrics,
       },
     };
     return repository.commitReadyPair(pair);
@@ -407,12 +414,12 @@ export function createStemAssetService(
         failureMessage,
       });
     }
-    await removeLocalAsset(existing);
     return repository.updateStatus(trackId, stemType, 'failed', {
       storage_locator: null,
       separator_version: null,
       file_size_bytes: null,
       file_mtime_ms: null,
+      analysis_metrics: null,
       failure_code: failureCode,
       failure_message: failureMessage,
       source_fingerprint: sourceFingerprint,
