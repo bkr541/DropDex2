@@ -318,7 +318,7 @@ describe('cue editor working state', () => {
       family: 'memory',
       requestedMs: 450,
       beats: malformed,
-    }).error).toContain('no valid Rekordbox beat grid');
+    }).error).toContain('no valid Rekordbox anchors');
 
     const loop = normalizeImportedCues('track-a', [importedCue({
       point_type: 'loop',
@@ -422,21 +422,21 @@ describe('cue editor working state', () => {
       .toContain('four-bar loop');
 
     const loop = normalizeImportedCues('track-a', [importedCue({ point_type: 'loop', start_ms: 1000, end_ms: 3000 })]);
-    expect(editWorkingCue(loop, 'imported:cue-1', { kind: 'end-ms', requestedMs: 500, timingMode: 'exact' }, loopBeats).error)
+    expect(editWorkingCue(loop, 'imported:cue-1', { kind: 'end-ms', requestedMs: 500, snapResolution: 'off' }, loopBeats).error)
       .toContain('after loop start');
-    expect(editWorkingCue(loop, 'imported:cue-1', { kind: 'loop-length-ms', requestedMs: 0, timingMode: 'exact' }, loopBeats).error)
+    expect(editWorkingCue(loop, 'imported:cue-1', { kind: 'loop-length-ms', requestedMs: 0, snapResolution: 'off' }, loopBeats).error)
       .toContain('after loop start');
-    expect(editWorkingCue(loop, 'imported:cue-1', { kind: 'loop-length-ms', requestedMs: -500, timingMode: 'exact' }, loopBeats).error)
+    expect(editWorkingCue(loop, 'imported:cue-1', { kind: 'loop-length-ms', requestedMs: -500, snapResolution: 'off' }, loopBeats).error)
       .toContain('after loop start');
   });
 
   it('resizes loops in snapped or exact mode and keeps beat-loop metadata truthful', () => {
     const loop = normalizeImportedCues('track-a', [importedCue({ point_type: 'loop', start_ms: 1000, end_ms: 3000 })]);
-    const snapped = editWorkingCue(loop, 'imported:cue-1', { kind: 'end-ms', requestedMs: 4200, timingMode: 'snap' }, loopBeats);
+    const snapped = editWorkingCue(loop, 'imported:cue-1', { kind: 'end-ms', requestedMs: 4200, snapResolution: '1-beat' }, loopBeats);
     expect(snapped.error).toBeNull();
     expect(snapped.cues[0]).toMatchObject({ endMs: 4000, beatLoopNumerator: 6, beatLoopDenominator: 1 });
 
-    const exact = editWorkingCue(snapped.cues, 'imported:cue-1', { kind: 'loop-length-ms', requestedMs: 3333, timingMode: 'exact' }, loopBeats);
+    const exact = editWorkingCue(snapped.cues, 'imported:cue-1', { kind: 'loop-length-ms', requestedMs: 3333, snapResolution: 'off' }, loopBeats);
     expect(exact.error).toBeNull();
     expect(exact.cues[0]).toMatchObject({ endMs: 4333, beatLoopNumerator: null, beatLoopDenominator: null });
   });
@@ -464,19 +464,55 @@ describe('cue editor working state', () => {
       .toContain('only for loop');
   });
 
+  it('honors 2-beat and 4-beat snap resolution across add, move, and loop-end edits', () => {
+    const added = addWorkingCue([], {
+      editorId: 'manual:two-beat',
+      trackId: 'track-a',
+      family: 'memory',
+      requestedMs: 1_300,
+      beats: loopBeats,
+      snapResolution: '2-beats',
+    });
+    expect(added.error).toBeNull();
+    expect(added.cues[0].startMs).toBe(1_000);
+
+    const baseline = normalizeImportedCues('track-a', [importedCue({ start_ms: 500 })]);
+    const moved = moveWorkingCue(baseline, 'imported:cue-1', 1_900, loopBeats, '4-beats');
+    expect(moved.error).toBeNull();
+    expect(moved.cues[0].startMs).toBe(2_000);
+
+    const loop = normalizeImportedCues('track-a', [importedCue({ point_type: 'loop', start_ms: 1_000, end_ms: 3_000 })]);
+    const resized = editWorkingCue(loop, 'imported:cue-1', {
+      kind: 'end-ms', requestedMs: 3_200, snapResolution: '2-beats',
+    }, loopBeats);
+    expect(resized.error).toBeNull();
+    expect(resized.cues[0]).toMatchObject({ endMs: 3_000, beatLoopNumerator: 4, beatLoopDenominator: 1 });
+  });
+
+  it('fails closed when a selected snap resolution has no valid source anchors', () => {
+    const anchorless = loopBeats.slice(0, 4).map((entry, index) => ({
+      ...entry, beatInBar: index + 2, isDownbeat: false,
+    }));
+    const baseline = normalizeImportedCues('track-a', [importedCue({ start_ms: 500 })]);
+
+    expect(moveWorkingCue(baseline, 'imported:cue-1', 1_000, anchorless, '4-beats').error)
+      .toContain('4 Beats snapping is unavailable');
+    expect(baseline[0].startMs).toBe(500);
+  });
+
   it('keeps beat snapping as default while exact mode preserves deliberate off-grid milliseconds', () => {
     const baseline = normalizeImportedCues('track-a', [importedCue({ start_ms: 500 })]);
     const snapped = moveWorkingCue(baseline, 'imported:cue-1', 1111, variableTempoBeats);
     expect(snapped.cues[0].startMs).toBe(980);
 
-    const exact = moveWorkingCue(baseline, 'imported:cue-1', 1111, variableTempoBeats, 'exact');
+    const exact = moveWorkingCue(baseline, 'imported:cue-1', 1111, variableTempoBeats, 'off');
     expect(exact.error).toBeNull();
     expect(exact.cues[0].startMs).toBe(1111);
 
     const loop = normalizeImportedCues('track-a', [importedCue({
       point_type: 'loop', start_ms: 500, end_ms: 1430, beat_loop_numerator: 2, beat_loop_denominator: 1,
     })]);
-    const exactLoop = moveWorkingCue(loop, 'imported:cue-1', 1111, variableTempoBeats, 'exact');
+    const exactLoop = moveWorkingCue(loop, 'imported:cue-1', 1111, variableTempoBeats, 'off');
     expect(exactLoop.cues[0]).toMatchObject({
       startMs: 1111,
       endMs: 2041,
@@ -490,7 +526,7 @@ describe('cue editor working state', () => {
       family: 'memory',
       requestedMs: 1234.4,
       beats: [],
-      timingMode: 'exact',
+      snapResolution: 'off',
     });
     expect(exactAdded.error).toBeNull();
     expect(exactAdded.cues[0].startMs).toBe(1234);
@@ -498,10 +534,10 @@ describe('cue editor working state', () => {
 
   it('allows deliberate repeated snap/exact timing changes without sticky mode state', () => {
     const baseline = normalizeImportedCues('track-a', [importedCue({ start_ms: 500 })]);
-    const exact = moveWorkingCue(baseline, 'imported:cue-1', 1111, loopBeats, 'exact');
-    const snapped = moveWorkingCue(exact.cues, 'imported:cue-1', 1111, loopBeats, 'snap');
-    const exactAgain = moveWorkingCue(snapped.cues, 'imported:cue-1', 1234, loopBeats, 'exact');
-    const snappedAgain = moveWorkingCue(exactAgain.cues, 'imported:cue-1', 1234, loopBeats, 'snap');
+    const exact = moveWorkingCue(baseline, 'imported:cue-1', 1111, loopBeats, 'off');
+    const snapped = moveWorkingCue(exact.cues, 'imported:cue-1', 1111, loopBeats, '1-beat');
+    const exactAgain = moveWorkingCue(snapped.cues, 'imported:cue-1', 1234, loopBeats, 'off');
+    const snappedAgain = moveWorkingCue(exactAgain.cues, 'imported:cue-1', 1234, loopBeats, '1-beat');
 
     expect(exact.cues[0].startMs).toBe(1111);
     expect(snapped.cues[0].startMs).toBe(1000);

@@ -1,4 +1,4 @@
-import { beatByBarOffset, firstValidBeat, isUsableBeatGrid, nearestBeat, type BeatEntry } from './beatGridHelpers';
+import { beatByBarOffset, firstValidBeat, isUsableBeatGrid, nearestBeat, nearestSnapBeat, type BeatEntry, type BeatSnapResolution } from './beatGridHelpers';
 import type { CueRow } from '../queries/analysisData';
 import {
   isSupportedMemoryDjmdCueColor,
@@ -56,14 +56,14 @@ export interface CueEditResult {
   error: string | null;
 }
 
-export type CueTimingMode = 'snap' | 'exact';
+export type CueSnapResolution = 'off' | '1-beat' | '2-beats' | '4-beats';
 
 export type CueEditAction =
   | { kind: 'family'; family: 'hot' | 'memory'; hotCueSlot?: number }
   | { kind: 'hot-slot'; hotCueSlot: number }
   | { kind: 'point-type'; pointType: 'cue' | 'loop' }
-  | { kind: 'end-ms'; requestedMs: number; timingMode: CueTimingMode }
-  | { kind: 'loop-length-ms'; requestedMs: number; timingMode: CueTimingMode }
+  | { kind: 'end-ms'; requestedMs: number; snapResolution: CueSnapResolution }
+  | { kind: 'loop-length-ms'; requestedMs: number; snapResolution: CueSnapResolution }
   | { kind: 'comment'; comment: string | null }
   | { kind: 'hot-color-table'; colorTableIndex: number | null }
   | { kind: 'memory-color'; rekordboxColor: number; colorHex: string | null; colorName: string | null }
@@ -174,6 +174,29 @@ function importedMemoryRekordboxColor(row: CueRow): number | null {
 function exactMilliseconds(value: number): number | null {
   if (!Number.isFinite(value) || value < 0) return null;
   return Math.round(value);
+}
+
+function beatResolutionForCueSnap(resolution: CueSnapResolution): BeatSnapResolution | null {
+  if (resolution === '1-beat') return 1;
+  if (resolution === '2-beats') return 2;
+  if (resolution === '4-beats') return 4;
+  return null;
+}
+
+function snapResolutionLabel(resolution: CueSnapResolution): string {
+  if (resolution === '1-beat') return '1 Beat';
+  if (resolution === '2-beats') return '2 Beats';
+  if (resolution === '4-beats') return '4 Beats';
+  return 'Off';
+}
+
+function cueSnapBeat(beats: BeatEntry[], requestedMs: number, resolution: CueSnapResolution): BeatEntry | null {
+  const beatResolution = beatResolutionForCueSnap(resolution);
+  return beatResolution == null ? null : nearestSnapBeat(beats, requestedMs, beatResolution);
+}
+
+function snapUnavailableError(resolution: CueSnapResolution): string {
+  return `${snapResolutionLabel(resolution)} snapping is unavailable because this track has no valid Rekordbox anchors for that resolution.`;
 }
 
 function validHotSlot(slot: number): boolean {
@@ -294,23 +317,18 @@ export function addWorkingCue(
     family: 'hot' | 'memory';
     requestedMs: number;
     beats: BeatEntry[];
-    timingMode?: CueTimingMode;
+    snapResolution?: CueSnapResolution;
   },
 ): CueEditResult {
   if (!Number.isFinite(options.requestedMs) || options.requestedMs < 0) {
     return { cues, beat: null, error: 'Cue position is invalid.' };
   }
-  const timingMode = options.timingMode ?? 'snap';
+  const snapResolution = options.snapResolution ?? '1-beat';
   let beat: BeatEntry | null = null;
   let startMs: number;
-  if (timingMode === 'snap') {
-    if (!isUsableBeatGrid(options.beats)) {
-      return { cues, beat: null, error: 'Beat snapping is unavailable because this track has no valid Rekordbox beat grid.' };
-    }
-    beat = nearestBeat(options.beats, options.requestedMs);
-    if (!beat) {
-      return { cues, beat: null, error: 'Beat snapping is unavailable because this track has no valid Rekordbox beat grid.' };
-    }
+  if (snapResolution !== 'off') {
+    beat = cueSnapBeat(options.beats, options.requestedMs, snapResolution);
+    if (!beat) return { cues, beat: null, error: snapUnavailableError(snapResolution) };
     startMs = beat.ms;
   } else {
     const exact = exactMilliseconds(options.requestedMs);
@@ -406,7 +424,7 @@ function syncPairedMemoryAfterHotMove(
   movedCues: WorkingCue[],
   hotCue: WorkingCue,
   beats: BeatEntry[],
-  timingMode: CueTimingMode,
+  snapResolution: CueSnapResolution,
   resultBeat: BeatEntry | null,
 ): CueEditResult {
   if (hotCue.family !== 'hot' || hotCue.hotCueSlot == null || hotCue.startMs == null) return cueResult(movedCues, null, resultBeat);
@@ -435,12 +453,12 @@ function syncPairedMemoryAfterHotMove(
     return { cues: originalCues, beat: hotAnchor, error: 'The paired Memory Cue cannot be mapped to the Rekordbox beat grid.' };
   }
 
-  const phaseOffsetMs = timingMode === 'exact' ? hotCue.startMs - hotAnchor.ms : 0;
-  // Snap mode must retain the exact canonical beat-grid timestamp, including
-  // fractional milliseconds. Exact mode retains the Hot Cue's phase offset.
-  const pairedStartMs = timingMode === 'snap'
-    ? memoryAnchor.ms
-    : exactMilliseconds(memoryAnchor.ms + phaseOffsetMs);
+  const phaseOffsetMs = snapResolution === 'off' ? hotCue.startMs - hotAnchor.ms : 0;
+  // Beat-snap modes retain the exact canonical source timestamp, including
+  // fractional milliseconds. Off mode retains the Hot Cue's deliberate phase offset.
+  const pairedStartMs = snapResolution === 'off'
+    ? exactMilliseconds(memoryAnchor.ms + phaseOffsetMs)
+    : memoryAnchor.ms;
   if (pairedStartMs == null || pairedStartMs < 0) {
     return { cues: originalCues, beat: hotAnchor, error: 'The paired Memory Cue would move before the start of the track.' };
   }
@@ -466,7 +484,7 @@ export function moveWorkingCue(
   editorId: string,
   requestedMs: number,
   beats: BeatEntry[],
-  timingMode: CueTimingMode = 'snap',
+  snapResolution: CueSnapResolution = '1-beat',
 ): CueEditResult {
   if (!Number.isFinite(requestedMs) || requestedMs < 0) {
     return { cues, beat: null, error: 'Cue position is invalid.' };
@@ -476,7 +494,7 @@ export function moveWorkingCue(
   if (cueIndex < 0) return { cues, beat: null, error: 'The selected cue no longer exists.' };
   const cue = cues[cueIndex];
 
-  if (timingMode === 'exact') {
+  if (snapResolution === 'off') {
     const startMs = exactMilliseconds(requestedMs);
     if (startMs == null) return { cues, beat: null, error: 'Cue position is invalid.' };
     let endMs = cue.endMs;
@@ -497,16 +515,11 @@ export function moveWorkingCue(
     }
     const next = [...cues];
     next[cueIndex] = { ...cue, startMs, endMs, beatLoopNumerator, beatLoopDenominator };
-    return syncPairedMemoryAfterHotMove(cues, next, next[cueIndex], beats, timingMode, null);
+    return syncPairedMemoryAfterHotMove(cues, next, next[cueIndex], beats, snapResolution, null);
   }
 
-  if (!isUsableBeatGrid(beats)) {
-    return { cues, beat: null, error: 'Beat snapping is unavailable because this track has no valid Rekordbox beat grid.' };
-  }
-  const targetBeat = nearestBeat(beats, requestedMs);
-  if (!targetBeat) {
-    return { cues, beat: null, error: 'Beat snapping is unavailable because this track has no valid Rekordbox beat grid.' };
-  }
+  const targetBeat = cueSnapBeat(beats, requestedMs, snapResolution);
+  if (!targetBeat) return { cues, beat: null, error: snapUnavailableError(snapResolution) };
 
   let endMs = cue.endMs;
   if (cue.pointType === 'loop') {
@@ -534,7 +547,7 @@ export function moveWorkingCue(
 
   const next = [...cues];
   next[cueIndex] = { ...cue, startMs: targetBeat.ms, endMs };
-  return syncPairedMemoryAfterHotMove(cues, next, next[cueIndex], beats, timingMode, targetBeat);
+  return syncPairedMemoryAfterHotMove(cues, next, next[cueIndex], beats, snapResolution, targetBeat);
 }
 
 function slotCollision(cues: WorkingCue[], editorId: string, slot: number): WorkingCue | null {
@@ -680,11 +693,11 @@ export function editWorkingCue(
     }
     let endMs: number;
     let targetBeat: BeatEntry | null = null;
-    if (action.timingMode === 'snap') {
-      if (!isUsableBeatGrid(beats)) return { cues, beat: null, error: 'Beat snapping requires a valid Rekordbox beat grid.' };
-      targetBeat = nearestBeat(beats, requestedEnd);
-      if (!targetBeat || targetBeat.ms <= cue.startMs) {
-        return { cues, beat: targetBeat, error: 'Loop end must snap to a beat after loop start.' };
+    if (action.snapResolution !== 'off') {
+      targetBeat = cueSnapBeat(beats, requestedEnd, action.snapResolution);
+      if (!targetBeat) return { cues, beat: null, error: snapUnavailableError(action.snapResolution) };
+      if (targetBeat.ms <= cue.startMs) {
+        return { cues, beat: targetBeat, error: 'Loop end must snap to a source beat after loop start.' };
       }
       endMs = targetBeat.ms;
     } else {

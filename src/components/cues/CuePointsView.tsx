@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, CircleDash, Close, Edit, Export, Grid, Idea, Music, Pause, Play, Repeat, Save, Search, Upload, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
+import { Add, ChevronDown, CircleDash, Close, Edit, Export, Idea, Music, Pause, Play, Repeat, Save, Search, Subtract, Upload, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
+import { gridBeatsForMode, MIN_CUE_TIMELINE_WINDOW_MS, panCueTimelineView, zoomCueTimelineView, type CueGridDisplayMode } from '../../lib/cues/cueTimelineViewport';
 import { applyAutoCueStrategy } from '../../lib/music/autoCueStrategy';
 import {
   addWorkingCue,
@@ -14,7 +15,7 @@ import {
   isCurrentTrackResponse,
   workingCueSetsEqual,
   type CueEditAction,
-  type CueTimingMode,
+  type CueSnapResolution,
   type WorkingCue,
 } from '../../lib/music/cueEditorState';
 import { useLibraryStats, useLibraryTracks } from '../../hooks/useRekordboxTracks';
@@ -279,12 +280,19 @@ function analysisLabel(track: RekordboxTrack): string {
   return cueAnalysisLabel(track);
 }
 
+function cueSnapResolutionLabel(resolution: CueSnapResolution): string {
+  if (resolution === '1-beat') return '1 Beat';
+  if (resolution === '2-beats') return '2 Beats';
+  if (resolution === '4-beats') return '4 Beats';
+  return 'Off';
+}
+
 function timelineGridLines(beats: BeatEntry[]): BeatEntry[] {
   if (beats.length <= MAX_TIMELINE_GRID_LINES) return beats;
   const step = Math.ceil(beats.length / MAX_TIMELINE_GRID_LINES);
   const sampled = new Map<number, BeatEntry>();
   beats.forEach((beat, index) => {
-    if (beat.isDownbeat || index % step === 0) sampled.set(beat.seq, beat);
+    if (beat.isDownbeat || beat.beatInBar === 1 || index % step === 0) sampled.set(beat.seq, beat);
   });
   return [...sampled.values()].sort((a, b) => a.ms - b.ms);
 }
@@ -294,13 +302,13 @@ function beatRulerTicks(beats: BeatEntry[]): BeatEntry[] {
   const step = Math.ceil(beats.length / MAX_BEAT_RULER_TICKS);
   const sampled = new Map<number, BeatEntry>();
   beats.forEach((beat, index) => {
-    if (beat.isDownbeat || index % step === 0) sampled.set(beat.seq, beat);
+    if (beat.isDownbeat || beat.beatInBar === 1 || index % step === 0) sampled.set(beat.seq, beat);
   });
   return [...sampled.values()].sort((a, b) => a.ms - b.ms);
 }
 
 function barLabelBeats(beats: BeatEntry[]): BeatEntry[] {
-  const downbeats = beats.filter((beat) => beat.isDownbeat);
+  const downbeats = beats.filter((beat) => beat.isDownbeat || beat.beatInBar === 1);
   if (downbeats.length <= MAX_BAR_LABELS) return downbeats;
   const step = Math.ceil(downbeats.length / MAX_BAR_LABELS);
   return downbeats.filter((_, index) => index % step === 0 || index === downbeats.length - 1);
@@ -822,7 +830,7 @@ function TimelineLaneLabel({ icon, label, color, children, collapsed }: { icon: 
 function CueInspector({
   cue,
   cues,
-  timingMode,
+  snapResolution,
   onMoveCue,
   onEditCue,
   onMessage,
@@ -831,8 +839,8 @@ function CueInspector({
 }: {
   cue: WorkingCue;
   cues: WorkingCue[];
-  timingMode: CueTimingMode;
-  onMoveCue: (cueId: string, requestedMs: number, timingMode: CueTimingMode) => string | null;
+  snapResolution: CueSnapResolution;
+  onMoveCue: (cueId: string, requestedMs: number, snapResolution: CueSnapResolution) => string | null;
   onEditCue: (cueId: string, action: CueEditAction) => string | null;
   onMessage: (message: string | null) => void;
   onClose: () => void;
@@ -907,7 +915,7 @@ function CueInspector({
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className="text-sm font-black">{cueDisplayName(cue)}</span>
             <span className="rounded-md border border-white/10 px-2 py-0.5 font-mono text-[9px] text-muted-foreground">
-              {timingMode === 'snap' ? 'SNAP · Rekordbox grid' : 'EXACT · integer ms'}
+              {snapResolution === 'off' ? 'SNAP OFF · integer ms' : `SNAP · ${cueSnapResolutionLabel(snapResolution)}`}
             </span>
           </div>
         </div>
@@ -1007,7 +1015,7 @@ function CueInspector({
             onBlur={(event) => commitNumber(
               event.currentTarget.value,
               cue.startMs,
-              (value) => onMoveCue(cue.editorId, value, timingMode),
+              (value) => onMoveCue(cue.editorId, value, snapResolution),
               event.currentTarget,
             )}
           />
@@ -1075,7 +1083,7 @@ function CueInspector({
               onBlur={(event) => commitNumber(
                 event.currentTarget.value,
                 cue.endMs,
-                (value) => onEditCue(cue.editorId, { kind: 'end-ms', requestedMs: value, timingMode }),
+                (value) => onEditCue(cue.editorId, { kind: 'end-ms', requestedMs: value, snapResolution }),
                 event.currentTarget,
               )}
             />
@@ -1093,7 +1101,7 @@ function CueInspector({
               onBlur={(event) => commitNumber(
                 event.currentTarget.value,
                 loopLengthMs,
-                (value) => onEditCue(cue.editorId, { kind: 'loop-length-ms', requestedMs: value, timingMode }),
+                (value) => onEditCue(cue.editorId, { kind: 'loop-length-ms', requestedMs: value, snapResolution }),
                 event.currentTarget,
               )}
             />
@@ -1131,7 +1139,7 @@ function CueInspector({
         />
       </label>
       <p className="mt-2 text-[9px] text-muted-foreground">
-        Snap is the default. Exact mode records deliberate integer-millisecond timing and does not resnap existing cues merely by selecting or opening them.
+        1 Beat is the default snap resolution. Snap Off records deliberate integer-millisecond timing, and changing resolution alone never resnaps an existing cue.
       </p>
     </div>
   );
@@ -1196,8 +1204,8 @@ function CueWaveformPanel({
   editingBlockedReason: string | null;
   onRetryCues: () => void;
   onRetryWaveform: () => void;
-  onAddCue: (family: 'hot' | 'memory', requestedMs: number, timingMode: CueTimingMode) => string | null;
-  onMoveCue: (cueId: string, requestedMs: number, timingMode: CueTimingMode) => string | null;
+  onAddCue: (family: 'hot' | 'memory', requestedMs: number, snapResolution: CueSnapResolution) => string | null;
+  onMoveCue: (cueId: string, requestedMs: number, snapResolution: CueSnapResolution) => string | null;
   onEditCue: (cueId: string, action: CueEditAction) => string | null;
   onDeleteCue: (cueId: string) => void;
   onDiscard: () => void;
@@ -1223,8 +1231,10 @@ function CueWaveformPanel({
   const waveformDivRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<CueContextMenuState | null>(null);
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
-  const [timingMode, setTimingMode] = useState<CueTimingMode>('snap');
-  const [showGrid, setShowGrid] = useState(true);
+  const [snapResolution, setSnapResolution] = useState<CueSnapResolution>('1-beat');
+  const [gridDisplayMode, setGridDisplayMode] = useState<CueGridDisplayMode>('beats');
+  const [applyMenuOpen, setApplyMenuOpen] = useState(false);
+  const applyMenuRef = useRef<HTMLDivElement>(null);
   const dragStateRef = useRef<{ cueId: string; pointerId: number; startX: number; moved: boolean } | null>(null);
   const effectiveViewEnd = viewEnd ?? durationMs ?? 0;
 
@@ -1234,11 +1244,12 @@ function CueWaveformPanel({
     setSelectedCueId(null);
     setContextMenu(null);
     setEditorMessage(null);
+    setApplyMenuOpen(false);
     dragStateRef.current = null;
   }, [track?.id, durationMs]);
 
   useEffect(() => {
-    setTimingMode('snap');
+    setSnapResolution('1-beat');
   }, [track?.id]);
 
   useEffect(() => {
@@ -1254,6 +1265,23 @@ function CueWaveformPanel({
     if (selectedCueId && !cues.some((cue) => cue.editorId === selectedCueId)) setSelectedCueId(null);
   }, [cues, selectedCueId]);
 
+  useEffect(() => {
+    if (!applyMenuOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!applyMenuRef.current?.contains(event.target as Node)) setApplyMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setApplyMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [applyMenuOpen]);
+
+
   // Keep viewRef in sync so wheel handler always reads the latest view without stale closures
   useEffect(() => { viewRef.current = { start: viewStart, end: viewEnd }; }, [viewStart, viewEnd]);
 
@@ -1267,23 +1295,16 @@ function CueWaveformPanel({
       const { start: vStart, end: vEndRaw } = viewRef.current;
       const vEnd = vEndRaw ?? durationMs;
       const viewRange = vEnd - vStart;
-      let newStart: number;
-      let newEnd: number;
-      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        const panMs = (e.deltaX / rect.width) * viewRange;
-        newStart = vStart + panMs;
-        newEnd = vEnd + panMs;
-      } else {
-        const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        const focusMs = vStart + fraction * viewRange;
-        const factor = Math.exp(e.deltaY * 0.005);
-        const range = Math.max(2000, Math.min(durationMs, viewRange * factor));
-        newStart = focusMs - fraction * range;
-        newEnd = focusMs + (1 - fraction) * range;
-      }
-      if (newStart < 0) { newEnd = Math.min(durationMs, newEnd - newStart); newStart = 0; }
-      if (newEnd > durationMs) { newStart = Math.max(0, newStart - (newEnd - durationMs)); newEnd = durationMs; }
-      viewRef.current = { start: newStart, end: newEnd };
+      const nextView = Math.abs(e.deltaX) > Math.abs(e.deltaY)
+        ? panCueTimelineView({ start: vStart, end: vEnd }, durationMs, (e.deltaX / rect.width) * viewRange)
+        : zoomCueTimelineView(
+          { start: vStart, end: vEnd },
+          durationMs,
+          Math.exp(e.deltaY * 0.005),
+          Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
+        );
+      if (!nextView) return;
+      viewRef.current = nextView;
       if (!wheelRafRef.current) {
         wheelRafRef.current = requestAnimationFrame(() => {
           setViewStart(viewRef.current.start);
@@ -1300,9 +1321,10 @@ function CueWaveformPanel({
     () => buildTimelineSections(phrases, beatGrid, durationMs),
     [beatGrid, durationMs, phrases],
   );
-  const gridLines = useMemo(() => timelineGridLines(beatGrid?.beats ?? []), [beatGrid]);
-  const rulerTicks = useMemo(() => beatRulerTicks(beatGrid?.beats ?? []), [beatGrid]);
-  const rulerLabels = useMemo(() => barLabelBeats(beatGrid?.beats ?? []), [beatGrid]);
+  const displayGridBeats = useMemo(() => gridBeatsForMode(beatGrid?.beats ?? [], gridDisplayMode), [beatGrid, gridDisplayMode]);
+  const gridLines = useMemo(() => timelineGridLines(displayGridBeats), [displayGridBeats]);
+  const rulerTicks = useMemo(() => beatRulerTicks(displayGridBeats), [displayGridBeats]);
+  const rulerLabels = useMemo(() => gridDisplayMode === 'off' ? [] : barLabelBeats(beatGrid?.beats ?? []), [beatGrid, gridDisplayMode]);
   const positionedCues = useMemo(
     () => cues.filter((cue) => cue.startMs != null && durationMs != null && durationMs > 0),
     [cues, durationMs],
@@ -1339,6 +1361,16 @@ function CueWaveformPanel({
     && phrases.every((phrase) => phrase.track_id === track.id),
   );
 
+  const handleZoom = useCallback((factor: number) => {
+    if (!durationMs || durationMs <= 0) return;
+    const currentEnd = viewRef.current.end ?? durationMs;
+    const nextView = zoomCueTimelineView({ start: viewRef.current.start, end: currentEnd }, durationMs, factor, 0.5);
+    if (!nextView) return;
+    viewRef.current = nextView;
+    setViewStart(nextView.start);
+    setViewEnd(nextView.end);
+  }, [durationMs]);
+
   const timeAtClientX = useCallback((clientX: number, element: HTMLElement): number | null => {
     if (effectiveViewEnd <= viewStart) return null;
     const rect = element.getBoundingClientRect();
@@ -1365,14 +1397,14 @@ function CueWaveformPanel({
       setEditorMessage(cueIntegrityError);
       return;
     }
-    if (timingMode === 'snap' && beatGridLoading) {
+    if (snapResolution !== 'off' && beatGridLoading) {
       setContextMenu(null);
       setEditorMessage('Cue editing will be available when the Rekordbox beat grid finishes loading.');
       return;
     }
-    if (timingMode === 'snap' && !hasUsableGrid) {
+    if (snapResolution !== 'off' && !hasUsableGrid) {
       setContextMenu(null);
-      setEditorMessage('Beat snapping is unavailable because this track has no valid Rekordbox beat grid. Switch to Exact ms for deliberate off-grid timing.');
+      setEditorMessage('Beat snapping is unavailable because this track has no valid Rekordbox beat grid. Switch Snap to Off for deliberate off-grid timing.');
       return;
     }
     const requestedMs = timeAtClientX(event.clientX, event.currentTarget);
@@ -1383,7 +1415,7 @@ function CueWaveformPanel({
     }
     setEditorMessage(null);
     setContextMenu({ kind: 'add', x: event.clientX, y: event.clientY, requestedMs });
-  }, [beatGridLoading, cueBaselineComplete, cueEditingAllowed, cueIntegrityError, cueLoadError, cueLoading, hasUsableGrid, timeAtClientX, timingMode]);
+  }, [beatGridLoading, cueBaselineComplete, cueEditingAllowed, cueIntegrityError, cueLoadError, cueLoading, hasUsableGrid, timeAtClientX, snapResolution]);
 
   const handleCuePointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>, cueId: string) => {
     if (event.button !== 0) return;
@@ -1406,9 +1438,9 @@ function CueWaveformPanel({
     if (!lane) return;
     const requestedMs = timeAtClientX(event.clientX, lane);
     if (requestedMs == null) return;
-    const error = onMoveCue(drag.cueId, requestedMs, timingMode);
+    const error = onMoveCue(drag.cueId, requestedMs, snapResolution);
     setEditorMessage(error);
-  }, [onMoveCue, timeAtClientX, timingMode]);
+  }, [onMoveCue, timeAtClientX, snapResolution]);
 
   const handleCuePointerUp = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     const drag = dragStateRef.current;
@@ -1449,9 +1481,13 @@ function CueWaveformPanel({
   const keyDisplay = formatCamelotKey(track.musical_key);
   const bpmDisplay = track.bpm != null ? track.bpm.toFixed(2) : '—';
   const durationDisplay = formatTime(durationMs);
+  const saveDisabled = (!dirty && !baselineProofRefreshNeeded) || !cueEditingAllowed || saving;
+  const discardDisabled = !dirty || !cueEditingAllowed || saving;
+  const applyTrackDisabled = !applyTrackAvailable || applying;
+  const applyAllDisabled = applyAllCount === 0 || applying;
 
   return (
-    <section className="overflow-hidden border-y border-[var(--color-border-subtle)] bg-[var(--color-card)] shadow-[0_14px_30px_rgba(0,0,0,0.18)]" data-testid="cue-points-workstation">
+    <section className="relative overflow-visible border-y border-[var(--color-border-subtle)] bg-[var(--color-card)] shadow-[0_14px_30px_rgba(0,0,0,0.18)]" data-testid="cue-points-workstation">
       <div className="flex flex-col gap-3 border-b border-[var(--color-border-subtle)] px-4 py-3 lg:px-5 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-3.5">
           <Artwork
@@ -1476,15 +1512,55 @@ function CueWaveformPanel({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 xl:max-w-[760px] xl:justify-end">
-          <div className="min-w-[142px]">
-            <SegmentedControl
-              ariaLabel="Cue timing mode"
-              variant="pill"
-              value={timingMode}
-              onChange={(value) => setTimingMode(value as CueTimingMode)}
-              options={[{ value: 'snap', label: 'Snap' }, { value: 'exact', label: 'Exact ms' }]}
-            />
+        <div className="flex flex-wrap items-center gap-1.5 xl:max-w-[900px] xl:justify-end">
+          <label className="flex min-h-[34px] items-center gap-1.5 rounded-md border border-[var(--color-border-faint)] bg-white/[0.025] pl-2 text-[9px] font-black uppercase tracking-[0.1em] text-muted-foreground">
+            <span>Snap</span>
+            <SelectControl
+              aria-label="Snap resolution"
+              value={snapResolution}
+              onChange={(event) => setSnapResolution(event.target.value as CueSnapResolution)}
+              className="min-h-[32px] min-w-[96px] border-0 bg-transparent py-0 text-[11px] normal-case tracking-normal"
+            >
+              <option value="off">Off</option>
+              <option value="1-beat">1 Beat</option>
+              <option value="2-beats">2 Beats</option>
+              <option value="4-beats">4 Beats</option>
+            </SelectControl>
+          </label>
+          <label className="flex min-h-[34px] items-center gap-1.5 rounded-md border border-[var(--color-border-faint)] bg-white/[0.025] pl-2 text-[9px] font-black uppercase tracking-[0.1em] text-muted-foreground">
+            <span>Grid</span>
+            <SelectControl
+              aria-label="Grid display"
+              value={gridDisplayMode}
+              onChange={(event) => setGridDisplayMode(event.target.value as CueGridDisplayMode)}
+              className="min-h-[32px] min-w-[86px] border-0 bg-transparent py-0 text-[11px] normal-case tracking-normal"
+            >
+              <option value="off">Off</option>
+              <option value="beats">Beats</option>
+              <option value="bars">Bars</option>
+            </SelectControl>
+          </label>
+          <div className="flex overflow-hidden rounded-md border border-[var(--color-border-faint)]" aria-label="Waveform zoom controls">
+            <ControlButton
+              className="min-h-[34px] w-[34px] rounded-none border-0 px-0"
+              variant="surface"
+              onClick={() => handleZoom(1 / 0.75)}
+              disabled={!durationMs || effectiveViewEnd - viewStart >= durationMs}
+              aria-label="Zoom out"
+              title="Zoom out around the visible center"
+            >
+              <Subtract size={15} />
+            </ControlButton>
+            <ControlButton
+              className="min-h-[34px] w-[34px] rounded-none border-0 border-l border-[var(--color-border-faint)] px-0"
+              variant="surface"
+              onClick={() => handleZoom(0.75)}
+              disabled={!durationMs || durationMs <= 0 || effectiveViewEnd - viewStart <= Math.min(MIN_CUE_TIMELINE_WINDOW_MS, durationMs)}
+              aria-label="Zoom in"
+              title="Zoom in around the visible center"
+            >
+              <Add size={15} />
+            </ControlButton>
           </div>
           <ControlButton
             className="min-h-[34px] px-2.5 text-[11px]"
@@ -1498,16 +1574,6 @@ function CueWaveformPanel({
               : metadataDraftLoadStatus === 'failed' ? 'Pending (!)' : 'Pending…'}
           </ControlButton>
           <ControlButton
-            className="min-h-[34px] w-[36px] px-0"
-            variant={showGrid ? 'surface' : 'ghost'}
-            onClick={() => setShowGrid((v) => !v)}
-            aria-label={showGrid ? 'Hide beat grid overlay' : 'Show beat grid overlay'}
-            aria-pressed={showGrid}
-            title={showGrid ? 'Hide beat grid overlay' : 'Show beat grid overlay'}
-          >
-            <Grid size={16} />
-          </ControlButton>
-          <ControlButton
             className="min-h-[34px] px-2.5 text-[11px]"
             variant="surface"
             disabled={!autoCueReady}
@@ -1517,50 +1583,86 @@ function CueWaveformPanel({
             <Idea size={16} />
             <span>Auto Cue</span>
           </ControlButton>
-          <ControlButton
-            className="min-h-[34px] px-2.5 text-[11px]"
-            variant="ghost"
-            disabled={!dirty || !cueEditingAllowed || saving}
-            onClick={onDiscard}
-            title="Discard unsaved cue changes"
-          >
-            <RotateCcw size={15} />
-            <span>Discard</span>
-          </ControlButton>
-          <ControlButton
-            className="min-h-[34px] px-2.5 text-[11px]"
-            variant="surface"
-            disabled={(!dirty && !baselineProofRefreshNeeded) || !cueEditingAllowed || saving}
-            onClick={() => { void onSave().then(setEditorMessage); }}
-            title={saving
-              ? 'Saving cue changes…'
-              : baselineProofRefreshNeeded && !dirty
-                ? 'Refresh verified cue baseline proof for this legacy draft'
-                : 'Save cue changes'}
-          >
-            {saving ? <CircleDash size={16} className="animate-spin" /> : <Save size={16} />}
-            <span>Save</span>
-          </ControlButton>
-          <ControlButton
-            className="min-h-[34px] px-2.5 text-[11px]"
-            variant="surface"
-            disabled={!applyTrackAvailable || applying}
-            onClick={onApplyTrack}
-            title={applyTrackAvailable ? 'Apply only the selected track to local Rekordbox' : 'Apply Track requires a saved pending draft for the selected track'}
-          >
-            {applying ? <CircleDash size={16} className="animate-spin" /> : <Export size={16} />}
-            <span>Apply Track</span>
-          </ControlButton>
-          <ControlButton
-            className="min-h-[34px] px-3 text-[11px]"
-            variant="primary"
-            disabled={applyAllCount === 0 || applying}
-            onClick={onApplyAll}
-            title={applyAllCount > 0 ? `Apply all ${applyAllCount} saved track changes to local Rekordbox` : 'Apply All requires at least one saved draft that needs apply'}
-          >
-            {applying ? <CircleDash size={16} className="animate-spin" /> : <Export size={16} />}
-            <span>Apply All ({applyAllCount})</span>
-          </ControlButton>
+          <div ref={applyMenuRef} className="relative flex" data-testid="cue-apply-menu">
+            <ControlButton
+              className="min-h-[34px] rounded-r-none px-3 text-[11px]"
+              variant="primary"
+              disabled={applyAllDisabled}
+              onClick={onApplyAll}
+              title={applyAllCount > 0 ? `Apply all ${applyAllCount} saved track changes to local Rekordbox` : 'Apply All requires at least one saved draft that needs apply'}
+            >
+              {applying ? <CircleDash size={16} className="animate-spin" /> : <Export size={16} />}
+              <span>Apply All ({applyAllCount})</span>
+            </ControlButton>
+            <ControlButton
+              className="min-h-[34px] w-[32px] rounded-l-none border-l border-white/10 px-0"
+              variant="primary"
+              aria-label="Open Apply menu"
+              aria-haspopup="menu"
+              aria-expanded={applyMenuOpen}
+              onClick={() => setApplyMenuOpen((open) => !open)}
+              title="Save, Apply, or Discard"
+            >
+              <ChevronDown size={15} className={cn('transition-transform', applyMenuOpen && 'rotate-180')} />
+            </ControlButton>
+            {applyMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Cue draft and Apply actions"
+                className="absolute right-0 top-[calc(100%+6px)] z-[90] min-w-[220px] overflow-hidden rounded-lg border border-[#34414b] bg-[#11181e] p-1.5 shadow-2xl"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={saveDisabled}
+                  title={saving
+                    ? 'Saving cue changes…'
+                    : baselineProofRefreshNeeded && !dirty
+                      ? 'Refresh verified cue baseline proof for this legacy draft'
+                      : 'Save cue changes as a draft'}
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-foreground transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => { setApplyMenuOpen(false); void onSave().then(setEditorMessage); }}
+                >
+                  {saving ? <CircleDash size={15} className="animate-spin" /> : <Save size={15} />}
+                  <span>Save Draft</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={applyTrackDisabled}
+                  title={applyTrackAvailable ? 'Apply only the selected track to local Rekordbox' : 'Apply Track requires a saved pending draft for the selected track'}
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-foreground transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => { setApplyMenuOpen(false); onApplyTrack(); }}
+                >
+                  <Export size={15} />
+                  <span>Apply Track</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={applyAllDisabled}
+                  title={applyAllCount > 0 ? `Apply all ${applyAllCount} saved track changes to local Rekordbox` : 'Apply All requires at least one saved draft that needs apply'}
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-foreground transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => { setApplyMenuOpen(false); onApplyAll(); }}
+                >
+                  <Export size={15} />
+                  <span>Apply All ({applyAllCount})</span>
+                </button>
+                <div className="my-1 border-t border-white/[0.07]" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={discardDisabled}
+                  title="Discard unsaved cue changes and restore the saved/imported baseline"
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-amber-100 transition-colors hover:bg-amber-300/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => { setApplyMenuOpen(false); onDiscard(); }}
+                >
+                  <RotateCcw size={15} />
+                  <span>Discard Changes</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1766,7 +1868,7 @@ function CueWaveformPanel({
                 ref={waveformDivRef}
                 className="relative h-full cursor-crosshair overflow-hidden px-3"
                 onContextMenu={handleWaveformContextMenu}
-                title={timingMode === 'snap' ? 'Right-click to add a beat-snapped cue' : 'Right-click to add an exact millisecond cue'}
+                title={snapResolution !== 'off' ? `Right-click to add a ${cueSnapResolutionLabel(snapResolution)} snapped cue` : 'Right-click to add an exact millisecond cue'}
               >
                 {durationMs != null && durationMs > 0 ? (() => {
                   const wScale = durationMs / (effectiveViewEnd - viewStart);
@@ -1805,12 +1907,12 @@ function CueWaveformPanel({
                 )}
                 {durationMs != null && durationMs > 0 && (
                   <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-                    {showGrid && gridLines.map((beat) => (
+                    {gridLines.map((beat) => (
                       <span
                         key={`wave-grid-${beat.seq}`}
                         className={cn(
                           'absolute bottom-0 top-0 border-l border-dashed',
-                          beat.isDownbeat ? 'border-white/[0.10]' : 'border-white/[0.035]',
+                          beat.isDownbeat || beat.beatInBar === 1 ? 'border-white/[0.10]' : 'border-white/[0.035]',
                         )}
                         style={{ left: `${percentageAt(beat.ms, viewStart, effectiveViewEnd)}%` }}
                       />
@@ -1872,7 +1974,9 @@ function CueWaveformPanel({
               </div>
               <div className="h-[40px]">
                 <div className="relative h-full overflow-hidden px-3">
-                {beatGridLoading ? (
+                {gridDisplayMode === 'off' ? (
+                  <div className="flex h-full items-center px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">Grid hidden</div>
+                ) : beatGridLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading beat grid…</div>
                 ) : durationMs == null || rulerTicks.length === 0 ? (
                   <div className="flex h-full items-center px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">
@@ -1885,7 +1989,7 @@ function CueWaveformPanel({
                         key={`ruler-${beat.seq}`}
                         className={cn(
                           'absolute -translate-x-1/2 rounded-full',
-                          beat.isDownbeat
+                          beat.isDownbeat || beat.beatInBar === 1
                             ? 'top-[3px] h-[20px] w-[2px] bg-[#f87171]'
                             : 'top-[4px] h-[12px] w-[1.5px] bg-[#4ade80] opacity-90',
                         )}
@@ -1916,7 +2020,7 @@ function CueWaveformPanel({
         <CueInspector
           cue={selectedCue}
           cues={cues}
-          timingMode={timingMode}
+          snapResolution={snapResolution}
           onMoveCue={onMoveCue}
           onEditCue={onEditCue}
           onMessage={setEditorMessage}
@@ -1946,7 +2050,7 @@ function CueWaveformPanel({
                   disabled={availableHotCueSlot == null}
                   className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-xs font-semibold text-[#e5e9ed] hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => {
-                    const error = onAddCue('hot', contextMenu.requestedMs, timingMode);
+                    const error = onAddCue('hot', contextMenu.requestedMs, snapResolution);
                     setEditorMessage(error);
                     setContextMenu(null);
                   }}
@@ -1961,7 +2065,7 @@ function CueWaveformPanel({
                   role="menuitem"
                   className="mt-0.5 w-full rounded-md px-3 py-2 text-left text-xs font-semibold text-[#e5e9ed] hover:bg-white/[0.06]"
                   onClick={() => {
-                    const error = onAddCue('memory', contextMenu.requestedMs, timingMode);
+                    const error = onAddCue('memory', contextMenu.requestedMs, snapResolution);
                     setEditorMessage(error);
                     setContextMenu(null);
                   }}
@@ -3833,11 +3937,11 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     }
   }, [applyBusy, applyPreflight, applyScope, applySnapshot, desktopDrafts, importId, persistVerifiedApplyRebase, selectedCueBaselineEditable, selectedCueBlockReason, selectedTrackId, userId]);
 
-  const handleAddCue = useCallback((family: 'hot' | 'memory', requestedMs: number, timingMode: CueTimingMode): string | null => {
+  const handleAddCue = useCallback((family: 'hot' | 'memory', requestedMs: number, snapResolution: CueSnapResolution): string | null => {
     if (!selectedTrackId) return 'Select a track before editing cue points.';
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
     if (!selectedCueBaselineEditable) return selectedCueBlockReason ?? 'Cue editing is blocked until the cue baseline is safe.';
-    if (timingMode === 'snap' && beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
+    if (snapResolution !== 'off' && beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
     manualCueSequenceRef.current += 1;
     const result = addWorkingCue(workingCues, {
       editorId: `manual:${selectedTrackId}:${manualCueSequenceRef.current}`,
@@ -3845,17 +3949,17 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       family,
       requestedMs,
       beats: beatGrid?.beats ?? [],
-      timingMode,
+      snapResolution,
     });
     if (!result.error) setWorkingCues(result.cues);
     return result.error;
   }, [beatGrid, beatGridLoading, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, selectedTrackId, workingCues]);
 
-  const handleMoveCue = useCallback((cueId: string, requestedMs: number, timingMode: CueTimingMode): string | null => {
+  const handleMoveCue = useCallback((cueId: string, requestedMs: number, snapResolution: CueSnapResolution): string | null => {
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
     if (!selectedCueBaselineEditable) return selectedCueBlockReason ?? 'Cue editing is blocked until the cue baseline is safe.';
-    if (timingMode === 'snap' && beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
-    const result = moveWorkingCue(workingCues, cueId, requestedMs, beatGrid?.beats ?? [], timingMode);
+    if (snapResolution !== 'off' && beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
+    const result = moveWorkingCue(workingCues, cueId, requestedMs, beatGrid?.beats ?? [], snapResolution);
     if (!result.error) setWorkingCues(result.cues);
     return result.error;
   }, [beatGrid, beatGridLoading, selectedCueBaselineEditable, selectedCueBlockReason, selectedCueLoading, workingCues]);
@@ -3864,7 +3968,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     if (selectedCueLoading) return 'Cue points are still loading for this track.';
     if (!selectedCueBaselineEditable) return selectedCueBlockReason ?? 'Cue editing is blocked until the cue baseline is safe.';
     const needsGrid = (action.kind === 'point-type' && action.pointType === 'loop')
-      || ((action.kind === 'end-ms' || action.kind === 'loop-length-ms') && action.timingMode === 'snap');
+      || ((action.kind === 'end-ms' || action.kind === 'loop-length-ms') && action.snapResolution !== 'off');
     if (needsGrid && beatGridLoading) return 'The Rekordbox beat grid is still loading for this track.';
     const result = editWorkingCue(workingCues, cueId, action, beatGrid?.beats ?? []);
     if (!result.error) setWorkingCues(result.cues);

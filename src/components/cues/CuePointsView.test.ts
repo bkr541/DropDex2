@@ -23,8 +23,8 @@ describe('Cue Points Stage 1 workstation redesign', () => {
     expect(source).toContain('>{durationDisplay}</strong>');
     expect(source).toContain("cueLoadStatus === 'failed' ? '!' : String(cues.length)");
     expect(source).toContain('<span>Auto Cue</span>');
-    expect(source).toContain('<span>Discard</span>');
-    expect(source).toContain('<span>Save</span>');
+    expect(source).toContain('<span>Discard Changes</span>');
+    expect(source).toContain('<span>Save Draft</span>');
     expect(source).not.toContain('<Undo size={17} />');
   });
 
@@ -53,9 +53,9 @@ describe('Cue Points production editor wiring', () => {
   it('keeps Stage 2 manual editing on the canonical working cue set and exact Rekordbox beat-grid path', () => {
     expect(source).toContain('cues={workingCues}');
     expect(source).toContain('onContextMenu={handleWaveformContextMenu}');
-    expect(source).toContain("onAddCue('hot', contextMenu.requestedMs, timingMode)");
-    expect(source).toContain("onAddCue('memory', contextMenu.requestedMs, timingMode)");
-    expect(source).toContain('onMoveCue(drag.cueId, requestedMs, timingMode)');
+    expect(source).toContain("onAddCue('hot', contextMenu.requestedMs, snapResolution)");
+    expect(source).toContain("onAddCue('memory', contextMenu.requestedMs, snapResolution)");
+    expect(source).toContain('onMoveCue(drag.cueId, requestedMs, snapResolution)');
     expect(source).toContain('onDeleteCue(contextMenu.cueId)');
     expect(source).toContain('beats: beatGrid?.beats ?? []');
   });
@@ -77,21 +77,30 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain("kind: 'family', family: 'hot', hotCueSlot: slot");
     expect(source).toContain("kind: 'hot-slot', hotCueSlot: slot");
     expect(source).toContain("kind: 'point-type'");
-    expect(source).toContain("kind: 'end-ms', requestedMs: value, timingMode");
-    expect(source).toContain("kind: 'loop-length-ms', requestedMs: value, timingMode");
+    expect(source).toContain("kind: 'end-ms', requestedMs: value, snapResolution");
+    expect(source).toContain("kind: 'loop-length-ms', requestedMs: value, snapResolution");
     expect(source).toContain("kind: 'hot-color-table'");
     expect(source).toContain("kind: 'memory-color'");
     expect(source).toContain("kind: 'comment'");
     expect(source).toContain("kind: 'active-loop'");
   });
 
-  it('keeps snap timing default and makes exact-millisecond editing deliberate', () => {
-    expect(source).toContain("useState<CueTimingMode>('snap')");
-    expect(source).toContain("{ value: 'snap', label: 'Snap' }");
-    expect(source).toContain("{ value: 'exact', label: 'Exact ms' }");
-    expect(source).toContain("timingMode === 'snap' && beatGridLoading");
-    expect(source).toContain('timingMode,');
-    expect(source).toContain("title={timingMode === 'snap' ? 'Right-click to add a beat-snapped cue' : 'Right-click to add an exact millisecond cue'}");
+  it('exposes Stage 4 snap resolution, independent grid display, and visible zoom controls', () => {
+    expect(source).toContain("useState<CueSnapResolution>('1-beat')");
+    expect(source).toContain('<option value="1-beat">1 Beat</option>');
+    expect(source).toContain('<option value="off">Off</option>');
+    expect(source).toContain("snapResolution !== 'off' && beatGridLoading");
+    expect(source).toContain('snapResolution,');
+    expect(source).toContain("title={snapResolution !== 'off' ? `Right-click to add a ${cueSnapResolutionLabel(snapResolution)} snapped cue` : 'Right-click to add an exact millisecond cue'}");
+    expect(source).toContain('<option value="2-beats">2 Beats</option>');
+    expect(source).toContain('<option value="4-beats">4 Beats</option>');
+    expect(source).toContain('aria-label="Grid display"');
+    expect(source).toContain('<option value="beats">Beats</option>');
+    expect(source).toContain('<option value="bars">Bars</option>');
+    expect(source).toContain('aria-label="Zoom out"');
+    expect(source).toContain('aria-label="Zoom in"');
+    expect(source).toContain('zoomCueTimelineView');
+    expect(source).toContain('panCueTimelineView');
   });
 
   it('enters Save through the production Cue Points action and complete-document RPC path', () => {
@@ -102,7 +111,8 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('saveCueDraft({');
     expect(source).toContain('expectedRevision');
     expect(source).toContain('setSavedCueBaseline(hydrated)');
-    expect(source).toContain('disabled={(!dirty && !baselineProofRefreshNeeded) || !cueEditingAllowed || saving}');
+    expect(source).toContain('const saveDisabled = (!dirty && !baselineProofRefreshNeeded) || !cueEditingAllowed || saving;');
+    expect(source).toContain('disabled={saveDisabled}');
   });
 
   it('uses cue-feature truth for Ready and refreshes missing legacy baseline proof without trusting old applied bookkeeping', () => {
@@ -145,9 +155,13 @@ describe('Cue Points production editor wiring', () => {
     expect(source).not.toContain("sortCol === 'duration') { av = a.total_time");
   });
 
-  it('keeps Apply Track distinct from Apply All and sends the exact persisted scope through preflight/apply', () => {
+  it('keeps Apply Track distinct from Apply All behind the consolidated guarded Apply menu', () => {
     expect(source).toContain('<span>Apply Track</span>');
     expect(source).toContain('<span>Apply All ({applyAllCount})</span>');
+    expect(source).toContain('data-testid="cue-apply-menu"');
+    expect(source).toContain('<span>Save Draft</span>');
+    expect(source).toContain('<span>Discard Changes</span>');
+    expect(source).toContain('aria-label="Cue draft and Apply actions"');
     expect(source).toContain("handleApplyPreflight('track')");
     expect(source).toContain("handleApplyPreflight('all')");
     expect(source).toContain("resolveCueApplySelection(applyRows, scope)");

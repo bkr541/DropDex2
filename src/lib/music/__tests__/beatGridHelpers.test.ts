@@ -11,6 +11,8 @@ import {
   firstValidBeat,
   isUsableBeatGrid,
   nearestBeat,
+  nearestSnapBeat,
+  snapBeatCandidates,
 } from '../beatGridHelpers';
 import type { BeatEntry } from '../beatGridHelpers';
 
@@ -79,6 +81,46 @@ describe('nearestBeat', () => {
     // Equidistant from 100ms → first one wins (bestDist starts at 100 and never improves)
     const result = nearestBeat(beats, 100);
     expect(result?.seq).toBe(1);
+  });
+});
+
+
+describe('snapBeatCandidates', () => {
+  it('uses every stored beat for 1-beat snapping with deterministic earlier ties', () => {
+    const beats = makeBeats(8, 120);
+    expect(snapBeatCandidates(beats, 1)).toEqual(beats);
+    expect(nearestSnapBeat(beats, 250, 1)).toBe(beats[0]);
+  });
+
+  it('uses beat-in-bar 1 and 3 anchors for trustworthy 4/4 two-beat snapping', () => {
+    const beats = makeBeats(12, 120);
+    expect(snapBeatCandidates(beats, 2)?.map((beat) => beat.beatInBar)).toEqual([1, 3, 1, 3, 1, 3]);
+    expect(nearestSnapBeat(beats, beats[3].ms, 2)).toBe(beats[2]);
+    expect(nearestSnapBeat(beats, beats[4].ms + 100, 2)).toBe(beats[4]);
+  });
+
+  it('falls back deterministically to source-sequence parity when 4/4 positions are not trustworthy', () => {
+    const beats = makeBeats(8, 120).map((beat) => ({ ...beat }));
+    beats[2].beatInBar = 4;
+    expect(snapBeatCandidates(beats, 2)?.map((beat) => beat.seq)).toEqual([1, 3, 5, 7]);
+  });
+
+  it('uses only exact stored downbeat/bar anchors for 4-beat snapping', () => {
+    const beats = makeBeats(12, 120);
+    expect(snapBeatCandidates(beats, 4)?.map((beat) => beat.seq)).toEqual([1, 5, 9]);
+    expect(nearestSnapBeat(beats, beats[6].ms, 4)).toBe(beats[4]);
+  });
+
+  it('fails closed for empty, malformed, or anchorless grids', () => {
+    const malformed = [
+      { seq: 1, srcIdx: 0, beatInBar: 2, bar: 1, ms: 500, bpm: 128, isDownbeat: false },
+      { seq: 2, srcIdx: 1, beatInBar: 3, bar: 1, ms: 400, bpm: 128, isDownbeat: false },
+    ];
+    const anchorless = makeBeats(4).map((beat, index) => ({ ...beat, beatInBar: index + 2, isDownbeat: false }));
+    expect(snapBeatCandidates([], 1)).toBeNull();
+    expect(snapBeatCandidates(malformed, 2)).toBeNull();
+    expect(snapBeatCandidates(anchorless, 4)).toBeNull();
+    expect(nearestSnapBeat(anchorless, 500, 4)).toBeNull();
   });
 });
 

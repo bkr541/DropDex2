@@ -84,6 +84,68 @@ export function nearestBeat(beats: BeatEntry[], ms: number): BeatEntry | null {
 }
 
 
+
+export type BeatSnapResolution = 1 | 2 | 4;
+
+const snapCandidateCache = new WeakMap<BeatEntry[], Map<BeatSnapResolution, BeatEntry[] | null>>();
+
+function hasTrustworthyFourFourPositions(beats: BeatEntry[]): boolean {
+  if (!isUsableBeatGrid(beats) || !beats.some((beat) => beat.isDownbeat || beat.beatInBar === 1)) return false;
+  if (!beats.every((beat) => Number.isInteger(beat.beatInBar) && beat.beatInBar >= 1 && beat.beatInBar <= 4)) return false;
+
+  for (let index = 1; index < beats.length; index += 1) {
+    const previous = beats[index - 1];
+    const current = beats[index];
+    if (Number.isInteger(previous.seq) && Number.isInteger(current.seq) && current.seq === previous.seq + 1) {
+      const expected = previous.beatInBar === 4 ? 1 : previous.beatInBar + 1;
+      if (current.beatInBar !== expected) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Return the exact stored source beats eligible for the selected snap resolution.
+ *
+ * 1-beat uses every source beat. 2-beat prefers canonical 4/4 anchors on beats
+ * 1 and 3 when beat-in-bar data is trustworthy; otherwise it deterministically
+ * falls back to every other source-sequence beat. 4-beat uses only stored
+ * downbeats/bar starts. No timestamps are interpolated.
+ */
+export function snapBeatCandidates(beats: BeatEntry[], resolution: BeatSnapResolution): BeatEntry[] | null {
+  if (!isUsableBeatGrid(beats)) return null;
+  let byResolution = snapCandidateCache.get(beats);
+  if (!byResolution) {
+    byResolution = new Map();
+    snapCandidateCache.set(beats, byResolution);
+  }
+  if (byResolution.has(resolution)) return byResolution.get(resolution) ?? null;
+
+  let candidates: BeatEntry[];
+  if (resolution === 1) {
+    candidates = beats;
+  } else if (resolution === 4) {
+    candidates = beats.filter((beat) => beat.isDownbeat || beat.beatInBar === 1);
+  } else if (hasTrustworthyFourFourPositions(beats)) {
+    candidates = beats.filter((beat) => beat.beatInBar === 1 || beat.beatInBar === 3);
+  } else {
+    const anchorSeq = beats[0]?.seq;
+    candidates = Number.isInteger(anchorSeq)
+      ? beats.filter((beat) => Number.isInteger(beat.seq) && Math.abs(beat.seq - anchorSeq) % 2 === 0)
+      : [];
+  }
+
+  const result = candidates.length > 0 ? candidates : null;
+  byResolution.set(resolution, result);
+  return result;
+}
+
+/** Resolve the nearest exact source beat eligible for a snap resolution. */
+export function nearestSnapBeat(beats: BeatEntry[], ms: number, resolution: BeatSnapResolution): BeatEntry | null {
+  const candidates = snapBeatCandidates(beats, resolution);
+  return candidates ? nearestBeat(candidates, ms) : null;
+}
+
 /** Return the first exact source beat when the grid is valid. */
 export function firstValidBeat(beats: BeatEntry[]): BeatEntry | null {
   return isUsableBeatGrid(beats) ? beats[0] : null;

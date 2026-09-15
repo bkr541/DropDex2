@@ -474,14 +474,14 @@ describe('fill-empty working-set merge', () => {
     const hotD = first.cues.find((cue) => cue.family === 'hot' && cue.hotCueSlot === 4)!;
     const generatedD = first.cues.find((cue) => cue.family === 'memory' && cue.pairedHotCueSlot === 4)!;
     const manual = { ...generatedD, editorId: 'manual-near-d', source: 'manual' as const, pairedHotCueSlot: null, startMs: generatedD.startMs! + 1 };
-    const movedNearStart = moveWorkingCue([...first.cues, manual], hotD.editorId, beats[8].ms, beats, 'snap');
+    const movedNearStart = moveWorkingCue([...first.cues, manual], hotD.editorId, beats[8].ms, beats, '1-beat');
     expect(movedNearStart.error).toBeNull();
     expect(movedNearStart.cues.find((cue) => cue.editorId === generatedD.editorId)?.startMs).toBe(beats[0].ms);
     expect(movedNearStart.cues.find((cue) => cue.editorId === manual.editorId)?.startMs).toBe(manual.startMs);
 
     const hotB = first.cues.find((cue) => cue.family === 'hot' && cue.hotCueSlot === 2)!;
     const memoryB = first.cues.find((cue) => cue.family === 'memory' && cue.pairedHotCueSlot === 2)!;
-    const movedB = moveWorkingCue(first.cues, hotB.editorId, beats[32].ms, beats, 'snap');
+    const movedB = moveWorkingCue(first.cues, hotB.editorId, beats[32].ms, beats, '1-beat');
     const movedHotB = movedB.cues.find((cue) => cue.editorId === hotB.editorId)!;
     const movedMemoryB = movedB.cues.find((cue) => cue.editorId === memoryB.editorId)!;
     expect(movedB.error).toBeNull();
