@@ -1,23 +1,19 @@
-/* Stage 4 display/navigation primitives.
-   These use the hardware palette established in Stage 1 instead of introducing a
-   parallel theme. App semantic surfaces remain controlled by the global theme. */
+/* Shared display/navigation primitives use the Stage 1 workstation tokens.
+   Stage 2 keeps hierarchy precise and matte rather than decorative or glass-heavy. */
 
 .dd-display-card {
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--color-control-border);
   border-radius: var(--radius-control);
-  background: linear-gradient(180deg, var(--color-control-surface-raised), var(--color-control-surface));
+  background: var(--color-control-surface);
   color: var(--color-control-text);
-  box-shadow: var(--shadow-feedback);
+  box-shadow: none;
 }
 .dd-display-card--glass {
-  border-color: #263444;
-  background:
-    radial-gradient(circle at 82% 4%, rgb(var(--color-control-blue-rgb) / .20), transparent 38%),
-    radial-gradient(circle at 44% 78%, rgb(var(--color-control-purple-rgb) / .20), transparent 44%),
-    linear-gradient(180deg, var(--color-control-surface-raised) 0%, var(--color-control-surface) 100%);
-  box-shadow: var(--shadow-feedback);
+  border-color: rgb(164 178 196 / .18);
+  background: #111923;
+  box-shadow: 0 8px 20px rgb(0 0 0 / .18);
 }
 
 .dd-stat-tile { padding: 18px 18px 14px; }
@@ -121,7 +117,7 @@
   font-weight: 800;
   letter-spacing: .035em;
 }
-.dd-playlist-card__action:hover { background: #121a23; }
+.dd-playlist-card__action:hover { background: var(--color-control-surface-hover); }
 .dd-playlist-card__action:focus-visible { outline: 2px solid var(--color-control-focus); outline-offset: -3px; }
 
 .dd-artwork {
@@ -130,9 +126,9 @@
   overflow: hidden;
   border: 1px solid #232d38;
   border-radius: var(--radius-control);
-  background: linear-gradient(180deg, var(--color-control-surface-raised), var(--color-control-surface));
+  background: var(--color-control-surface);
   color: var(--color-control-text);
-  box-shadow: var(--shadow-feedback);
+  box-shadow: none;
 }
 .dd-artwork--square { aspect-ratio: 1; }
 .dd-artwork--video { aspect-ratio: 16 / 9; }
@@ -259,8 +255,8 @@
   font-weight: 550;
   transition: background-color 130ms ease, color 130ms ease;
 }
-.dd-sidebar-nav-item:hover { background: #171e26; color: #f4f6f8; }
-.dd-sidebar-nav-item--selected { background: #242c35; color: #f5f7fa; }
+.dd-sidebar-nav-item:hover { background: var(--color-control-surface-hover); color: #f4f6f8; }
+.dd-sidebar-nav-item--selected { background: rgb(var(--color-control-blue-rgb) / .08); color: #f5f7fa; }
 .dd-sidebar-nav-item__edge {
   position: absolute;
   inset: 3px auto 3px 0;
@@ -268,7 +264,7 @@
   border-radius: 0 2px 2px 0;
   background: transparent;
 }
-.dd-sidebar-nav-item--selected .dd-sidebar-nav-item__edge { background: var(--color-control-blue); box-shadow: 0 0 10px rgb(var(--color-control-blue-rgb) / .48); }
+.dd-sidebar-nav-item--selected .dd-sidebar-nav-item__edge { background: var(--color-control-blue); box-shadow: none; }
 .dd-sidebar-nav-item__icon { display: grid; place-items: center; color: #adb7c1; }
 .dd-sidebar-nav-item--selected .dd-sidebar-nav-item__icon { color: #f0f5fa; }
 .dd-sidebar-nav-item__icon svg { width: 14px; height: 14px; }
@@ -281,11 +277,12 @@
   align-items: stretch;
   overflow-x: auto;
   overflow-y: hidden;
-  border: 1px solid #202a35;
-  border-radius: var(--radius-control);
-  background: linear-gradient(180deg, var(--color-control-surface-raised), var(--color-control-surface));
-  color: #c6ced8;
-  box-shadow: var(--shadow-feedback);
+  border: 0;
+  border-bottom: 1px solid var(--color-control-border-soft);
+  border-radius: 0;
+  background: transparent;
+  color: #9da8b5;
+  box-shadow: none;
   scrollbar-width: none;
 }
 .dd-tab-nav::-webkit-scrollbar { display: none; }
@@ -297,31 +294,30 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 12px 16px 11px;
+  padding: 10px 14px 9px;
   color: inherit;
-  font-size: 9px;
-  font-weight: 650;
+  font-size: 10px;
+  font-weight: 600;
   white-space: nowrap;
 }
-.dd-tab-nav--primary .dd-tab-nav__item[aria-selected="true"] { color: #c8d8ff; }
+.dd-tab-nav--primary .dd-tab-nav__item[aria-selected="true"] { color: #eef5ff; }
 .dd-tab-nav--primary .dd-tab-nav__item[aria-selected="true"]::after {
   content: "";
   position: absolute;
   left: 14px;
   right: 14px;
-  bottom: 0;
+  bottom: -1px;
   height: 2px;
   background: var(--color-control-blue);
-  box-shadow: 0 0 8px rgb(var(--color-control-blue-rgb) / .35);
 }
 .dd-tab-nav__item:hover { color: #f2f5f8; }
 .dd-tab-nav__item:focus-visible { z-index: 2; outline: 2px solid var(--color-control-focus); outline-offset: -2px; }
-.dd-tab-nav--filter { gap: 4px; padding: 6px; }
+.dd-tab-nav--filter { gap: 4px; padding: 4px; border: 1px solid var(--color-control-border-soft); border-radius: var(--radius-control); background: var(--color-control-surface); }
 .dd-tab-nav--filter .dd-tab-nav__item { min-height: 31px; padding: 6px 15px; border-radius: 5px; font-size: 9px; }
 .dd-tab-nav--filter .dd-tab-nav__item[aria-selected="true"] {
-  background: linear-gradient(180deg, #1c64ac, #15477d);
-  color: #dcecff;
-  box-shadow: inset 0 0 0 1px #2476c4;
+  background: rgb(var(--color-control-blue-rgb) / .13);
+  color: #e2efff;
+  box-shadow: inset 0 0 0 1px rgb(var(--color-control-blue-rgb) / .28);
 }
 
 .dd-view-mode-nav {
@@ -331,11 +327,11 @@
   gap: 2px;
   overflow-x: auto;
   padding: 6px;
-  border: 1px solid #202a35;
+  border: 1px solid var(--color-control-border-soft);
   border-radius: var(--radius-control);
-  background: linear-gradient(180deg, var(--color-control-surface-raised), var(--color-control-surface));
-  color: #bcc5ce;
-  box-shadow: var(--shadow-feedback);
+  background: var(--color-control-surface);
+  color: #aeb8c3;
+  box-shadow: none;
   scrollbar-width: none;
 }
 .dd-view-mode-nav::-webkit-scrollbar { display: none; }
@@ -351,6 +347,6 @@
 }
 .dd-view-mode-nav__icon { display: grid; place-items: center; }
 .dd-view-mode-nav__icon svg { width: 15px; height: 15px; }
-.dd-view-mode-nav__item[aria-checked="true"] { background: #151f2a; color: #39a0ff; box-shadow: inset 0 0 0 1px #1b2b3b; }
+.dd-view-mode-nav__item[aria-checked="true"] { background: rgb(var(--color-control-blue-rgb) / .10); color: #6bb1ff; box-shadow: inset 0 0 0 1px rgb(var(--color-control-blue-rgb) / .18); }
 .dd-view-mode-nav__item:hover { color: #eef3f7; }
 .dd-view-mode-nav__item:focus-visible { outline: 2px solid var(--color-control-focus); outline-offset: -2px; }

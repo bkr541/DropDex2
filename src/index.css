@@ -95,8 +95,8 @@
   --color-feedback-surface-raised: #10171f;
   --color-feedback-border: #26313c;
   --radius-control: 7px;
-  --shadow-control: 0 5px 10px rgb(10 15 22 / 0.25), inset 0 1px 0 rgb(255 255 255 / 0.055);
-  --shadow-feedback: 0 6px 14px rgb(0 0 0 / 0.28), inset 0 1px 0 rgb(255 255 255 / 0.035);
+  --shadow-control: 0 2px 6px rgb(0 0 0 / 0.20);
+  --shadow-feedback: 0 8px 22px rgb(0 0 0 / 0.24);
 }
 
 /* ── Light mode ── */

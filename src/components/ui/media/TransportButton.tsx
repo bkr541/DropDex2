@@ -37,7 +37,6 @@ export function TransportButton({
       )}
       {...props}
     >
-      <span className="dd-media-button__bezel" aria-hidden="true" />
       <span className="dd-media-button__content">{children}</span>
     </button>
   );
