@@ -5,7 +5,7 @@ function read(path: string): string {
   return readFileSync(path, 'utf8');
 }
 
-describe('Roulette Stage 6 production preparation reachability', () => {
+describe('Roulette Stage 6 static HQ wiring checks (non-runtime acceptance)', () => {
   it('enters from Track Intelligence and reaches the desktop separator instead of a fixture path', () => {
     const detail = read('src/components/library/TrackDetailView.tsx');
     const hook = read('src/features/roulette/useRouletteTrackStemPreparation.ts');

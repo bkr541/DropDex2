@@ -10,6 +10,7 @@ const test = require('node:test');
 const {
   HEALTH_RESULT_PREFIX,
   RESULT_PREFIX,
+  PREVIEW_ALGORITHM_VERSION,
   SEPARATOR_VERSION,
   StemSeparationBridge,
   atomicPublishDirectory,
@@ -305,5 +306,159 @@ test('StemSeparationBridge health reports unwritable or invalid local stem stora
     assert.equal(health.reason, 'storage_unavailable');
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('StemSeparationBridge globally serializes HQ and preview workers behind one desktop-owned slot', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dropdex-stem-global-queue-'));
+  const sourceA = path.join(root, 'source-a.wav');
+  const sourceB = path.join(root, 'source-b.wav');
+  const sourceC = path.join(root, 'source-c.wav');
+  await Promise.all([
+    writeFile(sourceA, 'source audio a'),
+    writeFile(sourceB, 'source audio b'),
+    writeFile(sourceC, 'source audio c'),
+  ]);
+  let activeWorkers = 0;
+  let maxActiveWorkers = 0;
+  const launches = [];
+
+  const spawn = (_command, args) => {
+    activeWorkers += 1;
+    maxActiveWorkers = Math.max(maxActiveWorkers, activeWorkers);
+    launches.push([...args]);
+    const child = fakeChild();
+    const output = args[args.indexOf('--output') + 1];
+    const expectedIndex = args.indexOf('--expected-duration-ms');
+    const durationMs = expectedIndex >= 0 ? Number(args[expectedIndex + 1]) : 1000;
+    setTimeout(async () => {
+      if (child.killed) return;
+      const pair = path.join(output, 'pair');
+      await mkdir(pair, { recursive: true });
+      await writeFile(path.join(pair, 'vocals.wav'), 'vocals');
+      await writeFile(path.join(pair, 'instrumental.wav'), 'instrumental');
+      child.stdout.write(`${RESULT_PREFIX}${JSON.stringify({
+        ok: true,
+        outputs: {
+          vocals: { durationMs, sampleRateHz: 44100, channelCount: 2, metrics: testMetrics(durationMs) },
+          instrumental: { durationMs, sampleRateHz: 44100, channelCount: 2, metrics: testMetrics(durationMs) },
+        },
+      })}\n`);
+      activeWorkers -= 1;
+      child.emit('exit', 0, null);
+    }, 15);
+    return child;
+  };
+
+  const bridge = new StemSeparationBridge({
+    isPackaged: false,
+    resourcesPath: root,
+    appPath: root,
+    env: {},
+    platform: process.platform,
+    userDataPath: () => path.join(root, 'userData'),
+    spawn,
+  });
+
+  try {
+    const hqA = bridge.prepare({
+      trackId: 'hq-a',
+      sourceFingerprint: 'fingerprint-hq-a',
+      separatorVersion: SEPARATOR_VERSION,
+      expectedDurationMs: 1000,
+      sourceFilePath: sourceA,
+    });
+    const preview = bridge.preparePreview({
+      trackId: 'preview-b',
+      role: 'vocal',
+      sourceFingerprint: 'fingerprint-preview-b',
+      algorithmVersion: PREVIEW_ALGORITHM_VERSION,
+      windowStartMs: 0,
+      windowEndMs: 1000,
+      sourceFilePath: sourceB,
+    });
+    const hqC = bridge.prepare({
+      trackId: 'hq-c',
+      sourceFingerprint: 'fingerprint-hq-c',
+      separatorVersion: SEPARATOR_VERSION,
+      expectedDurationMs: 1000,
+      sourceFilePath: sourceC,
+    });
+
+    const results = await Promise.all([hqA, preview, hqC]);
+    assert.deepEqual(results.map((result) => result.ok), [true, true, true]);
+    assert.equal(maxActiveWorkers, 1);
+    assert.equal(launches.length, 3);
+  } finally {
+    bridge.close();
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 10 });
+  }
+});
+
+test('StemSeparationBridge cancels queued HQ work before it can launch', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dropdex-stem-cancel-queued-hq-'));
+  const sourceA = path.join(root, 'source-a.wav');
+  const sourceB = path.join(root, 'source-b.wav');
+  await Promise.all([writeFile(sourceA, 'source a'), writeFile(sourceB, 'source b')]);
+  let spawnCount = 0;
+
+  const spawn = (_command, args) => {
+    spawnCount += 1;
+    const child = fakeChild();
+    const output = args[args.indexOf('--output') + 1];
+    setTimeout(async () => {
+      if (child.killed) return;
+      const pair = path.join(output, 'pair');
+      await mkdir(pair, { recursive: true });
+      await writeFile(path.join(pair, 'vocals.wav'), 'vocals');
+      await writeFile(path.join(pair, 'instrumental.wav'), 'instrumental');
+      child.stdout.write(`${RESULT_PREFIX}${JSON.stringify({
+        ok: true,
+        outputs: {
+          vocals: { durationMs: 1000, sampleRateHz: 44100, channelCount: 2, metrics: testMetrics(1000) },
+          instrumental: { durationMs: 1000, sampleRateHz: 44100, channelCount: 2, metrics: testMetrics(1000) },
+        },
+      })}\n`);
+      child.emit('exit', 0, null);
+    }, 30);
+    return child;
+  };
+
+  const bridge = new StemSeparationBridge({
+    isPackaged: false,
+    resourcesPath: root,
+    appPath: root,
+    env: {},
+    platform: process.platform,
+    userDataPath: () => path.join(root, 'userData'),
+    spawn,
+  });
+
+  try {
+    const first = bridge.prepare({
+      trackId: 'track-a',
+      sourceFingerprint: 'fingerprint-a',
+      separatorVersion: SEPARATOR_VERSION,
+      expectedDurationMs: 1000,
+      sourceFilePath: sourceA,
+    });
+    const queued = bridge.prepare({
+      trackId: 'track-b',
+      sourceFingerprint: 'fingerprint-b',
+      separatorVersion: SEPARATOR_VERSION,
+      expectedDurationMs: 1000,
+      sourceFilePath: sourceB,
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(bridge.cancel('track-b'), { ok: true, cancelled: true });
+    assert.deepEqual(await queued, {
+      ok: false,
+      error: { kind: 'cancelled', message: 'Stem preparation was cancelled.' },
+    });
+    assert.equal((await first).ok, true);
+    assert.equal(spawnCount, 1);
+  } finally {
+    bridge.close();
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 10 });
   }
 });

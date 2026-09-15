@@ -262,8 +262,12 @@ class StemSeparationBridge {
     this.options = options;
     this.jobs = new Map();
     this.previewJobs = new Map();
-    this.previewQueue = [];
-    this.previewActive = null;
+    // Stage 7 production invariant: every Demucs invocation, preview or HQ,
+    // shares one bridge-owned queue. Renderer-side queues are UX helpers only;
+    // the desktop process is the final authority that prevents parallel model
+    // workers from competing for CPU/GPU/RAM or publishing overlapping output.
+    this.separationQueue = [];
+    this.separationActive = null;
     this.healthPromise = null;
   }
 
@@ -316,16 +320,30 @@ class StemSeparationBridge {
     return this._spawnHealthWorker(launch);
   }
 
-  async prepare(input) {
+  prepare(input) {
     validateRequest(input);
     const key = this._jobKey(input.trackId, input.sourceFingerprint, input.separatorVersion);
     const existing = this.jobs.get(key);
     if (existing) return existing.promise;
 
-    const job = { trackId: input.trackId, child: null, cancelled: false, promise: null };
-    job.promise = this._runJob(input, job).finally(() => this.jobs.delete(key));
+    let resolvePromise;
+    const promise = new Promise((resolve) => { resolvePromise = resolve; });
+    const job = {
+      key,
+      kind: 'hq',
+      trackId: input.trackId,
+      input,
+      child: null,
+      cancelled: false,
+      started: false,
+      settled: false,
+      resolve: resolvePromise,
+      promise,
+    };
     this.jobs.set(key, job);
-    return job.promise;
+    this.separationQueue.push(job);
+    this._pumpSeparationQueue();
+    return promise;
   }
 
   preparePreview(input) {
@@ -338,6 +356,7 @@ class StemSeparationBridge {
     const promise = new Promise((resolve) => { resolvePromise = resolve; });
     const job = {
       key,
+      kind: 'preview',
       trackId: input.trackId,
       input,
       child: null,
@@ -348,79 +367,85 @@ class StemSeparationBridge {
       promise,
     };
     this.previewJobs.set(key, job);
-    this.previewQueue.push(job);
-    this._pumpPreviewQueue();
+    this.separationQueue.push(job);
+    this._pumpSeparationQueue();
     return promise;
   }
 
-  _settlePreviewJob(job, result) {
+  _cancelledResult(job) {
+    return {
+      ok: false,
+      error: {
+        kind: 'cancelled',
+        message: job.kind === 'preview'
+          ? 'Preview preparation was cancelled.'
+          : 'Stem preparation was cancelled.',
+      },
+    };
+  }
+
+  _settleSeparationJob(job, result) {
     if (job.settled) return;
     job.settled = true;
-    this.previewJobs.delete(job.key);
+    if (job.kind === 'preview') this.previewJobs.delete(job.key);
+    else this.jobs.delete(job.key);
     job.resolve(result);
   }
 
-  _pumpPreviewQueue() {
-    if (this.previewActive) return;
-    const job = this.previewQueue.shift();
+  _pumpSeparationQueue() {
+    if (this.separationActive) return;
+    const job = this.separationQueue.shift();
     if (!job) return;
     if (job.settled) {
-      this._pumpPreviewQueue();
+      this._pumpSeparationQueue();
       return;
     }
     if (job.cancelled) {
-      this._settlePreviewJob(job, { ok: false, error: { kind: 'cancelled', message: 'Preview preparation was cancelled.' } });
-      this._pumpPreviewQueue();
+      this._settleSeparationJob(job, this._cancelledResult(job));
+      this._pumpSeparationQueue();
       return;
     }
+
     job.started = true;
-    this.previewActive = job;
-    void this._runPreviewJob(job.input, job)
-      .then((result) => this._settlePreviewJob(job, result))
-      .catch((error) => this._settlePreviewJob(job, {
+    this.separationActive = job;
+    const work = job.kind === 'preview'
+      ? this._runPreviewJob(job.input, job)
+      : this._runJob(job.input, job);
+    void work
+      .then((result) => this._settleSeparationJob(job, result))
+      .catch((error) => this._settleSeparationJob(job, {
         ok: false,
-        error: { kind: 'processing_failed', message: error instanceof Error ? error.message : String(error) },
+        error: {
+          kind: 'processing_failed',
+          message: error instanceof Error ? error.message : String(error),
+        },
       }))
       .finally(() => {
-        if (this.previewActive === job) this.previewActive = null;
-        this._pumpPreviewQueue();
+        if (this.separationActive === job) this.separationActive = null;
+        this._pumpSeparationQueue();
       });
   }
 
   cancel(trackId) {
     let cancelled = false;
-    for (const job of this.jobs.values()) {
+    for (const job of [...this.jobs.values(), ...this.previewJobs.values()]) {
       if (job.trackId !== trackId) continue;
       job.cancelled = true;
       cancelled = true;
       if (job.child && !job.child.killed) job.child.kill('SIGTERM');
+      if (!job.started) this._settleSeparationJob(job, this._cancelledResult(job));
     }
-    for (const job of this.previewJobs.values()) {
-      if (job.trackId !== trackId) continue;
-      job.cancelled = true;
-      cancelled = true;
-      if (job.child && !job.child.killed) job.child.kill('SIGTERM');
-      if (!job.started) {
-        this._settlePreviewJob(job, { ok: false, error: { kind: 'cancelled', message: 'Preview preparation was cancelled.' } });
-      }
-    }
-    this.previewQueue = this.previewQueue.filter((job) => !job.settled);
+    this.separationQueue = this.separationQueue.filter((job) => !job.settled);
     return { ok: true, cancelled };
   }
 
   close() {
-    for (const job of this.jobs.values()) {
+    for (const job of [...this.jobs.values(), ...this.previewJobs.values()]) {
       job.cancelled = true;
       if (job.child && !job.child.killed) job.child.kill('SIGTERM');
+      if (!job.started) this._settleSeparationJob(job, this._cancelledResult(job));
     }
-    for (const job of this.previewJobs.values()) {
-      job.cancelled = true;
-      if (job.child && !job.child.killed) job.child.kill('SIGTERM');
-      if (!job.started) {
-        this._settlePreviewJob(job, { ok: false, error: { kind: 'cancelled', message: 'Preview preparation was cancelled.' } });
-      }
-    }
-    this.previewQueue = [];
+    this.separationQueue = [];
   }
 
   async _loadCachedPreview(finalDir, finalLocatorDir, input) {
@@ -796,7 +821,7 @@ class StemSeparationBridge {
       child.on('error', (error) => finish({ ok: false, error: { kind: 'runtime_unavailable', message: `Local stem separator failed to start: ${error.message}` } }));
       child.on('exit', (code, signal) => {
         if (job.cancelled || signal === 'SIGTERM') {
-          finish({ ok: false, error: { kind: 'cancelled', message: 'Stem preparation was cancelled.' } });
+          finish(this._cancelledResult(job));
           return;
         }
         const lines = stdout.split(/\r?\n/).filter((line) => line.startsWith(RESULT_PREFIX));
