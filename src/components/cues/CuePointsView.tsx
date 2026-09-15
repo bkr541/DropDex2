@@ -104,6 +104,7 @@ interface CuePointsViewProps {
 
 type CueFilter = 'all' | 'with-cues' | 'without-cues';
 type AnalysisFilter = 'all' | 'ready' | 'incomplete';
+type StatusFilter = 'all' | 'ready' | 'partial' | 'errored' | 'pending';
 type CueDraftStatus = 'Original' | 'Unsaved' | 'Saved' | 'Needs Verification' | 'Needs Apply' | 'Applied';
 type TerminalCueLoadStatus = 'loaded-empty' | 'loaded-with-cues' | 'failed';
 type SelectedCueLoadStatus = 'idle' | 'loading' | TerminalCueLoadStatus;
@@ -1741,6 +1742,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   const [keyFilter, setKeyFilter] = useState('');
   const [cueFilter, setCueFilter] = useState<CueFilter>('all');
   const [analysisFilter, setAnalysisFilter] = useState<AnalysisFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [bpmRange, setBpmRange] = useState<[number, number] | null>(null);
   const [editingGenreTrackId, setEditingGenreTrackId] = useState<string | null>(null);
   const [editingGenreValue, setEditingGenreValue] = useState('');
@@ -2740,13 +2742,20 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     if (!cueFilterMatches(cueSummaryStates.get(track.id), cueFilter)) return false;
     if (analysisFilter === 'ready' && !analysisReady(track)) return false;
     if (analysisFilter === 'incomplete' && analysisReady(track)) return false;
+    if (statusFilter !== 'all') {
+      const s = track.analysis_parse_status ?? '';
+      if (statusFilter === 'ready' && s !== 'completed' && s !== 'reused') return false;
+      if (statusFilter === 'partial' && s !== 'partial') return false;
+      if (statusFilter === 'errored' && s !== 'failed' && s !== 'missing_required') return false;
+      if (statusFilter === 'pending' && s !== '' && s !== 'not_requested' && s !== 'queued' && s !== 'parsing' && s !== 'skipped') return false;
+    }
     if (keyFilter && formatKey(track.musical_key) !== keyFilter) return false;
     if (bpmRange !== null) {
       const bpm = track.bpm != null ? Math.round(track.bpm) : null;
       if (bpm == null || bpm < bpmRange[0] || bpm > bpmRange[1]) return false;
     }
     return true;
-  }), [analysisFilter, bpmRange, cueFilter, cueSummaryStates, keyFilter, tracks]);
+  }), [analysisFilter, bpmRange, cueFilter, cueSummaryStates, keyFilter, statusFilter, tracks]);
 
   const sortedTracks = useMemo(() => {
     if (!sortCol) return filteredTracks;
@@ -3920,18 +3929,32 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       <section className="glass rounded-2xl border border-[var(--color-border-subtle)]" style={{ overflow: 'clip' }}>
         <div ref={filterRowRef} className="sticky z-20 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)] px-4 py-4 md:px-5" style={{ top: waveformPanelHeight }}>
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div className="min-w-[200px] flex-1">
-              <div className="pb-2 border-b border-white/15 hover:border-white/35 transition-colors focus-within:border-white/35">
-                <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">Search</p>
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Title or artist…"
-                  aria-label="Search cue point tracks"
-                  className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/30 outline-none"
-                />
+            <div className="flex items-end gap-6 flex-1 min-w-0">
+              <div className="min-w-[200px] flex-1">
+                <div className="pb-2 border-b border-white/15 hover:border-white/35 transition-colors focus-within:border-white/35">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">Search</p>
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Title or artist…"
+                    aria-label="Search cue point tracks"
+                    className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/30 outline-none"
+                  />
+                </div>
               </div>
+              <CueFilterDropdown
+                label="Status"
+                value={statusFilter}
+                onChange={(v) => setStatusFilter(v as StatusFilter)}
+                options={[
+                  { value: 'all', label: 'All' },
+                  { value: 'ready', label: 'Ready' },
+                  { value: 'partial', label: 'Partial' },
+                  { value: 'errored', label: 'Errored' },
+                  { value: 'pending', label: 'Pending' },
+                ]}
+              />
             </div>
             <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
               <CueFilterDropdown
