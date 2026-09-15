@@ -1361,18 +1361,19 @@ function CueWaveformPanel({
                 ) : (
                   sections.map((section) => {
                     const left = percentageAt(section.startMs, viewStart, effectiveViewEnd);
+                    const right = percentageAt(section.endMs, viewStart, effectiveViewEnd);
+                    const width = Math.max(0, right - left);
                     return (
                       <div
                         key={section.id}
-                        className="absolute top-0 bottom-0 flex flex-col justify-start pt-[5px] pl-1.5"
-                        style={{ left: `${left}%` }}
+                        className="absolute top-[5px] h-[28px] flex flex-col justify-start pt-[5px] pl-1.5 overflow-hidden"
+                        style={{
+                          left: `${left}%`,
+                          width: `${width}%`,
+                          backgroundColor: section.panelColor,
+                        }}
                         title={`${section.label} · ${formatTime(section.startMs)}–${formatTime(section.endMs)}`}
                       >
-                        <span
-                          className="absolute top-0 bottom-0 left-0 w-px"
-                          style={{ backgroundColor: section.waveformColor }}
-                          aria-hidden="true"
-                        />
                         <span
                           className="whitespace-nowrap font-mono text-[9px] font-bold leading-none"
                           style={{ color: section.waveformColor }}
