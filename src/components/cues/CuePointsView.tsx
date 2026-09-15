@@ -18,6 +18,8 @@ import {
   type WorkingCue,
 } from '../../lib/music/cueEditorState';
 import { useLibraryStats, useLibraryTracks } from '../../hooks/useRekordboxTracks';
+import { useRekordboxPlaylists } from '../../hooks/useRekordboxPlaylists';
+import { useRekordboxPlaylistTracks } from '../../hooks/useRekordboxPlaylistTracks';
 import { fetchTracksByIds } from '../../lib/queries/rekordbox';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { useRouteImport } from '../../hooks/useRouteEntities';
@@ -37,7 +39,6 @@ import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { ControlButton, SearchControl, SegmentedControl, SelectControl, TextControl } from '../ui/controls';
 import { Artwork } from '../ui/display/Artwork';
-import { useTheme } from '../../theme/ThemeProvider';
 import type { RekordboxTrack } from '../../types';
 import {
   createCueDraftDocument,
@@ -106,6 +107,7 @@ interface CuePointsViewProps {
 type CueFilter = 'all' | 'with-cues' | 'without-cues';
 type AnalysisFilter = 'all' | 'ready' | 'incomplete';
 type StatusFilter = 'all' | 'ready' | 'partial' | 'errored' | 'pending';
+type BrowserSource = 'library' | 'playlists';
 type CueDraftStatus = 'Original' | 'Unsaved' | 'Saved' | 'Needs Verification' | 'Needs Apply' | 'Applied';
 type TerminalCueLoadStatus = 'loaded-empty' | 'loaded-with-cues' | 'failed';
 type SelectedCueLoadStatus = 'idle' | 'loading' | TerminalCueLoadStatus;
@@ -1747,9 +1749,10 @@ function CueWaveformPanel({
 }
 
 export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
-  const { theme } = useTheme();
   const auth = useAuthSession();
   const userId = auth.status === 'authenticated' ? auth.session.user.id : null;
+  const [browserSource, setBrowserSource] = useState<BrowserSource>('library');
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [genre, setGenre] = useState('');
   const [keyFilter, setKeyFilter] = useState('');
@@ -1866,6 +1869,35 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     debounceMs: 220,
     pageSize: CUE_PAGE_SIZE,
   });
+  const {
+    playlists,
+    loading: playlistsLoading,
+    error: playlistsError,
+  } = useRekordboxPlaylists(importId);
+  const selectablePlaylists = useMemo(
+    () => playlists.filter((playlist) => !playlist.is_folder),
+    [playlists],
+  );
+  const activePlaylistId = browserSource === 'playlists' ? selectedPlaylistId : null;
+  const {
+    tracks: playlistTrackItems,
+    total: playlistTrackTotal,
+    loading: playlistTracksLoading,
+    loadingMore: playlistTracksLoadingMore,
+    error: playlistTracksError,
+    hasMore: playlistTracksHaveMore,
+    loadMore: loadMorePlaylistTracks,
+  } = useRekordboxPlaylistTracks(activePlaylistId);
+  const playlistTracks = useMemo(
+    () => playlistTrackItems.map((item) => item.track),
+    [playlistTrackItems],
+  );
+
+  useEffect(() => {
+    if (browserSource !== 'playlists') return;
+    if (selectedPlaylistId && selectablePlaylists.some((playlist) => playlist.id === selectedPlaylistId)) return;
+    setSelectedPlaylistId(selectablePlaylists[0]?.id ?? null);
+  }, [browserSource, selectablePlaylists, selectedPlaylistId]);
 
   useEffect(() => {
     // Identity changes cancel only this renderer's reconciliation. Any RPC
@@ -1890,6 +1922,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     setMetadataCloudOutcome(null);
     setMetadataRecoveryTrackId(null);
     setMetadataApplyBusy(false);
+    setBrowserSource('library');
+    setSelectedPlaylistId(null);
   }, [importId, userId]);
 
   useEffect(() => {
@@ -2720,7 +2754,20 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     }
   }, [importId, metadataApplyBridgeAvailable, metadataApplyBusy, metadataRecoveryTrackId, refreshMetadataCanonicalState, userId]);
 
-  const trackIdsKey = useMemo(() => tracks.map((track) => track.id).join(','), [tracks]);
+  const activeSourceTracks = browserSource === 'library' ? tracks : playlistTracks;
+  const activeSourceTotal = browserSource === 'library' ? total : playlistTrackTotal;
+  const activeSourceLoading = browserSource === 'library'
+    ? loading
+    : playlistsLoading || (Boolean(activePlaylistId) && playlistTracksLoading);
+  const activeSourceLoadingMore = browserSource === 'library' ? loadingMore : playlistTracksLoadingMore;
+  const activeSourceError = browserSource === 'library' ? error : playlistsError ?? playlistTracksError;
+  const activeSourceHasMore = browserSource === 'library' ? hasMore : playlistTracksHaveMore;
+  const loadMoreActiveSource = browserSource === 'library' ? loadMore : loadMorePlaylistTracks;
+
+  const trackIdsKey = useMemo(
+    () => [...new Set(activeSourceTracks.map((track) => track.id))].join(','),
+    [activeSourceTracks],
+  );
   useEffect(() => {
     let cancelled = false;
     const trackIds = trackIdsKey ? trackIdsKey.split(',') : [];
@@ -2751,7 +2798,18 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     };
   }, [cueSummaryRetryNonce, importId, trackIdsKey]);
 
-  const filteredTracks = useMemo(() => tracks.filter((track) => {
+  const sourceSearchFilteredTracks = useMemo(() => {
+    if (browserSource === 'library') return activeSourceTracks;
+    const query = search.trim().toLowerCase();
+    return activeSourceTracks.filter((track) => {
+      if (genre && track.genre !== genre) return false;
+      if (!query) return true;
+      return [track.title, track.artist, track.genre]
+        .some((value) => value?.toLowerCase().includes(query));
+    });
+  }, [activeSourceTracks, browserSource, genre, search]);
+
+  const filteredTracks = useMemo(() => sourceSearchFilteredTracks.filter((track) => {
     if (!cueFilterMatches(cueSummaryStates.get(track.id), cueFilter)) return false;
     if (analysisFilter === 'ready' && !analysisReady(track)) return false;
     if (analysisFilter === 'incomplete' && analysisReady(track)) return false;
@@ -2768,14 +2826,15 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       if (bpm == null || bpm < bpmRange[0] || bpm > bpmRange[1]) return false;
     }
     return true;
-  }), [analysisFilter, bpmRange, cueFilter, cueSummaryStates, keyFilter, statusFilter, tracks]);
+  }), [analysisFilter, bpmRange, cueFilter, cueSummaryStates, keyFilter, sourceSearchFilteredTracks, statusFilter]);
 
   const sortedTracks = useMemo(() => {
     if (!sortCol) return filteredTracks;
     return [...filteredTracks].sort((a, b) => {
       let av: string | number | null = null;
       let bv: string | number | null = null;
-      if (sortCol === 'track') { av = `${a.title ?? ''} ${a.artist ?? ''}`; bv = `${b.title ?? ''} ${b.artist ?? ''}`; }
+      if (sortCol === 'title') { av = a.title ?? ''; bv = b.title ?? ''; }
+      else if (sortCol === 'artist') { av = a.artist ?? ''; bv = b.artist ?? ''; }
       else if (sortCol === 'bpm') { av = a.bpm ?? -1; bv = b.bpm ?? -1; }
       else if (sortCol === 'key') { av = formatCamelotKey(a.musical_key); bv = formatCamelotKey(b.musical_key); }
       else if (sortCol === 'genre') { av = a.genre ?? ''; bv = b.genre ?? ''; }
@@ -2787,14 +2846,19 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       }
       else if (sortCol === 'analysis') { av = analysisReady(a) ? 1 : 0; bv = analysisReady(b) ? 1 : 0; }
       else if (sortCol === 'duration') {
-        av = (typeof a.duration_ms === 'number' && a.duration_ms > 0) ? a.duration_ms : (a.duration_seconds != null && a.duration_seconds > 0 ? a.duration_seconds * 1000 : -1);
-        bv = (typeof b.duration_ms === 'number' && b.duration_ms > 0) ? b.duration_ms : (b.duration_seconds != null && b.duration_seconds > 0 ? b.duration_seconds * 1000 : -1);
+        av = a.duration_ms ?? (a.duration_seconds != null ? a.duration_seconds * 1000 : -1);
+        bv = b.duration_ms ?? (b.duration_seconds != null ? b.duration_seconds * 1000 : -1);
       }
       if (av === null || av === bv) return 0;
       const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
       return sortDir === 'asc' ? cmp : -cmp;
     });
   }, [filteredTracks, sortCol, sortDir, cueSummaryStates]);
+
+  // Stage 3 consumes this derived list for Previous/Next playback. It intentionally
+  // follows the active source, current playlist, filters, sort order, and only the
+  // records currently loaded by the existing query hooks.
+  const orderedVisibleTracks = sortedTracks;
 
   const cueSummaryFailureCount = useMemo(
     () => [...cueSummaryStates.values()].filter((state) => state.status === 'failed').length,
@@ -3048,7 +3112,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
     };
   }, [selectedTrackId]);
 
-  const allVisibleTrackIds = useMemo(() => sortedTracks.map(t => t.id), [sortedTracks]);
+  const allVisibleTrackIds = useMemo(() => orderedVisibleTracks.map((track) => track.id), [orderedVisibleTracks]);
   const {
     getState: getWaveformState,
     retry: retryWaveform,
@@ -3940,22 +4004,61 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       )}
 
       <section className="glass rounded-2xl border border-[var(--color-border-subtle)]" style={{ overflow: 'clip' }}>
-        <div ref={filterRowRef} className="sticky z-20 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)] px-4 py-4 md:px-5" style={{ top: waveformPanelHeight }}>
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div className="flex items-end gap-6 flex-1 min-w-0">
-              <div className="min-w-[200px] flex-1">
-                <div className="pb-2 border-b border-white/15 hover:border-white/35 transition-colors focus-within:border-white/35">
-                  <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">Search</p>
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Title or artist…"
-                    aria-label="Search cue point tracks"
-                    className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/30 outline-none"
+        <div ref={filterRowRef} className="sticky z-20 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)] px-4 py-3 md:px-5" style={{ top: waveformPanelHeight }}>
+          <div className="flex flex-col gap-3">
+            <div
+              data-testid="cue-browser-command-bar"
+              className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
+            >
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <div data-testid="cue-browser-source-tabs">
+                  <SegmentedControl
+                    ariaLabel="Cue Points browser source"
+                    variant="pill"
+                    value={browserSource}
+                    onChange={(value) => setBrowserSource(value as BrowserSource)}
+                    options={[
+                      { value: 'library', label: 'Library' },
+                      { value: 'playlists', label: 'Playlists' },
+                    ]}
                   />
                 </div>
+                {browserSource === 'playlists' && (
+                  <div className="min-w-[220px] max-w-[360px] flex-1" data-testid="cue-browser-playlist-selector">
+                    <SelectControl
+                      aria-label="Select Rekordbox playlist"
+                      value={selectedPlaylistId ?? ''}
+                      disabled={playlistsLoading || selectablePlaylists.length === 0}
+                      onChange={(event) => setSelectedPlaylistId(event.target.value || null)}
+                    >
+                      {playlistsLoading ? (
+                        <option value="">Loading playlists…</option>
+                      ) : selectablePlaylists.length === 0 ? (
+                        <option value="">No imported playlists</option>
+                      ) : (
+                        selectablePlaylists.map((playlist) => (
+                          <option key={playlist.id} value={playlist.id}>
+                            {playlist.name} ({playlist.track_count.toLocaleString()})
+                          </option>
+                        ))
+                      )}
+                    </SelectControl>
+                  </div>
+                )}
               </div>
+
+              {/* Stage 3 inserts the Audio Dock between the source controls and this search surface. */}
+              <div className="w-full lg:w-[320px] lg:shrink-0">
+                <SearchControl
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search title, artist, or genre…"
+                  aria-label="Search cue point tracks"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3 border-t border-[var(--color-border-faint)] pt-3" data-testid="cue-browser-filters">
               <CueFilterDropdown
                 label="Status"
                 value={statusFilter}
@@ -3968,8 +4071,6 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                   { value: 'pending', label: 'Pending' },
                 ]}
               />
-            </div>
-            <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
               <CueFilterDropdown
                 label="Genre"
                 value={genre}
@@ -4051,46 +4152,73 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           </div>
         )}
 
-        {error ? (
+        {activeSourceError ? (
           <div className="flex items-center gap-3 px-5 py-8 text-sm text-red-300">
             <WarningAlt size={20} />
-            <span>{error}</span>
+            <span>{activeSourceError}</span>
           </div>
-        ) : loading ? (
+        ) : activeSourceLoading ? (
           <div className="flex items-center justify-center gap-3 py-16 text-sm text-muted-foreground">
-            <CircleDash className="animate-spin text-primary" size={22} /> Loading library tracks…
+            <CircleDash className="animate-spin text-primary" size={22} />
+            {browserSource === 'library' ? 'Loading library tracks…' : 'Loading playlist tracks…'}
+          </div>
+        ) : browserSource === 'playlists' && selectablePlaylists.length === 0 ? (
+          <div className="px-5 py-14 text-center">
+            <p className="font-bold">No imported playlists are available.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Library browsing remains available while playlists are empty.</p>
           </div>
         ) : filteredTracks.length === 0 ? (
           <div className="px-5 py-14 text-center">
             <p className="font-bold">No tracks match these filters.</p>
-            <p className="mt-1 text-sm text-muted-foreground">Try clearing a search or filter to widen the library view.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Try clearing a search or filter to widen the current source.</p>
           </div>
         ) : (
           <>
-            <div className="overflow-y-auto overflow-x-hidden scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
-              <table className="w-full min-w-[900px] border-collapse text-left">
+            <div className="overflow-y-auto overflow-x-auto scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
+              <table className="w-full min-w-[1220px] border-collapse text-left" data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
                 <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
                   <tr className="border-b border-[var(--color-border-faint)]">
+                    <th className="sticky top-0 z-10 w-[54px] bg-[var(--color-card)] px-3 py-2.5 text-center">#</th>
                     {([
-                      { col: 'track', label: 'Track', cls: 'px-4 py-2.5 md:px-5' },
+                      { col: 'title', label: 'Title', cls: 'px-3 py-2.5 min-w-[260px]' },
+                      { col: 'artist', label: 'Artist', cls: 'px-3 py-2.5 min-w-[170px]' },
+                    ] as const).map(({ col, label, cls }) => (
+                      <th key={col} className={cn(cls, 'sticky top-0 z-10 bg-[var(--color-card)] select-none')}>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                          aria-label={`Sort by ${label}`}
+                          onClick={() => handleColClick(col)}
+                        >
+                          {label}
+                          <span className={cn('text-primary', sortCol !== col && 'invisible')}>{sortDir === 'asc' ? '↑' : '↓'}</span>
+                        </button>
+                      </th>
+                    ))}
+                    <th className="sticky top-0 z-10 w-[230px] bg-[var(--color-card)] px-3 py-2.5">Waveform</th>
+                    {([
                       { col: 'bpm', label: 'BPM', cls: 'px-3 py-2.5' },
                       { col: 'key', label: 'Key', cls: 'px-3 py-2.5' },
                       { col: 'genre', label: 'Genre', cls: 'px-3 py-2.5 w-[178px]' },
                       { col: 'cues', label: 'Cues', cls: 'px-3 py-2.5 text-center' },
                       { col: 'duration', label: 'Duration', cls: 'px-3 py-2.5 text-right w-[80px]' },
                     ] as const).map(({ col, label, cls }) => (
-                      <th key={col} className={cn(cls, 'sticky top-0 z-10 bg-[var(--color-card)] select-none cursor-pointer hover:text-foreground transition-colors')}
-                        onClick={() => handleColClick(col)}>
-                        <span className="inline-flex items-center gap-1">
+                      <th key={col} className={cn(cls, 'sticky top-0 z-10 bg-[var(--color-card)] select-none')}>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                          aria-label={`Sort by ${label}`}
+                          onClick={() => handleColClick(col)}
+                        >
                           {label}
                           <span className={cn('text-primary', sortCol !== col && 'invisible')}>{sortDir === 'asc' ? '↑' : '↓'}</span>
-                        </span>
+                        </button>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border-faint)]">
-                  {sortedTracks.map((track) => {
+                  {orderedVisibleTracks.map((track, rowIndex) => {
                     const cueState = cueSummaryStates.get(track.id);
                     const cueCount = cueLoadCount(cueState);
                     const selected = track.id === selectedTrackId;
@@ -4104,7 +4232,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                     const genreEditingAvailable = metadataDraftLoadStatus === 'loaded' && !genreRecoveryLocked && !genreRuntimeBlocked;
                     return (
                       <tr
-                        key={track.id}
+                        key={`${browserSource}:${selectedPlaylistId ?? 'library'}:${track.id}:${rowIndex}`}
                         tabIndex={0}
                         aria-selected={selected}
                         onClick={() => setSelectedTrack(track)}
@@ -4119,8 +4247,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                           selected ? 'bg-primary/[0.08]' : 'hover:bg-[var(--color-surface-hover)]',
                         )}
                       >
-                        <td className="px-4 py-1.5 md:px-5">
-                          <div className="flex items-center gap-2">
+                        <td className="w-[54px] px-3 py-1.5 text-center">
+                          <div className="flex items-center justify-center gap-2">
                             <span className={cn(
                               'h-2 w-2 shrink-0 rounded-full',
                               analysisReady(track)
@@ -4131,33 +4259,35 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                                     ? 'bg-muted-foreground/40'
                                     : 'bg-amber-400',
                             )} aria-hidden="true" />
-                            <span className={cn('h-8 w-1 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
-                            <div className="flex min-w-0 flex-1 items-center gap-8">
-                              <div className="w-[500px] shrink-0">
-                                <p className={cn('truncate text-sm font-bold', selected && 'text-primary')}>{track.title}</p>
-                                <p className="mt-0.5 truncate text-xs text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
-                              </div>
-                              {(() => {
-                                const ws = getWaveformState(track.id);
-                                if (ws?.status !== 'loaded' || !ws.waveform.previewColumnsValid) return null;
-                                const cols = ws.waveform.previewColumns;
-                                if (cols.length === 0) return null;
-                                const maxH = Math.max(...cols.map(c => c.h), 1);
-                                const N = 350, H = 20;
-                                const step = cols.length / N;
-                                const cdjBlue = '#5dcfff';
-                                return (
-                                  <svg width="100%" height={H} viewBox={`0 0 ${N} ${H}`} preserveAspectRatio="none" className="flex-1 min-w-0" aria-hidden="true">
-                                    {Array.from({ length: N }, (_, i) => {
-                                      const col = cols[Math.floor(i * step)];
-                                      const h = Math.max(1, (col.h / maxH) * H);
-                                      const fill = theme === 'cdj' ? cdjBlue : ('r' in col ? `rgb(${col.r},${col.g},${col.b})` : cdjBlue);
-                                      return <rect key={i} x={i} y={(H - h) / 2} width={0.76} height={h} fill={fill} />;
-                                    })}
-                                  </svg>
-                                );
-                              })()}
-                            </div>
+                            <span className="min-w-5 font-mono text-[11px] tabular-nums text-muted-foreground">{rowIndex + 1}</span>
+                          </div>
+                        </td>
+                        <td className="min-w-[260px] px-3 py-1.5">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <span className={cn('h-9 w-1 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
+                            <Artwork
+                              src={track.artwork_path}
+                              alt={`Artwork for ${track.title}`}
+                              fallbackTitle="No artwork"
+                              className="h-9 w-9 shrink-0 rounded-[6px]"
+                            />
+                            <p className={cn('min-w-0 truncate text-sm font-bold', selected && 'text-primary')}>{track.title}</p>
+                          </div>
+                        </td>
+                        <td className="min-w-[170px] px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+                          <span className="block truncate">{track.artist ?? 'Artist Not Available'}</span>
+                        </td>
+                        <td className="w-[230px] px-3 py-1.5">
+                          <div className="h-[26px] w-full opacity-55 grayscale">
+                            <RekordboxPreviewWaveform
+                              state={getWaveformState(track.id)}
+                              height={26}
+                              variant="compact"
+                              appearance="dropdex"
+                              showCenterLine={false}
+                              surface={false}
+                              ariaLabel={`Waveform for ${track.title}`}
+                            />
                           </div>
                         </td>
                         <td className="px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
@@ -4321,12 +4451,17 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
             </div>
 
             <div className="flex flex-col gap-3 border-t border-[var(--color-border-subtle)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-5">
-              <p className="text-xs text-muted-foreground">
-                Showing {filteredTracks.length.toLocaleString()} loaded rows · {total.toLocaleString()} tracks match title/genre filters
-              </p>
-              {hasMore && (
-                <ControlButton variant="surface" onClick={() => void loadMore()} disabled={loadingMore}>
-                  {loadingMore ? 'Loading…' : 'Load more tracks'}
+              <div className="space-y-0.5 text-xs text-muted-foreground">
+                <p>
+                  Showing {orderedVisibleTracks.length.toLocaleString()} visible rows · {activeSourceTotal.toLocaleString()} tracks in the active source query
+                </p>
+                {browserSource === 'playlists' && activeSourceHasMore && (
+                  <p>Playlist search and filters apply to currently loaded tracks; load more to widen the filtered result set.</p>
+                )}
+              </div>
+              {activeSourceHasMore && (
+                <ControlButton variant="surface" onClick={() => void loadMoreActiveSource()} disabled={activeSourceLoadingMore}>
+                  {activeSourceLoadingMore ? 'Loading…' : 'Load more tracks'}
                 </ControlButton>
               )}
             </div>

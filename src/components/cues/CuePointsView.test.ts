@@ -411,3 +411,60 @@ describe('Cue Points production editor wiring', () => {
   });
 
 });
+
+describe('Cue Points Stage 2 browser workspace', () => {
+  it('uses the existing library and Rekordbox playlist hooks behind one source switcher', () => {
+    expect(source).toContain("useState<BrowserSource>('library')");
+    expect(source).toContain('useRekordboxPlaylists(importId)');
+    expect(source).toContain('useRekordboxPlaylistTracks(activePlaylistId)');
+    expect(source).toContain("{ value: 'library', label: 'Library' }");
+    expect(source).toContain("{ value: 'playlists', label: 'Playlists' }");
+    expect(source).toContain('playlistTrackItems.map((item) => item.track)');
+    expect(source).toContain('selectablePlaylists.map((playlist) => (');
+  });
+
+  it('preserves every pre-redesign browser filter and gives playlists truthful local filtering', () => {
+    expect(source).toContain('label="Status"');
+    expect(source).toContain('label="Genre"');
+    expect(source).toContain('label="Key"');
+    expect(source).toContain('label="Cue States"');
+    expect(source).toContain('label="Analysis"');
+    expect(source).toContain('<CueBpmRangeSlider');
+    expect(source).toContain('aria-label="Search cue point tracks"');
+    expect(source).toContain("if (browserSource === 'library') return activeSourceTracks;");
+    expect(source).toContain("[track.title, track.artist, track.genre]");
+    expect(source).toContain('Playlist search and filters apply to currently loaded tracks');
+  });
+
+  it('renders the shared table with distinct row, artwork/title, artist, waveform, BPM, key, cues, and duration surfaces', () => {
+    expect(source).toContain('data-testid="cue-browser-track-table"');
+    expect(source).toContain("{ col: 'title', label: 'Title'");
+    expect(source).toContain("{ col: 'artist', label: 'Artist'");
+    expect(source).toContain('>Waveform</th>');
+    expect(source).toContain("{ col: 'bpm', label: 'BPM'");
+    expect(source).toContain("{ col: 'key', label: 'Key'");
+    expect(source).toContain("{ col: 'cues', label: 'Cues'");
+    expect(source).toContain("{ col: 'duration', label: 'Duration'");
+    expect(source).toContain('src={track.artwork_path}');
+    expect(source).toContain('fallbackTitle="No artwork"');
+    expect(source).toContain('state={getWaveformState(track.id)}');
+    expect(source).toContain('appearance="dropdex"');
+  });
+
+  it('keeps row selection playback-free and exposes the deterministic Stage 3 ordered-track extension point', () => {
+    expect(source).toContain('onClick={() => setSelectedTrack(track)}');
+    expect(source).toContain('const orderedVisibleTracks = sortedTracks;');
+    expect(source).toContain('orderedVisibleTracks.map((track, rowIndex) => {');
+    expect(source).toContain('orderedVisibleTracks.map((track) => track.id)');
+    expect(source).not.toContain('onClick={() => playTrack(track)}');
+  });
+
+  it('routes loading, errors, totals, and pagination through whichever source is active', () => {
+    expect(source).toContain("const activeSourceLoading = browserSource === 'library'");
+    expect(source).toContain("const activeSourceError = browserSource === 'library'");
+    expect(source).toContain("const activeSourceHasMore = browserSource === 'library'");
+    expect(source).toContain("const loadMoreActiveSource = browserSource === 'library' ? loadMore : loadMorePlaylistTracks;");
+    expect(source).toContain('activeSourceTotal.toLocaleString()');
+    expect(source).toContain('void loadMoreActiveSource()');
+  });
+});
