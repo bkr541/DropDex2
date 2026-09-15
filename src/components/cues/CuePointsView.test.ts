@@ -484,14 +484,15 @@ describe('Cue Points Stage 2 browser workspace', () => {
 });
 
 describe('Cue Points Stage 3 audio dock and playhead', () => {
-  it('places the shared-player Audio Dock between source selection and the existing filters/table workspace', () => {
+  it('keeps the shared-player Audio Dock full-width above the source tabs, filters, BPM range, and search row', () => {
     expect(source).toContain("import { useAudioPlayer } from '../../contexts/AudioPlayerContext';");
     expect(source).toContain("import { useWaveformProgress } from '../../hooks/useWaveformProgress';");
     expect(source).toContain("import { MediaTransportControlGroup } from '../ui/media';");
     expect(source).toContain('data-testid="cue-audio-dock"');
     expect(source).toContain('ariaLabel="Cue Points transport controls"');
-    expect(source.indexOf('data-testid="cue-browser-source-tabs"')).toBeLessThan(source.indexOf('<CuePointsAudioDock'));
     expect(source.indexOf('<CuePointsAudioDock')).toBeLessThan(source.indexOf('data-testid="cue-browser-filters"'));
+    expect(source.indexOf('data-testid="cue-browser-source-tabs"')).toBeLessThan(source.indexOf('label="Status"'));
+    expect(source.indexOf('onReset={() => setBpmRange(null)}')).toBeLessThan(source.indexOf('data-testid="cue-browser-search"'));
     expect(source).toContain("import { TabNavigation } from '../ui/display/TabNavigation';");
   });
 

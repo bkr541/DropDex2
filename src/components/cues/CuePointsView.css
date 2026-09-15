@@ -86,6 +86,7 @@
 }
 
 .cue-browser__transport-row {
+  width: 100%;
   min-width: 0;
 }
 

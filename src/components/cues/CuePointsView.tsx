@@ -4470,8 +4470,16 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       <section className="cue-browser border-y border-[var(--color-border-faint)]" style={{ overflow: 'clip' }}>
         <div ref={filterRowRef} className="cue-browser__chrome sticky z-20 border-b border-[var(--color-border-faint)] px-4 py-2.5 md:px-5" style={{ top: waveformPanelHeight }}>
           <div className="flex flex-col gap-3">
-            <div data-testid="cue-browser-command-bar" className="flex min-w-0 flex-wrap items-center gap-3">
-              <div data-testid="cue-browser-source-tabs" className="min-w-[190px]">
+            <div className="cue-browser__transport-row w-full">
+              <CuePointsAudioDock
+                selectedTrack={selectedTrack}
+                orderedTracks={orderedVisibleTracks}
+                onSelectTrack={setSelectedTrack}
+              />
+            </div>
+
+            <div className="cue-browser__filters flex flex-wrap items-end gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] pt-2.5" data-testid="cue-browser-filters">
+              <div data-testid="cue-browser-source-tabs" className="min-w-[190px] self-end">
                 <TabNavigation
                   ariaLabel="Cue Points browser source"
                   variant="primary"
@@ -4483,47 +4491,6 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                   ]}
                 />
               </div>
-              {browserSource === 'playlists' && (
-                <div className="min-w-[220px] max-w-[360px] flex-1" data-testid="cue-browser-playlist-selector">
-                  <SelectControl
-                    aria-label="Select Rekordbox playlist"
-                    value={selectedPlaylistId ?? ''}
-                    disabled={playlistsLoading || selectablePlaylists.length === 0}
-                    onChange={(event) => setSelectedPlaylistId(event.target.value || null)}
-                  >
-                    {playlistsLoading ? (
-                      <option value="">Loading playlists…</option>
-                    ) : selectablePlaylists.length === 0 ? (
-                      <option value="">No imported playlists</option>
-                    ) : (
-                      selectablePlaylists.map((playlist) => (
-                        <option key={playlist.id} value={playlist.id}>
-                          {playlist.name} ({playlist.track_count.toLocaleString()})
-                        </option>
-                      ))
-                    )}
-                  </SelectControl>
-                </div>
-              )}
-            </div>
-
-            <div className="cue-browser__transport-row flex flex-col gap-2.5 xl:flex-row xl:items-center">
-              <CuePointsAudioDock
-                selectedTrack={selectedTrack}
-                orderedTracks={orderedVisibleTracks}
-                onSelectTrack={setSelectedTrack}
-              />
-              <div className="w-full xl:w-[320px] xl:shrink-0">
-                <SearchControl
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search title, artist, or genre…"
-                  aria-label="Search cue point tracks"
-                />
-              </div>
-            </div>
-
-            <div className="cue-browser__filters flex flex-wrap items-end gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] pt-2.5" data-testid="cue-browser-filters">
               <CueFilterDropdown
                 label="Status"
                 value={statusFilter}
@@ -4582,6 +4549,36 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                 onChange={setBpmRange}
                 onReset={() => setBpmRange(null)}
               />
+              <div className="min-w-[240px] max-w-[360px] flex-1" data-testid="cue-browser-search">
+                <SearchControl
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search title, artist, or genre…"
+                  aria-label="Search cue point tracks"
+                />
+              </div>
+              {browserSource === 'playlists' && (
+                <div className="min-w-[220px] max-w-[360px] flex-1" data-testid="cue-browser-playlist-selector">
+                  <SelectControl
+                    aria-label="Select Rekordbox playlist"
+                    value={selectedPlaylistId ?? ''}
+                    disabled={playlistsLoading || selectablePlaylists.length === 0}
+                    onChange={(event) => setSelectedPlaylistId(event.target.value || null)}
+                  >
+                    {playlistsLoading ? (
+                      <option value="">Loading playlists…</option>
+                    ) : selectablePlaylists.length === 0 ? (
+                      <option value="">No imported playlists</option>
+                    ) : (
+                      selectablePlaylists.map((playlist) => (
+                        <option key={playlist.id} value={playlist.id}>
+                          {playlist.name} ({playlist.track_count.toLocaleString()})
+                        </option>
+                      ))
+                    )}
+                  </SelectControl>
+                </div>
+              )}
             </div>
           </div>
         </div>
