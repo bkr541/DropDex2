@@ -615,6 +615,7 @@ export function RekordboxPreviewWaveform({
       data-waveform-track-id={displayState.trackId ?? undefined}
       data-waveform-variant={variant}
       data-waveform-appearance={resolvedAppearance}
+      data-waveform-render-mode={renderMode}
     >
       {displayState.status !== 'loaded' ? (
         <WaveformEmptyState state={displayState} height={height} onRetry={onRetry} />

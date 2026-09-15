@@ -2,6 +2,52 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const source = readFileSync(new URL('./CuePointsView.tsx', import.meta.url), 'utf8');
+const waveformSource = readFileSync(new URL('../library/RekordboxPreviewWaveform.tsx', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../../App.tsx', import.meta.url), 'utf8');
+
+describe('Cue Points Stage 1 workstation redesign', () => {
+  it('remains wired through the production App route', () => {
+    expect(appSource).toContain("lazyWithRecovery('cue-points'");
+    expect(appSource).toContain("import('./components/cues/CuePointsView')");
+    expect(appSource).toContain('<CuePointsView importId={importId}');
+  });
+
+  it('renders selected-track artwork, fallback, metadata, and compact real actions', () => {
+    expect(source).toContain("import { Artwork } from '../ui/display/Artwork';");
+    expect(source).toContain('data-testid="cue-points-workstation"');
+    expect(source).toContain('src={track.artwork_path}');
+    expect(source).toContain('fallbackTitle="No artwork"');
+    expect(source).toContain('Editing Track');
+    expect(source).toContain('>{bpmDisplay}</strong>');
+    expect(source).toContain('>{keyDisplay}</strong>');
+    expect(source).toContain('>{durationDisplay}</strong>');
+    expect(source).toContain("cueLoadStatus === 'failed' ? '!' : String(cues.length)");
+    expect(source).toContain('<span>Auto Cue</span>');
+    expect(source).toContain('<span>Discard</span>');
+    expect(source).toContain('<span>Save</span>');
+    expect(source).not.toContain('<Undo size={17} />');
+  });
+
+  it('uses the four unified lane labels without the legacy 29px dead gutter', () => {
+    expect(source).toContain('label="Cue Points"');
+    expect(source).toContain('label="Track Sections"');
+    expect(source).toContain('label="Waveform"');
+    expect(source).toContain('label="Beat Grid"');
+    expect(source).toContain("grid gap-0 transition-[grid-template-columns]");
+    expect(source).not.toContain('gap-x-[29px]');
+    expect(source).not.toContain('left-[calc(150px+29px)]');
+    expect(source).not.toContain('left-[calc(48px+29px)]');
+  });
+
+  it('forces the editor waveform through the dense area/gradient renderer independently of the global theme', () => {
+    expect(source).toContain('appearance="rekordbox"');
+    expect(source).toContain('renderMode="area"');
+    expect(source).not.toContain("appearance={theme === 'cdj' ? 'dropdex' : 'rekordbox'}");
+    expect(waveformSource).toContain("else if (renderMode === 'area')");
+    expect(waveformSource).toContain('drawTimelineAreaWaveform(context, buckets, width, height');
+    expect(waveformSource).toContain('data-waveform-render-mode={renderMode}');
+  });
+});
 
 describe('Cue Points production editor wiring', () => {
   it('keeps Stage 2 manual editing on the canonical working cue set and exact Rekordbox beat-grid path', () => {

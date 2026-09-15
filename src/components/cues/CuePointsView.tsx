@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, CircleDash, Close, Edit, Export, Grid, Idea, Music, Save, Search, Undo, Upload, WarningAlt } from '@carbon/icons-react';
+import { ChevronDown, CircleDash, Close, Edit, Export, Grid, Idea, Music, Save, Search, Upload, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -36,6 +36,7 @@ import {
 import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { ControlButton, SearchControl, SegmentedControl, SelectControl, TextControl } from '../ui/controls';
+import { Artwork } from '../ui/display/Artwork';
 import { useTheme } from '../../theme/ThemeProvider';
 import type { RekordboxTrack } from '../../types';
 import {
@@ -972,7 +973,6 @@ function CueWaveformPanel({
   metadataDraftLoadStatus: MetadataDraftLoadStatus;
   onOpenPendingChanges: () => void;
 }) {
-  const { theme } = useTheme();
   const [labelsCollapsed, setLabelsCollapsed] = useState(false);
   const durationMs = durationMsForTrack(track, beatGrid, phrases);
 
@@ -1193,8 +1193,8 @@ function CueWaveformPanel({
 
   if (!track) {
     return (
-      <section className="glass rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden">
-        <div className="flex min-h-[310px] flex-col items-center justify-center px-6 text-center">
+      <section className="overflow-hidden border-y border-[var(--color-border-subtle)] bg-[var(--color-card)]">
+        <div className="flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
             <Music size={26} />
           </div>
@@ -1212,99 +1212,116 @@ function CueWaveformPanel({
   const durationDisplay = formatTime(durationMs);
 
   return (
-    <section className="glass rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-[var(--color-border-subtle)] px-5 py-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
-          <h1 className="mt-0.5 truncate text-xl font-black tracking-tight md:text-2xl">{track.title}</h1>
-          <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-            <span><span className="font-semibold text-foreground/60">BPM:</span> {bpmDisplay}</span>
-            <span>
-              <span className="font-semibold text-foreground/60">Key:</span>{' '}
-              <span className="font-semibold" style={camelotColor(track.musical_key) ? { color: camelotColor(track.musical_key)! } : undefined}>{keyDisplay}</span>
-            </span>
-            <span><span className="font-semibold text-foreground/60">Duration:</span> {durationDisplay}</span>
-            <span><span className="font-semibold text-foreground/60">Cues:</span> {cueLoading ? '…' : cueLoadStatus === 'failed' ? '!' : String(cues.length)}</span>
-          </p>
+    <section className="overflow-hidden border-y border-[var(--color-border-subtle)] bg-[var(--color-card)] shadow-[0_14px_30px_rgba(0,0,0,0.18)]" data-testid="cue-points-workstation">
+      <div className="flex flex-col gap-3 border-b border-[var(--color-border-subtle)] px-4 py-3 lg:px-5 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex min-w-0 flex-1 items-center gap-3.5">
+          <Artwork
+            src={track.artwork_path}
+            alt={`Artwork for ${track.title}`}
+            fallbackTitle="No artwork"
+            className="h-[72px] w-[72px] shrink-0 rounded-[8px]"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-primary/85">Editing Track</p>
+              <span className="rounded-full border border-[var(--color-border-faint)] bg-white/[0.025] px-2 py-0.5 text-[9px] font-bold text-muted-foreground">{draftStatus}</span>
+            </div>
+            <h1 className="mt-1 truncate text-xl font-black tracking-[-0.02em] text-foreground md:text-[22px]">{track.title}</h1>
+            <p className="mt-0.5 truncate text-xs font-semibold text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-semibold text-muted-foreground">
+              <span><span className="uppercase tracking-[0.08em] text-foreground/45">BPM</span> <strong className="ml-1 text-foreground/90">{bpmDisplay}</strong></span>
+              <span><span className="uppercase tracking-[0.08em] text-foreground/45">Key</span> <strong className="ml-1" style={{ color: camelotColor(track.musical_key) }}>{keyDisplay}</strong></span>
+              <span><span className="uppercase tracking-[0.08em] text-foreground/45">Duration</span> <strong className="ml-1 text-foreground/90">{durationDisplay}</strong></span>
+              <span><span className="uppercase tracking-[0.08em] text-foreground/45">Cues</span> <strong className="ml-1 text-foreground/90">{cueLoading ? '…' : cueLoadStatus === 'failed' ? '!' : String(cues.length)}</strong></span>
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-stretch gap-2 xl:justify-end">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="min-w-[148px]">
-              <SegmentedControl
-                ariaLabel="Cue timing mode"
-                variant="pill"
-                value={timingMode}
-                onChange={(value) => setTimingMode(value as CueTimingMode)}
-                options={[{ value: 'snap', label: 'Snap' }, { value: 'exact', label: 'Exact' }]}
-              />
-            </div>
-            <ControlButton
-              variant="surface"
-              onClick={onOpenPendingChanges}
-              aria-label={metadataDraftLoadStatus === 'loaded' ? `Open Pending Changes, ${pendingMetadataCount} pending` : 'Open Pending Changes'}
-              title={metadataDraftLoadStatus === 'failed' ? 'Pending metadata state failed to load. Open to retry.' : 'Review saved metadata changes'}
-            >
-              {metadataDraftLoadStatus === 'loaded'
-                ? `Pending ${pendingMetadataCount}`
-                : metadataDraftLoadStatus === 'failed' ? 'Pending (!)' : 'Pending…'}
-            </ControlButton>
-            <ControlButton
-              variant={showGrid ? 'surface' : 'ghost'}
-              onClick={() => setShowGrid((v) => !v)}
-              aria-label={showGrid ? 'Hide beat grid overlay' : 'Show beat grid overlay'}
-              aria-pressed={showGrid}
-              title={showGrid ? 'Hide beat grid overlay' : 'Show beat grid overlay'}
-            >
-              <Grid size={17} />
-            </ControlButton>
-            <ControlButton
-              variant="surface"
-              disabled={!autoCueReady}
-              onClick={() => setEditorMessage(onAutoCue())}
-              title={autoCueReady ? 'Auto Cue: generate deterministic A–H cue proposals' : "Auto Cue requires the selected track's exact beat grid and phrase data to finish loading"}
-            >
-              <Idea size={17} />
-            </ControlButton>
-            <ControlButton
-              variant="ghost"
-              disabled={!dirty || !cueEditingAllowed || saving}
-              onClick={onDiscard}
-              title="Discard unsaved cue changes"
-            >
-              <Undo size={17} />
-            </ControlButton>
-            <ControlButton
-              variant="surface"
-              disabled={(!dirty && !baselineProofRefreshNeeded) || !cueEditingAllowed || saving}
-              onClick={() => { void onSave().then(setEditorMessage); }}
-              title={saving
-                ? 'Saving cue changes…'
-                : baselineProofRefreshNeeded && !dirty
-                  ? 'Refresh verified cue baseline proof for this legacy draft'
-                  : 'Save cue changes'}
-            >
-              {saving ? <CircleDash size={17} className="animate-spin" /> : <Save size={17} />}
-            </ControlButton>
-            <ControlButton
-              variant="surface"
-              disabled={!applyTrackAvailable || applying}
-              onClick={onApplyTrack}
-              title={applyTrackAvailable ? 'Apply only the selected track to local Rekordbox' : 'Apply Track requires a saved pending draft for the selected track'}
-            >
-              {applying ? <CircleDash size={17} className="animate-spin" /> : <Export size={17} />}
-              <span>Apply Track</span>
-            </ControlButton>
-            <ControlButton
-              variant="primary"
-              disabled={applyAllCount === 0 || applying}
-              onClick={onApplyAll}
-              title={applyAllCount > 0 ? `Apply all ${applyAllCount} saved track changes to local Rekordbox` : 'Apply All requires at least one saved draft that needs apply'}
-            >
-              {applying ? <CircleDash size={17} className="animate-spin" /> : <Export size={17} />}
-              <span>Apply All ({applyAllCount})</span>
-            </ControlButton>
+        <div className="flex flex-wrap items-center gap-1.5 xl:max-w-[760px] xl:justify-end">
+          <div className="min-w-[142px]">
+            <SegmentedControl
+              ariaLabel="Cue timing mode"
+              variant="pill"
+              value={timingMode}
+              onChange={(value) => setTimingMode(value as CueTimingMode)}
+              options={[{ value: 'snap', label: 'Snap' }, { value: 'exact', label: 'Exact ms' }]}
+            />
           </div>
+          <ControlButton
+            className="min-h-[34px] px-2.5 text-[11px]"
+            variant="surface"
+            onClick={onOpenPendingChanges}
+            aria-label={metadataDraftLoadStatus === 'loaded' ? `Open Pending Changes, ${pendingMetadataCount} pending` : 'Open Pending Changes'}
+            title={metadataDraftLoadStatus === 'failed' ? 'Pending metadata state failed to load. Open to retry.' : 'Review saved metadata changes'}
+          >
+            {metadataDraftLoadStatus === 'loaded'
+              ? `Pending ${pendingMetadataCount}`
+              : metadataDraftLoadStatus === 'failed' ? 'Pending (!)' : 'Pending…'}
+          </ControlButton>
+          <ControlButton
+            className="min-h-[34px] w-[36px] px-0"
+            variant={showGrid ? 'surface' : 'ghost'}
+            onClick={() => setShowGrid((v) => !v)}
+            aria-label={showGrid ? 'Hide beat grid overlay' : 'Show beat grid overlay'}
+            aria-pressed={showGrid}
+            title={showGrid ? 'Hide beat grid overlay' : 'Show beat grid overlay'}
+          >
+            <Grid size={16} />
+          </ControlButton>
+          <ControlButton
+            className="min-h-[34px] px-2.5 text-[11px]"
+            variant="surface"
+            disabled={!autoCueReady}
+            onClick={() => setEditorMessage(onAutoCue())}
+            title={autoCueReady ? 'Auto Cue: generate deterministic A–H cue proposals' : "Auto Cue requires the selected track's exact beat grid and phrase data to finish loading"}
+          >
+            <Idea size={16} />
+            <span>Auto Cue</span>
+          </ControlButton>
+          <ControlButton
+            className="min-h-[34px] px-2.5 text-[11px]"
+            variant="ghost"
+            disabled={!dirty || !cueEditingAllowed || saving}
+            onClick={onDiscard}
+            title="Discard unsaved cue changes"
+          >
+            <RotateCcw size={15} />
+            <span>Discard</span>
+          </ControlButton>
+          <ControlButton
+            className="min-h-[34px] px-2.5 text-[11px]"
+            variant="surface"
+            disabled={(!dirty && !baselineProofRefreshNeeded) || !cueEditingAllowed || saving}
+            onClick={() => { void onSave().then(setEditorMessage); }}
+            title={saving
+              ? 'Saving cue changes…'
+              : baselineProofRefreshNeeded && !dirty
+                ? 'Refresh verified cue baseline proof for this legacy draft'
+                : 'Save cue changes'}
+          >
+            {saving ? <CircleDash size={16} className="animate-spin" /> : <Save size={16} />}
+            <span>Save</span>
+          </ControlButton>
+          <ControlButton
+            className="min-h-[34px] px-2.5 text-[11px]"
+            variant="surface"
+            disabled={!applyTrackAvailable || applying}
+            onClick={onApplyTrack}
+            title={applyTrackAvailable ? 'Apply only the selected track to local Rekordbox' : 'Apply Track requires a saved pending draft for the selected track'}
+          >
+            {applying ? <CircleDash size={16} className="animate-spin" /> : <Export size={16} />}
+            <span>Apply Track</span>
+          </ControlButton>
+          <ControlButton
+            className="min-h-[34px] px-3 text-[11px]"
+            variant="primary"
+            disabled={applyAllCount === 0 || applying}
+            onClick={onApplyAll}
+            title={applyAllCount > 0 ? `Apply all ${applyAllCount} saved track changes to local Rekordbox` : 'Apply All requires at least one saved draft that needs apply'}
+          >
+            {applying ? <CircleDash size={16} className="animate-spin" /> : <Export size={16} />}
+            <span>Apply All ({applyAllCount})</span>
+          </ControlButton>
         </div>
       </div>
 
@@ -1329,27 +1346,23 @@ function CueWaveformPanel({
         </div>
       )}
 
-      <div className="px-11 pb-2 pt-2">
+      <div className="px-4 pb-3 pt-3 lg:px-5">
         <div className="overflow-x-auto">
-          <div className="min-w-[980px]">
-            <div className="relative">
-              {/* Right border for the label column — single nav-bar border */}
-              <div className={cn('pointer-events-none absolute top-0 bottom-0 z-10 border-r border-[#1e2a36] transition-[left] duration-200', labelsCollapsed ? 'left-[48px]' : 'left-[150px]')} />
-              {/* Unified content column background */}
-              <div className={cn('pointer-events-none absolute inset-y-0 right-0 rounded-[8px] border border-[#26313a] bg-[#0d1318] transition-[left] duration-200', labelsCollapsed ? 'left-[calc(48px+29px)]' : 'left-[calc(150px+29px)]')} />
-              {/* Full-column click target — clicking anywhere in the label column collapses/expands */}
+          <div className="min-w-[920px]">
+            <div className="relative overflow-hidden rounded-[8px] border border-[#26313a] bg-[#0d1318]">
+              {/* Full-column click target keeps the useful collapse behavior without a dead gutter. */}
               <button
                 type="button"
                 onClick={() => setLabelsCollapsed((v) => !v)}
-                className={cn('absolute top-0 bottom-0 left-0 z-20 cursor-pointer transition-[width] duration-200', labelsCollapsed ? 'w-[48px]' : 'w-[150px]')}
+                className={cn('absolute bottom-0 left-0 top-0 z-20 cursor-pointer transition-[width] duration-200', labelsCollapsed ? 'w-[48px]' : 'w-[150px]')}
                 aria-label={labelsCollapsed ? 'Expand timeline lanes' : 'Collapse timeline lanes'}
               />
-            <div className={cn('grid gap-x-[29px] gap-y-0 transition-[grid-template-columns] duration-200', labelsCollapsed ? 'grid-cols-[48px_minmax(0,1fr)]' : 'grid-cols-[150px_minmax(0,1fr)]')}>
-              <div className="h-[40px] border-b border-[#1e2a30]">
-                <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.25} />} label="Cues" color="#fb923c" collapsed={labelsCollapsed} />
+            <div className={cn('grid gap-0 transition-[grid-template-columns] duration-200', labelsCollapsed ? 'grid-cols-[48px_minmax(0,1fr)]' : 'grid-cols-[150px_minmax(0,1fr)]')}>
+              <div className="h-[40px] border-b border-r border-[#1e2a30] bg-[#0a0f14]">
+                <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.25} />} label="Cue Points" color="#fb923c" collapsed={labelsCollapsed} />
               </div>
               <div className="h-[40px] overflow-hidden border-b border-[#1e2a30]">
-                <div className="relative mx-5 h-full overflow-visible">
+                <div className="relative h-full overflow-visible px-3">
                 {cueLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading cue points…</div>
                 ) : cueLoadStatus === 'failed' ? (
@@ -1454,11 +1467,11 @@ function CueWaveformPanel({
                 </div>
               </div>
 
-              <div className="h-[40px] border-b border-[#1e2a30]">
-                <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Sections" color="#60a5fa" collapsed={labelsCollapsed} />
+              <div className="h-[40px] border-b border-r border-[#1e2a30] bg-[#0a0f14]">
+                <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Track Sections" color="#60a5fa" collapsed={labelsCollapsed} />
               </div>
               <div className="h-[40px] border-b border-[#1e2a30]">
-                <div className="relative mx-5 h-full overflow-hidden">
+                <div className="relative h-full overflow-hidden px-3">
                 {phraseLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
                 ) : sections.length === 0 ? (
@@ -1500,13 +1513,13 @@ function CueWaveformPanel({
                 </div>
               </div>
 
-              <div className="h-[88px] border-b border-[#1e2a30]">
+              <div className="h-[88px] border-b border-r border-[#1e2a30] bg-[#0a0f14]">
                 <TimelineLaneLabel icon={<AudioWaveform size={20} strokeWidth={2.25} />} label="Waveform" color="#5dcfff" collapsed={labelsCollapsed} />
               </div>
               <div className="h-[88px] border-b border-[#1e2a30]">
               <div
                 ref={waveformDivRef}
-                className="relative mx-5 h-full cursor-crosshair overflow-hidden"
+                className="relative h-full cursor-crosshair overflow-hidden px-3"
                 onContextMenu={handleWaveformContextMenu}
                 title={timingMode === 'snap' ? 'Right-click to add a beat-snapped cue' : 'Right-click to add an exact millisecond cue'}
               >
@@ -1519,7 +1532,7 @@ function CueWaveformPanel({
                         state={waveformState}
                         height={86}
                         variant="detail"
-                        appearance={theme === 'cdj' ? 'dropdex' : 'rekordbox'}
+                        appearance="rekordbox"
                         renderMode="area"
                         showCenterLine={false}
                         surface={false}
@@ -1609,11 +1622,11 @@ function CueWaveformPanel({
               </div>
               </div>
 
-              <div className="h-[40px]">
+              <div className="h-[40px] border-r border-[#1e2a30] bg-[#0a0f14]">
                 <TimelineLaneLabel icon={<Grip size={19} strokeWidth={2.55} />} label="Beat Grid" color="#4ade80" collapsed={labelsCollapsed} />
               </div>
               <div className="h-[40px]">
-                <div className="relative mx-5 h-full overflow-hidden">
+                <div className="relative h-full overflow-hidden px-3">
                 {beatGridLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading beat grid…</div>
                 ) : durationMs == null || rulerTicks.length === 0 ? (
@@ -3738,7 +3751,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 pb-10">
+    <div className="flex w-full flex-col gap-4 pb-10">
       <PendingMetadataChangesReview
         open={pendingMetadataReviewOpen}
         pendingCount={pendingMetadataCount}
