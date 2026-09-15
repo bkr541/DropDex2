@@ -9,6 +9,13 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+// Drain enough microtask ticks for a resolved gate to propagate through the
+// promise chain: runBatch continuation → batchPromise.then → batchPromise.finally
+// → schedule() → next runBatch starts.
+async function flush() {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+}
+
 describe('cancellable upload queue', () => {
   it('completes every batch normally without cancellation bookkeeping', async () => {
     const controller = new AbortController();
@@ -153,5 +160,94 @@ describe('cancellable upload queue', () => {
 
     const result = await queue;
     expect(result.snapshot.entries.filter((entry) => entry.state === 'cancelled-before-start')).toHaveLength(999);
+  });
+
+  it('never starts more than 2 batches simultaneously (production concurrency ceiling)', async () => {
+    // 4 batches, each held open by a deferred promise so we can observe concurrency.
+    const controller = new AbortController();
+    const runtime = new UploadQueueRuntime(4);
+    const gates = [deferred<number>(), deferred<number>(), deferred<number>(), deferred<number>()];
+    const active: number[] = [];
+    let peakConcurrent = 0;
+
+    const queue = runCancellableUploadQueue({
+      batches: [0, 1, 2, 3],
+      maxConcurrent: 2,
+      signal: controller.signal,
+      runtime,
+      isLocallyAborted: () => runtime.locallyAborted,
+      isAbortError,
+      runBatch: async (batch) => {
+        active.push(batch);
+        peakConcurrent = Math.max(peakConcurrent, active.length);
+        const result = await gates[batch].promise;
+        active.splice(active.indexOf(batch), 1);
+        return result;
+      },
+    });
+
+    // First tick: exactly 2 batches should start.
+    await flush();
+    expect(active).toHaveLength(2);
+    expect(peakConcurrent).toBe(2);
+
+    // Completing one active batch frees a slot; the 3rd batch starts.
+    gates[0].resolve(0);
+    await flush();
+    expect(active.length).toBeLessThanOrEqual(2);
+    expect(active).toContain(2);
+
+    // Completing another batch frees the last slot; the 4th batch starts.
+    gates[1].resolve(1);
+    await flush();
+    expect(active.length).toBeLessThanOrEqual(2);
+    expect(active).toContain(3);
+
+    // Settle remaining batches.
+    gates[2].resolve(2);
+    gates[3].resolve(3);
+    const result = await queue;
+
+    expect(peakConcurrent).toBe(2);
+    expect(result.cancelled).toBe(false);
+    expect(result.snapshot.entries.every((entry) => entry.state === 'completed')).toBe(true);
+  });
+
+  it('a failed batch releases its active slot so the next queued batch can start', async () => {
+    const controller = new AbortController();
+    const runtime = new UploadQueueRuntime(3);
+    const gates = [deferred<number>(), deferred<number>(), deferred<number>()];
+    const started: number[] = [];
+
+    const queue = runCancellableUploadQueue({
+      batches: [0, 1, 2],
+      maxConcurrent: 2,
+      signal: controller.signal,
+      runtime,
+      isLocallyAborted: () => runtime.locallyAborted,
+      isAbortError,
+      runBatch: async (batch) => {
+        started.push(batch);
+        return gates[batch].promise;
+      },
+    });
+
+    // Batches 0 and 1 start; batch 2 is queued.
+    await flush();
+    expect(started).toEqual([0, 1]);
+
+    // Batch 0 fails with a non-abort error; its slot should be released.
+    gates[0].reject(new Error('network failure'));
+    await flush();
+
+    // Batch 2 must now start.
+    expect(started).toContain(2);
+
+    gates[1].resolve(1);
+    gates[2].resolve(2);
+    const result = await queue;
+    expect(result.snapshot.entries[0].state).toBe('failed');
+    expect(result.snapshot.entries[1].state).toBe('completed');
+    expect(result.snapshot.entries[2].state).toBe('completed');
   });
 });

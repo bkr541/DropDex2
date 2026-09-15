@@ -68,7 +68,7 @@ interface Props {
 
 const BATCH_SIZE = 50;
 const MAX_BYTES_PER_BATCH = 50 * 1024 * 1024; // 50 MB
-const MAX_CONCURRENT = 3;
+const MAX_CONCURRENT = 2;
 const FILE_RETRY_DELAYS_MS = [500, 1000];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
