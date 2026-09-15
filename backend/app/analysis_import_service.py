@@ -1515,7 +1515,7 @@ async def _process_analysis_batch_inner(
     file_metadata: str | None = None,
 ) -> BatchUploadResponse:
     from dropdex_importer.analysis_paths import is_safe_path, normalize_anlz_path
-    from .analysis_performance import ImportMetrics, merge_import_metrics
+    from .analysis_performance import ImportMetrics, checkpoint_import_metrics
     from .analysis_staging import build_staging_key, staged_file_exists, write_staged_bytes
 
     if len(files) > settings.max_analysis_files_per_batch:
@@ -1787,7 +1787,7 @@ async def _process_analysis_batch_inner(
 
     metrics.increment("asset_metadata_write_batches", 1 if rows_to_write else 0)
     metrics.stop("file_transfer")
-    await run_in_threadpool(merge_import_metrics, sb, import_id, metrics)
+    await run_in_threadpool(checkpoint_import_metrics, sb, import_id, metrics)
 
     return BatchUploadResponse(
         import_id=import_id,
@@ -3136,6 +3136,10 @@ async def complete_analysis_import(
     # Upload dispatch is complete before this endpoint is called. Release the
     # cached path plan; a later retry can rebuild it from persisted manifest state.
     _invalidate_path_map_cache(import_id)
+    # Force-flush any buffered Stage 2 upload telemetry before Stage 3 begins.
+    # This is best-effort: a failure is logged but never prevents parsing.
+    from .analysis_performance import flush_import_metrics
+    await run_in_threadpool(flush_import_metrics, sb, import_id)
     if client_metrics:
         from .analysis_performance import merge_import_metrics, sanitize_client_import_metrics
 
