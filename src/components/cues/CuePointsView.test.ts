@@ -522,3 +522,42 @@ describe('Cue Points Stage 3 audio dock and playhead', () => {
     expect(source).toContain('viewEndMs={effectiveViewEnd}');
   });
 });
+
+describe('Cue Points Stage 5 integrated hardening', () => {
+  it('fails the Audio Dock closed while there is no track or playback is resolving/loading/erroring', () => {
+    expect(source).toContain("const transportBlocked = !hasTransportTrack || loading || status === 'error';");
+    expect(source).toContain('previousDisabled={transportBlocked || previousIndex == null}');
+    expect(source).toContain('playDisabled={transportBlocked}');
+    expect(source).toContain('nextDisabled={transportBlocked || nextIndex == null}');
+    expect(source).toContain('disabled={!activeTrack || transportBlocked}');
+    expect(source).toContain('if (!target || transportBlocked) return;');
+  });
+
+  it('makes the custom BPM range filter keyboard accessible and prevents hover-only pointer drift', () => {
+    expect(source).toContain('if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;');
+    expect(source).toContain('role="slider"');
+    expect(source).toContain('aria-label="Minimum BPM"');
+    expect(source).toContain('aria-label="Maximum BPM"');
+    expect(source).toContain("onKeyDown={(event) => handleSliderKeyDown(event, 'minimum')}");
+    expect(source).toContain("onKeyDown={(event) => handleSliderKeyDown(event, 'maximum')}");
+    expect(source).toContain("event.key === 'PageUp'");
+    expect(source).toContain("event.key === 'Home'");
+  });
+
+  it('restores focus and supports directional keyboard navigation in custom filter dropdowns', () => {
+    expect(source).toContain('const closeAndRestoreFocus = useCallback(() => {');
+    expect(source).toContain('requestAnimationFrame(() => triggerRef.current?.focus())');
+    expect(source).toContain('aria-label={`${label} filter options`}');
+    expect(source).toContain('onKeyDown={handleListboxKeyDown}');
+    expect(source).toContain('aria-label={`Search ${label} filter options`}');
+  });
+
+  it('gives the Apply menu deterministic focus entry, Escape restoration, and arrow-key movement', () => {
+    expect(source).toContain('const closeApplyMenuAndRestoreFocus = useCallback(() => {');
+    expect(source).toContain("querySelector<HTMLButtonElement>('[role=\"menuitem\"]:not(:disabled)')?.focus()");
+    expect(source).toContain('onKeyDown={handleApplyMenuKeyDown}');
+    expect(source).toContain('closeApplyMenuAndRestoreFocus(); void onSave().then(setEditorMessage);');
+    expect(source).toContain('closeApplyMenuAndRestoreFocus(); onApplyTrack();');
+    expect(source).toContain('closeApplyMenuAndRestoreFocus(); onDiscard();');
+  });
+});

@@ -410,13 +410,38 @@ function CueBpmRangeSlider({
   }
 
   function handleLoPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
     const val = valFromClientX(e.clientX);
-    onChange([Math.min(val, hi - 1), hi]);
+    onChange([Math.min(val, hi), hi]);
   }
 
   function handleHiPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
     const val = valFromClientX(e.clientX);
-    onChange([lo, Math.max(val, lo + 1)]);
+    onChange([lo, Math.max(val, lo)]);
+  }
+
+  function handleSliderKeyDown(
+    event: React.KeyboardEvent<HTMLDivElement>,
+    kind: 'minimum' | 'maximum',
+  ) {
+    const current = kind === 'minimum' ? lo : hi;
+    const minimum = kind === 'minimum' ? bMin : lo;
+    const maximum = kind === 'minimum' ? hi : bMax;
+    let next: number | null = null;
+
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next = current - 1;
+    else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next = current + 1;
+    else if (event.key === 'PageDown') next = current - 5;
+    else if (event.key === 'PageUp') next = current + 5;
+    else if (event.key === 'Home') next = minimum;
+    else if (event.key === 'End') next = maximum;
+
+    if (next == null) return;
+    event.preventDefault();
+    const clamped = Math.max(minimum, Math.min(maximum, next));
+    if (kind === 'minimum') onChange([clamped, hi]);
+    else onChange([lo, clamped]);
   }
 
   return (
@@ -442,18 +467,40 @@ function CueBpmRangeSlider({
             style={{ left: `${loPct}%`, right: `${100 - hiPct}%` }}
           />
           <div
-            className="absolute bottom-[5px] translate-y-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-[var(--color-card)] border border-primary cursor-grab active:cursor-grabbing touch-none flex items-center justify-center"
+            role="slider"
+            tabIndex={0}
+            aria-label="Minimum BPM"
+            aria-valuemin={bMin}
+            aria-valuemax={hi}
+            aria-valuenow={lo}
+            aria-valuetext={`${lo} BPM`}
+            className="absolute bottom-[5px] translate-y-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-[var(--color-card)] border border-primary cursor-grab active:cursor-grabbing touch-none flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             style={{ left: `${loPct}%` }}
-            onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              handleLoPointerMove(e);
+            }}
             onPointerMove={handleLoPointerMove}
+            onKeyDown={(event) => handleSliderKeyDown(event, 'minimum')}
           >
             <span className="text-[8px] font-black text-foreground tabular-nums leading-none pointer-events-none">{lo}</span>
           </div>
           <div
-            className="absolute bottom-[5px] translate-y-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-[var(--color-card)] border border-primary cursor-grab active:cursor-grabbing touch-none flex items-center justify-center"
+            role="slider"
+            tabIndex={0}
+            aria-label="Maximum BPM"
+            aria-valuemin={lo}
+            aria-valuemax={bMax}
+            aria-valuenow={hi}
+            aria-valuetext={`${hi} BPM`}
+            className="absolute bottom-[5px] translate-y-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-[var(--color-card)] border border-primary cursor-grab active:cursor-grabbing touch-none flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             style={{ left: `${hiPct}%` }}
-            onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              handleHiPointerMove(e);
+            }}
             onPointerMove={handleHiPointerMove}
+            onKeyDown={(event) => handleSliderKeyDown(event, 'maximum')}
           >
             <span className="text-[8px] font-black text-foreground tabular-nums leading-none pointer-events-none">{hi}</span>
           </div>
@@ -479,6 +526,8 @@ function CueFilterDropdown({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listboxRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const selectedLabel = options.find((o) => o.value === value)?.label ?? options[0]?.label ?? value;
 
@@ -486,29 +535,60 @@ function CueFilterDropdown({
     ? options.filter((o) => o.label.toLowerCase().includes(search.trim().toLowerCase()))
     : options;
 
+  const closeAndRestoreFocus = useCallback(() => {
+    setOpen(false);
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  }, []);
+
   useEffect(() => {
     if (!open) { setSearch(''); return; }
-    if (searchable) setTimeout(() => searchRef.current?.focus(), 0);
+    const focusTimer = window.setTimeout(() => {
+      if (searchable) searchRef.current?.focus();
+      else {
+        const selected = listboxRef.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]');
+        const first = listboxRef.current?.querySelector<HTMLElement>('[role="option"]');
+        (selected ?? first)?.focus();
+      }
+    }, 0);
     function onPointerDown(e: PointerEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeAndRestoreFocus();
+      }
     }
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
     return () => {
+      window.clearTimeout(focusTimer);
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [open, searchable]);
+  }, [closeAndRestoreFocus, open, searchable]);
+
+  function handleListboxKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const optionElements = [...(listboxRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
+    if (optionElements.length === 0) return;
+    event.preventDefault();
+    const currentIndex = optionElements.indexOf(document.activeElement as HTMLElement);
+    let nextIndex = currentIndex;
+    if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = optionElements.length - 1;
+    else if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : Math.min(optionElements.length - 1, currentIndex + 1);
+    else if (event.key === 'ArrowUp') nextIndex = currentIndex < 0 ? optionElements.length - 1 : Math.max(0, currentIndex - 1);
+    optionElements[nextIndex]?.focus();
+  }
 
   return (
     <div ref={ref} className="relative min-w-[130px]">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full text-left pb-2 border-b border-white/15 hover:border-white/35 transition-colors focus-visible:outline-none"
+        className="w-full text-left pb-2 border-b border-white/15 hover:border-white/35 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -524,7 +604,10 @@ function CueFilterDropdown({
       </button>
       {open && (
         <div
+          ref={listboxRef}
           role="listbox"
+          aria-label={`${label} filter options`}
+          onKeyDown={handleListboxKeyDown}
           className="absolute top-full left-0 mt-1.5 z-50 min-w-full glass rounded-xl border border-[var(--color-border-subtle)] overflow-y-auto overscroll-contain shadow-2xl max-h-[320px]"
         >
           {searchable && (
@@ -536,6 +619,7 @@ function CueFilterDropdown({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search…"
+                aria-label={`Search ${label} filter options`}
                 className="dd-text-control dd-text-control--with-start-icon"
                 style={{ minHeight: 34, fontSize: 13 }}
                 onClick={(e) => e.stopPropagation()}
@@ -550,7 +634,7 @@ function CueFilterDropdown({
               type="button"
               role="option"
               aria-selected={value === opt.value}
-              onClick={() => { onChange(opt.value); setOpen(false); }}
+              onClick={() => { onChange(opt.value); closeAndRestoreFocus(); }}
               className={cn(
                 'w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-white/[0.06]',
                 value === opt.value ? 'text-foreground' : 'font-medium text-muted-foreground',
@@ -674,22 +758,24 @@ function CuePointsAudioDock({
   const fallbackCurrentTime = playbackProgress != null && durationSeconds > 0 ? playbackProgress * durationSeconds : 0;
   const currentSeconds = audio && Number.isFinite(audio.currentTime) ? audio.currentTime : fallbackCurrentTime;
   const loading = status === 'resolving' || status === 'loading';
-  const seekable = Boolean(activeTrack && durationSeconds > 0 && status !== 'error' && !loading);
+  const hasTransportTrack = Boolean(activeTrack ?? selectedTrack);
+  const transportBlocked = !hasTransportTrack || loading || status === 'error';
+  const seekable = Boolean(activeTrack && durationSeconds > 0 && !transportBlocked);
   const playing = Boolean(activeTrack && playIntent && status !== 'error');
 
   const playAdjacent = useCallback((index: number | null) => {
-    if (index == null) return;
+    if (transportBlocked || index == null) return;
     const destination = orderedTracks[index];
     if (!destination) return;
     onSelectTrack(destination);
     void playTrack(destination);
-  }, [onSelectTrack, orderedTracks, playTrack]);
+  }, [onSelectTrack, orderedTracks, playTrack, transportBlocked]);
 
   const handleTogglePlay = useCallback(() => {
     const target = activeTrack ?? selectedTrack;
-    if (!target || loading) return;
+    if (!target || transportBlocked) return;
     void toggleTrack(target);
-  }, [activeTrack, loading, selectedTrack, toggleTrack]);
+  }, [activeTrack, selectedTrack, toggleTrack, transportBlocked]);
 
   const handleSeekBy = useCallback((deltaSeconds: number) => {
     if (!seekable) return;
@@ -736,11 +822,11 @@ function CuePointsAudioDock({
         onTogglePlay={handleTogglePlay}
         onForward={() => handleSeekBy(10)}
         onNext={() => playAdjacent(nextIndex)}
-        previousDisabled={previousIndex == null}
+        previousDisabled={transportBlocked || previousIndex == null}
         rewindDisabled={!seekable}
-        playDisabled={!displayTrack || loading}
+        playDisabled={transportBlocked}
         forwardDisabled={!seekable}
-        nextDisabled={nextIndex == null}
+        nextDisabled={transportBlocked || nextIndex == null}
       />
 
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -768,7 +854,7 @@ function CuePointsAudioDock({
           type="button"
           aria-label={repeat ? 'Disable repeat' : 'Repeat current track'}
           aria-pressed={repeat}
-          disabled={!activeTrack || status === 'error'}
+          disabled={!activeTrack || transportBlocked}
           onClick={toggleRepeat}
           className={cn(
             'flex h-8 w-8 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-35',
@@ -1265,21 +1351,49 @@ function CueWaveformPanel({
     if (selectedCueId && !cues.some((cue) => cue.editorId === selectedCueId)) setSelectedCueId(null);
   }, [cues, selectedCueId]);
 
+  const closeApplyMenuAndRestoreFocus = useCallback(() => {
+    setApplyMenuOpen(false);
+    requestAnimationFrame(() => {
+      applyMenuRef.current?.querySelector<HTMLButtonElement>('[aria-label="Open Apply menu"]')?.focus();
+    });
+  }, []);
+
   useEffect(() => {
     if (!applyMenuOpen) return;
+    const focusFrame = requestAnimationFrame(() => {
+      applyMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
+    });
     const handlePointerDown = (event: PointerEvent) => {
       if (!applyMenuRef.current?.contains(event.target as Node)) setApplyMenuOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setApplyMenuOpen(false);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeApplyMenuAndRestoreFocus();
+      }
     };
     document.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
+      cancelAnimationFrame(focusFrame);
       document.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [applyMenuOpen]);
+  }, [applyMenuOpen, closeApplyMenuAndRestoreFocus]);
+
+  function handleApplyMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const items = [...(applyMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])];
+    if (items.length === 0) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    let nextIndex = currentIndex;
+    if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = items.length - 1;
+    else if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;
+    else if (event.key === 'ArrowUp') nextIndex = currentIndex < 0 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length;
+    items[nextIndex]?.focus();
+  }
 
 
   // Keep viewRef in sync so wheel handler always reads the latest view without stale closures
@@ -1609,6 +1723,7 @@ function CueWaveformPanel({
               <div
                 role="menu"
                 aria-label="Cue draft and Apply actions"
+                onKeyDown={handleApplyMenuKeyDown}
                 className="absolute right-0 top-[calc(100%+6px)] z-[90] min-w-[220px] overflow-hidden rounded-lg border border-[#34414b] bg-[#11181e] p-1.5 shadow-2xl"
               >
                 <button
@@ -1621,7 +1736,7 @@ function CueWaveformPanel({
                       ? 'Refresh verified cue baseline proof for this legacy draft'
                       : 'Save cue changes as a draft'}
                   className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-foreground transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => { setApplyMenuOpen(false); void onSave().then(setEditorMessage); }}
+                  onClick={() => { closeApplyMenuAndRestoreFocus(); void onSave().then(setEditorMessage); }}
                 >
                   {saving ? <CircleDash size={15} className="animate-spin" /> : <Save size={15} />}
                   <span>Save Draft</span>
@@ -1632,7 +1747,7 @@ function CueWaveformPanel({
                   disabled={applyTrackDisabled}
                   title={applyTrackAvailable ? 'Apply only the selected track to local Rekordbox' : 'Apply Track requires a saved pending draft for the selected track'}
                   className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-foreground transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => { setApplyMenuOpen(false); onApplyTrack(); }}
+                  onClick={() => { closeApplyMenuAndRestoreFocus(); onApplyTrack(); }}
                 >
                   <Export size={15} />
                   <span>Apply Track</span>
@@ -1643,7 +1758,7 @@ function CueWaveformPanel({
                   disabled={applyAllDisabled}
                   title={applyAllCount > 0 ? `Apply all ${applyAllCount} saved track changes to local Rekordbox` : 'Apply All requires at least one saved draft that needs apply'}
                   className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-foreground transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => { setApplyMenuOpen(false); onApplyAll(); }}
+                  onClick={() => { closeApplyMenuAndRestoreFocus(); onApplyAll(); }}
                 >
                   <Export size={15} />
                   <span>Apply All ({applyAllCount})</span>
@@ -1655,7 +1770,7 @@ function CueWaveformPanel({
                   disabled={discardDisabled}
                   title="Discard unsaved cue changes and restore the saved/imported baseline"
                   className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-amber-100 transition-colors hover:bg-amber-300/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => { setApplyMenuOpen(false); onDiscard(); }}
+                  onClick={() => { closeApplyMenuAndRestoreFocus(); onDiscard(); }}
                 >
                   <RotateCcw size={15} />
                   <span>Discard Changes</span>
