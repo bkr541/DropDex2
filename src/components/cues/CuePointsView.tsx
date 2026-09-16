@@ -4731,7 +4731,23 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                               <p className={cn('truncate text-sm font-bold leading-tight', selected && 'text-primary')}>{track.title}</p>
                               <p className="truncate text-[10px] text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
                             </div>
-                            <div className="flex-1 min-w-[80px]">
+                            <div className="flex-1 min-w-[80px] flex flex-col gap-1">
+                              <div className="flex items-center gap-[3px] h-2" aria-hidden="true">
+                                {cueState?.status === 'loaded-with-cues' && [...cueState.cues]
+                                  .sort((a, b) => {
+                                    if (a.cue_family === 'hot' && b.cue_family === 'hot') return (a.hot_cue_slot ?? 0) - (b.hot_cue_slot ?? 0);
+                                    if (a.cue_family === 'hot') return -1;
+                                    if (b.cue_family === 'hot') return 1;
+                                    return 0;
+                                  })
+                                  .map((cue) => (
+                                    <span
+                                      key={cue.id}
+                                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                                      style={{ backgroundColor: cue.color_hex ?? (cue.cue_family === 'hot' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.25)') }}
+                                    />
+                                  ))}
+                              </div>
                               <RekordboxPreviewWaveform
                                 state={getWaveformState(track.id)}
                                 height={26}
