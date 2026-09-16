@@ -3379,6 +3379,12 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
   }, [importId, userId]);
 
   useEffect(() => {
+    if (selectedTrackId == null && orderedVisibleTracks.length > 0) {
+      setSelectedTrack(orderedVisibleTracks[0]);
+    }
+  }, [orderedVisibleTracks, selectedTrackId]);
+
+  useEffect(() => {
     let cancelled = false;
     const requestId = ++cueDraftLoadRequestRef.current;
     const requestedTrack = selectedTrack;
@@ -4468,8 +4474,8 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       )}
 
       <section className="cue-browser border-y border-[var(--color-border-faint)]" style={{ overflow: 'clip' }}>
-        <div ref={filterRowRef} className="cue-browser__chrome sticky z-20 border-b border-[var(--color-border-faint)] px-4 py-2.5 md:px-5" style={{ top: waveformPanelHeight }}>
-          <div className="flex flex-col gap-3">
+        <div ref={filterRowRef} className="cue-browser__chrome sticky z-20 border-b border-[var(--color-border-faint)]" style={{ top: waveformPanelHeight }}>
+          <div className="flex flex-col">
             <div className="cue-browser__transport-row w-full">
               <CuePointsAudioDock
                 selectedTrack={selectedTrack}
@@ -4478,7 +4484,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
               />
             </div>
 
-            <div className="cue-browser__filters flex flex-wrap items-end gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] pt-2.5" data-testid="cue-browser-filters">
+            <div className="cue-browser__filters flex flex-wrap items-end gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] px-4 py-2.5 md:px-5" data-testid="cue-browser-filters">
               <div data-testid="cue-browser-source-tabs" className="min-w-[190px] self-stretch flex">
                 <TabNavigation
                   ariaLabel="Cue Points browser source"
@@ -4636,28 +4642,21 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           </div>
         ) : (
           <>
-            <div className="overflow-y-auto overflow-x-auto scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
-              <table className="cue-browser__table w-full min-w-[1220px] border-collapse text-left" data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
+            <div className="overflow-y-auto overflow-x-hidden scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
+              <table className="cue-browser__table w-full min-w-[900px] border-collapse text-left" data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
                 <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
                   <tr className="border-b border-[var(--color-border-faint)]">
-                    <th className="sticky top-0 z-10 w-[54px] bg-[var(--color-background)] px-3 py-2 text-center">#</th>
-                    {([
-                      { col: 'title', label: 'Title', cls: 'px-3 py-2 min-w-[260px]' },
-                      { col: 'artist', label: 'Artist', cls: 'px-3 py-2 min-w-[170px]' },
-                    ] as const).map(({ col, label, cls }) => (
-                      <th key={col} className={cn(cls, 'sticky top-0 z-10 bg-[var(--color-background)] select-none')}>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-                          aria-label={`Sort by ${label}`}
-                          onClick={() => handleColClick(col)}
-                        >
-                          {label}
-                          <span className={cn('text-primary', sortCol !== col && 'invisible')}>{sortDir === 'asc' ? '↑' : '↓'}</span>
-                        </button>
-                      </th>
-                    ))}
-                    <th className="sticky top-0 z-10 w-[230px] bg-[var(--color-background)] px-3 py-2">Waveform</th>
+                    <th className="sticky top-0 z-10 bg-[var(--color-background)] px-3 py-2 select-none">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                        aria-label="Sort by Track"
+                        onClick={() => handleColClick('title')}
+                      >
+                        Track
+                        <span className={cn('text-primary', sortCol !== 'title' && 'invisible')}>{sortDir === 'asc' ? '↑' : '↓'}</span>
+                      </button>
+                    </th>
                     {([
                       { col: 'bpm', label: 'BPM', cls: 'px-3 py-2' },
                       { col: 'key', label: 'Key', cls: 'px-3 py-2' },
@@ -4709,10 +4708,10 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                           selected ? 'cue-browser__row--selected' : 'hover:bg-[var(--color-surface-hover)]',
                         )}
                       >
-                        <td className="w-[54px] px-3 py-1.5 text-center">
-                          <div className="flex items-center justify-center gap-2">
+                        <td className="px-3 py-1.5">
+                          <div className="group flex min-w-0 items-center gap-2.5">
                             <span className={cn(
-                              'h-2 w-2 shrink-0 rounded-full',
+                              'h-1.5 w-1.5 shrink-0 rounded-full',
                               analysisReady(track)
                                 ? 'bg-emerald-400'
                                 : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required'
@@ -4721,36 +4720,28 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                                     ? 'bg-muted-foreground/40'
                                     : 'bg-amber-400',
                             )} aria-hidden="true" />
-                            <span className="min-w-5 font-mono text-[11px] tabular-nums text-muted-foreground">{rowIndex + 1}</span>
-                          </div>
-                        </td>
-                        <td className="min-w-[260px] px-3 py-1.5">
-                          <div className="group flex min-w-0 items-center gap-2.5">
-                            <span className={cn('h-9 w-1 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
-                            <CueTrackPlayButton track={track} />
+                            <span className={cn('h-8 w-0.5 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
                             <Artwork
                               src={track.artwork_path}
                               alt={`Artwork for ${track.title}`}
                               fallbackTitle="No artwork"
                               className="h-9 w-9 shrink-0 rounded-[6px]"
                             />
-                            <p className={cn('min-w-0 truncate text-sm font-bold', selected && 'text-primary')}>{track.title}</p>
-                          </div>
-                        </td>
-                        <td className="min-w-[170px] px-3 py-1.5 text-xs font-semibold text-muted-foreground">
-                          <span className="block truncate">{track.artist ?? 'Artist Not Available'}</span>
-                        </td>
-                        <td className="w-[230px] px-3 py-1.5">
-                          <div className="h-[26px] w-full opacity-55 grayscale">
-                            <RekordboxPreviewWaveform
-                              state={getWaveformState(track.id)}
-                              height={26}
-                              variant="compact"
-                              appearance="dropdex"
-                              showCenterLine={false}
-                              surface={false}
-                              ariaLabel={`Waveform for ${track.title}`}
-                            />
+                            <div className="w-[346px] shrink-0 min-w-0">
+                              <p className={cn('truncate text-sm font-bold leading-tight', selected && 'text-primary')}>{track.title}</p>
+                              <p className="truncate text-[10px] text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
+                            </div>
+                            <div className="flex-1 min-w-[80px]">
+                              <RekordboxPreviewWaveform
+                                state={getWaveformState(track.id)}
+                                height={26}
+                                variant="compact"
+                                appearance="dropdex"
+                                showCenterLine={false}
+                                surface={false}
+                                ariaLabel={`Waveform for ${track.title}`}
+                              />
+                            </div>
                           </div>
                         </td>
                         <td className="px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>

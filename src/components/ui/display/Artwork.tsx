@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { MusicAdd } from '@carbon/icons-react';
 import { cn } from '../../../lib/utils';
 import '../dropdex-display.css';
+
+const DEFAULT_TRACK_ARTWORK = '/artwork/defaulttrack.svg';
 
 export type ArtworkAspect = 'square' | 'video' | 'portrait';
 export type ArtworkFit = 'cover' | 'contain';
@@ -51,14 +52,20 @@ export function Artwork({
           className={cn('dd-artwork__image', `dd-artwork__image--${fit}`, imageClassName)}
           onError={() => setFailed(true)}
         />
-      ) : (
+      ) : fallbackIcon ? (
         <div className="dd-artwork__fallback" role="img" aria-label={alt}>
           <span className="dd-artwork__fallback-icon" aria-hidden="true">
-            {fallbackIcon ?? <MusicAdd size={30} />}
+            {fallbackIcon}
           </span>
           {fallbackTitle && <strong>{fallbackTitle}</strong>}
           {fallbackDescription && <small>{fallbackDescription}</small>}
         </div>
+      ) : (
+        <img
+          src={DEFAULT_TRACK_ARTWORK}
+          alt={alt}
+          className={cn('dd-artwork__image dd-artwork__image--cover', imageClassName)}
+        />
       )}
       {overlay != null && <div className="dd-artwork__overlay">{overlay}</div>}
     </div>
