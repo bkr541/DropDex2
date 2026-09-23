@@ -1167,7 +1167,7 @@ export function LibraryView({
       .from('rekordbox_tracks')
       .select('*')
       .eq('rekordbox_import_id', importId)
-      .not('analysis_parse_status', 'in', '("completed","reused")')
+      .or('analysis_parse_status.is.null,analysis_parse_status.not.in.("completed","reused")')
       .order('title')
       .then(({ data }) => {
         setIncompleteTracks((data as RekordboxTrack[]) ?? []);

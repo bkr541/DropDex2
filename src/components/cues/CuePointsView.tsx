@@ -4732,21 +4732,24 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                               <p className="truncate text-[10px] text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
                             </div>
                             <div className="flex-1 min-w-[80px] flex flex-col gap-1">
-                              <div className="flex items-center gap-[3px] h-2" aria-hidden="true">
-                                {cueState?.status === 'loaded-with-cues' && [...cueState.cues]
-                                  .sort((a, b) => {
-                                    if (a.cue_family === 'hot' && b.cue_family === 'hot') return (a.hot_cue_slot ?? 0) - (b.hot_cue_slot ?? 0);
-                                    if (a.cue_family === 'hot') return -1;
-                                    if (b.cue_family === 'hot') return 1;
-                                    return 0;
-                                  })
-                                  .map((cue) => (
-                                    <span
-                                      key={cue.id}
-                                      className="h-1.5 w-1.5 shrink-0 rounded-full"
-                                      style={{ backgroundColor: cue.color_hex ?? (cue.cue_family === 'hot' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.25)') }}
-                                    />
-                                  ))}
+                              <div className="relative h-2" aria-hidden="true">
+                                {(() => {
+                                  if (cueState?.status !== 'loaded-with-cues') return null;
+                                  const trackDurationMs = durationMsForTrack(track, null);
+                                  if (!trackDurationMs) return null;
+                                  return cueState.cues
+                                    .filter((cue) => cue.start_ms != null)
+                                    .map((cue) => (
+                                      <span
+                                        key={cue.id}
+                                        className="absolute top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full"
+                                        style={{
+                                          left: `${Math.min(100, Math.max(0, (cue.start_ms! / trackDurationMs) * 100))}%`,
+                                          backgroundColor: cue.color_hex ?? (cue.cue_family === 'hot' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.25)'),
+                                        }}
+                                      />
+                                    ));
+                                })()}
                               </div>
                               <RekordboxPreviewWaveform
                                 state={getWaveformState(track.id)}
