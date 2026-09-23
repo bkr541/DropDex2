@@ -1,6 +1,6 @@
 import type { BeatEntry } from '../music/beatGridHelpers';
 
-export type CueGridDisplayMode = 'off' | 'beats' | 'bars';
+export type CueGridDisplayMode = 'beats' | 'bars' | '4-bars' | '8-bars' | '16-bars';
 
 export interface CueTimelineView {
   start: number;
@@ -10,8 +10,10 @@ export interface CueTimelineView {
 export const MIN_CUE_TIMELINE_WINDOW_MS = 2_000;
 
 export function gridBeatsForMode(beats: BeatEntry[], mode: CueGridDisplayMode): BeatEntry[] {
-  if (mode === 'off') return [];
   if (mode === 'bars') return beats.filter((beat) => beat.isDownbeat || beat.beatInBar === 1);
+  if (mode === '4-bars') return beats.filter((beat) => (beat.isDownbeat || beat.beatInBar === 1) && beat.bar % 4 === 1);
+  if (mode === '8-bars') return beats.filter((beat) => (beat.isDownbeat || beat.beatInBar === 1) && beat.bar % 8 === 1);
+  if (mode === '16-bars') return beats.filter((beat) => (beat.isDownbeat || beat.beatInBar === 1) && beat.bar % 16 === 1);
   return beats;
 }
 

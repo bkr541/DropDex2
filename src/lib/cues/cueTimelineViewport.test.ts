@@ -22,9 +22,11 @@ function beats(): BeatEntry[] {
 describe('gridBeatsForMode', () => {
   it('keeps Snap-independent presentation choices explicit', () => {
     const source = beats();
-    expect(gridBeatsForMode(source, 'off')).toEqual([]);
     expect(gridBeatsForMode(source, 'beats')).toEqual(source);
     expect(gridBeatsForMode(source, 'bars').map((beat) => beat.seq)).toEqual([1, 5]);
+    expect(gridBeatsForMode(source, '4-bars').map((beat) => beat.seq)).toEqual([1]);
+    expect(gridBeatsForMode(source, '8-bars').map((beat) => beat.seq)).toEqual([1]);
+    expect(gridBeatsForMode(source, '16-bars').map((beat) => beat.seq)).toEqual([1]);
   });
 });
 
