@@ -2034,7 +2034,7 @@ function CueWaveformPanel({
                         style={{ left: `${percentageAt(beat.ms, viewStart, effectiveViewEnd)}%` }}
                       />
                     ))}
-                    {sections.slice(1).map((section) => (
+                    {gridDisplayMode !== 'off' && sections.slice(1).map((section) => (
                       <span
                         key={`section-boundary-${section.id}`}
                         className="absolute bottom-0 top-0 w-px bg-white/[0.16]"
@@ -4732,23 +4732,27 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                               <p className="truncate text-[10px] text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
                             </div>
                             <div className="flex-1 min-w-[80px] flex flex-col gap-1">
-                              <div className="relative h-2" aria-hidden="true">
+                              <div className="relative h-3" aria-hidden="true">
                                 {(() => {
                                   if (cueState?.status !== 'loaded-with-cues') return null;
                                   const trackDurationMs = durationMsForTrack(track, null);
                                   if (!trackDurationMs) return null;
                                   return cueState.cues
                                     .filter((cue) => cue.start_ms != null)
-                                    .map((cue) => (
-                                      <span
-                                        key={cue.id}
-                                        className="absolute top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full"
-                                        style={{
-                                          left: `${Math.min(100, Math.max(0, (cue.start_ms! / trackDurationMs) * 100))}%`,
-                                          backgroundColor: cue.color_hex ?? (cue.cue_family === 'hot' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.25)'),
-                                        }}
-                                      />
-                                    ));
+                                    .map((cue) => {
+                                      const color = cue.color_hex ?? (cue.cue_family === 'hot' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.22)');
+                                      return (
+                                        <span
+                                          key={cue.id}
+                                          className="absolute top-0 -translate-x-1/2"
+                                          style={{ left: `${Math.min(100, Math.max(0, (cue.start_ms! / trackDurationMs) * 100))}%` }}
+                                        >
+                                          <svg viewBox="0 0 8 10" width={6} height={8} style={{ display: 'block' }}>
+                                            <polygon points="0,0 8,0 8,6 4,10 0,6" fill={color} />
+                                          </svg>
+                                        </span>
+                                      );
+                                    });
                                 })()}
                               </div>
                               <RekordboxPreviewWaveform
