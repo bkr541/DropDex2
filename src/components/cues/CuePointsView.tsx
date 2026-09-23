@@ -707,11 +707,11 @@ function CueEditorPlaybackPlayhead({
   return (
     <div
       data-testid="cue-playback-playhead-region"
-      className={cn(
-        'pointer-events-none absolute bottom-0 top-0 z-30 transition-[left] duration-200',
-        labelsCollapsed ? 'left-[48px]' : 'left-[150px]',
-      )}
-      style={{ right: 0 }}
+      className="pointer-events-none absolute bottom-0 top-0 z-30 transition-[left] duration-200"
+      style={{
+        left: `calc(${labelsCollapsed ? 48 : 150}px + var(--cue-timeline-inline-inset))`,
+        right: 'var(--cue-timeline-inline-inset)',
+      }}
       aria-hidden="true"
     >
       <span
@@ -1825,8 +1825,8 @@ function CueWaveformPanel({
               <div className="cue-timeline__rail h-[40px] border-b border-r border-[var(--color-border-faint)]">
                 <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.25} />} label="Cue Points" color="#fb923c" collapsed={labelsCollapsed} />
               </div>
-              <div className="h-[40px] overflow-hidden border-b border-[var(--color-border-faint)]">
-                <div className="relative h-full overflow-visible px-3">
+              <div className="cue-timeline__data-lane h-[40px] overflow-hidden border-b border-[var(--color-border-faint)]">
+                <div className="relative h-full overflow-visible">
                 {cueLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading cue points…</div>
                 ) : cueLoadStatus === 'failed' ? (
@@ -1934,8 +1934,8 @@ function CueWaveformPanel({
               <div className="cue-timeline__rail h-[40px] border-b border-r border-[var(--color-border-faint)]">
                 <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Track Sections" color="#60a5fa" collapsed={labelsCollapsed} />
               </div>
-              <div className="h-[40px] border-b border-[var(--color-border-faint)]">
-                <div className="relative h-full overflow-hidden px-3">
+              <div className="cue-timeline__data-lane h-[40px] border-b border-[var(--color-border-faint)]">
+                <div className="relative h-full overflow-hidden">
                 {phraseLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
                 ) : sections.length === 0 ? (
@@ -1980,10 +1980,10 @@ function CueWaveformPanel({
               <div className="cue-timeline__rail h-[88px] border-b border-r border-[var(--color-border-faint)]">
                 <TimelineLaneLabel icon={<AudioWaveform size={20} strokeWidth={2.25} />} label="Waveform" color="#5dcfff" collapsed={labelsCollapsed} />
               </div>
-              <div className="h-[88px] border-b border-[var(--color-border-faint)]">
+              <div className="cue-timeline__data-lane h-[88px] border-b border-[var(--color-border-faint)]">
               <div
                 ref={waveformDivRef}
-                className="relative h-full cursor-crosshair overflow-hidden px-3"
+                className="relative h-full cursor-crosshair overflow-hidden"
                 onContextMenu={handleWaveformContextMenu}
                 title={snapResolution !== 'off' ? `Right-click to add a ${cueSnapResolutionLabel(snapResolution)} snapped cue` : 'Right-click to add an exact millisecond cue'}
               >
@@ -2089,8 +2089,8 @@ function CueWaveformPanel({
               <div className="cue-timeline__rail h-[40px] border-r border-[var(--color-border-faint)]">
                 <TimelineLaneLabel icon={<Grip size={19} strokeWidth={2.55} />} label="Beat Grid" color="#4ade80" collapsed={labelsCollapsed} />
               </div>
-              <div className="h-[40px]">
-                <div className="relative h-full overflow-hidden px-3">
+              <div className="cue-timeline__data-lane h-[40px]">
+                <div className="relative h-full overflow-hidden">
                 {gridDisplayMode === 'off' ? (
                   <div className="flex h-full items-center px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">Grid hidden</div>
                 ) : beatGridLoading ? (
@@ -4662,7 +4662,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                       { col: 'key', label: 'Key', cls: 'px-3 py-2' },
                       { col: 'genre', label: 'Genre', cls: 'px-3 py-2 w-[178px]' },
                       { col: 'cues', label: 'Cues', cls: 'px-3 py-2 text-center' },
-                      { col: 'duration', label: 'Duration', cls: 'px-3 py-2 text-right w-[80px]' },
+                      { col: 'duration', label: 'Duration', cls: 'px-3 py-2 text-left w-[80px]' },
                     ] as const).map(({ col, label, cls }) => (
                       <th key={col} className={cn(cls, 'sticky top-0 z-10 bg-[var(--color-background)] select-none')}>
                         <button
@@ -4910,7 +4910,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                             {cueState?.status === 'loading' || !cueState ? '…' : cueState.status === 'failed' ? '!' : cueCount}
                           </span>
                         </td>
-                        <td className="w-[80px] px-3 py-1.5 text-right font-mono text-[13px] text-muted-foreground">
+                        <td className="w-[80px] px-3 py-1.5 text-left font-mono text-[13px] text-muted-foreground">
                           {formatTime(durationMsForTrack(track, null))}
                         </td>
                       </tr>
