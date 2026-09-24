@@ -227,14 +227,12 @@ export async function fetchRouletteAvailabilitySnapshot(
       ).length > 0;
     }
   }
-  const currentPairIds = new Set(
-    [currentVocalTrackId, currentInstrumentalTrackId].filter((id): id is string => id != null),
-  );
-  const canRouletteBoth = pairs.some(
-    (pair) =>
-      !currentPairIds.has(pair.vocal.track.id)
-      || !currentPairIds.has(pair.instrumental.track.id),
-  );
+  // Keep UI availability aligned with rouletteMatchingEngine. Roulette Both
+  // means both deck identities change, not merely that the pair key differs.
+  const canRouletteBoth = pairs.some((pair) => (
+    (!currentVocalTrackId || pair.vocal.track.id !== currentVocalTrackId)
+    && (!currentInstrumentalTrackId || pair.instrumental.track.id !== currentInstrumentalTrackId)
+  ));
 
   return {
     available: pairs.length > 0,

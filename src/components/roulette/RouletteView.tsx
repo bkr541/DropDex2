@@ -11,6 +11,11 @@ import type { RoulettePreviewPreparationState } from '../../features/roulette/ro
 import { useRouletteSourceTrack } from '../../features/roulette/useRouletteSourceTrack';
 import { formatRouletteCompatiblePairCount, useRouletteMatchingAvailability } from '../../features/roulette/useRouletteMatchingAvailability';
 import { getCamelotRelationshipLabel } from '../../lib/music/camelot';
+import {
+  executeRouletteSourceChange,
+  rouletteSourceChangeRequiresConfirmation,
+  type RouletteSourceChange,
+} from '../../features/roulette/rouletteSourceChangeFlow';
 
 
 function formatPreviewTime(ms: number | null | undefined): string {
@@ -288,15 +293,14 @@ export function RouletteView() {
   );
   const initialLoadPromise = useRef<Promise<boolean> | null>(null);
   const cancelledRecoveryRequested = useRef(new Set<string>());
-  const [pendingSourceChange, setPendingSourceChange] = useState<'vocal' | 'instrumental' | 'both' | null>(null);
+  const [pendingSourceChange, setPendingSourceChange] = useState<RouletteSourceChange | null>(null);
 
-  const performSourceChange = (change: 'vocal' | 'instrumental' | 'both') => {
-    if (change === 'both') void actions.replaceBoth();
-    else void actions.replaceSource(change);
+  const performSourceChange = (change: RouletteSourceChange) => {
+    void executeRouletteSourceChange(actions, change);
   };
 
-  const requestSourceChange = (change: 'vocal' | 'instrumental' | 'both') => {
-    if (playback.status === 'playing' || state.transport.status === 'playing') {
+  const requestSourceChange = (change: RouletteSourceChange) => {
+    if (rouletteSourceChangeRequiresConfirmation(playback.status, state.transport.status)) {
       setPendingSourceChange(change);
       return;
     }
@@ -307,8 +311,7 @@ export function RouletteView() {
     const change = pendingSourceChange;
     if (!change) return;
     setPendingSourceChange(null);
-    actions.stop();
-    performSourceChange(change);
+    void executeRouletteSourceChange(actions, change, { stopPlaybackFirst: true });
   };
 
   const requestInitialLoad = useCallback((): Promise<boolean> => {

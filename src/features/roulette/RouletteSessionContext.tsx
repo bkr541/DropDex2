@@ -120,6 +120,12 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
     prepareSources: audio.prepareSources,
     commitPreparedSources: audio.commitPreparedResult,
   }), [audio.commitPreparedResult, audio.prepareSources]);
+  const hqController = useMemo(() => createRouletteHqPairController({
+    prepare: rouletteStemPreparationService.prepare,
+    cancel: rouletteStemPreparationService.cancel,
+    onState: setHq,
+  }), []);
+
   const pairIdentity = [
     state.sources.vocal.parentTrackId ?? '',
     state.sources.instrumental.parentTrackId ?? '',
@@ -130,8 +136,11 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
     if (previousPairIdentityRef.current !== pairIdentity) {
       previousPairIdentityRef.current = pairIdentity;
       setHq(INITIAL_ROULETTE_HQ_STATE);
+      // Pair changes take precedence over stale HQ work. Cancel the previous
+      // pair's active job so it cannot keep publishing or later promote itself.
+      void hqController.cancel();
     }
-  }, [pairIdentity]);
+  }, [hqController, pairIdentity]);
 
   useEffect(() => () => matchingExecutor.cancel(), [matchingExecutor]);
 
@@ -258,12 +267,6 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
     return completePreparedSource(role, roulettePreviewPreparationService.getState(trackId, role));
   }), [completePreparedSource, runSourceRecovery]);
 
-  const hqController = useMemo(() => createRouletteHqPairController({
-    prepare: rouletteStemPreparationService.prepare,
-    cancel: rouletteStemPreparationService.cancel,
-    onState: setHq,
-  }), []);
-
   const prepareHighQuality = useCallback(async (): Promise<boolean> => {
     const current = stateRef.current;
     const vocalId = current.sources.vocal.parentTrackId;
@@ -291,7 +294,18 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
       return false;
     }
 
+    const pairStillCurrent = () => (
+      stateRef.current.sources.vocal.parentTrackId === vocalId
+      && stateRef.current.sources.instrumental.parentTrackId === instrumentalId
+    );
+
     const result = await hqController.preparePair(vocalTrack, instrumentalTrack);
+    if (!pairStillCurrent()) {
+      setHq(INITIAL_ROULETTE_HQ_STATE);
+      return false;
+    }
+    if (result.completedRoles.length === 0) return false;
+
     const tracks: Record<RouletteSourceRole, RekordboxTrack> = {
       vocal: vocalTrack,
       instrumental: instrumentalTrack,
@@ -299,6 +313,10 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
     const selections: Partial<Record<RouletteSourceRole, RouletteSourceSelection>> = {};
     for (const role of result.completedRoles) {
       const refreshed = await roulettePreviewPreparationService.prepare(tracks[role], role);
+      if (!pairStillCurrent()) {
+        setHq(INITIAL_ROULETTE_HQ_STATE);
+        return false;
+      }
       const selection = selectionFromPreviewState(refreshed);
       if (selection) selections[role] = selection;
     }
@@ -315,7 +333,20 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
       && nextSources.instrumental.stemRef
     ) {
       const controller = new AbortController();
-      prepared = await audio.prepareSources(nextSources, controller.signal);
+      try {
+        prepared = await audio.prepareSources(nextSources, controller.signal);
+      } catch {
+        setHq({
+          ...result,
+          status: 'partial',
+          message: 'HQ stems were prepared, but DropDex could not promote them into the current playback pair. The existing playable pair was preserved.',
+        });
+        return false;
+      }
+    }
+    if (!pairStillCurrent()) {
+      setHq(INITIAL_ROULETTE_HQ_STATE);
+      return false;
     }
     for (const role of result.completedRoles) {
       const selection = selections[role];

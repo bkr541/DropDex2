@@ -208,6 +208,23 @@ describe('Roulette action availability', () => {
     expect(snapshot.actions.canRouletteBoth).toBe(true);
   });
 
+  it('does not enable Roulette Both when only one deck has a real alternative', async () => {
+    trackRows.push(
+      track('vocal-1', 140, '11A'),
+      track('instrumental-1', 142, '11B'),
+      // Compatible with the fixed 11B instrumental, but not with 11A as the
+      // replacement instrumental. This creates a valid Change Vocal option
+      // without a pair that can replace both current deck identities.
+      track('vocal-2', 141, '12B'),
+    );
+
+    const snapshot = await fetchRouletteAvailabilitySnapshot('vocal-1', 'instrumental-1', 'import-1');
+
+    expect(snapshot.actions.canChangeVocal).toBe(true);
+    expect(snapshot.actions.canChangeInstrumental).toBe(false);
+    expect(snapshot.actions.canRouletteBoth).toBe(false);
+  });
+
   it('reports no actions available when pool has no compatible pairs', async () => {
     // Single track cannot pair with itself
     trackRows.push(track('solo-1', 140, '11A'));

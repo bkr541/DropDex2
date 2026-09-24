@@ -14,9 +14,10 @@ describe('Roulette source-change lifecycle wiring', () => {
 
   it('uses explicit playback confirmation before a playing source change proceeds', () => {
     expect(viewSource).toContain("setPendingSourceChange(change)");
+    expect(viewSource).toContain('rouletteSourceChangeRequiresConfirmation(playback.status, state.transport.status)');
     expect(viewSource).toContain('This action will stop current playback.');
     expect(viewSource).toContain("{ label: 'Cancel'");
     expect(viewSource).toContain("{ label: 'Continue'");
-    expect(viewSource).toMatch(/actions\.stop\(\);\s*performSourceChange\(change\);/);
+    expect(viewSource).toContain("executeRouletteSourceChange(actions, change, { stopPlaybackFirst: true })");
   });
 });
