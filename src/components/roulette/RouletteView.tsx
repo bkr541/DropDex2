@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Chemistry, Play, Renew, Stop, VolumeMute, VolumeUp } from '@carbon/icons-react';
 import { ControlButton, RangeControl } from '../ui/controls';
 import { SurfaceCard } from '../ui/display';
@@ -231,8 +231,12 @@ export function RouletteView() {
     actions,
     cancelPending,
   } = useRouletteSession();
-  const candidateAvailability = useRouletteMatchingAvailability(matchingAvailable);
-  const initialLoadRequested = useRef(false);
+  const candidateAvailability = useRouletteMatchingAvailability(
+    matchingAvailable,
+    state.sources.vocal.parentTrackId,
+    state.sources.instrumental.parentTrackId,
+  );
+  const initialLoadPromise = useRef<Promise<boolean> | null>(null);
   const cancelledRecoveryRequested = useRef(new Set<string>());
   const [pendingSourceChange, setPendingSourceChange] = useState<'vocal' | 'instrumental' | 'both' | null>(null);
 
@@ -257,24 +261,32 @@ export function RouletteView() {
     performSourceChange(change);
   };
 
+  const requestInitialLoad = useCallback((): Promise<boolean> => {
+    if (initialLoadPromise.current) return initialLoadPromise.current;
+    let request!: Promise<boolean>;
+    request = actions.initialize().finally(() => {
+      if (initialLoadPromise.current === request) initialLoadPromise.current = null;
+    });
+    initialLoadPromise.current = request;
+    return request;
+  }, [actions]);
+
   useEffect(() => {
     if (
-      !initialLoadRequested.current
-      && matchingAvailable
+      matchingAvailable
       && !candidateAvailability.loading
       && candidateAvailability.available
       && !state.sources.vocal.parentTrackId
       && !state.sources.instrumental.parentTrackId
-      && state.command.status !== 'loading'
+      && state.command.status === 'idle'
     ) {
-      initialLoadRequested.current = true;
-      void actions.initialize();
+      void requestInitialLoad();
     }
   }, [
-    actions,
     candidateAvailability.available,
     candidateAvailability.loading,
     matchingAvailable,
+    requestInitialLoad,
     state.command.status,
     state.sources.instrumental.parentTrackId,
     state.sources.vocal.parentTrackId,
@@ -321,7 +333,7 @@ export function RouletteView() {
     || selectedInstrumentalPreview?.status === 'queued';
   const hqBusy = hq.status === 'preparing';
   const canChangeVocal = matchingAvailable
-    && candidateAvailability.available
+    && candidateAvailability.canChangeVocal
     && state.sources.instrumental.stemStatus === 'ready'
     && Boolean(state.sources.instrumental.parentTrackId && state.sources.instrumental.stemRef)
     && !matchingBusy
@@ -329,7 +341,7 @@ export function RouletteView() {
     && !sourceRecoveryBusy
     && !hqBusy;
   const canChangeInstrumental = matchingAvailable
-    && candidateAvailability.available
+    && candidateAvailability.canChangeInstrumental
     && state.sources.vocal.stemStatus === 'ready'
     && Boolean(state.sources.vocal.parentTrackId && state.sources.vocal.stemRef)
     && !matchingBusy
@@ -418,7 +430,7 @@ export function RouletteView() {
             <ControlButton
               variant="surface"
               disabled={!canChangeVocal}
-              title={state.sources.instrumental.parentTrackId ? 'Replace only the vocal source' : 'Roulette a pair first'}
+              title={!state.sources.instrumental.parentTrackId ? 'Roulette a pair first' : candidateAvailability.canChangeVocal ? 'Replace only the vocal source' : 'No more compatible sources'}
               onClick={() => requestSourceChange('vocal')}
             >
               Change Vocal
@@ -426,21 +438,33 @@ export function RouletteView() {
             <ControlButton
               variant="surface"
               disabled={!canChangeInstrumental}
-              title={state.sources.vocal.parentTrackId ? 'Replace only the instrumental source' : 'Roulette a pair first'}
+              title={!state.sources.vocal.parentTrackId ? 'Roulette a pair first' : candidateAvailability.canChangeInstrumental ? 'Replace only the instrumental source' : 'No more compatible sources'}
               onClick={() => requestSourceChange('instrumental')}
             >
               Change Instrumental
             </ControlButton>
             <ControlButton
               variant="primary"
-              disabled={!matchingAvailable || candidateAvailability.loading || !candidateAvailability.available || matchingBusy || sourceChangeTransportBusy || sourceRecoveryBusy || hqBusy}
-              title="Resolve and replace both compatible sources"
+              disabled={!matchingAvailable || candidateAvailability.loading || !candidateAvailability.canRouletteBoth || matchingBusy || sourceChangeTransportBusy || sourceRecoveryBusy || hqBusy}
+              title={candidateAvailability.canRouletteBoth ? 'Resolve and replace both compatible sources' : 'No more compatible sources'}
               onClick={() => requestSourceChange('both')}
             >
               Roulette Both
             </ControlButton>
           </div>
         </div>
+
+        {!candidateAvailability.loading
+          && candidateAvailability.available
+          && (
+            (state.sources.vocal.parentTrackId && !candidateAvailability.canChangeVocal)
+            || (state.sources.instrumental.parentTrackId && !candidateAvailability.canChangeInstrumental)
+            || (state.sources.vocal.parentTrackId && state.sources.instrumental.parentTrackId && !candidateAvailability.canRouletteBoth)
+          ) && (
+            <p className="mt-3 text-[10px] text-muted-foreground" data-testid="roulette-no-compatible-sources">
+              No more compatible sources
+            </p>
+          )}
 
         <div className="mt-4 flex flex-col gap-3 border-t border-[var(--color-border-subtle)] pt-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
@@ -482,9 +506,24 @@ export function RouletteView() {
           />
         )}
 
-        <p className="mt-4 text-[10px] text-muted-foreground" role="status" data-testid="roulette-command-status">
-          {mainStatus}
-        </p>
+        <div className="mt-4 flex items-center gap-2">
+          <p className="min-w-0 flex-1 text-[10px] text-muted-foreground" role="status" data-testid="roulette-command-status">
+            {mainStatus}
+          </p>
+          {state.command.status === 'error'
+            && !state.sources.vocal.parentTrackId
+            && !state.sources.instrumental.parentTrackId
+            && matchingAvailable
+            && candidateAvailability.available && (
+              <ControlButton
+                variant="surface"
+                disabled={matchingBusy || initialLoadPromise.current !== null}
+                onClick={() => { void requestInitialLoad(); }}
+              >
+                <Renew size={13} /> Retry
+              </ControlButton>
+            )}
+        </div>
       </SurfaceCard>
       <Dialog
         open={pendingSourceChange !== null}

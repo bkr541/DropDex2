@@ -1,5 +1,5 @@
 import type { RekordboxTrack } from '../../types';
-import { rankRoulettePairsBounded, type RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
+import { rankRouletteCandidates, rankRoulettePairsBounded, type RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
 import type { RouletteSourceRole } from '../../features/roulette/rouletteSession';
 import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole, type StemAssetRecord, type StemAssetType } from '../../features/roulette/stemAssets';
 import { rouletteStemAssetService } from '../../features/roulette/stemAssetService';
@@ -151,7 +151,27 @@ export interface RouletteCandidateReadiness {
   reason: 'no-active-library' | 'no-eligible-pair' | null;
 }
 
-export async function fetchRouletteCandidateReadiness(importId?: string): Promise<RouletteCandidateReadiness> {
+export interface RouletteActionAvailability {
+  canChangeVocal: boolean;
+  canChangeInstrumental: boolean;
+  canRouletteBoth: boolean;
+}
+
+export interface RouletteAvailabilitySnapshot extends RouletteCandidateReadiness {
+  actions: RouletteActionAvailability;
+}
+
+const EMPTY_ACTION_AVAILABILITY: RouletteActionAvailability = {
+  canChangeVocal: false,
+  canChangeInstrumental: false,
+  canRouletteBoth: false,
+};
+
+export async function fetchRouletteAvailabilitySnapshot(
+  currentVocalTrackId?: string | null,
+  currentInstrumentalTrackId?: string | null,
+  importId?: string,
+): Promise<RouletteAvailabilitySnapshot> {
   const resolvedImportId = await resolveRouletteImportId(importId);
   if (!resolvedImportId) {
     return {
@@ -161,6 +181,7 @@ export async function fetchRouletteCandidateReadiness(importId?: string): Promis
       instrumentalCandidateCount: 0,
       compatiblePairCount: 0,
       reason: 'no-active-library',
+      actions: EMPTY_ACTION_AVAILABILITY,
     };
   }
 
@@ -169,6 +190,44 @@ export async function fetchRouletteCandidateReadiness(importId?: string): Promis
     fetchRouletteCandidateAnalysis('instrumental', resolvedImportId),
   ]);
   const pairs = rankRoulettePairsBounded(vocals, instrumentals, { maxPairs: 512 });
+
+  let canChangeVocal = false;
+  let canChangeInstrumental = false;
+  if (currentInstrumentalTrackId) {
+    const reference = instrumentals.find((c) => c.track.id === currentInstrumentalTrackId);
+    if (reference) {
+      const excluded = new Set<string>([currentInstrumentalTrackId]);
+      if (currentVocalTrackId) excluded.add(currentVocalTrackId);
+      canChangeVocal = rankRouletteCandidates(
+        vocals,
+        { track: reference.track, beatGrid: reference.beatGrid },
+        'vocal',
+        excluded,
+      ).length > 0;
+    }
+  }
+  if (currentVocalTrackId) {
+    const reference = vocals.find((c) => c.track.id === currentVocalTrackId);
+    if (reference) {
+      const excluded = new Set<string>([currentVocalTrackId]);
+      if (currentInstrumentalTrackId) excluded.add(currentInstrumentalTrackId);
+      canChangeInstrumental = rankRouletteCandidates(
+        instrumentals,
+        { track: reference.track, beatGrid: reference.beatGrid },
+        'instrumental',
+        excluded,
+      ).length > 0;
+    }
+  }
+  const currentPairIds = new Set(
+    [currentVocalTrackId, currentInstrumentalTrackId].filter((id): id is string => id != null),
+  );
+  const canRouletteBoth = pairs.some(
+    (pair) =>
+      !currentPairIds.has(pair.vocal.track.id)
+      || !currentPairIds.has(pair.instrumental.track.id),
+  );
+
   return {
     available: pairs.length > 0,
     importId: resolvedImportId,
@@ -176,5 +235,12 @@ export async function fetchRouletteCandidateReadiness(importId?: string): Promis
     instrumentalCandidateCount: instrumentals.length,
     compatiblePairCount: pairs.length,
     reason: pairs.length > 0 ? null : 'no-eligible-pair',
+    actions: { canChangeVocal, canChangeInstrumental, canRouletteBoth },
   };
+}
+
+export async function fetchRouletteCandidateReadiness(importId?: string): Promise<RouletteCandidateReadiness> {
+  const snapshot = await fetchRouletteAvailabilitySnapshot(null, null, importId);
+  const { actions: _actions, ...readiness } = snapshot;
+  return readiness;
 }

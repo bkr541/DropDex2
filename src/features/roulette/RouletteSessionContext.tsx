@@ -38,6 +38,7 @@ import {
 } from './rouletteHqPairController';
 import { rouletteStemPreparationService } from './stemPreparationService';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
+import { useRouletteRuntimeReadiness } from './useRouletteRuntimeReadiness';
 
 export interface RouletteSessionActions extends RouletteMatchingActions {
   play(): Promise<boolean>;
@@ -97,6 +98,7 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
   const [previewStates, setPreviewStates] = useState(EMPTY_PREVIEW_STATES);
   const [hq, setHq] = useState<RouletteHqPairUiState>(INITIAL_ROULETTE_HQ_STATE);
   const { status: usbStatus, volumeName: usbVolumeName, connectedAt: usbConnectedAt } = useUsbConnection();
+  const runtimeReadiness = useRouletteRuntimeReadiness();
   const stateRef = useRef(state);
   const dispatch = useCallback((action: RouletteSessionAction) => {
     stateRef.current = rouletteSessionReducer(stateRef.current, action);
@@ -151,11 +153,17 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
     && Boolean(state.sources.vocal.parentTrackId && state.sources.vocal.stemRef)
     && Boolean(state.sources.instrumental.parentTrackId && state.sources.instrumental.stemRef)
     && state.sources.vocal.parentTrackId !== state.sources.instrumental.parentTrackId;
-  const playbackAvailable = pairReady;
-  const matchingAvailable = rouletteDesktopMatchingAvailable();
-  const matchingUnavailableReason = matchingAvailable
+  const playbackAvailable = pairReady && runtimeReadiness.ready;
+  const matchingAvailable = runtimeReadiness.ready;
+  const matchingUnavailableReason = runtimeReadiness.ready
     ? null
-    : 'Roulette matching requires the DropDex desktop runtime.';
+    : runtimeReadiness.status === 'checking'
+      ? 'Checking Roulette audio runtime…'
+      : runtimeReadiness.status === 'setup-required'
+        ? runtimeReadiness.message ?? 'Roulette audio runtime setup is required.'
+        : runtimeReadiness.status === 'temporarily-unavailable'
+          ? runtimeReadiness.message ?? 'Roulette audio runtime is temporarily unavailable.'
+          : 'Roulette matching requires the DropDex desktop runtime.';
 
   const completePreparedSource = useCallback(async (
     role: RouletteSourceRole,

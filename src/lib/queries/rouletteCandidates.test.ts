@@ -71,7 +71,7 @@ vi.mock('../supabase', () => ({
   },
 }));
 
-import { fetchRouletteCandidateReadiness } from './rouletteCandidates';
+import { fetchRouletteAvailabilitySnapshot, fetchRouletteCandidateReadiness } from './rouletteCandidates';
 
 function track(id: string, bpm: number, camelot: string): RekordboxTrack {
   return {
@@ -116,5 +116,55 @@ describe('Roulette candidate query boundary', () => {
     expect(readiness.available).toBe(true);
     expect(readiness.compatiblePairCount).toBeGreaterThan(0);
     expect(readiness.reason).toBeNull();
+  });
+});
+
+describe('Roulette action availability', () => {
+  beforeEach(() => {
+    trackRows.length = 0;
+  });
+
+  it('does not count the selected pair itself as a replacement or Roulette Both option', async () => {
+    trackRows.push(
+      track('vocal-1', 140, '11A'),
+      track('instrumental-1', 145, '11B'),
+    );
+
+    const snapshot = await fetchRouletteAvailabilitySnapshot('vocal-1', 'instrumental-1', 'import-1');
+
+    expect(snapshot.available).toBe(true);
+    expect(snapshot.actions).toEqual({
+      canChangeVocal: false,
+      canChangeInstrumental: false,
+      canRouletteBoth: false,
+    });
+  });
+
+  it('enables partner-specific actions only when a different compatible source exists', async () => {
+    trackRows.push(
+      track('vocal-1', 140, '11A'),
+      track('instrumental-1', 142, '11B'),
+      track('alternative-1', 141, '11A'),
+    );
+
+    const snapshot = await fetchRouletteAvailabilitySnapshot('vocal-1', 'instrumental-1', 'import-1');
+
+    expect(snapshot.actions.canChangeVocal).toBe(true);
+    expect(snapshot.actions.canChangeInstrumental).toBe(true);
+    expect(snapshot.actions.canRouletteBoth).toBe(true);
+  });
+
+  it('reports no actions available when pool has no compatible pairs', async () => {
+    // Single track cannot pair with itself
+    trackRows.push(track('solo-1', 140, '11A'));
+
+    const snapshot = await fetchRouletteAvailabilitySnapshot(null, null, 'import-1');
+
+    expect(snapshot.available).toBe(false);
+    expect(snapshot.actions).toEqual({
+      canChangeVocal: false,
+      canChangeInstrumental: false,
+      canRouletteBoth: false,
+    });
   });
 });

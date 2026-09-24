@@ -129,10 +129,8 @@ function missingReferenceMessage(role: RouletteSourceRole): string {
     : 'Select a vocal source before changing the instrumental.';
 }
 
-function noCandidateMessage(role: RouletteSourceRole): string {
-  return role === 'vocal'
-    ? 'No compatible vocal candidate found.'
-    : 'No compatible instrumental candidate found.';
+function noCandidateMessage(_role: RouletteSourceRole): string {
+  return 'No more compatible sources';
 }
 
 function currentPair(state: RouletteSessionState): RoulettePlaybackSources {
@@ -304,7 +302,7 @@ export function createRouletteActionExecutor({
       if (!resolved) {
         throw new Error(command === 'initialize'
           ? 'No compatible Roulette pair is available for initial load.'
-          : 'No fully replaceable compatible Roulette pair found.');
+          : 'No more compatible sources');
       }
 
       if (resolved.vocal.parentTrackId === resolved.instrumental.parentTrackId) {
