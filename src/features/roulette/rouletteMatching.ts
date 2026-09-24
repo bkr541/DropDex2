@@ -45,7 +45,8 @@ export type RouletteHardFilterReason =
   | 'missing-beat-grid'
   | 'same-parent-track'
   | 'excluded-parent-track'
-  | 'source-unavailable';
+  | 'source-unavailable'
+  | 'missing-vocal-material';
 
 function validBpm(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
@@ -109,6 +110,7 @@ export function getRouletteHardFilterReason(
   if (excludedTrackIds.has(candidateId)) return 'excluded-parent-track';
   if (!(candidate.track.file_path_normalized ?? candidate.track.file_path)?.trim()
     || !(reference.track.file_path_normalized ?? reference.track.file_path)?.trim()) return 'source-unavailable';
+  if (role === 'vocal' && !candidate.vocalAnalysisAvailable) return 'missing-vocal-material';
 
   const keyRelationship = rouletteKeyRelationship(reference.track, candidate.track);
   if (keyRelationship === 'missing') return 'missing-key';
@@ -232,7 +234,8 @@ export type RouletteCandidateDiagnosticReason =
   | 'missing-invalid-beat-grid'
   | 'variable-tempo'
   | 'same-parent-conflict'
-  | 'source-unavailable';
+  | 'source-unavailable'
+  | 'missing-vocal-material';
 
 export type RouletteCandidateDiagnostics = Record<RouletteCandidateDiagnosticReason, number>;
 
@@ -245,6 +248,7 @@ export function createRouletteCandidateDiagnostics(): RouletteCandidateDiagnosti
     'variable-tempo': 0,
     'same-parent-conflict': 0,
     'source-unavailable': 0,
+    'missing-vocal-material': 0,
   };
 }
 
@@ -257,6 +261,7 @@ export function diagnosticReasonForRoulettePair(
     || !(instrumental.track.file_path_normalized ?? instrumental.track.file_path)?.trim()) {
     return 'source-unavailable';
   }
+  if (!vocal.vocalAnalysisAvailable) return 'missing-vocal-material';
   if (!hasStableRouletteTempoGrid(vocal.beatGrid) || !hasStableRouletteTempoGrid(instrumental.beatGrid)) {
     return 'variable-tempo';
   }

@@ -146,6 +146,24 @@ describe('Roulette musical anchor resolver', () => {
     expect(result?.windowEndMs).toBe(32_000);
   });
 
+  it('keeps a qualified Vocal source aligned to a complete 16-bar parent-track window', () => {
+    const result = resolveRouletteMusicalAnchor({
+      role: 'vocal',
+      track: track(),
+      beatGrid: grid(),
+      phrases: [phrase(0, 9)],
+      vocalAnalysis: pvdi([region(16_500, 5_000)]),
+      durationMs: 80_000,
+      requestedBars: 16,
+    });
+
+    expect(result?.provenance).toBe('pvdi-phrase');
+    expect(result?.sourceBar).toBe(9);
+    expect(result?.sourceTimeMs).toBe(16_000);
+    expect(result?.windowEndMs).toBe(48_000);
+    expect(result?.usableWindowMs).toBe(32_000);
+  });
+
   it('chooses the PVDI window with more sustained vocal evidence and remains deterministic', () => {
     const input = {
       role: 'vocal' as const,
@@ -200,7 +218,7 @@ describe('Roulette musical anchor resolver', () => {
     expect(result?.sourceBar).toBe(5);
   });
 
-  it('uses stem metrics only to rank otherwise valid phrase windows when PVDI is unavailable', () => {
+  it('does not manufacture a Vocal anchor from stem metrics when PVDI evidence is unavailable', () => {
     const result = resolveRouletteMusicalAnchor({
       role: 'vocal',
       track: track(),
@@ -212,28 +230,27 @@ describe('Roulette musical anchor resolver', () => {
       stemMetrics: stemMetrics(80_000, (startMs) => (startMs >= 32_000 && startMs < 40_000 ? 0.95 : 0.1)),
     });
 
-    expect(result?.provenance).toBe('phrase');
-    expect(result?.sourceBar).toBe(17);
+    expect(result).toBeNull();
   });
 
-  it('does not hard-exclude an otherwise valid anchor when stem quality metrics are low', () => {
+  it('does not hard-exclude a qualified Vocal anchor when stem quality metrics are low', () => {
     const result = resolveRouletteMusicalAnchor({
       role: 'vocal',
       track: track(),
       beatGrid: grid(),
       phrases: [phrase(0, 9)],
-      vocalAnalysis: null,
+      vocalAnalysis: pvdi([region(16_500, 4_000)]),
       durationMs: 80_000,
       requestedBars: 4,
       stemMetrics: stemMetrics(80_000, () => 0),
     });
 
     expect(result).not.toBeNull();
-    expect(result?.provenance).toBe('phrase');
+    expect(result?.provenance).toBe('pvdi-phrase');
     expect(result?.sourceBar).toBe(9);
   });
 
-  it('falls back from missing PVDI to a viable non-outro phrase', () => {
+  it('does not fall back from missing PVDI to a generic phrase for the Vocal role', () => {
     const result = resolveRouletteMusicalAnchor({
       role: 'vocal',
       track: track(),
@@ -244,8 +261,21 @@ describe('Roulette musical anchor resolver', () => {
       requestedBars: 4,
     });
 
-    expect(result?.provenance).toBe('phrase');
-    expect(result?.sourceBar).toBe(9);
+    expect(result).toBeNull();
+  });
+
+  it('does not promote a tiny Vocal fragment into a generic phrase/downbeat window', () => {
+    const result = resolveRouletteMusicalAnchor({
+      role: 'vocal',
+      track: track(),
+      beatGrid: grid(),
+      phrases: [phrase(0, 9)],
+      vocalAnalysis: pvdi([region(16_500, 1_500, 4)]),
+      durationMs: 80_000,
+      requestedBars: 4,
+    });
+
+    expect(result).toBeNull();
   });
 
   it('falls back from missing phrases to the first exact downbeat with the requested span', () => {

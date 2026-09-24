@@ -20,6 +20,7 @@ import type {
 } from '../../lib/queries/analysisData';
 import type { RouletteSourceRole } from './rouletteSession';
 import { summarizeStemWindow } from './rouletteStemMetrics';
+import { qualifyingRouletteVocalRegions } from './rouletteVocalQualification';
 
 export const ROULETTE_ANCHOR_WINDOW_BARS = 16;
 
@@ -85,37 +86,6 @@ function requestedBarCount(value: number | undefined): number {
 
 function bpmWindowMs(bpm: number, bars: number): number {
   return (60_000 / bpm) * 4 * bars;
-}
-
-function isFiniteVocalRegion(region: VocalRegionRow): boolean {
-  return Number.isFinite(region.start_frame)
-    && Number.isFinite(region.end_frame_exclusive)
-    && Number.isFinite(region.start_ms)
-    && Number.isFinite(region.end_ms)
-    && Number.isFinite(region.duration_ms)
-    && Number.isFinite(region.peak_confidence)
-    && region.start_frame >= 0
-    && region.end_frame_exclusive > region.start_frame
-    && region.start_ms >= 0
-    && region.end_ms > region.start_ms
-    && region.duration_ms > 0;
-}
-
-function meaningfulVocalRegions(analysis: VocalAnalysisRow | null | undefined): VocalRegionRow[] {
-  if (
-    !analysis
-    || analysis.source_tag !== 'PVDI'
-    || analysis.integrity_status !== 'valid'
-    || !analysis.complete
-  ) return [];
-
-  return [...analysis.regions]
-    .filter(isFiniteVocalRegion)
-    .filter((region) => (
-      region.duration_ms >= AUTO_CUE_STRATEGY_SETTINGS.pvdiMinimumRegionMs
-      && region.peak_confidence >= AUTO_CUE_STRATEGY_SETTINGS.pvdiStrongThreshold
-    ))
-    .sort((left, right) => left.start_ms - right.start_ms || left.start_frame - right.start_frame);
 }
 
 function normalizedDownbeat(beats: BeatEntry[], beat: BeatEntry | null): BeatEntry | null {
@@ -363,8 +333,7 @@ export function resolveRouletteMusicalAnchor(
   const beats = input.beatGrid?.beats ?? [];
 
   if (input.role === 'vocal') {
-    const pvdi = resolvePvdiVocalAnchor(input, beats, bars, meaningfulVocalRegions(input.vocalAnalysis));
-    if (pvdi) return pvdi;
+    return resolvePvdiVocalAnchor(input, beats, bars, qualifyingRouletteVocalRegions(input.vocalAnalysis));
   }
 
   const phrase = resolvePhraseAnchor(input, beats, bars);

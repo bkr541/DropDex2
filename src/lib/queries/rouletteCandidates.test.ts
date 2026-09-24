@@ -44,12 +44,44 @@ function grid(trackId: string): BeatGridRow {
 vi.mock('./analysisData', () => ({
   fetchTrackBeatGrids: vi.fn(async (ids: string[]) => new Map(ids.map((id) => [id, grid(id)]))),
   fetchTracksPhrases: vi.fn(async (ids: string[]) => new Map(ids.map((id) => [id, [{ phrase_index: 0 }]]))),
-  fetchTracksVocalAnalysis: vi.fn(async (ids: string[]) => new Map(ids.map((id) => [id, {
-    track_id: id,
-    integrity_status: 'valid',
-    complete: true,
-    regions: id.startsWith('vocal') ? [{ duration_ms: 90_000 }] : [],
-  }]))),
+  fetchTracksVocalAnalysis: vi.fn(async (ids: string[]) => new Map(ids.flatMap((id) => {
+    if (id.startsWith('missing-vocal')) return [];
+    const regions = id.startsWith('vocal')
+      ? [{
+          start_frame: 10,
+          end_frame_exclusive: 910,
+          start_ms: 1_000,
+          end_ms: 91_000,
+          duration_ms: 90_000,
+          peak_confidence: 4,
+        }]
+      : id.startsWith('tiny-vocal')
+        ? [{
+            start_frame: 10,
+            end_frame_exclusive: 20,
+            start_ms: 1_000,
+            end_ms: 2_000,
+            duration_ms: 1_000,
+            peak_confidence: 4,
+          }]
+        : [];
+    return [[id, {
+      id: `pvdi-${id}`,
+      import_id: 'import-1',
+      track_id: id,
+      source_tag: 'PVDI',
+      source_header_length: null,
+      source_u1: null,
+      source_u2: null,
+      frame_duration_ms: 100,
+      frame_count: 1800,
+      integrity_status: 'valid',
+      complete: true,
+      regions,
+      parse_warnings: [],
+      parser_version: 'test',
+    }]];
+  }))),
 }));
 
 vi.mock('../supabase', () => ({
@@ -71,7 +103,7 @@ vi.mock('../supabase', () => ({
   },
 }));
 
-import { fetchRouletteAvailabilitySnapshot, fetchRouletteCandidateReadiness } from './rouletteCandidates';
+import { fetchRouletteAvailabilitySnapshot, fetchRouletteCandidateAnalysis, fetchRouletteCandidateReadiness } from './rouletteCandidates';
 
 function track(id: string, bpm: number, camelot: string): RekordboxTrack {
   return {
@@ -117,6 +149,28 @@ describe('Roulette candidate query boundary', () => {
     expect(readiness.compatiblePairCount).toBeGreaterThan(0);
     expect(readiness.reason).toBeNull();
   });
+
+  it('returns only tracks with strong valid PVDI material for the Vocal role', async () => {
+    trackRows.push(
+      track('vocal-1', 140, '11A'),
+      track('instrumental-1', 140, '11A'),
+      track('empty-vocal-1', 140, '11A'),
+      track('tiny-vocal-1', 140, '11A'),
+      track('missing-vocal-1', 140, '11A'),
+    );
+
+    const vocals = await fetchRouletteCandidateAnalysis('vocal', 'import-1');
+    const instrumentals = await fetchRouletteCandidateAnalysis('instrumental', 'import-1');
+
+    expect(vocals.map((candidate) => candidate.track.id)).toEqual(['vocal-1']);
+    expect(instrumentals.map((candidate) => candidate.track.id)).toEqual([
+      'vocal-1',
+      'instrumental-1',
+      'empty-vocal-1',
+      'tiny-vocal-1',
+      'missing-vocal-1',
+    ]);
+  });
 });
 
 describe('Roulette action availability', () => {
@@ -144,7 +198,7 @@ describe('Roulette action availability', () => {
     trackRows.push(
       track('vocal-1', 140, '11A'),
       track('instrumental-1', 142, '11B'),
-      track('alternative-1', 141, '11A'),
+      track('vocal-2', 141, '11A'),
     );
 
     const snapshot = await fetchRouletteAvailabilitySnapshot('vocal-1', 'instrumental-1', 'import-1');

@@ -156,6 +156,26 @@ describe('Roulette hard compatibility', () => {
     expect(rankRouletteCandidates([noStem], reference, 'vocal')).toHaveLength(1);
   });
 
+  it('requires qualified Vocal analysis as a hard Vocal-role eligibility gate', () => {
+    const reference = { track: track('reference'), beatGrid: grid('reference') };
+    const noVocalMaterial = candidate('no-vocal-material', 'vocal', {
+      vocalAnalysisAvailable: false,
+    });
+
+    expect(getRouletteHardFilterReason(noVocalMaterial, reference, 'vocal')).toBe('missing-vocal-material');
+    expect(rankRouletteCandidates([noVocalMaterial], reference, 'vocal')).toEqual([]);
+  });
+
+  it('does not remove a track from Instrumental eligibility when Vocal material is absent', () => {
+    const reference = { track: track('reference'), beatGrid: grid('reference') };
+    const instrumental = candidate('instrumental-only', 'instrumental', {
+      vocalAnalysisAvailable: false,
+    });
+
+    expect(getRouletteHardFilterReason(instrumental, reference, 'instrumental')).toBeNull();
+    expect(rankRouletteCandidates([instrumental], reference, 'instrumental')).toHaveLength(1);
+  });
+
   it('requires a usable beat grid on both sides', () => {
     const reference = { track: track('reference'), beatGrid: grid('reference') };
     expect(getRouletteHardFilterReason(

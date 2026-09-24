@@ -1,6 +1,7 @@
 import type { RekordboxTrack } from '../../types';
 import { rankRouletteCandidates, rankRoulettePairsBounded, type RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
 import type { RouletteSourceRole } from '../../features/roulette/rouletteSession';
+import { hasQualifyingRouletteVocalMaterial } from '../../features/roulette/rouletteVocalQualification';
 import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole, type StemAssetRecord, type StemAssetType } from '../../features/roulette/stemAssets';
 import { rouletteStemAssetService } from '../../features/roulette/stemAssetService';
 import { getCurrentInstallationId } from '../desktop/installationIdentity';
@@ -121,11 +122,11 @@ export async function fetchRouletteCandidateAnalysis(
   ]);
   const readyAssetsByTrackId = new Map(readyAssets.map((asset) => [asset.track_id, asset]));
 
-  return tracks.map((track) => {
+  const candidates = tracks.map((track) => {
     const vocal = vocalAnalysis.get(track.id);
-    const vocalAnalysisAvailable = vocal?.integrity_status === 'valid' && vocal.complete === true;
+    const vocalAnalysisAvailable = hasQualifyingRouletteVocalMaterial(vocal);
     const durationMs = track.duration_ms ?? (track.duration_seconds == null ? null : track.duration_seconds * 1000);
-    const vocalDurationMs = vocalAnalysisAvailable
+    const vocalDurationMs = vocalAnalysisAvailable && vocal
       ? vocal.regions.reduce((sum, region) => sum + Math.max(0, region.duration_ms), 0)
       : null;
     const vocalPresenceScore = vocalDurationMs != null && durationMs && durationMs > 0
@@ -140,6 +141,10 @@ export async function fetchRouletteCandidateAnalysis(
       vocalPresenceScore,
     };
   });
+
+  return role === 'vocal'
+    ? candidates.filter((candidate) => candidate.vocalAnalysisAvailable)
+    : candidates;
 }
 
 export interface RouletteCandidateReadiness {
