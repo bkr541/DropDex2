@@ -22,7 +22,8 @@ describe('Roulette Stage 6 static HQ wiring checks (non-runtime acceptance)', ()
     expect(service).toContain('const vocal = await prepare(vocalTrack)');
     expect(preload).toContain("ipcRenderer.invoke('dropdex:prepare-roulette-stems'");
     expect(main).toContain("ipcMain.handle('dropdex:prepare-roulette-stems'");
-    expect(main).toContain('resolveUsbTrackPath(payload.sourceSegments)');
+    expect(main).toContain('resolveRouletteUsbSourceMedia(payload.sourceSegments, payload.expectedVolumeName)');
+    expect(service).toContain('resolveRouletteSourceMedia(track, sourceDeviceName)');
     expect(worker).toContain('demucs.separate');
     expect(worker).toContain('--two-stems');
     expect(worker).not.toContain('requests.post');

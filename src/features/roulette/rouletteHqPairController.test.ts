@@ -66,4 +66,26 @@ describe('Roulette HQ pair controller', () => {
     await expect(pending).resolves.toMatchObject({ status: 'cancelled' });
     expect(prepare).toHaveBeenCalledTimes(1);
   });
+
+  it('propagates source-media recovery and stops before launching the second HQ job', async () => {
+    const prepare = vi.fn(async (): Promise<RouletteStemPreparationOutcome> => ({
+      status: 'failed',
+      cached: false,
+      message: 'Reconnect the Rekordbox source media for this track to continue.',
+      recoveryAction: 'reconnect-source',
+      requiredVolumeName: 'USB-A',
+    }));
+    const controller = createRouletteHqPairController({
+      prepare,
+      cancel: vi.fn(async () => true),
+    });
+
+    await expect(controller.preparePair(track('vocal-a'), track('instrumental-a'))).resolves.toMatchObject({
+      status: 'failed',
+      recoveryAction: 'reconnect-source',
+      requiredVolumeName: 'USB-A',
+    });
+    expect(prepare).toHaveBeenCalledTimes(1);
+  });
+
 });

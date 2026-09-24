@@ -28,9 +28,14 @@ describe('Roulette prepared-preview visualization wiring', () => {
     expect(runtime).toContain('anchors: { vocal: vocalAnchor, instrumental: instrumentalAnchor }');
   });
 
-  it('uses one shared normalized progress value with source-specific playhead selectors', () => {
+  it('uses one shared normalized progress value with unambiguous role-specific waveform and playhead selectors', () => {
     expect(view).toContain('style={{ left: `${playback.progress * 100}%` }}');
+    expect(view).toContain('<RouletteSourceLane role="vocal" />');
+    expect(view).toContain('<RouletteSourceLane role="instrumental" />');
+    expect(view).toContain('data-testid={`roulette-${role}-waveform`}');
     expect(view).toContain('data-testid={`roulette-${role}-playhead`}');
+    expect(view).not.toContain('data-testid="roulette-waveform"');
+    expect(view).not.toContain('data-testid="roulette-playhead"');
     expect(view).not.toContain('roulette-shared-playhead');
   });
 

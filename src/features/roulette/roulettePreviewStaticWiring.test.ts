@@ -18,7 +18,8 @@ describe('Roulette Stage 3 static preview wiring checks (non-runtime acceptance)
     expect(main).toContain("ipcMain.handle('dropdex:prepare-roulette-preview'");
     expect(main).toContain("kind: 'source_media_required'");
     expect(main).toContain("kind: 'source_media_mismatch'");
-    expect(main).toContain('resolveUsbTrackPath(payload.sourceSegments)');
+    expect(main).toContain('resolveRouletteUsbSourceMedia(payload.sourceSegments, payload.expectedVolumeName)');
+    expect(service).toContain('resolveRouletteSourceMedia(track, sourceDeviceName)');
     expect(bridge).toContain('this.separationQueue');
     expect(bridge).toContain("kind: 'preview'");
     expect(bridge).toContain("'--window-start-ms'");

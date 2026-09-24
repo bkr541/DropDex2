@@ -492,6 +492,51 @@ function volumeMatches(expectedVolumeName, actualVolumeName) {
   return Boolean(actual && actual === expected);
 }
 
+async function resolveRouletteUsbSourceMedia(sourceSegments, expectedVolumeName = null) {
+  const requiredVolumeName = typeof expectedVolumeName === 'string' && expectedVolumeName.trim()
+    ? expectedVolumeName.trim()
+    : null;
+  if (!usbConnection || usbStreams.releasing || usbStreams.released) {
+    return {
+      ok: false,
+      error: {
+        kind: 'source_media_required',
+        message: 'Reconnect the Rekordbox USB that owns this track to continue Roulette preparation.',
+        requiredVolumeName,
+        connectedVolumeName: connectedVolumeName(),
+      },
+    };
+  }
+  if (!volumeMatches(requiredVolumeName, connectedVolumeName())) {
+    return {
+      ok: false,
+      error: {
+        kind: 'source_media_mismatch',
+        message: 'The connected USB does not match the source media for this track.',
+        requiredVolumeName,
+        connectedVolumeName: connectedVolumeName(),
+      },
+    };
+  }
+
+  const resolved = await resolveUsbTrackPath(sourceSegments);
+  if (!resolved.ok) {
+    if (resolved.error.kind === 'permission_denied' || resolved.error.kind === 'not_found') {
+      return {
+        ok: false,
+        error: {
+          kind: 'source_media_required',
+          message: resolved.error.message,
+          requiredVolumeName,
+          connectedVolumeName: connectedVolumeName(),
+        },
+      };
+    }
+    return resolved;
+  }
+  return { ...resolved, requiredVolumeName };
+}
+
 async function reconnectPersistedUsb(expectedVolumeName = null) {
   if (usbConnection) {
     const state = await desktopConnectionState();
@@ -659,9 +704,14 @@ function registerIpcHandlers() {
   ipcMain.handle('dropdex:prepare-roulette-stems', async (_event, payload) => {
     assertExactObject(
       payload,
-      ['trackId', 'sourceSegments', 'sourceFingerprint', 'separatorVersion', 'expectedDurationMs'],
+      ['trackId', 'sourceSegments', 'expectedVolumeName', 'sourceFingerprint', 'separatorVersion', 'expectedDurationMs'],
       'Roulette stem preparation payload',
     );
+    if (!validateUsbPathSegments(payload.sourceSegments)) {
+      return { ok: false, error: { kind: 'security', message: 'Unsafe Roulette source path was rejected.' } };
+    }
+    const sourceMedia = await resolveRouletteUsbSourceMedia(payload.sourceSegments, payload.expectedVolumeName);
+    if (!sourceMedia.ok) return sourceMedia;
     const runtimeHealth = await stemSeparationBridge.health();
     if (!runtimeHealth.available) {
       return {
@@ -672,17 +722,12 @@ function registerIpcHandlers() {
         },
       };
     }
-    if (!validateUsbPathSegments(payload.sourceSegments)) {
-      return { ok: false, error: { kind: 'security', message: 'Unsafe Roulette source path was rejected.' } };
-    }
-    const resolved = await resolveUsbTrackPath(payload.sourceSegments);
-    if (!resolved.ok) return resolved;
     return stemSeparationBridge.prepare({
       trackId: payload.trackId,
       sourceFingerprint: payload.sourceFingerprint,
       separatorVersion: payload.separatorVersion,
       expectedDurationMs: payload.expectedDurationMs ?? null,
-      sourceFilePath: resolved.filePath,
+      sourceFilePath: sourceMedia.filePath,
     });
   });
   ipcMain.handle('dropdex:prepare-roulette-preview', async (_event, payload) => {
@@ -694,46 +739,8 @@ function registerIpcHandlers() {
     if (!validateUsbPathSegments(payload.sourceSegments)) {
       return { ok: false, error: { kind: 'security', message: 'Unsafe Roulette preview source path was rejected.' } };
     }
-    const requiredVolumeName = typeof payload.expectedVolumeName === 'string' && payload.expectedVolumeName.trim()
-      ? payload.expectedVolumeName.trim()
-      : null;
-    if (!usbConnection || usbStreams.releasing || usbStreams.released) {
-      return {
-        ok: false,
-        error: {
-          kind: 'source_media_required',
-          message: 'Reconnect the Rekordbox USB that owns this track to continue preview preparation.',
-          requiredVolumeName,
-          connectedVolumeName: connectedVolumeName(),
-        },
-      };
-    }
-    if (!volumeMatches(requiredVolumeName, connectedVolumeName())) {
-      return {
-        ok: false,
-        error: {
-          kind: 'source_media_mismatch',
-          message: 'The connected USB does not match the source media for this track.',
-          requiredVolumeName,
-          connectedVolumeName: connectedVolumeName(),
-        },
-      };
-    }
-    const resolved = await resolveUsbTrackPath(payload.sourceSegments);
-    if (!resolved.ok) {
-      if (resolved.error.kind === 'permission_denied' || resolved.error.kind === 'not_found') {
-        return {
-          ok: false,
-          error: {
-            kind: 'source_media_required',
-            message: resolved.error.message,
-            requiredVolumeName,
-            connectedVolumeName: connectedVolumeName(),
-          },
-        };
-      }
-      return resolved;
-    }
+    const sourceMedia = await resolveRouletteUsbSourceMedia(payload.sourceSegments, payload.expectedVolumeName);
+    if (!sourceMedia.ok) return sourceMedia;
     const runtimeHealth = await stemSeparationBridge.health();
     if (!runtimeHealth.available) {
       return {
@@ -748,7 +755,7 @@ function registerIpcHandlers() {
       algorithmVersion: payload.algorithmVersion,
       windowStartMs: payload.windowStartMs,
       windowEndMs: payload.windowEndMs,
-      sourceFilePath: resolved.filePath,
+      sourceFilePath: sourceMedia.filePath,
     });
   });
 

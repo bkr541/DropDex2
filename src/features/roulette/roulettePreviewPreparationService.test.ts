@@ -344,4 +344,74 @@ describe('Roulette fast preview preparation service', () => {
       });
     }
   });
+
+  it('releases completed preview jobs while retaining only bounded recent state', async () => {
+    const test = harness();
+    await expect(test.service.prepare(track('completed'), 'vocal')).resolves.toMatchObject({ status: 'ready' });
+
+    await expect(test.service.cancel('completed', 'vocal')).resolves.toBe(false);
+    await expect(test.service.retry('completed', 'vocal')).resolves.toBeNull();
+
+    for (let index = 0; index < 30; index += 1) {
+      await test.service.prepare(track(`recent-${index}`), 'vocal');
+    }
+    expect(test.service.getState('recent-0', 'vocal')).toBeNull();
+    expect(test.service.getState('recent-29', 'vocal')?.status).toBe('ready');
+  });
+
+  it('cleans cancelled queued jobs but preserves the minimal retry context', async () => {
+    const test = harness();
+    let releaseFirst!: (value: DesktopRoulettePreviewPreparationResult) => void;
+    test.desktop.prepareRoulettePreview.mockImplementationOnce(() => new Promise((resolve) => {
+      releaseFirst = resolve;
+    }));
+
+    const active = test.service.prepare(track('active'), 'vocal');
+    const queued = test.service.prepare(track('queued'), 'instrumental');
+    await vi.waitFor(() => expect(test.desktop.prepareRoulettePreview).toHaveBeenCalledTimes(1));
+
+    await expect(test.service.cancel('queued', 'instrumental')).resolves.toBe(true);
+    await expect(queued).resolves.toMatchObject({ status: 'cancelled', recoveryAction: 'retry' });
+    await expect(test.service.cancel('queued', 'instrumental')).resolves.toBe(false);
+
+    const retry = test.service.retry('queued', 'instrumental');
+    releaseFirst(previewSuccess('active'));
+    await expect(active).resolves.toMatchObject({ status: 'ready' });
+    await expect(retry).resolves.toMatchObject({ status: 'ready' });
+  });
+
+  it('does not release active preview work until the operation reaches a terminal state', async () => {
+    const test = harness();
+    let release!: (value: DesktopRoulettePreviewPreparationResult) => void;
+    test.desktop.prepareRoulettePreview.mockImplementationOnce(() => new Promise((resolve) => {
+      release = resolve;
+    }));
+
+    const request = test.service.prepare(track('active-cancel'), 'vocal');
+    await vi.waitFor(() => expect(test.desktop.prepareRoulettePreview).toHaveBeenCalledTimes(1));
+
+    await expect(test.service.cancel('active-cancel', 'vocal')).resolves.toBe(true);
+    await expect(test.service.cancel('active-cancel', 'vocal')).resolves.toBe(true);
+    release(previewSuccess('active-cancel'));
+
+    await expect(request).resolves.toMatchObject({ status: 'cancelled' });
+    await vi.waitFor(async () => {
+      await expect(test.service.cancel('active-cancel', 'vocal')).resolves.toBe(false);
+    });
+  });
+
+  it('uses normalized source media with the same canonical volume identity used by HQ preparation', async () => {
+    const test = harness();
+    await test.service.prepare(track('normalized', {
+      file_path: '/Volumes/USB-A/Contents/Artist/Legacy.wav',
+      file_path_normalized: '/Contents/Artist/Current.wav',
+      file_path_volume: 'USB-A',
+    }), 'vocal');
+
+    expect(test.desktop.prepareRoulettePreview).toHaveBeenCalledWith(expect.objectContaining({
+      sourceSegments: ['Contents', 'Artist', 'Current.wav'],
+      expectedVolumeName: 'USB-A',
+    }));
+  });
+
 });

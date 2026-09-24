@@ -49,6 +49,7 @@ export interface RouletteSessionActions extends RouletteMatchingActions {
   reconnectSource(role: RouletteSourceRole): Promise<boolean>;
   retrySource(role: RouletteSourceRole): Promise<boolean>;
   prepareHighQuality(): Promise<boolean>;
+  reconnectHighQuality(): Promise<boolean>;
   cancelHighQuality(): Promise<boolean>;
 }
 
@@ -324,6 +325,14 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
     return result.status === 'ready' || result.status === 'partial';
   }, [audio.commitPreparedResult, audio.prepareSources, hqController]);
 
+  const reconnectHighQuality = useCallback(async (): Promise<boolean> => {
+    const currentHq = hqController.getState();
+    if (currentHq.recoveryAction !== 'reconnect-source') return false;
+    const reconnected = await rouletteStemPreparationService.reconnectSource(currentHq.requiredVolumeName ?? null);
+    if (!reconnected) return false;
+    return prepareHighQuality();
+  }, [hqController, prepareHighQuality]);
+
   const actions = useMemo<RouletteSessionActions>(() => ({
     ...matchingExecutor.actions,
     play: audio.play,
@@ -334,6 +343,7 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
     reconnectSource,
     retrySource,
     prepareHighQuality,
+    reconnectHighQuality,
     cancelHighQuality: hqController.cancel,
   }), [
     audio.play,
@@ -344,6 +354,7 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
     hqController.cancel,
     matchingExecutor.actions,
     prepareHighQuality,
+    reconnectHighQuality,
     reconnectSource,
     retrySource,
   ]);

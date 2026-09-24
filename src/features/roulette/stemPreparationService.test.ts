@@ -164,11 +164,24 @@ function harness(options: {
     options.prepareResult ?? successResult()
   ));
   const cancelRouletteStems = vi.fn(async () => ({ ok: true, cancelled: true }));
+  const reconnectUsb = vi.fn(async () => ({
+    reconnected: true,
+    reason: 'connected' as const,
+    state: {
+      status: 'connected' as const,
+      volumeName: 'USB-A',
+      connectedAt: '2026-09-24T00:00:00Z',
+      structureWarning: null,
+      error: null,
+    },
+  }));
   const deleteStemAsset = vi.fn(async () => ({ ok: true as const, deleted: true }));
-  const desktop = { getRouletteRuntimeHealth, prepareRouletteStems, cancelRouletteStems, deleteStemAsset };
+  const desktop = { getRouletteRuntimeHealth, prepareRouletteStems, cancelRouletteStems, reconnectUsb, deleteStemAsset };
+  const loadSourceDeviceName = vi.fn(async () => 'USB-A');
   const service = createRouletteStemPreparationService({
     repository,
     stemAssets,
+    loadSourceDeviceName,
     getDesktopBridge: () => desktop,
   });
 
@@ -177,6 +190,7 @@ function harness(options: {
     repository,
     stemAssets,
     desktop,
+    loadSourceDeviceName,
     setDeferredPrepare() {
       prepareRouletteStems.mockImplementationOnce(() => new Promise((resolve) => { resolvePrepare = resolve; }));
       return (value: DesktopRouletteStemPreparationResult) => resolvePrepare?.(value);
@@ -197,6 +211,7 @@ describe('Roulette stem preparation service', () => {
     expect(test.desktop.prepareRouletteStems).toHaveBeenCalledWith({
       trackId: 'track-1',
       sourceSegments: ['Contents', 'Artist', 'Track One.wav'],
+      expectedVolumeName: 'USB-A',
       sourceFingerprint: 'source-current',
       separatorVersion: ROULETTE_SEPARATOR_VERSION,
       expectedDurationMs: 120000,
@@ -373,4 +388,67 @@ describe('Roulette stem preparation service', () => {
     expect(test.stemAssets.register).not.toHaveBeenCalled();
     expect(test.desktop.prepareRouletteStems).not.toHaveBeenCalled();
   });
+
+  it('uses the same normalized-path-first fallback contract as preview preparation', async () => {
+    const test = harness();
+    const outcome = await test.service.prepare(track({
+      file_path: '/Volumes/USB-A/Contents/Artist/Legacy.wav',
+      file_path_normalized: '/Contents/Artist/Current.wav',
+      file_path_volume: 'USB-A',
+    }));
+
+    expect(outcome.status).toBe('ready');
+    expect(test.desktop.prepareRouletteStems).toHaveBeenCalledWith(expect.objectContaining({
+      sourceSegments: ['Contents', 'Artist', 'Current.wav'],
+      expectedVolumeName: 'USB-A',
+    }));
+  });
+
+  it('classifies disconnected source media as reconnectable without deleting generated assets', async () => {
+    const test = harness({
+      prepareResult: {
+        ok: false,
+        error: {
+          kind: 'source_media_required',
+          message: 'No USB drive is connected.',
+          requiredVolumeName: 'USB-A',
+          connectedVolumeName: null,
+        },
+      },
+    });
+
+    const outcome = await test.service.prepare(track());
+
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      recoveryAction: 'reconnect-source',
+      requiredVolumeName: 'USB-A',
+      connectedVolumeName: null,
+    });
+    expect(test.desktop.deleteStemAsset).not.toHaveBeenCalled();
+    expect(test.stemAssets.commitReadyPair).not.toHaveBeenCalled();
+  });
+
+  it('keeps a complete generated HQ pair usable even when parent source media is currently unavailable', async () => {
+    const test = harness({ readinessStatuses: ['ready', 'ready'] });
+    const outcome = await test.service.prepare(track({
+      file_path: null,
+      file_path_normalized: null,
+      file_path_volume: null,
+    }));
+
+    expect(outcome).toEqual({ status: 'ready', cached: true, message: null });
+    expect(test.loadSourceDeviceName).not.toHaveBeenCalled();
+    expect(test.desktop.prepareRouletteStems).not.toHaveBeenCalled();
+    expect(test.desktop.deleteStemAsset).not.toHaveBeenCalled();
+  });
+
+
+  it('reconnects the canonical required source volume before an HQ retry', async () => {
+    const test = harness();
+
+    await expect(test.service.reconnectSource('USB-A')).resolves.toBe(true);
+    expect(test.desktop.reconnectUsb).toHaveBeenCalledWith('USB-A');
+  });
+
 });

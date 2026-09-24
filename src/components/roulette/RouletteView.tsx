@@ -382,6 +382,7 @@ export function RouletteView() {
     || selectedInstrumentalPreview?.status === 'running'
     || selectedInstrumentalPreview?.status === 'queued';
   const hqBusy = hq.status === 'preparing';
+  const hqSourceRequired = hq.recoveryAction === 'reconnect-source';
   const canChangeVocal = matchingAvailable
     && candidateAvailability.canChangeVocal
     && state.sources.instrumental.stemStatus === 'ready'
@@ -575,15 +576,22 @@ export function RouletteView() {
             disabled={!hqBusy && (!canPrepareHq || hq.status === 'ready')}
             onClick={() => {
               if (hqBusy) void actions.cancelHighQuality();
+              else if (hqSourceRequired) void actions.reconnectHighQuality();
               else void actions.prepareHighQuality();
             }}
-            aria-label={hqBusy ? 'Cancel high-quality Roulette stem preparation' : 'Prepare high-quality Roulette stems'}
+            aria-label={hqBusy
+              ? 'Cancel high-quality Roulette stem preparation'
+              : hqSourceRequired
+                ? 'Reconnect source media and retry high-quality Roulette stems'
+                : 'Prepare high-quality Roulette stems'}
           >
             {hqBusy
               ? <><Stop size={14} /> Cancel HQ</>
-              : hq.status === 'partial' || hq.status === 'failed' || hq.status === 'cancelled'
-                ? <><Renew size={14} /> Retry HQ Stems</>
-                : <><Chemistry size={14} /> Prepare HQ Stems</>}
+              : hqSourceRequired
+                ? <><Renew size={14} /> Reconnect & Retry HQ</>
+                : hq.status === 'partial' || hq.status === 'failed' || hq.status === 'cancelled'
+                  ? <><Renew size={14} /> Retry HQ Stems</>
+                  : <><Chemistry size={14} /> Prepare HQ Stems</>}
           </ControlButton>
         </div>
 

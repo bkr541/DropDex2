@@ -12,13 +12,13 @@ import {
   type PhraseRow,
   type VocalAnalysisRow,
 } from '../../lib/queries/analysisData';
-import { resolveUsbPath } from '../../lib/rekordbox/usbPathResolver';
 import { fetchImportById } from '../../lib/queries/rekordbox';
 import {
   rouletteStemAssetRepository,
   type StemAssetRepository,
 } from '../../lib/queries/rouletteStemAssets';
 import { resolveRouletteMusicalAnchor } from './rouletteAnchors';
+import { resolveRouletteSourceMedia } from './rouletteSourceMedia';
 import {
   rouletteStemAssetService,
   type StemAssetService,
@@ -69,6 +69,14 @@ interface PreviewJob {
   cancelled: boolean;
 }
 
+interface PreviewRecoveryEntry {
+  track: RekordboxTrack;
+  role: RouletteSourceRole;
+}
+
+const MAX_RECENT_PREVIEW_STATES = 24;
+const MAX_PREVIEW_RECOVERY_ENTRIES = 8;
+
 export interface RoulettePreviewPreparationService {
   prepare(track: RekordboxTrack, role: RouletteSourceRole): Promise<RoulettePreviewPreparationState>;
   getState(trackId: string, role: RouletteSourceRole): RoulettePreviewPreparationState | null;
@@ -90,19 +98,6 @@ function durationMsForTrack(track: RekordboxTrack): number | null {
   if (track.duration_seconds != null) return Math.max(0, Math.round(track.duration_seconds * 1000));
   return null;
 }
-
-function expectedVolumeName(
-  track: RekordboxTrack,
-  sourceDeviceName: string | null,
-  strippedVolume: string | null,
-): string | null {
-  const importDevice = sourceDeviceName?.trim() ?? '';
-  if (importDevice) return importDevice;
-  const stored = track.file_path_volume?.trim() ?? '';
-  if (stored) return stored;
-  return strippedVolume?.trim() || null;
-}
-
 
 function initialState(
   trackId: string,
@@ -190,32 +185,81 @@ export function createRoulettePreviewPreparationService(
 ): RoulettePreviewPreparationService {
   const states = new Map<string, RoulettePreviewPreparationState>();
   const requests = new Map<string, Promise<RoulettePreviewPreparationState>>();
-  const knownJobs = new Map<string, PreviewJob>();
+  const recoveryEntries = new Map<string, PreviewRecoveryEntry>();
   const listeners = new Set<(state: RoulettePreviewPreparationState) => void>();
   const queue: PreviewJob[] = [];
   let active: PreviewJob | null = null;
 
+  const trimStates = () => {
+    while (states.size > MAX_RECENT_PREVIEW_STATES) {
+      let removed = false;
+      for (const key of states.keys()) {
+        const queued = queue.some((job) => job.key === key);
+        if (requests.has(key) || recoveryEntries.has(key) || active?.key === key || queued) continue;
+        states.delete(key);
+        removed = true;
+        break;
+      }
+      if (!removed) break;
+    }
+  };
+
+  const trimRecoveryEntries = () => {
+    while (recoveryEntries.size > MAX_PREVIEW_RECOVERY_ENTRIES) {
+      let removed = false;
+      for (const key of recoveryEntries.keys()) {
+        if (requests.has(key) || active?.key === key || queue.some((job) => job.key === key)) continue;
+        recoveryEntries.delete(key);
+        removed = true;
+        break;
+      }
+      if (!removed) break;
+    }
+  };
+
   const publish = (state: RoulettePreviewPreparationState) => {
-    states.set(previewQueueKey(state.trackId, state.role), state);
+    const key = previewQueueKey(state.trackId, state.role);
+    // Refresh insertion order so recently observed/current source state wins the
+    // bounded retention window rather than accumulating for the renderer lifetime.
+    states.delete(key);
+    states.set(key, state);
+    trimStates();
     for (const listener of listeners) listener(state);
     return state;
   };
 
+  const rememberRecovery = (job: PreviewJob, state: RoulettePreviewPreparationState) => {
+    recoveryEntries.delete(job.key);
+    if (state.recoveryAction === 'retry' || state.recoveryAction === 'reconnect-source') {
+      recoveryEntries.set(job.key, { track: job.track, role: job.role });
+      trimRecoveryEntries();
+    }
+  };
+
   const finish = (job: PreviewJob, state: RoulettePreviewPreparationState) => {
     publish(state);
-    knownJobs.set(job.key, job);
+    rememberRecovery(job, state);
     job.resolve(state);
   };
 
+  const cancelledState = (job: PreviewJob) => initialState(
+    job.track.id,
+    job.role,
+    'cancelled',
+    job.window,
+    'Preview preparation was cancelled. Try again when you are ready.',
+    'retry',
+  );
+
   const runJob = async (job: PreviewJob): Promise<RoulettePreviewPreparationState> => {
-    if (job.cancelled) return initialState(job.track.id, job.role, 'cancelled', job.window, 'Preview preparation was cancelled. Try again when you are ready.', 'retry');
+    if (job.cancelled) return cancelledState(job);
     const desktop = dependencies.getDesktopBridge();
     if (!desktop) {
       return initialState(job.track.id, job.role, 'failed', job.window, 'Roulette preview preparation requires the DropDex desktop app.', 'runtime-setup');
     }
 
     publish(initialState(job.track.id, job.role, 'running', job.window));
-    if (job.cancelled) return initialState(job.track.id, job.role, 'cancelled', job.window, 'Preview preparation was cancelled. Try again when you are ready.', 'retry');
+    if (job.cancelled) return cancelledState(job);
 
     const input: DesktopRoulettePreviewPreparationInput = {
       trackId: job.track.id,
@@ -228,6 +272,7 @@ export function createRoulettePreviewPreparationService(
       expectedVolumeName: job.expectedVolumeName,
     };
     const result = await desktop.prepareRoulettePreview(input);
+    if (job.cancelled) return cancelledState(job);
     if (!result.ok) {
       const failure = result as Extract<DesktopRoulettePreviewPreparationResult, { ok: false }>;
       const presentation = roulettePreviewFailurePresentation(failure.error.kind);
@@ -249,6 +294,7 @@ export function createRoulettePreviewPreparationService(
     }
 
     const currentFingerprint = await dependencies.repository.getCurrentSourceFingerprint(job.track.id);
+    if (job.cancelled) return cancelledState(job);
     if (currentFingerprint !== job.sourceFingerprint) {
       return initialState(
         job.track.id,
@@ -289,13 +335,14 @@ export function createRoulettePreviewPreparationService(
       )))
       .finally(() => {
         if (active === job) active = null;
-        requests.delete(job.key);
+        trimStates();
+        trimRecoveryEntries();
         pump();
       });
   };
 
   const enqueue = (job: PreviewJob) => {
-    knownJobs.set(job.key, job);
+    recoveryEntries.delete(job.key);
     queue.push(job);
     publish(initialState(job.track.id, job.role, 'queued', job.window));
     pump();
@@ -349,6 +396,7 @@ export function createRoulettePreviewPreparationService(
       const window = previewWindowFromAnchor(anchor);
 
       if (hq.status === 'ready' && hq.asset) {
+        recoveryEntries.delete(key);
         const asset: RoulettePreparedAuditionAsset = {
           kind: 'hq',
           role,
@@ -360,22 +408,10 @@ export function createRoulettePreviewPreparationService(
         return publish({ ...initialState(track.id, role, 'ready', window), asset });
       }
 
-      const expectedVolume = expectedVolumeName(track, sourceDeviceName, null);
-      const pathResolution = resolveUsbPath(
-        track.file_path ?? track.file_path_normalized,
-        expectedVolume ? { expectedVolume } : {},
-      );
-      if (pathResolution.status === 'volume_mismatch') {
-        return publish(initialState(
-          track.id,
-          role,
-          'failed',
-          window,
-          "This track's stored source location does not match its Rekordbox source media.",
-        ));
-      }
-      if (pathResolution.status !== 'ok') {
-        return publish(initialState(track.id, role, 'failed', window, 'This track does not have a safe local Rekordbox source path.'));
+      const sourceMedia = resolveRouletteSourceMedia(track, sourceDeviceName);
+      if (sourceMedia.status !== 'ok') {
+        recoveryEntries.delete(key);
+        return publish(initialState(track.id, role, 'failed', window, sourceMedia.message));
       }
 
       let resolveJob!: (state: RoulettePreviewPreparationState) => void;
@@ -385,8 +421,8 @@ export function createRoulettePreviewPreparationService(
         track,
         role,
         sourceFingerprint,
-        sourceSegments: pathResolution.segments,
-        expectedVolumeName: expectedVolumeName(track, sourceDeviceName, pathResolution.strippedVolume),
+        sourceSegments: sourceMedia.sourceSegments,
+        expectedVolumeName: sourceMedia.expectedVolumeName,
         window,
         resolve: resolveJob,
         promise,
@@ -400,48 +436,53 @@ export function createRoulettePreviewPreparationService(
     try {
       return await request;
     } finally {
-      if (requests.get(key) === request && !knownJobs.has(key)) requests.delete(key);
+      if (requests.get(key) === request) requests.delete(key);
+      trimStates();
+      trimRecoveryEntries();
     }
   };
 
   const cancel = async (trackId: string, role?: RouletteSourceRole): Promise<boolean> => {
-    const matching = [...knownJobs.values()].filter((job) => (
-      job.track.id === trackId && (!role || job.role === role)
-    ));
-    let cancelled = false;
+    const matching = [
+      ...(active ? [active] : []),
+      ...queue,
+    ].filter((job) => job.track.id === trackId && (!role || job.role === role));
+    if (matching.length === 0) return false;
+
     for (const job of matching) {
       job.cancelled = true;
-      cancelled = true;
       if (active !== job) {
         const index = queue.indexOf(job);
         if (index >= 0) queue.splice(index, 1);
-        finish(job, initialState(job.track.id, job.role, 'cancelled', job.window, 'Preview preparation was cancelled. Try again when you are ready.', 'retry'));
-        requests.delete(job.key);
+        finish(job, cancelledState(job));
       }
     }
     if (active && active.track.id === trackId && (!role || active.role === role)) {
       const desktop = dependencies.getDesktopBridge();
       if (desktop) await desktop.cancelRouletteStems(trackId);
     }
-    return cancelled;
+    return true;
   };
 
   const retry = async (trackId: string, role: RouletteSourceRole): Promise<RoulettePreviewPreparationState | null> => {
-    const previous = knownJobs.get(previewQueueKey(trackId, role));
+    const key = previewQueueKey(trackId, role);
+    const currentRequest = requests.get(key);
+    if (currentRequest) {
+      try { await currentRequest; } catch { /* terminal state is published below */ }
+    }
+    const previous = recoveryEntries.get(key);
     if (!previous) return null;
-    knownJobs.delete(previous.key);
-    requests.delete(previous.key);
+    recoveryEntries.delete(key);
     return prepare(previous.track, role);
   };
 
   const resumeSourceRequired = async (): Promise<void> => {
-    const resumable = [...knownJobs.values()].filter((job) => (
-      states.get(job.key)?.status === 'source-required' && !requests.has(job.key)
+    const resumable = [...recoveryEntries.entries()].filter(([key]) => (
+      states.get(key)?.status === 'source-required' && !requests.has(key)
     ));
-    for (const job of resumable) {
-      knownJobs.delete(job.key);
-      requests.delete(job.key);
-      void prepare(job.track, job.role);
+    for (const [key, entry] of resumable) {
+      recoveryEntries.delete(key);
+      void prepare(entry.track, entry.role);
     }
   };
 
@@ -452,10 +493,9 @@ export function createRoulettePreviewPreparationService(
     if (!desktop || state?.status !== 'source-required') return false;
     const reconnect = await desktop.reconnectUsb(state.requiredVolumeName);
     if (!reconnect.reconnected) return false;
-    const previous = knownJobs.get(key);
+    const previous = recoveryEntries.get(key);
     if (!previous) return false;
-    knownJobs.delete(key);
-    requests.delete(key);
+    recoveryEntries.delete(key);
     const resumed = await prepare(previous.track, role);
     return resumed.status === 'ready';
   };
@@ -493,7 +533,15 @@ export function createRoulettePreviewPreparationService(
 
   return {
     prepare,
-    getState: (trackId, role) => states.get(previewQueueKey(trackId, role)) ?? null,
+    getState: (trackId, role) => {
+      const key = previewQueueKey(trackId, role);
+      const state = states.get(key) ?? null;
+      if (state) {
+        states.delete(key);
+        states.set(key, state);
+      }
+      return state;
+    },
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);

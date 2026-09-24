@@ -156,6 +156,7 @@ export interface DesktopRoulettePreparedStem {
 export interface DesktopRouletteStemPreparationInput {
   trackId: string;
   sourceSegments: string[];
+  expectedVolumeName: string | null;
   sourceFingerprint: string;
   separatorVersion: string;
   expectedDurationMs: number | null;
@@ -173,7 +174,12 @@ export type DesktopRouletteStemPreparationResult =
     }
   | {
       ok: false;
-      error: { kind: DesktopRouletteStemPreparationErrorKind; message: string };
+      error: {
+        kind: DesktopRouletteStemPreparationErrorKind;
+        message: string;
+        requiredVolumeName?: string | null;
+        connectedVolumeName?: string | null;
+      };
     };
 
 export interface DesktopRouletteStemCancellationResult {

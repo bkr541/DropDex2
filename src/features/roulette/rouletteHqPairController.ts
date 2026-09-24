@@ -13,6 +13,8 @@ export interface RouletteHqPairUiState {
   activeRole: RouletteSourceRole | null;
   completedRoles: RouletteSourceRole[];
   message: string | null;
+  recoveryAction?: 'reconnect-source' | null;
+  requiredVolumeName?: string | null;
 }
 
 export interface RouletteHqPairController {
@@ -34,6 +36,8 @@ export const INITIAL_ROULETTE_HQ_STATE: RouletteHqPairUiState = {
   activeRole: null,
   completedRoles: [],
   message: null,
+  recoveryAction: null,
+  requiredVolumeName: null,
 };
 
 export function createRouletteHqPairController(
@@ -60,6 +64,8 @@ export function createRouletteHqPairController(
     inFlight = (async () => {
       const completedRoles: RouletteSourceRole[] = [];
       const failures: string[] = [];
+      let recoveryAction: 'reconnect-source' | null = null;
+      let requiredVolumeName: string | null = null;
       const queue: Array<[RouletteSourceRole, RekordboxTrack]> = [
         ['vocal', vocalTrack],
         ['instrumental', instrumentalTrack],
@@ -89,15 +95,22 @@ export function createRouletteHqPairController(
           await dependencies.onTrackReady?.(role, track);
         } else {
           failures.push(outcome.message ?? `${role === 'vocal' ? 'Vocal' : 'Instrumental'} HQ preparation failed.`);
+          if (outcome.recoveryAction === 'reconnect-source') {
+            recoveryAction = 'reconnect-source';
+            requiredVolumeName = outcome.requiredVolumeName ?? null;
+          }
         }
 
         publish({
           status: 'preparing',
           progress: (index + 1) / queue.length,
-          activeRole: index + 1 < queue.length ? queue[index + 1][0] : null,
+          activeRole: recoveryAction === 'reconnect-source'
+            ? null
+            : index + 1 < queue.length ? queue[index + 1][0] : null,
           completedRoles: [...completedRoles],
           message: failures[0] ?? null,
         });
+        if (recoveryAction === 'reconnect-source') break;
       }
 
       activeTrackId = null;
@@ -120,6 +133,8 @@ export function createRouletteHqPairController(
           activeRole: null,
           completedRoles,
           message: failures[0] ?? 'One high-quality stem could not be prepared.',
+          recoveryAction,
+          requiredVolumeName,
         });
       }
       return publish({
@@ -128,6 +143,8 @@ export function createRouletteHqPairController(
         activeRole: null,
         completedRoles: [],
         message: failures[0] ?? 'High-quality stem preparation failed.',
+        recoveryAction,
+        requiredVolumeName,
       });
     })().finally(() => {
       inFlight = null;

@@ -1,6 +1,6 @@
 import type { RekordboxTrack } from '../../types';
 import type { DesktopRoulettePreparedStem } from '../../types/dropdex-desktop';
-import { resolveUsbPath } from '../../lib/rekordbox/usbPathResolver';
+import { fetchImportById } from '../../lib/queries/rekordbox';
 import {
   rouletteStemAssetRepository,
   type StemAssetRepository,
@@ -10,6 +10,10 @@ import {
   type StemAssetService,
 } from './stemAssetService';
 import { ROULETTE_SEPARATOR_VERSION, type StemAssetType } from './stemAssets';
+import {
+  isRecoverableRouletteSourceMediaError,
+  resolveRouletteSourceMedia,
+} from './rouletteSourceMedia';
 
 export { ROULETTE_SEPARATOR_VERSION } from './stemAssets';
 
@@ -19,6 +23,9 @@ export interface RouletteStemPreparationOutcome {
   status: RouletteStemPreparationStatus;
   cached: boolean;
   message: string | null;
+  recoveryAction?: 'reconnect-source';
+  requiredVolumeName?: string | null;
+  connectedVolumeName?: string | null;
 }
 
 export interface RouletteHqPairPreparationOutcome {
@@ -29,7 +36,7 @@ export interface RouletteHqPairPreparationOutcome {
 
 type DesktopPreparationBridge = Pick<
   NonNullable<Window['dropdexDesktop']>,
-  'getRouletteRuntimeHealth' | 'prepareRouletteStems' | 'cancelRouletteStems'
+  'getRouletteRuntimeHealth' | 'prepareRouletteStems' | 'cancelRouletteStems' | 'reconnectUsb'
 >;
 
 export interface RouletteStemPreparationDependencies {
@@ -38,6 +45,7 @@ export interface RouletteStemPreparationDependencies {
     StemAssetService,
     'getReadiness' | 'register' | 'markFailed' | 'commitReadyPair'
   >;
+  loadSourceDeviceName(importId: string): Promise<string | null>;
   getDesktopBridge(): DesktopPreparationBridge | null;
 }
 
@@ -50,6 +58,7 @@ export interface RouletteStemPreparationService {
     instrumentalTrack: RekordboxTrack,
   ): Promise<RouletteHqPairPreparationOutcome>;
   cancel(trackId: string): Promise<boolean>;
+  reconnectSource(expectedVolumeName?: string | null): Promise<boolean>;
 }
 
 function defaultDesktopBridge(): DesktopPreparationBridge | null {
@@ -61,23 +70,6 @@ function durationMsForTrack(track: RekordboxTrack): number | null {
   if (track.duration_ms != null) return Math.max(0, Math.round(track.duration_ms));
   if (track.duration_seconds != null) return Math.max(0, Math.round(track.duration_seconds * 1000));
   return null;
-}
-
-function conciseSourcePathError(status: string): string {
-  switch (status) {
-    case 'empty_path':
-      return 'This track has no local media path.';
-    case 'unsafe_path':
-    case 'unsupported_scheme':
-    case 'invalid_encoding':
-      return 'This track has an unsupported local media path.';
-    case 'no_filename':
-      return 'This track path does not identify an audio file.';
-    case 'volume_mismatch':
-      return 'Connect the Rekordbox USB that owns this track.';
-    default:
-      return 'This track cannot be resolved for local stem preparation.';
-  }
 }
 
 function asCommitOutput(output: DesktopRoulettePreparedStem) {
@@ -106,10 +98,11 @@ export function createRouletteStemPreparationService(
   dependencies: RouletteStemPreparationDependencies = {
     repository: rouletteStemAssetRepository,
     stemAssets: rouletteStemAssetService,
+    loadSourceDeviceName: async (importId) => (await fetchImportById(importId))?.device_name ?? null,
     getDesktopBridge: defaultDesktopBridge,
   },
 ): RouletteStemPreparationService {
-  const { repository, stemAssets, getDesktopBridge } = dependencies;
+  const { repository, stemAssets, loadSourceDeviceName, getDesktopBridge } = dependencies;
   const inFlight = new Map<string, Promise<RouletteStemPreparationOutcome>>();
   const cancelledBeforeStart = new Set<string>();
   let queueTail: Promise<void> = Promise.resolve();
@@ -136,11 +129,6 @@ export function createRouletteStemPreparationService(
       };
     }
 
-    const pathResolution = resolveUsbPath(track.file_path);
-    if (pathResolution.status !== 'ok') {
-      return { status: 'failed', cached: false, message: conciseSourcePathError(pathResolution.status) };
-    }
-
     const sourceFingerprint = await repository.getCurrentSourceFingerprint(track.id);
     const [vocalsReadiness, instrumentalReadiness] = await Promise.all([
       stemAssets.getReadiness(track.id, 'vocals', { expectedSeparatorVersion: ROULETTE_SEPARATOR_VERSION }),
@@ -148,6 +136,12 @@ export function createRouletteStemPreparationService(
     ]);
     if (vocalsReadiness.status === 'ready' && instrumentalReadiness.status === 'ready') {
       return { status: 'ready', cached: true, message: null };
+    }
+
+    const sourceDeviceName = await loadSourceDeviceName(track.import_id);
+    const sourceMedia = resolveRouletteSourceMedia(track, sourceDeviceName);
+    if (sourceMedia.status !== 'ok') {
+      return { status: 'failed', cached: false, message: sourceMedia.message };
     }
 
     // Never overwrite a still-valid ready row with transient processing/failure state.
@@ -181,7 +175,8 @@ export function createRouletteStemPreparationService(
 
       const result = await desktop.prepareRouletteStems({
         trackId: track.id,
-        sourceSegments: pathResolution.segments,
+        sourceSegments: sourceMedia.sourceSegments,
+        expectedVolumeName: sourceMedia.expectedVolumeName,
         sourceFingerprint,
         separatorVersion: ROULETTE_SEPARATOR_VERSION,
         expectedDurationMs: durationMsForTrack(track),
@@ -190,6 +185,18 @@ export function createRouletteStemPreparationService(
         const failure = result as Extract<typeof result, { ok: false }>;
         const status = failure.error.kind === 'cancelled' ? 'cancelled' : 'failed';
         await markMutableFailed(track.id, mutableStemTypes, failure.error.kind, failure.error.message);
+        if (isRecoverableRouletteSourceMediaError(failure.error.kind)) {
+          return {
+            status,
+            cached: false,
+            message: failure.error.kind === 'source_media_mismatch'
+              ? 'The connected Rekordbox source does not match this track. Reconnect the correct source media.'
+              : 'Reconnect the Rekordbox source media for this track to continue.',
+            recoveryAction: 'reconnect-source',
+            requiredVolumeName: failure.error.requiredVolumeName ?? sourceMedia.expectedVolumeName,
+            connectedVolumeName: failure.error.connectedVolumeName ?? null,
+          };
+        }
         return { status, cached: false, message: failure.error.message };
       }
 
@@ -267,7 +274,14 @@ export function createRouletteStemPreparationService(
     return queuedOrActive || (result.ok && result.cancelled);
   };
 
-  return { prepare, preparePair, cancel };
+  const reconnectSource = async (expectedVolumeName: string | null = null): Promise<boolean> => {
+    const desktop = getDesktopBridge();
+    if (!desktop) return false;
+    const result = await desktop.reconnectUsb(expectedVolumeName);
+    return result.reconnected;
+  };
+
+  return { prepare, preparePair, cancel, reconnectSource };
 }
 
 export const rouletteStemPreparationService = createRouletteStemPreparationService();
