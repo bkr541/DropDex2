@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Chemistry, Play, Renew, Stop, VolumeMute, VolumeUp } from '@carbon/icons-react';
 import { ControlButton, RangeControl } from '../ui/controls';
 import { SurfaceCard } from '../ui/display';
-import { AlertBanner, ProgressBar, StatusBadge, StatusLoader } from '../ui/feedback';
+import { AlertBanner, Dialog, ProgressBar, StatusBadge, StatusLoader } from '../ui/feedback';
 import { TransportButton } from '../ui/media';
 import { WaveformDisplay } from '../library/WaveformDisplay';
 import { useRouletteSession } from '../../features/roulette/RouletteSessionContext';
@@ -234,6 +234,28 @@ export function RouletteView() {
   const candidateAvailability = useRouletteMatchingAvailability(matchingAvailable);
   const initialLoadRequested = useRef(false);
   const cancelledRecoveryRequested = useRef(new Set<string>());
+  const [pendingSourceChange, setPendingSourceChange] = useState<'vocal' | 'instrumental' | 'both' | null>(null);
+
+  const performSourceChange = (change: 'vocal' | 'instrumental' | 'both') => {
+    if (change === 'both') void actions.replaceBoth();
+    else void actions.replaceSource(change);
+  };
+
+  const requestSourceChange = (change: 'vocal' | 'instrumental' | 'both') => {
+    if (playback.status === 'playing' || state.transport.status === 'playing') {
+      setPendingSourceChange(change);
+      return;
+    }
+    performSourceChange(change);
+  };
+
+  const continueSourceChange = () => {
+    const change = pendingSourceChange;
+    if (!change) return;
+    setPendingSourceChange(null);
+    actions.stop();
+    performSourceChange(change);
+  };
 
   useEffect(() => {
     if (
@@ -286,6 +308,7 @@ export function RouletteView() {
 
   const matchingBusy = state.command.status === 'loading';
   const transportBusy = playback.status === 'loading' || playback.status === 'playing';
+  const sourceChangeTransportBusy = playback.status === 'loading';
   const selectedVocalPreview = previewStates.vocal?.trackId === state.sources.vocal.parentTrackId
     ? previewStates.vocal
     : null;
@@ -302,7 +325,7 @@ export function RouletteView() {
     && state.sources.instrumental.stemStatus === 'ready'
     && Boolean(state.sources.instrumental.parentTrackId && state.sources.instrumental.stemRef)
     && !matchingBusy
-    && !transportBusy
+    && !sourceChangeTransportBusy
     && !sourceRecoveryBusy
     && !hqBusy;
   const canChangeInstrumental = matchingAvailable
@@ -310,7 +333,7 @@ export function RouletteView() {
     && state.sources.vocal.stemStatus === 'ready'
     && Boolean(state.sources.vocal.parentTrackId && state.sources.vocal.stemRef)
     && !matchingBusy
-    && !transportBusy
+    && !sourceChangeTransportBusy
     && !sourceRecoveryBusy
     && !hqBusy;
   const canPlay = playbackAvailable && !matchingBusy && !transportBusy && !hqBusy;
@@ -396,7 +419,7 @@ export function RouletteView() {
               variant="surface"
               disabled={!canChangeVocal}
               title={state.sources.instrumental.parentTrackId ? 'Replace only the vocal source' : 'Roulette a pair first'}
-              onClick={() => { void actions.replaceSource('vocal'); }}
+              onClick={() => requestSourceChange('vocal')}
             >
               Change Vocal
             </ControlButton>
@@ -404,15 +427,15 @@ export function RouletteView() {
               variant="surface"
               disabled={!canChangeInstrumental}
               title={state.sources.vocal.parentTrackId ? 'Replace only the instrumental source' : 'Roulette a pair first'}
-              onClick={() => { void actions.replaceSource('instrumental'); }}
+              onClick={() => requestSourceChange('instrumental')}
             >
               Change Instrumental
             </ControlButton>
             <ControlButton
               variant="primary"
-              disabled={!matchingAvailable || candidateAvailability.loading || !candidateAvailability.available || matchingBusy || transportBusy || sourceRecoveryBusy || hqBusy}
+              disabled={!matchingAvailable || candidateAvailability.loading || !candidateAvailability.available || matchingBusy || sourceChangeTransportBusy || sourceRecoveryBusy || hqBusy}
               title="Resolve and replace both compatible sources"
-              onClick={() => { void actions.replaceBoth(); }}
+              onClick={() => requestSourceChange('both')}
             >
               Roulette Both
             </ControlButton>
@@ -463,6 +486,18 @@ export function RouletteView() {
           {mainStatus}
         </p>
       </SurfaceCard>
+      <Dialog
+        open={pendingSourceChange !== null}
+        title="Stop Roulette playback?"
+        onClose={() => setPendingSourceChange(null)}
+        closeOnBackdrop
+        actions={[
+          { label: 'Cancel', onClick: () => setPendingSourceChange(null), variant: 'neutral' },
+          { label: 'Continue', onClick: continueSourceChange, variant: 'primary' },
+        ]}
+      >
+        <p>This action will stop current playback.</p>
+      </Dialog>
     </section>
   );
 }

@@ -15,6 +15,23 @@ import { roulettePreparedAssetRef } from './roulettePreview';
 import { roulettePreviewPreparationService } from './roulettePreviewPreparationService';
 import { RouletteSelectionHistory } from './rouletteSelectionHistory';
 
+
+export class RouletteSourceRecoveryRequiredError extends Error {
+  readonly role: RouletteSourceRole;
+  readonly trackId: string;
+
+  constructor(role: RouletteSourceRole, trackId: string, message: string) {
+    super(message);
+    this.name = 'RouletteSourceRecoveryRequiredError';
+    this.role = role;
+    this.trackId = trackId;
+  }
+}
+
+function isSourceRecoveryRequiredError(error: unknown): error is RouletteSourceRecoveryRequiredError {
+  return error instanceof RouletteSourceRecoveryRequiredError;
+}
+
 export interface RouletteMatchingActions {
   initialize(): Promise<boolean>;
   replaceSource(role: RouletteSourceRole): Promise<boolean>;
@@ -69,6 +86,13 @@ async function defaultPrepareResolvedSource(
   try {
     const preparation = await roulettePreviewPreparationService.prepare(resolved.track, role);
     if (signal.aborted) throw new DOMException('Roulette replacement cancelled.', 'AbortError');
+    if (preparation.status === 'source-required') {
+      throw new RouletteSourceRecoveryRequiredError(
+        role,
+        resolved.parentTrackId,
+        preparation.message ?? `Reconnect the source media to continue preparing the ${role} audition source.`,
+      );
+    }
     if (preparation.status !== 'ready' || !preparation.asset || !preparation.window) {
       throw new Error(preparation.message ?? `Roulette could not prepare the ${role} audition source.`);
     }
@@ -226,8 +250,19 @@ export function createRouletteActionExecutor({
       return true;
     } catch (error) {
       if (isAbortError(error) || controller.signal.aborted) {
+        dispatch({ type: 'restore-sources', sources: stateBeforeCommand.sources, requestId });
         finishAbort(command, requestId, controller);
         return false;
+      }
+      if (isSourceRecoveryRequiredError(error)) {
+        dispatch({
+          type: 'update-source',
+          role: error.role,
+          selection: { parentTrackId: error.trackId, stemRef: null, stemStatus: 'failed', window: null },
+          requestId,
+        });
+      } else {
+        dispatch({ type: 'restore-sources', sources: stateBeforeCommand.sources, requestId });
       }
       clearController(controller);
       dispatch({ type: 'command-failed', command, requestId, error: errorMessage(error) });
@@ -315,8 +350,29 @@ export function createRouletteActionExecutor({
       return true;
     } catch (error) {
       if (isAbortError(error) || controller.signal.aborted) {
+        dispatch({ type: 'restore-sources', sources: stateBeforeCommand.sources, requestId });
         finishAbort(command, requestId, controller);
         return false;
+      }
+      if (isSourceRecoveryRequiredError(error)) {
+        dispatch({
+          type: 'update-source',
+          role: error.role,
+          selection: { parentTrackId: error.trackId, stemRef: null, stemStatus: 'failed', window: null },
+          requestId,
+        });
+        const otherRole = oppositeRole(error.role);
+        const otherSource = getState().sources[otherRole];
+        if (otherSource.stemStatus === 'preparing') {
+          dispatch({
+            type: 'update-source',
+            role: otherRole,
+            selection: { ...otherSource, stemStatus: 'unavailable' },
+            requestId,
+          });
+        }
+      } else {
+        dispatch({ type: 'restore-sources', sources: stateBeforeCommand.sources, requestId });
       }
       clearController(controller);
       dispatch({ type: 'command-failed', command, requestId, error: errorMessage(error) });

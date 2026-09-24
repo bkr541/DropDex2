@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRouletteActionExecutor } from './rouletteActions';
+import { createRouletteActionExecutor, RouletteSourceRecoveryRequiredError } from './rouletteActions';
 import {
   createInitialRouletteSessionState,
   rouletteSessionReducer,
@@ -412,17 +412,39 @@ describe('Roulette production action/state integration', () => {
     expect(test.state.sources.instrumental.stemStatus).toBe('ready');
   });
 
+  it('restores the last known-good pair when resolved-source preparation fails before audio preflight', async () => {
+    const resolveReplacement = vi.fn(async () => ({
+      parentTrackId: 'vocal-broken',
+      track: { id: 'vocal-broken' } as RouletteResolvedSource['track'],
+      stemAsset: null,
+    }));
+    const previous = readyPairState();
+    const previousSources = previous.sources;
+    const prepareResolvedSource = vi.fn(async () => { throw new Error('decoder rejected preview'); });
+    const test = harness(matcher({ resolveReplacement }), previous, async () => undefined, prepareResolvedSource);
+
+    await expect(test.executor.actions.replaceSource('vocal')).resolves.toBe(false);
+
+    expect(test.state.sources).toBe(previousSources);
+    expect(test.state.sources.vocal.stemStatus).toBe('ready');
+    expect(test.state.command.error).toBe('decoder rejected preview');
+  });
+
   it('keeps the selected pair visible when preview preparation reports recoverable source media required', async () => {
     const resolvePair = vi.fn(async () => ({
       vocal: { parentTrackId: 'vocal-usb', track: { id: 'vocal-usb' } as RouletteResolvedSource['track'], stemAsset: null },
       instrumental: { parentTrackId: 'instrumental-usb', track: { id: 'instrumental-usb' } as RouletteResolvedSource['track'], stemAsset: null },
     }));
-    const prepareResolvedSource = vi.fn(async () => { throw new Error('Reconnect USB-A to continue.'); });
+    const prepareResolvedSource = vi.fn(async (_resolved, role: 'vocal' | 'instrumental') => {
+      throw new RouletteSourceRecoveryRequiredError(role, `${role}-usb`, 'Reconnect USB-A to continue.');
+    });
     const test = harness(matcher({ resolvePair }), undefined, async () => undefined, prepareResolvedSource);
 
     await expect(test.executor.actions.initialize()).resolves.toBe(false);
     expect(test.state.sources.vocal.parentTrackId).toBe('vocal-usb');
     expect(test.state.sources.instrumental.parentTrackId).toBe('instrumental-usb');
+    expect(test.state.sources.vocal.stemStatus).toBe('failed');
+    expect(test.state.sources.instrumental.stemStatus).toBe('unavailable');
     expect(test.state.command.error).toBe('Reconnect USB-A to continue.');
   });
 

@@ -12,6 +12,7 @@ import {
 import {
   createInitialRouletteSessionState,
   rouletteSessionReducer,
+  type RouletteSessionAction,
   type RouletteSessionState,
   type RouletteSourceRole,
   type RouletteSourceSelection,
@@ -88,7 +89,7 @@ function selectionFromPreviewState(
 }
 
 export function RouletteSessionProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(
+  const [state, reactDispatch] = useReducer(
     rouletteSessionReducer,
     undefined,
     createInitialRouletteSessionState,
@@ -97,6 +98,10 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
   const [hq, setHq] = useState<RouletteHqPairUiState>(INITIAL_ROULETTE_HQ_STATE);
   const { status: usbStatus, volumeName: usbVolumeName, connectedAt: usbConnectedAt } = useUsbConnection();
   const stateRef = useRef(state);
+  const dispatch = useCallback((action: RouletteSessionAction) => {
+    stateRef.current = rouletteSessionReducer(stateRef.current, action);
+    reactDispatch(action);
+  }, []);
   const autoUsbResumeRef = useRef(new Set<string>());
   const sourceRecoveryRef = useRef<Record<RouletteSourceRole, Promise<boolean> | null>>({
     vocal: null,
@@ -111,12 +116,6 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
     dispatch,
     prepareSources: audio.prepareSources,
   }), [audio.prepareSources]);
-  const sourceSignature = [
-    state.sources.vocal.parentTrackId,
-    state.sources.vocal.stemRef,
-    state.sources.instrumental.parentTrackId,
-    state.sources.instrumental.stemRef,
-  ].join('|');
   const pairIdentity = [
     state.sources.vocal.parentTrackId ?? '',
     state.sources.instrumental.parentTrackId ?? '',
@@ -129,10 +128,6 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
       setHq(INITIAL_ROULETTE_HQ_STATE);
     }
   }, [pairIdentity]);
-
-  useEffect(() => {
-    audio.stop({ resetVisuals: true });
-  }, [audio.stop, sourceSignature]);
 
   useEffect(() => () => matchingExecutor.cancel(), [matchingExecutor]);
 
@@ -183,7 +178,7 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
 
     dispatch({ type: 'commit-source', role, selection });
 
-    if (fixed.parentTrackId && fixed.stemStatus === 'preparing') {
+    if (fixed.parentTrackId && fixed.stemStatus !== 'ready') {
       const existingPartnerState = roulettePreviewPreparationService.getState(fixed.parentTrackId, opposite);
       if (!existingPartnerState) {
         const partnerTrack = await fetchRouletteTrack(fixed.parentTrackId);
