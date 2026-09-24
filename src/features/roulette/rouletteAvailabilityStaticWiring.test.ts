@@ -91,3 +91,22 @@ describe('Roulette initial load — retryable without remount', () => {
     expect(viewSource).toContain('Retry');
   });
 });
+
+
+describe('Roulette truthful count and recovery presentation', () => {
+  it('carries explicit pair-count truncation metadata instead of inferring from a UI magic number', () => {
+    expect(availabilitySource).toContain('compatiblePairCountIsTruncated');
+    expect(viewSource).toContain('formatRouletteCompatiblePairCount');
+    expect(viewSource).not.toMatch(/compatiblePairCount\s*===\s*512/);
+  });
+
+  it('uses reconnect for missing source media and Retry only for retryable preview failures', () => {
+    expect(viewSource).toContain('actionLabel="Reconnect"');
+    expect(viewSource).toContain("preview.recoveryAction === 'retry'");
+    expect(viewSource).toContain("preview.recoveryAction === 'runtime-setup'");
+  });
+
+  it('only exposes initial-load Retry when the command is classified retryable', () => {
+    expect(viewSource).toContain("state.command.recoveryAction === 'retry'");
+  });
+});

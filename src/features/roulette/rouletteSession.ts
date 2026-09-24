@@ -38,6 +38,7 @@ export type RouletteCommand =
   | 'stop';
 
 export type RouletteCommandStatus = 'idle' | 'loading' | 'error';
+export type RouletteCommandRecoveryAction = 'retry' | 'reconnect-source' | 'runtime-setup' | 'none';
 export type RouletteTransportStatus = 'stopped' | 'playing';
 
 export interface RouletteSessionState {
@@ -47,6 +48,7 @@ export interface RouletteSessionState {
     requestId: string | null;
     status: RouletteCommandStatus;
     error: string | null;
+    recoveryAction: RouletteCommandRecoveryAction;
   };
   transport: {
     status: RouletteTransportStatus;
@@ -73,7 +75,13 @@ export type RouletteSessionAction =
   | { type: 'restore-sources'; sources: RouletteSessionState['sources']; requestId?: string }
   | { type: 'command-started'; command: RouletteCommand; requestId: string }
   | { type: 'command-finished'; command: RouletteCommand; requestId: string }
-  | { type: 'command-failed'; command: RouletteCommand; requestId: string; error: string }
+  | {
+      type: 'command-failed';
+      command: RouletteCommand;
+      requestId: string;
+      error: string;
+      recoveryAction: RouletteCommandRecoveryAction;
+    }
   | { type: 'transport-changed'; status: RouletteTransportStatus; masterBpm?: number | null };
 
 const emptySource = (): RouletteSourceSelection => ({
@@ -93,6 +101,7 @@ export function createInitialRouletteSessionState(): RouletteSessionState {
       requestId: null,
       status: 'idle',
       error: null,
+      recoveryAction: 'none',
     },
     transport: {
       status: 'stopped',
@@ -148,7 +157,7 @@ export function rouletteSessionReducer(
           ...state.sources,
           [action.role]: action.selection,
         },
-        command: { active: null, requestId: null, status: 'idle', error: null },
+        command: { active: null, requestId: null, status: 'idle', error: null, recoveryAction: 'none' },
       };
 
     case 'commit-pair':
@@ -159,27 +168,33 @@ export function rouletteSessionReducer(
           vocal: action.vocal,
           instrumental: action.instrumental,
         },
-        command: { active: null, requestId: null, status: 'idle', error: null },
+        command: { active: null, requestId: null, status: 'idle', error: null, recoveryAction: 'none' },
       };
 
     case 'command-started':
       return {
         ...state,
-        command: { active: action.command, requestId: action.requestId, status: 'loading', error: null },
+        command: { active: action.command, requestId: action.requestId, status: 'loading', error: null, recoveryAction: 'none' },
       };
 
     case 'command-finished':
       if (state.command.active !== action.command || state.command.requestId !== action.requestId) return state;
       return {
         ...state,
-        command: { active: null, requestId: null, status: 'idle', error: null },
+        command: { active: null, requestId: null, status: 'idle', error: null, recoveryAction: 'none' },
       };
 
     case 'command-failed':
       if (state.command.active !== action.command || state.command.requestId !== action.requestId) return state;
       return {
         ...state,
-        command: { active: null, requestId: null, status: 'error', error: action.error },
+        command: {
+          active: null,
+          requestId: null,
+          status: 'error',
+          error: action.error,
+          recoveryAction: action.recoveryAction,
+        },
       };
 
     case 'transport-changed':

@@ -8,6 +8,7 @@ import {
   rankRouletteCandidates,
   rankRoulettePairs,
   rankRoulettePairsBounded,
+  rankRoulettePairsBoundedWithMetadata,
   ROULETTE_DIRECT_BPM_TOLERANCE,
   type RouletteCandidateAnalysis,
 } from './rouletteMatching';
@@ -232,6 +233,29 @@ describe('Roulette hard compatibility', () => {
     expect(topA?.candidate.track.id).toBe(ranked[0].candidate.track.id);
     expect(topB?.candidate.track.id).toBe(topA?.candidate.track.id);
     expect(alternate?.candidate.track.id).toBe(ranked.at(-1)?.candidate.track.id);
+  });
+
+  it('reports an exact pair count when the bounded matcher proves the evaluated space is complete', () => {
+    const result = rankRoulettePairsBoundedWithMetadata(
+      [candidate('vocal-exact', 'vocal')],
+      [candidate('inst-exact', 'instrumental')],
+      { maxPairs: 8, maxPartnersPerVocal: 8 },
+    );
+
+    expect(result.pairs).toHaveLength(1);
+    expect(result.isTruncated).toBe(false);
+  });
+
+  it('reports truncation when the pair safety bound prevents an exact total', () => {
+    const vocals = Array.from({ length: 8 }, (_, index) => candidate(`vocal-limit-${index}`, 'vocal'));
+    const instrumentals = Array.from({ length: 8 }, (_, index) => candidate(`inst-limit-${index}`, 'instrumental'));
+    const result = rankRoulettePairsBoundedWithMetadata(vocals, instrumentals, {
+      maxPairs: 3,
+      maxPartnersPerVocal: 2,
+    });
+
+    expect(result.pairs).toHaveLength(3);
+    expect(result.isTruncated).toBe(true);
   });
 
   it('builds a bounded compatible pair pool instead of expanding the full Cartesian product', () => {

@@ -44,7 +44,7 @@ describe('roulette session state', () => {
         vocal: { parentTrackId: null, stemRef: null, stemStatus: 'unavailable' },
         instrumental: { parentTrackId: null, stemRef: null, stemStatus: 'unavailable' },
       },
-      command: { active: null, requestId: null, status: 'idle', error: null },
+      command: { active: null, requestId: null, status: 'idle', error: null, recoveryAction: 'none' },
       transport: { status: 'stopped', masterBpm: null },
     });
   });
@@ -96,6 +96,7 @@ describe('roulette session state', () => {
       command: 'replace-both',
       requestId: 'request-1',
       error: 'No compatible pair found',
+      recoveryAction: 'retry',
     });
 
     expect(failed.sources).toBe(loading.sources);
@@ -105,6 +106,7 @@ describe('roulette session state', () => {
       requestId: null,
       status: 'error',
       error: 'No compatible pair found',
+      recoveryAction: 'retry',
     });
   });
 
@@ -131,6 +133,7 @@ describe('roulette session state', () => {
       requestId: 'request-2',
       status: 'loading',
       error: null,
+      recoveryAction: 'none',
     });
   });
 

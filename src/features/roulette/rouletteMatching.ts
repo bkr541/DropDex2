@@ -322,6 +322,12 @@ export interface RoulettePairPoolOptions {
   maxPartnersPerVocal?: number;
 }
 
+export interface RouletteBoundedPairResult {
+  pairs: RoulettePairScore[];
+  /** True when safety bounds prevented the matcher from proving the returned count is exact. */
+  isTruncated: boolean;
+}
+
 function exactKeyToken(track: Pick<RekordboxTrack, 'camelot_key'>): string | null {
   const key = parseCamelotKey(track.camelot_key);
   return key ? `camelot:${key.code}` : null;
@@ -409,11 +415,11 @@ function nearestTempoCandidates(
  * Instrumentals are indexed once by harmonic-key token and BPM; each vocal only
  * inspects its nearest direct-tempo partners before the normal hard filters run.
  */
-export function rankRoulettePairsBounded(
+export function rankRoulettePairsBoundedWithMetadata(
   vocals: RouletteCandidateAnalysis[],
   instrumentals: RouletteCandidateAnalysis[],
   options: RoulettePairPoolOptions = {},
-): RoulettePairScore[] {
+): RouletteBoundedPairResult {
   const maxPairs = Math.max(1, Math.floor(options.maxPairs ?? ROULETTE_PAIR_POOL_LIMIT));
   const maxPartnersPerVocal = Math.max(
     1,
@@ -431,15 +437,24 @@ export function rankRoulettePairsBounded(
   for (const bucket of index.values()) bucket.sort(compareCandidateBpm);
 
   const pairs: RoulettePairScore[] = [];
-  for (const vocal of vocals) {
-    if (pairs.length >= maxPairs) break;
+  let isTruncated = false;
+  for (let vocalIndex = 0; vocalIndex < vocals.length; vocalIndex += 1) {
+    const vocal = vocals[vocalIndex];
+    if (pairs.length >= maxPairs) {
+      isTruncated = true;
+      break;
+    }
     if (!validBpm(vocal.track.bpm)) continue;
 
     const possible = new Map<string, RouletteCandidateAnalysis>();
     const probeLimit = maxPartnersPerVocal * 2;
+    let probeWasBounded = false;
     for (const token of compatibleKeyTokens(vocal.track)) {
       const bucket = index.get(token);
       if (!bucket) continue;
+      const start = lowerBoundBpm(bucket, vocal.track.bpm - ROULETTE_DIRECT_BPM_TOLERANCE);
+      const end = upperBoundBpm(bucket, vocal.track.bpm + ROULETTE_DIRECT_BPM_TOLERANCE);
+      if (end - start > probeLimit) probeWasBounded = true;
       for (const instrumental of nearestTempoCandidates(bucket, vocal.track.bpm, probeLimit)) {
         possible.set(instrumental.track.id, instrumental);
       }
@@ -472,15 +487,31 @@ export function rankRoulettePairsBounded(
       || left.instrumental.track.title.localeCompare(right.instrumental.track.title)
       || left.instrumental.track.id.localeCompare(right.instrumental.track.id)
     ));
-    pairs.push(...compatible.slice(0, Math.min(maxPartnersPerVocal, maxPairs - pairs.length)));
+    const remainingPairCapacity = maxPairs - pairs.length;
+    const selectedCount = Math.min(maxPartnersPerVocal, remainingPairCapacity, compatible.length);
+    if (probeWasBounded || compatible.length > selectedCount) isTruncated = true;
+    pairs.push(...compatible.slice(0, selectedCount));
+
+    if (pairs.length >= maxPairs && vocalIndex < vocals.length - 1) isTruncated = true;
   }
 
-  return pairs.sort((left, right) => (
-    right.score - left.score
-    || left.bpmDifference - right.bpmDifference
-    || left.vocal.track.title.localeCompare(right.vocal.track.title)
-    || left.instrumental.track.title.localeCompare(right.instrumental.track.title)
-    || left.vocal.track.id.localeCompare(right.vocal.track.id)
-    || left.instrumental.track.id.localeCompare(right.instrumental.track.id)
-  ));
+  return {
+    pairs: pairs.sort((left, right) => (
+      right.score - left.score
+      || left.bpmDifference - right.bpmDifference
+      || left.vocal.track.title.localeCompare(right.vocal.track.title)
+      || left.instrumental.track.title.localeCompare(right.instrumental.track.title)
+      || left.vocal.track.id.localeCompare(right.vocal.track.id)
+      || left.instrumental.track.id.localeCompare(right.instrumental.track.id)
+    )),
+    isTruncated,
+  };
+}
+
+export function rankRoulettePairsBounded(
+  vocals: RouletteCandidateAnalysis[],
+  instrumentals: RouletteCandidateAnalysis[],
+  options: RoulettePairPoolOptions = {},
+): RoulettePairScore[] {
+  return rankRoulettePairsBoundedWithMetadata(vocals, instrumentals, options).pairs;
 }

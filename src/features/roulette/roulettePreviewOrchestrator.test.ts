@@ -21,6 +21,7 @@ function ready(trackId: string, role: 'vocal' | 'instrumental'): RoulettePreview
     status: 'ready',
     progress: 1,
     message: null,
+    recoveryAction: 'none',
     requiredVolumeName: null,
     connectedVolumeName: null,
     window: null,

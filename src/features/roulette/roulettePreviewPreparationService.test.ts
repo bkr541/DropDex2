@@ -272,10 +272,12 @@ describe('Roulette fast preview preparation service', () => {
     const outcome = await test.service.prepare(track('top'), 'vocal');
     expect(outcome).toMatchObject({
       status: 'source-required',
+      recoveryAction: 'reconnect-source',
       requiredVolumeName: 'USB-A',
       connectedVolumeName: 'USB-B',
       asset: null,
     });
+    expect(outcome.message).not.toContain('Wrong USB.');
   });
 
   it('reconnects the required source and resumes the same pending selection without re-import', async () => {
@@ -304,10 +306,31 @@ describe('Roulette fast preview preparation service', () => {
     const test = harness({
       prepareResult: { ok: false, error: { kind: 'processing_failed', message: 'separator failed' } },
     });
-    await expect(test.service.prepare(track('top'), 'vocal')).resolves.toMatchObject({ status: 'failed' });
+    await expect(test.service.prepare(track('top'), 'vocal')).resolves.toMatchObject({
+      status: 'failed',
+      recoveryAction: 'retry',
+      message: 'Preview preparation failed. Try again.',
+    });
     test.desktop.prepareRoulettePreview.mockResolvedValueOnce(previewSuccess('top'));
 
     await expect(test.service.retry('top', 'vocal')).resolves.toMatchObject({ status: 'ready' });
+  });
+
+  it('does not offer generic retry semantics when the local Roulette runtime is unavailable', async () => {
+    const test = harness({
+      prepareResult: {
+        ok: false,
+        error: { kind: 'runtime_unavailable', message: 'Local stem separator failed to start: /private/internal/path' },
+      },
+    });
+
+    const outcome = await test.service.prepare(track('runtime-missing'), 'vocal');
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      recoveryAction: 'runtime-setup',
+    });
+    expect(outcome.message).toContain('runtime setup is required');
+    expect(outcome.message).not.toContain('/private/internal/path');
   });
 
   it('keeps source-window timing explicit when resolving preview vs HQ media', async () => {

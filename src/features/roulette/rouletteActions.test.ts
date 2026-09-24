@@ -245,7 +245,8 @@ describe('Roulette production action/state integration', () => {
     await expect(test.executor.actions.replaceBoth()).resolves.toBe(false);
 
     expect(test.state.sources).toBe(previousSources);
-    expect(test.state.command.error).toContain('same-parent');
+    expect(test.state.command.error).toContain('same track');
+    expect(test.state.command.recoveryAction).toBe('none');
   });
 
   it('preserves the previous pair when pair resolution fails', async () => {
@@ -254,7 +255,8 @@ describe('Roulette production action/state integration', () => {
 
     await expect(test.executor.actions.replaceBoth()).resolves.toBe(false);
     expect(test.state.sources).toBe(previousSources);
-    expect(test.state.command.error).toBe('No fully replaceable compatible Roulette pair found.');
+    expect(test.state.command.error).toBe('No more compatible sources');
+    expect(test.state.command.recoveryAction).toBe('none');
   });
 
   it('requires the opposite selected deck for one-sided replacement', async () => {
@@ -316,7 +318,9 @@ describe('Roulette production action/state integration', () => {
 
     expect(prepareSources).toHaveBeenCalledTimes(1);
     expect(test.state.sources).toBe(previousSources);
-    expect(test.state.command.error).toBe('tempo processor failed');
+    expect(test.state.command.error).toBe('Roulette could not complete that source change. Try again.');
+    expect(test.state.command.error).not.toContain('tempo processor failed');
+    expect(test.state.command.recoveryAction).toBe('retry');
   });
 
   it('passes bounded recent history back into subsequent Roulette Both resolution', async () => {
@@ -427,7 +431,9 @@ describe('Roulette production action/state integration', () => {
 
     expect(test.state.sources).toBe(previousSources);
     expect(test.state.sources.vocal.stemStatus).toBe('ready');
-    expect(test.state.command.error).toBe('decoder rejected preview');
+    expect(test.state.command.error).toBe('Roulette could not complete that source change. Try again.');
+    expect(test.state.command.error).not.toContain('decoder rejected preview');
+    expect(test.state.command.recoveryAction).toBe('retry');
   });
 
   it('keeps the selected pair visible when preview preparation reports recoverable source media required', async () => {
@@ -446,6 +452,7 @@ describe('Roulette production action/state integration', () => {
     expect(test.state.sources.vocal.stemStatus).toBe('failed');
     expect(test.state.sources.instrumental.stemStatus).toBe('unavailable');
     expect(test.state.command.error).toBe('Reconnect USB-A to continue.');
+    expect(test.state.command.recoveryAction).toBe('reconnect-source');
   });
 
   it('reuses an already-ready session on navigation return without launching duplicate matching or preparation jobs', async () => {

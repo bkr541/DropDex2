@@ -13,6 +13,12 @@ export type RoulettePreviewPreparationStatus =
   | 'failed'
   | 'cancelled';
 
+export type RoulettePreviewRecoveryAction =
+  | 'retry'
+  | 'reconnect-source'
+  | 'runtime-setup'
+  | 'none';
+
 export interface RoulettePreviewWindow {
   sourceTimeMs: number;
   windowEndMs: number;
@@ -49,6 +55,7 @@ export interface RoulettePreviewPreparationState {
   status: RoulettePreviewPreparationStatus;
   progress: number | null;
   message: string | null;
+  recoveryAction: RoulettePreviewRecoveryAction;
   requiredVolumeName: string | null;
   connectedVolumeName: string | null;
   window: RoulettePreviewWindow | null;

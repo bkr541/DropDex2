@@ -9,7 +9,7 @@ import { useRouletteSession } from '../../features/roulette/RouletteSessionConte
 import type { RouletteSourceRole } from '../../features/roulette/rouletteSession';
 import type { RoulettePreviewPreparationState } from '../../features/roulette/roulettePreview';
 import { useRouletteSourceTrack } from '../../features/roulette/useRouletteSourceTrack';
-import { useRouletteMatchingAvailability } from '../../features/roulette/useRouletteMatchingAvailability';
+import { formatRouletteCompatiblePairCount, useRouletteMatchingAvailability } from '../../features/roulette/useRouletteMatchingAvailability';
 
 const SOURCE_COPY: Record<RouletteSourceRole, { label: string; position: string }> = {
   vocal: { label: 'Vocal', position: 'Top deck' },
@@ -99,7 +99,10 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
   const deckMix = playback.mix[role];
   const preparing = preview?.status === 'queued' || preview?.status === 'running' || source.stemStatus === 'preparing';
   const sourceRequired = preview?.status === 'source-required';
-  const retryable = preview?.status === 'failed' || preview?.status === 'cancelled';
+  const retryable = (preview?.status === 'failed' || preview?.status === 'cancelled')
+    && preview.recoveryAction === 'retry';
+  const runtimeSetupRequired = preview?.status === 'failed' && preview.recoveryAction === 'runtime-setup';
+  const nonRetryableFailure = preview?.status === 'failed' && preview.recoveryAction === 'none';
   const waveformFallback = sourceTrack.error
     ?? preview?.message
     ?? (source.parentTrackId
@@ -184,6 +187,24 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
             <ControlButton variant="surface" onClick={() => { void actions.retrySource(role); }}>
               <Renew size={13} /> Retry
             </ControlButton>
+          </div>
+        )}
+
+        {runtimeSetupRequired && (
+          <div className="mt-4">
+            <AlertBanner
+              title="Roulette runtime setup required"
+              message={preview?.message ?? 'Roulette audio runtime setup is required before preview preparation can continue.'}
+            />
+          </div>
+        )}
+
+        {nonRetryableFailure && (
+          <div className="mt-4">
+            <AlertBanner
+              title="Preview unavailable"
+              message={preview?.message ?? 'This source cannot be prepared for Roulette in its current state.'}
+            />
           </div>
         )}
 
@@ -390,7 +411,10 @@ export function RouletteView() {
         <StatusBadge tone={candidateAvailability.available ? 'success' : 'neutral'}>
           {candidateAvailability.loading
             ? 'Checking candidates'
-            : `${candidateAvailability.compatiblePairCount} compatible pair${candidateAvailability.compatiblePairCount === 1 ? '' : 's'}`}
+            : formatRouletteCompatiblePairCount(
+              candidateAvailability.compatiblePairCount,
+              candidateAvailability.compatiblePairCountIsTruncated,
+            )}
         </StatusBadge>
         {hq.status === 'ready' && <StatusBadge tone="success">HQ ready</StatusBadge>}
         {hq.status === 'partial' && <StatusBadge tone="amber">HQ partial</StatusBadge>}
@@ -511,6 +535,7 @@ export function RouletteView() {
             {mainStatus}
           </p>
           {state.command.status === 'error'
+            && state.command.recoveryAction === 'retry'
             && !state.sources.vocal.parentTrackId
             && !state.sources.instrumental.parentTrackId
             && matchingAvailable

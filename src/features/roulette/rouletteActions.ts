@@ -2,6 +2,7 @@ import {
   type RouletteCommand,
   type RouletteSessionAction,
   type RouletteSessionState,
+  type RouletteCommandRecoveryAction,
   type RouletteSourceRole,
   type RouletteSourceSelection,
 } from './rouletteSession';
@@ -15,6 +16,17 @@ import { roulettePreparedAssetRef } from './roulettePreview';
 import { roulettePreviewPreparationService } from './roulettePreviewPreparationService';
 import { RouletteSelectionHistory } from './rouletteSelectionHistory';
 
+
+
+class RouletteActionFailure extends Error {
+  readonly recoveryAction: RouletteCommandRecoveryAction;
+
+  constructor(message: string, recoveryAction: RouletteCommandRecoveryAction) {
+    super(message);
+    this.name = 'RouletteActionFailure';
+    this.recoveryAction = recoveryAction;
+  }
+}
 
 export class RouletteSourceRecoveryRequiredError extends Error {
   readonly role: RouletteSourceRole;
@@ -78,7 +90,7 @@ async function defaultPrepareResolvedSource(
   if (!resolved.track) {
     const legacy = legacyReadySelection(resolved);
     if (legacy) return legacy;
-    throw new Error('Roulette source metadata is unavailable for preparation.');
+    throw new RouletteActionFailure('Roulette source details are unavailable for preparation.', 'none');
   }
 
   const onAbort = () => { void roulettePreviewPreparationService.cancel(resolved.parentTrackId, role); };
@@ -94,7 +106,10 @@ async function defaultPrepareResolvedSource(
       );
     }
     if (preparation.status !== 'ready' || !preparation.asset || !preparation.window) {
-      throw new Error(preparation.message ?? `Roulette could not prepare the ${role} audition source.`);
+      throw new RouletteActionFailure(
+        preparation.message ?? `Roulette could not prepare the ${role} audition source.`,
+        preparation.recoveryAction,
+      );
     }
     return {
       parentTrackId: resolved.parentTrackId,
@@ -107,8 +122,20 @@ async function defaultPrepareResolvedSource(
   }
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function commandFailure(
+  error: unknown,
+  command: RouletteCommand,
+): { message: string; recoveryAction: RouletteCommandRecoveryAction } {
+  if (error instanceof RouletteSourceRecoveryRequiredError) {
+    return { message: error.message, recoveryAction: 'reconnect-source' };
+  }
+  if (error instanceof RouletteActionFailure) {
+    return { message: error.message, recoveryAction: error.recoveryAction };
+  }
+  if (command === 'initialize') {
+    return { message: 'Roulette initialization failed. Try again.', recoveryAction: 'retry' };
+  }
+  return { message: 'Roulette could not complete that source change. Try again.', recoveryAction: 'retry' };
 }
 
 function isAbortError(error: unknown): boolean {
@@ -189,7 +216,7 @@ export function createRouletteActionExecutor({
     try {
       const state = getState();
       const fixedTrackId = state.sources[oppositeRole(role)].parentTrackId;
-      if (!fixedTrackId) throw new Error(missingReferenceMessage(role));
+      if (!fixedTrackId) throw new RouletteActionFailure(missingReferenceMessage(role), 'none');
       rememberCurrent(state);
       const history = selectionHistory.snapshot();
 
@@ -204,7 +231,7 @@ export function createRouletteActionExecutor({
         finishAbort(command, requestId, controller);
         return false;
       }
-      if (!resolved) throw new Error(noCandidateMessage(role));
+      if (!resolved) throw new RouletteActionFailure(noCandidateMessage(role), 'none');
 
       dispatch({
         type: 'stage-source',
@@ -263,7 +290,14 @@ export function createRouletteActionExecutor({
         dispatch({ type: 'restore-sources', sources: stateBeforeCommand.sources, requestId });
       }
       clearController(controller);
-      dispatch({ type: 'command-failed', command, requestId, error: errorMessage(error) });
+      const failure = commandFailure(error, command);
+      dispatch({
+        type: 'command-failed',
+        command,
+        requestId,
+        error: failure.message,
+        recoveryAction: failure.recoveryAction,
+      });
       return false;
     }
   };
@@ -300,13 +334,16 @@ export function createRouletteActionExecutor({
         return false;
       }
       if (!resolved) {
-        throw new Error(command === 'initialize'
-          ? 'No compatible Roulette pair is available for initial load.'
-          : 'No more compatible sources');
+        throw new RouletteActionFailure(
+          command === 'initialize'
+            ? 'No compatible Roulette pair is available for initial load.'
+            : 'No more compatible sources',
+          'none',
+        );
       }
 
       if (resolved.vocal.parentTrackId === resolved.instrumental.parentTrackId) {
-        throw new Error('Roulette rejected a same-parent vocal/instrumental pair.');
+        throw new RouletteActionFailure('Roulette could not use a vocal and instrumental from the same track.', 'none');
       }
 
       dispatch({
@@ -327,7 +364,7 @@ export function createRouletteActionExecutor({
         return false;
       }
       if (vocal.parentTrackId === instrumental.parentTrackId) {
-        throw new Error('Roulette rejected a same-parent vocal/instrumental pair.');
+        throw new RouletteActionFailure('Roulette could not use a vocal and instrumental from the same track.', 'none');
       }
 
       const nextSources: RoulettePlaybackSources = { vocal, instrumental };
@@ -373,7 +410,14 @@ export function createRouletteActionExecutor({
         dispatch({ type: 'restore-sources', sources: stateBeforeCommand.sources, requestId });
       }
       clearController(controller);
-      dispatch({ type: 'command-failed', command, requestId, error: errorMessage(error) });
+      const failure = commandFailure(error, command);
+      dispatch({
+        type: 'command-failed',
+        command,
+        requestId,
+        error: failure.message,
+        recoveryAction: failure.recoveryAction,
+      });
       return false;
     }
   };

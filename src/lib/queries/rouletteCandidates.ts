@@ -1,5 +1,5 @@
 import type { RekordboxTrack } from '../../types';
-import { rankRouletteCandidates, rankRoulettePairsBounded, type RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
+import { rankRouletteCandidates, rankRoulettePairsBoundedWithMetadata, type RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
 import type { RouletteSourceRole } from '../../features/roulette/rouletteSession';
 import { hasQualifyingRouletteVocalMaterial } from '../../features/roulette/rouletteVocalQualification';
 import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole, type StemAssetRecord, type StemAssetType } from '../../features/roulette/stemAssets';
@@ -153,6 +153,7 @@ export interface RouletteCandidateReadiness {
   vocalCandidateCount: number;
   instrumentalCandidateCount: number;
   compatiblePairCount: number;
+  compatiblePairCountIsTruncated: boolean;
   reason: 'no-active-library' | 'no-eligible-pair' | null;
 }
 
@@ -185,6 +186,7 @@ export async function fetchRouletteAvailabilitySnapshot(
       vocalCandidateCount: 0,
       instrumentalCandidateCount: 0,
       compatiblePairCount: 0,
+      compatiblePairCountIsTruncated: false,
       reason: 'no-active-library',
       actions: EMPTY_ACTION_AVAILABILITY,
     };
@@ -194,7 +196,8 @@ export async function fetchRouletteAvailabilitySnapshot(
     fetchRouletteCandidateAnalysis('vocal', resolvedImportId),
     fetchRouletteCandidateAnalysis('instrumental', resolvedImportId),
   ]);
-  const pairs = rankRoulettePairsBounded(vocals, instrumentals, { maxPairs: 512 });
+  const pairPool = rankRoulettePairsBoundedWithMetadata(vocals, instrumentals, { maxPairs: 512 });
+  const pairs = pairPool.pairs;
 
   let canChangeVocal = false;
   let canChangeInstrumental = false;
@@ -239,6 +242,7 @@ export async function fetchRouletteAvailabilitySnapshot(
     vocalCandidateCount: vocals.length,
     instrumentalCandidateCount: instrumentals.length,
     compatiblePairCount: pairs.length,
+    compatiblePairCountIsTruncated: pairPool.isTruncated,
     reason: pairs.length > 0 ? null : 'no-eligible-pair',
     actions: { canChangeVocal, canChangeInstrumental, canRouletteBoth },
   };

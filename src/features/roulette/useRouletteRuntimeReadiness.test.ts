@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { classifyUnavailableReason } from './useRouletteRuntimeReadiness';
+import { classifyUnavailableReason, rouletteRuntimeUserMessage } from './useRouletteRuntimeReadiness';
 
 const root = process.cwd();
 const readinessSource = fs.readFileSync(
@@ -32,6 +32,13 @@ describe('classifyUnavailableReason', () => {
 
   it('classifies unexpected_failure as temporarily-unavailable', () => {
     expect(classifyUnavailableReason('unexpected_failure')).toBe('temporarily-unavailable');
+  });
+});
+
+describe('rouletteRuntimeUserMessage', () => {
+  it('uses a setup/remediation message for a known missing runtime instead of raw diagnostics', () => {
+    expect(rouletteRuntimeUserMessage('runtime_missing')).toContain('runtime setup is required');
+    expect(rouletteRuntimeUserMessage('runtime_missing')).not.toContain('/');
   });
 });
 

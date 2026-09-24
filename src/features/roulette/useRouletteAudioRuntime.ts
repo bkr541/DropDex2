@@ -26,10 +26,6 @@ const DEFAULT_MIX: RouletteMixState = {
   instrumental: { gain: 0.85, muted: false, solo: false },
 };
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
@@ -165,9 +161,15 @@ export function useRouletteAudioRuntime({
         setPlayback((previous) => ({ ...previous, status: 'idle', error: null, progress: 0 }));
         return false;
       }
-      const message = errorMessage(error);
+      const message = 'Roulette playback could not start. Try again.';
       activePlayCommandRef.current = null;
-      dispatch({ type: 'command-failed', command: 'play', requestId: commandRequestId, error: message });
+      dispatch({
+        type: 'command-failed',
+        command: 'play',
+        requestId: commandRequestId,
+        error: message,
+        recoveryAction: 'retry',
+      });
       dispatch({ type: 'transport-changed', status: 'stopped' });
       setPlayback((previous) => ({ ...previous, status: 'error', error: message, progress: 0 }));
       return false;

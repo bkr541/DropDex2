@@ -4,10 +4,17 @@ import { subscribeToRekordboxAnalysisProgress } from '../../lib/rekordbox/analys
 
 export const ROULETTE_AVAILABILITY_REFRESH_MS = 30_000;
 
+export function formatRouletteCompatiblePairCount(count: number, isTruncated: boolean): string {
+  const displayedCount = `${count}${isTruncated ? '+' : ''}`;
+  const noun = count === 1 && !isTruncated ? 'pair' : 'pairs';
+  return `${displayedCount} compatible ${noun}`;
+}
+
 export interface RouletteMatchingAvailabilityState {
   loading: boolean;
   available: boolean;
   compatiblePairCount: number;
+  compatiblePairCountIsTruncated: boolean;
   vocalCandidateCount: number;
   instrumentalCandidateCount: number;
   canChangeVocal: boolean;
@@ -20,6 +27,7 @@ const EMPTY_STATE: RouletteMatchingAvailabilityState = {
   loading: false,
   available: false,
   compatiblePairCount: 0,
+  compatiblePairCountIsTruncated: false,
   vocalCandidateCount: 0,
   instrumentalCandidateCount: 0,
   canChangeVocal: false,
@@ -56,6 +64,7 @@ export function useRouletteMatchingAvailability(
         loading: false,
         available: readiness.available,
         compatiblePairCount: readiness.compatiblePairCount,
+        compatiblePairCountIsTruncated: readiness.compatiblePairCountIsTruncated,
         vocalCandidateCount: readiness.vocalCandidateCount,
         instrumentalCandidateCount: readiness.instrumentalCandidateCount,
         canChangeVocal: readiness.actions.canChangeVocal,

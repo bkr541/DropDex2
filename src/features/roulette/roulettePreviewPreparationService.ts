@@ -34,6 +34,7 @@ import {
   type ResolvedRouletteAuditionMedia,
   type RoulettePreparedAuditionAsset,
   type RoulettePreviewPreparationState,
+  type RoulettePreviewRecoveryAction,
   type RoulettePreviewWindow,
 } from './roulettePreview';
 
@@ -109,6 +110,7 @@ function initialState(
   status: RoulettePreviewPreparationState['status'],
   window: RoulettePreviewWindow | null,
   message: string | null = null,
+  recoveryAction: RoulettePreviewRecoveryAction = 'none',
 ): RoulettePreviewPreparationState {
   return {
     trackId,
@@ -116,6 +118,7 @@ function initialState(
     status,
     progress: status === 'queued' ? 0 : status === 'running' ? null : status === 'ready' ? 1 : null,
     message,
+    recoveryAction,
     requiredVolumeName: null,
     connectedVolumeName: null,
     window,
@@ -140,6 +143,38 @@ function outputForRole(
   result: Extract<DesktopRoulettePreviewPreparationResult, { ok: true }>,
 ) {
   return role === 'vocal' ? result.outputs.vocals : result.outputs.instrumental;
+}
+
+export function roulettePreviewFailurePresentation(
+  kind: Extract<DesktopRoulettePreviewPreparationResult, { ok: false }>['error']['kind'],
+): {
+  status: Extract<RoulettePreviewPreparationState['status'], 'failed' | 'cancelled' | 'source-required'>;
+  message: string;
+  recoveryAction: RoulettePreviewRecoveryAction;
+} {
+  switch (kind) {
+    case 'cancelled':
+      return { status: 'cancelled', message: 'Preview preparation was cancelled. Try again when you are ready.', recoveryAction: 'retry' };
+    case 'source_media_required':
+      return { status: 'source-required', message: 'Reconnect the Rekordbox source media for this track to continue.', recoveryAction: 'reconnect-source' };
+    case 'source_media_mismatch':
+      return { status: 'source-required', message: 'The connected Rekordbox source does not match this track. Reconnect the correct source media.', recoveryAction: 'reconnect-source' };
+    case 'not_found':
+    case 'permission_denied':
+      return { status: 'source-required', message: 'The track source media is unavailable. Reconnect the original Rekordbox source media.', recoveryAction: 'reconnect-source' };
+    case 'runtime_unavailable':
+      return { status: 'failed', message: 'Roulette audio runtime setup is required before previews can be prepared. Repair or reinstall the local Roulette runtime, then reopen Roulette.', recoveryAction: 'runtime-setup' };
+    case 'processing_failed':
+      return { status: 'failed', message: 'Preview preparation failed. Try again.', recoveryAction: 'retry' };
+    case 'source_changed':
+      return { status: 'failed', message: 'The track media changed during preview preparation. Try again.', recoveryAction: 'retry' };
+    case 'unexpected':
+      return { status: 'failed', message: 'Preview preparation hit a temporary error. Try again.', recoveryAction: 'retry' };
+    case 'security':
+    case 'type_mismatch':
+    case 'validation_failed':
+      return { status: 'failed', message: 'This track cannot be prepared for Roulette with its current local media.', recoveryAction: 'none' };
+  }
 }
 
 export function createRoulettePreviewPreparationService(
@@ -173,14 +208,14 @@ export function createRoulettePreviewPreparationService(
   };
 
   const runJob = async (job: PreviewJob): Promise<RoulettePreviewPreparationState> => {
-    if (job.cancelled) return initialState(job.track.id, job.role, 'cancelled', job.window, 'Preview preparation was cancelled.');
+    if (job.cancelled) return initialState(job.track.id, job.role, 'cancelled', job.window, 'Preview preparation was cancelled. Try again when you are ready.', 'retry');
     const desktop = dependencies.getDesktopBridge();
     if (!desktop) {
-      return initialState(job.track.id, job.role, 'failed', job.window, 'Roulette preview preparation requires the DropDex desktop app.');
+      return initialState(job.track.id, job.role, 'failed', job.window, 'Roulette preview preparation requires the DropDex desktop app.', 'runtime-setup');
     }
 
     publish(initialState(job.track.id, job.role, 'running', job.window));
-    if (job.cancelled) return initialState(job.track.id, job.role, 'cancelled', job.window, 'Preview preparation was cancelled.');
+    if (job.cancelled) return initialState(job.track.id, job.role, 'cancelled', job.window, 'Preview preparation was cancelled. Try again when you are ready.', 'retry');
 
     const input: DesktopRoulettePreviewPreparationInput = {
       trackId: job.track.id,
@@ -195,17 +230,22 @@ export function createRoulettePreviewPreparationService(
     const result = await desktop.prepareRoulettePreview(input);
     if (!result.ok) {
       const failure = result as Extract<DesktopRoulettePreviewPreparationResult, { ok: false }>;
-      if (failure.error.kind === 'cancelled') {
-        return initialState(job.track.id, job.role, 'cancelled', job.window, failure.error.message);
-      }
-      if (failure.error.kind === 'source_media_required' || failure.error.kind === 'source_media_mismatch') {
-        return {
-          ...initialState(job.track.id, job.role, 'source-required', job.window, failure.error.message),
-          requiredVolumeName: failure.error.requiredVolumeName ?? job.expectedVolumeName,
-          connectedVolumeName: failure.error.connectedVolumeName ?? null,
-        };
-      }
-      return initialState(job.track.id, job.role, 'failed', job.window, failure.error.message);
+      const presentation = roulettePreviewFailurePresentation(failure.error.kind);
+      const failedState = initialState(
+        job.track.id,
+        job.role,
+        presentation.status,
+        job.window,
+        presentation.message,
+        presentation.recoveryAction,
+      );
+      return presentation.recoveryAction === 'reconnect-source'
+        ? {
+            ...failedState,
+            requiredVolumeName: failure.error.requiredVolumeName ?? job.expectedVolumeName,
+            connectedVolumeName: failure.error.connectedVolumeName ?? null,
+          }
+        : failedState;
     }
 
     const currentFingerprint = await dependencies.repository.getCurrentSourceFingerprint(job.track.id);
@@ -215,7 +255,8 @@ export function createRoulettePreviewPreparationService(
         job.role,
         'failed',
         job.window,
-        'Parent track media changed while the Roulette preview was being prepared.',
+        'The track media changed during preview preparation. Try again.',
+        'retry',
       );
     }
     const asset: RoulettePreparedAuditionAsset = {
@@ -238,12 +279,13 @@ export function createRoulettePreviewPreparationService(
     active = job;
     void runJob(job)
       .then((state) => finish(job, state))
-      .catch((error) => finish(job, initialState(
+      .catch(() => finish(job, initialState(
         job.track.id,
         job.role,
         'failed',
         job.window,
-        error instanceof Error ? error.message : String(error),
+        'Preview preparation hit a temporary error. Try again.',
+        'retry',
       )))
       .finally(() => {
         if (active === job) active = null;
@@ -266,7 +308,7 @@ export function createRoulettePreviewPreparationService(
 
     const request = (async () => {
       const desktop = dependencies.getDesktopBridge();
-      if (!desktop) return publish(initialState(track.id, role, 'failed', null, 'Roulette preview preparation requires the DropDex desktop app.'));
+      if (!desktop) return publish(initialState(track.id, role, 'failed', null, 'Roulette preview preparation requires the DropDex desktop app.', 'runtime-setup'));
 
       const sourceFingerprint = await dependencies.repository.getCurrentSourceFingerprint(track.id);
       const stemType = stemTypeForRole(role);
@@ -329,7 +371,7 @@ export function createRoulettePreviewPreparationService(
           role,
           'failed',
           window,
-          `This track belongs to source media "${expectedVolume}", but its Rekordbox path references "${pathResolution.strippedVolume}".`,
+          "This track's stored source location does not match its Rekordbox source media.",
         ));
       }
       if (pathResolution.status !== 'ok') {
@@ -373,7 +415,7 @@ export function createRoulettePreviewPreparationService(
       if (active !== job) {
         const index = queue.indexOf(job);
         if (index >= 0) queue.splice(index, 1);
-        finish(job, initialState(job.track.id, job.role, 'cancelled', job.window, 'Preview preparation was cancelled.'));
+        finish(job, initialState(job.track.id, job.role, 'cancelled', job.window, 'Preview preparation was cancelled. Try again when you are ready.', 'retry'));
         requests.delete(job.key);
       }
     }

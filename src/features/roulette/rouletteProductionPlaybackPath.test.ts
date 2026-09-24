@@ -229,6 +229,6 @@ describe('Roulette production behavior integration', () => {
 
     await expect(executor.actions.replaceBoth()).resolves.toBe(false);
     expect(preflight).not.toHaveBeenCalled();
-    expect(harness.getState().command.error).toBe('No fully replaceable compatible Roulette pair found.');
+    expect(harness.getState().command.error).toBe('No more compatible sources');
   });
 });
