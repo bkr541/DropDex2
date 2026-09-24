@@ -1,4 +1,5 @@
 import type { RekordboxTrack } from '../../types';
+import { classifyCamelotRelationship, type CamelotRelationship } from '../../lib/music/camelot';
 import {
   loadDecodedAudioSources,
   type AudioSourceLoadDependencies,
@@ -57,6 +58,15 @@ export interface RoulettePlaybackSources {
   instrumental: RouletteSourceSelection;
 }
 
+export interface RouletteCompatibilitySummary {
+  originalBpm: Record<RouletteSourceRole, number>;
+  masterBpm: number;
+  bpmDifference: number;
+  camelotKey: Record<RouletteSourceRole, string | null>;
+  keyRelationship: CamelotRelationship;
+  tempoAdjustmentPercent: Record<RouletteSourceRole, number>;
+}
+
 export interface RoulettePlaybackResult {
   masterBpm: number;
   durationSeconds: number;
@@ -64,10 +74,11 @@ export interface RoulettePlaybackResult {
   waveforms: Record<RouletteSourceRole, number[]>;
   barFractions: number[];
   anchors: Record<RouletteSourceRole, RouletteMusicalAnchor>;
+  compatibility: RouletteCompatibilitySummary;
 }
 
 export interface RouletteAudioRuntime {
-  prepare(sources: RoulettePlaybackSources, signal?: AbortSignal): Promise<void>;
+  prepare(sources: RoulettePlaybackSources, signal?: AbortSignal): Promise<RoulettePlaybackResult>;
   play(
     sources: RoulettePlaybackSources,
     mix: RouletteMixState,
@@ -592,22 +603,41 @@ export function createRouletteAudioRuntime(
       waveforms,
       barFractions,
       anchors: { vocal: vocalAnchor, instrumental: instrumentalAnchor },
+      compatibility: {
+        originalBpm: {
+          vocal: alignment.tempo.vocal.sourceBpm,
+          instrumental: alignment.tempo.instrumental.sourceBpm,
+        },
+        masterBpm: alignment.masterBpm,
+        bpmDifference: Math.abs(alignment.tempo.vocal.sourceBpm - alignment.tempo.instrumental.sourceBpm),
+        camelotKey: {
+          vocal: vocalTrack.camelot_key,
+          instrumental: instrumentalTrack.camelot_key,
+        },
+        keyRelationship: classifyCamelotRelationship(vocalTrack.camelot_key, instrumentalTrack.camelot_key),
+        tempoAdjustmentPercent: {
+          vocal: (alignment.tempo.vocal.tempoRatio - 1) * 100,
+          instrumental: (alignment.tempo.instrumental.tempoRatio - 1) * 100,
+        },
+      },
     };
   };
 
-  const prepare = async (sources: RoulettePlaybackSources, signal?: AbortSignal): Promise<void> => {
+  const prepare = async (sources: RoulettePlaybackSources, signal?: AbortSignal): Promise<RoulettePlaybackResult> => {
     if (signal?.aborted) throw abortError();
     const abort = () => stop();
     signal?.addEventListener('abort', abort, { once: true });
     try {
-      await play(sources, {
+      const result = await play(sources, {
         vocal: { gain: 0, muted: true, solo: false },
         instrumental: { gain: 0, muted: true, solo: false },
       });
       if (signal?.aborted) throw abortError();
+      return result;
     } finally {
       // play() schedules with a short lead-in. Always stop before returning so
       // preflight validates decode/anchors/DSP without making the candidate audible.
+      // The returned visualization remains valid after the silent graph is torn down.
       stop();
       signal?.removeEventListener('abort', abort);
     }

@@ -117,7 +117,8 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
     getState: () => stateRef.current,
     dispatch,
     prepareSources: audio.prepareSources,
-  }), [audio.prepareSources]);
+    commitPreparedSources: audio.commitPreparedResult,
+  }), [audio.commitPreparedResult, audio.prepareSources]);
   const pairIdentity = [
     state.sources.vocal.parentTrackId ?? '',
     state.sources.instrumental.parentTrackId ?? '',
@@ -175,7 +176,7 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
 
     const opposite: RouletteSourceRole = role === 'vocal' ? 'instrumental' : 'vocal';
     const fixed = stateRef.current.sources[opposite];
-    const nextSources = role === 'vocal'
+    let nextSources = role === 'vocal'
       ? { vocal: selection, instrumental: fixed }
       : { vocal: fixed, instrumental: selection };
     if (
@@ -183,8 +184,6 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
       && nextSources.instrumental.parentTrackId
       && nextSources.vocal.parentTrackId === nextSources.instrumental.parentTrackId
     ) return false;
-
-    dispatch({ type: 'commit-source', role, selection });
 
     if (fixed.parentTrackId && fixed.stemStatus !== 'ready') {
       const existingPartnerState = roulettePreviewPreparationService.getState(fixed.parentTrackId, opposite);
@@ -194,15 +193,20 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
           const partnerPreview = await roulettePreviewPreparationService.prepare(partnerTrack, opposite);
           const partnerSelection = selectionFromPreviewState(partnerPreview);
           if (partnerSelection) {
-            dispatch({ type: 'commit-source', role: opposite, selection: partnerSelection });
-            const completedPair = role === 'vocal'
+            nextSources = role === 'vocal'
               ? { vocal: selection, instrumental: partnerSelection }
               : { vocal: partnerSelection, instrumental: selection };
             const controller = new AbortController();
-            await audio.prepareSources(completedPair, controller.signal);
+            const prepared = await audio.prepareSources(nextSources, controller.signal);
+            dispatch({ type: 'commit-source', role, selection });
+            dispatch({ type: 'commit-source', role: opposite, selection: partnerSelection });
+            audio.commitPreparedResult(prepared);
+            return true;
           }
         }
       }
+
+      dispatch({ type: 'commit-source', role, selection });
       return true;
     }
 
@@ -213,10 +217,16 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
       && nextSources.instrumental.stemRef
     ) {
       const controller = new AbortController();
-      await audio.prepareSources(nextSources, controller.signal);
+      const prepared = await audio.prepareSources(nextSources, controller.signal);
+      dispatch({ type: 'commit-source', role, selection });
+      audio.commitPreparedResult(prepared);
+      return true;
     }
+
+    dispatch({ type: 'commit-source', role, selection });
     return true;
-  }, [audio.prepareSources]);
+  }, [audio.commitPreparedResult, audio.prepareSources]);
+
 
   const runSourceRecovery = useCallback((
     role: RouletteSourceRole,
@@ -289,16 +299,14 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
     for (const role of result.completedRoles) {
       const refreshed = await roulettePreviewPreparationService.prepare(tracks[role], role);
       const selection = selectionFromPreviewState(refreshed);
-      if (selection) {
-        selections[role] = selection;
-        dispatch({ type: 'update-source', role, selection });
-      }
+      if (selection) selections[role] = selection;
     }
 
     const nextSources = {
       vocal: selections.vocal ?? stateRef.current.sources.vocal,
       instrumental: selections.instrumental ?? stateRef.current.sources.instrumental,
     };
+    let prepared = null;
     if (
       nextSources.vocal.stemStatus === 'ready'
       && nextSources.vocal.stemRef
@@ -306,10 +314,15 @@ export function RouletteSessionProvider({ children }: { children: ReactNode }) {
       && nextSources.instrumental.stemRef
     ) {
       const controller = new AbortController();
-      await audio.prepareSources(nextSources, controller.signal);
+      prepared = await audio.prepareSources(nextSources, controller.signal);
     }
+    for (const role of result.completedRoles) {
+      const selection = selections[role];
+      if (selection) dispatch({ type: 'update-source', role, selection });
+    }
+    if (prepared) audio.commitPreparedResult(prepared);
     return result.status === 'ready' || result.status === 'partial';
-  }, [audio.prepareSources, hqController]);
+  }, [audio.commitPreparedResult, audio.prepareSources, hqController]);
 
   const actions = useMemo<RouletteSessionActions>(() => ({
     ...matchingExecutor.actions,

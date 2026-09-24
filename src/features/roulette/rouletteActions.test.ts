@@ -9,6 +9,7 @@ import {
 } from './rouletteSession';
 import type { RouletteMatchingEngine, RouletteResolvedSource } from './rouletteMatchingEngine';
 import { STEM_ASSET_CONTRACT_VERSION, type StemAssetRecord } from './stemAssets';
+import type { RoulettePlaybackResult } from './rouletteAudioRuntime';
 
 function selection(id: string, stemRef: string): RouletteSourceSelection {
   return { parentTrackId: id, stemRef, stemStatus: 'ready' };
@@ -47,6 +48,7 @@ function harness(
     role: 'vocal' | 'instrumental',
     signal: AbortSignal,
   ) => Promise<RouletteSourceSelection>,
+  commitPreparedSources: NonNullable<Parameters<typeof createRouletteActionExecutor>[0]['commitPreparedSources']> = () => undefined,
 ) {
   let state = initial ?? createInitialRouletteSessionState();
   const dispatch = (action: RouletteSessionAction) => {
@@ -57,6 +59,7 @@ function harness(
     dispatch,
     matcher,
     prepareSources,
+    commitPreparedSources,
     ...(prepareResolvedSource ? { prepareResolvedSource } : {}),
   });
   return { executor, get state() { return state; } };
@@ -78,6 +81,41 @@ function readyPairState(): RouletteSessionState {
     instrumental: selection('instrumental-a', 'instrumental-a-instrumental'),
   });
   return state;
+}
+
+function preparedResult(): RoulettePlaybackResult {
+  const anchor = {
+    role: 'vocal' as const,
+    parentTrackId: 'vocal-b',
+    sourceTimeMs: 0,
+    sourceBar: 1,
+    sourceBeatSequence: 1,
+    anchorBeat: null,
+    requestedBars: 16,
+    windowEndMs: 27_000,
+    usableWindowMs: 27_000,
+    provenance: 'downbeat' as const,
+    reason: 'test',
+  };
+  return {
+    masterBpm: 142,
+    durationSeconds: 27,
+    startAt: 0,
+    waveforms: { vocal: [0.2, 0.8], instrumental: [0.4, 0.6] },
+    barFractions: [0, 0.5, 1],
+    anchors: {
+      vocal: anchor,
+      instrumental: { ...anchor, role: 'instrumental', parentTrackId: 'instrumental-a' },
+    },
+    compatibility: {
+      originalBpm: { vocal: 140, instrumental: 142 },
+      masterBpm: 142,
+      bpmDifference: 2,
+      camelotKey: { vocal: '8A', instrumental: '9A' },
+      keyRelationship: 'adjacent_up',
+      tempoAdjustmentPercent: { vocal: 1.428571, instrumental: 0 },
+    },
+  };
 }
 
 describe('Roulette production action/state integration', () => {
@@ -302,6 +340,54 @@ describe('Roulette production action/state integration', () => {
       instrumental: selection('instrumental-a', 'instrumental-a-instrumental'),
     }, expect.any(AbortSignal));
     expect(test.state.sources.vocal.parentTrackId).toBe('vocal-b');
+  });
+
+  it('publishes prepared visualization only after the replacement source is committed', async () => {
+    const resolveReplacement = vi.fn(async () => ({
+      parentTrackId: 'vocal-b',
+      stemAsset: stem('vocal-b', 'vocals'),
+    }));
+    const prepared = preparedResult();
+    const prepareSources = vi.fn(async () => prepared);
+    let test!: ReturnType<typeof harness>;
+    const commitPreparedSources = vi.fn((result) => {
+      expect(result).toBe(prepared);
+      expect(test.state.sources.vocal.parentTrackId).toBe('vocal-b');
+      expect(test.state.command.status).toBe('idle');
+    });
+    test = harness(
+      matcher({ resolveReplacement }),
+      readyPairState(),
+      prepareSources,
+      undefined,
+      commitPreparedSources,
+    );
+
+    await expect(test.executor.actions.replaceSource('vocal')).resolves.toBe(true);
+
+    expect(commitPreparedSources).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not publish replacement visualization when preflight fails and the last-good pair is restored', async () => {
+    const resolvePair = vi.fn(async () => ({
+      vocal: { parentTrackId: 'vocal-b', stemAsset: stem('vocal-b', 'vocals') },
+      instrumental: { parentTrackId: 'instrumental-b', stemAsset: stem('instrumental-b', 'instrumental') },
+    }));
+    const previous = readyPairState();
+    const prepareSources = vi.fn(async () => { throw new Error('preflight failed'); });
+    const commitPreparedSources = vi.fn();
+    const test = harness(
+      matcher({ resolvePair }),
+      previous,
+      prepareSources,
+      undefined,
+      commitPreparedSources,
+    );
+
+    await expect(test.executor.actions.replaceBoth()).resolves.toBe(false);
+
+    expect(test.state.sources).toBe(previous.sources);
+    expect(commitPreparedSources).not.toHaveBeenCalled();
   });
 
   it('rolls back identity when candidate audio/anchor/tempo preflight fails', async () => {

@@ -6,7 +6,7 @@ import {
   type RouletteSourceRole,
   type RouletteSourceSelection,
 } from './rouletteSession';
-import type { RoulettePlaybackSources } from './rouletteAudioRuntime';
+import type { RoulettePlaybackResult, RoulettePlaybackSources } from './rouletteAudioRuntime';
 import {
   rouletteMatchingEngine,
   type RouletteMatchingEngine,
@@ -59,7 +59,8 @@ interface RouletteActionExecutorDependencies {
   getState(): RouletteSessionState;
   dispatch: (action: RouletteSessionAction) => void;
   matcher?: RouletteMatchingEngine;
-  prepareSources?: (sources: RoulettePlaybackSources, signal: AbortSignal) => Promise<void>;
+  prepareSources?: (sources: RoulettePlaybackSources, signal: AbortSignal) => Promise<RoulettePlaybackResult | void>;
+  commitPreparedSources?: (prepared: RoulettePlaybackResult | void) => void;
   prepareResolvedSource?: (
     resolved: RouletteResolvedSource,
     role: RouletteSourceRole,
@@ -176,6 +177,7 @@ export function createRouletteActionExecutor({
   dispatch,
   matcher = rouletteMatchingEngine,
   prepareSources = async () => undefined,
+  commitPreparedSources = () => undefined,
   prepareResolvedSource = defaultPrepareResolvedSource,
   selectionHistory = new RouletteSelectionHistory(),
 }: RouletteActionExecutorDependencies): RouletteActionExecutor {
@@ -250,8 +252,9 @@ export function createRouletteActionExecutor({
         ...currentPair(state),
         [role]: nextSelection,
       };
+      let prepared: RoulettePlaybackResult | void;
       try {
-        await prepareSources(nextSources, controller.signal);
+        prepared = await prepareSources(nextSources, controller.signal);
       } catch (error) {
         dispatch({ type: 'restore-sources', sources: state.sources, requestId });
         throw error;
@@ -267,6 +270,7 @@ export function createRouletteActionExecutor({
         selection: nextSelection,
         requestId,
       });
+      commitPreparedSources(prepared);
       selectionHistory.rememberPair(
         nextSources.vocal.parentTrackId,
         nextSources.instrumental.parentTrackId,
@@ -368,8 +372,9 @@ export function createRouletteActionExecutor({
       }
 
       const nextSources: RoulettePlaybackSources = { vocal, instrumental };
+      let prepared: RoulettePlaybackResult | void;
       try {
-        await prepareSources(nextSources, controller.signal);
+        prepared = await prepareSources(nextSources, controller.signal);
       } catch (error) {
         dispatch({ type: 'restore-sources', sources: state.sources, requestId });
         throw error;
@@ -380,6 +385,7 @@ export function createRouletteActionExecutor({
       }
 
       dispatch({ type: 'commit-pair', vocal, instrumental, requestId });
+      commitPreparedSources(prepared);
       selectionHistory.rememberPair(vocal.parentTrackId, instrumental.parentTrackId);
       clearController(controller);
       return true;

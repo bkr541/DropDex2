@@ -721,11 +721,21 @@ describe('Roulette audio runtime', () => {
       loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
     });
 
-    await runtime.prepare({
+    const prepared = await runtime.prepare({
       vocal: selection('vocal-a', 'vocals'),
       instrumental: selection('instrumental-a', 'instrumental'),
     });
 
+    expect(prepared.waveforms.vocal.length).toBeGreaterThan(0);
+    expect(prepared.waveforms.instrumental.length).toBeGreaterThan(0);
+    expect(prepared.barFractions.length).toBeGreaterThan(1);
+    expect(prepared.anchors.vocal).toMatchObject({ requestedBars: 16 });
+    expect(prepared.anchors.instrumental).toMatchObject({ requestedBars: 16 });
+    expect(prepared.compatibility).toMatchObject({
+      originalBpm: { vocal: 140, instrumental: 142 },
+      masterBpm: 142,
+      bpmDifference: 2,
+    });
     expect(prepare).toHaveBeenCalledTimes(1);
     expect(audio.sources).toHaveLength(2);
     expect(audio.sources.every((source) => source.stops.length > 0 && source.disconnected)).toBe(true);

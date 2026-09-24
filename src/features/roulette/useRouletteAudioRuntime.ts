@@ -4,7 +4,9 @@ import { registerUsbPlaybackStopHandler } from '../../lib/usb/usbPlaybackCoordin
 import {
   createRouletteAudioRuntime,
   type RouletteAudioRuntime,
+  type RouletteCompatibilitySummary,
   type RouletteMixState,
+  type RoulettePlaybackResult,
   type RoulettePlaybackSources,
 } from './rouletteAudioRuntime';
 import type { RouletteSessionAction, RouletteSourceRole } from './rouletteSession';
@@ -18,6 +20,7 @@ export interface RoulettePlaybackUiState {
   waveforms: Record<RouletteSourceRole, number[]>;
   barFractions: number[];
   anchors: Record<RouletteSourceRole, RouletteMusicalAnchor | null>;
+  compatibility: RouletteCompatibilitySummary | null;
   mix: RouletteMixState;
 }
 
@@ -53,6 +56,7 @@ export function useRouletteAudioRuntime({
     waveforms: { vocal: [], instrumental: [] },
     barFractions: [],
     anchors: { vocal: null, instrumental: null },
+    compatibility: null,
     mix: DEFAULT_MIX,
   });
   const playbackRef = useRef(playback);
@@ -86,11 +90,28 @@ export function useRouletteAudioRuntime({
       waveforms: options.resetVisuals ? { vocal: [], instrumental: [] } : previous.waveforms,
       barFractions: options.resetVisuals ? [] : previous.barFractions,
       anchors: options.resetVisuals ? { vocal: null, instrumental: null } : previous.anchors,
+      compatibility: options.resetVisuals ? null : previous.compatibility,
     }));
   }, [cancelProgress, dispatch]);
 
-  const prepareSources = useCallback(async (sources: RoulettePlaybackSources, signal: AbortSignal): Promise<void> => {
-    await runtimeRef.current!.prepare(sources, signal);
+  const prepareSources = useCallback(async (
+    sources: RoulettePlaybackSources,
+    signal: AbortSignal,
+  ): Promise<RoulettePlaybackResult> => runtimeRef.current!.prepare(sources, signal), []);
+
+  const commitPreparedResult = useCallback((result: RoulettePlaybackResult | void) => {
+    if (!result) return;
+    setPlayback((previous) => ({
+      ...previous,
+      status: 'idle',
+      error: null,
+      progress: 0,
+      durationSeconds: result.durationSeconds,
+      waveforms: result.waveforms,
+      barFractions: result.barFractions,
+      anchors: result.anchors,
+      compatibility: result.compatibility,
+    }));
   }, []);
 
   const play = useCallback(async (): Promise<boolean> => {
@@ -130,6 +151,7 @@ export function useRouletteAudioRuntime({
         waveforms: result.waveforms,
         barFractions: result.barFractions,
         anchors: result.anchors,
+        compatibility: result.compatibility,
       }));
 
       let lastUiUpdate = 0;
@@ -225,10 +247,11 @@ export function useRouletteAudioRuntime({
   return useMemo(() => ({
     playback,
     prepareSources,
+    commitPreparedResult,
     play,
     stop,
     setDeckGain,
     toggleDeckMute,
     toggleDeckSolo,
-  }), [play, playback, prepareSources, setDeckGain, stop, toggleDeckMute, toggleDeckSolo]);
+  }), [commitPreparedResult, play, playback, prepareSources, setDeckGain, stop, toggleDeckMute, toggleDeckSolo]);
 }

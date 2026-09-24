@@ -10,6 +10,29 @@ import type { RouletteSourceRole } from '../../features/roulette/rouletteSession
 import type { RoulettePreviewPreparationState } from '../../features/roulette/roulettePreview';
 import { useRouletteSourceTrack } from '../../features/roulette/useRouletteSourceTrack';
 import { formatRouletteCompatiblePairCount, useRouletteMatchingAvailability } from '../../features/roulette/useRouletteMatchingAvailability';
+import { getCamelotRelationshipLabel } from '../../lib/music/camelot';
+
+
+function formatPreviewTime(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return '—';
+  const seconds = Math.max(0, ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds - minutes * 60;
+  return minutes > 0
+    ? `${minutes}:${remainder.toFixed(1).padStart(4, '0')}`
+    : `${remainder.toFixed(1)}s`;
+}
+
+function anchorLabel(provenance: string | null | undefined): string {
+  switch (provenance) {
+    case 'pvdi-phrase': return 'Vocal phrase';
+    case 'pvdi-downbeat': return 'Vocal downbeat';
+    case 'phrase': return 'Phrase';
+    case 'downbeat': return 'Downbeat';
+    case 'bpm-fallback': return 'BPM fallback';
+    default: return 'Aligned start';
+  }
+}
 
 const SOURCE_COPY: Record<RouletteSourceRole, { label: string; position: string }> = {
   vocal: { label: 'Vocal', position: 'Top deck' },
@@ -46,6 +69,7 @@ function RouletteStemWaveform({
 }) {
   const { playback } = useRouletteSession();
   const peaks = playback.waveforms[role];
+  const preparedWindow = playback.anchors[role];
 
   if (peaks.length === 0) {
     return (
@@ -60,7 +84,7 @@ function RouletteStemWaveform({
 
   return (
     <div
-      className="relative mt-5 h-24 overflow-hidden rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-2"
+      className="relative mt-5 h-28 overflow-hidden rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 pb-6 pt-2"
       aria-label={`${SOURCE_COPY[role].label} stem waveform`}
       data-testid={`roulette-${role}-waveform`}
     >
@@ -77,13 +101,26 @@ function RouletteStemWaveform({
             key={`${fraction}-${index}`}
             className="absolute bottom-0 top-0 w-px bg-foreground/10"
             style={{ left: `${fraction * 100}%` }}
+            data-testid={`roulette-${role}-bar-marker`}
           />
         ))}
         <span
           className="absolute bottom-0 top-0 w-px bg-foreground shadow-[0_0_6px_currentColor]"
           style={{ left: `${playback.progress * 100}%` }}
-          data-testid="roulette-shared-playhead"
+          data-testid={`roulette-${role}-playhead`}
+          data-progress={playback.progress.toFixed(6)}
         />
+      </div>
+      <div className="pointer-events-none absolute inset-x-2 bottom-1 flex items-center justify-between gap-2 text-[9px] font-medium text-muted-foreground">
+        <span data-testid={`roulette-${role}-window-start`}>
+          {formatPreviewTime(preparedWindow?.sourceTimeMs)}
+        </span>
+        <span className="truncate text-center" data-testid={`roulette-${role}-window-summary`}>
+          {preparedWindow?.requestedBars ?? 16} bars · {anchorLabel(preparedWindow?.provenance)}
+        </span>
+        <span data-testid={`roulette-${role}-window-end`}>
+          {formatPreviewTime(preparedWindow?.windowEndMs)}
+        </span>
       </div>
     </div>
   );
@@ -111,7 +148,7 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
         : source.stemStatus === 'ready'
           ? playback.status === 'loading'
             ? 'Decoding the aligned waveform…'
-            : 'Press Play to load the aligned waveform.'
+            : 'Prepared waveform unavailable. Retry preview preparation.'
           : 'Preview preparation pending'
       : 'No source selected');
 
@@ -138,15 +175,7 @@ function RouletteSourceLane({ role }: { role: RouletteSourceRole }) {
                       ? `Source bar ${playback.anchors[role]!.sourceBar}`
                       : `Source ${Math.round(playback.anchors[role]!.sourceTimeMs / 100) / 10}s`}
                     {' · '}
-                    {playback.anchors[role]!.provenance === 'pvdi-phrase'
-                      ? 'PVDI + phrase'
-                      : playback.anchors[role]!.provenance === 'pvdi-downbeat'
-                        ? 'PVDI + downbeat'
-                        : playback.anchors[role]!.provenance === 'phrase'
-                          ? 'Phrase'
-                          : playback.anchors[role]!.provenance === 'downbeat'
-                            ? 'Downbeat'
-                            : 'BPM fallback'}
+                    {anchorLabel(playback.anchors[role]!.provenance)}
                   </p>
                 )}
               </div>
@@ -400,7 +429,7 @@ export function RouletteView() {
                       : !candidateAvailability.available && candidateAvailability.reason
                         ? candidateAvailability.reason
                         : playbackAvailable
-                          ? 'Ready for synchronized dual-deck playback.'
+                          ? 'Prepared 16-bar mashup ready to audition.'
                           : state.sources.vocal.parentTrackId || state.sources.instrumental.parentTrackId
                             ? 'Finish preview preparation to enable playback.'
                             : 'Selecting an intelligent compatible pair…';
@@ -446,7 +475,7 @@ export function RouletteView() {
             </TransportButton>
             <div className="ml-1">
               <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Master BPM</p>
-              <p className="font-mono text-sm font-bold">{state.transport.masterBpm?.toFixed(1) ?? '—'}</p>
+              <p className="font-mono text-sm font-bold">{playback.compatibility?.masterBpm.toFixed(1) ?? state.transport.masterBpm?.toFixed(1) ?? '—'}</p>
             </div>
           </div>
 
@@ -477,6 +506,44 @@ export function RouletteView() {
             </ControlButton>
           </div>
         </div>
+
+        {playback.compatibility && (
+          <div
+            className="mt-4 grid gap-2 border-t border-[var(--color-border-subtle)] pt-4 text-[10px] text-muted-foreground sm:grid-cols-2 lg:grid-cols-5"
+            data-testid="roulette-compatibility-summary"
+          >
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.14em]">Original BPM</p>
+              <p className="mt-1 font-mono text-foreground">
+                V {playback.compatibility.originalBpm.vocal.toFixed(1)} · I {playback.compatibility.originalBpm.instrumental.toFixed(1)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.14em]">Sync</p>
+              <p className="mt-1 font-mono text-foreground">
+                {playback.compatibility.masterBpm.toFixed(1)} BPM · Δ {playback.compatibility.bpmDifference.toFixed(1)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.14em]">Key</p>
+              <p className="mt-1 text-foreground">
+                {playback.compatibility.camelotKey.vocal ?? '—'} → {playback.compatibility.camelotKey.instrumental ?? '—'} · {getCamelotRelationshipLabel(playback.compatibility.keyRelationship)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.14em]">Alignment</p>
+              <p className="mt-1 text-foreground">
+                V {anchorLabel(playback.anchors.vocal?.provenance)} · I {anchorLabel(playback.anchors.instrumental?.provenance)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.14em]">Tempo adjust</p>
+              <p className="mt-1 font-mono text-foreground">
+                V {playback.compatibility.tempoAdjustmentPercent.vocal >= 0 ? '+' : ''}{playback.compatibility.tempoAdjustmentPercent.vocal.toFixed(2)}% · I {playback.compatibility.tempoAdjustmentPercent.instrumental >= 0 ? '+' : ''}{playback.compatibility.tempoAdjustmentPercent.instrumental.toFixed(2)}%
+              </p>
+            </div>
+          </div>
+        )}
 
         {!candidateAvailability.loading
           && candidateAvailability.available
