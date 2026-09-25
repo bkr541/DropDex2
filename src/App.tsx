@@ -64,7 +64,8 @@ import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './typ
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
 import { ReusableComponentsView } from './components/reusable/ReusableComponentsView';
-import { CheckmarkFilled, ChevronLeft, CircleDash, Close, DataBase, Edit, Growth, Layers, Logout, Moon, Music, Radio, RecordingFilled, Renew, Search, Settings, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, ChevronLeft, CircleDash, Close, DataBase, Edit, Growth, Layers, Logout, Moon, Music, PaintBrush, Radio, RecordingFilled, Renew, Search, Settings, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
+import { LayoutLabWindow } from './components/ui/LayoutLabWindow';
 import { ControlButton } from './components/ui/controls';
 import { RouletteSessionProvider } from './features/roulette/RouletteSessionContext';
 
@@ -480,6 +481,7 @@ export default function App() {
   const [deleteAllLibrariesRemainingCount, setDeleteAllLibrariesRemainingCount] = useState(0);
   const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(() => new Set());
   const [settingsTab, setSettingsTab] = useState<'account' | 'appearance' | 'library' | 'about'>('account');
+  const [layoutLabOpen, setLayoutLabOpen] = useState(false);
   const deleteExecutorRef = useRef<ConfirmedDeleteExecutor | null>(null);
   const pendingDeletionContextsRef = useRef<Map<string, PendingDeletionContext>>(new Map());
   const importStatusRef = useRef<Map<string, {
@@ -1152,6 +1154,23 @@ export default function App() {
               {!sidebarCollapsed && label}
             </button>
           ))}
+          <div className="mt-auto pt-2 border-t border-[var(--color-border-faint)]">
+            <button
+              onClick={() => setLayoutLabOpen((v) => !v)}
+              title={sidebarCollapsed ? 'Layout Lab' : undefined}
+              aria-pressed={layoutLabOpen}
+              className={cn(
+                'flex items-center rounded-xl font-bold text-sm transition-all border w-full',
+                sidebarCollapsed ? 'justify-center py-3 px-0' : 'gap-3 px-4 py-3 text-left',
+                layoutLabOpen
+                  ? 'text-amber-400 bg-amber-400/10 border-amber-400/20'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent'
+              )}
+            >
+              <PaintBrush size={18} />
+              {!sidebarCollapsed && 'Layout Lab'}
+            </button>
+          </div>
         </nav>
 
         <div className="p-3 border-t border-[var(--color-border-subtle)] flex flex-col gap-2">
@@ -2138,6 +2157,10 @@ export default function App() {
           }}
           onSuccess={handleImportSuccess}
         />
+      )}
+
+      {layoutLabOpen && (
+        <LayoutLabWindow onClose={() => setLayoutLabOpen(false)} />
       )}
     </div>
     </RouletteSessionProvider>
