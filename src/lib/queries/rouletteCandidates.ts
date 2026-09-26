@@ -142,9 +142,7 @@ export async function fetchRouletteCandidateAnalysis(
     };
   });
 
-  return role === 'vocal'
-    ? candidates.filter((candidate) => candidate.vocalAnalysisAvailable)
-    : candidates;
+  return candidates;
 }
 
 export interface RouletteCandidateReadiness {
