@@ -36,6 +36,7 @@ import { supabase } from '../../lib/supabase';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
 import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Undo, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
+import { Artwork } from '../ui/display/Artwork';
 import { ControlButton } from '../ui/controls';
 
 
@@ -46,6 +47,7 @@ const TABS: { id: LibraryTab; label: string }[] = [
   { id: 'tracks', label: 'Tracks' },
   { id: 'genres', label: 'Genres' },
   { id: 'artists', label: 'Artists' },
+  { id: 'incomplete-analysis', label: 'Analysis Incomplete' },
 ];
 
 interface LibraryViewProps {
@@ -306,6 +308,137 @@ function DesktopLibraryInfoCard({
 
 // ── Memoized track row ────────────────────────────────────────────────────────
 
+// ── Library track table (shared by Tracks, Recently Added, Analysis Incomplete tabs) ──
+
+type LibrarySortCol = 'title' | 'bpm' | 'key' | 'genre' | 'duration';
+
+interface LibraryTrackTableProps {
+  tracks: RekordboxTrack[];
+  loading: boolean;
+  emptyText?: string;
+  getWaveformState: (id: string) => WaveformLoadState;
+  retryWaveform: (ids: string[]) => void;
+  activeTrack: RekordboxTrack | null | undefined;
+  playerStatus: string;
+  playIntent: boolean;
+  usbConnected: boolean;
+  onTrackClick: (t: RekordboxTrack) => void;
+  onPlay: (t: RekordboxTrack, e: React.MouseEvent | React.KeyboardEvent) => void;
+  footer?: React.ReactNode;
+}
+
+function LibraryTrackTable({
+  tracks,
+  loading,
+  emptyText,
+  getWaveformState,
+  retryWaveform,
+  activeTrack,
+  playerStatus,
+  playIntent,
+  usbConnected,
+  onTrackClick,
+  onPlay,
+  footer,
+}: LibraryTrackTableProps) {
+  const [sortCol, setSortCol] = useState<LibrarySortCol | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  function handleColClick(col: LibrarySortCol) {
+    if (sortCol === col) {
+      if (sortDir === 'asc') setSortDir('desc');
+      else { setSortCol(null); setSortDir('asc'); }
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  }
+
+  const sortedTracks = useMemo(() => {
+    if (!sortCol) return tracks;
+    return [...tracks].sort((a, b) => {
+      let av: string | number | null = null;
+      let bv: string | number | null = null;
+      if (sortCol === 'title') { av = a.title ?? ''; bv = b.title ?? ''; }
+      else if (sortCol === 'bpm') { av = a.bpm ?? -1; bv = b.bpm ?? -1; }
+      else if (sortCol === 'key') { av = formatCamelotKey(a.musical_key); bv = formatCamelotKey(b.musical_key); }
+      else if (sortCol === 'genre') { av = a.genre ?? ''; bv = b.genre ?? ''; }
+      else if (sortCol === 'duration') {
+        av = a.duration_ms ?? (a.duration_seconds != null ? a.duration_seconds * 1000 : -1);
+        bv = b.duration_ms ?? (b.duration_seconds != null ? b.duration_seconds * 1000 : -1);
+      }
+      if (av === null || av === bv) return 0;
+      const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [tracks, sortCol, sortDir]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <CircleDash className="animate-spin text-primary" size={28} />
+      </div>
+    );
+  }
+  if (sortedTracks.length === 0) {
+    return <p className="text-center py-12 text-muted-foreground text-sm">{emptyText ?? 'No tracks.'}</p>;
+  }
+
+  const SORT_COLS = [
+    { col: 'title' as const, label: 'Track', cls: '' },
+    { col: 'bpm' as const, label: 'BPM', cls: 'w-[80px]' },
+    { col: 'key' as const, label: 'Key', cls: 'w-[90px]' },
+    { col: 'genre' as const, label: 'Genre', cls: 'w-[178px]' },
+    { col: null, label: 'Cues', cls: 'w-[60px] text-center' },
+    { col: 'duration' as const, label: 'Duration', cls: 'w-[80px]' },
+  ] as const;
+
+  return (
+    <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[700px] border-collapse text-left" aria-label="Track listing">
+          <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground border-b border-[var(--color-border-faint)]">
+            <tr>
+              {SORT_COLS.map(({ col, label, cls }) => (
+                <th key={label} className={cn('sticky top-0 z-10 bg-[var(--color-background)] px-3 py-2.5 select-none', cls)}>
+                  {col !== null ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                      aria-label={`Sort by ${label}`}
+                      onClick={() => handleColClick(col)}
+                    >
+                      {label}
+                      <span className={cn('text-primary', sortCol !== col && 'invisible')}>{sortDir === 'asc' ? '↑' : '↓'}</span>
+                    </button>
+                  ) : label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--color-border-faint)]">
+            {sortedTracks.map((track) => (
+              <LibraryTrackRow
+                key={track.id}
+                track={track}
+                waveformState={getWaveformState(track.id)}
+                onRetryWaveform={() => retryWaveform([track.id])}
+                isActiveTrack={activeTrack?.id === track.id}
+                playerStatus={playerStatus}
+                playIntent={playIntent}
+                usbConnected={usbConnected}
+                onOpen={onTrackClick}
+                onPlay={onPlay}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {footer}
+    </div>
+  );
+}
+
 interface TrackRowProps {
   track: RekordboxTrack;
   waveformState: WaveformLoadState;
@@ -318,7 +451,7 @@ interface TrackRowProps {
   onPlay: (t: RekordboxTrack, e: React.MouseEvent | React.KeyboardEvent) => void;
 }
 
-const TrackRow = memo(function TrackRow({
+const LibraryTrackRow = memo(function LibraryTrackRow({
   track: t,
   waveformState,
   onRetryWaveform,
@@ -330,32 +463,16 @@ const TrackRow = memo(function TrackRow({
   onPlay,
 }: TrackRowProps) {
   const handleRowClick = useCallback(() => onOpen(t), [onOpen, t]);
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        onOpen(t);
-      }
-    },
-    [onOpen, t],
-  );
-  const handlePlayClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onPlay(t, e);
-    },
-    [onPlay, t],
-  );
-  const handlePlayKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.stopPropagation();
-        e.preventDefault();
-        onPlay(t, e);
-      }
-    },
-    [onPlay, t],
-  );
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(t); }
+  }, [onOpen, t]);
+  const handlePlayClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onPlay(t, e);
+  }, [onPlay, t]);
+  const handlePlayKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onPlay(t, e); }
+  }, [onPlay, t]);
 
   const isPlaying = isActiveTrack && playIntent;
   const isLoadingThis = isActiveTrack && (playerStatus === 'resolving' || playerStatus === 'loading');
@@ -363,159 +480,111 @@ const TrackRow = memo(function TrackRow({
 
   const progress = useWaveformProgress(t.id);
   const { seek, getAudioElement } = useAudioPlayer();
-
   const canSeek = isActiveTrack && !['idle', 'resolving', 'loading', 'error'].includes(playerStatus);
-  const handleWaveformSeek = useCallback(
-    (fraction: number) => {
-      const audio = getAudioElement();
-      if (!audio || !isFinite(audio.duration) || audio.duration <= 0) return;
-      seek(fraction * audio.duration);
-    },
-    [seek, getAudioElement],
-  );
+  const handleWaveformSeek = useCallback((fraction: number) => {
+    const audio = getAudioElement();
+    if (!audio || !isFinite(audio.duration) || audio.duration <= 0) return;
+    seek(fraction * audio.duration);
+  }, [seek, getAudioElement]);
+
+  const keyDisplay = formatCamelotKey(t.musical_key);
+  const kc = keyDisplay ? camelotColor(t.musical_key!) : null;
+  const durationMs = t.duration_ms ?? (t.duration_seconds != null ? t.duration_seconds * 1000 : null);
+  const analysisStatus = t.analysis_parse_status;
+  const dotClass = analysisStatus === 'completed' || analysisStatus === 'reused'
+    ? 'bg-emerald-400'
+    : analysisStatus === 'failed' || analysisStatus === 'missing_required'
+      ? 'bg-red-400'
+      : analysisStatus == null
+        ? 'bg-muted-foreground/40'
+        : 'bg-amber-400';
 
   return (
-    <div
-      role="button"
+    <tr
       tabIndex={0}
       onClick={handleRowClick}
       onKeyDown={handleKeyDown}
       aria-label={`Open ${t.title}${t.artist ? ` by ${t.artist}` : ''}`}
       className={cn(
-        'group w-full px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset',
-        isActiveRow && 'border-l-2 border-l-primary bg-primary/5 hover:bg-primary/10',
+        'group cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50',
+        isActiveRow ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-[var(--color-surface-hover)]',
       )}
     >
-      {/* ── Desktop grid (6 columns: play | identity | BPM | Key | Genre | Date) ── */}
-      <div className="hidden sm:grid grid-cols-[36px_1fr_56px_56px_88px_88px] items-center gap-x-2 gap-y-2">
-        {/* Play button */}
-        <div className="flex items-center justify-center">
-          <button
-            onClick={handlePlayClick}
-            onKeyDown={handlePlayKeyDown}
-            aria-label={isPlaying ? `Pause ${t.title}` : `Play ${t.title}`}
-            title={!usbConnected ? 'Connect a USB drive to play' : undefined}
-            className={cn(
-              'w-7 h-7 rounded-full flex items-center justify-center transition-all shrink-0',
-              'opacity-0 group-hover:opacity-100 focus:opacity-100',
-              isActiveRow && 'opacity-100',
-              isLoadingThis && 'opacity-100 cursor-wait',
-              isPlaying
-                ? 'bg-primary text-white hover:bg-primary/90'
-                : 'bg-[var(--color-surface)] text-foreground hover:bg-primary hover:text-white',
-            )}
-          >
-            {isLoadingThis ? (
-              <CircleDash size={13} className="animate-spin" />
-            ) : isPlaying ? (
-              <Pause size={13} />
-            ) : (
-              <Play size={13} />
-            )}
-          </button>
-        </div>
-
-        {/* Identity */}
-        <div className="min-w-0 pr-2">
-          <p className={cn(
-            'text-sm font-semibold truncate transition-colors leading-tight',
-            isActiveRow ? 'text-primary' : 'group-hover:text-primary',
-          )}>
-            {t.title}
-          </p>
-          <p className="text-[11px] text-muted-foreground truncate mt-0.5 leading-tight">
-            {t.artist ?? '—'}
-          </p>
-        </div>
-        {/* BPM */}
-        <p className="text-xs font-mono text-primary text-center tabular-nums">
-          {t.bpm != null ? t.bpm.toFixed(1) : '—'}
-        </p>
-        {/* Key */}
-        <p className="text-xs font-mono text-secondary text-center">
-          {formatKey(t.musical_key)}
-        </p>
-        {/* Genre */}
-        <p className="text-[10px] text-muted-foreground truncate">{t.genre ?? '—'}</p>
-        {/* Date */}
-        <p className="text-[10px] text-muted-foreground text-right tabular-nums">
-          {t.date_added?.slice(0, 10) ?? '—'}
-        </p>
-
-        {/* Full-record waveform */}
-        <div className="col-span-full">
-          <RekordboxPreviewWaveform
-            state={waveformState}
-            height={30}
-            variant="compact"
-            onRetry={onRetryWaveform}
-            activeProgress={progress}
-            onSeek={canSeek ? handleWaveformSeek : undefined}
-            ariaLabel=""
-            surface={false}
-          />
-        </div>
-      </div>
-
-      {/* ── Mobile layout ── */}
-      <div className="sm:hidden">
-        <div className="flex items-start gap-2">
-          {/* Mobile play button */}
-          <button
-            onClick={handlePlayClick}
-            onKeyDown={handlePlayKeyDown}
-            aria-label={isPlaying ? `Pause ${t.title}` : `Play ${t.title}`}
-            className={cn(
-              'mt-0.5 shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-all',
-              isPlaying
-                ? 'bg-primary text-white'
-                : 'bg-[var(--color-surface)] text-foreground hover:bg-primary hover:text-white',
-            )}
-          >
-            {isLoadingThis ? (
-              <CircleDash size={11} className="animate-spin" />
-            ) : isPlaying ? (
-              <Pause size={11} />
-            ) : (
-              <Play size={11} />
-            )}
-          </button>
-          <div className="flex-1 min-w-0">
-            <p className={cn(
-              'text-sm font-semibold truncate transition-colors leading-tight',
-              isActiveRow ? 'text-primary' : 'group-hover:text-primary',
-            )}>
-              {t.title}
-            </p>
-            <div className="flex items-center gap-3 mt-0.5">
-              <p className="text-[11px] text-muted-foreground truncate flex-1 leading-tight">
-                {t.artist ?? '—'}
-              </p>
-              {t.bpm != null && (
-                <p className="text-[10px] font-mono text-primary shrink-0 tabular-nums">
-                  {t.bpm.toFixed(1)}
-                </p>
+      {/* Track cell: dot + active bar + artwork/play + title/artist + waveform */}
+      <td className="px-3 py-1.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dotClass)} aria-hidden="true" />
+          <span className={cn('h-8 w-0.5 shrink-0 rounded-full transition-colors', isActiveRow ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
+          {/* Artwork with play button overlay */}
+          <div className="relative h-9 w-9 shrink-0">
+            <Artwork
+              src={t.artwork_path}
+              alt={`Artwork for ${t.title}`}
+              fallbackTitle="No artwork"
+              className="h-9 w-9 rounded-[6px]"
+            />
+            <button
+              onClick={handlePlayClick}
+              onKeyDown={handlePlayKeyDown}
+              aria-label={isPlaying ? `Pause ${t.title}` : `Play ${t.title}`}
+              title={!usbConnected ? 'Connect a USB drive to play' : undefined}
+              className={cn(
+                'absolute inset-0 rounded-[6px] flex items-center justify-center transition-all bg-black/60 text-white',
+                'opacity-0 group-hover:opacity-100 focus:opacity-100',
+                (isActiveRow || isLoadingThis) && 'opacity-100',
+                isLoadingThis && 'cursor-wait',
               )}
-              <p className="text-[10px] font-mono text-secondary shrink-0">
-                {formatKey(t.musical_key)}
-              </p>
+            >
+              {isLoadingThis ? <CircleDash size={14} className="animate-spin" /> : isPlaying ? <Pause size={14} /> : <Play size={14} />}
+            </button>
+          </div>
+          {/* Title + artist + waveform */}
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="w-[280px] shrink-0 min-w-0">
+              <p className={cn('truncate text-sm font-bold leading-tight', isActiveRow ? 'text-primary' : 'group-hover:text-primary')}>{t.title}</p>
+              <p className="truncate text-[10px] text-muted-foreground">{t.artist ?? 'Artist Not Available'}</p>
+            </div>
+            <div className="flex-1 min-w-[80px] flex flex-col gap-1">
+              <RekordboxPreviewWaveform
+                state={waveformState}
+                height={26}
+                variant="compact"
+                appearance="dropdex"
+                showCenterLine={false}
+                onRetry={onRetryWaveform}
+                activeProgress={progress}
+                onSeek={canSeek ? handleWaveformSeek : undefined}
+                ariaLabel={`Waveform for ${t.title}`}
+                surface={false}
+              />
             </div>
           </div>
         </div>
-        <div className="mt-1.5">
-          <RekordboxPreviewWaveform
-            state={waveformState}
-            height={26}
-            variant="compact"
-            onRetry={onRetryWaveform}
-            activeProgress={progress}
-            onSeek={canSeek ? handleWaveformSeek : undefined}
-            ariaLabel=""
-            surface={false}
-          />
-        </div>
-      </div>
-    </div>
+      </td>
+      {/* BPM */}
+      <td className="px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums">{t.bpm != null ? t.bpm.toFixed(1) : '—'}</td>
+      {/* Key */}
+      <td className="px-3 py-1.5">
+        {keyDisplay ? (
+          <span className="inline-flex items-center rounded-[5px] bg-white/[0.05] pl-[3px] pr-2 py-1 font-mono text-[13px] font-bold" style={{ color: kc ?? 'rgba(255,255,255,0.5)' }}>
+            <span className="mr-1.5 h-[14px] w-[3px] shrink-0 rounded-full" style={{ backgroundColor: kc ?? 'rgba(255,255,255,0.2)' }} />
+            {keyDisplay}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </td>
+      {/* Genre */}
+      <td className="w-[178px] px-3 py-1.5 text-xs text-muted-foreground">
+        <span className="block truncate max-w-[160px]">{t.genre ?? '—'}</span>
+      </td>
+      {/* Cues */}
+      <td className="px-3 py-1.5 text-center">
+        <span className="inline-flex min-w-8 justify-center rounded-md border px-2 py-1 font-mono text-[12px] font-black border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-muted-foreground">—</span>
+      </td>
+      {/* Duration */}
+      <td className="w-[80px] px-3 py-1.5 font-mono text-[13px] text-muted-foreground">{formatLibraryTime(durationMs)}</td>
+    </tr>
   );
 });
 
@@ -559,6 +628,19 @@ function parseCamelotKey(key: string): { n: number; letter: 'A' | 'B' } | null {
 function camelotColor(key: string): string {
   const parsed = parseCamelotKey(key);
   return parsed ? (CAMELOT_COLORS[parsed.n] ?? '#6b7280') : '#6b7280';
+}
+
+function formatCamelotKey(key: string | null | undefined): string {
+  const raw = formatKey(key);
+  if (!raw || raw === '—') return '';
+  return raw.replace(/^(\d)([AB])$/i, (_, n, l) => `0${n}${l.toUpperCase()}`);
+}
+
+function formatLibraryTime(ms: number | null | undefined): string {
+  if (ms == null || !isFinite(ms) || ms < 0) return '—';
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return `${m}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
 // ── Camelot wheel SVG ─────────────────────────────────────────────────────────
@@ -1155,13 +1237,15 @@ export function LibraryView({
 
   const showSearch = searchQuery.trim().length >= 2;
 
-  // ── Incomplete analysis view ───────────────────────────────────────────────
-  const [showIncompleteAnalysis, setShowIncompleteAnalysis] = useState(false);
+  // ── Incomplete analysis tab ────────────────────────────────────────────────
+  const hasIncompleteAnalysis = !!latestImport?.analysis_status &&
+    latestImport.analysis_status !== 'not_requested' &&
+    latestImport.analysis_status !== 'completed';
   const [incompleteTracks, setIncompleteTracks] = useState<RekordboxTrack[]>([]);
   const [incompleteFetching, setIncompleteFetching] = useState(false);
 
   useEffect(() => {
-    if (!showIncompleteAnalysis || !importId) return;
+    if (activeTab !== 'incomplete-analysis' || !importId) return;
     setIncompleteFetching(true);
     supabase
       .from('rekordbox_tracks')
@@ -1173,7 +1257,7 @@ export function LibraryView({
         setIncompleteTracks((data as RekordboxTrack[]) ?? []);
         setIncompleteFetching(false);
       });
-  }, [showIncompleteAnalysis, importId]);
+  }, [activeTab, importId]);
 
   // ── Derived stats ──────────────────────────────────────────────────────────
 
@@ -1232,11 +1316,17 @@ export function LibraryView({
     [showSearch, searchResults],
   );
 
+  const incompleteTrackIds = useMemo(
+    () => incompleteTracks.map((t) => t.id),
+    [incompleteTracks],
+  );
+
   const waveformIds = useMemo(() => {
     if (showSearch) return searchResultIds;
     if (activeTab === 'tracks') return visibleTrackIds;
+    if (activeTab === 'incomplete-analysis') return incompleteTrackIds;
     return recentTrackIds;
-  }, [showSearch, searchResultIds, activeTab, visibleTrackIds, recentTrackIds]);
+  }, [showSearch, searchResultIds, activeTab, visibleTrackIds, recentTrackIds, incompleteTrackIds]);
 
   const {
     states: waveformStates,
@@ -1333,7 +1423,7 @@ export function LibraryView({
                               largestPlaylistName={largestPlaylist?.name ?? null}
                               onImport={onImport}
                               onResumeAnalysis={onResumeAnalysis}
-                              onShowIncompleteAnalysis={() => setShowIncompleteAnalysis(true)}
+                              onShowIncompleteAnalysis={() => onActiveTabChange('incomplete-analysis')}
                             />
                           </div>
                           <div className="lg:hidden">
@@ -1347,84 +1437,32 @@ export function LibraryView({
                         </div>
                       </div>
 
-                      {/* Tab bar — hidden when viewing incomplete tracks */}
-                      {!showIncompleteAnalysis && (
+                      {/* Tab bar */}
                         <div className="flex items-center gap-1 overflow-x-auto scrollbar-none border-b border-[var(--color-border-subtle)]">
-                          {TABS.map((tab) => (
-                            <button
-                              key={tab.id}
-                              onClick={() => onActiveTabChange(tab.id)}
-                              className={cn(
-                                'shrink-0 px-4 py-2.5 text-sm font-bold transition-all border-b-2 -mb-px',
-                                activeTab === tab.id
-                                  ? 'text-primary border-primary'
-                                  : 'text-muted-foreground border-transparent hover:text-foreground',
-                              )}
-                            >
-                              {tab.label}
-                            </button>
-                          ))}
+                          {TABS.map((tab) => {
+                            const isDisabled = tab.id === 'incomplete-analysis' && !hasIncompleteAnalysis;
+                            return (
+                              <button
+                                key={tab.id}
+                                disabled={isDisabled}
+                                onClick={() => { if (!isDisabled) onActiveTabChange(tab.id); }}
+                                className={cn(
+                                  'shrink-0 px-4 py-2.5 text-sm font-bold transition-all border-b-2 -mb-px',
+                                  isDisabled
+                                    ? 'text-muted-foreground/30 border-transparent cursor-not-allowed'
+                                    : activeTab === tab.id
+                                      ? 'text-primary border-primary'
+                                      : 'text-muted-foreground border-transparent hover:text-foreground',
+                                )}
+                              >
+                                {tab.label}
+                              </button>
+                            );
+                          })}
                         </div>
-                      )}
                     </div>
 
-                    {/* ── Incomplete analysis track list ── */}
-                    {showIncompleteAnalysis && (
-                      <div className="mt-4 space-y-3">
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={() => { setShowIncompleteAnalysis(false); setIncompleteTracks([]); }}
-                            className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            ← Back
-                          </button>
-                          <p className="text-xs font-bold text-foreground">Tracks with incomplete analysis</p>
-                        </div>
-                        {incompleteFetching ? (
-                          <div className="flex items-center justify-center py-16">
-                            <CircleDash className="animate-spin text-primary" size={28} />
-                          </div>
-                        ) : incompleteTracks.length === 0 ? (
-                          <p className="text-center py-12 text-muted-foreground text-sm">No tracks with incomplete analysis.</p>
-                        ) : (
-                          <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
-                            <div className="hidden sm:grid grid-cols-[36px_1fr_56px_56px_88px_88px] px-4 py-2.5 border-b border-[var(--color-border-faint)] gap-x-2">
-                              {['', 'Track', 'BPM', 'Key', 'Genre', 'Status'].map((col, i) => (
-                                <p
-                                  key={col || `col-${i}`}
-                                  className={cn(
-                                    'text-[9px] uppercase tracking-widest text-muted-foreground font-bold',
-                                    i === 2 || i === 3 ? 'text-center' : '',
-                                    i === 5 ? 'text-right' : '',
-                                  )}
-                                >
-                                  {col}
-                                </p>
-                              ))}
-                            </div>
-                            <div className="divide-y divide-[var(--color-border-faint)]">
-                              {incompleteTracks.map((t) => (
-                                <TrackRow
-                                  key={t.id}
-                                  track={t}
-                                  waveformState={getWaveformState(t.id)}
-                                  onRetryWaveform={() => retryWaveform([t.id])}
-                                  isActiveTrack={activeTrack?.id === t.id}
-                                  playerStatus={playerStatus}
-                                  playIntent={playIntent}
-                                  usbConnected={usbConnected}
-                                  onOpen={onTrackClick}
-                                  onPlay={handlePlay}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
                     {/* ── Scrollable tab content ── */}
-                    {!showIncompleteAnalysis && (
                     <div className="mt-4">
                     <AnimatePresence mode="wait">
                     <motion.div
@@ -1525,13 +1563,24 @@ export function LibraryView({
 
                       {/* ── RECENTLY ADDED ── */}
                       {activeTab === 'recently-added' && (
-                        <RecentlyAddedTracksTable
-                          tracks={recentTracks}
-                          loading={recentTracksLoading}
-                          onTrackClick={onTrackClick}
-                          waveformStates={waveformStates}
-                          onRetryWaveform={(trackId) => retryWaveform([trackId])}
-                        />
+                        <div className="space-y-3">
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {recentTracksLoading ? 'Loading…' : `${recentTracks.length.toLocaleString()} recently added tracks`}
+                          </p>
+                          <LibraryTrackTable
+                            tracks={recentTracks}
+                            loading={recentTracksLoading}
+                            emptyText="No recently added tracks."
+                            getWaveformState={getWaveformState}
+                            retryWaveform={retryWaveform}
+                            activeTrack={activeTrack}
+                            playerStatus={playerStatus}
+                            playIntent={playIntent}
+                            usbConnected={usbConnected}
+                            onTrackClick={onTrackClick}
+                            onPlay={handlePlay}
+                          />
+                        </div>
                       )}
 
                       {/* ── TRACKS ── */}
@@ -1542,59 +1591,34 @@ export function LibraryView({
                               ? 'Loading…'
                               : `${libraryTrackTotal.toLocaleString()} tracks · showing ${visibleTracks.length.toLocaleString()}`}
                           </p>
-                          {tracksLoading ? (
-                            <div className="flex items-center justify-center py-16">
-                              <CircleDash className="animate-spin text-primary" size={28} />
-                            </div>
-                          ) : (
-                            <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
-                              <div className="hidden sm:grid grid-cols-[36px_1fr_56px_56px_88px_88px] px-4 py-2.5 border-b border-[var(--color-border-faint)] gap-x-2">
-                                {['', 'Track', 'BPM', 'Key', 'Genre', 'Added'].map((col, i) => (
-                                  <p
-                                    key={col || `col-${i}`}
-                                    className={cn(
-                                      'text-[9px] uppercase tracking-widest text-muted-foreground font-bold',
-                                      i === 2 || i === 3 ? 'text-center' : '',
-                                      i === 5 ? 'text-right' : '',
-                                    )}
-                                  >
-                                    {col}
-                                  </p>
-                                ))}
+                          <LibraryTrackTable
+                            tracks={visibleTracks}
+                            loading={tracksLoading}
+                            emptyText="No tracks in this library."
+                            getWaveformState={getWaveformState}
+                            retryWaveform={retryWaveform}
+                            activeTrack={activeTrack}
+                            playerStatus={playerStatus}
+                            playIntent={playIntent}
+                            usbConnected={usbConnected}
+                            onTrackClick={onTrackClick}
+                            onPlay={handlePlay}
+                            footer={tracksHaveMore ? (
+                              <div className="border-t border-[var(--color-border-faint)] pt-2 pb-2 flex justify-center">
+                                <ControlButton
+                                  variant="neutral"
+                                  onClick={() => { void loadMoreLibraryTracks(); }}
+                                  disabled={tracksLoadingMore}
+                                >
+                                  {tracksLoadingMore ? (
+                                    <><CircleDash size={13} className="animate-spin" /> Loading more…</>
+                                  ) : (
+                                    `Load ${Math.min(200, libraryTrackTotal - visibleTracks.length).toLocaleString()} more…`
+                                  )}
+                                </ControlButton>
                               </div>
-                              <div className="divide-y divide-[var(--color-border-faint)]">
-                                {visibleTracks.map((t) => (
-                                  <TrackRow
-                                    key={t.id}
-                                    track={t}
-                                    waveformState={getWaveformState(t.id)}
-                                    onRetryWaveform={() => retryWaveform([t.id])}
-                                    isActiveTrack={activeTrack?.id === t.id}
-                                    playerStatus={playerStatus}
-                                    playIntent={playIntent}
-                                    usbConnected={usbConnected}
-                                    onOpen={onTrackClick}
-                                    onPlay={handlePlay}
-                                  />
-                                ))}
-                              </div>
-                              {tracksHaveMore && (
-                                <div className="border-t border-[var(--color-border-faint)] pt-2 flex justify-center">
-                                  <ControlButton
-                                    variant="neutral"
-                                    onClick={() => { void loadMoreLibraryTracks(); }}
-                                    disabled={tracksLoadingMore}
-                                  >
-                                    {tracksLoadingMore ? (
-                                      <><CircleDash size={13} className="animate-spin" /> Loading more…</>
-                                    ) : (
-                                      `Load ${Math.min(200, libraryTrackTotal - visibleTracks.length).toLocaleString()} more…`
-                                    )}
-                                  </ControlButton>
-                                </div>
-                              )}
-                            </div>
-                          )}
+                            ) : undefined}
+                          />
                         </div>
                       )}
 
@@ -1681,10 +1705,33 @@ export function LibraryView({
                         </div>
                       )}
 
+                      {/* ── ANALYSIS INCOMPLETE ── */}
+                      {activeTab === 'incomplete-analysis' && (
+                        <div className="space-y-3">
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {incompleteFetching
+                              ? 'Loading…'
+                              : `${incompleteTracks.length.toLocaleString()} tracks with incomplete analysis`}
+                          </p>
+                          <LibraryTrackTable
+                            tracks={incompleteTracks}
+                            loading={incompleteFetching}
+                            emptyText="No tracks with incomplete analysis."
+                            getWaveformState={getWaveformState}
+                            retryWaveform={retryWaveform}
+                            activeTrack={activeTrack}
+                            playerStatus={playerStatus}
+                            playIntent={playIntent}
+                            usbConnected={usbConnected}
+                            onTrackClick={onTrackClick}
+                            onPlay={handlePlay}
+                          />
+                        </div>
+                      )}
+
                     </motion.div>
                   </AnimatePresence>
                 </div>
-                    )}
                   </>
                 )}
               </>

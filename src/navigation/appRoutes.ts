@@ -4,7 +4,8 @@ export type LibraryTab =
   | 'recently-added'
   | 'tracks'
   | 'genres'
-  | 'artists';
+  | 'artists'
+  | 'incomplete-analysis';
 
 export type AppRoute =
   | { name: 'library'; tab: LibraryTab; search: string }
@@ -36,6 +37,7 @@ const LIBRARY_TAB_PATHS: Record<LibraryTab, string> = {
   tracks: '/library/tracks',
   genres: '/library/genres',
   artists: '/library/artists',
+  'incomplete-analysis': '/library/incomplete-analysis',
 };
 
 const PATH_TO_LIBRARY_TAB = new Map(
