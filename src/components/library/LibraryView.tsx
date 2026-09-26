@@ -1166,8 +1166,8 @@ export function LibraryView({
     supabase
       .from('rekordbox_tracks')
       .select('*')
-      .eq('rekordbox_import_id', importId)
-      .or('analysis_parse_status.is.null,analysis_parse_status.not.in.("completed","reused")')
+      .eq('import_id', importId)
+      .or('analysis_parse_status.is.null,analysis_parse_status.not.in.(completed,reused)')
       .order('title')
       .then(({ data }) => {
         setIncompleteTracks((data as RekordboxTrack[]) ?? []);

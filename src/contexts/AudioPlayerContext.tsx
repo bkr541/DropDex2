@@ -391,6 +391,13 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
       void usb.connect();
       return;
     }
+    if (usb.status === 'released') {
+      // The drive is still physically connected — the release was a soft handoff
+      // (e.g. post-import). Queue the track and let reconnect finish first.
+      pendingPlayRef.current = track;
+      void usb.reconnect();
+      return;
+    }
     if (usb.status === 'permission-required') {
       const readyStatus = await usb.ensurePermission();
       if (requestId !== playRequestIdRef.current) return;
@@ -472,6 +479,13 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
       if (pending) {
         pendingPlayRef.current = null;
         void playTrack(pending);
+        return;
+      }
+      // Drive reconnected with no queued track. If the player is stuck in an
+      // error state (e.g. from the pre-reconnect USB-released error), clear it
+      // so the transport is unblocked and the user can retry without a restart.
+      if (stateRef.current.status === 'error') {
+        dispatch({ type: 'CLEAR_ERROR' });
       }
       return;
     }

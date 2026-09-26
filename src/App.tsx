@@ -136,7 +136,7 @@ function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavPr
   function handleUsbPress() {
     if (usbStatus === 'connected') return;
     if (usbStatus === 'permission-required') void ensurePermission();
-    else if (usbStatus === 'unavailable' || usbStatus === 'error') void reconnectUsb();
+    else if (usbStatus === 'unavailable' || usbStatus === 'error' || usbStatus === 'released') void reconnectUsb();
     else if (usbStatus === 'wrong_root') void selectNewUsb();
     else void connectUsb();
   }
