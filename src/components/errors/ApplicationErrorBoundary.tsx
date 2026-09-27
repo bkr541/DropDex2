@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { isChunkLoadError } from '../../navigation/lazyWithRecovery';
 import { ChevronLeft, Renew, RotateCounterclockwise, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from '../ui/controls';
+import { logger } from '../../lib/logger';
 
 interface ApplicationErrorBoundaryProps {
   children: ReactNode;
@@ -25,7 +26,13 @@ export class ApplicationErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('DropDex application boundary caught an error.', error, info);
+    logger.error('react.error_boundary', {
+      errorType: error.name,
+      message: error.message,
+      stack: error.stack,
+      componentStack: info.componentStack,
+      level: this.props.level ?? 'feature',
+    });
   }
 
   componentDidUpdate(previousProps: ApplicationErrorBoundaryProps) {

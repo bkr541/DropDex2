@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import logging.handlers
+import time as _time
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -55,7 +56,8 @@ from .models import (
 from .related_tracks_service import import_related_tracks
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from .log import get_logger  # noqa: E402 — must follow basicConfig
+logger = get_logger(__name__)
 
 # ── Rekordbox import dedicated log ────────────────────────────────────────────
 # Writes all pipeline modules to logs/rekordbox_import_log.log at the project
@@ -103,6 +105,22 @@ app.add_middleware(
 )
 
 app.include_router(discovery_router)
+
+
+@app.middleware("http")
+async def log_http_requests(request: Request, call_next):
+    """Log every inbound request with method, path, status code, and latency."""
+    start = _time.monotonic()
+    response = await call_next(request)
+    duration_ms = round((_time.monotonic() - start) * 1000, 1)
+    logger.info(
+        "http.request",
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        duration_ms=duration_ms,
+    )
+    return response
 
 
 @app.exception_handler(Exception)

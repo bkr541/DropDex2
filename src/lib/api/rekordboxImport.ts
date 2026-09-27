@@ -1,4 +1,5 @@
 import { IMPORT_API_BASE } from './baseUrl';
+import { logger } from '../logger';
 import {
   ApiResponseValidationError,
   expectArray,
@@ -507,6 +508,11 @@ async function parseResponse<T>(
   if (!response.ok) {
     const bodyObj = body as Record<string, unknown> | null;
     const rawDetail = bodyObj?.['detail'];
+    logger.error('api.error', {
+      url: response.url,
+      status: response.status,
+      detail: rawDetail,
+    });
     if (rawDetail && typeof rawDetail === 'object' && 'error_code' in (rawDetail as object)) {
       const structured = rawDetail as ImportWriteError;
       throw new RekordboxImportError(structured.detail, structured, response.status);

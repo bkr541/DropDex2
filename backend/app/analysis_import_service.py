@@ -23,6 +23,7 @@ import inspect
 import json
 import logging
 import os
+import time as _time_mod
 import shutil
 import tempfile
 import threading
@@ -38,6 +39,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .analysis_raw_archival import start_raw_archival
 from .config import settings
+from .log import get_logger
 from .import_jobs import (
     ImportCancelledError,
     assert_import_not_cancelled,
@@ -81,7 +83,7 @@ from .upload_stream import read_upload_bounded, stream_upload_to_temp
 from .user_settings import upsert_active_import
 from .validation import validate
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _VALID_ANLZ_SUFFIXES = frozenset({".dat", ".ext", ".2ex"})
 _REQUIRED_ANLZ_SUFFIXES = frozenset({".dat"})
@@ -1908,12 +1910,20 @@ def _complete_analysis_import_sync(
     completed_count = partial_count = failed_count = missing_required_count = 0
     missing_optional_ext_count = missing_optional_2ex_count = 0
 
+    import_log = logger.bind(import_id=import_id, user_id=user_id)
+
     tmp_dir: Optional[str] = None
     try:
         tmp_dir = tempfile.mkdtemp()
         total_track_count = len(all_tracks)
         already_finalized_count = sum(
             1 for status in track_status_by_id.values() if status in final_track_statuses
+        )
+        import_log.info(
+            "import.start",
+            total_track_count=total_track_count,
+            already_finalized=already_finalized_count,
+            tracks_to_process=len(tracks),
         )
         _set_analysis_progress(
             import_id,
@@ -1926,6 +1936,14 @@ def _complete_analysis_import_sync(
 
         for track in tracks:
             track_id = track["id"]
+            track_log = import_log.bind(
+                track_id=track_id,
+                title=track.get("title"),
+                bpm=track.get("bpm"),
+                camelot_key=track.get("camelot_key"),
+            )
+            track_start = _time_mod.monotonic()
+            track_log.info("track.start")
             _analysis_worker_checkpoint(
                 import_id, user_id, "before_next_track", current_track_id=track_id, sb=sb
             )
@@ -2021,7 +2039,12 @@ def _complete_analysis_import_sync(
                         fh.write(file_bytes)
                     local_paths[atype] = local_path
                 except Exception as exc:
-                    logger.error("Failed to download asset %s: %s", asset["id"], exc)
+                    track_log.error(
+                        "track.asset_download_failed",
+                        asset_id=asset["id"],
+                        asset_type=atype,
+                        error=str(exc),
+                    )
                 _analysis_worker_checkpoint(
                     import_id, user_id, "after_downloading_asset", current_track_id=track_id, sb=sb
                 )
@@ -2039,7 +2062,11 @@ def _complete_analysis_import_sync(
                     two_ex_path=local_paths["2EX"],
                 )
             except Exception as exc:
-                logger.error("Bundle parse error for track %s: %s", track_id, exc)
+                track_log.error(
+                    "track.parse_failed",
+                    error=str(exc),
+                    duration_ms=round((_time_mod.monotonic() - track_start) * 1000, 1),
+                )
                 failed_count += 1
                 track_results.append(
                     TrackCompleteStatus(
@@ -2308,6 +2335,13 @@ def _complete_analysis_import_sync(
             _analysis_worker_checkpoint(
                 import_id, user_id, "after_track_completed", current_track_id=track_id, sb=sb
             )
+            track_log.info(
+                "track.complete",
+                parse_status=overall,
+                assets_parsed=parsed_count,
+                feature_statuses=feature_statuses,
+                duration_ms=round((_time_mod.monotonic() - track_start) * 1000, 1),
+            )
             _set_analysis_progress(
                 import_id,
                 track=track,
@@ -2319,6 +2353,15 @@ def _complete_analysis_import_sync(
     finally:
         if tmp_dir:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    import_log.info(
+        "import.complete",
+        completed=completed_count,
+        partial=partial_count,
+        failed=failed_count,
+        missing_required=missing_required_count,
+        total_processed=len(track_results),
+    )
 
     library_total_tracks = len(all_tracks)
     total_asset_count = len(uploaded_assets)
