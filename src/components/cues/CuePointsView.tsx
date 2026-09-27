@@ -711,12 +711,10 @@ function CueEditorPlaybackPlayhead({
   trackId,
   viewStartMs,
   viewEndMs,
-  labelsCollapsed,
 }: {
   trackId: string;
   viewStartMs: number;
   viewEndMs: number;
-  labelsCollapsed: boolean;
 }) {
   const { activeTrack, status, getAudioElement } = useAudioPlayer();
   const playbackProgress = useWaveformProgress(trackId);
@@ -732,7 +730,7 @@ function CueEditorPlaybackPlayhead({
       data-testid="cue-playback-playhead-region"
       className="pointer-events-none absolute bottom-0 top-0 z-30 transition-[left] duration-200"
       style={{
-        left: `calc(${labelsCollapsed ? 48 : 150}px + var(--cue-timeline-inline-inset))`,
+        left: 'var(--cue-timeline-inline-inset)',
         right: 'var(--cue-timeline-inline-inset)',
       }}
       aria-hidden="true"
@@ -1388,7 +1386,6 @@ function CueWaveformPanel({
   onGridDisplayModeChange: (v: CueGridDisplayMode) => void;
   gridVisible: boolean;
 }) {
-  const [labelsCollapsed, setLabelsCollapsed] = useState(false);
   const durationMs = durationMsForTrack(track, beatGrid, phrases);
 
   const [viewStart, setViewStart] = useState(0);
@@ -1847,24 +1844,13 @@ function CueWaveformPanel({
         <div className="overflow-x-auto">
           <div className="min-w-[920px]">
             <div className="cue-timeline relative overflow-hidden border-y border-[var(--color-border-faint)] bg-[var(--color-background)]">
-              {/* Full-column click target keeps the useful collapse behavior without a dead gutter. */}
-              <button
-                type="button"
-                onClick={() => setLabelsCollapsed((v) => !v)}
-                className={cn('absolute bottom-0 left-0 top-0 z-20 cursor-pointer transition-[width] duration-200', labelsCollapsed ? 'w-[48px]' : 'w-[150px]')}
-                aria-label={labelsCollapsed ? 'Expand timeline lanes' : 'Collapse timeline lanes'}
-              />
               <CueEditorPlaybackPlayhead
                 trackId={track.id}
                 viewStartMs={viewStart}
                 viewEndMs={effectiveViewEnd}
-                labelsCollapsed={labelsCollapsed}
               />
-            <div className={cn('grid gap-0 transition-[grid-template-columns] duration-200', labelsCollapsed ? 'grid-cols-[48px_minmax(0,1fr)]' : 'grid-cols-[150px_minmax(0,1fr)]')}>
-              <div className="cue-timeline__rail h-[40px] border-r border-[var(--color-border-faint)]">
-                <TimelineLaneLabel icon={<Bookmark size={19} strokeWidth={2.25} />} label="Cue Points" color="#fb923c" collapsed={labelsCollapsed} />
-              </div>
-              <div className="cue-timeline__data-lane h-[40px] overflow-hidden">
+            <div className="grid gap-0 grid-cols-[minmax(0,1fr)]">
+              <div className="cue-timeline__data-lane h-[52px] pt-3 overflow-hidden">
                 <div className="relative h-full overflow-visible">
                 {cueLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading cue points…</div>
@@ -1970,9 +1956,6 @@ function CueWaveformPanel({
                 </div>
               </div>
 
-              <div className="cue-timeline__rail h-[40px] border-r border-[var(--color-border-faint)]">
-                <TimelineLaneLabel icon={<List size={19} strokeWidth={2.35} />} label="Track Sections" color="#60a5fa" collapsed={labelsCollapsed} />
-              </div>
               <div className="cue-timeline__data-lane h-[40px]">
                 <div className="relative h-full overflow-hidden">
                 {phraseLoading ? (
@@ -1997,18 +1980,19 @@ function CueWaveformPanel({
                           style={{
                             left: `${left}%`,
                             width: `${width}%`,
-                            backgroundColor: section.panelColor,
+                            backgroundColor: 'transparent',
+                            borderBottom: `2px solid ${section.waveformColor}`,
                           }}
                           title={`${section.label} · ${formatTime(section.startMs)}–${formatTime(section.endMs)}`}
                         >
                           <span
                             className="whitespace-nowrap font-mono text-[9px] font-bold leading-none tracking-wide"
                             style={{
-                              color: '#ffffff',
-                              textShadow: `0 1px 4px rgba(0,0,0,0.7), 0 0 8px ${section.waveformColor}99`,
+                              color: section.waveformColor,
+                              textShadow: '0 1px 4px rgba(0,0,0,0.8)',
                             }}
                           >
-                            {section.label}
+                            {section.label.toUpperCase()}
                           </span>
                         </div>
                       );
@@ -2029,9 +2013,6 @@ function CueWaveformPanel({
                 </div>
               </div>
 
-              <div className="cue-timeline__rail h-[88px] border-r border-[var(--color-border-faint)]">
-                <TimelineLaneLabel icon={<AudioWaveform size={20} strokeWidth={2.25} />} label="Waveform" color="#5dcfff" collapsed={labelsCollapsed} />
-              </div>
               <div className="cue-timeline__data-lane relative h-[88px] group/waveform">
               <div
                 ref={waveformDivRef}
@@ -2173,10 +2154,7 @@ function CueWaveformPanel({
               </div>
               </div>
 
-              <div className="cue-timeline__rail h-[40px] border-r border-[var(--color-border-faint)]">
-                <TimelineLaneLabel icon={<Grip size={19} strokeWidth={2.55} />} label="Beat Grid" color="#4ade80" collapsed={labelsCollapsed} />
-              </div>
-              <div className="cue-timeline__data-lane h-[40px]">
+              <div className="cue-timeline__data-lane h-[58px] pb-3">
                 <div className="relative h-full overflow-hidden">
                 {!gridVisible ? (
                   <div className="flex h-full items-center px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">Grid hidden</div>

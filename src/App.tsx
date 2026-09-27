@@ -1339,7 +1339,7 @@ export default function App() {
         )}
 
         {/* Scrollable content */}
-        <main className="flex-1 overflow-y-auto px-4 md:px-8 pt-6 pb-32 md:pb-8">
+        <main className={cn('flex-1 overflow-y-auto px-4 md:px-8 pt-6 pb-32 md:pb-8', currentView === 'cues' && 'scrollbar-none')}>
           <ApplicationErrorBoundary level="feature" resetKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
           <RouteFailureProbe />
           <AnimatePresence mode="wait">

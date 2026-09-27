@@ -38,6 +38,7 @@ import type { LibraryTab } from '../../navigation/appRoutes';
 import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Search, Tag, Undo, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
 import { Artwork } from '../ui/display/Artwork';
 import { ControlButton } from '../ui/controls';
+import { HeroActionButton } from './HeroActionButton';
 
 
 const TABS: { id: LibraryTab; label: string }[] = [
@@ -996,9 +997,9 @@ function DesktopLibraryHero({
             <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
             <span className="font-black text-sm leading-none text-emerald-500">Import Complete</span>
           </div>
-          <ControlButton variant="neutral" onClick={onImport} className="mt-3 w-full text-[10px]">
+          <HeroActionButton variant="import" onClick={onImport} className="mt-3">
             <Upload size={11} /> Import Library
-          </ControlButton>
+          </HeroActionButton>
           <div className="grid grid-cols-1 gap-y-2 mt-3">
             {latestImport.device_name && (
               <div className="flex items-center gap-1.5 min-w-0">
@@ -1034,9 +1035,9 @@ function DesktopLibraryHero({
                 </span>
               </div>
               {isActionable && onResumeAnalysis && (
-                <ControlButton variant="neutral" onClick={(e) => { e.stopPropagation(); onResumeAnalysis(latestImport.id); }} className="mt-1 w-full text-[10px]">
+                <HeroActionButton variant="resume" onClick={(e) => { e.stopPropagation(); onResumeAnalysis(latestImport.id); }} className="mt-1">
                   <Renew size={11} /> Resume Analysis
-                </ControlButton>
+                </HeroActionButton>
               )}
             </>
           ) : (
