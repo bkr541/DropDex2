@@ -13,7 +13,7 @@ import {
   searchArtistsByName,
 } from '../../lib/queries/userPreferences';
 import type { UserProfile, UserGenrePreference, UserArtistPreference } from '../../types';
-import { Checkmark, CircleDash, Close, Search, Upload, User } from '@carbon/icons-react';
+import { CircleDash, Close, Search, Upload, User } from '@carbon/icons-react';
 import { ControlButton } from '../ui/controls';
 
 // ── Preference picker (genres or artists) ────────────────────────────────────
@@ -195,7 +195,6 @@ export function EditProfileView({
   // Save state
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   const displayedAvatar = avatarPreview ?? existingProfile?.avatar_url ?? null;
 
@@ -215,12 +214,11 @@ export function EditProfileView({
     if (file.size > MAX_FILE_SIZE) { setSaveError('Image must be smaller than 10 MB.'); return; }
     setPendingAvatar(file);
     setAvatarPreview(URL.createObjectURL(file));
-    setSaved(false);
   };
 
   const handleSave = async () => {
     if (!displayName.trim()) { setSaveError('Display name is required.'); return; }
-    setSaving(true); setSaveError(null); setSaved(false);
+    setSaving(true); setSaveError(null);
     try {
       const updates: Partial<Omit<UserProfile, 'user_id' | 'created_at' | 'updated_at'>> = {
         display_name: displayName.trim(),
@@ -234,7 +232,7 @@ export function EditProfileView({
       };
       if (pendingAvatar) updates.avatar_url = await uploadAvatar(userId, pendingAvatar);
       const result = await upsertUserProfile(userId, updates);
-      setSaved(true); setPendingAvatar(null); onSaved(result);
+      setPendingAvatar(null); onSaved(result);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save. Please try again.');
     } finally { setSaving(false); }
@@ -281,6 +279,19 @@ export function EditProfileView({
   const genreItems = selectedGenres.map((g) => ({ id: g.genre_id, name: g.genre?.name ?? '' }));
   const artistItems = selectedArtists.map((a) => ({ id: a.artist_id, name: a.artist?.name ?? '' }));
 
+  const isDirty =
+    displayName !== (existingProfile?.display_name ?? '') ||
+    username !== (existingProfile?.username ?? '') ||
+    bio !== (existingProfile?.bio ?? '') ||
+    spotifyUrl !== (existingProfile?.spotify_url ?? '') ||
+    soundcloudUrl !== (existingProfile?.soundcloud_url ?? '') ||
+    instagramUrl !== (existingProfile?.instagram_url ?? '') ||
+    youtubeUrl !== (existingProfile?.youtube_url ?? '') ||
+    websiteUrl !== (existingProfile?.website_url ?? '') ||
+    pendingAvatar !== null;
+
+  const inputClass = 'w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-lg py-1.5 px-3 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50';
+
   return (
     <div className="space-y-3 md:max-w-3xl md:mx-auto">
 
@@ -314,10 +325,10 @@ export function EditProfileView({
             <input
               type="text"
               value={displayName}
-              onChange={(e) => { setDisplayName(e.target.value); setSaved(false); }}
+              onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Your artist name"
               maxLength={120}
-              className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
+              className={inputClass}
             />
           </div>
 
@@ -326,10 +337,10 @@ export function EditProfileView({
             <input
               type="text"
               value={username}
-              onChange={(e) => { setUsername(e.target.value); setSaved(false); }}
+              onChange={(e) => setUsername(e.target.value)}
               placeholder="@yourhandle"
               maxLength={60}
-              className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
+              className={inputClass}
             />
           </div>
 
@@ -337,11 +348,11 @@ export function EditProfileView({
             <label className="block text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Bio</label>
             <textarea
               value={bio}
-              onChange={(e) => { setBio(e.target.value); setSaved(false); }}
+              onChange={(e) => setBio(e.target.value)}
               placeholder="Tell people about your sound…"
               rows={2}
               maxLength={500}
-              className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50 resize-none"
+              className={`${inputClass} resize-none`}
             />
           </div>
         </div>
@@ -363,7 +374,7 @@ export function EditProfileView({
               <input
                 type="url"
                 value={value}
-                onChange={(e) => { set(e.target.value); setSaved(false); }}
+                onChange={(e) => set(e.target.value)}
                 placeholder={placeholder}
                 className="flex-1 bg-transparent text-xs font-mono focus:outline-none placeholder:text-muted-foreground/40 text-foreground min-w-0"
               />
@@ -399,19 +410,19 @@ export function EditProfileView({
       </div>
 
       {/* ── Save ── */}
-      <div className="flex items-center gap-3">
-        {saveError && <p className="text-xs text-red-400 font-medium">{saveError}</p>}
-        <ControlButton
-          onClick={handleSave}
-          disabled={saving}
-          variant={saved ? 'surface' : 'primary'}
-          className="ml-auto"
-        >
-          {saving ? <><CircleDash size={13} className="animate-spin" /> Saving…</>
-            : saved ? <><Checkmark size={13} /> Saved</>
-            : <><Upload size={13} /> Save Profile</>}
-        </ControlButton>
-      </div>
+      {(isDirty || saving) && (
+        <div className="flex flex-col items-center gap-2">
+          {saveError && <p className="text-xs text-red-400 font-medium">{saveError}</p>}
+          <ControlButton
+            onClick={handleSave}
+            disabled={saving}
+            variant="primary"
+          >
+            {saving ? <><CircleDash size={13} className="animate-spin" /> Saving…</>
+              : <><Upload size={13} /> Save Profile</>}
+          </ControlButton>
+        </div>
+      )}
     </div>
   );
 }

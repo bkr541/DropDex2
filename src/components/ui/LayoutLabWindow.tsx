@@ -1537,6 +1537,19 @@ function Mockup10() {
 // strips; bottom EQ knobs on each side with center transport
 
 function Mockup11() {
+  const vSections = [
+    { label: 'Verse 1', color: '#22d3ee', start: 0, end: 28 },
+    { label: 'Build',   color: '#06b6d4', start: 28, end: 46 },
+    { label: 'Chorus',  color: '#0891b2', start: 46, end: 75 },
+    { label: 'Drop',    color: '#0e7490', start: 75, end: 100 },
+  ];
+  const iSections = [
+    { label: 'Intro', color: '#f97316', start: 0,  end: 22 },
+    { label: 'Verse', color: '#ea6e0e', start: 22, end: 48 },
+    { label: 'Build', color: '#d96506', start: 48, end: 70 },
+    { label: 'Drop',  color: '#c45b00', start: 70, end: 100 },
+  ];
+
   return (
     <MockupCard n={11} title="Full-Bleed Minimal" concept="Borderless waveforms flush edge-to-edge; track strips above/below; bottom split EQ + transport">
       {/* Minimal nav */}
@@ -1589,8 +1602,30 @@ function Mockup11() {
         </div>
       </div>
 
-      {/* Vocal waveform — full bleed */}
-      <div style={{ height: 96, position: 'relative', overflow: 'hidden', background: 'rgba(34,211,238,0.04)' }}>
+      {/* Beat grid — shared reference for both waveforms */}
+      <div style={{ display: 'flex', alignItems: 'center', height: 14, padding: '0 18px',
+        borderBottom: '1px solid rgba(255,255,255,0.06)', ...S.bg1 }}>
+        <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.25)', marginRight: 4, flexShrink: 0 }}>BAR</span>
+        {[1,5,9,13,17,21,25,29,33,37,41,45,49,53,57,61].map(n => (
+          <div key={n} style={{ flex: 1, fontSize: 7, color: 'rgba(255,255,255,0.2)' }}>{n}</div>
+        ))}
+      </div>
+
+      {/* Vocal section labels row */}
+      <div style={{ position: 'relative', height: 20, margin: '0 18px',
+        borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        {vSections.map(s => (
+          <div key={s.label} style={{ position: 'absolute', left: `${s.start}%`, width: `${s.end - s.start}%`,
+            height: '100%', display: 'flex', alignItems: 'center',
+            padding: '0 5px', background: `${s.color}22`, borderRight: `2px solid ${s.color}55` }}>
+            <span style={{ fontSize: 8, fontWeight: 700, color: s.color }}>{s.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Vocal waveform */}
+      <div style={{ height: 70, position: 'relative', overflow: 'hidden',
+        background: 'rgba(34,211,238,0.04)', padding: '0 18px' }}>
         <Waveform color={VC} seed={1101} bars={260} />
         <div style={{ position: 'absolute', top: 0, bottom: 0, left: '55%', width: 1.5,
           background: 'rgba(255,255,255,0.75)' }} />
@@ -1598,9 +1633,21 @@ function Mockup11() {
           background: `linear-gradient(to right, ${IC}00, ${IC}60, ${VC}60, ${VC}00)` }} />
       </div>
 
-      {/* Instrumental waveform — full bleed, no gap */}
-      <div style={{ height: 96, position: 'relative', overflow: 'hidden', background: 'rgba(249,115,22,0.04)',
-        borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+      {/* Instrumental section labels row */}
+      <div style={{ position: 'relative', height: 20, margin: '0 18px',
+        borderBottom: '1px solid rgba(255,255,255,0.06)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        {iSections.map(s => (
+          <div key={s.label} style={{ position: 'absolute', left: `${s.start}%`, width: `${s.end - s.start}%`,
+            height: '100%', display: 'flex', alignItems: 'center',
+            padding: '0 5px', background: `${s.color}22`, borderRight: `2px solid ${s.color}55` }}>
+            <span style={{ fontSize: 8, fontWeight: 700, color: s.color }}>{s.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Instrumental waveform */}
+      <div style={{ height: 70, position: 'relative', overflow: 'hidden',
+        background: 'rgba(249,115,22,0.04)', padding: '0 18px' }}>
         <Waveform color={IC} seed={1202} bars={260} />
         <div style={{ position: 'absolute', top: 0, bottom: 0, left: '55%', width: 1.5,
           background: 'rgba(255,255,255,0.75)' }} />
@@ -1628,7 +1675,7 @@ function Mockup11() {
       </div>
 
       {/* Bottom: split EQ + transport */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', ...S.bg0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', ...S.bg0 }}>
         {/* Vocal EQ knobs */}
         <div style={{ padding: '12px 18px', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
           <div style={{ fontSize: 8, fontWeight: 800, color: VC, letterSpacing: '0.1em', marginBottom: 8 }}>VOCAL EQ</div>
@@ -1683,7 +1730,7 @@ function Mockup11() {
         </div>
 
         {/* Instrumental EQ knobs */}
-        <div style={{ padding: '12px 18px' }}>
+        <div style={{ padding: '12px 18px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
           <div style={{ fontSize: 8, fontWeight: 800, color: IC, letterSpacing: '0.1em', marginBottom: 8 }}>INSTRUMENTAL EQ</div>
           <div style={{ display: 'flex', gap: 14 }}>
             {[['LOW','+1.0'], ['MID','-1.0'], ['HIGH','+2.0']].map(([l, v]) => (

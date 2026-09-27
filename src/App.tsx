@@ -91,7 +91,7 @@ function CuePointsNavIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'roulette' | 'settings' | 'discovery' | 'search' | 'edit-profile' | 'drop-lab' | 'import' | 'reusable-components' | 'not-found';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'roulette' | 'settings' | 'discovery' | 'search' | 'drop-lab' | 'import' | 'reusable-components' | 'not-found';
 
 type ImportNotice = {
   kind: 'success' | 'warning';
@@ -112,7 +112,7 @@ function viewForRoute(route: AppRoute): View {
     case 'roulette': return 'roulette';
     case 'discovery': return 'discovery';
     case 'search': return 'search';
-    case 'profile': return 'edit-profile';
+    case 'profile': return 'settings';
     case 'settings': return 'settings';
     case 'reusable-components': return 'reusable-components';
     case 'not-found': return 'not-found';
@@ -197,13 +197,6 @@ function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavPr
       >
         <Search size={20} />
         <span className="text-[8px] font-bold uppercase tracking-widest">Search</span>
-      </button>
-      <button
-        onClick={() => setCurrentView('settings')}
-        className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'settings' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
-      >
-        <Settings size={20} />
-        <span className="text-[8px] font-bold uppercase tracking-widest">Setup</span>
       </button>
     </nav>
   );
@@ -794,7 +787,6 @@ export default function App() {
       case 'settings': navigate({ name: 'settings' }); break;
       case 'discovery': navigate({ name: 'discovery' }); break;
       case 'search': navigate({ name: 'search' }); break;
-      case 'edit-profile': navigate({ name: 'profile' }); break;
       case 'reusable-components': navigate({ name: 'reusable-components' }); break;
       default: break;
     }
@@ -1175,20 +1167,6 @@ export default function App() {
 
         <div className="p-3 border-t border-[var(--color-border-subtle)] flex flex-col gap-2">
           <UsbConnectionButton collapsed={sidebarCollapsed} />
-          <button
-            onClick={() => setCurrentView('settings')}
-            title={sidebarCollapsed ? 'Settings' : undefined}
-            className={cn(
-              'w-full flex items-center rounded-xl font-bold text-sm transition-all border',
-              sidebarCollapsed ? 'justify-center py-2.5 px-0' : 'gap-3 px-4 py-2.5',
-              currentView === 'settings'
-                ? 'text-foreground bg-[var(--color-surface)] border-[var(--color-border-subtle)]'
-                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent'
-            )}
-          >
-            <Settings size={18} />
-            {!sidebarCollapsed && 'Settings'}
-          </button>
         </div>
       </aside>
 
@@ -1275,30 +1253,11 @@ export default function App() {
                 </div>
               )}
               {!routeBlocked && currentView === 'settings' && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ControlButton variant="ghost" onClick={goBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic">Settings</h2>
-                  </div>
-                  <div className="flex gap-1 mt-4 border-b border-[var(--color-border-faint)]">
-                    {(['account', 'appearance', 'library', 'about'] as const).map((tab) => (
-                      <button
-                        key={tab}
-                        type="button"
-                        onClick={() => setSettingsTab(tab)}
-                        className={cn(
-                          'px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px capitalize',
-                          settingsTab === tab
-                            ? 'border-primary text-primary'
-                            : 'border-transparent text-muted-foreground hover:text-foreground'
-                        )}
-                      >
-                        {tab}
-                      </button>
-                    ))}
-                  </div>
+                <div className="flex items-center gap-2">
+                  <ControlButton variant="ghost" onClick={goBack}>
+                    <ChevronLeft size={20} />
+                  </ControlButton>
+                  <h2 className="text-2xl font-black italic">Profile</h2>
                 </div>
               )}
               {!routeBlocked && currentView === 'discovery' && (
@@ -1328,16 +1287,6 @@ export default function App() {
                       <ChevronLeft size={20} />
                     </ControlButton>
                     <h2 className="text-2xl font-black italic">Import Status</h2>
-                  </div>
-                </div>
-              )}
-              {!routeBlocked && currentView === 'edit-profile' && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ControlButton variant="ghost" onClick={goBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic">Edit Profile</h2>
                   </div>
                 </div>
               )}
@@ -1707,32 +1656,47 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
-                className="space-y-8 md:max-w-7xl md:mx-auto pb-8"
+                className="space-y-8 md:max-w-3xl md:mx-auto pb-8"
               >
+                {/* ── Tab nav ── */}
+                <div className="flex gap-1 border-b border-[var(--color-border-faint)]">
+                  {(['account', 'appearance', 'library', 'about'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setSettingsTab(tab)}
+                      className={cn(
+                        'px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px capitalize',
+                        settingsTab === tab
+                          ? 'border-primary text-primary'
+                          : 'border-transparent text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+
                 {/* ── Account tab ── */}
-                {settingsTab === 'account' && (
-                  <section className="space-y-3">
-                    <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
-                      <div className="p-4 flex items-center gap-3">
-                        <User size={18} className="text-muted-foreground shrink-0" />
-                        <div className="min-w-0">
-                          <p className="font-bold text-sm">Signed in as</p>
-                          <p className="text-xs text-muted-foreground font-mono truncate">
-                            {session?.user?.email ?? '—'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Logout size={18} className="text-muted-foreground" />
-                          <p className="font-bold text-sm">Sign Out</p>
-                        </div>
-                        <ControlButton variant="ghost" onClick={() => supabase.auth.signOut()} className="text-xs">
-                          <Logout size={14} /> Sign Out
-                        </ControlButton>
-                      </div>
+                {settingsTab === 'account' && userId && (
+                  <div className="flex flex-col min-h-[calc(100vh-200px)]">
+                    <div className="space-y-6">
+                      <EditProfileView
+                        userId={userId}
+                        existingProfile={userProfile}
+                        onPreferencesChanged={() => void refetchUserGenres()}
+                        onSaved={(_saved) => {
+                          void refetchUserProfile();
+                          void refetchUserGenres();
+                        }}
+                      />
                     </div>
-                  </section>
+                    <div className="mt-auto pb-12 flex justify-center">
+                      <ControlButton variant="danger-outline" onClick={() => supabase.auth.signOut()} className="text-xs">
+                        <Logout size={14} /> Sign Out
+                      </ControlButton>
+                    </div>
+                  </div>
                 )}
 
                 {/* ── Appearance tab ── */}
@@ -2038,27 +2002,6 @@ export default function App() {
                 <LazyFeature label="Loading Search…" boundaryKey={`${routeKey(route)}:search`} onReturnToLibrary={returnToLibrary}>
                   <SearchView />
                 </LazyFeature>
-              </motion.div>
-            )}
-
-            {/* ── Edit Profile ── */}
-            {!routeBlocked && currentView === 'edit-profile' && userId && (
-              <motion.div
-                key="edit-profile"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 16 }}
-                className="md:max-w-7xl md:mx-auto"
-              >
-                <EditProfileView
-                  userId={userId}
-                  existingProfile={userProfile}
-                  onPreferencesChanged={() => void refetchUserGenres()}
-                  onSaved={(_saved) => {
-                    void refetchUserProfile();
-                    void refetchUserGenres();
-                  }}
-                />
               </motion.div>
             )}
 
