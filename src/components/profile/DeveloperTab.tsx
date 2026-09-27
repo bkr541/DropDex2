@@ -4,6 +4,32 @@ import { cn } from '../../lib/utils';
 import { getLogEntries, subscribeToLogs, clearLogEntries, type LogEntry, type LogLevel } from '../../lib/logger';
 import { RouletteDiagnosticsPanel } from './RouletteDiagnosticsPanel';
 
+// ── Import event filter config ────────────────────────────────────────────────
+
+const IMPORT_TRACK_EVENTS: Array<{ key: string; label: string; description: string }> = [
+  { key: 'track.start',                label: 'Track Start',         description: 'Emitted when each track begins processing during an import.' },
+  { key: 'track.asset_download_failed', label: 'Asset Download Failed', description: 'Emitted when an ANLZ asset (.dat/.ext/.2ex) fails to download for a track.' },
+  { key: 'track.parse_failed',          label: 'Parse Failed',        description: 'Emitted when the bundle parser throws an error for a track.' },
+  { key: 'track.complete',              label: 'Track Complete',       description: 'Emitted after each track finishes processing, with status and timing.' },
+];
+
+const DISABLED_EVENTS_KEY = 'dropdex:dev:disabled-import-events';
+
+function readDisabledEvents(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DISABLED_EVENTS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+    if (Array.isArray(parsed)) return new Set(parsed as string[]);
+  } catch { /* ignore */ }
+  return new Set();
+}
+
+function writeDisabledEvents(disabled: Set<string>): void {
+  try {
+    localStorage.setItem(DISABLED_EVENTS_KEY, JSON.stringify([...disabled]));
+  } catch { /* ignore */ }
+}
+
 // ── Component classification ──────────────────────────────────────────────────
 
 type LogComponent = 'All' | 'Rekordbox' | 'Supabase' | 'React' | 'Browser' | 'App';
@@ -109,14 +135,26 @@ export function DeveloperTab() {
   const [search, setSearch] = useState('');
   const [component, setComponent] = useState<LogComponent>('All');
   const [level, setLevel] = useState<'All' | LogLevel>('All');
+  const [disabledEvents, setDisabledEvents] = useState<Set<string>>(readDisabledEvents);
 
   useEffect(() => subscribeToLogs(() => forceRender((n) => n + 1)), []);
+
+  const toggleEvent = useCallback((key: string) => {
+    setDisabledEvents((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      writeDisabledEvents(next);
+      return next;
+    });
+  }, []);
 
   const entries = getLogEntries();
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return [...entries].reverse().filter((e) => {
+      if (disabledEvents.has(e.message)) return false;
       if (level !== 'All' && e.level !== level) return false;
       if (component !== 'All' && classifyComponent(e.message) !== component) return false;
       if (q) {
@@ -125,7 +163,7 @@ export function DeveloperTab() {
       }
       return true;
     });
-  }, [search, component, level, renderCount]);
+  }, [search, component, level, disabledEvents, renderCount]);
 
   const handleClear = useCallback(() => { clearLogEntries(); }, []);
 
@@ -135,6 +173,53 @@ export function DeveloperTab() {
     <section className="space-y-6">
       {/* ── Roulette Diagnostics group ── */}
       <RouletteDiagnosticsPanel />
+
+      {/* ── Import event filters group ── */}
+      <div className="space-y-2">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-amber-400/60 inline-block" />
+          Import Event Filters
+        </h2>
+        <div className="glass rounded-2xl overflow-hidden divide-y divide-[var(--color-border-faint)]">
+          {IMPORT_TRACK_EVENTS.map(({ key, label, description }) => {
+            const enabled = !disabledEvents.has(key);
+            return (
+              <div key={key} className="flex items-center gap-3 px-4 py-3">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={enabled}
+                  onClick={() => toggleEvent(key)}
+                  className={cn(
+                    'relative shrink-0 w-9 h-5 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50',
+                    enabled ? 'bg-primary' : 'bg-[var(--color-border-subtle)]',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
+                      enabled ? 'translate-x-4' : 'translate-x-0',
+                    )}
+                  />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className={cn('text-xs font-semibold leading-tight', enabled ? 'text-foreground' : 'text-muted-foreground')}>
+                    {label}
+                    <span className="ml-2 text-[9px] font-mono text-muted-foreground/60">{key}</span>
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">{description}</p>
+                </div>
+                <span className={cn('text-[9px] font-bold uppercase tracking-wider shrink-0', enabled ? 'text-primary' : 'text-muted-foreground/40')}>
+                  {enabled ? 'On' : 'Off'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-[10px] text-muted-foreground/60 px-1 leading-relaxed">
+          Toggles here filter these event types from the log viewer below. State is saved across reloads.
+        </p>
+      </div>
 
       {/* ── Logger group ── */}
       <div className="space-y-2">
