@@ -28,6 +28,7 @@ export type AppRoute =
   | { name: 'profile' }
   | { name: 'settings' }
   | { name: 'reusable-components' }
+  | { name: 'flip-lab' }
   | { name: 'not-found'; pathname: string };
 
 const LIBRARY_TAB_PATHS: Record<LibraryTab, string> = {
@@ -130,6 +131,7 @@ export function parseAppRoute(pathname: string, search = ''): AppRoute {
     case '/profile': return { name: 'profile' };
     case '/settings': return { name: 'settings' };
     case '/reusable-components': return { name: 'reusable-components' };
+    case '/flip-lab': return { name: 'flip-lab' };
     default: return { name: 'not-found', pathname: normalizedPath };
   }
 }
@@ -166,6 +168,7 @@ export function routeToUrl(route: AppRoute): string {
     case 'profile': return '/profile';
     case 'settings': return '/settings';
     case 'reusable-components': return '/reusable-components';
+    case 'flip-lab': return '/flip-lab';
     case 'not-found': return route.pathname;
   }
 }
@@ -188,6 +191,7 @@ export function routeBackFallback(route: AppRoute): AppRoute {
     case 'profile':
     case 'settings':
     case 'reusable-components':
+    case 'flip-lab':
     case 'import':
     case 'not-found':
       return { name: 'library', tab: 'overview', search: '' };

@@ -43,6 +43,7 @@ import { useAppRouter } from './navigation/useAppRouter';
 import { useRouteImport, useRoutePlaylist, useRouteTracks } from './hooks/useRouteEntities';
 
 const DiscoveryView = lazyWithRecovery('discovery', () => import('./components/discovery/DiscoveryView').then(m => ({ default: m.DiscoveryView })));
+const FlipLabView = lazyWithRecovery('flip-lab', () => import('./components/flip-lab/FlipLabView').then(m => ({ default: m.FlipLabView })));
 const SearchView = lazyWithRecovery('search', () => import('./components/search/SearchView').then(m => ({ default: m.SearchView })));
 const ReviewView = lazyWithRecovery('review', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewView })));
 const ReviewEmptyState = lazyWithRecovery('review-empty', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewEmptyState })));
@@ -65,7 +66,7 @@ import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './typ
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
 import { ReusableComponentsView } from './components/reusable/ReusableComponentsView';
-import { CheckmarkFilled, ChevronLeft, CircleDash, Close, DataBase, Edit, Growth, Layers, Logout, Moon, Music, PaintBrush, Radio, RecordingFilled, Renew, Search, Settings, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, ChevronLeft, CircleDash, Close, DataBase, Edit, Growth, Layers, Logout, Moon, Music, PaintBrush, Radio, RecordingFilled, Renew, Search, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
 import { LayoutLabWindow } from './components/ui/LayoutLabWindow';
 import { ControlButton } from './components/ui/controls';
 import { RouletteSessionProvider } from './features/roulette/RouletteSessionContext';
@@ -92,7 +93,7 @@ function CuePointsNavIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'roulette' | 'settings' | 'discovery' | 'search' | 'drop-lab' | 'import' | 'reusable-components' | 'not-found';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'roulette' | 'settings' | 'discovery' | 'search' | 'drop-lab' | 'import' | 'reusable-components' | 'flip-lab' | 'not-found';
 
 type ImportNotice = {
   kind: 'success' | 'warning';
@@ -116,6 +117,7 @@ function viewForRoute(route: AppRoute): View {
     case 'profile': return 'settings';
     case 'settings': return 'settings';
     case 'reusable-components': return 'reusable-components';
+    case 'flip-lab': return 'flip-lab';
     case 'not-found': return 'not-found';
   }
 }
@@ -789,6 +791,7 @@ export default function App() {
       case 'discovery': navigate({ name: 'discovery' }); break;
       case 'search': navigate({ name: 'search' }); break;
       case 'reusable-components': navigate({ name: 'reusable-components' }); break;
+      case 'flip-lab': navigate({ name: 'flip-lab' }); break;
       default: break;
     }
   };
@@ -1087,10 +1090,10 @@ export default function App() {
     { view: 'home', icon: Music, label: libraryLabel, activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'review', icon: Growth, label: 'Review', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
     { view: 'cues', icon: CuePointsNavIcon, label: 'Cue Points', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
-    { view: 'roulette', icon: Renew, label: 'Roulette', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
     { view: 'discovery', icon: Radio, label: 'Discover', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'search', icon: Search, label: 'Search', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'reusable-components', icon: Layers, label: 'Reusable Components', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
+    { view: 'flip-lab', icon: Shuffle, label: 'Flip Lab', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
   ];
 
   return (
@@ -1298,6 +1301,16 @@ export default function App() {
                       <ChevronLeft size={20} />
                     </ControlButton>
                     <h2 className="text-2xl font-black italic">Reusable Components</h2>
+                  </div>
+                </div>
+              )}
+              {!routeBlocked && currentView === 'flip-lab' && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic">Flip Lab</h2>
                   </div>
                 </div>
               )}
@@ -2006,6 +2019,19 @@ export default function App() {
                 <LazyFeature label="Loading Search…" boundaryKey={`${routeKey(route)}:search`} onReturnToLibrary={returnToLibrary}>
                   <SearchView />
                 </LazyFeature>
+              </motion.div>
+            )}
+
+            {/* ── Flip Lab ── */}
+            {!routeBlocked && currentView === 'flip-lab' && (
+              <motion.div
+                key="flip-lab"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="md:max-w-7xl md:mx-auto"
+              >
+                <FlipLabView />
               </motion.div>
             )}
 
