@@ -614,6 +614,1092 @@ function Mockup5() {
   );
 }
 
+// ── MOCKUP 6: Split Deck + EQ Knobs (MASHUP style) ───────────────────────────
+// Top nav bar; vocal/instrumental rows each with album art, BPM, KEY, EQ knobs;
+// full-width waveforms with S/M buttons; bottom transport with LOOP + MIX slider
+
+function Mockup6() {
+  return (
+    <MockupCard n={6} title="Split Deck + EQ Knobs" concept="DJ performance layout — vocal/instrumental rows with inline EQ and bottom transport">
+      {/* Nav header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0,
+        borderBottom: '1px solid rgba(255,255,255,0.07)', ...S.bg1 }}>
+        <div style={{ padding: '0 18px', display: 'flex', alignItems: 'center', gap: 14, height: 42,
+          borderRight: '1px solid rgba(255,255,255,0.07)' }}>
+          <span style={{ fontSize: 13, fontWeight: 900, color: '#fff', letterSpacing: '0.04em' }}>DROPDEX</span>
+          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.15em' }}>ROULETTE ENGINE</span>
+        </div>
+        <div style={{ display: 'flex', gap: 0 }}>
+          {['PERFORMANCE', 'LIBRARY', 'SETTINGS'].map((t, i) => (
+            <span key={t} style={{ padding: '0 16px', height: 42, display: 'flex', alignItems: 'center',
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.09em', cursor: 'pointer',
+              color: i === 0 ? '#fff' : 'rgba(255,255,255,0.35)',
+              borderBottom: i === 0 ? '2px solid #22d3ee' : '2px solid transparent' }}>{t}</span>
+          ))}
+        </div>
+        <div style={{ marginLeft: 'auto', padding: '0 18px', textAlign: 'right' }}>
+          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em' }}>MASTER BPM</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>122.0</div>
+        </div>
+      </div>
+
+      {/* Vocal deck row */}
+      <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid rgba(255,255,255,0.07)', ...S.bg2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
+          borderRight: '1px solid rgba(255,255,255,0.07)', minWidth: 200 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 8, background: 'linear-gradient(135deg,#1a3a5c,#0a1a2e)',
+            flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 30, height: 30, borderRadius: 6, background: 'rgba(34,211,238,0.15)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🎤</div>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 8, fontWeight: 800, color: VC, letterSpacing: '0.12em', marginBottom: 2 }}>VOCAL</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Levitating (Vocal Stem)</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Dua Lipa</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '10px 20px',
+          borderRight: '1px solid rgba(255,255,255,0.07)', minWidth: 120 }}>
+          <div>
+            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em', marginBottom: 1 }}>BPM</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>120</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em', marginBottom: 1 }}>KEY</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>4A / F# minor</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '10px 20px', marginLeft: 'auto' }}>
+          {[['LOW', '-2.1 dB'], ['MID', '+1.4 dB'], ['HIGH', '+0.8 dB']].map(([l, v]) => (
+            <div key={l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em' }}>{l}</div>
+              <Knob color={VC} />
+              <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)', fontVariantNumeric: 'tabular-nums' }}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Vocal waveform */}
+      <div style={{ position: 'relative', background: 'rgba(34,211,238,0.03)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 32,
+          display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4,
+          padding: '0 6px', borderRight: '1px solid rgba(255,255,255,0.05)', zIndex: 1 }}>
+          {['S','M'].map(l => (
+            <div key={l} style={{ width: 20, height: 20, borderRadius: 4, background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.4)' }}>{l}</div>
+          ))}
+        </div>
+        <div style={{ marginLeft: 32, height: 72, position: 'relative', overflow: 'hidden' }}>
+          <Waveform color={VC} seed={101} bars={220} />
+          <div style={{ position: 'absolute', top: 0, bottom: 0, left: '45%', width: 1, background: 'rgba(255,255,255,0.7)' }} />
+        </div>
+        <div style={{ marginLeft: 32, display: 'flex', padding: '2px 0 4px', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} style={{ flex: 1, fontSize: 8, color: 'rgba(255,255,255,0.2)', paddingLeft: 2 }}>{i + 1}</div>
+          ))}
+        </div>
+      </div>
+
+      {/* Instrumental deck row */}
+      <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid rgba(255,255,255,0.07)', ...S.bg2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
+          borderRight: '1px solid rgba(255,255,255,0.07)', minWidth: 200 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 8, background: 'linear-gradient(135deg,#3a1800,#180b00)',
+            flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 30, height: 30, borderRadius: 6, background: 'rgba(249,115,22,0.15)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🎵</div>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 8, fontWeight: 800, color: IC, letterSpacing: '0.12em', marginBottom: 2 }}>INSTRUMENTAL</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>This Is What You Came For</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Calvin Harris ft. Rihanna</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '10px 20px',
+          borderRight: '1px solid rgba(255,255,255,0.07)', minWidth: 120 }}>
+          <div>
+            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em', marginBottom: 1 }}>BPM</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>124</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em', marginBottom: 1 }}>KEY</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>5A / B minor</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '10px 20px', marginLeft: 'auto' }}>
+          {[['LOW', '+1.2 dB'], ['MID', '-0.6 dB'], ['HIGH', '+1.0 dB']].map(([l, v]) => (
+            <div key={l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em' }}>{l}</div>
+              <Knob color={IC} />
+              <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)', fontVariantNumeric: 'tabular-nums' }}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Instrumental waveform */}
+      <div style={{ position: 'relative', background: 'rgba(249,115,22,0.03)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 32,
+          display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4,
+          padding: '0 6px', borderRight: '1px solid rgba(255,255,255,0.05)', zIndex: 1 }}>
+          {['S','M'].map(l => (
+            <div key={l} style={{ width: 20, height: 20, borderRadius: 4, background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.4)' }}>{l}</div>
+          ))}
+        </div>
+        <div style={{ marginLeft: 32, height: 72, position: 'relative', overflow: 'hidden' }}>
+          <Waveform color={IC} seed={202} bars={220} />
+          <div style={{ position: 'absolute', top: 0, bottom: 0, left: '45%', width: 1, background: 'rgba(255,255,255,0.7)' }} />
+        </div>
+        <div style={{ marginLeft: 32, display: 'flex', padding: '2px 0 4px', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} style={{ flex: 1, fontSize: 8, color: 'rgba(255,255,255,0.2)', paddingLeft: 2 }}>{i + 1}</div>
+          ))}
+        </div>
+      </div>
+
+      {/* Transport bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', ...S.bg1 }}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginRight: 2 }}>LOOP</span>
+          {['‹','›'].map((c, i) => (
+            <button key={i} style={{ width: 22, height: 22, borderRadius: 5, background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', fontSize: 11, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{c}</button>
+          ))}
+          {['1/2','1','2','4','8','16'].map((l, i) => (
+            <button key={l} style={{ padding: '3px 7px', borderRadius: 4, fontSize: 9, fontWeight: 700, cursor: 'pointer',
+              background: i === 3 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)',
+              border: i === 3 ? '1px solid rgba(255,255,255,0.25)' : '1px solid rgba(255,255,255,0.07)',
+              color: i === 3 ? '#fff' : 'rgba(255,255,255,0.4)' }}>{l}</button>
+          ))}
+        </div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <button style={{ padding: '6px 14px', borderRadius: 7, background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>CUE</button>
+          {['⏮','▶','⏭'].map((c, i) => (
+            <button key={i} style={{ width: i === 1 ? 38 : 30, height: i === 1 ? 38 : 30, borderRadius: '50%',
+              background: i === 1 ? '#22c55e' : 'rgba(255,255,255,0.07)',
+              border: i === 1 ? 'none' : '1px solid rgba(255,255,255,0.1)',
+              color: i === 1 ? '#000' : 'rgba(255,255,255,0.7)',
+              fontSize: i === 1 ? 14 : 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{c}</button>
+          ))}
+          <button style={{ padding: '6px 14px', borderRadius: 7, background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>SYNC</button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em' }}>MASTER BPM</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>122.0</div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <button style={{ width: 14, height: 14, borderRadius: 3, background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontSize: 8, color: 'rgba(255,255,255,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▲</button>
+            <button style={{ width: 14, height: 14, borderRadius: 3, background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontSize: 8, color: 'rgba(255,255,255,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▼</button>
+          </div>
+          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginLeft: 6 }}>MIX</span>
+          <div style={{ width: 80, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.1)', position: 'relative' }}>
+            <div style={{ position: 'absolute', right: 8, top: -4, width: 12, height: 12, borderRadius: '50%',
+              background: '#fff', border: '2px solid rgba(255,255,255,0.3)' }} />
+          </div>
+        </div>
+      </div>
+    </MockupCard>
+  );
+}
+
+// ── MOCKUP 7: Stacked Decks + Compatibility Bridge (MIXFORGE style) ───────────
+// Vocal deck on top with knobs; compatibility info strip in the middle;
+// instrumental deck on bottom; full-width waveforms between
+
+function Mockup7() {
+  return (
+    <MockupCard n={7} title="Stacked Decks + Compatibility Bridge" concept="Vocal and instrumental decks frame a waveform block; BPM/key compatibility strip in the middle">
+      {/* App header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14,
+        padding: '0 18px', height: 44, borderBottom: '1px solid rgba(255,255,255,0.07)', ...S.bg1 }}>
+        <div style={{ width: 26, height: 26, borderRadius: 6, background: 'rgba(34,211,238,0.18)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900, color: VC }}>D</div>
+        <span style={{ fontSize: 12, fontWeight: 800, color: '#fff' }}>DROPDEX</span>
+        <div style={{ display: 'flex', gap: 0, marginLeft: 16 }}>
+          {['Mashup','Stems','Library','Effects','Export'].map((t, i) => (
+            <span key={t} style={{ padding: '0 14px', height: 44, display: 'flex', alignItems: 'center',
+              fontSize: 10, fontWeight: 700, cursor: 'pointer',
+              color: i === 0 ? '#22d3ee' : 'rgba(255,255,255,0.4)',
+              borderBottom: i === 0 ? '2px solid #22d3ee' : '2px solid transparent' }}>{t}</span>
+          ))}
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', fontVariantNumeric: 'tabular-nums' }}>Project 01</span>
+        </div>
+      </div>
+
+      {/* VOCAL deck top */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px',
+        borderBottom: '1px solid rgba(255,255,255,0.07)', ...S.bg2 }}>
+        <div style={{ width: 44, height: 44, borderRadius: 8, background: 'linear-gradient(135deg,#1a3a5c,#0a1a2e)',
+          flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🎤</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 8, fontWeight: 800, color: VC, letterSpacing: '0.12em', marginBottom: 2 }}>VOCAL</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>Levitating</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Dua Lipa</div>
+        </div>
+        <div style={{ display: 'flex', gap: 16, marginLeft: 12 }}>
+          {[['LOW','-2.1 dB',VC],['MID','+1.4 dB',VC],['HIGH','+0.8 dB',VC]].map(([l, v, c]) => (
+            <div key={l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+              <Knob color={c} />
+              <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em' }}>{l}</div>
+              <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)' }}>{v}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
+          <button style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: 'pointer',
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}>FX</button>
+          <button style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: 'pointer',
+            background: 'rgba(34,211,238,0.08)', border: '1px solid rgba(34,211,238,0.2)', color: VC }}>Vocal Isolate</button>
+          <MuteSolo />
+          <div style={{ width: 6, height: 32, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden', position: 'relative' }}>
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '75%',
+              background: 'linear-gradient(to top,#22c55e,#22d3ee)', borderRadius: 3 }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Vocal waveform */}
+      <div style={{ height: 80, background: 'rgba(34,211,238,0.03)', position: 'relative', overflow: 'hidden' }}>
+        <Waveform color={VC} seed={301} bars={240} />
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: '52%', width: 1, background: 'rgba(255,255,255,0.7)' }} />
+      </div>
+
+      {/* Compatibility bridge */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px',
+        background: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.06)',
+        borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ width: 32, height: 32, borderRadius: 6, background: 'rgba(34,211,238,0.1)', flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 22, height: 22, borderRadius: 4, background: 'rgba(34,211,238,0.2)' }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: VC, fontWeight: 700 }}>Levitating</div>
+          <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>Dua Lipa · 120 BPM</div>
+        </div>
+        <div style={{ marginLeft: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b' }}>+3.3% BPM</span>
+          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>→</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>4A → 5A</span>
+          <span style={{ padding: '3px 8px', borderRadius: 5, fontSize: 9, fontWeight: 700,
+            background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e' }}>● Compatible</span>
+          <span style={{ padding: '3px 8px', borderRadius: 5, fontSize: 9, fontWeight: 700,
+            background: 'rgba(34,211,238,0.08)', border: '1px solid rgba(34,211,238,0.2)', color: VC }}>⟳ Synced</span>
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div>
+            <div style={{ fontSize: 9, color: IC, fontWeight: 700 }}>This Is What You Came For</div>
+            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>Calvin Harris · 124 BPM</div>
+          </div>
+          <div style={{ width: 32, height: 32, borderRadius: 6, background: 'rgba(249,115,22,0.1)', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 22, height: 22, borderRadius: 4, background: 'rgba(249,115,22,0.2)' }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Instrumental waveform */}
+      <div style={{ height: 80, background: 'rgba(249,115,22,0.03)', position: 'relative', overflow: 'hidden' }}>
+        <Waveform color={IC} seed={402} bars={240} />
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: '52%', width: 1, background: 'rgba(255,255,255,0.7)' }} />
+      </div>
+
+      {/* INSTRUMENTAL deck bottom */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px',
+        borderTop: '1px solid rgba(255,255,255,0.07)', ...S.bg2 }}>
+        <div style={{ width: 44, height: 44, borderRadius: 8, background: 'linear-gradient(135deg,#3a1800,#180b00)',
+          flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🎵</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 8, fontWeight: 800, color: IC, letterSpacing: '0.12em', marginBottom: 2 }}>INSTRUMENTAL</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>This Is What You Came For</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Calvin Harris ft. Rihanna</div>
+        </div>
+        <div style={{ display: 'flex', gap: 16, marginLeft: 12 }}>
+          {[['LOW','+1.2 dB',IC],['MID','-0.6 dB',IC],['HIGH','+1.8 dB',IC]].map(([l, v, c]) => (
+            <div key={l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+              <Knob color={c} />
+              <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em' }}>{l}</div>
+              <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)' }}>{v}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
+          <button style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: 'pointer',
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}>FX</button>
+          <button style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: 'pointer',
+            background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', color: IC }}>Stem Isolate</button>
+          <MuteSolo />
+          <div style={{ width: 6, height: 32, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden', position: 'relative' }}>
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '68%',
+              background: 'linear-gradient(to top,#22c55e,#f97316)', borderRadius: 3 }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Transport */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 18px',
+        borderTop: '1px solid rgba(255,255,255,0.07)', ...S.bg1 }}>
+        <div>
+          <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em' }}>MASTER BPM</div>
+          <div style={{ fontSize: 17, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>124.0</div>
+        </div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <button style={{ padding: '6px 12px', borderRadius: 7, background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>CUE</button>
+          {['⏮','▶','⏭'].map((c, i) => (
+            <button key={i} style={{ width: i === 1 ? 36 : 28, height: i === 1 ? 36 : 28, borderRadius: '50%',
+              background: i === 1 ? '#22c55e' : 'rgba(255,255,255,0.07)',
+              border: i === 1 ? 'none' : '1px solid rgba(255,255,255,0.1)',
+              color: i === 1 ? '#000' : 'rgba(255,255,255,0.7)',
+              fontSize: i === 1 ? 13 : 9, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{c}</button>
+          ))}
+          <button style={{ padding: '6px 12px', borderRadius: 7, background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>SYNC ▾</button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>Loop</span>
+          <span style={{ padding: '3px 10px', borderRadius: 5, fontSize: 10, fontWeight: 700,
+            background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.2)', color: VC }}>4 Bars ▾</span>
+        </div>
+      </div>
+    </MockupCard>
+  );
+}
+
+// ── MOCKUP 8: Clean Waveform Split + Bottom 3-Col EQ (clean MASHUP style) ─────
+// Header tabs; vocal strip + waveform; inst strip + waveform;
+// bottom three columns: VOCAL EQ | center transport | INST EQ
+
+function LargeKnob({ color = '#22d3ee', size = 44 }: { color?: string; size?: number }) {
+  return (
+    <div style={{ width: size, height: size, borderRadius: '50%',
+      border: `2px solid ${color}40`, background: 'rgba(255,255,255,0.03)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: `0 0 10px ${color}20`, flexShrink: 0 }}>
+      <div style={{ width: 3, height: size * 0.35, borderRadius: 3, background: color,
+        transform: 'translateY(-4px)' }} />
+    </div>
+  );
+}
+
+function Mockup8() {
+  return (
+    <MockupCard n={8} title="Clean Waveform Split + Bottom EQ" concept="Minimal split with per-deck track strips and a 3-column bottom EQ panel">
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0, height: 40,
+        borderBottom: '1px solid rgba(255,255,255,0.07)', ...S.bg1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px',
+          borderRight: '1px solid rgba(255,255,255,0.07)', height: '100%' }}>
+          <div style={{ width: 22, height: 22, borderRadius: 5, background: 'rgba(255,255,255,0.08)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>🎲</div>
+          <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', letterSpacing: '0.04em' }}>DROPDEX</span>
+        </div>
+        <div style={{ display: 'flex' }}>
+          {['MIX','STEMS','FX','SAMPLES'].map((t, i) => (
+            <span key={t} style={{ padding: '0 14px', height: 40, display: 'flex', alignItems: 'center',
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', cursor: 'pointer',
+              background: i === 0 ? 'rgba(34,211,238,0.08)' : 'transparent',
+              color: i === 0 ? VC : 'rgba(255,255,255,0.4)',
+              borderBottom: i === 0 ? `2px solid ${VC}` : '2px solid transparent' }}>{t}</span>
+          ))}
+        </div>
+        <div style={{ marginLeft: 'auto', padding: '0 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 16, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>120.0</span>
+          <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}>BPM</span>
+        </div>
+      </div>
+
+      {/* Vocal strip */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 14px',
+        borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 9, fontWeight: 800,
+          background: 'rgba(34,211,238,0.12)', border: `1px solid ${VC}30`, color: VC, letterSpacing: '0.08em' }}>VOCAL</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>Levitating</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Dua Lipa</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>|</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', fontVariantNumeric: 'tabular-nums' }}>120 BPM</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>4A / F# minor</span>
+        <span style={{ marginLeft: 'auto', fontSize: 9, color: '#22c55e', fontWeight: 700 }}>● Stem Ready</span>
+      </div>
+      <div style={{ height: 88, position: 'relative', overflow: 'hidden', background: 'rgba(34,211,238,0.03)' }}>
+        <Waveform color={VC} seed={501} bars={220} />
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: '48%', width: 1.5, background: 'rgba(255,255,255,0.75)' }} />
+      </div>
+
+      {/* Instrumental strip */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 14px',
+        borderTop: '1px solid rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 9, fontWeight: 800,
+          background: 'rgba(249,115,22,0.12)', border: `1px solid ${IC}30`, color: IC, letterSpacing: '0.08em' }}>INST</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>This Is What You Came For</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Calvin Harris ft. Rihanna</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>|</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', fontVariantNumeric: 'tabular-nums' }}>124 BPM</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>5A / B minor</span>
+        <span style={{ marginLeft: 'auto', fontSize: 9, color: '#f59e0b', fontWeight: 700 }}>⟳ Synced</span>
+      </div>
+      <div style={{ height: 88, position: 'relative', overflow: 'hidden', background: 'rgba(249,115,22,0.03)' }}>
+        <Waveform color={IC} seed={602} bars={220} />
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: '48%', width: 1.5, background: 'rgba(255,255,255,0.75)' }} />
+      </div>
+
+      {/* Bottom 3-col panel */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr',
+        borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.3)', minHeight: 100 }}>
+        {/* Vocal EQ */}
+        <div style={{ padding: '12px 16px', borderRight: '1px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: VC }} />
+            <span style={{ fontSize: 9, fontWeight: 800, color: VC, letterSpacing: '0.1em' }}>VOCAL EQ</span>
+          </div>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end' }}>
+            {[['LOW','-1.5'], ['MID','+0.8'], ['HIGH','+2.1']].map(([l, v]) => (
+              <div key={l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <LargeKnob color={VC} size={38} />
+                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em' }}>{l}</div>
+                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)', fontVariantNumeric: 'tabular-nums' }}>{v} dB</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Center transport */}
+        <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', gap: 8, borderRight: '1px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em' }}>MASTER BPM</span>
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>120.0</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {['⏮','▶','⏭'].map((c, i) => (
+              <button key={i} style={{ width: i === 1 ? 40 : 30, height: i === 1 ? 40 : 30, borderRadius: '50%',
+                background: i === 1 ? '#22c55e' : 'rgba(255,255,255,0.07)',
+                border: i === 1 ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                color: i === 1 ? '#000' : 'rgba(255,255,255,0.6)',
+                fontSize: i === 1 ? 15 : 9, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{c}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {['CUE','LOOP','SYNC'].map(l => (
+              <button key={l} style={{ padding: '4px 8px', borderRadius: 5, fontSize: 8, fontWeight: 700, cursor: 'pointer',
+                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                color: 'rgba(255,255,255,0.6)' }}>{l}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)' }}>LOOP LENGTH</span>
+            <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 9, fontWeight: 700,
+              background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', color: '#f59e0b' }}>4 Bars ▾</span>
+          </div>
+        </div>
+
+        {/* Inst EQ */}
+        <div style={{ padding: '12px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: IC }} />
+            <span style={{ fontSize: 9, fontWeight: 800, color: IC, letterSpacing: '0.1em' }}>INST EQ</span>
+          </div>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end' }}>
+            {[['LOW','+1.2'], ['MID','-0.6'], ['HIGH','+1.8']].map(([l, v]) => (
+              <div key={l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <LargeKnob color={IC} size={38} />
+                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em' }}>{l}</div>
+                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)', fontVariantNumeric: 'tabular-nums' }}>{v} dB</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </MockupCard>
+  );
+}
+
+// ── MOCKUP 9: Timeline + Section Labels (MIXED style) ─────────────────────────
+// Left sidebar with track cards; main waveform area with phrase labels overlaid;
+// vertical VOCAL/INSTRUMENTAL labels; bottom dual EQ sliders + tools + transport
+
+function EQSlider({ color, val }: { color: string; val: string }) {
+  const pct = parseFloat(val) > 0 ? 50 + parseFloat(val) * 6 : 50 + parseFloat(val) * 6;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+      <div style={{ width: 80, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.1)', position: 'relative', flex: 1 }}>
+        <div style={{ position: 'absolute', top: -4, left: `${Math.max(0, Math.min(90, pct))}%`,
+          width: 12, height: 12, borderRadius: '50%', background: color, transform: 'translateX(-50%)',
+          border: '2px solid rgba(0,0,0,0.3)' }} />
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 1,
+          background: 'rgba(255,255,255,0.15)' }} />
+      </div>
+      <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.5)', fontVariantNumeric: 'tabular-nums',
+        minWidth: 36, textAlign: 'right' }}>{val} dB</span>
+    </div>
+  );
+}
+
+function Mockup9() {
+  const sections = [
+    { label: 'Verse 1', color: '#6366f1', start: 0, end: 26 },
+    { label: 'Build', color: '#8b5cf6', start: 26, end: 45 },
+    { label: 'Chorus', color: '#ec4899', start: 45, end: 74 },
+    { label: 'Drop', color: '#ef4444', start: 74, end: 100 },
+  ];
+  const iSections = [
+    { label: 'Intro', color: '#f59e0b', start: 0, end: 22 },
+    { label: 'Verse', color: '#d97706', start: 22, end: 48 },
+    { label: 'Build', color: '#b45309', start: 48, end: 70 },
+    { label: 'Drop', color: '#92400e', start: 70, end: 100 },
+  ];
+
+  return (
+    <MockupCard n={9} title="Timeline + Section Labels" concept="Left sidebar with track info; full-width waveforms with phrase labels overlaid">
+      <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr', minHeight: 400 }}>
+        {/* Left sidebar */}
+        <div style={{ borderRight: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column' }}>
+          {/* Vocal card */}
+          <div style={{ flex: 1, padding: 14, borderBottom: '1px solid rgba(255,255,255,0.07)',
+            display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ width: 54, height: 54, borderRadius: 8, background: 'linear-gradient(135deg,#1a3a5c,#0a1a2e)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>🎤</div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#fff', marginBottom: 1 }}>Levitating (Vocal Stem)</div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>Dua Lipa</div>
+              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                <span style={{ fontSize: 10, color: '#f59e0b', fontWeight: 700 }}>120 BPM</span>
+                <CamelotBadge k="4A" />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 5, marginTop: 'auto' }}>
+              {['S','M','···'].map(l => (
+                <button key={l} style={{ width: l === '···' ? 28 : 22, height: 22, borderRadius: 5,
+                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.5)', fontSize: l === '···' ? 10 : 9, fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{l}</button>
+              ))}
+            </div>
+          </div>
+          {/* Instrumental card */}
+          <div style={{ flex: 1, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ width: 54, height: 54, borderRadius: 8, background: 'linear-gradient(135deg,#1a2a3c,#0a1020)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>⚡</div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#fff', marginBottom: 1 }}>This Is What You Came For</div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>Calvin Harris ft. Rihanna</div>
+              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                <span style={{ fontSize: 10, color: '#f59e0b', fontWeight: 700 }}>124 BPM</span>
+                <CamelotBadge k="5A" />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 5, marginTop: 'auto' }}>
+              {['S','M','···'].map(l => (
+                <button key={l} style={{ width: l === '···' ? 28 : 22, height: 22, borderRadius: 5,
+                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.5)', fontSize: l === '···' ? 10 : 9, fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{l}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Main waveform + bottom panel */}
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {/* Bar ruler */}
+          <div style={{ display: 'flex', padding: '3px 8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', ...S.bg1 }}>
+            <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.25)', marginRight: 4 }}>BAR</span>
+            {[1,5,9,13,17,21,25,29,33,37,41,45,49,53,57,61].map(n => (
+              <div key={n} style={{ flex: 1, fontSize: 7, color: 'rgba(255,255,255,0.2)' }}>{n}</div>
+            ))}
+          </div>
+
+          {/* Vocal waveform with section labels */}
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'rgba(34,211,238,0.02)',
+            borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ position: 'absolute', top: 4, left: 0, right: 0, display: 'flex', zIndex: 2 }}>
+              {sections.map(s => (
+                <div key={s.label} style={{ position: 'absolute', left: `${s.start}%`, width: `${s.end - s.start}%`,
+                  padding: '2px 6px', background: `${s.color}26`, borderRight: `2px solid ${s.color}60` }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: s.color }}>{s.label}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 18,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRight: '1px solid rgba(255,255,255,0.05)', zIndex: 3 }}>
+              <span style={{ fontSize: 7, fontWeight: 800, color: VC, letterSpacing: '0.15em',
+                transform: 'rotate(-90deg)', whiteSpace: 'nowrap' }}>VOCAL</span>
+            </div>
+            <div style={{ height: 80, marginLeft: 18, marginTop: 18, overflow: 'hidden' }}>
+              <Waveform color={VC} seed={701} bars={260} />
+            </div>
+            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '62%', width: 1.5,
+              background: 'rgba(255,255,255,0.7)', zIndex: 4 }} />
+          </div>
+
+          {/* Instrumental waveform with section labels */}
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'rgba(249,115,22,0.02)',
+            borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ position: 'absolute', top: 4, left: 0, right: 0, display: 'flex', zIndex: 2 }}>
+              {iSections.map(s => (
+                <div key={s.label} style={{ position: 'absolute', left: `${s.start}%`, width: `${s.end - s.start}%`,
+                  padding: '2px 6px', background: `${s.color}26`, borderRight: `2px solid ${s.color}60` }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: s.color }}>{s.label}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 18,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRight: '1px solid rgba(255,255,255,0.05)', zIndex: 3 }}>
+              <span style={{ fontSize: 7, fontWeight: 800, color: IC, letterSpacing: '0.15em',
+                transform: 'rotate(-90deg)', whiteSpace: 'nowrap' }}>INSTRUMENTAL</span>
+            </div>
+            <div style={{ height: 80, marginLeft: 18, marginTop: 18, overflow: 'hidden' }}>
+              <Waveform color={IC} seed={802} bars={260} />
+            </div>
+            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '62%', width: 1.5,
+              background: 'rgba(255,255,255,0.7)', zIndex: 4 }} />
+          </div>
+
+          {/* Bar ruler bottom */}
+          <div style={{ display: 'flex', padding: '3px 8px 4px', borderBottom: '1px solid rgba(255,255,255,0.07)', ...S.bg1 }}>
+            <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.25)', marginRight: 4 }}>BAR</span>
+            {[1,5,9,13,17,21,25,29,33,37,41,45,49,53,57,61].map(n => (
+              <div key={n} style={{ flex: 1, fontSize: 7, color: 'rgba(255,255,255,0.2)' }}>{n}</div>
+            ))}
+          </div>
+
+          {/* Bottom panel: dual EQ + tools + transport */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', ...S.bg1 }}>
+            {/* Vocal EQ */}
+            <div style={{ padding: '10px 14px', borderRight: '1px solid rgba(255,255,255,0.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: VC }} />
+                <span style={{ fontSize: 9, fontWeight: 800, color: VC, letterSpacing: '0.1em' }}>VOCAL EQ</span>
+                <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', marginLeft: 4 }}>Levitating (Vocal Stem)</span>
+              </div>
+              {[['Low','-1.5'],['Mid','+0.8'],['High','+2.1']].map(([l, v]) => (
+                <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', width: 22 }}>{l}</span>
+                  <EQSlider color={VC} val={v} />
+                </div>
+              ))}
+            </div>
+
+            {/* Transport + tools */}
+            <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', gap: 7, borderRight: '1px solid rgba(255,255,255,0.07)', minWidth: 160 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['Snap','Grid','Auto','Quantize','Fade'].map(t => (
+                  <div key={t} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                    <div style={{ width: 22, height: 22, borderRadius: 5, background: t === 'Snap' ? 'rgba(34,211,238,0.15)' : 'rgba(255,255,255,0.05)',
+                      border: t === 'Snap' ? `1px solid ${VC}30` : '1px solid rgba(255,255,255,0.08)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9 }}>
+                      {t === 'Snap' ? '⊞' : t === 'Grid' ? '⣿' : t === 'Auto' ? '∿' : t === 'Quantize' ? '∧' : '▓'}
+                    </div>
+                    <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.04em' }}>{t}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}>LOOP</button>
+                <span style={{ padding: '3px 8px', borderRadius: 5, fontSize: 9, fontWeight: 700,
+                  background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', color: '#f59e0b' }}>8 Bars ▾</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {['⏮','⏪','▶','⏩','⏭'].map((c, i) => (
+                  <button key={i} style={{ width: i === 2 ? 34 : 24, height: i === 2 ? 34 : 24, borderRadius: '50%',
+                    background: i === 2 ? '#22c55e' : 'rgba(255,255,255,0.05)',
+                    border: i === 2 ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                    color: i === 2 ? '#000' : 'rgba(255,255,255,0.6)',
+                    fontSize: i === 2 ? 12 : 8, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{c}</button>
+                ))}
+                <button style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}>SYNC</button>
+              </div>
+              <div>
+                <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>MASTER BPM </span>
+                <span style={{ fontSize: 16, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>120.0</span>
+              </div>
+            </div>
+
+            {/* Inst EQ */}
+            <div style={{ padding: '10px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: IC }} />
+                <span style={{ fontSize: 9, fontWeight: 800, color: IC, letterSpacing: '0.1em' }}>INSTRUMENTAL EQ</span>
+                <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', marginLeft: 4 }}>This Is What You Came For</span>
+              </div>
+              {[['Low','+0.5'],['Mid','-1.2'],['High','+1.8']].map(([l, v]) => (
+                <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', width: 22 }}>{l}</span>
+                  <EQSlider color={IC} val={v} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </MockupCard>
+  );
+}
+
+// ── MOCKUP 10: Side-by-Side Decks (MASHUP PRO style) ─────────────────────────
+// Left deck panel (vocal, pink); center large dual waveforms; right deck panel
+// (instrumental, blue); bottom transport with per-deck BPM + master output
+
+const PC = '#ec4899'; // vocal: pink
+const BC = '#3b82f6'; // instrumental: blue
+
+function Mockup10() {
+  return (
+    <MockupCard n={10} title="Side-by-Side Decks" concept="Left vocal deck + right instrumental deck flank a full-height waveform center">
+      <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr 200px', minHeight: 400 }}>
+
+        {/* Left: VOCAL deck */}
+        <div style={{ padding: 16, borderRight: '1px solid rgba(255,255,255,0.07)',
+          display: 'flex', flexDirection: 'column', gap: 10, ...S.bg2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ padding: '3px 9px', borderRadius: 5, fontSize: 9, fontWeight: 800,
+              background: 'rgba(236,72,153,0.15)', border: '1px solid rgba(236,72,153,0.3)', color: PC, letterSpacing: '0.08em' }}>VOCAL</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>···</span>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#fff', marginBottom: 1 }}>Levitating</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: '#ec4899', marginBottom: 4 }}>(Vocal Stem)</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginBottom: 8 }}>Dua Lipa</div>
+            <div style={{ width: 56, height: 56, borderRadius: 10, background: 'linear-gradient(135deg,#3a1030,#180816)',
+              marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>🎤</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>BPM</div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>120</div>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>KEY</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>4A / F# minor</div>
+            </div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div>
+            <div style={{ fontSize: 9, fontWeight: 800, color: PC, letterSpacing: '0.1em', marginBottom: 6 }}>VOCAL MIX</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[['LOW','-2.1'], ['MID','+1.4'], ['HIGH','+0.8']].map(([l, v]) => (
+                <div key={l} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                  <LargeKnob color={PC} size={30} />
+                  <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em' }}>{l}</div>
+                  <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.45)' }}>{v} dB</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
+              <MuteSolo />
+              <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.08)', overflow: 'hidden',
+                alignSelf: 'center', position: 'relative' }}>
+                <div style={{ position: 'absolute', right: 0, top: -4, bottom: -4, width: 14, borderRadius: '50%',
+                  background: '#fff', border: `2px solid ${PC}60` }} />
+                <div style={{ height: '100%', width: '85%', background: `linear-gradient(to right,${PC}60,${PC})`,
+                  borderRadius: 4 }} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Center: dual waveforms */}
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {/* Bar ruler top */}
+          <div style={{ display: 'flex', padding: '3px 4px', borderBottom: '1px solid rgba(255,255,255,0.05)', ...S.bg1 }}>
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} style={{ flex: 1, fontSize: 7, color: 'rgba(255,255,255,0.2)', paddingLeft: 2 }}>{i + 1}</div>
+            ))}
+          </div>
+          {/* Vocal waveform (pink) */}
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: `rgba(236,72,153,0.04)` }}>
+            <Waveform color={PC} seed={901} bars={200} />
+            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 1.5,
+              background: 'rgba(255,255,255,0.7)' }} />
+          </div>
+          {/* Instrumental waveform (blue) */}
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: `rgba(59,130,246,0.04)` }}>
+            <Waveform color={BC} seed={1002} bars={200} />
+            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 1.5,
+              background: 'rgba(255,255,255,0.7)' }} />
+          </div>
+          {/* Bar ruler bottom */}
+          <div style={{ display: 'flex', padding: '3px 4px', borderTop: '1px solid rgba(255,255,255,0.05)', ...S.bg1 }}>
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} style={{ flex: 1, fontSize: 7, color: 'rgba(255,255,255,0.2)', paddingLeft: 2 }}>{i + 1}</div>
+            ))}
+          </div>
+          {/* Bottom transport */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '8px 12px', borderTop: '1px solid rgba(255,255,255,0.07)', ...S.bg0 }}>
+            <div style={{ display: 'flex', gap: 5 }}>
+              <span style={{ padding: '3px 7px', borderRadius: 4, fontSize: 8, fontWeight: 700, cursor: 'pointer',
+                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)' }}>4 Bars ▾</span>
+              {['⟳','IN','OUT','↺'].map(l => (
+                <button key={l} style={{ padding: '3px 6px', borderRadius: 4, fontSize: l.length > 1 ? 8 : 11, fontWeight: 700,
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                  color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}>{l}</button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {['⏮','⏸','⏭'].map((c, i) => (
+                <button key={i} style={{ width: i === 1 ? 38 : 28, height: i === 1 ? 38 : 28, borderRadius: '50%',
+                  background: i === 1 ? '#22c55e' : 'rgba(255,255,255,0.06)',
+                  border: i === 1 ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                  color: i === 1 ? '#000' : 'rgba(255,255,255,0.6)',
+                  fontSize: i === 1 ? 14 : 9, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{c}</button>
+              ))}
+              <button style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: 'pointer',
+                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}>SYNC</button>
+            </div>
+            <div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 7, color: PC, letterSpacing: '0.1em' }}>VOCAL</div>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>120.00</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 7, color: BC, letterSpacing: '0.1em' }}>INSTRUMENTAL</div>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>124.00</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: INSTRUMENTAL deck */}
+        <div style={{ padding: 16, borderLeft: '1px solid rgba(255,255,255,0.07)',
+          display: 'flex', flexDirection: 'column', gap: 10, ...S.bg2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ padding: '3px 9px', borderRadius: 5, fontSize: 9, fontWeight: 800,
+              background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', color: BC, letterSpacing: '0.08em' }}>INSTRUMENTAL</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>···</span>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#fff', marginBottom: 1 }}>This Is What You Came For</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: BC, marginBottom: 4 }}>(Instrumental)</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginBottom: 8 }}>Calvin Harris ft. Rihanna</div>
+            <div style={{ width: 56, height: 56, borderRadius: 10, background: 'linear-gradient(135deg,#0a1a3c,#050e1e)',
+              marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>⚡</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>BPM</div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>124</div>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>KEY</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>5A / B minor</div>
+            </div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div>
+            <div style={{ fontSize: 9, fontWeight: 800, color: BC, letterSpacing: '0.1em', marginBottom: 6 }}>INSTRUMENTAL MIX</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[['LOW','-1.3'], ['MID','+0.6'], ['HIGH','+1.9']].map(([l, v]) => (
+                <div key={l} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                  <LargeKnob color={BC} size={30} />
+                  <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em' }}>{l}</div>
+                  <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.45)' }}>{v} dB</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
+              <MuteSolo />
+              <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.08)', overflow: 'hidden',
+                alignSelf: 'center', position: 'relative' }}>
+                <div style={{ position: 'absolute', right: 0, top: -4, bottom: -4, width: 14, borderRadius: '50%',
+                  background: '#fff', border: `2px solid ${BC}60` }} />
+                <div style={{ height: '100%', width: '90%', background: `linear-gradient(to right,${BC}60,${BC})`,
+                  borderRadius: 4 }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </MockupCard>
+  );
+}
+
+// ── MOCKUP 11: Full-Bleed Minimal (Outer Rails style) ─────────────────────────
+// No borders; full-width waveforms flush edge-to-edge; minimal track header
+// strips; bottom EQ knobs on each side with center transport
+
+function Mockup11() {
+  return (
+    <MockupCard n={11} title="Full-Bleed Minimal" concept="Borderless waveforms flush edge-to-edge; track strips above/below; bottom split EQ + transport">
+      {/* Minimal nav */}
+      <div style={{ display: 'flex', alignItems: 'center', height: 44, padding: '0 18px',
+        borderBottom: '1px solid rgba(255,255,255,0.06)', ...S.bg1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginRight: 20 }}>
+          <div style={{ display: 'flex', gap: 2 }}>
+            {[4,3,5,3,4].map((h, i) => (
+              <div key={i} style={{ width: 3, height: h * 3, borderRadius: 2, background: VC, opacity: 0.8 + i * 0.04 }} />
+            ))}
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 800, color: '#fff', letterSpacing: '0.04em' }}>DROPDEX</span>
+        </div>
+        <div style={{ display: 'flex', gap: 2 }}>
+          {['Mashup','Stems','Library'].map((t, i) => (
+            <span key={t} style={{ padding: '4px 14px', borderRadius: 20, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+              background: i === 0 ? '#fff' : 'transparent',
+              color: i === 0 ? '#000' : 'rgba(255,255,255,0.45)' }}>{t}</span>
+          ))}
+        </div>
+        <div style={{ flex: 1, margin: '0 16px', position: 'relative' }}>
+          <div style={{ padding: '5px 12px 5px 30px', borderRadius: 8, background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.1)', fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
+            Search tracks, artists, or paste a link…
+          </div>
+          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+            fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>⌕</span>
+        </div>
+        <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', flexShrink: 0 }} />
+      </div>
+
+      {/* Vocal track header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 18px',
+        borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+        <div style={{ width: 38, height: 38, borderRadius: 7, background: 'linear-gradient(135deg,#1a3a5c,#0a1a2e)',
+          flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🎤</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>Levitating (Vocal Stem)</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Dua Lipa</div>
+        </div>
+        <span style={{ padding: '3px 9px', borderRadius: 5, fontSize: 9, fontWeight: 800,
+          background: 'rgba(34,211,238,0.12)', border: `1px solid ${VC}30`, color: VC, letterSpacing: '0.08em' }}>VOCAL</span>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)' }}>BPM</div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>120</div>
+          </div>
+          <CamelotBadge k="4A" />
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>···</span>
+        </div>
+      </div>
+
+      {/* Vocal waveform — full bleed */}
+      <div style={{ height: 96, position: 'relative', overflow: 'hidden', background: 'rgba(34,211,238,0.04)' }}>
+        <Waveform color={VC} seed={1101} bars={260} />
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: '55%', width: 1.5,
+          background: 'rgba(255,255,255,0.75)' }} />
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2,
+          background: `linear-gradient(to right, ${IC}00, ${IC}60, ${VC}60, ${VC}00)` }} />
+      </div>
+
+      {/* Instrumental waveform — full bleed, no gap */}
+      <div style={{ height: 96, position: 'relative', overflow: 'hidden', background: 'rgba(249,115,22,0.04)',
+        borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <Waveform color={IC} seed={1202} bars={260} />
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: '55%', width: 1.5,
+          background: 'rgba(255,255,255,0.75)' }} />
+      </div>
+
+      {/* Instrumental track header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 18px',
+        borderTop: '1px solid rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div style={{ width: 38, height: 38, borderRadius: 7, background: 'linear-gradient(135deg,#1a3a3c,#0a2020)',
+          flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>⚡</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>This Is What You Came For</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Calvin Harris ft. Rihanna</div>
+        </div>
+        <span style={{ padding: '3px 9px', borderRadius: 5, fontSize: 9, fontWeight: 800,
+          background: 'rgba(249,115,22,0.12)', border: `1px solid ${IC}30`, color: IC, letterSpacing: '0.08em' }}>INSTRUMENTAL</span>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)' }}>BPM</div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>124</div>
+          </div>
+          <CamelotBadge k="5A" />
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>···</span>
+        </div>
+      </div>
+
+      {/* Bottom: split EQ + transport */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', ...S.bg0 }}>
+        {/* Vocal EQ knobs */}
+        <div style={{ padding: '12px 18px', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ fontSize: 8, fontWeight: 800, color: VC, letterSpacing: '0.1em', marginBottom: 8 }}>VOCAL EQ</div>
+          <div style={{ display: 'flex', gap: 14 }}>
+            {[['LOW','-2.0'], ['MID','+1.5'], ['HIGH','+3.0']].map(([l, v]) => (
+              <div key={l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <LargeKnob color={VC} size={36} />
+                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em' }}>{l}</div>
+                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)' }}>{v} dB</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Center transport */}
+        <div style={{ padding: '12px 18px', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', gap: 6, borderRight: '1px solid rgba(255,255,255,0.06)', minWidth: 180 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button style={{ padding: '4px 8px', borderRadius: 6, fontSize: 8, fontWeight: 700, cursor: 'pointer',
+              background: 'rgba(34,211,238,0.1)', border: `1px solid ${VC}30`, color: VC }}>⊞ SYNC ▾</button>
+            <div>
+              <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}>BPM</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <div style={{ fontSize: 16, fontWeight: 900, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>125.0</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.3)', cursor: 'pointer' }}>▲</span>
+                  <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.3)', cursor: 'pointer' }}>▼</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {['⏮','⏪','▶','⏩','⏭'].map((c, i) => (
+              <button key={i} style={{ width: i === 2 ? 36 : 26, height: i === 2 ? 36 : 26, borderRadius: '50%',
+                background: i === 2 ? '#22c55e' : 'rgba(255,255,255,0.06)',
+                border: i === 2 ? `2px solid #22c55e40` : '1px solid rgba(255,255,255,0.09)',
+                color: i === 2 ? '#000' : 'rgba(255,255,255,0.6)',
+                fontSize: i === 2 ? 13 : 8, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{c}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)' }}>LOOP</span>
+            <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 9, fontWeight: 700,
+              background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', color: '#f59e0b' }}>16 Bars ▾</span>
+            <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)' }}>MIX</span>
+            <div style={{ width: 60, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.1)', position: 'relative' }}>
+              <div style={{ position: 'absolute', right: 6, top: -4, width: 12, height: 12, borderRadius: '50%',
+                background: '#fff', border: '2px solid rgba(34,211,238,0.4)' }} />
+            </div>
+          </div>
+        </div>
+
+        {/* Instrumental EQ knobs */}
+        <div style={{ padding: '12px 18px' }}>
+          <div style={{ fontSize: 8, fontWeight: 800, color: IC, letterSpacing: '0.1em', marginBottom: 8 }}>INSTRUMENTAL EQ</div>
+          <div style={{ display: 'flex', gap: 14 }}>
+            {[['LOW','+1.0'], ['MID','-1.0'], ['HIGH','+2.0']].map(([l, v]) => (
+              <div key={l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <LargeKnob color={IC} size={36} />
+                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em' }}>{l}</div>
+                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)' }}>{v} dB</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </MockupCard>
+  );
+}
+
 // ── Scratch Pad content ───────────────────────────────────────────────────────
 
 function ScratchPadContent() {
@@ -624,12 +1710,18 @@ function ScratchPadContent() {
         <div style={{ marginBottom: 28 }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 4 }}>Roulette UI Concepts</div>
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', lineHeight: 1.5 }}>
-            Three independent layout explorations. Each optimised for a different DJ workflow.
+            Ten independent layout explorations. Each optimised for a different DJ workflow.
           </div>
         </div>
         <Mockup2 />
         <Mockup4 />
         <Mockup5 />
+        <Mockup6 />
+        <Mockup7 />
+        <Mockup8 />
+        <Mockup9 />
+        <Mockup10 />
+        <Mockup11 />
       </div>
     </div>
   );
