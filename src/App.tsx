@@ -54,6 +54,7 @@ import { LibraryView } from './components/library/LibraryView';
 import { PlaylistEditView } from './components/library/PlaylistEditView';
 import { TrackDetailView } from './components/library/TrackDetailView';
 import { EditProfileView } from './components/profile/EditProfileView';
+import { DeveloperTab } from './components/profile/DeveloperTab';
 import { UsbConnectionProvider, useUsbConnection } from './contexts/UsbConnectionContext';
 import { UsbConnectionButton } from './components/usb/UsbConnectionButton';
 import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerContext';
@@ -473,7 +474,7 @@ export default function App() {
   const [deleteAllLibrariesInitialCount, setDeleteAllLibrariesInitialCount] = useState(0);
   const [deleteAllLibrariesRemainingCount, setDeleteAllLibrariesRemainingCount] = useState(0);
   const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(() => new Set());
-  const [settingsTab, setSettingsTab] = useState<'account' | 'appearance' | 'library' | 'about'>('account');
+  const [settingsTab, setSettingsTab] = useState<'account' | 'appearance' | 'library' | 'about' | 'developer'>('account');
   const [layoutLabOpen, setLayoutLabOpen] = useState(false);
   const deleteExecutorRef = useRef<ConfirmedDeleteExecutor | null>(null);
   const pendingDeletionContextsRef = useRef<Map<string, PendingDeletionContext>>(new Map());
@@ -1660,7 +1661,7 @@ export default function App() {
               >
                 {/* ── Tab nav ── */}
                 <div className="flex gap-1 border-b border-[var(--color-border-faint)]">
-                  {(['account', 'appearance', 'library', 'about'] as const).map((tab) => (
+                  {(['account', 'appearance', 'library', 'about', 'developer'] as const).map((tab) => (
                     <button
                       key={tab}
                       type="button"
@@ -1959,6 +1960,9 @@ export default function App() {
                     </div>
                   </section>
                 )}
+
+                {/* ── Developer tab ── */}
+                {settingsTab === 'developer' && <DeveloperTab />}
               </motion.div>
             )}
 
