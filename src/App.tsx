@@ -1657,7 +1657,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
-                className="space-y-8 md:max-w-3xl md:mx-auto pb-8"
+                className="space-y-8 pb-8"
               >
                 {/* ── Tab nav ── */}
                 <div className="flex gap-1 border-b border-[var(--color-border-faint)]">

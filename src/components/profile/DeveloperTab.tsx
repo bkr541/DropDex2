@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Search, TrashCan } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
 import { getLogEntries, subscribeToLogs, clearLogEntries, type LogEntry, type LogLevel } from '../../lib/logger';
+import { RouletteDiagnosticsPanel } from './RouletteDiagnosticsPanel';
 
 // ── Component classification ──────────────────────────────────────────────────
 
@@ -131,7 +132,10 @@ export function DeveloperTab() {
   const selectClass = 'bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-lg py-1.5 px-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 text-foreground transition-all appearance-none cursor-pointer';
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-6">
+      {/* ── Roulette Diagnostics group ── */}
+      <RouletteDiagnosticsPanel />
+
       {/* ── Logger group ── */}
       <div className="space-y-2">
         <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5">
