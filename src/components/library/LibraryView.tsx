@@ -1408,7 +1408,7 @@ export function LibraryView({
                     <div className="sticky top-0 z-20 bg-background -mx-4 md:-mx-8 px-4 md:px-8 space-y-4 pb-0">
 
                       {/* Top row: artist card + hero */}
-                      <div className="flex gap-5 items-start pt-6">
+                      <div className="flex gap-5 items-start">
                         <div className="hidden lg:flex flex-col gap-4 w-[250px] xl:w-[268px] shrink-0">
                           <ArtistProfileCard profile={profile} latestImport={latestImport} />
                         </div>

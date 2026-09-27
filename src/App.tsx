@@ -1196,173 +1196,200 @@ export default function App() {
       <div className="flex flex-col flex-1 min-w-0 h-screen">
 
         {/* View subheader */}
-        {currentView !== 'home' && currentView !== 'drop-lab' && currentView !== 'not-found' && (
-          <div className="px-6 py-4 shrink-0">
-            {!routeBlocked && currentView === 'playlist' && (
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic truncate">{selectedPlaylist?.name}</h2>
-                  {selectedPlaylist && !selectedPlaylist.is_folder && (
-                    <ControlButton variant="neutral" onClick={() => selectedPlaylist && handleEditPlaylist(selectedPlaylist)} className="ml-auto text-xs">
-                      <Edit size={12} /> Edit
+        {currentView !== 'not-found' && (
+          <div className="h-16 flex items-stretch px-6 shrink-0 border-b border-[var(--color-border-subtle)]">
+            <div className="flex-1 min-w-0 flex flex-col justify-center">
+              {!routeBlocked && currentView === 'playlist' && (
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
                     </ControlButton>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
-                    {playlistTracksLoading ? 'Loading…' : `${playlistTracks.length} Tracks`}
-                  </span>
-                  {avgBpm && (
+                    <h2 className="text-2xl font-black italic truncate">{selectedPlaylist?.name}</h2>
+                    {selectedPlaylist && !selectedPlaylist.is_folder && (
+                      <ControlButton variant="neutral" onClick={() => selectedPlaylist && handleEditPlaylist(selectedPlaylist)} className="ml-auto text-xs">
+                        <Edit size={12} /> Edit
+                      </ControlButton>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
                     <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
-                      Avg {avgBpm} BPM
+                      {playlistTracksLoading ? 'Loading…' : `${playlistTracks.length} Tracks`}
                     </span>
-                  )}
-                  {totalDuration && (
-                    <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
-                      {formatPlaylistDuration(totalDuration)}
-                    </span>
-                  )}
-                  {topKey && (
-                    <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-secondary uppercase tracking-widest">
-                      Key: {topKey}
-                    </span>
-                  )}
+                    {avgBpm && (
+                      <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
+                        Avg {avgBpm} BPM
+                      </span>
+                    )}
+                    {totalDuration && (
+                      <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
+                        {formatPlaylistDuration(totalDuration)}
+                      </span>
+                    )}
+                    {topKey && (
+                      <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-secondary uppercase tracking-widest">
+                        Key: {topKey}
+                      </span>
+                    )}
+                  </div>
                 </div>
+              )}
+              {currentView === 'playlist-edit' && editingPlaylist && (
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic truncate">{editingPlaylist.name}</h2>
+                  </div>
+                </div>
+              )}
+              {!routeBlocked && currentView === 'track' && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic">Track Intelligence</h2>
+                  </div>
+                </div>
+              )}
+              {!routeBlocked && currentView === 'roulette' && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic">Roulette</h2>
+                  </div>
+                </div>
+              )}
+              {!routeBlocked && currentView === 'review' && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic">Set Review Mode</h2>
+                  </div>
+                </div>
+              )}
+              {!routeBlocked && currentView === 'settings' && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic">Settings</h2>
+                  </div>
+                  <div className="flex gap-1 mt-4 border-b border-[var(--color-border-faint)]">
+                    {(['account', 'appearance', 'library', 'about'] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setSettingsTab(tab)}
+                        className={cn(
+                          'px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px capitalize',
+                          settingsTab === tab
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!routeBlocked && currentView === 'discovery' && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic">Artist Discovery</h2>
+                  </div>
+                </div>
+              )}
+              {!routeBlocked && currentView === 'search' && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic">Artist Search</h2>
+                  </div>
+                </div>
+              )}
+              {currentView === 'import' && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic">Import Status</h2>
+                  </div>
+                </div>
+              )}
+              {!routeBlocked && currentView === 'edit-profile' && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic">Edit Profile</h2>
+                  </div>
+                </div>
+              )}
+              {currentView === 'reusable-components' && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic">Reusable Components</h2>
+                  </div>
+                </div>
+              )}
+              {!routeBlocked && currentView === 'drop-lab' && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ControlButton variant="ghost" onClick={handleDropLabBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic">Drop Lab</h2>
+                  </div>
+                </div>
+              )}
+              {!routeBlocked && currentView === 'cues' && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ControlButton variant="ghost" onClick={goBack}>
+                      <ChevronLeft size={20} />
+                    </ControlButton>
+                    <h2 className="text-2xl font-black italic">Cue Points</h2>
+                  </div>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate({ name: 'profile' })}
+              className="flex items-center ml-4 shrink-0"
+            >
+              <div className="w-8 h-8 rounded-full overflow-hidden border border-[var(--color-border-subtle)] flex items-center justify-center bg-[var(--color-surface)] hover:opacity-80 transition-opacity">
+                {userProfile?.avatar_url ? (
+                  <img src={userProfile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  <User size={16} className="text-muted-foreground" />
+                )}
               </div>
-            )}
-            {currentView === 'playlist-edit' && editingPlaylist && (
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic truncate">{editingPlaylist.name}</h2>
-                </div>
-                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Edit Playlist</p>
-              </div>
-            )}
-            {!routeBlocked && currentView === 'track' && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic">Track Intelligence</h2>
-                </div>
-                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Deep Scan Results</p>
-              </div>
-            )}
-            {!routeBlocked && currentView === 'roulette' && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic">Roulette</h2>
-                </div>
-                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Vocal + Instrumental</p>
-              </div>
-            )}
-            {!routeBlocked && currentView === 'review' && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic">Set Review Mode</h2>
-                </div>
-                <p className="text-[8px] text-secondary uppercase tracking-[0.2em] font-bold pl-7">Optimized for low-light</p>
-              </div>
-            )}
-            {!routeBlocked && currentView === 'settings' && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic">Settings</h2>
-                </div>
-                <div className="flex gap-1 mt-4 border-b border-[var(--color-border-faint)]">
-                  {(['account', 'appearance', 'library', 'about'] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setSettingsTab(tab)}
-                      className={cn(
-                        'px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px capitalize',
-                        settingsTab === tab
-                          ? 'border-primary text-primary'
-                          : 'border-transparent text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      {tab}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {!routeBlocked && currentView === 'discovery' && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic">Artist Discovery</h2>
-                </div>
-                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Setlists via 1001Tracklists</p>
-              </div>
-            )}
-            {!routeBlocked && currentView === 'search' && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic">Artist Search</h2>
-                </div>
-                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Melodic Dubstep &amp; Future Bass</p>
-              </div>
-            )}
-            {currentView === 'import' && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic">Import Status</h2>
-                </div>
-                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Durable import details</p>
-              </div>
-            )}
-            {!routeBlocked && currentView === 'edit-profile' && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic">Edit Profile</h2>
-                </div>
-                <p className="text-[8px] text-muted-foreground uppercase tracking-[0.2em] pl-7">Your Artist Identity</p>
-              </div>
-            )}
-            {currentView === 'reusable-components' && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic">Reusable Components</h2>
-                </div>
-              </div>
-            )}
+            </button>
           </div>
         )}
 
         {/* Scrollable content */}
-        <main className="flex-1 overflow-y-auto px-4 md:px-8 pb-32 md:pb-8">
+        <main className="flex-1 overflow-y-auto px-4 md:px-8 pt-6 pb-32 md:pb-8">
           <ApplicationErrorBoundary level="feature" resetKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
           <RouteFailureProbe />
           <AnimatePresence mode="wait">
@@ -1430,7 +1457,7 @@ export default function App() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="space-y-4 md:max-w-5xl md:mx-auto"
+                className="space-y-4 md:max-w-7xl md:mx-auto"
               >
                 <div className="glass p-6 rounded-3xl mb-6 relative overflow-hidden">
                   <Growth className="absolute -right-4 -bottom-4 text-primary/10 w-24 h-24" />
@@ -1527,7 +1554,7 @@ export default function App() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="pt-2"
+                className="md:max-w-7xl md:mx-auto"
               >
                 <PlaylistEditView
                   playlist={editingPlaylist}
@@ -1554,7 +1581,7 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="md:max-w-5xl md:mx-auto"
+                className="md:max-w-7xl md:mx-auto"
               >
                 <TrackDetailView
                   track={selectedTrack}
@@ -1579,7 +1606,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
-                className="pt-2"
+                className="md:max-w-7xl md:mx-auto"
               >
                 <LazyFeature label="Loading Drop Lab…" boundaryKey={`${routeKey(route)}:drop-lab`} onReturnToLibrary={returnToLibrary}>
                   <DropLabView
@@ -1605,6 +1632,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
+                className="md:max-w-7xl md:mx-auto"
               >
                 <ImportStatusView
                   item={selectedImport}
@@ -1625,7 +1653,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
-                className="pt-1"
+                className="md:max-w-7xl md:mx-auto"
               >
                 <LazyFeature label="Loading Roulette…" boundaryKey={`${routeKey(route)}:roulette`} onReturnToLibrary={returnToLibrary}>
                   <RouletteView />
@@ -1640,7 +1668,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
-                className="pt-1"
+                className="md:max-w-7xl md:mx-auto"
               >
                 <LazyFeature label="Loading Cue Points…" boundaryKey={`${routeKey(route)}:cues`} onReturnToLibrary={returnToLibrary}>
                   <CuePointsView importId={importId} onImport={() => setIsImportModalOpen(true)} />
@@ -1655,7 +1683,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
-                className="space-y-6 pb-32 md:pb-8 md:max-w-5xl md:mx-auto"
+                className="space-y-6 pb-32 md:pb-8 md:max-w-7xl md:mx-auto"
               >
                 <LazyFeature label="Loading Review…" boundaryKey={`${routeKey(route)}:review`} onReturnToLibrary={returnToLibrary}>
                   {!importId ? (
@@ -1679,7 +1707,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
-                className="space-y-8 pt-6 md:max-w-2xl md:mx-auto pb-8"
+                className="space-y-8 md:max-w-7xl md:mx-auto pb-8"
               >
                 {/* ── Account tab ── */}
                 {settingsTab === 'account' && (
@@ -1977,7 +2005,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
-                className="pt-6"
+                className="md:max-w-7xl md:mx-auto"
               >
                 <ReusableComponentsView />
               </motion.div>
@@ -1990,6 +2018,7 @@ export default function App() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
+                className="md:max-w-7xl md:mx-auto"
               >
                 <LazyFeature label="Loading Discovery…" boundaryKey={`${routeKey(route)}:discovery`} onReturnToLibrary={returnToLibrary}>
                   <DiscoveryView accessToken={session?.access_token ?? null} />
@@ -2004,6 +2033,7 @@ export default function App() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
+                className="md:max-w-7xl md:mx-auto"
               >
                 <LazyFeature label="Loading Search…" boundaryKey={`${routeKey(route)}:search`} onReturnToLibrary={returnToLibrary}>
                   <SearchView />
@@ -2018,7 +2048,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
-                className="pt-2"
+                className="md:max-w-7xl md:mx-auto"
               >
                 <EditProfileView
                   userId={userId}
