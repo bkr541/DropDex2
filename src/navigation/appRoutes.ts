@@ -27,7 +27,6 @@ export type AppRoute =
   | { name: 'search' }
   | { name: 'profile' }
   | { name: 'settings' }
-  | { name: 'reusable-components' }
   | { name: 'flip-lab' }
   | { name: 'not-found'; pathname: string };
 
@@ -130,7 +129,6 @@ export function parseAppRoute(pathname: string, search = ''): AppRoute {
     case '/search': return { name: 'search' };
     case '/profile': return { name: 'profile' };
     case '/settings': return { name: 'settings' };
-    case '/reusable-components': return { name: 'reusable-components' };
     case '/flip-lab': return { name: 'flip-lab' };
     default: return { name: 'not-found', pathname: normalizedPath };
   }
@@ -167,7 +165,6 @@ export function routeToUrl(route: AppRoute): string {
     case 'search': return '/search';
     case 'profile': return '/profile';
     case 'settings': return '/settings';
-    case 'reusable-components': return '/reusable-components';
     case 'flip-lab': return '/flip-lab';
     case 'not-found': return route.pathname;
   }
@@ -190,7 +187,6 @@ export function routeBackFallback(route: AppRoute): AppRoute {
     case 'search':
     case 'profile':
     case 'settings':
-    case 'reusable-components':
     case 'flip-lab':
     case 'import':
     case 'not-found':

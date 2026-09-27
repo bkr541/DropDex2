@@ -1041,10 +1041,13 @@ function DesktopLibraryHero({
               )}
             </>
           ) : (
-            <div className="flex items-center gap-2">
-              <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
-              <span className="font-black text-sm leading-none text-emerald-500">Analysis Complete</span>
-            </div>
+            <>
+              <div className="flex items-center gap-2">
+                <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
+                <span className="font-black text-sm leading-none text-emerald-500">Analysis Complete</span>
+              </div>
+              <div className="mt-3 h-7" aria-hidden="true" />
+            </>
           )}
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
             {[

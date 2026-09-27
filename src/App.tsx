@@ -65,7 +65,6 @@ import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
-import { ReusableComponentsView } from './components/reusable/ReusableComponentsView';
 import { CheckmarkFilled, ChevronLeft, CircleDash, Close, DataBase, Edit, Growth, Layers, Logout, Moon, Music, PaintBrush, Radio, RecordingFilled, Renew, Search, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
 import { LayoutLabWindow } from './components/ui/LayoutLabWindow';
 import { ControlButton } from './components/ui/controls';
@@ -93,7 +92,7 @@ function CuePointsNavIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'roulette' | 'settings' | 'discovery' | 'search' | 'drop-lab' | 'import' | 'reusable-components' | 'flip-lab' | 'not-found';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'roulette' | 'settings' | 'discovery' | 'search' | 'drop-lab' | 'import' | 'flip-lab' | 'not-found';
 
 type ImportNotice = {
   kind: 'success' | 'warning';
@@ -116,7 +115,6 @@ function viewForRoute(route: AppRoute): View {
     case 'search': return 'search';
     case 'profile': return 'settings';
     case 'settings': return 'settings';
-    case 'reusable-components': return 'reusable-components';
     case 'flip-lab': return 'flip-lab';
     case 'not-found': return 'not-found';
   }
@@ -790,7 +788,6 @@ export default function App() {
       case 'settings': navigate({ name: 'settings' }); break;
       case 'discovery': navigate({ name: 'discovery' }); break;
       case 'search': navigate({ name: 'search' }); break;
-      case 'reusable-components': navigate({ name: 'reusable-components' }); break;
       case 'flip-lab': navigate({ name: 'flip-lab' }); break;
       default: break;
     }
@@ -1092,7 +1089,6 @@ export default function App() {
     { view: 'cues', icon: CuePointsNavIcon, label: 'Cue Points', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'discovery', icon: Radio, label: 'Discover', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'search', icon: Search, label: 'Search', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
-    { view: 'reusable-components', icon: Layers, label: 'Reusable Components', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'flip-lab', icon: Shuffle, label: 'Flip Lab', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
   ];
 
@@ -1291,16 +1287,6 @@ export default function App() {
                       <ChevronLeft size={20} />
                     </ControlButton>
                     <h2 className="text-2xl font-black italic">Import Status</h2>
-                  </div>
-                </div>
-              )}
-              {currentView === 'reusable-components' && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ControlButton variant="ghost" onClick={goBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic">Reusable Components</h2>
                   </div>
                 </div>
               )}
@@ -1976,19 +1962,6 @@ export default function App() {
 
                 {/* ── Developer tab ── */}
                 {settingsTab === 'developer' && <DeveloperTab />}
-              </motion.div>
-            )}
-
-            {/* ── Reusable Components ── */}
-            {!routeBlocked && currentView === 'reusable-components' && (
-              <motion.div
-                key="reusable-components"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 16 }}
-                className="md:max-w-7xl md:mx-auto"
-              >
-                <ReusableComponentsView />
               </motion.div>
             )}
 
