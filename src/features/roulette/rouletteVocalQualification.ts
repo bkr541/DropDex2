@@ -26,7 +26,6 @@ export function qualifyingRouletteVocalRegions(
 ): VocalRegionRow[] {
   if (
     !analysis
-    || analysis.source_tag !== 'PVDI'
     || analysis.integrity_status !== 'valid'
     || !analysis.complete
   ) return [];

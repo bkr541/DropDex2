@@ -127,6 +127,44 @@ export function getCompatibleCamelotKeys(
   ];
 }
 
+// ── Tonic + mode → Camelot ────────────────────────────────────────────────────
+
+const _TONIC_MODE_TO_CAMELOT: Readonly<Record<string, Partial<Record<'major' | 'minor', string>>>> = {
+  'Ab': { minor: '1A',  major: '4B'  },
+  'G#': { minor: '1A',  major: '4B'  },
+  'Eb': { minor: '2A',  major: '5B'  },
+  'D#': { minor: '2A',  major: '5B'  },
+  'Bb': { minor: '3A',  major: '6B'  },
+  'A#': { minor: '3A',  major: '6B'  },
+  'F':  { minor: '4A',  major: '7B'  },
+  'C':  { minor: '5A',  major: '8B'  },
+  'G':  { minor: '6A',  major: '9B'  },
+  'D':  { minor: '7A',  major: '10B' },
+  'A':  { minor: '8A',  major: '11B' },
+  'E':  { minor: '9A',  major: '12B' },
+  'B':  { minor: '10A', major: '1B'  },
+  'F#': { minor: '11A', major: '2B'  },
+  'Gb': { minor: '11A', major: '2B'  },
+  'C#': { minor: '12A', major: '3B'  },
+  'Db': { minor: '12A', major: '3B'  },
+};
+
+/**
+ * Convert a normalized tonic + mode pair (as stored in rekordbox_tracks.key_tonic /
+ * key_mode) into a Camelot key code.  Returns null when either value is absent or
+ * unrecognised.
+ */
+export function camelotKeyFromTonicMode(
+  tonic: string | null | undefined,
+  mode: string | null | undefined,
+): string | null {
+  if (!tonic || !mode) return null;
+  const normalizedMode = mode.toLowerCase() as 'major' | 'minor';
+  if (normalizedMode !== 'major' && normalizedMode !== 'minor') return null;
+  const normalizedTonic = tonic.charAt(0).toUpperCase() + tonic.slice(1);
+  return _TONIC_MODE_TO_CAMELOT[normalizedTonic]?.[normalizedMode] ?? null;
+}
+
 /** Human-readable label for each relationship type. */
 export function getCamelotRelationshipLabel(relationship: CamelotRelationship): string {
   switch (relationship) {

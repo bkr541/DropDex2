@@ -10,7 +10,6 @@ function candidate(id: string): RouletteCandidateAnalysis {
     stemAsset: null,
     beatGrid: null,
     phraseCount: 0,
-    vocalAnalysisAvailable: false,
   };
 }
 

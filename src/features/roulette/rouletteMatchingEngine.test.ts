@@ -88,7 +88,6 @@ function candidate(
     stemAsset: asset(id, role === 'vocal' ? 'vocals' : 'instrumental'),
     beatGrid: grid(id),
     phraseCount: 1,
-    vocalAnalysisAvailable: role === 'vocal',
   };
 }
 
@@ -97,9 +96,8 @@ describe('Roulette matching engine', () => {
     const fixed = track('instrumental-fixed');
     const unprepared = candidate('vocal-a', 'vocal', 'Alpha');
     unprepared.stemAsset = null;
-    unprepared.vocalPresenceScore = 1;
-    const prepared = candidate('vocal-b', 'vocal', 'Beta');
-    prepared.vocalPresenceScore = 0;
+    // prepared has a ready stem but is 3 BPM off — worse proximity score than unprepared
+    const prepared = candidate('vocal-b', 'vocal', 'Beta', 145);
     const getReadiness = vi.fn(async () => { throw new Error('matching must not gate on stem readiness'); });
     const engine = createRouletteMatchingEngine({
       loadTrack: vi.fn(async () => fixed),

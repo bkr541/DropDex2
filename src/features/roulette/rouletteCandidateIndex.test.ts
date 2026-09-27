@@ -58,7 +58,6 @@ function candidate(id: string, bpm: number, camelot: string): RouletteCandidateA
     stemAsset: null,
     beatGrid: grid(id),
     phraseCount: 1,
-    vocalAnalysisAvailable: true,
   };
 }
 

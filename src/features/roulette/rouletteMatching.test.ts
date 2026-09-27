@@ -98,7 +98,6 @@ function candidate(
     stemAsset: asset(id, role === 'vocal' ? 'vocals' : 'instrumental'),
     beatGrid: grid(id),
     phraseCount: 2,
-    vocalAnalysisAvailable: role === 'vocal',
     ...overrides,
   };
 }
@@ -131,13 +130,31 @@ describe('Roulette hard compatibility', () => {
     )).toBe(expected);
   });
 
-  it('requires a valid Camelot key instead of silently falling back to another key system', () => {
+  it('falls back to key_tonic + key_mode when camelot_key is null', () => {
     const referenceTrack = track('reference', 142, '9A');
     referenceTrack.camelot_key = null;
-    referenceTrack.normalized_key_name = 'E Minor';
     const candidateTrack = track('candidate', 142, '9A');
     candidateTrack.camelot_key = null;
-    candidateTrack.normalized_key_name = 'e minor';
+    const reference = { track: referenceTrack, beatGrid: grid('reference') };
+
+    // Both tracks have key_tonic='E', key_mode='minor' (9A) from the track() factory —
+    // so even without camelot_key they should pass the key check.
+    expect(getRouletteHardFilterReason(
+      candidate('candidate', 'vocal', { track: candidateTrack }),
+      reference,
+      'vocal',
+    )).toBeNull();
+  });
+
+  it('returns missing-key when both camelot_key and key_tonic/key_mode are absent', () => {
+    const referenceTrack = track('reference', 142, '9A');
+    referenceTrack.camelot_key = null;
+    referenceTrack.key_tonic = null;
+    referenceTrack.key_mode = null;
+    const candidateTrack = track('candidate', 142, '9A');
+    candidateTrack.camelot_key = null;
+    candidateTrack.key_tonic = null;
+    candidateTrack.key_mode = null;
     const reference = { track: referenceTrack, beatGrid: grid('reference') };
 
     expect(getRouletteHardFilterReason(
@@ -152,29 +169,8 @@ describe('Roulette hard compatibility', () => {
     const noStem = candidate('no-stem', 'vocal', {
       stemAsset: null,
       phraseCount: 2,
-      vocalAnalysisAvailable: true,
     });
     expect(rankRouletteCandidates([noStem], reference, 'vocal')).toHaveLength(1);
-  });
-
-  it('requires qualified Vocal analysis as a hard Vocal-role eligibility gate', () => {
-    const reference = { track: track('reference'), beatGrid: grid('reference') };
-    const noVocalMaterial = candidate('no-vocal-material', 'vocal', {
-      vocalAnalysisAvailable: false,
-    });
-
-    expect(getRouletteHardFilterReason(noVocalMaterial, reference, 'vocal')).toBe('missing-vocal-material');
-    expect(rankRouletteCandidates([noVocalMaterial], reference, 'vocal')).toEqual([]);
-  });
-
-  it('does not remove a track from Instrumental eligibility when Vocal material is absent', () => {
-    const reference = { track: track('reference'), beatGrid: grid('reference') };
-    const instrumental = candidate('instrumental-only', 'instrumental', {
-      vocalAnalysisAvailable: false,
-    });
-
-    expect(getRouletteHardFilterReason(instrumental, reference, 'instrumental')).toBeNull();
-    expect(rankRouletteCandidates([instrumental], reference, 'instrumental')).toHaveLength(1);
   });
 
   it('requires a usable beat grid on both sides', () => {

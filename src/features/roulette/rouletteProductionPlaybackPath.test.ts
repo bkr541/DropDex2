@@ -102,7 +102,6 @@ function candidate(
     stemAsset: stem(source.id, role === 'vocal' ? 'vocals' : 'instrumental'),
     beatGrid,
     phraseCount: 2,
-    vocalAnalysisAvailable: role === 'vocal',
   };
 }
 

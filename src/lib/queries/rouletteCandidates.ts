@@ -1,11 +1,10 @@
 import type { RekordboxTrack } from '../../types';
 import { rankRouletteCandidates, rankRoulettePairsBoundedWithMetadata, type RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
 import type { RouletteSourceRole } from '../../features/roulette/rouletteSession';
-import { hasQualifyingRouletteVocalMaterial } from '../../features/roulette/rouletteVocalQualification';
 import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole, type StemAssetRecord, type StemAssetType } from '../../features/roulette/stemAssets';
 import { rouletteStemAssetService } from '../../features/roulette/stemAssetService';
 import { getCurrentInstallationId } from '../desktop/installationIdentity';
-import { fetchTrackBeatGrids, fetchTracksPhrases, fetchTracksVocalAnalysis } from './analysisData';
+import { fetchTrackBeatGrids, fetchTracksPhrases } from './analysisData';
 import { fetchActiveImport, fetchTracksByIds } from './rekordbox';
 import { supabase } from '../supabase';
 
@@ -114,33 +113,19 @@ export async function fetchRouletteCandidateAnalysis(
   const tracks = await fetchRouletteImportTracks(resolvedImportId);
   if (tracks.length === 0) return [];
   const trackIds = tracks.map((track) => track.id);
-  const [beatGrids, phrases, vocalAnalysis, readyAssets] = await Promise.all([
+  const [beatGrids, phrases, readyAssets] = await Promise.all([
     fetchTrackBeatGrids(trackIds),
     fetchTracksPhrases(trackIds),
-    fetchTracksVocalAnalysis(trackIds),
     fetchReadyRouletteStemAssets(stemTypeForRole(role)).catch(() => [] as StemAssetRecord[]),
   ]);
   const readyAssetsByTrackId = new Map(readyAssets.map((asset) => [asset.track_id, asset]));
 
-  const candidates = tracks.map((track) => {
-    const vocal = vocalAnalysis.get(track.id);
-    const vocalAnalysisAvailable = hasQualifyingRouletteVocalMaterial(vocal);
-    const durationMs = track.duration_ms ?? (track.duration_seconds == null ? null : track.duration_seconds * 1000);
-    const vocalDurationMs = vocalAnalysisAvailable && vocal
-      ? vocal.regions.reduce((sum, region) => sum + Math.max(0, region.duration_ms), 0)
-      : null;
-    const vocalPresenceScore = vocalDurationMs != null && durationMs && durationMs > 0
-      ? Math.max(0, Math.min(1, vocalDurationMs / durationMs))
-      : null;
-    return {
-      track,
-      stemAsset: readyAssetsByTrackId.get(track.id) ?? null,
-      beatGrid: beatGrids.get(track.id) ?? null,
-      phraseCount: phrases.get(track.id)?.length ?? 0,
-      vocalAnalysisAvailable,
-      vocalPresenceScore,
-    };
-  });
+  const candidates = tracks.map((track) => ({
+    track,
+    stemAsset: readyAssetsByTrackId.get(track.id) ?? null,
+    beatGrid: beatGrids.get(track.id) ?? null,
+    phraseCount: phrases.get(track.id)?.length ?? 0,
+  }));
 
   return candidates;
 }

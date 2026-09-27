@@ -1,6 +1,6 @@
 import type { RekordboxTrack } from '../../types';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
-import { classifyCamelotRelationship, parseCamelotKey } from '../../lib/music/camelot';
+import { camelotKeyFromTonicMode, classifyCamelotRelationship, parseCamelotKey } from '../../lib/music/camelot';
 import type { BeatGridRow } from '../../lib/queries/analysisData';
 import type { StemAssetRecord, StemAssetType } from './stemAssets';
 import { stemTypeForRole } from './stemAssets';
@@ -12,8 +12,6 @@ export interface RouletteCandidateAnalysis {
   stemAsset: StemAssetRecord | null;
   beatGrid: BeatGridRow | null;
   phraseCount: number;
-  vocalAnalysisAvailable: boolean;
-  vocalPresenceScore?: number | null;
 }
 
 export interface RouletteCandidateReference {
@@ -45,19 +43,26 @@ export type RouletteHardFilterReason =
   | 'missing-beat-grid'
   | 'same-parent-track'
   | 'excluded-parent-track'
-  | 'source-unavailable'
-  | 'missing-vocal-material';
+  | 'source-unavailable';
 
 function validBpm(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
+function resolveTrackCamelotCode(
+  track: Pick<RekordboxTrack, 'camelot_key' | 'key_tonic' | 'key_mode'>,
+): string | null {
+  return parseCamelotKey(track.camelot_key)?.code
+    ?? camelotKeyFromTonicMode(track.key_tonic, track.key_mode)
+    ?? null;
+}
+
 function rouletteKeyRelationship(
-  reference: Pick<RekordboxTrack, 'camelot_key'>,
-  candidate: Pick<RekordboxTrack, 'camelot_key'>,
+  reference: Pick<RekordboxTrack, 'camelot_key' | 'key_tonic' | 'key_mode'>,
+  candidate: Pick<RekordboxTrack, 'camelot_key' | 'key_tonic' | 'key_mode'>,
 ): 'exact' | 'branch' | 'mismatch' | 'missing' {
-  const referenceCamelot = parseCamelotKey(reference.camelot_key)?.code ?? null;
-  const candidateCamelot = parseCamelotKey(candidate.camelot_key)?.code ?? null;
+  const referenceCamelot = resolveTrackCamelotCode(reference);
+  const candidateCamelot = resolveTrackCamelotCode(candidate);
   if (!referenceCamelot || !candidateCamelot) return 'missing';
   const relationship = classifyCamelotRelationship(referenceCamelot, candidateCamelot);
   if (relationship === 'exact') return 'exact';
@@ -149,10 +154,6 @@ export function scoreRouletteCandidate(
   score += proximity * 60;
   if (candidate.phraseCount > 0) score += 10;
   if ((candidate.beatGrid?.downbeat_count ?? candidate.beatGrid?.beats.filter((beat) => beat.isDownbeat).length ?? 0) > 0) score += 6;
-  if (role === 'vocal' && candidate.vocalAnalysisAvailable) score += 8;
-  if (role === 'vocal' && candidate.vocalPresenceScore != null) {
-    score += Math.max(0, Math.min(1, candidate.vocalPresenceScore)) * 18;
-  }
   if (candidate.stemAsset?.status === 'ready') score += 6;
 
   const referenceGenre = normalizedText(reference.track.genre);
@@ -233,8 +234,7 @@ export type RouletteCandidateDiagnosticReason =
   | 'missing-invalid-beat-grid'
   | 'variable-tempo'
   | 'same-parent-conflict'
-  | 'source-unavailable'
-  | 'missing-vocal-material';
+  | 'source-unavailable';
 
 export type RouletteCandidateDiagnostics = Record<RouletteCandidateDiagnosticReason, number>;
 
@@ -247,7 +247,6 @@ export function createRouletteCandidateDiagnostics(): RouletteCandidateDiagnosti
     'variable-tempo': 0,
     'same-parent-conflict': 0,
     'source-unavailable': 0,
-    'missing-vocal-material': 0,
   };
 }
 
@@ -326,13 +325,14 @@ export interface RouletteBoundedPairResult {
   isTruncated: boolean;
 }
 
-function exactKeyToken(track: Pick<RekordboxTrack, 'camelot_key'>): string | null {
-  const key = parseCamelotKey(track.camelot_key);
-  return key ? `camelot:${key.code}` : null;
+function exactKeyToken(track: Pick<RekordboxTrack, 'camelot_key' | 'key_tonic' | 'key_mode'>): string | null {
+  const code = resolveTrackCamelotCode(track);
+  return code ? `camelot:${code}` : null;
 }
 
-function compatibleKeyTokens(track: Pick<RekordboxTrack, 'camelot_key'>): string[] {
-  const key = parseCamelotKey(track.camelot_key);
+function compatibleKeyTokens(track: Pick<RekordboxTrack, 'camelot_key' | 'key_tonic' | 'key_mode'>): string[] {
+  const code = resolveTrackCamelotCode(track);
+  const key = code ? parseCamelotKey(code) : null;
   if (!key) return [];
   const wrap = (number: number) => ((number - 1 + 12) % 12) + 1;
   const opposite = key.mode === 'A' ? 'B' : 'A';
