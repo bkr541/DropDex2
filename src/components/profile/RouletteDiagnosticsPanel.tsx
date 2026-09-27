@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { CircleDash, ChevronDown, ChevronRight, Renew } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
-import { fetchRouletteCandidateAnalysis } from '../../lib/queries/rouletteCandidates';
+import { fetchRouletteCandidateAnalysis, fetchReadyRouletteStemAssets } from '../../lib/queries/rouletteCandidates';
+import type { StemAssetRecord } from '../../features/roulette/stemAssets';
 import {
   hasUsableRouletteBeatGrid,
   rankRoulettePairsBoundedWithMetadata,
@@ -528,10 +529,19 @@ export function RouletteDiagnosticsPanel() {
     setStatus('loading');
     setError(null);
     try {
-      const [vocals, instrumentals] = await Promise.all([
+      // Fetch vocal candidates (tracks + beat grids + phrases + vocal stems).
+      // Then fetch only instrumental stems separately to avoid re-querying the
+      // same track/beat-grid/phrase data a second time.
+      const [vocals, instrStemAssets] = await Promise.all([
         fetchRouletteCandidateAnalysis('vocal'),
-        fetchRouletteCandidateAnalysis('instrumental'),
+        fetchReadyRouletteStemAssets('instrumental').catch((): StemAssetRecord[] => []),
       ]);
+
+      const instrStemMap = new Map(instrStemAssets.map((a) => [a.track_id, a]));
+      const instrumentals: RouletteCandidateAnalysis[] = vocals.map((v) => ({
+        ...v,
+        stemAsset: instrStemMap.get(v.track.id) ?? null,
+      }));
 
       const instrMap = new Map(instrumentals.map((c) => [c.track.id, c]));
       const merged: MergedTrack[] = vocals.map((v) => {

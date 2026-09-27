@@ -90,7 +90,12 @@ export function isRouletteDirectTempoCompatible(
 }
 
 export function hasUsableRouletteBeatGrid(beatGrid: BeatGridRow | null): boolean {
-  return beatGrid != null && isUsableBeatGrid(beatGrid.beats);
+  if (!beatGrid) return false;
+  // Full fetch: validate beat entries directly.
+  if (beatGrid.beats.length > 0) return isUsableBeatGrid(beatGrid.beats);
+  // Lightweight fetch (beats not selected): trust beat_count as proxy so the
+  // availability check and candidate scoring don't time out on large libraries.
+  return (beatGrid.beat_count ?? 0) > 0;
 }
 
 export function hasStableRouletteTempoGrid(beatGrid: BeatGridRow | null): boolean {

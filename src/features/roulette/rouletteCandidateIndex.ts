@@ -63,7 +63,7 @@ function buildDiagnostics(
       diagnostics['source-unavailable'] += 1;
     } else if (candidate.beatGrid?.is_variable_tempo === true) {
       diagnostics['variable-tempo'] += 1;
-    } else if (!candidate.beatGrid || candidate.beatGrid.beats.length === 0) {
+    } else if (!candidate.beatGrid || (candidate.beatGrid.beat_count ?? candidate.beatGrid.beats.length) === 0) {
       diagnostics['missing-invalid-beat-grid'] += 1;
     }
   }

@@ -342,6 +342,37 @@ export async function fetchTrackBeatGrids(trackIds: string[]): Promise<Map<strin
   return result;
 }
 
+/**
+ * Lightweight variant for candidate pool queries — omits the `beats` JSONB
+ * column (which can be several MB per track) to avoid statement timeouts when
+ * querying hundreds of tracks at once. Returns BeatGridRow with `beats: []`;
+ * callers must tolerate an empty beats array and use `beat_count` instead.
+ */
+export async function fetchTrackBeatGridsLightweight(trackIds: string[]): Promise<Map<string, BeatGridRow>> {
+  const uniqueIds = [...new Set(trackIds)].filter(Boolean);
+  const result = new Map<string, BeatGridRow>();
+  if (uniqueIds.length === 0) return result;
+
+  const chunks = chunkIds(uniqueIds, WAVEFORM_CHUNK_SIZE);
+  await Promise.all(chunks.map(async (chunk) => {
+    const { data, error } = await supabase
+      .from('rekordbox_track_beat_grids')
+      .select(
+        'id, import_id, track_id, source_tag, beat_count, downbeat_count, ' +
+        'bar_count, first_beat_ms, first_downbeat_ms, minimum_bpm, maximum_bpm, ' +
+        'is_variable_tempo, parser_version'
+      )
+      .in('track_id', chunk);
+
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      const mapped = mapBeatGridRow(row);
+      result.set(mapped.track_id, mapped);
+    }
+  }));
+  return result;
+}
+
 /** Fetch the preview waveform state for a single track. */
 export async function fetchTrackPreviewWaveform(
   trackId: string,

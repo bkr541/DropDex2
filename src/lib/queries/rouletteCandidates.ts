@@ -4,7 +4,7 @@ import type { RouletteSourceRole } from '../../features/roulette/rouletteSession
 import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole, type StemAssetRecord, type StemAssetType } from '../../features/roulette/stemAssets';
 import { rouletteStemAssetService } from '../../features/roulette/stemAssetService';
 import { getCurrentInstallationId } from '../desktop/installationIdentity';
-import { fetchTrackBeatGrids, fetchTracksPhrases } from './analysisData';
+import { fetchTrackBeatGridsLightweight, fetchTracksPhrases } from './analysisData';
 import { fetchActiveImport, fetchTracksByIds } from './rekordbox';
 import { supabase } from '../supabase';
 
@@ -114,7 +114,7 @@ export async function fetchRouletteCandidateAnalysis(
   if (tracks.length === 0) return [];
   const trackIds = tracks.map((track) => track.id);
   const [beatGrids, phrases, readyAssets] = await Promise.all([
-    fetchTrackBeatGrids(trackIds),
+    fetchTrackBeatGridsLightweight(trackIds),
     fetchTracksPhrases(trackIds),
     fetchReadyRouletteStemAssets(stemTypeForRole(role)).catch(() => [] as StemAssetRecord[]),
   ]);
