@@ -25,13 +25,11 @@ describe('Flip Lab analysis UI truth wiring', () => {
     expect(source).not.toContain('INSTR_SECTIONS');
     expect(source).not.toContain('···');
   });
-  it('wires transport, runtime BPM, SYNC, and both playheads to the shared Roulette runtime adapter', () => {
+  it('shows an empty top section until the user explicitly loads a selected pair', () => {
     expect(source).toContain('useFlipLabAudioRuntime');
-    expect(source).toContain('flip-lab-master-bpm');
-    expect(source).toContain('flip-lab-vocal-playhead');
-    expect(source).toContain('flip-lab-instrumental-playhead');
-    expect(source).toContain('onSeekBackwardBar');
-    expect(source).toContain('onSeekForwardBar');
+    expect(source).toContain('data-testid="flip-lab-empty-pair"');
+    expect(source).toContain('data-testid="flip-lab-load-pair"');
+    expect(source).toContain('pairLoaded && selectedVocal !== null && selectedInstr !== null');
     expect(source).not.toContain('>125.0<');
   });
 

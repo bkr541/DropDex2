@@ -159,7 +159,10 @@ export function resolveFlipLabRestoredSelection(
     };
   };
 
-  if (!session) return fallback();
+  // No prior session at all means a genuinely fresh screen: never auto-select
+  // a pair the user hasn't chosen. Fallback ranking is only for recovering a
+  // stored selection that has gone stale (handled below).
+  if (!session) return { vocalId: null, instrumentalId: null, source: 'empty' };
 
   const vocal = session.selectedVocalId
     ? vocals.find((candidate) => candidate.track.id === session.selectedVocalId) ?? null

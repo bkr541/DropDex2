@@ -6,16 +6,20 @@ const root = process.cwd();
 const view = fs.readFileSync(path.join(root, 'src/components/flip-lab/FlipLabView.tsx'), 'utf8');
 
 describe('Flip Lab final hardening UI semantics', () => {
-  it('keeps readiness as status and presents Drop Lab as a separate parent-track action', () => {
-    expect(view).toContain('data-testid="flip-lab-pair-ready"');
-    expect(view).toContain('Ready for Flip Lab audition playback.');
-    expect(view).toContain('Test Transition in Drop Lab →');
-    expect(view).toContain('Selected parent tracks only');
-    expect(view).not.toContain('Open in Drop Lab →');
+  it('uses Load Pair as the only center action with no compatibility, stem status, or Drop Lab UI', () => {
+    expect(view).toContain('Load Pair');
+    expect(view).not.toContain('CompatibilityPanel');
+    expect(view).not.toContain('Stem Availability');
+    expect(view).not.toContain('Drop Lab');
   });
 
-  it('provides real clear actions and no fake overflow-menu affordance', () => {
-    expect(view).toContain('Clear ${role.toLowerCase()} selection');
+  it('switches the opposite list to Suggested when a track is selected', () => {
+    expect(view).toContain("if (role === 'vocal') setInstrTab('suggested');");
+    expect(view).toContain("else setVocalTab('suggested');");
+  });
+
+  it('provides a real clear-pair action and no fake overflow-menu affordance', () => {
+    expect(view).toContain('data-testid="flip-lab-clear-pair"');
     expect(view).toContain("clearSelection('vocal')");
     expect(view).toContain("clearSelection('instrumental')");
     expect(view).toContain('no fake overflow-menu affordance until a real menu exists');

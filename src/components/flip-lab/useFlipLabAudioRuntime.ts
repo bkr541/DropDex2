@@ -273,6 +273,7 @@ export function useFlipLabAudioRuntime({
   }));
   const [mixPosition, setMixPositionState] = useState(0.5);
   const [loopBars, setLoopBarsState] = useState<FlipLabLoopBars>(16);
+  const [volume, setVolumeState] = useState(1);
   const playbackRef = useRef(playback);
   const eqRef = useRef(eq);
   const mixRef = useRef(resolveFlipLabEqualPowerMix(mixPosition));
@@ -470,6 +471,8 @@ export function useFlipLabAudioRuntime({
 
   const setMixPosition = useCallback((value: number) => setMixPositionState(clamp01(value)), []);
 
+  const setVolume = useCallback((value: number) => setVolumeState(clamp01(value)), []);
+
   const setLoopBars = useCallback((value: FlipLabLoopBars) => {
     setLoopBarsState(value === 'off' || value === 4 || value === 8 || value === 16 || value === 32 ? value : 16);
   }, []);
@@ -572,6 +575,10 @@ export function useFlipLabAudioRuntime({
   }, [mix]);
 
   useEffect(() => {
+    runtimeRef.current?.setMasterVolume(volume);
+  }, [volume]);
+
+  useEffect(() => {
     const activeResult = playback.result ?? visualization.result;
     runtimeRef.current?.setLoopEndSeconds(resolveFlipLabLoopEndSeconds(activeResult, loopBars));
   }, [loopBars, playback.result, visualization.result]);
@@ -652,16 +659,19 @@ export function useFlipLabAudioRuntime({
     loopOptions,
     masterBpm,
     ready,
+    volume,
     togglePlayPause,
     toggleCandidatePreview,
     stopCandidatePreview,
     stop,
+    seekTo,
     seekByBars,
     seekToStart,
     seekToEnd,
     toggleSync,
     setEqBand,
     setMixPosition,
+    setVolume,
     setLoopBars,
     restoreControls,
   }), [
@@ -674,6 +684,7 @@ export function useFlipLabAudioRuntime({
     mixPosition,
     playback,
     ready,
+    seekTo,
     seekByBars,
     seekToEnd,
     seekToStart,
@@ -684,9 +695,11 @@ export function useFlipLabAudioRuntime({
     toggleSync,
     setEqBand,
     setMixPosition,
+    setVolume,
     setLoopBars,
     restoreControls,
     visualResult,
     visualization,
+    volume,
   ]);
 }

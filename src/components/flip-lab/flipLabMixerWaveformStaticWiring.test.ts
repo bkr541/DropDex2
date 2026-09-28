@@ -7,21 +7,15 @@ const view = fs.readFileSync(path.join(root, 'src/components/flip-lab/FlipLabVie
 const hook = fs.readFileSync(path.join(root, 'src/components/flip-lab/useFlipLabAudioRuntime.ts'), 'utf8');
 
 describe('Flip Lab mixer, prepared waveform, and candidate preview wiring', () => {
-  it('renders large role waveforms from prepared runtime peaks rather than selected parent-track waveform state', () => {
-    expect(view).toContain('visualResult?.waveforms.vocal ?? []');
-    expect(view).toContain('visualResult?.waveforms.instrumental ?? []');
-    expect(view).toContain('flip-lab-vocal-stem-waveform');
-    expect(view).toContain('flip-lab-instrumental-stem-waveform');
-    expect(view).not.toContain('vocalWaveformState={');
-    expect(view).not.toContain('instrWaveformState={');
+  it('renders loaded-pair waveforms from track preview waveforms, not prepared stems', () => {
+    expect(view).toContain('vocalWaveformState={getWaveformState(selectedVocal.track.id)}');
+    expect(view).toContain('instrWaveformState={getWaveformState(selectedInstr.track.id)}');
+    expect(view).not.toContain('PreparedStemWaveform');
+    expect(view).not.toContain('visualResult');
     expect(hook).toContain('runtimeRef.current!.prepare(');
   });
 
-  it('uses real accessible EQ, mix, and loop controls backed by runtime state', () => {
-    expect(view).toContain('aria-label={`${roleLabel} ${band} EQ`}');
-    expect(view).toContain('formatFlipLabEqDb(value)');
-    expect(view).toContain('aria-label="Vocal and instrumental mix"');
-    expect(view).toContain('aria-label="Flip Lab loop length"');
+  it('keeps EQ, mix, and loop runtime controls in the audio hook', () => {
     expect(hook).toContain('runtimeRef.current?.setEq(eq)');
     expect(hook).toContain('runtimeRef.current?.setMix(mix)');
     expect(hook).toContain('runtimeRef.current?.setLoopEndSeconds');

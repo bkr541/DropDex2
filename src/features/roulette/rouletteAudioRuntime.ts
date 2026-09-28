@@ -109,6 +109,7 @@ export interface RouletteAudioRuntime {
   stop(): void;
   setMix(mix: RouletteMixState): void;
   setEq(eq: RouletteEqState): void;
+  setMasterVolume(volume: number): void;
   setLoopEndSeconds(loopEndSeconds: number | null): void;
   getPositionSeconds(): number;
   getDurationSeconds(): number;
@@ -271,6 +272,7 @@ export function createRouletteAudioRuntime(
     instrumental: { ...NEUTRAL_ROULETTE_EQ.instrumental },
   };
   let loopEndSeconds: number | null = null;
+  let masterVolume = 1;
 
   type PreparedDeck = { buffer: AudioBuffer; offsetSeconds: number };
   interface PreparedPlaybackSession {
@@ -356,6 +358,11 @@ export function createRouletteAudioRuntime(
     }
   };
 
+  const setMasterVolume = (volume: number) => {
+    masterVolume = clampGain(volume);
+    if (audioContext && masterGainNode) setGain(masterGainNode, ROULETTE_MASTER_HEADROOM * masterVolume, audioContext);
+  };
+
   const setLoopEndSeconds = (nextLoopEndSeconds: number | null) => {
     const normalized = nextLoopEndSeconds == null || !Number.isFinite(nextLoopEndSeconds)
       ? null
@@ -383,7 +390,7 @@ export function createRouletteAudioRuntime(
     if (position >= durationSeconds) return false;
 
     const masterGain = context.createGain();
-    masterGain.gain.value = ROULETTE_MASTER_HEADROOM;
+    masterGain.gain.value = ROULETTE_MASTER_HEADROOM * masterVolume;
     const createLimiter = context.createDynamicsCompressor?.bind(context);
     const limiter = createLimiter ? createLimiter() : null;
     if (limiter) {
@@ -843,6 +850,7 @@ export function createRouletteAudioRuntime(
     stop,
     setMix,
     setEq,
+    setMasterVolume,
     setLoopEndSeconds,
     getPositionSeconds,
     getDurationSeconds: () => durationSeconds,

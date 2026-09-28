@@ -155,6 +155,16 @@ describe('Flip Lab import-scoped session persistence', () => {
     expect(restored).toEqual({ vocalId: null, instrumentalId: 'inst-1', source: 'persisted' });
   });
 
+  it('starts empty on a genuinely fresh screen instead of auto-selecting a pair', () => {
+    const restored = resolveFlipLabRestoredSelection(
+      null,
+      [candidate('vocal-1'), candidate('vocal-2')],
+      [candidate('inst-1'), candidate('inst-2')],
+    );
+
+    expect(restored).toEqual({ vocalId: null, instrumentalId: null, source: 'empty' });
+  });
+
   it('falls back to canonical ranking when a stored role is stale or no longer eligible', () => {
     const restored = resolveFlipLabRestoredSelection(
       session({ selectedVocalId: 'removed-vocal' }),
