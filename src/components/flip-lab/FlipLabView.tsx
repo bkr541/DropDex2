@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   classifyCamelotRelationship,
-  parseCamelotKey,
-  camelotKeyFromTonicMode,
   getCamelotRelationshipLabel,
   type CamelotRelationship,
 } from '../../lib/music/camelot';
@@ -18,15 +16,28 @@ import {
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
 import { useAppRouter } from '../../navigation/useAppRouter';
-import { formatKey } from '../../lib/utils';
 import type { RekordboxTrack } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
+import { fetchTrackBeatGrid, fetchTrackPhrases, type BeatGridRow, type PhraseRow } from '../../lib/queries/analysisData';
+import type { RoulettePreviewWindow } from '../../features/roulette/roulettePreview';
 import {
   flipLabStemLifecycle,
   flipLabStemStatusPresentation,
   isFlipLabStemUsable,
   type FlipLabStemRoleState,
 } from './flipLabStemLifecycle';
+import {
+  deriveFlipLabAlignment,
+  deriveFlipLabBarRuler,
+  formatSignedBpmDelta,
+  mapPhrasesToTimelineSegments,
+  resolveFlipLabArtist,
+  resolveFlipLabCamelotKey,
+  signedVocalBpmDelta,
+  trackDurationMs,
+  type FlipLabAlignmentState,
+  type FlipLabTimelineSegment,
+} from './flipLabAnalysis';
 
 // ── Color tokens ──────────────────────────────────────────────────────────────
 const BG       = 'var(--color-background)';
@@ -48,6 +59,7 @@ const SECTION_COLORS = {
   build:  { wave: '#ff8614' },
   drop:   { wave: '#ff514b' },
   chorus: { wave: '#f151a6' },
+  neutral: { wave: '#64748b' },
 };
 
 // ── Camelot color mapping (from CuePointsView) ────────────────────────────────
@@ -55,14 +67,6 @@ const CAMELOT_COLORS: Record<number, string> = {
   1: '#e74c3c', 2: '#3b82f6', 3: '#1d4ed8', 4: '#f59e0b', 5: '#16a34a', 6: '#d97706',
   7: '#8b5cf6', 8: '#0d9488', 9: '#22c55e', 10: '#0891b2', 11: '#06b6d4', 12: '#ec4899',
 };
-
-function trackCamelotCode(
-  track: Pick<RekordboxTrack, 'camelot_key' | 'key_tonic' | 'key_mode'>,
-): string | null {
-  return parseCamelotKey(track.camelot_key)?.code
-    ?? camelotKeyFromTonicMode(track.key_tonic, track.key_mode)
-    ?? null;
-}
 
 function camelotColor(key: string | null | undefined): string {
   if (!key) return '#6b7280';
@@ -85,71 +89,40 @@ function matchDotColor(rel: CamelotRelationship | null): string {
   }
 }
 
-// ── Section defs ──────────────────────────────────────────────────────────────
-interface SectionDef { label: string; color: string; start: number; end: number }
+type FlipLabTrackAnalysisState =
+  | { status: 'idle'; beatGrid: null; phrases: [] }
+  | { status: 'loading'; beatGrid: null; phrases: [] }
+  | { status: 'loaded'; beatGrid: BeatGridRow | null; phrases: PhraseRow[] }
+  | { status: 'error'; beatGrid: null; phrases: []; error: string };
 
-const VOCAL_SECTIONS: SectionDef[] = [
-  { label: 'Verse 1', color: SECTION_COLORS.verse.wave,  start: 0,  end: 28 },
-  { label: 'Build',   color: SECTION_COLORS.build.wave,  start: 28, end: 46 },
-  { label: 'Chorus',  color: SECTION_COLORS.chorus.wave, start: 46, end: 75 },
-  { label: 'Drop',    color: SECTION_COLORS.drop.wave,   start: 75, end: 100 },
-];
+function useFlipLabTrackAnalysis(trackId: string | null): FlipLabTrackAnalysisState {
+  const [state, setState] = useState<FlipLabTrackAnalysisState>({ status: 'idle', beatGrid: null, phrases: [] });
 
-const INSTR_SECTIONS: SectionDef[] = [
-  { label: 'Intro', color: SECTION_COLORS.intro.wave, start: 0,  end: 22 },
-  { label: 'Verse', color: SECTION_COLORS.verse.wave, start: 22, end: 48 },
-  { label: 'Build', color: SECTION_COLORS.build.wave, start: 48, end: 70 },
-  { label: 'Drop',  color: SECTION_COLORS.drop.wave,  start: 70, end: 100 },
-];
+  useEffect(() => {
+    if (!trackId) {
+      setState({ status: 'idle', beatGrid: null, phrases: [] });
+      return;
+    }
+    let cancelled = false;
+    setState({ status: 'loading', beatGrid: null, phrases: [] });
+    void Promise.all([fetchTrackBeatGrid(trackId), fetchTrackPhrases(trackId)])
+      .then(([beatGrid, phrases]) => {
+        if (!cancelled) setState({ status: 'loaded', beatGrid, phrases });
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setState({
+            status: 'error',
+            beatGrid: null,
+            phrases: [],
+            error: error instanceof Error ? error.message : 'Failed to load track analysis.',
+          });
+        }
+      });
+    return () => { cancelled = true; };
+  }, [trackId]);
 
-const BAR_NUMBERS = [1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57, 61];
-
-// ── Multi-color mock waveform (placeholder when no real waveform loaded) ──────
-function MultiColorWaveform({ sections, seed = 1, bars = 260 }: {
-  sections: SectionDef[];
-  seed?: number;
-  bars?: number;
-}) {
-  const d = useMemo(() => {
-    let s = (seed * 2654435761) >>> 0;
-    const rand = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return (s >>> 0) / 0xffffffff; };
-    const raw = Array.from({ length: bars }, () => Math.pow(rand(), 0.55));
-    const smooth = raw.map((_, i) => {
-      let sum = 0, n = 0;
-      for (let j = Math.max(0, i - 5); j <= Math.min(bars - 1, i + 5); j++) { sum += raw[j]; n++; }
-      return sum / n;
-    });
-    const vw = 400, vh = 60, mid = vh / 2, bw = vw / bars;
-    return smooth.map((amp, i) => {
-      const x = i * bw + bw / 2;
-      const h = Math.max(1.5, amp * mid * 0.91);
-      return `M${x.toFixed(1)} ${(mid - h).toFixed(1)}L${x.toFixed(1)} ${(mid + h).toFixed(1)}`;
-    }).join(' ');
-  }, [seed, bars]);
-
-  return (
-    <svg viewBox="0 0 400 60" preserveAspectRatio="none"
-      style={{ width: '100%', height: '100%', display: 'block' }}>
-      <defs>
-        {sections.map((sec, i) => (
-          <clipPath key={i} id={`flip-clip-${seed}-${i}`}>
-            <rect x={sec.start * 4} y={0} width={(sec.end - sec.start) * 4} height={60} />
-          </clipPath>
-        ))}
-      </defs>
-      {sections.map((sec, i) => (
-        <path
-          key={i}
-          d={d}
-          stroke={sec.color}
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          fill="none"
-          clipPath={`url(#flip-clip-${seed}-${i})`}
-        />
-      ))}
-    </svg>
-  );
+  return state;
 }
 
 // ── Camelot key badge ─────────────────────────────────────────────────────────
@@ -178,28 +151,46 @@ function LargeKnob({ color, size = 36 }: { color: string; size?: number }) {
 }
 
 // ── Section label row (matches CuePointsView section lane) ───────────────────
-function SectionRow({ sections }: { sections: SectionDef[] }) {
+function SectionRow({ segments, analysisStatus }: {
+  segments: FlipLabTimelineSegment[];
+  analysisStatus: FlipLabTrackAnalysisState['status'];
+}) {
+  const emptyLabel = analysisStatus === 'loading'
+    ? 'Loading phrase data…'
+    : analysisStatus === 'error'
+      ? 'Phrase data unavailable'
+      : 'Phrase data unavailable';
+
   return (
     <div style={{ position: 'relative', height: 40, borderBottom: `1px solid ${BORDER_F}` }}>
-      {sections.map(sec => (
-        <div
-          key={sec.label}
-          style={{
-            position: 'absolute', left: `${sec.start}%`, width: `${sec.end - sec.start}%`,
-            top: 5, height: 28,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            overflow: 'hidden', borderBottom: `2px solid ${sec.color}`,
-          }}
-        >
-          <span style={{
-            fontFamily: 'monospace', fontSize: 9, fontWeight: 700,
-            color: sec.color, letterSpacing: '0.06em',
-            textShadow: '0 1px 4px rgba(0,0,0,0.8)', whiteSpace: 'nowrap',
-          }}>
-            {sec.label.toUpperCase()}
-          </span>
-        </div>
-      ))}
+      {segments.length === 0 ? (
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 9, color: MUTED, letterSpacing: '0.04em',
+        }}>{emptyLabel}</div>
+      ) : segments.map((segment, index) => {
+        const color = SECTION_COLORS[segment.tone].wave;
+        return (
+          <div
+            key={`${segment.label}-${index}-${segment.startPercent}`}
+            style={{
+              position: 'absolute', left: `${segment.startPercent}%`, width: `${segment.endPercent - segment.startPercent}%`,
+              top: 5, height: 28,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden', borderBottom: `2px solid ${color}`,
+            }}
+          >
+            <span style={{
+              fontFamily: 'monospace', fontSize: 9, fontWeight: 700,
+              color, letterSpacing: '0.06em',
+              textShadow: '0 1px 4px rgba(0,0,0,0.8)', whiteSpace: 'nowrap',
+            }}>
+              {segment.label.toUpperCase()}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -211,16 +202,15 @@ interface TrackHeaderProps {
   placeholderTitle: string;
   placeholderArtist: string;
   placeholderBpm: string;
-  placeholderCamelot: string;
   role: 'VOCAL' | 'INSTRUMENTAL';
   roleColor: string;
 }
 
-function TrackHeader({ track, placeholderEmoji, placeholderTitle, placeholderArtist, placeholderBpm, placeholderCamelot, role, roleColor }: TrackHeaderProps) {
+function TrackHeader({ track, placeholderEmoji, placeholderTitle, placeholderArtist, placeholderBpm, role, roleColor }: TrackHeaderProps) {
   const title   = track?.title ?? placeholderTitle;
-  const artist  = track?.artist ?? placeholderArtist;
+  const artist  = resolveFlipLabArtist(track, placeholderArtist);
   const bpm     = track?.bpm != null ? track.bpm.toFixed(0) : placeholderBpm;
-  const keyStr  = track ? (formatKey(track.camelot_key ?? track.musical_key) || placeholderCamelot) : placeholderCamelot;
+  const keyStr  = track ? resolveFlipLabCamelotKey(track) : null;
 
   return (
     <div style={{
@@ -246,8 +236,9 @@ function TrackHeader({ track, placeholderEmoji, placeholderTitle, placeholderArt
           <div style={{ fontSize: 8, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>BPM</div>
           <div style={{ fontSize: 15, fontWeight: 900, color: FG, fontVariantNumeric: 'tabular-nums' }}>{bpm}</div>
         </div>
-        {keyStr && <CamelotBadge k={keyStr} />}
-        <span style={{ fontSize: 11, color: MUTED }}>···</span>
+        {keyStr ? <CamelotBadge k={keyStr} /> : (
+          <span style={{ fontSize: 10, color: MUTED, padding: '2px 7px', border: `1px solid ${BORDER_S}`, borderRadius: 4 }}>—</span>
+        )}
       </div>
     </div>
   );
@@ -272,14 +263,14 @@ function TrackSelectorRow({
 }) {
   const { track } = candidate;
   const bpm    = track.bpm != null ? track.bpm.toFixed(0) : '—';
-  const keyStr = formatKey(track.camelot_key ?? track.musical_key);
-  const keyClr = camelotColor(track.camelot_key ?? track.musical_key);
+  const keyStr = resolveFlipLabCamelotKey(track);
+  const keyClr = camelotColor(keyStr);
   const initials = `${(track.artist?.[0] ?? track.title[0] ?? '?')}${track.title[0] ?? '?'}`.toUpperCase();
 
   const rel = useMemo<CamelotRelationship | null>(() => {
     if (!otherTrack) return null;
-    const mine   = trackCamelotCode(track);
-    const theirs = trackCamelotCode(otherTrack);
+    const mine   = resolveFlipLabCamelotKey(track);
+    const theirs = resolveFlipLabCamelotKey(otherTrack);
     if (!mine || !theirs) return 'unknown';
     return classifyCamelotRelationship(mine, theirs);
   }, [track, otherTrack]);
@@ -332,7 +323,7 @@ function TrackSelectorRow({
         <div style={{
           fontSize: 10, color: MUTED,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{track.artist ?? 'Unknown artist'}</div>
+        }}>{resolveFlipLabArtist(track, 'Unknown artist')}</div>
       </div>
 
       {/* Mini waveform */}
@@ -372,8 +363,8 @@ function TrackSelectorRow({
         margin: '0 auto',
       }} />
 
-      {/* ··· */}
-      <div style={{ fontSize: 11, color: MUTED, textAlign: 'center' }}>···</div>
+      {/* Reserved column: no fake overflow-menu affordance until a real menu exists. */}
+      <div aria-hidden="true" />
     </button>
   );
 }
@@ -542,7 +533,8 @@ interface CompatibilityPanelProps {
   vocalStemState: FlipLabStemRoleState;
   instrStemState: FlipLabStemRoleState;
   keyRel:  CamelotRelationship | null;
-  bpmDiff: number | null;
+  bpmDelta: number | null;
+  phraseAlignment: FlipLabAlignmentState;
   pairRejectionReason: RouletteHardFilterReason | null;
   onOpenDropLab: () => void;
 }
@@ -553,12 +545,13 @@ function CompatibilityPanel({
   vocalStemState,
   instrStemState,
   keyRel,
-  bpmDiff,
+  bpmDelta,
+  phraseAlignment,
   pairRejectionReason,
   onOpenDropLab,
 }: CompatibilityPanelProps) {
-  const vocalKey = vocal ? (formatKey(vocal.track.camelot_key ?? vocal.track.musical_key) || null) : null;
-  const instrKey = instr ? (formatKey(instr.track.camelot_key ?? instr.track.musical_key) || null) : null;
+  const vocalKey = vocal ? resolveFlipLabCamelotKey(vocal.track) : null;
+  const instrKey = instr ? resolveFlipLabCamelotKey(instr.track) : null;
 
   const keyInfo = keyRel ? (() => {
     switch (keyRel) {
@@ -576,11 +569,19 @@ function CompatibilityPanel({
     }
   })() : null;
 
-  const bpmInfo = bpmDiff != null ? (() => {
-    if (bpmDiff <= 2) return { label: 'Easy Mix', color: '#22c55e' };
-    if (bpmDiff <= 5) return { label: 'Moderate', color: '#f59e0b' };
+  const bpmInfo = bpmDelta != null ? (() => {
+    const magnitude = Math.abs(bpmDelta);
+    if (magnitude <= 2) return { label: 'Easy Mix', color: '#22c55e' };
+    if (magnitude <= 5) return { label: 'Moderate', color: '#f59e0b' };
     return { label: 'Hard Mix', color: '#ef4444' };
   })() : null;
+  const alignmentColor = phraseAlignment.status === 'aligned'
+    ? '#22c55e'
+    : phraseAlignment.status === 'offset'
+      ? '#f59e0b'
+      : phraseAlignment.status === 'cannot-align'
+        ? '#ef4444'
+        : MUTED;
 
   const matchingReady = vocal !== null && instr !== null && pairRejectionReason === null;
   const mediaReady = isFlipLabStemUsable(vocalStemState, vocal?.track.id)
@@ -668,18 +669,18 @@ function CompatibilityPanel({
         <InfoRow
           icon="⏱"
           label="BPM Difference"
-          value={bpmDiff != null ? `+${bpmDiff.toFixed(1)} BPM` : '—'}
+          value={formatSignedBpmDelta(bpmDelta)}
           valueColor={bpmInfo?.color ?? MUTED}
           subtitle={bpmInfo?.label}
         />
 
-        {/* Phrase Alignment (placeholder) */}
+        {/* Phrase Alignment */}
         <InfoRow
           icon="📐"
           label="Phrase Alignment"
-          value={vocal && instr ? 'Great Match' : '—'}
-          valueColor={vocal && instr ? '#22c55e' : MUTED}
-          subtitle={vocal && instr ? 'Phrase analysis coming soon' : undefined}
+          value={phraseAlignment.label}
+          valueColor={alignmentColor}
+          subtitle={phraseAlignment.subtitle ?? undefined}
         />
 
         {/* Stem Availability */}
@@ -755,14 +756,36 @@ function TopWaveformSection({
   instrTrack,
   vocalWaveformState,
   instrWaveformState,
+  vocalAnalysis,
+  instrAnalysis,
+  vocalWindow,
+  instrWindow,
 }: {
   vocalTrack: RekordboxTrack | null;
   instrTrack: RekordboxTrack | null;
   vocalWaveformState: WaveformLoadState;
   instrWaveformState: WaveformLoadState;
+  vocalAnalysis: FlipLabTrackAnalysisState;
+  instrAnalysis: FlipLabTrackAnalysisState;
+  vocalWindow: RoulettePreviewWindow | null;
+  instrWindow: RoulettePreviewWindow | null;
 }) {
-  const useRealVocal = vocalWaveformState.status === 'loaded';
-  const useRealInstr = instrWaveformState.status === 'loaded';
+  const vocalSections = useMemo(() => (
+    vocalAnalysis.status === 'loaded'
+      ? mapPhrasesToTimelineSegments(vocalAnalysis.phrases, trackDurationMs(vocalTrack), vocalWindow)
+      : []
+  ), [vocalAnalysis, vocalTrack, vocalWindow]);
+  const instrSections = useMemo(() => (
+    instrAnalysis.status === 'loaded'
+      ? mapPhrasesToTimelineSegments(instrAnalysis.phrases, trackDurationMs(instrTrack), instrWindow)
+      : []
+  ), [instrAnalysis, instrTrack, instrWindow]);
+  const barRuler = useMemo(() => deriveFlipLabBarRuler(
+    vocalAnalysis.status === 'loaded' ? vocalAnalysis.beatGrid : null,
+    instrAnalysis.status === 'loaded' ? instrAnalysis.beatGrid : null,
+    vocalWindow,
+    instrWindow,
+  ), [vocalAnalysis, instrAnalysis, vocalWindow, instrWindow]);
 
   return (
     <>
@@ -773,7 +796,6 @@ function TopWaveformSection({
         placeholderTitle="Select a vocal stem"
         placeholderArtist="No vocal selected"
         placeholderBpm="—"
-        placeholderCamelot="—"
         role="VOCAL"
         roleColor={SECONDARY}
       />
@@ -784,51 +806,52 @@ function TopWaveformSection({
         padding: '0 16px', background: BG, borderBottom: `1px solid ${BORDER_F}`,
       }}>
         <span style={{ fontSize: 7, color: MUTED, marginRight: 6, flexShrink: 0, letterSpacing: '0.08em' }}>BAR</span>
-        {BAR_NUMBERS.map(n => (
-          <div key={n} style={{ flex: 1, fontSize: 7, color: MUTED, opacity: 0.5 }}>{n}</div>
-        ))}
+        <div style={{ position: 'relative', flex: 1, height: '100%' }}>
+          {barRuler.status === 'available' ? barRuler.markers.map((marker) => (
+            <span key={`${marker.label}-${marker.percent}`} style={{
+              position: 'absolute', left: `${marker.percent}%`, top: '50%', transform: 'translateY(-50%)',
+              fontSize: 7, color: MUTED, opacity: 0.6, fontVariantNumeric: 'tabular-nums',
+            }}>{marker.label}</span>
+          )) : (
+            <span style={{
+              position: 'absolute', inset: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 7, color: MUTED, opacity: 0.55,
+            }}>Bar grid unavailable</span>
+          )}
+        </div>
       </div>
 
       {/* Vocal section labels */}
-      <SectionRow sections={VOCAL_SECTIONS} />
+      <SectionRow segments={vocalSections} analysisStatus={vocalAnalysis.status} />
 
-      {/* Vocal waveform */}
+      {/* Vocal waveform: Rekordbox analysis state is rendered truthfully. */}
       <div style={{ height: 88, position: 'relative', overflow: 'hidden', background: BG }}>
-        {useRealVocal ? (
-          <RekordboxPreviewWaveform
-            state={vocalWaveformState}
-            height={88}
-            variant="detail"
-            appearance="rekordbox"
-            renderMode="area"
-            showCenterLine
-            surface={false}
-          />
-        ) : (
-          <MultiColorWaveform sections={VOCAL_SECTIONS} seed={1101} bars={260} />
-        )}
-        <div style={{ position: 'absolute', top: 0, bottom: 0, left: '55%', width: 1.5, background: 'var(--color-waveform-playhead)' }} />
+        <RekordboxPreviewWaveform
+          state={vocalWaveformState}
+          height={88}
+          variant="detail"
+          appearance="rekordbox"
+          renderMode="area"
+          showCenterLine
+          surface={false}
+        />
       </div>
 
       {/* Instrumental section labels */}
-      <SectionRow sections={INSTR_SECTIONS} />
+      <SectionRow segments={instrSections} analysisStatus={instrAnalysis.status} />
 
-      {/* Instrumental waveform */}
+      {/* Instrumental waveform: no decorative fallback is fabricated. */}
       <div style={{ height: 88, position: 'relative', overflow: 'hidden', background: BG }}>
-        {useRealInstr ? (
-          <RekordboxPreviewWaveform
-            state={instrWaveformState}
-            height={88}
-            variant="detail"
-            appearance="rekordbox"
-            renderMode="area"
-            showCenterLine
-            surface={false}
-          />
-        ) : (
-          <MultiColorWaveform sections={INSTR_SECTIONS} seed={1202} bars={260} />
-        )}
-        <div style={{ position: 'absolute', top: 0, bottom: 0, left: '55%', width: 1.5, background: 'var(--color-waveform-playhead)' }} />
+        <RekordboxPreviewWaveform
+          state={instrWaveformState}
+          height={88}
+          variant="detail"
+          appearance="rekordbox"
+          renderMode="area"
+          showCenterLine
+          surface={false}
+        />
       </div>
 
       {/* Instrumental track header */}
@@ -838,7 +861,6 @@ function TopWaveformSection({
         placeholderTitle="Select an instrumental"
         placeholderArtist="No instrumental selected"
         placeholderBpm="—"
-        placeholderCamelot="—"
         role="INSTRUMENTAL"
         roleColor={PRIMARY}
       />
@@ -973,6 +995,8 @@ export function FlipLabView() {
 
   const selectedVocal = useMemo(() => vocals.find(c => c.track.id === selectedVocalId) ?? null, [vocals, selectedVocalId]);
   const selectedInstr = useMemo(() => instrs.find(c => c.track.id === selectedInstrId) ?? null, [instrs, selectedInstrId]);
+  const vocalAnalysis = useFlipLabTrackAnalysis(selectedVocalId);
+  const instrAnalysis = useFlipLabTrackAnalysis(selectedInstrId);
 
   useEffect(() => flipLabStemLifecycle.subscribe((role, state) => {
     if (role === 'vocal') setVocalStemState(state);
@@ -1037,18 +1061,27 @@ export function FlipLabView() {
   // Key relationship and BPM diff for the compatibility panel
   const keyRel = useMemo<CamelotRelationship | null>(() => {
     if (!selectedVocal || !selectedInstr) return null;
-    const vKey = trackCamelotCode(selectedVocal.track);
-    const iKey = trackCamelotCode(selectedInstr.track);
+    const vKey = resolveFlipLabCamelotKey(selectedVocal.track);
+    const iKey = resolveFlipLabCamelotKey(selectedInstr.track);
     if (!vKey || !iKey) return 'unknown';
     return classifyCamelotRelationship(vKey, iKey);
   }, [selectedVocal, selectedInstr]);
 
-  const bpmDiff = useMemo(() => {
-    const vBpm = selectedVocal?.track.bpm;
-    const iBpm = selectedInstr?.track.bpm;
-    if (vBpm == null || iBpm == null) return null;
-    return Math.abs(vBpm - iBpm);
-  }, [selectedVocal, selectedInstr]);
+  const bpmDelta = useMemo(() => signedVocalBpmDelta(
+    selectedVocal?.track.bpm,
+    selectedInstr?.track.bpm,
+  ), [selectedVocal, selectedInstr]);
+
+  const phraseAlignment = useMemo(() => deriveFlipLabAlignment(
+    selectedVocal?.track ?? null,
+    selectedInstr?.track ?? null,
+    vocalAnalysis.status === 'loaded' ? vocalAnalysis.beatGrid : null,
+    instrAnalysis.status === 'loaded' ? instrAnalysis.beatGrid : null,
+    vocalAnalysis.status === 'loaded' ? vocalAnalysis.phrases : [],
+    instrAnalysis.status === 'loaded' ? instrAnalysis.phrases : [],
+    vocalStemState.window,
+    instrStemState.window,
+  ), [selectedVocal, selectedInstr, vocalAnalysis, instrAnalysis, vocalStemState.window, instrStemState.window]);
 
   const pairRejectionReason = useMemo(
     () => getFlipLabPairRejectionReason(selectedVocal, selectedInstr),
@@ -1094,6 +1127,10 @@ export function FlipLabView() {
         instrTrack={selectedInstr?.track ?? null}
         vocalWaveformState={vocalWaveformState}
         instrWaveformState={instrWaveformState}
+        vocalAnalysis={vocalAnalysis}
+        instrAnalysis={instrAnalysis}
+        vocalWindow={vocalStemState.window}
+        instrWindow={instrStemState.window}
       />
 
       {/* ── Bottom: 3-column selector panel ── */}
@@ -1133,7 +1170,8 @@ export function FlipLabView() {
             vocalStemState={vocalStemState}
             instrStemState={instrStemState}
             keyRel={keyRel}
-            bpmDiff={bpmDiff}
+            bpmDelta={bpmDelta}
+            phraseAlignment={phraseAlignment}
             pairRejectionReason={pairRejectionReason}
             onOpenDropLab={handleOpenDropLab}
           />

@@ -49,7 +49,7 @@ function validBpm(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
-function resolveTrackCamelotCode(
+export function resolveTrackCamelotCode(
   track: Pick<RekordboxTrack, 'camelot_key' | 'key_tonic' | 'key_mode'>,
 ): string | null {
   return parseCamelotKey(track.camelot_key)?.code
