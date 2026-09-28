@@ -3,8 +3,9 @@ import { rankRouletteCandidates, rankRoulettePairsBoundedWithMetadata, type Roul
 import type { RouletteSourceRole } from '../../features/roulette/rouletteSession';
 import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole, type StemAssetRecord, type StemAssetType } from '../../features/roulette/stemAssets';
 import { rouletteStemAssetService } from '../../features/roulette/stemAssetService';
+import { hasQualifyingRouletteVocalMaterial } from '../../features/roulette/rouletteVocalQualification';
 import { getCurrentInstallationId } from '../desktop/installationIdentity';
-import { fetchTrackBeatGridsLightweight, fetchTracksPhrases } from './analysisData';
+import { fetchTrackBeatGridsLightweight, fetchTracksPhrases, fetchTracksVocalAnalysis } from './analysisData';
 import { fetchActiveImport, fetchTracksByIds } from './rekordbox';
 import { supabase } from '../supabase';
 
@@ -112,7 +113,17 @@ export async function fetchRouletteCandidateAnalysis(
 
   const tracks = await fetchRouletteImportTracks(resolvedImportId);
   if (tracks.length === 0) return [];
-  const trackIds = tracks.map((track) => track.id);
+
+  let candidateTracks = tracks;
+  if (role === 'vocal') {
+    const vocalAnalysisByTrackId = await fetchTracksVocalAnalysis(tracks.map((track) => track.id));
+    candidateTracks = tracks.filter((track) => (
+      hasQualifyingRouletteVocalMaterial(vocalAnalysisByTrackId.get(track.id))
+    ));
+    if (candidateTracks.length === 0) return [];
+  }
+
+  const trackIds = candidateTracks.map((track) => track.id);
   const [beatGrids, phrases, readyAssets] = await Promise.all([
     fetchTrackBeatGridsLightweight(trackIds),
     fetchTracksPhrases(trackIds),
@@ -120,7 +131,7 @@ export async function fetchRouletteCandidateAnalysis(
   ]);
   const readyAssetsByTrackId = new Map(readyAssets.map((asset) => [asset.track_id, asset]));
 
-  const candidates = tracks.map((track) => ({
+  const candidates = candidateTracks.map((track) => ({
     track,
     stemAsset: readyAssetsByTrackId.get(track.id) ?? null,
     beatGrid: beatGrids.get(track.id) ?? null,

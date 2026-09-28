@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RekordboxTrack } from '../../types';
-import type { BeatGridRow } from './analysisData';
+import { fetchTracksVocalAnalysis, type BeatGridRow } from './analysisData';
 
 const trackRows: RekordboxTrack[] = [];
 
@@ -42,11 +42,14 @@ function grid(trackId: string): BeatGridRow {
 }
 
 vi.mock('./analysisData', () => ({
-  fetchTrackBeatGrids: vi.fn(async (ids: string[]) => new Map(ids.map((id) => [id, grid(id)]))),
+  fetchTrackBeatGridsLightweight: vi.fn(async (ids: string[]) => new Map(ids.map((id) => [id, grid(id)]))),
   fetchTracksPhrases: vi.fn(async (ids: string[]) => new Map(ids.map((id) => [id, [{ phrase_index: 0 }]]))),
   fetchTracksVocalAnalysis: vi.fn(async (ids: string[]) => new Map(ids.flatMap((id) => {
     if (id.startsWith('missing-vocal')) return [];
-    const regions = id.startsWith('vocal')
+    const hasStrongRegion = id.startsWith('vocal')
+      || id.startsWith('invalid-vocal')
+      || id.startsWith('incomplete-vocal');
+    const regions = hasStrongRegion
       ? [{
           start_frame: 10,
           end_frame_exclusive: 910,
@@ -64,6 +67,15 @@ vi.mock('./analysisData', () => ({
             duration_ms: 1_000,
             peak_confidence: 4,
           }]
+        : id.startsWith('low-confidence-vocal')
+          ? [{
+              start_frame: 10,
+              end_frame_exclusive: 60,
+              start_ms: 1_000,
+              end_ms: 6_000,
+              duration_ms: 5_000,
+              peak_confidence: 2,
+            }]
         : [];
     return [[id, {
       id: `pvdi-${id}`,
@@ -75,8 +87,8 @@ vi.mock('./analysisData', () => ({
       source_u2: null,
       frame_duration_ms: 100,
       frame_count: 1800,
-      integrity_status: 'valid',
-      complete: true,
+      integrity_status: id.startsWith('invalid-vocal') ? 'invalid' : 'valid',
+      complete: !id.startsWith('incomplete-vocal'),
       regions,
       parse_warnings: [],
       parser_version: 'test',
@@ -156,7 +168,10 @@ describe('Roulette candidate query boundary', () => {
       track('instrumental-1', 140, '11A'),
       track('empty-vocal-1', 140, '11A'),
       track('tiny-vocal-1', 140, '11A'),
+      track('low-confidence-vocal-1', 140, '11A'),
       track('missing-vocal-1', 140, '11A'),
+      track('invalid-vocal-1', 140, '11A'),
+      track('incomplete-vocal-1', 140, '11A'),
     );
 
     const vocals = await fetchRouletteCandidateAnalysis('vocal', 'import-1');
@@ -168,8 +183,19 @@ describe('Roulette candidate query boundary', () => {
       'instrumental-1',
       'empty-vocal-1',
       'tiny-vocal-1',
+      'low-confidence-vocal-1',
       'missing-vocal-1',
+      'invalid-vocal-1',
+      'incomplete-vocal-1',
     ]);
+  });
+
+  it('surfaces vocal-analysis query failure instead of weakening the Vocal contract', async () => {
+    trackRows.push(track('vocal-1', 140, '11A'));
+    vi.mocked(fetchTracksVocalAnalysis).mockRejectedValueOnce(new Error('PVDI query failed'));
+
+    await expect(fetchRouletteCandidateAnalysis('vocal', 'import-1'))
+      .rejects.toThrow('PVDI query failed');
   });
 });
 
