@@ -3,6 +3,7 @@ import type { RekordboxTrack } from '../../types';
 import { fetchTracksVocalAnalysis, type BeatGridRow } from './analysisData';
 
 const trackRows: RekordboxTrack[] = [];
+let rouletteStemAssetError: string | null = null;
 
 vi.mock('../desktop/installationIdentity', () => ({
   getCurrentInstallationId: vi.fn(async () => 'installation-1'),
@@ -108,7 +109,9 @@ vi.mock('../supabase', () => ({
       }
       chain.range = vi.fn(async () => ({
         data: table === 'rekordbox_tracks' ? trackRows : [],
-        error: null,
+        error: table === 'roulette_stem_assets' && rouletteStemAssetError
+          ? { message: rouletteStemAssetError }
+          : null,
       }));
       return chain;
     }),
@@ -147,6 +150,7 @@ function track(id: string, bpm: number, camelot: string): RekordboxTrack {
 describe('Roulette candidate query boundary', () => {
   beforeEach(() => {
     trackRows.length = 0;
+    rouletteStemAssetError = null;
   });
 
   it('derives readiness from imported Rekordbox metadata even when no stem rows exist', async () => {
@@ -196,6 +200,15 @@ describe('Roulette candidate query boundary', () => {
 
     await expect(fetchRouletteCandidateAnalysis('vocal', 'import-1'))
       .rejects.toThrow('PVDI query failed');
+  });
+
+
+  it('surfaces stem-asset query failure instead of treating it as no prepared stems', async () => {
+    trackRows.push(track('instrumental-1', 140, '11A'));
+    rouletteStemAssetError = 'stem asset query failed';
+
+    await expect(fetchRouletteCandidateAnalysis('instrumental', 'import-1'))
+      .rejects.toThrow('stem asset query failed');
   });
 });
 

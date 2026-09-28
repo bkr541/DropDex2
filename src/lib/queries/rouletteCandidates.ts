@@ -127,7 +127,7 @@ export async function fetchRouletteCandidateAnalysis(
   const [beatGrids, phrases, readyAssets] = await Promise.all([
     fetchTrackBeatGridsLightweight(trackIds),
     fetchTracksPhrases(trackIds),
-    fetchReadyRouletteStemAssets(stemTypeForRole(role)).catch(() => [] as StemAssetRecord[]),
+    fetchReadyRouletteStemAssets(stemTypeForRole(role)),
   ]);
   const readyAssetsByTrackId = new Map(readyAssets.map((asset) => [asset.track_id, asset]));
 

@@ -21,6 +21,12 @@ import { useAppRouter } from '../../navigation/useAppRouter';
 import { formatKey } from '../../lib/utils';
 import type { RekordboxTrack } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
+import {
+  flipLabStemLifecycle,
+  flipLabStemStatusPresentation,
+  isFlipLabStemUsable,
+  type FlipLabStemRoleState,
+} from './flipLabStemLifecycle';
 
 // ── Color tokens ──────────────────────────────────────────────────────────────
 const BG       = 'var(--color-background)';
@@ -533,6 +539,8 @@ function SelectPanel({
 interface CompatibilityPanelProps {
   vocal:   RouletteCandidateAnalysis | null;
   instr:   RouletteCandidateAnalysis | null;
+  vocalStemState: FlipLabStemRoleState;
+  instrStemState: FlipLabStemRoleState;
   keyRel:  CamelotRelationship | null;
   bpmDiff: number | null;
   pairRejectionReason: RouletteHardFilterReason | null;
@@ -542,6 +550,8 @@ interface CompatibilityPanelProps {
 function CompatibilityPanel({
   vocal,
   instr,
+  vocalStemState,
+  instrStemState,
   keyRel,
   bpmDiff,
   pairRejectionReason,
@@ -572,11 +582,18 @@ function CompatibilityPanel({
     return { label: 'Hard Mix', color: '#ef4444' };
   })() : null;
 
-  const pairReady = vocal !== null && instr !== null && pairRejectionReason === null;
+  const matchingReady = vocal !== null && instr !== null && pairRejectionReason === null;
+  const mediaReady = isFlipLabStemUsable(vocalStemState, vocal?.track.id)
+    && isFlipLabStemUsable(instrStemState, instr?.track.id);
+  const pairReady = matchingReady && mediaReady;
   const rejectionLabel = flipLabRejectionReasonLabel(pairRejectionReason);
-
-  const vocalHasStem  = vocal?.stemAsset != null;
-  const instrHasStem  = instr?.stemAsset != null;
+  const vocalStemInfo = flipLabStemStatusPresentation(vocalStemState);
+  const instrStemInfo = flipLabStemStatusPresentation(instrStemState);
+  const mediaPreparing = [vocalStemState.status, instrStemState.status].some((status) => (
+    status === 'checking' || status === 'queued' || status === 'processing'
+  ));
+  const notReadyMessage = rejectionLabel
+    ?? (mediaPreparing ? 'Preparing audition media…' : 'Both role stems must be ready to audition.');
 
   const InfoRow = ({ icon, label, value, valueColor, subtitle }: { icon: string; label: string; value: string; valueColor: string; subtitle?: string }) => (
     <div style={{
@@ -669,15 +686,20 @@ function CompatibilityPanel({
         <div style={{ padding: '10px 0', borderBottom: `1px solid ${BORDER_F}` }}>
           <div style={{ fontSize: 10, color: MUTED, marginBottom: 6 }}>Stem Availability</div>
           {[
-            { label: 'Vocal Stem Available', available: vocalHasStem, empty: !vocal },
-            { label: 'Instrumental Available', available: instrHasStem, empty: !instr },
-          ].map(({ label, available, empty }) => (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-              <div style={{
-                width: 7, height: 7, borderRadius: '50%',
-                background: empty ? '#4b5563' : available ? '#22c55e' : '#ef4444',
-              }} />
-              <span style={{ fontSize: 10, color: MUTED }}>{label}</span>
+            { label: 'Vocal', selected: Boolean(vocal), state: vocalStemState, info: vocalStemInfo },
+            { label: 'Instrumental', selected: Boolean(instr), state: instrStemState, info: instrStemInfo },
+          ].map(({ label, selected, state, info }) => (
+            <div key={label} style={{ marginBottom: 5 }} title={state.message ?? undefined}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: selected ? info.color : '#4b5563',
+                }} />
+                <span style={{ fontSize: 10, color: MUTED }}>{label}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: selected ? info.color : '#4b5563' }}>
+                  {selected ? info.label : 'Not selected'}
+                </span>
+              </div>
             </div>
           ))}
         </div>
@@ -718,7 +740,7 @@ function CompatibilityPanel({
           >
             <div style={{ fontSize: 13, fontWeight: 800, color: PRIMARY }}>Pair Not Ready</div>
             <div style={{ fontSize: 10, color: PRIMARY, opacity: 0.7, marginTop: 2 }}>
-              {rejectionLabel ?? 'This pair does not meet Roulette matching requirements.'}
+              {notReadyMessage}
             </div>
           </button>
         )}
@@ -919,6 +941,8 @@ export function FlipLabView() {
 
   const [selectedVocalId, setSelectedVocalId] = useState<string | null>(null);
   const [selectedInstrId, setSelectedInstrId] = useState<string | null>(null);
+  const [vocalStemState, setVocalStemState] = useState<FlipLabStemRoleState>(() => flipLabStemLifecycle.getState('vocal'));
+  const [instrStemState, setInstrStemState] = useState<FlipLabStemRoleState>(() => flipLabStemLifecycle.getState('instrumental'));
 
   const [vocalTab, setVocalTab] = useState<'suggested' | 'library'>('suggested');
   const [instrTab, setInstrTab] = useState<'suggested' | 'library'>('suggested');
@@ -949,6 +973,19 @@ export function FlipLabView() {
 
   const selectedVocal = useMemo(() => vocals.find(c => c.track.id === selectedVocalId) ?? null, [vocals, selectedVocalId]);
   const selectedInstr = useMemo(() => instrs.find(c => c.track.id === selectedInstrId) ?? null, [instrs, selectedInstrId]);
+
+  useEffect(() => flipLabStemLifecycle.subscribe((role, state) => {
+    if (role === 'vocal') setVocalStemState(state);
+    else setInstrStemState(state);
+  }), []);
+
+  useEffect(() => {
+    void flipLabStemLifecycle.select('vocal', selectedVocal?.track ?? null);
+  }, [selectedVocal]);
+
+  useEffect(() => {
+    void flipLabStemLifecycle.select('instrumental', selectedInstr?.track ?? null);
+  }, [selectedInstr]);
 
   // Suggested uses Roulette's canonical hard filters + ranking against the opposite role.
   const vocalSuggested = useMemo(
@@ -1093,6 +1130,8 @@ export function FlipLabView() {
           <CompatibilityPanel
             vocal={selectedVocal}
             instr={selectedInstr}
+            vocalStemState={vocalStemState}
+            instrStemState={instrStemState}
             keyRel={keyRel}
             bpmDiff={bpmDiff}
             pairRejectionReason={pairRejectionReason}
