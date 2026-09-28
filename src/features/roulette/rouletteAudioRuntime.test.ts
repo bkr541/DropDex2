@@ -528,11 +528,13 @@ describe('Roulette audio runtime', () => {
       vocal: selection('vocal-a', 'vocals'),
       instrumental: selection('instrumental-a', 'instrumental'),
     }, mix);
+    const firstGraph = audio.sources.slice(0, 2);
     await runtime.play({
       vocal: selection('vocal-b', 'vocals'),
       instrumental: selection('instrumental-a', 'instrumental'),
     }, mix);
 
+    expect(firstGraph.every((source) => source.stops.length > 0 && source.disconnected)).toBe(true);
     expect(prepare).toHaveBeenCalledTimes(2);
     expect(prepare.mock.calls[0][0].tempoRatio).toBeCloseTo(142 / 140, 10);
     expect(prepare.mock.calls[1][0].tempoRatio).toBeCloseTo(142 / 141, 10);
@@ -742,6 +744,136 @@ describe('Roulette audio runtime', () => {
     expect(audio.gains.every((gain) => gain.disconnected)).toBe(true);
     expect(audio.compressors.every((compressor) => compressor.disconnected)).toBe(true);
     expect(runtime.getDurationSeconds()).toBe(0);
+  });
+
+  it('pauses and resumes both prepared stems from one preserved shared transport position', async () => {
+    const audio = fakeAudioContext();
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      loadTrack: async (id) => track(id),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    await runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+    (audio.context as unknown as { currentTime: number }).currentTime = 12.05;
+
+    expect(runtime.pause()).toBeCloseTo(2, 8);
+    expect(runtime.isPlaying()).toBe(false);
+    expect(runtime.getPositionSeconds()).toBeCloseTo(2, 8);
+    expect(audio.sources.slice(0, 2).every((source) => source.stops.length > 0)).toBe(true);
+
+    expect(runtime.resume()).toBe(true);
+    expect(runtime.isPlaying()).toBe(true);
+    expect(audio.sources).toHaveLength(4);
+    expect(audio.sources[2].starts[0].when).toBe(audio.sources[3].starts[0].when);
+    expect(audio.sources[2].starts[0].offset).toBeCloseTo(2, 8);
+    expect(audio.sources[3].starts[0].offset).toBeCloseTo(2, 8);
+  });
+
+  it('seeks both decks by rescheduling them from the same shared session position', async () => {
+    const audio = fakeAudioContext();
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      loadTrack: async (id) => track(id),
+      loadBeatGrid: async (id) => grid(id, id === 'vocal-a' ? 1000 : 2500),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    await runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+    expect(runtime.seek(4)).toBe(4);
+
+    expect(audio.sources).toHaveLength(4);
+    expect(audio.sources[2].starts[0].when).toBe(audio.sources[3].starts[0].when);
+    expect(audio.sources[2].starts[0].offset).toBeCloseTo(5, 8);
+    expect(audio.sources[3].starts[0].offset).toBeCloseTo(6.5, 8);
+    expect(runtime.getPositionSeconds()).toBeCloseTo(4, 8);
+  });
+
+  it('uses the existing no-processing source-tempo path when SYNC is disabled', async () => {
+    const audio = fakeAudioContext();
+    const prepare = vi.fn(async () => buffer(30));
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      stretchedCache: new DecodedAudioCache<AudioBuffer>(4),
+      createTempoProcessor: () => ({ prepare, cancel: vi.fn(), dispose: vi.fn() }),
+      loadTrack: async (id) => track(id, id === 'vocal-a' ? 140 : 142),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    const result = await runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix, undefined, { tempoSyncEnabled: false });
+
+    expect(result.masterBpm).toBe(142);
+    expect(result.compatibility.tempoAdjustmentPercent).toEqual({ vocal: 0, instrumental: 0 });
+    expect(prepare).not.toHaveBeenCalled();
+    expect(audio.sources[0].starts[0].when).toBe(audio.sources[1].starts[0].when);
+  });
+
+  it('dispose stops both decks and closes the shared AudioContext', async () => {
+    const audio = fakeAudioContext();
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      loadTrack: async (id) => track(id),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    await runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+    await runtime.dispose();
+
+    expect(audio.sources.slice(0, 2).every((source) => source.stops.length > 0 && source.disconnected)).toBe(true);
+    expect(audio.context.close).toHaveBeenCalledTimes(1);
+    expect(runtime.getDurationSeconds()).toBe(0);
+    expect(runtime.isPlaying()).toBe(false);
   });
 
 });

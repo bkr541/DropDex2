@@ -28,6 +28,11 @@ export interface RouletteTempoPlan {
   instrumental: RouletteDeckTempoPlan;
 }
 
+export interface RouletteTempoPlanOptions {
+  /** When false, retain one shared transport clock but leave both decks at source tempo. */
+  syncEnabled?: boolean;
+}
+
 function validBpm(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
@@ -78,6 +83,7 @@ function deckPlan(
 export function resolveRouletteTempoPlan(
   vocalBpm: number | null | undefined,
   instrumentalBpm: number | null | undefined,
+  options: RouletteTempoPlanOptions = {},
 ): RouletteTempoPlan {
   if (!validBpm(vocalBpm) || !validBpm(instrumentalBpm)) {
     throw new Error('Roulette tempo sync requires BPM metadata for both parent tracks.');
@@ -85,6 +91,15 @@ export function resolveRouletteTempoPlan(
 
   const masterRole: RouletteSourceRole = 'instrumental';
   const masterBpm = instrumentalBpm;
+  if (options.syncEnabled === false) {
+    return {
+      masterRole,
+      masterBpm,
+      vocal: deckPlan('vocal', vocalBpm, vocalBpm),
+      instrumental: deckPlan('instrumental', instrumentalBpm, instrumentalBpm),
+    };
+  }
+
   return {
     masterRole,
     masterBpm,

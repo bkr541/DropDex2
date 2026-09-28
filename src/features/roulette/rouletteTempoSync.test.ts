@@ -19,6 +19,16 @@ describe('Roulette pitch-locked tempo plan', () => {
     expect(plan.instrumental.requiresPitchLockedProcessing).toBe(false);
   });
 
+
+  it('keeps the shared instrumental transport BPM while bypassing pitch-locked processing when SYNC is disabled', () => {
+    const plan = resolveRouletteTempoPlan(140, 142, { syncEnabled: false });
+    expect(plan.masterBpm).toBe(142);
+    expect(plan.vocal.tempoRatio).toBe(1);
+    expect(plan.vocal.targetBpm).toBe(140);
+    expect(plan.vocal.requiresPitchLockedProcessing).toBe(false);
+    expect(plan.instrumental.tempoRatio).toBe(1);
+    expect(plan.instrumental.requiresPitchLockedProcessing).toBe(false);
+  });
   it('keeps ratio=1.0 on the zero-processing path', () => {
     const plan = resolveRouletteTempoPlan(142, 142);
     expect(plan.vocal.tempoRatio).toBe(1);

@@ -16,6 +16,7 @@ import {
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
 import { useAppRouter } from '../../navigation/useAppRouter';
+import { Dialog } from '../ui/feedback';
 import type { RekordboxTrack } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { fetchTrackBeatGrid, fetchTrackPhrases, type BeatGridRow, type PhraseRow } from '../../lib/queries/analysisData';
@@ -38,6 +39,11 @@ import {
   type FlipLabAlignmentState,
   type FlipLabTimelineSegment,
 } from './flipLabAnalysis';
+import {
+  resolveFlipLabPlayheadPercent,
+  useFlipLabAudioRuntime,
+  type FlipLabPlaybackState,
+} from './useFlipLabAudioRuntime';
 
 // ── Color tokens ──────────────────────────────────────────────────────────────
 const BG       = 'var(--color-background)';
@@ -760,6 +766,15 @@ function TopWaveformSection({
   instrAnalysis,
   vocalWindow,
   instrWindow,
+  playback,
+  masterBpm,
+  playbackReady,
+  onTogglePlayPause,
+  onSeekStart,
+  onSeekBackwardBar,
+  onSeekForwardBar,
+  onSeekEnd,
+  onToggleSync,
 }: {
   vocalTrack: RekordboxTrack | null;
   instrTrack: RekordboxTrack | null;
@@ -769,6 +784,15 @@ function TopWaveformSection({
   instrAnalysis: FlipLabTrackAnalysisState;
   vocalWindow: RoulettePreviewWindow | null;
   instrWindow: RoulettePreviewWindow | null;
+  playback: FlipLabPlaybackState;
+  masterBpm: number | null;
+  playbackReady: boolean;
+  onTogglePlayPause: () => void;
+  onSeekStart: () => void;
+  onSeekBackwardBar: () => void;
+  onSeekForwardBar: () => void;
+  onSeekEnd: () => void;
+  onToggleSync: () => void;
 }) {
   const vocalSections = useMemo(() => (
     vocalAnalysis.status === 'loaded'
@@ -786,6 +810,26 @@ function TopWaveformSection({
     vocalWindow,
     instrWindow,
   ), [vocalAnalysis, instrAnalysis, vocalWindow, instrWindow]);
+  const vocalPlayheadPercent = resolveFlipLabPlayheadPercent({
+    role: 'vocal',
+    positionSeconds: playback.positionSeconds,
+    durationSeconds: playback.durationSeconds,
+    trackDurationMs: trackDurationMs(vocalTrack),
+    window: vocalWindow,
+    compatibility: playback.result?.compatibility ?? null,
+    syncEnabled: playback.syncEnabled,
+  });
+  const instrPlayheadPercent = resolveFlipLabPlayheadPercent({
+    role: 'instrumental',
+    positionSeconds: playback.positionSeconds,
+    durationSeconds: playback.durationSeconds,
+    trackDurationMs: trackDurationMs(instrTrack),
+    window: instrWindow,
+    compatibility: playback.result?.compatibility ?? null,
+    syncEnabled: playback.syncEnabled,
+  });
+  const transportAvailable = playback.durationSeconds > 0;
+  const playDisabled = playback.status === 'loading' || (!playbackReady && playback.status !== 'playing' && playback.status !== 'paused');
 
   return (
     <>
@@ -836,6 +880,15 @@ function TopWaveformSection({
           showCenterLine
           surface={false}
         />
+        {transportAvailable && (
+          <div
+            data-testid="flip-lab-vocal-playhead"
+            style={{
+              position: 'absolute', top: 0, bottom: 0, left: `${vocalPlayheadPercent}%`, width: 1,
+              background: SECONDARY, boxShadow: `0 0 8px ${SECONDARY}`, pointerEvents: 'none', zIndex: 3,
+            }}
+          />
+        )}
       </div>
 
       {/* Instrumental section labels */}
@@ -852,6 +905,15 @@ function TopWaveformSection({
           showCenterLine
           surface={false}
         />
+        {transportAvailable && (
+          <div
+            data-testid="flip-lab-instrumental-playhead"
+            style={{
+              position: 'absolute', top: 0, bottom: 0, left: `${instrPlayheadPercent}%`, width: 1,
+              background: PRIMARY, boxShadow: `0 0 8px ${PRIMARY}`, pointerEvents: 'none', zIndex: 3,
+            }}
+          />
+        )}
       </div>
 
       {/* Instrumental track header */}
@@ -890,31 +952,51 @@ function TopWaveformSection({
           borderRight: `1px solid ${BORDER_F}`, minWidth: 180,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button style={{
-              padding: '4px 10px', borderRadius: 6, fontSize: 8, fontWeight: 700, cursor: 'pointer',
-              background: SURFACE, border: `1px solid ${BORDER_S}`, color: SECONDARY,
-            }}>⊞ SYNC ▾</button>
+            <button
+              type="button"
+              aria-pressed={playback.syncEnabled}
+              onClick={onToggleSync}
+              style={{
+                padding: '4px 10px', borderRadius: 6, fontSize: 8, fontWeight: 700, cursor: 'pointer',
+                background: playback.syncEnabled ? `${SECONDARY}18` : SURFACE,
+                border: `1px solid ${playback.syncEnabled ? `${SECONDARY}55` : BORDER_S}`,
+                color: playback.syncEnabled ? SECONDARY : MUTED,
+              }}
+            >⊞ SYNC</button>
             <div>
               <div style={{ fontSize: 7, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase' }}>BPM</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                <div style={{ fontSize: 16, fontWeight: 900, color: FG, fontVariantNumeric: 'tabular-nums' }}>125.0</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span style={{ fontSize: 7, color: MUTED, cursor: 'pointer' }}>▲</span>
-                  <span style={{ fontSize: 7, color: MUTED, cursor: 'pointer' }}>▼</span>
-                </div>
+                <div
+                  data-testid="flip-lab-master-bpm"
+                  style={{ fontSize: 16, fontWeight: 900, color: FG, fontVariantNumeric: 'tabular-nums' }}
+                >{masterBpm != null ? masterBpm.toFixed(1) : '—'}</div>
               </div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {(['⏮', '⏪', '▶', '⏩', '⏭'] as const).map((c, i) => (
-              <button key={i} style={{
-                width: i === 2 ? 36 : 26, height: i === 2 ? 36 : 26, borderRadius: '50%',
-                background: i === 2 ? 'var(--color-control-green)' : CTRL_BG,
-                border: `1px solid ${i === 2 ? 'var(--color-control-green)' : CTRL_BDR}`,
-                color: i === 2 ? '#000' : FG,
-                fontSize: i === 2 ? 13 : 8, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>{c}</button>
+            {[
+              { label: '⏮', title: 'Jump to audition start', onClick: onSeekStart, disabled: !transportAvailable },
+              { label: '⏪', title: 'Seek one bar backward', onClick: onSeekBackwardBar, disabled: !transportAvailable },
+              { label: playback.status === 'playing' ? '⏸' : '▶', title: playback.status === 'playing' ? 'Pause' : 'Play', onClick: onTogglePlayPause, disabled: playDisabled },
+              { label: '⏩', title: 'Seek one bar forward', onClick: onSeekForwardBar, disabled: !transportAvailable },
+              { label: '⏭', title: 'Jump to audition end', onClick: onSeekEnd, disabled: !transportAvailable },
+            ].map((control, i) => (
+              <button
+                key={control.title}
+                type="button"
+                title={control.title}
+                disabled={control.disabled}
+                onClick={control.onClick}
+                style={{
+                  width: i === 2 ? 36 : 26, height: i === 2 ? 36 : 26, borderRadius: '50%',
+                  background: i === 2 ? 'var(--color-control-green)' : CTRL_BG,
+                  border: `1px solid ${i === 2 ? 'var(--color-control-green)' : CTRL_BDR}`,
+                  color: i === 2 ? '#000' : FG,
+                  fontSize: i === 2 ? 13 : 8, cursor: control.disabled ? 'not-allowed' : 'pointer',
+                  opacity: control.disabled ? 0.4 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >{control.label}</button>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -930,6 +1012,9 @@ function TopWaveformSection({
               <div style={{ position: 'absolute', right: 8, top: -4, width: 12, height: 12, borderRadius: '50%', background: FG, border: `2px solid ${BORDER_S}` }} />
             </div>
           </div>
+          {playback.error && (
+            <div style={{ maxWidth: 260, textAlign: 'center', fontSize: 8, color: '#ef4444' }}>{playback.error}</div>
+          )}
         </div>
 
         {/* Instrumental EQ */}
@@ -970,6 +1055,7 @@ export function FlipLabView() {
   const [instrTab, setInstrTab] = useState<'suggested' | 'library'>('suggested');
   const [vocalSearch, setVocalSearch] = useState('');
   const [instrSearch, setInstrSearch] = useState('');
+  const [pendingSelection, setPendingSelection] = useState<{ role: 'vocal' | 'instrumental'; trackId: string } | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -1088,17 +1174,43 @@ export function FlipLabView() {
     [selectedVocal, selectedInstr],
   );
 
-  const handleSelectVocal = useCallback((trackId: string) => {
-    const next = applyFlipLabSelection('vocal', trackId, selectedVocalId, selectedInstrId);
+  const audio = useFlipLabAudioRuntime({
+    vocalTrack: selectedVocal?.track ?? null,
+    instrumentalTrack: selectedInstr?.track ?? null,
+    vocalStemState,
+    instrumentalStemState: instrStemState,
+    pairCompatible: selectedVocal !== null && selectedInstr !== null && pairRejectionReason === null,
+  });
+
+  const commitSelection = useCallback((role: 'vocal' | 'instrumental', trackId: string) => {
+    audio.stop({ clearResult: true });
+    const next = applyFlipLabSelection(role, trackId, selectedVocalId, selectedInstrId);
     setSelectedVocalId(next.vocalId);
     setSelectedInstrId(next.instrumentalId);
-  }, [selectedVocalId, selectedInstrId]);
+  }, [audio.stop, selectedVocalId, selectedInstrId]);
+
+  const requestSelection = useCallback((role: 'vocal' | 'instrumental', trackId: string) => {
+    if (audio.playback.status === 'playing') {
+      setPendingSelection({ role, trackId });
+      return;
+    }
+    commitSelection(role, trackId);
+  }, [audio.playback.status, commitSelection]);
+
+  const handleSelectVocal = useCallback((trackId: string) => {
+    requestSelection('vocal', trackId);
+  }, [requestSelection]);
 
   const handleSelectInstrumental = useCallback((trackId: string) => {
-    const next = applyFlipLabSelection('instrumental', trackId, selectedVocalId, selectedInstrId);
-    setSelectedVocalId(next.vocalId);
-    setSelectedInstrId(next.instrumentalId);
-  }, [selectedVocalId, selectedInstrId]);
+    requestSelection('instrumental', trackId);
+  }, [requestSelection]);
+
+  const continuePendingSelection = useCallback(() => {
+    const pending = pendingSelection;
+    if (!pending) return;
+    setPendingSelection(null);
+    commitSelection(pending.role, pending.trackId);
+  }, [commitSelection, pendingSelection]);
 
   const handleOpenDropLab = useCallback(() => {
     if (!selectedVocal || !selectedInstr) return;
@@ -1131,6 +1243,15 @@ export function FlipLabView() {
         instrAnalysis={instrAnalysis}
         vocalWindow={vocalStemState.window}
         instrWindow={instrStemState.window}
+        playback={audio.playback}
+        masterBpm={audio.masterBpm}
+        playbackReady={audio.ready}
+        onTogglePlayPause={() => { void audio.togglePlayPause(); }}
+        onSeekStart={audio.seekToStart}
+        onSeekBackwardBar={() => audio.seekByBars(-1)}
+        onSeekForwardBar={() => audio.seekByBars(1)}
+        onSeekEnd={audio.seekToEnd}
+        onToggleSync={audio.toggleSync}
       />
 
       {/* ── Bottom: 3-column selector panel ── */}
@@ -1190,6 +1311,18 @@ export function FlipLabView() {
           />
         </div>
       )}
+      <Dialog
+        open={pendingSelection !== null}
+        title="Stop Flip Lab playback?"
+        onClose={() => setPendingSelection(null)}
+        closeOnBackdrop
+        actions={[
+          { label: 'Cancel', onClick: () => setPendingSelection(null), variant: 'neutral' },
+          { label: 'Continue', onClick: continuePendingSelection, variant: 'primary' },
+        ]}
+      >
+        <p>Changing a source will stop the current dual-stem audition.</p>
+      </Dialog>
     </div>
   );
 }

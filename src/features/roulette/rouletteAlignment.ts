@@ -16,6 +16,10 @@ export interface RouletteDeckAlignment {
   sourceOffsetSeconds: number;
 }
 
+export interface RouletteAlignmentOptions {
+  tempoSyncEnabled?: boolean;
+}
+
 export interface RouletteAlignment {
   vocal: RouletteDeckAlignment;
   instrumental: RouletteDeckAlignment;
@@ -48,6 +52,7 @@ export function firstRouletteDownbeat(beatGrid: BeatGridRow | null): BeatEntry |
 export function resolveRouletteAlignment(
   vocal: RouletteAlignmentSource,
   instrumental: RouletteAlignmentSource,
+  options: RouletteAlignmentOptions = {},
 ): RouletteAlignment {
   if (!validBpm(vocal.track.bpm) || !validBpm(instrumental.track.bpm)) {
     throw new Error('Roulette playback requires BPM metadata for both parent tracks.');
@@ -68,7 +73,9 @@ export function resolveRouletteAlignment(
     throw new Error('Roulette playback requires a resolved musical anchor for both parent tracks.');
   }
 
-  const tempo = resolveRouletteTempoPlan(vocal.track.bpm, instrumental.track.bpm);
+  const tempo = resolveRouletteTempoPlan(vocal.track.bpm, instrumental.track.bpm, {
+    syncEnabled: options.tempoSyncEnabled !== false,
+  });
   const masterBpm = tempo.masterBpm;
   return {
     vocal: {

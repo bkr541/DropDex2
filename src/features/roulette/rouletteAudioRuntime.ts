@@ -77,17 +77,31 @@ export interface RoulettePlaybackResult {
   compatibility: RouletteCompatibilitySummary;
 }
 
+export interface RoulettePlaybackOptions {
+  /** Reuse Roulette's pitch-locked WSOLA path by default; false keeps source tempo on both decks. */
+  tempoSyncEnabled?: boolean;
+}
+
 export interface RouletteAudioRuntime {
-  prepare(sources: RoulettePlaybackSources, signal?: AbortSignal): Promise<RoulettePlaybackResult>;
+  prepare(
+    sources: RoulettePlaybackSources,
+    signal?: AbortSignal,
+    options?: RoulettePlaybackOptions,
+  ): Promise<RoulettePlaybackResult>;
   play(
     sources: RoulettePlaybackSources,
     mix: RouletteMixState,
     onEnded?: () => void,
+    options?: RoulettePlaybackOptions,
   ): Promise<RoulettePlaybackResult>;
+  pause(): number;
+  resume(): boolean;
+  seek(positionSeconds: number): number;
   stop(): void;
   setMix(mix: RouletteMixState): void;
   getPositionSeconds(): number;
   getDurationSeconds(): number;
+  isPlaying(): boolean;
   clearCache(): void;
   dispose(): Promise<void>;
 }
@@ -236,8 +250,23 @@ export function createRouletteAudioRuntime(
   let masterLimiterNode: DynamicsCompressorNode | null = null;
   let startAt = 0;
   let durationSeconds = 0;
+  let scheduledStartPositionSeconds = 0;
+  let transportPositionSeconds = 0;
+  let graphPlaying = false;
+  let graphGeneration = 0;
+
+  type PreparedDeck = { buffer: AudioBuffer; offsetSeconds: number };
+  interface PreparedPlaybackSession {
+    vocal: PreparedDeck;
+    instrumental: PreparedDeck;
+    result: RoulettePlaybackResult;
+    mix: RouletteMixState;
+    onEnded?: () => void;
+  }
+  let preparedPlayback: PreparedPlaybackSession | null = null;
 
   const stopActiveGraph = () => {
+    graphGeneration += 1;
     stopAndDisconnectAudioNodes(scheduledNodes);
     scheduledNodes = [];
     disconnectNode(deckGainNodes.vocal ?? null);
@@ -248,7 +277,23 @@ export function createRouletteAudioRuntime(
     masterGainNode = null;
     masterLimiterNode = null;
     startAt = 0;
+    scheduledStartPositionSeconds = transportPositionSeconds;
+    graphPlaying = false;
+  };
+
+  const getPositionSeconds = () => {
+    if (!graphPlaying || !audioContext || startAt <= 0 || durationSeconds <= 0) {
+      return Math.max(0, Math.min(durationSeconds, transportPositionSeconds));
+    }
+    const elapsed = Math.max(0, audioContext.currentTime - startAt);
+    return Math.max(0, Math.min(durationSeconds, scheduledStartPositionSeconds + elapsed));
+  };
+
+  const clearPreparedPlayback = () => {
+    preparedPlayback = null;
     durationSeconds = 0;
+    transportPositionSeconds = 0;
+    scheduledStartPositionSeconds = 0;
   };
 
   const stop = () => {
@@ -257,14 +302,118 @@ export function createRouletteAudioRuntime(
     loadController = null;
     tempoProcessor.cancel();
     stopActiveGraph();
+    clearPreparedPlayback();
   };
 
   const setMix = (mix: RouletteMixState) => {
+    if (preparedPlayback) preparedPlayback.mix = mix;
     if (!audioContext) return;
     const vocalNode = deckGainNodes.vocal;
     const instrumentalNode = deckGainNodes.instrumental;
     if (vocalNode) setGain(vocalNode, effectiveDeckGain('vocal', mix), audioContext);
     if (instrumentalNode) setGain(instrumentalNode, effectiveDeckGain('instrumental', mix), audioContext);
+  };
+
+  const schedulePreparedPlayback = (positionSeconds: number): boolean => {
+    const session = preparedPlayback;
+    const context = audioContext;
+    if (!session || !context || durationSeconds <= 0) return false;
+
+    const position = Math.max(0, Math.min(durationSeconds, positionSeconds));
+    transportPositionSeconds = position;
+    stopActiveGraph();
+    transportPositionSeconds = position;
+    if (position >= durationSeconds) return false;
+
+    const masterGain = context.createGain();
+    masterGain.gain.value = ROULETTE_MASTER_HEADROOM;
+    const createLimiter = context.createDynamicsCompressor?.bind(context);
+    const limiter = createLimiter ? createLimiter() : null;
+    if (limiter) {
+      limiter.threshold.value = -1;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.1;
+      masterGain.connect(limiter);
+      limiter.connect(context.destination);
+      masterLimiterNode = limiter;
+    } else {
+      masterGain.connect(context.destination);
+    }
+
+    const vocalGain = context.createGain();
+    const instrumentalGain = context.createGain();
+    vocalGain.connect(masterGain);
+    instrumentalGain.connect(masterGain);
+    deckGainNodes = { vocal: vocalGain, instrumental: instrumentalGain };
+    masterGainNode = masterGain;
+    setMix(session.mix);
+
+    const remaining = durationSeconds - position;
+    let scheduled: ScheduledAudioClips;
+    try {
+      scheduled = dependencies.scheduleClips(
+        context,
+        [
+          {
+            buffer: session.vocal.buffer,
+            offsetSeconds: session.vocal.offsetSeconds + position,
+            durationSeconds: remaining,
+            startOffsetSeconds: 0,
+            destination: vocalGain,
+          },
+          {
+            buffer: session.instrumental.buffer,
+            offsetSeconds: session.instrumental.offsetSeconds + position,
+            durationSeconds: remaining,
+            startOffsetSeconds: 0,
+            destination: instrumentalGain,
+          },
+        ],
+        { leadInSeconds: 0.05 },
+      );
+    } catch (error) {
+      stopActiveGraph();
+      throw error;
+    }
+
+    scheduledNodes = scheduled.nodes;
+    startAt = scheduled.startAt;
+    scheduledStartPositionSeconds = position;
+    graphPlaying = true;
+    const thisGraphGeneration = graphGeneration;
+    const finalNode = scheduled.nodes.at(-1);
+    if (finalNode) {
+      finalNode.onended = () => {
+        if (thisGraphGeneration !== graphGeneration || !scheduledNodes.includes(finalNode)) return;
+        transportPositionSeconds = durationSeconds;
+        stopActiveGraph();
+        session.onEnded?.();
+      };
+    }
+    return true;
+  };
+
+  const pause = (): number => {
+    transportPositionSeconds = getPositionSeconds();
+    stopActiveGraph();
+    return transportPositionSeconds;
+  };
+
+  const resume = (): boolean => {
+    if (!preparedPlayback || graphPlaying) return graphPlaying;
+    const position = transportPositionSeconds >= durationSeconds ? 0 : transportPositionSeconds;
+    return schedulePreparedPlayback(position);
+  };
+
+  const seek = (positionSeconds: number): number => {
+    if (!preparedPlayback || durationSeconds <= 0) return 0;
+    const next = Math.max(0, Math.min(durationSeconds, Number.isFinite(positionSeconds) ? positionSeconds : 0));
+    const wasPlaying = graphPlaying;
+    transportPositionSeconds = next;
+    if (wasPlaying) schedulePreparedPlayback(next);
+    return next;
   };
 
   const resolveSelectionMedia = async (
@@ -314,6 +463,7 @@ export function createRouletteAudioRuntime(
     sources: RoulettePlaybackSources,
     mix: RouletteMixState,
     onEnded?: () => void,
+    options: RoulettePlaybackOptions = {},
   ): Promise<RoulettePlaybackResult> => {
     stop();
     const generation = ++activeGeneration;
@@ -388,6 +538,7 @@ export function createRouletteAudioRuntime(
     const alignment = resolveRouletteAlignment(
       { track: vocalTrack, beatGrid: vocalGrid, musicalAnchor: vocalAnchor },
       { track: instrumentalTrack, beatGrid: instrumentalGrid, musicalAnchor: instrumentalAnchor },
+      { tempoSyncEnabled: options.tempoSyncEnabled !== false },
     );
 
     const context = audioContext ?? dependencies.getAudioContext();
@@ -453,7 +604,6 @@ export function createRouletteAudioRuntime(
       throw new Error('The resolved Roulette musical window falls outside one of the decoded stems.');
     }
 
-    type PreparedDeck = { buffer: AudioBuffer; offsetSeconds: number };
     const prepareDeck = async (
       role: RouletteSourceRole,
       buffer: AudioBuffer,
@@ -525,81 +675,10 @@ export function createRouletteAudioRuntime(
     };
     const barFractions = buildRouletteBarFractions(playbackDuration, alignment.barDurationSeconds);
 
-    const masterGain = context.createGain();
-    masterGain.gain.value = ROULETTE_MASTER_HEADROOM;
-    const createLimiter = context.createDynamicsCompressor?.bind(context);
-    const limiter = createLimiter ? createLimiter() : null;
-    if (limiter) {
-      limiter.threshold.value = -1;
-      limiter.knee.value = 0;
-      limiter.ratio.value = 20;
-      limiter.attack.value = 0.003;
-      limiter.release.value = 0.1;
-      masterGain.connect(limiter);
-      limiter.connect(context.destination);
-      masterLimiterNode = limiter;
-    } else {
-      masterGain.connect(context.destination);
-    }
-    const vocalGain = context.createGain();
-    const instrumentalGain = context.createGain();
-    vocalGain.connect(masterGain);
-    instrumentalGain.connect(masterGain);
-    deckGainNodes = { vocal: vocalGain, instrumental: instrumentalGain };
-    masterGainNode = masterGain;
-    setMix(mix);
-
-    let scheduled: ScheduledAudioClips;
-    try {
-      scheduled = dependencies.scheduleClips(
-        context,
-        [
-          {
-            buffer: preparedVocal.buffer,
-            offsetSeconds: preparedVocal.offsetSeconds,
-            durationSeconds: playbackDuration,
-            startOffsetSeconds: 0,
-            destination: vocalGain,
-          },
-          {
-            buffer: preparedInstrumental.buffer,
-            offsetSeconds: preparedInstrumental.offsetSeconds,
-            durationSeconds: playbackDuration,
-            startOffsetSeconds: 0,
-            destination: instrumentalGain,
-          },
-        ],
-        { leadInSeconds: 0.05 },
-      );
-    } catch (error) {
-      stopActiveGraph();
-      throw error;
-    }
-    scheduledNodes = scheduled.nodes;
-    try {
-      throwIfCancelled(generation, activeGeneration, controller.signal);
-    } catch (error) {
-      stopActiveGraph();
-      throw error;
-    }
-
-    startAt = scheduled.startAt;
-    durationSeconds = playbackDuration;
-    loadController = null;
-
-    const finalNode = scheduled.nodes.at(-1);
-    if (finalNode) {
-      finalNode.onended = () => {
-        if (generation !== activeGeneration || !scheduledNodes.includes(finalNode)) return;
-        stopActiveGraph();
-        onEnded?.();
-      };
-    }
-
-    return {
+    const result: RoulettePlaybackResult = {
       masterBpm: alignment.masterBpm,
       durationSeconds: playbackDuration,
-      startAt: scheduled.startAt,
+      startAt: 0,
       waveforms,
       barFractions,
       anchors: { vocal: vocalAnchor, instrumental: instrumentalAnchor },
@@ -621,9 +700,35 @@ export function createRouletteAudioRuntime(
         },
       },
     };
+
+    durationSeconds = playbackDuration;
+    transportPositionSeconds = 0;
+    preparedPlayback = {
+      vocal: preparedVocal,
+      instrumental: preparedInstrumental,
+      result,
+      mix,
+      onEnded,
+    };
+    loadController = null;
+
+    try {
+      schedulePreparedPlayback(0);
+      throwIfCancelled(generation, activeGeneration, controller.signal);
+    } catch (error) {
+      stopActiveGraph();
+      clearPreparedPlayback();
+      throw error;
+    }
+    result.startAt = startAt;
+    return result;
   };
 
-  const prepare = async (sources: RoulettePlaybackSources, signal?: AbortSignal): Promise<RoulettePlaybackResult> => {
+  const prepare = async (
+    sources: RoulettePlaybackSources,
+    signal?: AbortSignal,
+    options: RoulettePlaybackOptions = {},
+  ): Promise<RoulettePlaybackResult> => {
     if (signal?.aborted) throw abortError();
     const abort = () => stop();
     signal?.addEventListener('abort', abort, { once: true });
@@ -631,7 +736,7 @@ export function createRouletteAudioRuntime(
       const result = await play(sources, {
         vocal: { gain: 0, muted: true, solo: false },
         instrumental: { gain: 0, muted: true, solo: false },
-      });
+      }, undefined, options);
       if (signal?.aborted) throw abortError();
       return result;
     } finally {
@@ -646,13 +751,14 @@ export function createRouletteAudioRuntime(
   return {
     prepare,
     play,
+    pause,
+    resume,
+    seek,
     stop,
     setMix,
-    getPositionSeconds: () => {
-      if (!audioContext || startAt <= 0 || durationSeconds <= 0) return 0;
-      return Math.max(0, Math.min(durationSeconds, audioContext.currentTime - startAt));
-    },
+    getPositionSeconds,
     getDurationSeconds: () => durationSeconds,
+    isPlaying: () => graphPlaying,
     clearCache: () => {
       dependencies.decodedCache.clear();
       dependencies.stretchedCache.clear();
