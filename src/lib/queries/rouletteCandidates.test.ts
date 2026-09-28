@@ -4,6 +4,8 @@ import { fetchTracksVocalAnalysis, type BeatGridRow } from './analysisData';
 
 const trackRows: RekordboxTrack[] = [];
 let rouletteStemAssetError: string | null = null;
+let rekordboxTrackRangeCalls = 0;
+const rekordboxTrackSelects: string[] = [];
 
 vi.mock('../desktop/installationIdentity', () => ({
   getCurrentInstallationId: vi.fn(async () => 'installation-1'),
@@ -44,6 +46,7 @@ function grid(trackId: string): BeatGridRow {
 
 vi.mock('./analysisData', () => ({
   fetchTrackBeatGridsLightweight: vi.fn(async (ids: string[]) => new Map(ids.map((id) => [id, grid(id)]))),
+  fetchTrackPhraseCounts: vi.fn(async (ids: string[]) => new Map(ids.map((id) => [id, 1]))),
   fetchTracksPhrases: vi.fn(async (ids: string[]) => new Map(ids.map((id) => [id, [{ phrase_index: 0 }]]))),
   fetchTracksVocalAnalysis: vi.fn(async (ids: string[]) => new Map(ids.flatMap((id) => {
     if (id.startsWith('missing-vocal')) return [];
@@ -104,21 +107,28 @@ vi.mock('../supabase', () => ({
     },
     from: vi.fn((table: string) => {
       const chain: Record<string, unknown> = {};
-      for (const method of ['select', 'eq', 'or', 'order']) {
+      chain.select = vi.fn((columns: string) => {
+        if (table === 'rekordbox_tracks') rekordboxTrackSelects.push(columns);
+        return chain;
+      });
+      for (const method of ['eq', 'or', 'order', 'in', 'abortSignal']) {
         chain[method] = vi.fn(() => chain);
       }
-      chain.range = vi.fn(async () => ({
-        data: table === 'rekordbox_tracks' ? trackRows : [],
-        error: table === 'roulette_stem_assets' && rouletteStemAssetError
-          ? { message: rouletteStemAssetError }
-          : null,
-      }));
+      chain.range = vi.fn(async () => {
+        if (table === 'rekordbox_tracks') rekordboxTrackRangeCalls += 1;
+        return {
+          data: table === 'rekordbox_tracks' ? trackRows : [],
+          error: table === 'roulette_stem_assets' && rouletteStemAssetError
+            ? { message: rouletteStemAssetError }
+            : null,
+        };
+      });
       return chain;
     }),
   },
 }));
 
-import { fetchRouletteAvailabilitySnapshot, fetchRouletteCandidateAnalysis, fetchRouletteCandidateReadiness } from './rouletteCandidates';
+import { fetchRouletteAvailabilitySnapshot, fetchRouletteCandidateAnalysis, fetchRouletteCandidatePools, fetchRouletteCandidateReadiness } from './rouletteCandidates';
 
 function track(id: string, bpm: number, camelot: string): RekordboxTrack {
   return {
@@ -151,6 +161,24 @@ describe('Roulette candidate query boundary', () => {
   beforeEach(() => {
     trackRows.length = 0;
     rouletteStemAssetError = null;
+    rekordboxTrackRangeCalls = 0;
+    rekordboxTrackSelects.length = 0;
+  });
+
+  it('loads common candidate metadata once for both roles and uses a lean track projection', async () => {
+    trackRows.push(
+      track('vocal-1', 140, '11A'),
+      track('instrumental-1', 142, '11B'),
+    );
+
+    const pools = await fetchRouletteCandidatePools('import-1', { verifyLocalStemReadiness: false });
+
+    expect(pools.vocals.map((candidate) => candidate.track.id)).toEqual(['vocal-1']);
+    expect(pools.instrumentals).toHaveLength(2);
+    expect(rekordboxTrackRangeCalls).toBe(1);
+    expect(rekordboxTrackSelects).toHaveLength(1);
+    expect(rekordboxTrackSelects[0]).not.toBe('*');
+    expect(rekordboxTrackSelects[0]).toContain('file_path_normalized');
   });
 
   it('derives readiness from imported Rekordbox metadata even when no stem rows exist', async () => {

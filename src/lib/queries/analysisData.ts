@@ -300,16 +300,20 @@ function mapVocalAnalysisRow(raw: unknown): VocalAnalysisRow {
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 /** Fetch the beat grid for a single track. Returns null when not yet parsed. */
-export async function fetchTrackBeatGrid(trackId: string): Promise<BeatGridRow | null> {
-  const { data, error } = await supabase
+export async function fetchTrackBeatGrid(
+  trackId: string,
+  signal?: AbortSignal,
+): Promise<BeatGridRow | null> {
+  let query = supabase
     .from('rekordbox_track_beat_grids')
     .select(
       'id, import_id, track_id, source_tag, beats, beat_count, downbeat_count, ' +
       'bar_count, first_beat_ms, first_downbeat_ms, minimum_bpm, maximum_bpm, ' +
       'is_variable_tempo, parser_version'
     )
-    .eq('track_id', trackId)
-    .maybeSingle();
+    .eq('track_id', trackId);
+  if (signal) query = query.abortSignal(signal);
+  const { data, error } = await query.maybeSingle();
 
   if (error) throw new Error(error.message);
   if (data == null) return null;
@@ -348,14 +352,17 @@ export async function fetchTrackBeatGrids(trackIds: string[]): Promise<Map<strin
  * querying hundreds of tracks at once. Returns BeatGridRow with `beats: []`;
  * callers must tolerate an empty beats array and use `beat_count` instead.
  */
-export async function fetchTrackBeatGridsLightweight(trackIds: string[]): Promise<Map<string, BeatGridRow>> {
+export async function fetchTrackBeatGridsLightweight(
+  trackIds: string[],
+  signal?: AbortSignal,
+): Promise<Map<string, BeatGridRow>> {
   const uniqueIds = [...new Set(trackIds)].filter(Boolean);
   const result = new Map<string, BeatGridRow>();
   if (uniqueIds.length === 0) return result;
 
   const chunks = chunkIds(uniqueIds, WAVEFORM_CHUNK_SIZE);
   await Promise.all(chunks.map(async (chunk) => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('rekordbox_track_beat_grids')
       .select(
         'id, import_id, track_id, source_tag, beat_count, downbeat_count, ' +
@@ -363,6 +370,8 @@ export async function fetchTrackBeatGridsLightweight(trackIds: string[]): Promis
         'is_variable_tempo, parser_version'
       )
       .in('track_id', chunk);
+    if (signal) query = query.abortSignal(signal);
+    const { data, error } = await query;
 
     if (error) throw new Error(error.message);
     for (const row of data ?? []) {
@@ -655,8 +664,11 @@ export async function fetchTrackPreviewWaveforms(
 }
 
 /** Fetch all phrase segments for a single track, ordered by phrase index. */
-export async function fetchTrackPhrases(trackId: string): Promise<PhraseRow[]> {
-  const { data, error } = await supabase
+export async function fetchTrackPhrases(
+  trackId: string,
+  signal?: AbortSignal,
+): Promise<PhraseRow[]> {
+  let query = supabase
     .from('rekordbox_track_phrases')
     .select(
       'id, import_id, track_id, phrase_index, source_mood, source_kind, source_bank, ' +
@@ -665,6 +677,8 @@ export async function fetchTrackPhrases(trackId: string): Promise<PhraseRow[]> {
     )
     .eq('track_id', trackId)
     .order('phrase_index', { ascending: true });
+  if (signal) query = query.abortSignal(signal);
+  const { data, error } = await query;
 
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => mapPhraseRow(row));
@@ -689,6 +703,7 @@ export async function fetchTrackVocalAnalysis(trackId: string): Promise<VocalAna
 /** Fetch optional compact PVDI vocal evidence for multiple tracks, keyed by track ID. */
 export async function fetchTracksVocalAnalysis(
   trackIds: string[],
+  signal?: AbortSignal,
 ): Promise<Map<string, VocalAnalysisRow>> {
   const uniqueIds = [...new Set(trackIds)].filter(Boolean);
   const result = new Map<string, VocalAnalysisRow>();
@@ -696,18 +711,47 @@ export async function fetchTracksVocalAnalysis(
 
   const chunks = chunkIds(uniqueIds, WAVEFORM_CHUNK_SIZE);
   await Promise.all(chunks.map(async (chunk) => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('rekordbox_track_vocal_analysis')
       .select(
         'id, import_id, track_id, source_tag, source_header_length, source_u1, source_u2, ' +
         'frame_duration_ms, frame_count, regions, integrity_status, complete, parse_warnings, parser_version'
       )
       .in('track_id', chunk);
+    if (signal) query = query.abortSignal(signal);
+    const { data, error } = await query;
 
     if (error) throw new Error(error.message);
     for (const row of data ?? []) {
       const mapped = mapVocalAnalysisRow(row);
       result.set(mapped.track_id, mapped);
+    }
+  }));
+  return result;
+}
+
+/** Fetch only phrase counts for multiple tracks without downloading phrase payload JSON. */
+export async function fetchTrackPhraseCounts(
+  trackIds: string[],
+  signal?: AbortSignal,
+): Promise<Map<string, number>> {
+  const uniqueIds = [...new Set(trackIds)].filter(Boolean);
+  const result = new Map<string, number>(uniqueIds.map((id) => [id, 0]));
+  if (uniqueIds.length === 0) return result;
+
+  const chunks = chunkIds(uniqueIds, WAVEFORM_CHUNK_SIZE);
+  await Promise.all(chunks.map(async (chunk) => {
+    let query = supabase
+      .from('rekordbox_track_phrases')
+      .select('track_id')
+      .in('track_id', chunk);
+    if (signal) query = query.abortSignal(signal);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      const trackId = (row as { track_id?: string }).track_id;
+      if (!trackId) continue;
+      result.set(trackId, (result.get(trackId) ?? 0) + 1);
     }
   }));
   return result;

@@ -141,18 +141,20 @@ function harness(options: {
     previewState(selected.id, role, 'ready')
   )));
   const getState = vi.fn(() => null as RoulettePreviewPreparationState | null);
+  const cancel = vi.fn(async () => false);
   const subscribe = vi.fn((listener: (state: RoulettePreviewPreparationState) => void) => {
     listeners.add(listener);
     return () => listeners.delete(listener);
   });
   const lifecycle = createFlipLabStemLifecycle({
     stemAssets: { getReadiness },
-    previewPreparation: { prepare, getState, subscribe },
+    previewPreparation: { prepare, getState, subscribe, cancel },
   });
   return {
     lifecycle,
     getReadiness,
     prepare,
+    cancel,
     emit: (state: RoulettePreviewPreparationState) => {
       for (const listener of listeners) listener(state);
     },
@@ -209,6 +211,17 @@ describe('Flip Lab stem lifecycle adapter', () => {
     pending.resolve(previewState('same-track', 'vocal', 'ready'));
     await expect(first).resolves.toMatchObject({ status: 'ready' });
     await expect(second).resolves.toMatchObject({ status: 'ready' });
+    test.lifecycle.dispose();
+  });
+
+  it('cancels obsolete preview work when an active-import boundary clears the selection', async () => {
+    const test = harness();
+    await test.lifecycle.select('vocal', track('old-import-track'));
+
+    await test.lifecycle.select('vocal', null);
+
+    expect(test.cancel).toHaveBeenCalledWith('old-import-track', 'vocal');
+    expect(test.lifecycle.getState('vocal')).toMatchObject({ status: 'idle', trackId: null });
     test.lifecycle.dispose();
   });
 

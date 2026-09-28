@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { RekordboxImport } from '../types';
 import { fetchActiveImport } from '../lib/queries/rekordbox';
+import { supabase } from '../lib/supabase';
 
 export function useLatestRekordboxImport(userId: string | null) {
   const [data, setData] = useState<RekordboxImport | null>(null);
@@ -8,6 +9,27 @@ export function useLatestRekordboxImport(userId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const generationRef = useRef(0);
+
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`active-rekordbox-import:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rekordbox_user_settings',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => setTick((value) => value + 1),
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) {

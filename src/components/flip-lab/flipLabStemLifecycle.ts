@@ -47,7 +47,7 @@ export interface FlipLabStemLifecycleDependencies {
   stemAssets: Pick<StemAssetService, 'getReadiness'>;
   previewPreparation: Pick<
     RoulettePreviewPreparationService,
-    'prepare' | 'getState' | 'subscribe'
+    'prepare' | 'getState' | 'subscribe' | 'cancel'
   >;
 }
 
@@ -280,6 +280,11 @@ export function createFlipLabStemLifecycle(
 
     selections[role] = track;
     const version = ++versions[role];
+    if (current && current.id !== track?.id) {
+      // Invalidate first, then stop obsolete preview work without blocking the
+      // new selection/import lifecycle.
+      void dependencies.previewPreparation.cancel(current.id, role).catch(() => false);
+    }
     if (!track) return publish(role, createInitialFlipLabStemState(role));
 
     const existingPreview = dependencies.previewPreparation.getState(track.id, role);

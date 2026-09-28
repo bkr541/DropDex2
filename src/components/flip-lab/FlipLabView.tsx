@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, useDeferredValue } from 'react';
 import {
   classifyCamelotRelationship,
   getCamelotRelationshipLabel,
   type CamelotRelationship,
 } from '../../lib/music/camelot';
-import { fetchRouletteCandidateAnalysis } from '../../lib/queries/rouletteCandidates';
+import { fetchRouletteCandidatePools } from '../../lib/queries/rouletteCandidates';
 import type { RouletteCandidateAnalysis, RouletteHardFilterReason } from '../../features/roulette/rouletteMatching';
 import {
   applyFlipLabSelection,
@@ -14,6 +14,8 @@ import {
   rankFlipLabSuggestions,
 } from './flipLabMatching';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
+import { useLatestRekordboxImport } from '../../hooks/useLatestRekordboxImport';
+import { useAuthSession } from '../../hooks/useAuthSession';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
 import { useAppRouter } from '../../navigation/useAppRouter';
 import { Dialog } from '../ui/feedback';
@@ -49,6 +51,13 @@ import {
   type FlipLabPreparedVisualizationState,
 } from './useFlipLabAudioRuntime';
 import type { RouletteEqBand, RouletteEqState, RoulettePlaybackResult } from '../../features/roulette/rouletteAudioRuntime';
+import {
+  FLIP_LAB_ROW_HEIGHT,
+  computeFlipLabWindowRange,
+  filterFlipLabCandidates,
+  isCurrentFlipLabLoad,
+  scrollTopForFlipLabSelection,
+} from './flipLabPerformance';
 
 // ── Color tokens ──────────────────────────────────────────────────────────────
 const BG       = 'var(--color-background)';
@@ -114,23 +123,26 @@ function useFlipLabTrackAnalysis(trackId: string | null): FlipLabTrackAnalysisSt
       setState({ status: 'idle', beatGrid: null, phrases: [] });
       return;
     }
-    let cancelled = false;
+    const controller = new AbortController();
     setState({ status: 'loading', beatGrid: null, phrases: [] });
-    void Promise.all([fetchTrackBeatGrid(trackId), fetchTrackPhrases(trackId)])
+    void Promise.all([
+      fetchTrackBeatGrid(trackId, controller.signal),
+      fetchTrackPhrases(trackId, controller.signal),
+    ])
       .then(([beatGrid, phrases]) => {
-        if (!cancelled) setState({ status: 'loaded', beatGrid, phrases });
+        if (controller.signal.aborted) return;
+        setState({ status: 'loaded', beatGrid, phrases });
       })
-      .catch((error) => {
-        if (!cancelled) {
-          setState({
-            status: 'error',
-            beatGrid: null,
-            phrases: [],
-            error: error instanceof Error ? error.message : 'Failed to load track analysis.',
-          });
-        }
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setState({
+          status: 'error',
+          beatGrid: null,
+          phrases: [],
+          error: error instanceof Error ? error.message : 'Failed to load track analysis.',
+        });
       });
-    return () => { cancelled = true; };
+    return () => controller.abort();
   }, [trackId]);
 
   return state;
@@ -549,6 +561,7 @@ interface SelectPanelProps {
   search: string;
   onSearchChange: (v: string) => void;
   getWaveformState: (id: string | null | undefined) => WaveformLoadState;
+  onVisibleTrackIdsChange: (ids: string[]) => void;
   otherTrack: RekordboxTrack | null;
   onPreview: (track: RekordboxTrack) => void;
   previewState: FlipLabCandidatePreviewState;
@@ -559,7 +572,7 @@ function SelectPanel({
   selectedId, onSelect,
   tab, onTabChange,
   search, onSearchChange,
-  getWaveformState, otherTrack,
+  getWaveformState, onVisibleTrackIdsChange, otherTrack,
   onPreview, previewState,
 }: SelectPanelProps) {
   const isVocal = role === 'vocal';
@@ -567,15 +580,63 @@ function SelectPanel({
   const roleLabel = isVocal ? 'Vocal' : 'Instrumental';
   const roleEmoji = isVocal ? '🎤' : '⚡';
   const list = tab === 'suggested' ? suggested : library;
+  const deferredSearch = useDeferredValue(search);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const scrollTopRef = useRef(0);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(FLIP_LAB_ROW_HEIGHT * 8);
 
-  // Filter by search
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(c =>
-      `${c.track.title} ${c.track.artist ?? ''}`.toLowerCase().includes(q),
+  const filtered = useMemo(
+    () => filterFlipLabCandidates(list, deferredSearch),
+    [deferredSearch, list],
+  );
+  const windowRange = useMemo(
+    () => computeFlipLabWindowRange(filtered.length, scrollTop, viewportHeight),
+    [filtered.length, scrollTop, viewportHeight],
+  );
+  const visibleCandidates = useMemo(
+    () => filtered.slice(windowRange.startIndex, windowRange.endIndex),
+    [filtered, windowRange.endIndex, windowRange.startIndex],
+  );
+
+  useEffect(() => {
+    const node = listRef.current;
+    if (!node) return;
+    const updateHeight = () => setViewportHeight(Math.max(FLIP_LAB_ROW_HEIGHT, node.clientHeight));
+    updateHeight();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const node = listRef.current;
+    if (node) node.scrollTop = 0;
+    scrollTopRef.current = 0;
+    setScrollTop(0);
+  }, [search, tab]);
+
+  useEffect(() => {
+    const selectedIndex = selectedId
+      ? filtered.findIndex((candidate) => candidate.track.id === selectedId)
+      : -1;
+    if (selectedIndex < 0) return;
+    const currentScrollTop = scrollTopRef.current;
+    const nextScrollTop = scrollTopForFlipLabSelection(
+      selectedIndex,
+      currentScrollTop,
+      viewportHeight,
     );
-  }, [list, search]);
+    if (Math.abs(nextScrollTop - currentScrollTop) < 1) return;
+    if (listRef.current) listRef.current.scrollTop = nextScrollTop;
+    scrollTopRef.current = nextScrollTop;
+    setScrollTop(nextScrollTop);
+  }, [filtered, selectedId, viewportHeight]);
+
+  useEffect(() => {
+    onVisibleTrackIdsChange(visibleCandidates.map((candidate) => candidate.track.id));
+  }, [onVisibleTrackIdsChange, visibleCandidates]);
 
   return (
     <div style={{
@@ -647,8 +708,15 @@ function SelectPanel({
       {/* Column header */}
       <TrackListColumnHeader />
 
-      {/* Track list */}
-      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      {/* Track list: lightweight fixed-row windowing keeps huge libraries bounded. */}
+      <div
+        ref={listRef}
+        onScroll={(event) => {
+          scrollTopRef.current = event.currentTarget.scrollTop;
+          setScrollTop(event.currentTarget.scrollTop);
+        }}
+        style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}
+      >
         {filtered.length === 0 ? (
           <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 11, color: MUTED }}>
             {tab === 'suggested' && suggested.length === 0
@@ -658,19 +726,24 @@ function SelectPanel({
                 : 'No tracks match your search.'}
           </div>
         ) : (
-          filtered.map(c => (
-            <TrackSelectorRow
-              key={c.track.id}
-              role={role}
-              candidate={c}
-              selected={c.track.id === selectedId}
-              onSelect={() => onSelect(c.track.id)}
-              onPreview={() => onPreview(c.track)}
-              previewState={previewState}
-              waveformState={getWaveformState(c.track.id)}
-              otherTrack={otherTrack}
-            />
-          ))
+          <>
+            {windowRange.topSpacerHeight > 0 && <div aria-hidden="true" style={{ height: windowRange.topSpacerHeight }} />}
+            {visibleCandidates.map(c => (
+              <div key={c.track.id} style={{ height: FLIP_LAB_ROW_HEIGHT, overflow: 'hidden' }}>
+                <TrackSelectorRow
+                  role={role}
+                  candidate={c}
+                  selected={c.track.id === selectedId}
+                  onSelect={() => onSelect(c.track.id)}
+                  onPreview={() => onPreview(c.track)}
+                  previewState={previewState}
+                  waveformState={getWaveformState(c.track.id)}
+                  otherTrack={otherTrack}
+                />
+              </div>
+            ))}
+            {windowRange.bottomSpacerHeight > 0 && <div aria-hidden="true" style={{ height: windowRange.bottomSpacerHeight }} />}
+          </>
         )}
       </div>
     </div>
@@ -1204,10 +1277,19 @@ function TopWaveformSection({
 }
 
 // ── Main FlipLabView ──────────────────────────────────────────────────────────
-const WAVEFORM_VISIBLE_LIMIT = 40;
-
 export function FlipLabView() {
   const { navigate } = useAppRouter();
+  const { session } = useAuthSession();
+  const userId = session?.user?.id ?? null;
+  const {
+    data: activeImport,
+    loading: activeImportLoading,
+    error: activeImportError,
+  } = useLatestRekordboxImport(userId);
+  const activeImportId = activeImport?.id ?? null;
+  const activeImportIdRef = useRef<string | null>(activeImportId);
+  const candidateLoadGenerationRef = useRef(0);
+  activeImportIdRef.current = activeImportId;
 
   const [vocals,  setVocals]  = useState<RouletteCandidateAnalysis[]>([]);
   const [instrs,  setInstrs]  = useState<RouletteCandidateAnalysis[]>([]);
@@ -1223,29 +1305,85 @@ export function FlipLabView() {
   const [instrTab, setInstrTab] = useState<'suggested' | 'library'>('suggested');
   const [vocalSearch, setVocalSearch] = useState('');
   const [instrSearch, setInstrSearch] = useState('');
+  const [vocalVisibleIds, setVocalVisibleIds] = useState<string[]>([]);
+  const [instrVisibleIds, setInstrVisibleIds] = useState<string[]>([]);
   const [pendingSelection, setPendingSelection] = useState<{ role: 'vocal' | 'instrumental'; trackId: string } | null>(null);
 
   useEffect(() => {
-    setLoading(true);
-    setLoadError(null);
-    Promise.all([
-      fetchRouletteCandidateAnalysis('vocal'),
-      fetchRouletteCandidateAnalysis('instrumental'),
-    ]).then(([vs, is]) => {
-      setVocals(vs);
-      setInstrs(is);
-      const initialPair = chooseInitialFlipLabPair(vs, is);
-      setSelectedVocalId(initialPair?.vocal.track.id ?? null);
-      setSelectedInstrId(initialPair?.instrumental.track.id ?? null);
-    }).catch(err => {
-      setLoadError(err instanceof Error ? err.message : 'Failed to load candidates.');
-    }).finally(() => setLoading(false));
-  }, []);
+    const generation = ++candidateLoadGenerationRef.current;
+    const controller = new AbortController();
+    const requestImportId = activeImportId;
 
-  const importId = useMemo(
-    () => vocals[0]?.track.import_id ?? instrs[0]?.track.import_id ?? null,
-    [vocals, instrs],
-  );
+    // Import/session boundaries invalidate every old selection immediately.
+    setVocals([]);
+    setInstrs([]);
+    setSelectedVocalId(null);
+    setSelectedInstrId(null);
+    setVocalVisibleIds([]);
+    setInstrVisibleIds([]);
+    setPendingSelection(null);
+    setLoadError(null);
+    void flipLabStemLifecycle.select('vocal', null);
+    void flipLabStemLifecycle.select('instrumental', null);
+
+    if (activeImportLoading) {
+      setLoading(true);
+      return () => controller.abort();
+    }
+    if (activeImportError) {
+      setLoading(false);
+      setLoadError(activeImportError);
+      return () => controller.abort();
+    }
+    if (!requestImportId) {
+      setLoading(false);
+      return () => controller.abort();
+    }
+
+    setLoading(true);
+    void fetchRouletteCandidatePools(requestImportId, {
+      signal: controller.signal,
+      // Flip Lab validates local stem truth only for selected/visible work.
+      verifyLocalStemReadiness: false,
+    })
+      .then((pools) => {
+        if (!isCurrentFlipLabLoad(
+          generation,
+          candidateLoadGenerationRef.current,
+          requestImportId,
+          activeImportIdRef.current,
+          controller.signal,
+        )) return;
+        setVocals(pools.vocals);
+        setInstrs(pools.instrumentals);
+        const initialPair = chooseInitialFlipLabPair(pools.vocals, pools.instrumentals);
+        setSelectedVocalId(initialPair?.vocal.track.id ?? null);
+        setSelectedInstrId(initialPair?.instrumental.track.id ?? null);
+      })
+      .catch((error: unknown) => {
+        if (!isCurrentFlipLabLoad(
+          generation,
+          candidateLoadGenerationRef.current,
+          requestImportId,
+          activeImportIdRef.current,
+          controller.signal,
+        )) return;
+        setLoadError(error instanceof Error ? error.message : 'Failed to load candidates.');
+      })
+      .finally(() => {
+        if (isCurrentFlipLabLoad(
+          generation,
+          candidateLoadGenerationRef.current,
+          requestImportId,
+          activeImportIdRef.current,
+          controller.signal,
+        )) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [activeImportError, activeImportId, activeImportLoading]);
+
+  const importId = activeImportId;
 
   const selectedVocal = useMemo(() => vocals.find(c => c.track.id === selectedVocalId) ?? null, [vocals, selectedVocalId]);
   const selectedInstr = useMemo(() => instrs.find(c => c.track.id === selectedInstrId) ?? null, [instrs, selectedInstrId]);
@@ -1285,21 +1423,7 @@ export function FlipLabView() {
     [instrs],
   );
 
-  // Waveform loading: selected tracks + first N visible in each filtered list
-  const vocalVisibleIds = useMemo(() => {
-    const base = vocalTab === 'suggested' ? vocalSuggested : vocalLibrary;
-    const q = vocalSearch.trim().toLowerCase();
-    const filtered = q ? base.filter(c => `${c.track.title} ${c.track.artist ?? ''}`.toLowerCase().includes(q)) : base;
-    return filtered.slice(0, WAVEFORM_VISIBLE_LIMIT).map(c => c.track.id);
-  }, [vocalTab, vocalSuggested, vocalLibrary, vocalSearch]);
-
-  const instrVisibleIds = useMemo(() => {
-    const base = instrTab === 'suggested' ? instrSuggested : instrLibrary;
-    const q = instrSearch.trim().toLowerCase();
-    const filtered = q ? base.filter(c => `${c.track.title} ${c.track.artist ?? ''}`.toLowerCase().includes(q)) : base;
-    return filtered.slice(0, WAVEFORM_VISIBLE_LIMIT).map(c => c.track.id);
-  }, [instrTab, instrSuggested, instrLibrary, instrSearch]);
-
+  // Waveform loading is bounded to selected tracks plus the virtualized visible windows.
   const waveformTrackIds = useMemo(() => {
     const ids = new Set([
       ...(selectedVocalId ? [selectedVocalId] : []),
@@ -1442,8 +1566,9 @@ export function FlipLabView() {
           display: 'grid',
           gridTemplateColumns: '1fr 260px 1fr',
           borderTop: `1px solid ${BORDER_F}`,
-          minHeight: 480,
-          maxHeight: 'calc(100vh - 600px)',
+          height: 'min(480px, 46vh)',
+          minHeight: 0,
+          maxHeight: 'calc(100vh - 320px)',
           overflow: 'hidden',
         }}>
           <SelectPanel
@@ -1457,6 +1582,7 @@ export function FlipLabView() {
             search={vocalSearch}
             onSearchChange={setVocalSearch}
             getWaveformState={getWaveformState}
+            onVisibleTrackIdsChange={setVocalVisibleIds}
             otherTrack={selectedInstr?.track ?? null}
             onPreview={(track) => { void audio.toggleCandidatePreview('vocal', track); }}
             previewState={audio.candidatePreview}
@@ -1483,6 +1609,7 @@ export function FlipLabView() {
             search={instrSearch}
             onSearchChange={setInstrSearch}
             getWaveformState={getWaveformState}
+            onVisibleTrackIdsChange={setInstrVisibleIds}
             otherTrack={selectedVocal?.track ?? null}
             onPreview={(track) => { void audio.toggleCandidatePreview('instrumental', track); }}
             previewState={audio.candidatePreview}
