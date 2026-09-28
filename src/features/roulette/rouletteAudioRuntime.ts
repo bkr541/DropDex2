@@ -53,6 +53,15 @@ export interface RouletteDeckMix {
 
 export type RouletteMixState = Record<RouletteSourceRole, RouletteDeckMix>;
 
+export type RouletteEqBand = 'low' | 'mid' | 'high';
+export type RouletteDeckEq = Record<RouletteEqBand, number>;
+export type RouletteEqState = Record<RouletteSourceRole, RouletteDeckEq>;
+
+export const NEUTRAL_ROULETTE_EQ: RouletteEqState = {
+  vocal: { low: 0, mid: 0, high: 0 },
+  instrumental: { low: 0, mid: 0, high: 0 },
+};
+
 export interface RoulettePlaybackSources {
   vocal: RouletteSourceSelection;
   instrumental: RouletteSourceSelection;
@@ -99,6 +108,8 @@ export interface RouletteAudioRuntime {
   seek(positionSeconds: number): number;
   stop(): void;
   setMix(mix: RouletteMixState): void;
+  setEq(eq: RouletteEqState): void;
+  setLoopEndSeconds(loopEndSeconds: number | null): void;
   getPositionSeconds(): number;
   getDurationSeconds(): number;
   isPlaying(): boolean;
@@ -246,6 +257,7 @@ export function createRouletteAudioRuntime(
   let loadController: AbortController | null = null;
   let scheduledNodes: AudioBufferSourceNode[] = [];
   let deckGainNodes: Partial<Record<RouletteSourceRole, GainNode>> = {};
+  let deckEqNodes: Partial<Record<RouletteSourceRole, Record<RouletteEqBand, BiquadFilterNode>>> = {};
   let masterGainNode: GainNode | null = null;
   let masterLimiterNode: DynamicsCompressorNode | null = null;
   let startAt = 0;
@@ -254,6 +266,11 @@ export function createRouletteAudioRuntime(
   let transportPositionSeconds = 0;
   let graphPlaying = false;
   let graphGeneration = 0;
+  let currentEq: RouletteEqState = {
+    vocal: { ...NEUTRAL_ROULETTE_EQ.vocal },
+    instrumental: { ...NEUTRAL_ROULETTE_EQ.instrumental },
+  };
+  let loopEndSeconds: number | null = null;
 
   type PreparedDeck = { buffer: AudioBuffer; offsetSeconds: number };
   interface PreparedPlaybackSession {
@@ -269,10 +286,17 @@ export function createRouletteAudioRuntime(
     graphGeneration += 1;
     stopAndDisconnectAudioNodes(scheduledNodes);
     scheduledNodes = [];
+    disconnectNode(deckEqNodes.vocal?.low ?? null);
+    disconnectNode(deckEqNodes.vocal?.mid ?? null);
+    disconnectNode(deckEqNodes.vocal?.high ?? null);
+    disconnectNode(deckEqNodes.instrumental?.low ?? null);
+    disconnectNode(deckEqNodes.instrumental?.mid ?? null);
+    disconnectNode(deckEqNodes.instrumental?.high ?? null);
     disconnectNode(deckGainNodes.vocal ?? null);
     disconnectNode(deckGainNodes.instrumental ?? null);
     disconnectNode(masterGainNode);
     disconnectNode(masterLimiterNode);
+    deckEqNodes = {};
     deckGainNodes = {};
     masterGainNode = null;
     masterLimiterNode = null;
@@ -294,6 +318,7 @@ export function createRouletteAudioRuntime(
     durationSeconds = 0;
     transportPositionSeconds = 0;
     scheduledStartPositionSeconds = 0;
+    loopEndSeconds = null;
   };
 
   const stop = () => {
@@ -312,6 +337,38 @@ export function createRouletteAudioRuntime(
     const instrumentalNode = deckGainNodes.instrumental;
     if (vocalNode) setGain(vocalNode, effectiveDeckGain('vocal', mix), audioContext);
     if (instrumentalNode) setGain(instrumentalNode, effectiveDeckGain('instrumental', mix), audioContext);
+  };
+
+  const setEq = (eq: RouletteEqState) => {
+    currentEq = {
+      vocal: { ...eq.vocal },
+      instrumental: { ...eq.instrumental },
+    };
+    if (!audioContext) return;
+    for (const role of ['vocal', 'instrumental'] as const) {
+      const nodes = deckEqNodes[role];
+      if (!nodes) continue;
+      for (const band of ['low', 'mid', 'high'] as const) {
+        const value = Math.max(-12, Math.min(12, Number.isFinite(eq[role][band]) ? eq[role][band] : 0));
+        if (typeof nodes[band].gain.setValueAtTime === 'function') nodes[band].gain.setValueAtTime(value, audioContext.currentTime);
+        else nodes[band].gain.value = value;
+      }
+    }
+  };
+
+  const setLoopEndSeconds = (nextLoopEndSeconds: number | null) => {
+    const normalized = nextLoopEndSeconds == null || !Number.isFinite(nextLoopEndSeconds)
+      ? null
+      : Math.max(0, Math.min(durationSeconds, nextLoopEndSeconds));
+    const nextLoopEnd = normalized && normalized > 0 ? normalized : null;
+    if (loopEndSeconds === nextLoopEnd) return;
+    loopEndSeconds = nextLoopEnd;
+    if (!preparedPlayback) return;
+    const wasPlaying = graphPlaying;
+    const position = getPositionSeconds();
+    if (loopEndSeconds != null && position >= loopEndSeconds) transportPositionSeconds = 0;
+    else transportPositionSeconds = position;
+    if (wasPlaying) schedulePreparedPlayback(transportPositionSeconds);
   };
 
   const schedulePreparedPlayback = (positionSeconds: number): boolean => {
@@ -348,9 +405,34 @@ export function createRouletteAudioRuntime(
     instrumentalGain.connect(masterGain);
     deckGainNodes = { vocal: vocalGain, instrumental: instrumentalGain };
     masterGainNode = masterGain;
-    setMix(session.mix);
 
-    const remaining = durationSeconds - position;
+    const createEqChain = (role: RouletteSourceRole, destination: GainNode): AudioNode => {
+      const createBiquad = context.createBiquadFilter?.bind(context);
+      if (!createBiquad) return destination;
+      const low = createBiquad();
+      const mid = createBiquad();
+      const high = createBiquad();
+      low.type = 'lowshelf';
+      low.frequency.value = 180;
+      mid.type = 'peaking';
+      mid.frequency.value = 1_000;
+      mid.Q.value = 0.8;
+      high.type = 'highshelf';
+      high.frequency.value = 6_000;
+      low.connect(mid);
+      mid.connect(high);
+      high.connect(destination);
+      deckEqNodes[role] = { low, mid, high };
+      return low;
+    };
+
+    const vocalDestination = createEqChain('vocal', vocalGain);
+    const instrumentalDestination = createEqChain('instrumental', instrumentalGain);
+    setMix(session.mix);
+    setEq(currentEq);
+
+    const playbackEnd = loopEndSeconds == null ? durationSeconds : Math.min(durationSeconds, loopEndSeconds);
+    const remaining = playbackEnd - position;
     let scheduled: ScheduledAudioClips;
     try {
       scheduled = dependencies.scheduleClips(
@@ -361,14 +443,14 @@ export function createRouletteAudioRuntime(
             offsetSeconds: session.vocal.offsetSeconds + position,
             durationSeconds: remaining,
             startOffsetSeconds: 0,
-            destination: vocalGain,
+            destination: vocalDestination,
           },
           {
             buffer: session.instrumental.buffer,
             offsetSeconds: session.instrumental.offsetSeconds + position,
             durationSeconds: remaining,
             startOffsetSeconds: 0,
-            destination: instrumentalGain,
+            destination: instrumentalDestination,
           },
         ],
         { leadInSeconds: 0.05 },
@@ -387,9 +469,11 @@ export function createRouletteAudioRuntime(
     if (finalNode) {
       finalNode.onended = () => {
         if (thisGraphGeneration !== graphGeneration || !scheduledNodes.includes(finalNode)) return;
-        transportPositionSeconds = durationSeconds;
+        const shouldLoop = loopEndSeconds != null;
+        transportPositionSeconds = shouldLoop ? 0 : durationSeconds;
         stopActiveGraph();
-        session.onEnded?.();
+        if (shouldLoop) schedulePreparedPlayback(0);
+        else session.onEnded?.();
       };
     }
     return true;
@@ -403,13 +487,15 @@ export function createRouletteAudioRuntime(
 
   const resume = (): boolean => {
     if (!preparedPlayback || graphPlaying) return graphPlaying;
-    const position = transportPositionSeconds >= durationSeconds ? 0 : transportPositionSeconds;
+    const playbackEnd = loopEndSeconds == null ? durationSeconds : Math.min(durationSeconds, loopEndSeconds);
+    const position = transportPositionSeconds >= playbackEnd ? 0 : transportPositionSeconds;
     return schedulePreparedPlayback(position);
   };
 
   const seek = (positionSeconds: number): number => {
     if (!preparedPlayback || durationSeconds <= 0) return 0;
-    const next = Math.max(0, Math.min(durationSeconds, Number.isFinite(positionSeconds) ? positionSeconds : 0));
+    const playbackEnd = loopEndSeconds == null ? durationSeconds : Math.min(durationSeconds, loopEndSeconds);
+    const next = Math.max(0, Math.min(playbackEnd, Number.isFinite(positionSeconds) ? positionSeconds : 0));
     const wasPlaying = graphPlaying;
     transportPositionSeconds = next;
     if (wasPlaying) schedulePreparedPlayback(next);
@@ -756,6 +842,8 @@ export function createRouletteAudioRuntime(
     seek,
     stop,
     setMix,
+    setEq,
+    setLoopEndSeconds,
     getPositionSeconds,
     getDurationSeconds: () => durationSeconds,
     isPlaying: () => graphPlaying,

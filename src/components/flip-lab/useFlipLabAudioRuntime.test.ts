@@ -2,10 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { roulettePreparedAssetRef, type RoulettePreparedAuditionAsset, type RoulettePreviewWindow } from '../../features/roulette/roulettePreview';
 import type { FlipLabStemRoleState } from './flipLabStemLifecycle';
 import {
+  availableFlipLabLoopBars,
+  clampFlipLabEqDb,
   flipLabBarDurationSeconds,
+  formatFlipLabEqDb,
+  resolveFlipLabEqualPowerMix,
+  resolveFlipLabLoopEndSeconds,
   resolveFlipLabMasterBpm,
   resolveFlipLabPlaybackSources,
   resolveFlipLabPlayheadPercent,
+  resolveFlipLabPreparedPlayheadPercent,
 } from './useFlipLabAudioRuntime';
 
 function windowAt(sourceTimeMs: number): RoulettePreviewWindow {
@@ -83,6 +89,43 @@ describe('Flip Lab shared Roulette runtime adapter', () => {
     expect(resolveFlipLabMasterBpm(140, 142, true)).toBe(142);
     expect(resolveFlipLabMasterBpm(140, 142, false)).toBe(142);
     expect(flipLabBarDurationSeconds(142)).toBeCloseTo(240 / 142, 12);
+  });
+
+
+  it('uses equal-power mix gains with a balanced center and role attenuation at each edge', () => {
+    const center = resolveFlipLabEqualPowerMix(0.5);
+    expect(center.vocal.gain).toBeCloseTo(Math.SQRT1_2, 10);
+    expect(center.instrumental.gain).toBeCloseTo(Math.SQRT1_2, 10);
+
+    const vocalEdge = resolveFlipLabEqualPowerMix(0);
+    expect(vocalEdge.vocal.gain).toBeCloseTo(1, 10);
+    expect(vocalEdge.instrumental.gain).toBeCloseTo(0, 10);
+
+    const instrumentalEdge = resolveFlipLabEqualPowerMix(1);
+    expect(instrumentalEdge.vocal.gain).toBeCloseTo(0, 10);
+    expect(instrumentalEdge.instrumental.gain).toBeCloseTo(1, 10);
+  });
+
+  it('keeps displayed EQ dB values bounded and derived from the same control state', () => {
+    expect(clampFlipLabEqDb(3.26)).toBe(3.5);
+    expect(clampFlipLabEqDb(-30)).toBe(-12);
+    expect(formatFlipLabEqDb(3.26)).toBe('+3.5 dB');
+    expect(formatFlipLabEqDb(0)).toBe('0.0 dB');
+  });
+
+  it('derives shared loop bounds from the prepared beat-aligned master BPM without exceeding the window', () => {
+    const result = { masterBpm: 120, durationSeconds: 32 };
+    expect(resolveFlipLabLoopEndSeconds(result, 4)).toBe(8);
+    expect(resolveFlipLabLoopEndSeconds(result, 8)).toBe(16);
+    expect(resolveFlipLabLoopEndSeconds(result, 16)).toBe(32);
+    expect(resolveFlipLabLoopEndSeconds(result, 32)).toBeNull();
+    expect(resolveFlipLabLoopEndSeconds(result, 'off')).toBeNull();
+    expect(availableFlipLabLoopBars(result)).toEqual([4, 8, 16, 'off']);
+  });
+
+  it('maps the prepared-stem waveform playhead to the audition window rather than the parent track timeline', () => {
+    expect(resolveFlipLabPreparedPlayheadPercent(8, 32)).toBe(25);
+    expect(resolveFlipLabPreparedPlayheadPercent(40, 32)).toBe(100);
   });
 
   it('maps one shared runtime position into each source timeline for truthful playheads', () => {

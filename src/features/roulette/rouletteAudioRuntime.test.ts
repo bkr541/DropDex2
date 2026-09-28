@@ -34,6 +34,22 @@ class FakeGainNode {
 }
 
 
+
+class FakeBiquadNode {
+  type: BiquadFilterType = 'peaking';
+  frequency = { value: 350 };
+  Q = { value: 1 };
+  gain = {
+    value: 0,
+    setValueAtTime: (value: number) => { this.gain.value = value; },
+  };
+  connectedTo: unknown = null;
+  disconnected = false;
+
+  connect(destination: unknown) { this.connectedTo = destination; return destination; }
+  disconnect() { this.disconnected = true; }
+}
+
 class FakeCompressorNode {
   threshold = { value: 0 };
   knee = { value: 0 };
@@ -51,6 +67,7 @@ function fakeAudioContext() {
   const sources: FakeSourceNode[] = [];
   const gains: FakeGainNode[] = [];
   const compressors: FakeCompressorNode[] = [];
+  const biquads: FakeBiquadNode[] = [];
   const context = {
     currentTime: 10,
     state: 'running',
@@ -70,10 +87,15 @@ function fakeAudioContext() {
       compressors.push(node);
       return node as unknown as DynamicsCompressorNode;
     },
+    createBiquadFilter: () => {
+      const node = new FakeBiquadNode();
+      biquads.push(node);
+      return node as unknown as BiquadFilterNode;
+    },
     resume: vi.fn(async () => undefined),
     close: vi.fn(async () => undefined),
   } as unknown as AudioContext;
-  return { context, sources, gains, compressors };
+  return { context, sources, gains, compressors, biquads };
 }
 
 function track(id: string, bpm = 142): RekordboxTrack {
@@ -406,6 +428,84 @@ describe('Roulette audio runtime', () => {
     expect(audio.gains[0].gain.value).toBeCloseTo(0.707, 8);
     expect(audio.gains[1].gain.value).toBeCloseTo(0.9, 8);
     expect(audio.gains[2].gain.value).toBe(0);
+  });
+
+  it('updates all three EQ bands on the intended role without rebuilding transport', async () => {
+    const audio = fakeAudioContext();
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      loadTrack: async (id) => track(id),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    await runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+    const sourceCount = audio.sources.length;
+    runtime.setEq({
+      vocal: { low: -4, mid: 2.5, high: 6 },
+      instrumental: { low: 1.5, mid: -3, high: 4.5 },
+    });
+
+    expect(audio.biquads).toHaveLength(6);
+    expect(audio.biquads.slice(0, 3).map((node) => node.gain.value)).toEqual([-4, 2.5, 6]);
+    expect(audio.biquads.slice(3, 6).map((node) => node.gain.value)).toEqual([1.5, -3, 4.5]);
+    expect(audio.sources).toHaveLength(sourceCount);
+  });
+
+  it('loops both scheduled stems at the same bounded bar endpoint and can disable the loop live', async () => {
+    const audio = fakeAudioContext();
+    const runtime = createRouletteAudioRuntime({
+      getAudioContext: () => audio.context,
+      decodedCache: new DecodedAudioCache<AudioBuffer>(4),
+      loadTrack: async (id) => track(id),
+      loadBeatGrid: async (id) => grid(id, 0),
+      loadPhrases: async () => [],
+      loadVocalAnalysis: async () => null,
+      stemAssets: {
+        resolveReady: async (id, type) => ({
+          asset: asset(id, type),
+          source: { kind: 'url' as const, url: `dropdex://stem/${id}`, size: 1200, mtimeMs: 100 },
+        }),
+      },
+      loadDecodedSources: vi.fn(async () => [buffer(60), buffer(60)]),
+    });
+
+    await runtime.play({
+      vocal: selection('vocal-a', 'vocals'),
+      instrumental: selection('instrumental-a', 'instrumental'),
+    }, mix);
+    runtime.setLoopEndSeconds(8);
+
+    const loopGraph = audio.sources.slice(-2);
+    expect(loopGraph[0].starts[0].duration).toBeCloseTo(8, 8);
+    expect(loopGraph[1].starts[0].duration).toBeCloseTo(8, 8);
+    expect(loopGraph[0].starts[0].when).toBe(loopGraph[1].starts[0].when);
+
+    runtime.setLoopEndSeconds(null);
+    const fullGraph = audio.sources.slice(-2);
+    expect(fullGraph[0].starts[0].duration).toBeCloseTo(runtime.getDurationSeconds(), 8);
+    expect(fullGraph[1].starts[0].duration).toBeCloseTo(runtime.getDurationSeconds(), 8);
+
+    runtime.setLoopEndSeconds(runtime.getDurationSeconds());
+    const fullWindowLoop = audio.sources.slice(-2);
+    const sourceCountBeforeLoopRestart = audio.sources.length;
+    fullWindowLoop[1].onended?.();
+    expect(audio.sources).toHaveLength(sourceCountBeforeLoopRestart + 2);
+    const restartedLoop = audio.sources.slice(-2);
+    expect(restartedLoop[0].starts[0].offset).toBeCloseTo(0, 8);
+    expect(restartedLoop[1].starts[0].when).toBe(restartedLoop[0].starts[0].when);
   });
 
   it('cancels a pending decode and never schedules a partial pair', async () => {
@@ -742,6 +842,7 @@ describe('Roulette audio runtime', () => {
     expect(audio.sources).toHaveLength(2);
     expect(audio.sources.every((source) => source.stops.length > 0 && source.disconnected)).toBe(true);
     expect(audio.gains.every((gain) => gain.disconnected)).toBe(true);
+    expect(audio.biquads.every((filter) => filter.disconnected)).toBe(true);
     expect(audio.compressors.every((compressor) => compressor.disconnected)).toBe(true);
     expect(runtime.getDurationSeconds()).toBe(0);
   });
