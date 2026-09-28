@@ -3,9 +3,8 @@ import { rankRouletteCandidates, rankRoulettePairsBoundedWithMetadata, type Roul
 import type { RouletteSourceRole } from '../../features/roulette/rouletteSession';
 import { ROULETTE_SEPARATOR_VERSION, stemTypeForRole, type StemAssetRecord, type StemAssetType } from '../../features/roulette/stemAssets';
 import { rouletteStemAssetService } from '../../features/roulette/stemAssetService';
-import { hasQualifyingRouletteVocalMaterial } from '../../features/roulette/rouletteVocalQualification';
 import { getCurrentInstallationId } from '../desktop/installationIdentity';
-import { fetchTrackBeatGridsLightweight, fetchTrackPhraseCounts, fetchTracksVocalAnalysis, type VocalAnalysisRow } from './analysisData';
+import { fetchTrackBeatGridsLightweight, fetchTrackPhraseCounts } from './analysisData';
 import { fetchActiveImport, fetchTracksByIds } from './rekordbox';
 import { supabase } from '../supabase';
 
@@ -251,35 +250,16 @@ export async function fetchRouletteCandidatePools(
   }
 
   const trackIds = tracks.map((track) => track.id);
-  let vocalAnalysisByTrackId = new Map<string, VocalAnalysisRow>();
   let beatGrids: Awaited<ReturnType<typeof fetchTrackBeatGridsLightweight>>;
   let phraseCounts: Map<string, number>;
 
-  if (includeInstrumental) {
-    const [loadedBeatGrids, loadedPhraseCounts, loadedVocalAnalysis] = await Promise.all([
-      fetchTrackBeatGridsLightweight(trackIds, signal),
-      fetchTrackPhraseCounts(trackIds, signal),
-      includeVocal ? fetchTracksVocalAnalysis(trackIds, signal) : Promise.resolve(new Map()),
-    ]);
-    beatGrids = loadedBeatGrids;
-    phraseCounts = loadedPhraseCounts;
-    vocalAnalysisByTrackId = loadedVocalAnalysis;
-  } else {
-    vocalAnalysisByTrackId = await fetchTracksVocalAnalysis(trackIds, signal);
-    throwIfAborted(signal);
-    const vocalIds = tracks
-      .filter((track) => hasQualifyingRouletteVocalMaterial(vocalAnalysisByTrackId.get(track.id)))
-      .map((track) => track.id);
-    [beatGrids, phraseCounts] = await Promise.all([
-      fetchTrackBeatGridsLightweight(vocalIds, signal),
-      fetchTrackPhraseCounts(vocalIds, signal),
-    ]);
-  }
+  [beatGrids, phraseCounts] = await Promise.all([
+    fetchTrackBeatGridsLightweight(trackIds, signal),
+    fetchTrackPhraseCounts(trackIds, signal),
+  ]);
   throwIfAborted(signal);
 
-  const vocalTracks = includeVocal
-    ? tracks.filter((track) => hasQualifyingRouletteVocalMaterial(vocalAnalysisByTrackId.get(track.id)))
-    : [];
+  const vocalTracks = includeVocal ? tracks : [];
 
   const [vocalAssetMetadata, instrumentalAssetMetadata] = await Promise.all([
     includeVocal
