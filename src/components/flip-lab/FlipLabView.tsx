@@ -13,7 +13,6 @@ import {
   rankFlipLabSuggestions,
 } from './flipLabMatching';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
-import { useLatestRekordboxImport } from '../../hooks/useLatestRekordboxImport';
 import { useAuthSession } from '../../hooks/useAuthSession';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
 import { useAppRouter } from '../../navigation/useAppRouter';
@@ -1319,15 +1318,15 @@ function TopWaveformSection({
 }
 
 // ── Main FlipLabView ──────────────────────────────────────────────────────────
-export function FlipLabView() {
+interface FlipLabViewProps {
+  activeImport: import('../../types').RekordboxImport | null;
+  activeImportLoading: boolean;
+  activeImportError: string | null;
+}
+
+export function FlipLabView({ activeImport, activeImportLoading, activeImportError }: FlipLabViewProps) {
   const { navigate } = useAppRouter();
   const { session } = useAuthSession();
-  const userId = session?.user?.id ?? null;
-  const {
-    data: activeImport,
-    loading: activeImportLoading,
-    error: activeImportError,
-  } = useLatestRekordboxImport(userId);
   const activeImportId = activeImport?.id ?? null;
   const activeImportIdRef = useRef<string | null>(activeImportId);
   const candidateLoadGenerationRef = useRef(0);

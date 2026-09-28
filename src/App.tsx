@@ -2004,7 +2004,11 @@ export default function App() {
                 exit={{ opacity: 0, x: -20 }}
                 className="md:max-w-7xl md:mx-auto"
               >
-                <FlipLabView />
+                <FlipLabView
+                  activeImport={latestImport ?? null}
+                  activeImportLoading={importLoading}
+                  activeImportError={importError}
+                />
               </motion.div>
             )}
 
