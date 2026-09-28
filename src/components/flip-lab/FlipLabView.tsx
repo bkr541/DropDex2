@@ -7,7 +7,14 @@ import {
   type CamelotRelationship,
 } from '../../lib/music/camelot';
 import { fetchRouletteCandidateAnalysis } from '../../lib/queries/rouletteCandidates';
-import type { RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
+import type { RouletteCandidateAnalysis, RouletteHardFilterReason } from '../../features/roulette/rouletteMatching';
+import {
+  applyFlipLabSelection,
+  chooseInitialFlipLabPair,
+  flipLabRejectionReasonLabel,
+  getFlipLabPairRejectionReason,
+  rankFlipLabSuggestions,
+} from './flipLabMatching';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
 import { useAppRouter } from '../../navigation/useAppRouter';
@@ -499,9 +506,11 @@ function SelectPanel({
       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {filtered.length === 0 ? (
           <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 11, color: MUTED }}>
-            {suggested.length === 0
-              ? 'No tracks in library yet.'
-              : 'No tracks match your search.'}
+            {tab === 'suggested' && suggested.length === 0
+              ? (otherTrack ? 'No compatible suggestions for this selection.' : 'Select the opposite role to see suggestions.')
+              : library.length === 0
+                ? 'No tracks in library yet.'
+                : 'No tracks match your search.'}
           </div>
         ) : (
           filtered.map(c => (
@@ -526,10 +535,18 @@ interface CompatibilityPanelProps {
   instr:   RouletteCandidateAnalysis | null;
   keyRel:  CamelotRelationship | null;
   bpmDiff: number | null;
+  pairRejectionReason: RouletteHardFilterReason | null;
   onOpenDropLab: () => void;
 }
 
-function CompatibilityPanel({ vocal, instr, keyRel, bpmDiff, onOpenDropLab }: CompatibilityPanelProps) {
+function CompatibilityPanel({
+  vocal,
+  instr,
+  keyRel,
+  bpmDiff,
+  pairRejectionReason,
+  onOpenDropLab,
+}: CompatibilityPanelProps) {
   const vocalKey = vocal ? (formatKey(vocal.track.camelot_key ?? vocal.track.musical_key) || null) : null;
   const instrKey = instr ? (formatKey(instr.track.camelot_key ?? instr.track.musical_key) || null) : null;
 
@@ -555,8 +572,8 @@ function CompatibilityPanel({ vocal, instr, keyRel, bpmDiff, onOpenDropLab }: Co
     return { label: 'Hard Mix', color: '#ef4444' };
   })() : null;
 
-  const pairReady = vocal !== null && instr !== null
-    && (keyRel === 'exact' || keyRel === 'relative' || keyRel === 'adjacent_up' || keyRel === 'adjacent_down' || keyRel === 'energy_boost');
+  const pairReady = vocal !== null && instr !== null && pairRejectionReason === null;
+  const rejectionLabel = flipLabRejectionReasonLabel(pairRejectionReason);
 
   const vocalHasStem  = vocal?.stemAsset != null;
   const instrHasStem  = instr?.stemAsset != null;
@@ -699,8 +716,10 @@ function CompatibilityPanel({ vocal, instr, keyRel, bpmDiff, onOpenDropLab }: Co
               cursor: 'pointer', textAlign: 'center',
             }}
           >
-            <div style={{ fontSize: 13, fontWeight: 800, color: PRIMARY }}>Open in Drop Lab</div>
-            <div style={{ fontSize: 10, color: PRIMARY, opacity: 0.7, marginTop: 2 }}>Keys may not be compatible</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: PRIMARY }}>Pair Not Ready</div>
+            <div style={{ fontSize: 10, color: PRIMARY, opacity: 0.7, marginTop: 2 }}>
+              {rejectionLabel ?? 'This pair does not meet Roulette matching requirements.'}
+            </div>
           </button>
         )}
       </div>
@@ -915,8 +934,9 @@ export function FlipLabView() {
     ]).then(([vs, is]) => {
       setVocals(vs);
       setInstrs(is);
-      if (vs[0]) setSelectedVocalId(vs[0].track.id);
-      if (is[0]) setSelectedInstrId(is[0].track.id);
+      const initialPair = chooseInitialFlipLabPair(vs, is);
+      setSelectedVocalId(initialPair?.vocal.track.id ?? null);
+      setSelectedInstrId(initialPair?.instrumental.track.id ?? null);
     }).catch(err => {
       setLoadError(err instanceof Error ? err.message : 'Failed to load candidates.');
     }).finally(() => setLoading(false));
@@ -930,33 +950,14 @@ export function FlipLabView() {
   const selectedVocal = useMemo(() => vocals.find(c => c.track.id === selectedVocalId) ?? null, [vocals, selectedVocalId]);
   const selectedInstr = useMemo(() => instrs.find(c => c.track.id === selectedInstrId) ?? null, [instrs, selectedInstrId]);
 
-  // Suggested: sorted by key compatibility then BPM proximity to the other selected track (all tracks, no stem gate)
-  const sortByCompatibility = useCallback(
-    (list: RouletteCandidateAnalysis[], anchor: RekordboxTrack | null) => {
-      if (!anchor) return [...list].sort((a, b) => a.track.title.localeCompare(b.track.title));
-      return [...list].sort((a, b) => {
-        const relA = classifyCamelotRelationship(trackCamelotCode(a.track), trackCamelotCode(anchor));
-        const relB = classifyCamelotRelationship(trackCamelotCode(b.track), trackCamelotCode(anchor));
-        const scoreMap: Record<CamelotRelationship, number> = {
-          exact: 5, relative: 4, adjacent_up: 3, adjacent_down: 3, energy_boost: 2, incompatible: 0, unknown: 0,
-        };
-        const diff = (scoreMap[relB] ?? 0) - (scoreMap[relA] ?? 0);
-        if (diff !== 0) return diff;
-        const bpmA = a.track.bpm && anchor.bpm ? Math.abs(a.track.bpm - anchor.bpm) : 999;
-        const bpmB = b.track.bpm && anchor.bpm ? Math.abs(b.track.bpm - anchor.bpm) : 999;
-        return bpmA - bpmB;
-      });
-    },
-    [],
-  );
-
+  // Suggested uses Roulette's canonical hard filters + ranking against the opposite role.
   const vocalSuggested = useMemo(
-    () => sortByCompatibility(vocals, selectedInstr?.track ?? null),
-    [vocals, selectedInstr, sortByCompatibility],
+    () => rankFlipLabSuggestions(vocals, selectedInstr, 'vocal'),
+    [vocals, selectedInstr],
   );
   const instrSuggested = useMemo(
-    () => sortByCompatibility(instrs, selectedVocal?.track ?? null),
-    [instrs, selectedVocal, sortByCompatibility],
+    () => rankFlipLabSuggestions(instrs, selectedVocal, 'instrumental'),
+    [instrs, selectedVocal],
   );
 
   // Library: alphabetical, all tracks
@@ -1012,6 +1013,23 @@ export function FlipLabView() {
     return Math.abs(vBpm - iBpm);
   }, [selectedVocal, selectedInstr]);
 
+  const pairRejectionReason = useMemo(
+    () => getFlipLabPairRejectionReason(selectedVocal, selectedInstr),
+    [selectedVocal, selectedInstr],
+  );
+
+  const handleSelectVocal = useCallback((trackId: string) => {
+    const next = applyFlipLabSelection('vocal', trackId, selectedVocalId, selectedInstrId);
+    setSelectedVocalId(next.vocalId);
+    setSelectedInstrId(next.instrumentalId);
+  }, [selectedVocalId, selectedInstrId]);
+
+  const handleSelectInstrumental = useCallback((trackId: string) => {
+    const next = applyFlipLabSelection('instrumental', trackId, selectedVocalId, selectedInstrId);
+    setSelectedVocalId(next.vocalId);
+    setSelectedInstrId(next.instrumentalId);
+  }, [selectedVocalId, selectedInstrId]);
+
   const handleOpenDropLab = useCallback(() => {
     if (!selectedVocal || !selectedInstr) return;
     navigate({
@@ -1064,7 +1082,7 @@ export function FlipLabView() {
             suggested={vocalSuggested}
             library={vocalLibrary}
             selectedId={selectedVocalId}
-            onSelect={setSelectedVocalId}
+            onSelect={handleSelectVocal}
             tab={vocalTab}
             onTabChange={setVocalTab}
             search={vocalSearch}
@@ -1077,6 +1095,7 @@ export function FlipLabView() {
             instr={selectedInstr}
             keyRel={keyRel}
             bpmDiff={bpmDiff}
+            pairRejectionReason={pairRejectionReason}
             onOpenDropLab={handleOpenDropLab}
           />
           <SelectPanel
@@ -1084,7 +1103,7 @@ export function FlipLabView() {
             suggested={instrSuggested}
             library={instrLibrary}
             selectedId={selectedInstrId}
-            onSelect={setSelectedInstrId}
+            onSelect={handleSelectInstrumental}
             tab={instrTab}
             onTabChange={setInstrTab}
             search={instrSearch}

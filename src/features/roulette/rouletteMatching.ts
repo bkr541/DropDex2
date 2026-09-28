@@ -139,6 +139,33 @@ export function getRouletteHardFilterReason(
   return null;
 }
 
+
+export function getRoulettePairHardFilterReason(
+  vocal: RouletteCandidateAnalysis,
+  instrumental: RouletteCandidateAnalysis,
+): RouletteHardFilterReason | null {
+  const vocalReference: RouletteCandidateReference = {
+    track: vocal.track,
+    beatGrid: vocal.beatGrid,
+  };
+  const instrumentalReason = getRouletteHardFilterReason(
+    instrumental,
+    vocalReference,
+    'instrumental',
+  );
+  if (instrumentalReason) return instrumentalReason;
+
+  const instrumentalReference: RouletteCandidateReference = {
+    track: instrumental.track,
+    beatGrid: instrumental.beatGrid,
+  };
+  return getRouletteHardFilterReason(
+    vocal,
+    instrumentalReference,
+    'vocal',
+  );
+}
+
 function normalizedText(value: string | null | undefined): string | null {
   const normalized = value?.trim().toLowerCase();
   return normalized ? normalized : null;
@@ -207,12 +234,11 @@ export function rankRoulettePairs(
       beatGrid: vocal.beatGrid,
     };
     for (const instrumental of instrumentals) {
-      if (getRouletteHardFilterReason(instrumental, reference, 'instrumental')) continue;
+      if (getRoulettePairHardFilterReason(vocal, instrumental)) continue;
       const reverseReference: RouletteCandidateReference = {
         track: instrumental.track,
         beatGrid: instrumental.beatGrid,
       };
-      if (getRouletteHardFilterReason(vocal, reverseReference, 'vocal')) continue;
 
       const bpmDifference = rouletteDirectTempoDifference(vocal.track.bpm, instrumental.track.bpm) ?? Number.POSITIVE_INFINITY;
       const score = scoreRouletteCandidate(vocal, reverseReference, 'vocal')
@@ -466,12 +492,11 @@ export function rankRoulettePairsBoundedWithMetadata(
     const compatible: RoulettePairScore[] = [];
     const reference: RouletteCandidateReference = { track: vocal.track, beatGrid: vocal.beatGrid };
     for (const instrumental of possible.values()) {
-      if (getRouletteHardFilterReason(instrumental, reference, 'instrumental')) continue;
+      if (getRoulettePairHardFilterReason(vocal, instrumental)) continue;
       const reverseReference: RouletteCandidateReference = {
         track: instrumental.track,
         beatGrid: instrumental.beatGrid,
       };
-      if (getRouletteHardFilterReason(vocal, reverseReference, 'vocal')) continue;
 
       const bpmDifference = rouletteDirectTempoDifference(vocal.track.bpm, instrumental.track.bpm)
         ?? Number.POSITIVE_INFINITY;
