@@ -8,7 +8,6 @@ import { fetchRouletteCandidatePools } from '../../lib/queries/rouletteCandidate
 import type { RouletteCandidateAnalysis, RouletteHardFilterReason } from '../../features/roulette/rouletteMatching';
 import {
   applyFlipLabSelection,
-  chooseInitialFlipLabPair,
   flipLabRejectionReasonLabel,
   getFlipLabPairRejectionReason,
   rankFlipLabSuggestions,
@@ -58,6 +57,15 @@ import {
   isCurrentFlipLabLoad,
   scrollTopForFlipLabSelection,
 } from './flipLabPerformance';
+import { buildFlipLabDropLabRoute } from './flipLabHandoff';
+import {
+  FLIP_LAB_SESSION_VERSION,
+  createDefaultFlipLabSession,
+  loadFlipLabSession,
+  resolveFlipLabRestoredSelection,
+  saveFlipLabSession,
+  type FlipLabPersistedSession,
+} from './flipLabSession';
 
 // ── Color tokens ──────────────────────────────────────────────────────────────
 const BG       = 'var(--color-background)';
@@ -333,9 +341,10 @@ interface TrackHeaderProps {
   placeholderBpm: string;
   role: 'VOCAL' | 'INSTRUMENTAL';
   roleColor: string;
+  onClear?: () => void;
 }
 
-function TrackHeader({ track, placeholderEmoji, placeholderTitle, placeholderArtist, placeholderBpm, role, roleColor }: TrackHeaderProps) {
+function TrackHeader({ track, placeholderEmoji, placeholderTitle, placeholderArtist, placeholderBpm, role, roleColor, onClear }: TrackHeaderProps) {
   const title   = track?.title ?? placeholderTitle;
   const artist  = resolveFlipLabArtist(track, placeholderArtist);
   const bpm     = track?.bpm != null ? track.bpm.toFixed(0) : placeholderBpm;
@@ -360,6 +369,20 @@ function TrackHeader({ track, placeholderEmoji, placeholderTitle, placeholderArt
         background: `${roleColor}18`, border: `1px solid ${roleColor}30`,
         color: roleColor, letterSpacing: '0.08em', flexShrink: 0,
       }}>{role}</span>
+      {track && onClear && (
+        <button
+          type="button"
+          aria-label={`Clear ${role.toLowerCase()} selection`}
+          title={`Clear ${role.toLowerCase()} selection`}
+          onClick={onClear}
+          style={{
+            width: 24, height: 24, borderRadius: 6, padding: 0,
+            background: SURFACE, border: `1px solid ${BORDER_S}`,
+            color: MUTED, cursor: 'pointer', fontSize: 13, lineHeight: 1,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}
+        >×</button>
+      )}
       <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexShrink: 0 }}>
         <div>
           <div style={{ fontSize: 8, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>BPM</div>
@@ -930,8 +953,8 @@ function CompatibilityPanel({
         </div>
       </div>
 
-      {/* Pair Ready / Not Ready banner */}
-      <div style={{ padding: 12 }}>
+      {/* Flip Lab readiness is status only. Drop Lab is a separate parent-track handoff. */}
+      <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {!vocal || !instr ? (
           <div style={{
             padding: '12px 14px', borderRadius: 10, textAlign: 'center',
@@ -941,32 +964,45 @@ function CompatibilityPanel({
             <div style={{ fontSize: 10, color: MUTED, marginTop: 2, opacity: 0.7 }}>Choose a vocal and instrumental to analyze compatibility.</div>
           </div>
         ) : pairReady ? (
-          <button
-            type="button"
-            onClick={onOpenDropLab}
+          <div
+            data-testid="flip-lab-pair-ready"
             style={{
-              width: '100%', padding: '12px 14px', borderRadius: 10,
+              padding: '12px 14px', borderRadius: 10, textAlign: 'center',
               background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)',
-              cursor: 'pointer', textAlign: 'center',
             }}
           >
             <div style={{ fontSize: 13, fontWeight: 800, color: '#22c55e' }}>✓ Pair Ready</div>
-            <div style={{ fontSize: 10, color: '#22c55e', opacity: 0.75, marginTop: 2 }}>Open in Drop Lab →</div>
-          </button>
+            <div style={{ fontSize: 10, color: '#22c55e', opacity: 0.75, marginTop: 2 }}>Ready for Flip Lab audition playback.</div>
+          </div>
         ) : (
-          <button
-            type="button"
-            onClick={onOpenDropLab}
+          <div
+            data-testid="flip-lab-pair-not-ready"
             style={{
-              width: '100%', padding: '12px 14px', borderRadius: 10,
+              padding: '12px 14px', borderRadius: 10, textAlign: 'center',
               background: `${PRIMARY}10`, border: `1px solid ${PRIMARY}30`,
-              cursor: 'pointer', textAlign: 'center',
             }}
           >
             <div style={{ fontSize: 13, fontWeight: 800, color: PRIMARY }}>Pair Not Ready</div>
             <div style={{ fontSize: 10, color: PRIMARY, opacity: 0.7, marginTop: 2 }}>
               {notReadyMessage}
             </div>
+          </div>
+        )}
+
+        {vocal && instr && (
+          <button
+            type="button"
+            data-testid="flip-lab-drop-lab-handoff"
+            onClick={onOpenDropLab}
+            title="Pass the two selected parent tracks to Drop Lab. Flip Lab stems and mixer state do not carry over."
+            style={{
+              width: '100%', padding: '9px 12px', borderRadius: 8,
+              background: SURFACE, border: `1px solid ${BORDER_S}`,
+              color: FG, cursor: 'pointer', textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: 10, fontWeight: 800 }}>Test Transition in Drop Lab →</div>
+            <div style={{ fontSize: 8, color: MUTED, marginTop: 2 }}>Selected parent tracks only</div>
           </button>
         )}
       </div>
@@ -993,6 +1029,8 @@ function TopWaveformSection({
   loopOptions,
   masterBpm,
   playbackReady,
+  onClearVocal,
+  onClearInstrumental,
   onTogglePlayPause,
   onSeekStart,
   onSeekBackwardBar,
@@ -1020,6 +1058,8 @@ function TopWaveformSection({
   loopOptions: FlipLabLoopBars[];
   masterBpm: number | null;
   playbackReady: boolean;
+  onClearVocal: () => void;
+  onClearInstrumental: () => void;
   onTogglePlayPause: () => void;
   onSeekStart: () => void;
   onSeekBackwardBar: () => void;
@@ -1071,6 +1111,7 @@ function TopWaveformSection({
         placeholderBpm="—"
         role="VOCAL"
         roleColor={SECONDARY}
+        onClear={onClearVocal}
       />
 
       <div style={{
@@ -1142,6 +1183,7 @@ function TopWaveformSection({
         placeholderBpm="—"
         role="INSTRUMENTAL"
         roleColor={PRIMARY}
+        onClear={onClearInstrumental}
       />
 
       <div style={{
@@ -1298,6 +1340,8 @@ export function FlipLabView() {
 
   const [selectedVocalId, setSelectedVocalId] = useState<string | null>(null);
   const [selectedInstrId, setSelectedInstrId] = useState<string | null>(null);
+  const [pendingSessionRestore, setPendingSessionRestore] = useState<FlipLabPersistedSession | null>(null);
+  const [sessionHydratedImportId, setSessionHydratedImportId] = useState<string | null>(null);
   const [vocalStemState, setVocalStemState] = useState<FlipLabStemRoleState>(() => flipLabStemLifecycle.getState('vocal'));
   const [instrStemState, setInstrStemState] = useState<FlipLabStemRoleState>(() => flipLabStemLifecycle.getState('instrumental'));
 
@@ -1313,8 +1357,11 @@ export function FlipLabView() {
     const generation = ++candidateLoadGenerationRef.current;
     const controller = new AbortController();
     const requestImportId = activeImportId;
+    const storedSession = requestImportId ? loadFlipLabSession(requestImportId) : null;
 
     // Import/session boundaries invalidate every old selection immediately.
+    setSessionHydratedImportId(null);
+    setPendingSessionRestore(null);
     setVocals([]);
     setInstrs([]);
     setSelectedVocalId(null);
@@ -1323,6 +1370,10 @@ export function FlipLabView() {
     setInstrVisibleIds([]);
     setPendingSelection(null);
     setLoadError(null);
+    setVocalTab(storedSession?.vocalTab ?? 'suggested');
+    setInstrTab(storedSession?.instrumentalTab ?? 'suggested');
+    setVocalSearch('');
+    setInstrSearch('');
     void flipLabStemLifecycle.select('vocal', null);
     void flipLabStemLifecycle.select('instrumental', null);
 
@@ -1356,9 +1407,17 @@ export function FlipLabView() {
         )) return;
         setVocals(pools.vocals);
         setInstrs(pools.instrumentals);
-        const initialPair = chooseInitialFlipLabPair(pools.vocals, pools.instrumentals);
-        setSelectedVocalId(initialPair?.vocal.track.id ?? null);
-        setSelectedInstrId(initialPair?.instrumental.track.id ?? null);
+        const restoredSelection = resolveFlipLabRestoredSelection(storedSession, pools.vocals, pools.instrumentals);
+        setSelectedVocalId(restoredSelection.vocalId);
+        setSelectedInstrId(restoredSelection.instrumentalId);
+        const sessionToRestore = storedSession ?? createDefaultFlipLabSession(
+          requestImportId,
+          restoredSelection.vocalId,
+          restoredSelection.instrumentalId,
+        );
+        setVocalTab(sessionToRestore.vocalTab);
+        setInstrTab(sessionToRestore.instrumentalTab);
+        setPendingSessionRestore(sessionToRestore);
       })
       .catch((error: unknown) => {
         if (!isCurrentFlipLabLoad(
@@ -1474,6 +1533,57 @@ export function FlipLabView() {
     pairCompatible: selectedVocal !== null && selectedInstr !== null && pairRejectionReason === null,
   });
 
+  useEffect(() => {
+    if (!pendingSessionRestore || pendingSessionRestore.importId !== activeImportId) return;
+    audio.restoreControls({
+      syncEnabled: pendingSessionRestore.syncEnabled,
+      eq: pendingSessionRestore.eq,
+      mixPosition: pendingSessionRestore.mixPosition,
+      loopBars: pendingSessionRestore.loopBars,
+    });
+    setPendingSessionRestore(null);
+    setSessionHydratedImportId(pendingSessionRestore.importId);
+  }, [activeImportId, audio.restoreControls, pendingSessionRestore]);
+
+  useEffect(() => {
+    if (!activeImportId || sessionHydratedImportId !== activeImportId || loading) return;
+    saveFlipLabSession({
+      version: FLIP_LAB_SESSION_VERSION,
+      importId: activeImportId,
+      selectedVocalId,
+      selectedInstrumentalId: selectedInstrId,
+      vocalTab,
+      instrumentalTab: instrTab,
+      syncEnabled: audio.playback.syncEnabled,
+      mixPosition: audio.mixPosition,
+      eq: {
+        vocal: { ...audio.eq.vocal },
+        instrumental: { ...audio.eq.instrumental },
+      },
+      loopBars: audio.loopBars,
+    });
+  }, [
+    activeImportId,
+    audio.eq,
+    audio.loopBars,
+    audio.mixPosition,
+    audio.playback.syncEnabled,
+    instrTab,
+    loading,
+    selectedInstrId,
+    selectedVocalId,
+    sessionHydratedImportId,
+    vocalTab,
+  ]);
+
+  const clearSelection = useCallback((role: 'vocal' | 'instrumental') => {
+    setPendingSelection(null);
+    audio.stop({ clearResult: true });
+    if (role === 'vocal') setSelectedVocalId(null);
+    else setSelectedInstrId(null);
+    void flipLabStemLifecycle.select(role, null);
+  }, [audio.stop]);
+
   const commitSelection = useCallback((role: 'vocal' | 'instrumental', trackId: string) => {
     audio.stop({ clearResult: true });
     const next = applyFlipLabSelection(role, trackId, selectedVocalId, selectedInstrId);
@@ -1506,13 +1616,7 @@ export function FlipLabView() {
 
   const handleOpenDropLab = useCallback(() => {
     if (!selectedVocal || !selectedInstr) return;
-    navigate({
-      name: 'drop-lab',
-      sourceTrackId: selectedVocal.track.id,
-      candidateTrackId: selectedInstr.track.id,
-      sourceDropId: null,
-      candidateDropId: null,
-    });
+    navigate(buildFlipLabDropLabRoute(selectedVocal.track.id, selectedInstr.track.id));
   }, [navigate, selectedVocal, selectedInstr]);
 
   return (
@@ -1541,6 +1645,8 @@ export function FlipLabView() {
         loopOptions={audio.loopOptions}
         masterBpm={audio.masterBpm}
         playbackReady={audio.ready}
+        onClearVocal={() => clearSelection('vocal')}
+        onClearInstrumental={() => clearSelection('instrumental')}
         onTogglePlayPause={() => { void audio.togglePlayPause(); }}
         onSeekStart={audio.seekToStart}
         onSeekBackwardBar={() => audio.seekByBars(-1)}

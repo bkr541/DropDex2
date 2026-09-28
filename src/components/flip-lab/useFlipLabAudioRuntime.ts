@@ -44,6 +44,13 @@ export interface FlipLabCandidatePreviewState {
   error: string | null;
 }
 
+export interface FlipLabControlState {
+  syncEnabled: boolean;
+  eq: RouletteEqState;
+  mixPosition: number;
+  loopBars: FlipLabLoopBars;
+}
+
 export const DEFAULT_FLIP_LAB_EQ: RouletteEqState = {
   vocal: { low: 0, mid: 0, high: 0 },
   instrumental: { low: 0, mid: 0, high: 0 },
@@ -265,7 +272,7 @@ export function useFlipLabAudioRuntime({
     instrumental: { ...DEFAULT_FLIP_LAB_EQ.instrumental },
   }));
   const [mixPosition, setMixPositionState] = useState(0.5);
-  const [loopBars, setLoopBars] = useState<FlipLabLoopBars>(16);
+  const [loopBars, setLoopBarsState] = useState<FlipLabLoopBars>(16);
   const playbackRef = useRef(playback);
   const eqRef = useRef(eq);
   const mixRef = useRef(resolveFlipLabEqualPowerMix(mixPosition));
@@ -463,6 +470,36 @@ export function useFlipLabAudioRuntime({
 
   const setMixPosition = useCallback((value: number) => setMixPositionState(clamp01(value)), []);
 
+  const setLoopBars = useCallback((value: FlipLabLoopBars) => {
+    setLoopBarsState(value === 'off' || value === 4 || value === 8 || value === 16 || value === 32 ? value : 16);
+  }, []);
+
+  const restoreControls = useCallback((controls: FlipLabControlState) => {
+    requestRef.current += 1;
+    preflightAbortRef.current?.abort();
+    preflightAbortRef.current = null;
+    cancelProgress();
+    runtimeRef.current?.stop();
+    stopCandidatePreview();
+    setEqState({
+      vocal: {
+        low: clampFlipLabEqDb(controls.eq.vocal.low),
+        mid: clampFlipLabEqDb(controls.eq.vocal.mid),
+        high: clampFlipLabEqDb(controls.eq.vocal.high),
+      },
+      instrumental: {
+        low: clampFlipLabEqDb(controls.eq.instrumental.low),
+        mid: clampFlipLabEqDb(controls.eq.instrumental.mid),
+        high: clampFlipLabEqDb(controls.eq.instrumental.high),
+      },
+    });
+    setMixPositionState(clamp01(controls.mixPosition));
+    setLoopBarsState(controls.loopBars === 'off' || controls.loopBars === 4 || controls.loopBars === 8 || controls.loopBars === 16 || controls.loopBars === 32
+      ? controls.loopBars
+      : 16);
+    setPlayback(initialState(Boolean(controls.syncEnabled)));
+  }, [cancelProgress, stopCandidatePreview]);
+
   const toggleCandidatePreview = useCallback(async (role: RouletteSourceRole, track: RekordboxTrack): Promise<void> => {
     if (candidatePreview.status === 'playing' && candidatePreview.role === role && candidatePreview.trackId === track.id) {
       stopCandidatePreview();
@@ -626,6 +663,7 @@ export function useFlipLabAudioRuntime({
     setEqBand,
     setMixPosition,
     setLoopBars,
+    restoreControls,
   }), [
     candidatePreview,
     eq,
@@ -646,6 +684,8 @@ export function useFlipLabAudioRuntime({
     toggleSync,
     setEqBand,
     setMixPosition,
+    setLoopBars,
+    restoreControls,
     visualResult,
     visualization,
   ]);
