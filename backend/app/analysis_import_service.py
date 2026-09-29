@@ -1375,8 +1375,15 @@ def _archive_optional_2ex_rows(
     except Exception as exc:
         logger.warning("Optional PVDI enrichment unavailable; continuing .2EX archival: %s", exc)
 
+    # Content-addressed, matching the required raw-archival path in
+    # analysis_raw_archival.py: a stable group token means a retry after an
+    # interrupted worker reuses the same storage path (upsert=true below)
+    # instead of uploading a new object and orphaning the previous attempt's.
+    group_token = hashlib.sha256(
+        "\n".join(sorted(staging_key for staging_key, _ in members)).encode("utf-8")
+    ).hexdigest()[:20]
     archive_path, member_map = create_archive(
-        import_id, time.time_ns(), members, settings.analysis_staging_root
+        import_id, group_token, members, settings.analysis_staging_root
     )
     storage_path = f"{user_id}/{import_id}/archives/optional-{archive_path.name}"
     sb.storage.from_(_ANALYSIS_BUCKET).upload(
