@@ -32,7 +32,7 @@ function failureMessage(
     case 'source_media_mismatch':
       return `The connected USB doesn't have "${track.title}". Connect the right USB and press Flip again.`;
     case 'runtime_unavailable':
-      return 'Stem separation isn\'t set up on this computer yet.';
+      return `Stem separation isn't installed on this computer yet. Run "npm run setup:roulette-runtime" once, then restart DropDex. (${error.message})`;
     case 'source_changed':
       return `"${track.title}" changed while its stems were being made. Press Flip again.`;
     default:

@@ -16,6 +16,9 @@ dependencies = [
 [project.scripts]
 rekordbox-bridge = "rekordbox_bridge.cli:main"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["rekordbox_bridge"]
 
