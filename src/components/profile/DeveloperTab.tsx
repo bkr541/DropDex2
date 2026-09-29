@@ -76,12 +76,13 @@ function writeDisabledEvents(disabled: Set<string>): void {
 
 // ── Component classification ──────────────────────────────────────────────────
 
-type LogComponent = 'All' | 'Rekordbox' | 'Supabase' | 'React' | 'Browser' | 'App';
+type LogComponent = 'All' | 'Rekordbox' | 'Flip Lab' | 'Supabase' | 'React' | 'Browser' | 'App';
 
-const COMPONENTS: LogComponent[] = ['All', 'Rekordbox', 'Supabase', 'React', 'Browser', 'App'];
+const COMPONENTS: LogComponent[] = ['All', 'Rekordbox', 'Flip Lab', 'Supabase', 'React', 'Browser', 'App'];
 
 function classifyComponent(message: string): Exclude<LogComponent, 'All'> {
   if (message.startsWith('api.')) return 'Rekordbox';
+  if (message.startsWith('fliplab.')) return 'Flip Lab';
   if (message.startsWith('supabase.')) return 'Supabase';
   if (message.startsWith('react.')) return 'React';
   if (message.startsWith('window.')) return 'Browser';

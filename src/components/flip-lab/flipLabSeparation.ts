@@ -2,6 +2,7 @@ import type { RekordboxTrack } from '../../types';
 import type { DesktopRouletteStemPreparationResult } from '../../types/dropdex-desktop';
 import { fetchImportById } from '../../lib/queries/rekordbox';
 import { resolveRouletteSourceMedia } from '../../features/roulette/rouletteSourceMedia';
+import { logger } from '../../lib/logger';
 
 export type FlipLabSeparationResult =
   | { ok: true; vocalLocator: string; instrumentalLocator: string }
@@ -45,20 +46,40 @@ type TrackFailure = { ok: false; cancelled: boolean; message: string };
 
 async function separateTrack(
   track: RekordboxTrack,
+  role: 'vocal' | 'instrumental',
   onProgress: (progress: number) => void,
 ): Promise<TrackSuccess | TrackFailure> {
+  const logContext = { role, trackId: track.id, title: track.title };
   const bridge = desktop();
   if (!bridge) {
+    logger.error('fliplab.separation.unavailable', { ...logContext, reason: 'not running in the desktop app' });
     return { ok: false, cancelled: false, message: 'Stem separation only works in the DropDex desktop app.' };
   }
   const deviceName = (await fetchImportById(track.import_id))?.device_name ?? null;
   const media = resolveRouletteSourceMedia(track, deviceName);
   if (media.status !== 'ok') {
+    logger.error('fliplab.separation.bad_source_path', {
+      ...logContext,
+      filePath: track.file_path,
+      reason: (media as { reason?: string }).reason ?? null,
+    });
     return { ok: false, cancelled: false, message: `"${track.title}" doesn't have a usable file location on the USB.` };
   }
 
+  const startedAt = performance.now();
+  logger.info('fliplab.separation.start', {
+    ...logContext,
+    sourcePath: media.sourceSegments.join('/'),
+    volume: media.expectedVolumeName,
+  });
+  let nextProgressLog = 0.25;
   const unsubscribe = bridge.onFlipLabSeparationProgress((payload) => {
-    if (payload.trackId === track.id) onProgress(payload.progress);
+    if (payload.trackId !== track.id) return;
+    onProgress(payload.progress);
+    if (payload.progress >= nextProgressLog) {
+      logger.debug('fliplab.separation.progress', { ...logContext, percent: Math.round(payload.progress * 100) });
+      while (nextProgressLog <= payload.progress) nextProgressLog += 0.25;
+    }
   });
   try {
     const input = {
@@ -72,10 +93,27 @@ async function separateTrack(
     // remembered drive once and retry before asking the user to reconnect.
     if (!result.ok && (result as Extract<DesktopRouletteStemPreparationResult, { ok: false }>).error.kind === 'source_media_required') {
       const reconnect = await bridge.reconnectUsb(media.expectedVolumeName);
+      logger.info('fliplab.usb.reconnect', {
+        ...logContext,
+        volume: media.expectedVolumeName,
+        reconnected: reconnect.reconnected,
+        reason: (reconnect as { reason?: string }).reason ?? null,
+      });
       if (reconnect.reconnected) result = await bridge.separateFlipLabTrack(input);
     }
     if (!result.ok) {
       const failure = result as Extract<DesktopRouletteStemPreparationResult, { ok: false }>;
+      const cancelled = failure.error.kind === 'cancelled';
+      (cancelled ? logger.info : logger.error)(cancelled ? 'fliplab.separation.cancelled' : 'fliplab.separation.failed', {
+        ...logContext,
+        kind: failure.error.kind,
+        message: failure.error.message,
+        requiredVolume: failure.error.requiredVolumeName ?? null,
+        connectedVolume: failure.error.connectedVolumeName ?? null,
+        exitCode: failure.error.detail?.exitCode ?? null,
+        separatorOutput: failure.error.detail?.stderrTail ?? null,
+        elapsedMs: Math.round(performance.now() - startedAt),
+      });
       return {
         ok: false,
         cancelled: failure.error.kind === 'cancelled',
@@ -83,6 +121,12 @@ async function separateTrack(
       };
     }
     onProgress(1);
+    logger.info('fliplab.separation.done', {
+      ...logContext,
+      cached: result.cached,
+      elapsedMs: Math.round(performance.now() - startedAt),
+      durationMs: result.outputs.vocals.durationMs,
+    });
     return { ok: true, vocals: result.outputs.vocals.locator, instrumental: result.outputs.instrumental.locator };
   } finally {
     unsubscribe();
@@ -100,12 +144,12 @@ export async function separateFlipLabPair(
   onProgress: (progress: number) => void,
 ): Promise<FlipLabSeparationResult> {
   onProgress(0);
-  const vocal = await separateTrack(vocalTrack, (p) => onProgress(p * 0.5));
+  const vocal = await separateTrack(vocalTrack, 'vocal', (p) => onProgress(p * 0.5));
   if (!vocal.ok) return vocal as TrackFailure;
   onProgress(0.5);
   const instrumental = vocalTrack.id === instrumentalTrack.id
     ? vocal
-    : await separateTrack(instrumentalTrack, (p) => onProgress(0.5 + p * 0.5));
+    : await separateTrack(instrumentalTrack, 'instrumental', (p) => onProgress(0.5 + p * 0.5));
   if (!instrumental.ok) return instrumental as TrackFailure;
   onProgress(1);
   return {
@@ -135,8 +179,12 @@ export async function clearFlipLabStemCache(): Promise<{ ok: boolean; message: s
   const bridge = desktop();
   if (!bridge) return { ok: true, message: null };
   const result = await bridge.clearFlipLabStemCache();
-  if (result.ok) return { ok: true, message: null };
+  if (result.ok) {
+    logger.info('fliplab.cache.cleared');
+    return { ok: true, message: null };
+  }
   const failure = result as Extract<typeof result, { ok: false }>;
+  logger.error('fliplab.cache.clear_failed', { message: failure.error.message });
   return { ok: false, message: failure.error.message };
 }
 

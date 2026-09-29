@@ -855,23 +855,39 @@ class StemSeparationBridge {
         }
         const lines = stdout.split(/\r?\n/).filter((line) => line.startsWith(RESULT_PREFIX));
         const line = lines.at(-1);
-        if (code === 0 && line) {
+        // Progress bars redraw with \r; drop them so logs show the real output.
+        const stderrLines = stderr
+          .split(/[\r\n]+/)
+          .map((lineValue) => lineValue.trim())
+          .filter((lineValue) => lineValue && parseSeparationProgress(lineValue) == null);
+        const detail = {
+          exitCode: code ?? null,
+          stderrTail: stderrLines.slice(-20).join('\n').slice(-4000),
+        };
+        if (line) {
+          // The worker reports its real failure in the result line and exits
+          // non-zero, so read it regardless of the exit code.
           try {
             const result = JSON.parse(line.slice(RESULT_PREFIX.length));
-            if (result?.ok === true) {
+            if (code === 0 && result?.ok === true) {
               finish({ ok: true, result });
               return;
             }
-            finish({ ok: false, error: { kind: 'processing_failed', message: result?.error || 'Stem separation failed.' } });
-            return;
+            if (result?.ok === false) {
+              console.error(`[Flip Lab separation] worker failed: ${result?.error}\n${detail.stderrTail}`);
+              finish({ ok: false, error: { kind: 'processing_failed', message: result?.error || 'Stem separation failed.', detail } });
+              return;
+            }
           } catch { /* report sanitized failure below */ }
         }
-        const summary = stderr.split(/\r?\n/).map((lineValue) => lineValue.trim()).filter(Boolean).at(-1);
+        const summary = stderrLines.at(-1);
+        console.error(`[Flip Lab separation] worker exited (${code ?? 'unknown'}) without a result\n${detail.stderrTail}`);
         finish({
           ok: false,
           error: {
             kind: 'processing_failed',
             message: summary ? `Local stem separation failed: ${summary.slice(0, 300)}` : `Local stem separator exited unexpectedly (${code ?? 'unknown'}).`,
+            detail,
           },
         });
       });

@@ -1,3 +1,5 @@
+import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../../lib/utils';
 import { useUsbConnection, type UsbStatus } from '../../contexts/UsbConnectionContext';
 import { CircleDash, CloseFilled, FolderOff, Renew, Unplug, Usb, WarningAlt, WifiOff } from '@carbon/icons-react';
@@ -62,6 +64,41 @@ function statusTitle(status: UsbStatus, volumeName: string | null): string {
   }
 }
 
+function statusTooltip(
+  status: UsbStatus,
+  volumeName: string | null,
+  error: string | null,
+): { heading: string; detail: string; tone: 'ok' | 'info' | 'warn' | 'bad' | 'muted' } {
+  switch (status) {
+    case 'connected':
+      return { heading: 'USB connected', detail: volumeName ? `"${volumeName}" is ready to use.` : 'Your USB is ready to use.', tone: 'ok' };
+    case 'connecting':
+      return { heading: 'Connecting…', detail: 'Checking your USB drive.', tone: 'muted' };
+    case 'released':
+      return { heading: 'USB handed back', detail: 'DropDex let go of the drive so Rekordbox can use it. Click to take it back.', tone: 'info' };
+    case 'permission-required':
+      return { heading: 'Permission needed', detail: 'Your computer needs you to allow access to the USB again. Click to allow it.', tone: 'warn' };
+    case 'wrong_root':
+      return { heading: 'Wrong folder', detail: 'Pick the main folder of the USB, not PIONEER or a folder inside it. Click to choose again.', tone: 'warn' };
+    case 'unavailable':
+      return { heading: 'USB not found', detail: 'Plug the drive back in, or click to try again.', tone: 'warn' };
+    case 'error':
+      return { heading: 'USB problem', detail: error ? `${error} Click to try again.` : 'Something went wrong with the USB. Click to try again.', tone: 'bad' };
+    case 'unsupported':
+      return { heading: 'USB not available', detail: 'Reading a USB needs the DropDex desktop app.', tone: 'muted' };
+    default:
+      return { heading: 'No USB connected', detail: 'Click to connect your Rekordbox USB.', tone: 'muted' };
+  }
+}
+
+const TOOLTIP_TONE: Record<'ok' | 'info' | 'warn' | 'bad' | 'muted', string> = {
+  ok: 'bg-green-400',
+  info: 'bg-cyan-400',
+  warn: 'bg-amber-400',
+  bad: 'bg-red-500',
+  muted: 'bg-slate-500',
+};
+
 export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonProps) {
   const {
     status,
@@ -76,6 +113,15 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
   } = useUsbConnection();
 
   const isConnecting = status === 'connecting';
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [tooltipAnchor, setTooltipAnchor] = useState<{ left: number; top: number } | null>(null);
+  const tooltip = statusTooltip(status, volumeName, error);
+
+  function showTooltip() {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) setTooltipAnchor({ left: rect.right + 10, top: rect.top + rect.height / 2 });
+  }
+  const hideTooltip = () => setTooltipAnchor(null);
 
   function handlePrimaryClick() {
     if (isConnecting) return;
@@ -143,9 +189,13 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
       <div className={cn('flex items-center gap-1', collapsed && 'justify-center')}>
         {/* Main action button */}
         <button
-          onClick={handlePrimaryClick}
+          ref={buttonRef}
+          onClick={() => { hideTooltip(); handlePrimaryClick(); }}
+          onMouseEnter={showTooltip}
+          onMouseLeave={hideTooltip}
+          onFocus={showTooltip}
+          onBlur={hideTooltip}
           disabled={isConnecting}
-          title={collapsed ? statusTitle(status, volumeName) : undefined}
           aria-label={statusTitle(status, volumeName)}
           className={primaryButtonStyle}
         >
@@ -155,6 +205,22 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
             <span className="truncate">{statusLabel(status, volumeName)}</span>
           )}
         </button>
+
+        {tooltipAnchor && createPortal(
+          <div
+            role="tooltip"
+            data-testid="usb-status-tooltip"
+            style={{ left: tooltipAnchor.left, top: tooltipAnchor.top }}
+            className="pointer-events-none fixed z-[100] w-56 -translate-y-1/2 rounded-lg border border-[var(--color-border-subtle)] bg-[#0d131b] px-3 py-2 shadow-[0_8px_24px_rgb(0_0_0_/_0.5)]"
+          >
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
+              <span className={cn('h-2 w-2 shrink-0 rounded-full', TOOLTIP_TONE[tooltip.tone])} aria-hidden="true" />
+              {tooltip.heading}
+            </div>
+            <p className="mt-1 text-[11px] leading-snug text-slate-400">{tooltip.detail}</p>
+          </div>,
+          document.body,
+        )}
 
         {/* "Select USB Again" secondary action — shown when unavailable (after reconnect attempt) */}
         {!collapsed && status === 'unavailable' && (

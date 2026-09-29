@@ -41,4 +41,9 @@ build = [
 ]
 stem = [
     "demucs==4.0.1",
+    # torchaudio 2.9+ routes save/load through torchcodec, which demucs 4.0.1 doesn't
+    # install; keep the built-in backends and write WAVs through soundfile.
+    "torch>=2.2,<2.9",
+    "torchaudio>=2.2,<2.9",
+    "soundfile>=0.12",
 ]

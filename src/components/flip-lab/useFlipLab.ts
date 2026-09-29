@@ -17,6 +17,7 @@ import {
   separateFlipLabPair,
 } from './flipLabSeparation';
 import { resolveFlipLabCamelotKey, trackDurationMs } from './flipLabAnalysis';
+import { logger } from '../../lib/logger';
 
 export type FlipLabPhase = 'idle' | 'separating' | 'preparing' | 'ready' | 'error';
 
@@ -119,6 +120,15 @@ export function useFlipLab() {
 
   const flip = useCallback(async (pair: FlipLabPairInput): Promise<boolean> => {
     const difference = flipLabBpmDifference(pair.vocal.bpm, pair.instrumental.bpm);
+    const pairContext = {
+      vocal: pair.vocal.title,
+      vocalBpm: pair.vocal.bpm,
+      instrumental: pair.instrumental.title,
+      instrumentalBpm: pair.instrumental.bpm,
+    };
+    if (difference == null || difference > FLIP_LAB_MAX_BPM_DIFFERENCE) {
+      logger.warn('fliplab.flip.rejected', { ...pairContext, bpmDifference: difference, limit: FLIP_LAB_MAX_BPM_DIFFERENCE });
+    }
     if (difference == null) {
       setState((s) => ({ ...s, errors: ['Both tracks need a BPM before they can be flipped.'] }));
       return false;
@@ -141,6 +151,7 @@ export function useFlipLab() {
       resolveFlipLabCamelotKey(pair.instrumental),
     );
     if (semitones == null) warnings.push('Key Shift is unavailable because one of the tracks has no key.');
+    logger.info('fliplab.flip.start', { ...pairContext, keyShiftSemitones: semitones, vocalDownbeat, instrumentalDownbeat, warnings });
 
     let timeline: FlipLabTimeline;
     try {
@@ -181,6 +192,7 @@ export function useFlipLab() {
     if (generation !== generationRef.current) return true;
     if (!result.ok) {
       const failure = result as Extract<typeof result, { ok: false }>;
+      logger.warn('fliplab.flip.failed', { ...pairContext, message: failure.message, cancelled: failure.cancelled });
       setState((s) => ({ ...s, phase: 'error', errors: [failure.message] }));
       return true;
     }
@@ -207,10 +219,21 @@ export function useFlipLab() {
       const { vocal, vocalRate } = await buildVocal(exactTimeline, semitones, keyShiftRef.current);
       if (generation !== generationRef.current) return true;
       engine().load({ timeline: exactTimeline, instrumental, vocal, vocalRate });
+      logger.info('fliplab.flip.ready', {
+        ...pairContext,
+        tempoRatio: exactTimeline.tempoRatio,
+        totalSec: Math.round(exactTimeline.totalSec),
+        vocalStartSec: exactTimeline.vocalStartSec,
+        instrumentalStartSec: exactTimeline.instrumentalStartSec,
+      });
       setState((s) => ({ ...s, phase: 'ready', timeline: exactTimeline, positionSec: 0 }));
     } catch (error) {
       if (generation !== generationRef.current) return true;
       if (error instanceof DOMException && error.name === 'AbortError') return true;
+      logger.error('fliplab.playback.prepare_failed', {
+        ...pairContext,
+        message: error instanceof Error ? error.message : String(error),
+      });
       setState((s) => ({
         ...s,
         phase: 'error',
@@ -239,6 +262,11 @@ export function useFlipLab() {
     } catch (error) {
       if (generation !== generationRef.current) return;
       if (error instanceof DOMException && error.name === 'AbortError') return;
+      logger.error('fliplab.keyshift.failed', {
+        enabled: on,
+        semitones: state.keyShiftSemitones,
+        message: error instanceof Error ? error.message : String(error),
+      });
       setState((s) => ({ ...s, phase: 'error', errors: ['The key shift could not be applied.'] }));
     }
   }, [buildVocal, state.keyShiftSemitones, state.phase, state.timeline]);

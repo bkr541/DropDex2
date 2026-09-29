@@ -14,6 +14,7 @@ const {
   SEPARATOR_VERSION,
   StemSeparationBridge,
   atomicPublishDirectory,
+  parseSeparationProgress,
 } = require('./stemSeparationBridge.cjs');
 
 function testMetrics(durationMs) {
@@ -460,5 +461,105 @@ test('StemSeparationBridge cancels queued HQ work before it can launch', async (
   } finally {
     bridge.close();
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 10 });
+  }
+});
+
+function bridgeFor(root, spawn) {
+  return new StemSeparationBridge({
+    isPackaged: false,
+    resourcesPath: root,
+    appPath: root,
+    env: {},
+    platform: process.platform,
+    userDataPath: () => path.join(root, 'userData'),
+    spawn,
+  });
+}
+
+test('StemSeparationBridge reports the worker failure reason instead of progress-bar output', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dropdex-stem-failure-'));
+  const source = path.join(root, 'source.wav');
+  await writeFile(source, 'source audio');
+  const spawn = () => {
+    const child = fakeChild();
+    process.nextTick(() => {
+      child.stderr.write('  0%|          | 0.0/117.0 [00:00<?]\r  5%|▌         | 5.85/117.0\r 10%|█         | 11.7/117.0');
+      child.stderr.write('\nTraceback (most recent call last):\nImportError: TorchCodec is required for save\n');
+      child.stdout.write(`${RESULT_PREFIX}${JSON.stringify({ ok: false, error: 'TorchCodec is required for save' })}\n`);
+      child.emit('exit', 1, null);
+    });
+    return child;
+  };
+  const bridge = bridgeFor(root, spawn);
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    const result = await bridge.prepare({
+      trackId: 'track-1',
+      sourceFingerprint: 'fp',
+      separatorVersion: SEPARATOR_VERSION,
+      expectedDurationMs: 1000,
+      sourceFilePath: source,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.error.message, 'TorchCodec is required for save');
+    assert.equal(result.error.detail.exitCode, 1);
+    assert.match(result.error.detail.stderrTail, /ImportError: TorchCodec is required/);
+    assert.doesNotMatch(result.error.detail.stderrTail, /%\|/);
+  } finally {
+    console.error = originalError;
+    bridge.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('StemSeparationBridge forwards separator progress and parses tqdm percentages', async () => {
+  assert.equal(parseSeparationProgress('  0%|          | 0.0/117.0'), 0);
+  assert.equal(parseSeparationProgress(' 5%|▌ | 5.8/117\r 42%|████ | 49/117'), 0.42);
+  assert.equal(parseSeparationProgress('Separating track'), null);
+
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dropdex-stem-progress-'));
+  const source = path.join(root, 'source.wav');
+  await writeFile(source, 'source audio');
+  const spawn = (_command, args) => {
+    const child = fakeChild();
+    const output = args[args.indexOf('--output') + 1];
+    process.nextTick(async () => {
+      child.stderr.write(' 25%|██▌       | 29/117');
+      child.stderr.write(' 80%|████████  | 94/117');
+      const pair = path.join(output, 'pair');
+      await mkdir(pair, { recursive: true });
+      await writeFile(path.join(pair, 'vocals.wav'), 'vocals');
+      await writeFile(path.join(pair, 'instrumental.wav'), 'instrumental');
+      child.stdout.write(`${RESULT_PREFIX}${JSON.stringify({
+        ok: true,
+        outputs: {
+          vocals: { durationMs: 1000, sampleRateHz: 44100, channelCount: 2, metrics: testMetrics(1000) },
+          instrumental: { durationMs: 1000, sampleRateHz: 44100, channelCount: 2, metrics: testMetrics(1000) },
+        },
+      })}\n`);
+      child.emit('exit', 0, null);
+    });
+    return child;
+  };
+  const bridge = bridgeFor(root, spawn);
+  try {
+    const seen = [];
+    const result = await bridge.prepare({
+      trackId: 'track-1',
+      storageKey: 'Contents/song.wav\u00001000\u00001',
+      sourceFingerprint: 'fp',
+      separatorVersion: SEPARATOR_VERSION,
+      expectedDurationMs: 1000,
+      sourceFilePath: source,
+    }, { onProgress: (p) => seen.push(p) });
+    assert.equal(result.ok, true);
+    assert.deepEqual(seen, [0.25, 0.8]);
+
+    await bridge.clearCache();
+    await assert.rejects(stat(path.join(root, 'userData', 'roulette-stems')));
+  } finally {
+    bridge.close();
+    await rm(root, { recursive: true, force: true });
   }
 });

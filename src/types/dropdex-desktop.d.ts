@@ -179,6 +179,8 @@ export type DesktopRouletteStemPreparationResult =
         message: string;
         requiredVolumeName?: string | null;
         connectedVolumeName?: string | null;
+        /** Separator exit code and recent output, for logs only. */
+        detail?: { exitCode: number | null; stderrTail: string };
       };
     };
 
