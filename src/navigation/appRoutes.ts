@@ -22,7 +22,6 @@ export type AppRoute =
   | { name: 'import'; importId: string; resume: boolean }
   | { name: 'review' }
   | { name: 'cues' }
-  | { name: 'roulette' }
   | { name: 'discovery' }
   | { name: 'search' }
   | { name: 'profile' }
@@ -124,7 +123,6 @@ export function parseAppRoute(pathname: string, search = ''): AppRoute {
   switch (normalizedPath) {
     case '/review': return { name: 'review' };
     case '/cues': return { name: 'cues' };
-    case '/roulette': return { name: 'roulette' };
     case '/discovery': return { name: 'discovery' };
     case '/search': return { name: 'search' };
     case '/profile': return { name: 'profile' };
@@ -160,7 +158,6 @@ export function routeToUrl(route: AppRoute): string {
       return `/imports/${encodeURIComponent(route.importId)}${route.resume ? '?resume=1' : ''}`;
     case 'review': return '/review';
     case 'cues': return '/cues';
-    case 'roulette': return '/roulette';
     case 'discovery': return '/discovery';
     case 'search': return '/search';
     case 'profile': return '/profile';
@@ -182,7 +179,6 @@ export function routeBackFallback(route: AppRoute): AppRoute {
     case 'playlist':
     case 'review':
     case 'cues':
-    case 'roulette':
     case 'discovery':
     case 'search':
     case 'profile':

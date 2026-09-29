@@ -2,7 +2,51 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Search, TrashCan } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
 import { getLogEntries, subscribeToLogs, clearLogEntries, type LogEntry, type LogLevel } from '../../lib/logger';
-import { RouletteDiagnosticsPanel } from './RouletteDiagnosticsPanel';
+import { clearFlipLabStemCache } from '../flip-lab/flipLabSeparation';
+
+// ── Flip Lab stem cache ───────────────────────────────────────────────────────
+
+function FlipLabStemCachePanel() {
+  const [status, setStatus] = useState<'idle' | 'clearing' | 'done' | 'error'>('idle');
+  const [message, setMessage] = useState<string | null>(null);
+
+  const handleEmpty = useCallback(async () => {
+    setStatus('clearing');
+    setMessage(null);
+    const result = await clearFlipLabStemCache();
+    setStatus(result.ok ? 'done' : 'error');
+    setMessage(result.ok ? 'Stem cache emptied.' : `Couldn't empty the stem cache. ${result.message ?? ''}`.trim());
+  }, []);
+
+  return (
+    <div className="space-y-2">
+      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full bg-secondary/60 inline-block" />
+        Flip Lab
+      </h2>
+      <div className="glass rounded-2xl px-4 py-3 flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">Empty Stem Cache</p>
+          <p className="text-xs text-muted-foreground">
+            Deletes every vocal and instrumental stem Flip Lab has saved on this computer, plus your saved Flip Lab picks. Tracks will be separated again the next time you press Flip.
+          </p>
+          {message && (
+            <p role="status" className={cn('mt-1 text-xs', status === 'error' ? 'text-red-400' : 'text-emerald-400')}>{message}</p>
+          )}
+        </div>
+        <button
+          type="button"
+          data-testid="empty-stem-cache"
+          onClick={() => { void handleEmpty(); }}
+          disabled={status === 'clearing'}
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <TrashCan size={14} /> {status === 'clearing' ? 'Emptying…' : 'Empty Stem Cache'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ── Import event filter config ────────────────────────────────────────────────
 
@@ -171,8 +215,7 @@ export function DeveloperTab() {
 
   return (
     <section className="space-y-6">
-      {/* ── Roulette Diagnostics group ── */}
-      <RouletteDiagnosticsPanel />
+      <FlipLabStemCachePanel />
 
       {/* ── Import event filters group ── */}
       <div className="space-y-2">

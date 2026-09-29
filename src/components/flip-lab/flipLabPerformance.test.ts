@@ -13,7 +13,6 @@ import {
 function candidate(id: string, title: string, artist: string): RouletteCandidateAnalysis {
   return {
     track: { id, title, artist } as RekordboxTrack,
-    stemAsset: null,
     beatGrid: null,
     phraseCount: 0,
   };

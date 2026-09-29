@@ -22,10 +22,8 @@ describe('app routes', () => {
     }
   });
 
-  it('round trips the Roulette production route', () => {
-    expect(parseAppRoute('/roulette')).toEqual({ name: 'roulette' });
-    expect(routeToUrl({ name: 'roulette' })).toBe('/roulette');
-    expect(routeBackFallback({ name: 'roulette' })).toEqual({ name: 'library', tab: 'overview', search: '' });
+  it('no longer routes to the removed Roulette screen', () => {
+    expect(parseAppRoute('/roulette').name).not.toBe('roulette');
   });
 
   it('round trips the cue workspace route', () => {

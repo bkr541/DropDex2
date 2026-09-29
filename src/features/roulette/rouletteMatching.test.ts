@@ -12,7 +12,6 @@ import {
   ROULETTE_DIRECT_BPM_TOLERANCE,
   type RouletteCandidateAnalysis,
 } from './rouletteMatching';
-import { STEM_ASSET_CONTRACT_VERSION, type StemAssetRecord } from './stemAssets';
 
 function track(id: string, bpm = 142, camelot = '9A', title = id): RekordboxTrack {
   return {
@@ -64,30 +63,6 @@ function grid(trackId: string): BeatGridRow {
   };
 }
 
-function asset(trackId: string, stemType: 'vocals' | 'instrumental', status: StemAssetRecord['status'] = 'ready'): StemAssetRecord {
-  return {
-    id: `${trackId}-${stemType}`,
-    track_id: trackId,
-    stem_type: stemType,
-    installation_id: 'installation-1',
-    status,
-    storage_locator: status === 'ready' ? `${trackId}/${stemType}.wav` : null,
-    source_fingerprint: `fingerprint-${trackId}`,
-    separator_version: status === 'ready' ? 'separator-v1' : null,
-    contract_version: STEM_ASSET_CONTRACT_VERSION,
-    duration_ms: 180000,
-    sample_rate_hz: 48000,
-    channel_count: 2,
-    file_size_bytes: 1000,
-    file_mtime_ms: 100,
-    analysis_metrics: null,
-    failure_code: null,
-    failure_message: null,
-    created_at: '2026-09-08T00:00:00Z',
-    updated_at: '2026-09-08T00:00:00Z',
-  };
-}
-
 function candidate(
   id: string,
   role: 'vocal' | 'instrumental',
@@ -95,7 +70,6 @@ function candidate(
 ): RouletteCandidateAnalysis {
   return {
     track: track(id),
-    stemAsset: asset(id, role === 'vocal' ? 'vocals' : 'instrumental'),
     beatGrid: grid(id),
     phraseCount: 2,
     ...overrides,
@@ -167,7 +141,6 @@ describe('Roulette hard compatibility', () => {
   it('does not require pre-existing stems for candidate eligibility', () => {
     const reference = { track: track('reference'), beatGrid: grid('reference') };
     const noStem = candidate('no-stem', 'vocal', {
-      stemAsset: null,
       phraseCount: 2,
     });
     expect(rankRouletteCandidates([noStem], reference, 'vocal')).toHaveLength(1);

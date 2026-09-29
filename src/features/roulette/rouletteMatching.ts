@@ -2,14 +2,12 @@ import type { RekordboxTrack } from '../../types';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
 import { camelotKeyFromTonicMode, classifyCamelotRelationship, parseCamelotKey } from '../../lib/music/camelot';
 import type { BeatGridRow } from '../../lib/queries/analysisData';
-import type { StemAssetRecord, StemAssetType } from './stemAssets';
-import { stemTypeForRole } from './stemAssets';
-import type { RouletteSourceRole } from './rouletteSession';
+export type RouletteSourceRole = 'vocal' | 'instrumental';
+
 export const ROULETTE_DIRECT_BPM_TOLERANCE = 5;
 
 export interface RouletteCandidateAnalysis {
   track: RekordboxTrack;
-  stemAsset: StemAssetRecord | null;
   beatGrid: BeatGridRow | null;
   phraseCount: number;
 }
@@ -34,7 +32,6 @@ export interface RoulettePairScore {
 
 export type RouletteHardFilterReason =
   | 'invalid-parent-track'
-  | 'wrong-stem-type'
   | 'missing-key'
   | 'key-mismatch'
   | 'missing-bpm'
@@ -102,10 +99,6 @@ export function hasStableRouletteTempoGrid(beatGrid: BeatGridRow | null): boolea
   return beatGrid?.is_variable_tempo !== true;
 }
 
-function expectedStemType(role: RouletteSourceRole): StemAssetType {
-  return stemTypeForRole(role);
-}
-
 export function getRouletteHardFilterReason(
   candidate: RouletteCandidateAnalysis,
   reference: RouletteCandidateReference,
@@ -115,7 +108,6 @@ export function getRouletteHardFilterReason(
   const candidateId = candidate.track.id?.trim();
   const referenceId = reference.track.id?.trim();
   if (!candidateId || !referenceId) return 'invalid-parent-track';
-  if (candidate.stemAsset && candidate.stemAsset.stem_type !== expectedStemType(role)) return 'wrong-stem-type';
   if (candidateId === referenceId) return 'same-parent-track';
   if (excludedTrackIds.has(candidateId)) return 'excluded-parent-track';
   if (!(candidate.track.file_path_normalized ?? candidate.track.file_path)?.trim()
@@ -186,7 +178,6 @@ export function scoreRouletteCandidate(
   score += proximity * 60;
   if (candidate.phraseCount > 0) score += 10;
   if ((candidate.beatGrid?.downbeat_count ?? candidate.beatGrid?.beats.filter((beat) => beat.isDownbeat).length ?? 0) > 0) score += 6;
-  if (candidate.stemAsset?.status === 'ready') score += 6;
 
   const referenceGenre = normalizedText(reference.track.genre);
   const candidateGenre = normalizedText(candidate.track.genre);

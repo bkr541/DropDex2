@@ -14,7 +14,7 @@ const {
   deleteStemAssetFile,
   resolveStemAssetFile,
 } = require('./stemAssetStorage.cjs');
-const { StemSeparationBridge } = require('./stemSeparationBridge.cjs');
+const { SEPARATOR_VERSION, StemSeparationBridge } = require('./stemSeparationBridge.cjs');
 const { getOrCreateInstallationId } = require('./installationIdentity.cjs');
 
 const APP_SCHEME = 'dropdex-media';
@@ -759,6 +759,57 @@ function registerIpcHandlers() {
     });
   });
 
+  ipcMain.handle('dropdex:flip-lab-separate', async (event, payload) => {
+    assertExactObject(
+      payload,
+      ['trackId', 'sourceSegments', 'expectedVolumeName', 'expectedDurationMs'],
+      'Flip Lab separation payload',
+    );
+    if (typeof payload.trackId !== 'string' || !payload.trackId || payload.trackId.length > 256) {
+      return { ok: false, error: { kind: 'processing_failed', message: 'Flip Lab separation track is invalid.' } };
+    }
+    if (!validateUsbPathSegments(payload.sourceSegments)) {
+      return { ok: false, error: { kind: 'security', message: 'Unsafe Flip Lab source path was rejected.' } };
+    }
+    const sourceMedia = await resolveRouletteUsbSourceMedia(payload.sourceSegments, payload.expectedVolumeName);
+    if (!sourceMedia.ok) return sourceMedia;
+    const runtimeHealth = await stemSeparationBridge.health();
+    if (!runtimeHealth.available) {
+      return {
+        ok: false,
+        error: { kind: 'runtime_unavailable', message: runtimeHealth.message ?? 'The stem separator is not available on this computer.' },
+      };
+    }
+    // Keyed by the audio file itself (not the database track id) so cached
+    // stems survive library re-imports until the user empties the stem cache.
+    const stat = await fs.stat(sourceMedia.filePath);
+    const fingerprint = `${payload.sourceSegments.join('/')}\0${stat.size}\0${stat.mtimeMs}`;
+    const sender = event.sender;
+    return stemSeparationBridge.prepare({
+      trackId: payload.trackId,
+      storageKey: fingerprint,
+      sourceFingerprint: fingerprint,
+      separatorVersion: SEPARATOR_VERSION,
+      expectedDurationMs: payload.expectedDurationMs ?? null,
+      sourceFilePath: sourceMedia.filePath,
+    }, {
+      onProgress: (progress) => {
+        if (!sender.isDestroyed()) {
+          sender.send('dropdex:flip-lab-separation-progress', { trackId: payload.trackId, progress });
+        }
+      },
+    });
+  });
+  ipcMain.handle('dropdex:flip-lab-clear-stem-cache', async () => {
+    for (const [token, entry] of mediaTokens) {
+      if (entry.kind === 'stem') mediaTokens.delete(token);
+    }
+    try {
+      return await stemSeparationBridge.clearCache();
+    } catch (error) {
+      return { ok: false, error: { message: error instanceof Error ? error.message : String(error) } };
+    }
+  });
   ipcMain.handle('dropdex:cancel-roulette-stems', (_event, trackId) => {
     if (typeof trackId !== 'string' || !trackId || trackId.length > 256) {
       return { ok: false, cancelled: false };

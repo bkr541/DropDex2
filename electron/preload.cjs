@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld('dropdexDesktop', Object.freeze({
   prepareRouletteStems: (input) => ipcRenderer.invoke('dropdex:prepare-roulette-stems', input),
   prepareRoulettePreview: (input) => ipcRenderer.invoke('dropdex:prepare-roulette-preview', input),
   cancelRouletteStems: (trackId) => ipcRenderer.invoke('dropdex:cancel-roulette-stems', trackId),
+  separateFlipLabTrack: (input) => ipcRenderer.invoke('dropdex:flip-lab-separate', input),
+  clearFlipLabStemCache: () => ipcRenderer.invoke('dropdex:flip-lab-clear-stem-cache'),
+  onFlipLabSeparationProgress: (listener) => {
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on('dropdex:flip-lab-separation-progress', handler);
+    return () => ipcRenderer.removeListener('dropdex:flip-lab-separation-progress', handler);
+  },
   metadataApplyAvailability: () => ipcRenderer.invoke('dropdex:metadata-apply-availability'),
   metadataApplyPreflight: (scope, savedDrafts) => ipcRenderer.invoke('dropdex:metadata-apply-preflight', { scope, savedDrafts }),
   metadataApply: (token, scope, savedDrafts) => ipcRenderer.invoke('dropdex:metadata-apply', { token, scope, savedDrafts }),

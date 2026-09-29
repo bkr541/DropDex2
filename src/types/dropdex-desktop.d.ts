@@ -187,6 +187,23 @@ export interface DesktopRouletteStemCancellationResult {
   cancelled: boolean;
 }
 
+export interface DesktopFlipLabSeparationInput {
+  trackId: string;
+  sourceSegments: string[];
+  expectedVolumeName: string | null;
+  expectedDurationMs: number | null;
+}
+
+export interface DesktopFlipLabSeparationProgress {
+  trackId: string;
+  /** 0..1 */
+  progress: number;
+}
+
+export type DesktopFlipLabClearStemCacheResult =
+  | { ok: true }
+  | { ok: false; error: { message: string } };
+
 export const ROULETTE_PREVIEW_DESKTOP_CONTRACT_VERSION: 1;
 
 export type DesktopRoulettePreviewRole = 'vocal' | 'instrumental';
@@ -489,6 +506,9 @@ export interface DropDexDesktopBridge {
   prepareRouletteStems(input: DesktopRouletteStemPreparationInput): Promise<DesktopRouletteStemPreparationResult>;
   prepareRoulettePreview(input: DesktopRoulettePreviewPreparationInput): Promise<DesktopRoulettePreviewPreparationResult>;
   cancelRouletteStems(trackId: string): Promise<DesktopRouletteStemCancellationResult>;
+  separateFlipLabTrack(input: DesktopFlipLabSeparationInput): Promise<DesktopRouletteStemPreparationResult>;
+  clearFlipLabStemCache(): Promise<DesktopFlipLabClearStemCacheResult>;
+  onFlipLabSeparationProgress(listener: (payload: DesktopFlipLabSeparationProgress) => void): () => void;
   metadataApplyAvailability(): Promise<{ available: boolean; reason: string | null; metadataSchemaVersion: number | null; genreMaxLength: number | null; metadataApplySupported: boolean }>;
   metadataApplyPreflight(scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataPreflightResult>;
   metadataApply(token: string, scope: DesktopMetadataApplyScope, savedDrafts: DesktopMetadataDraft[]): Promise<DesktopMetadataApplyResult>;

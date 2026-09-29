@@ -128,6 +128,17 @@ function validateRequest(input) {
   if (typeof input.sourceFilePath !== 'string' || !path.isAbsolute(input.sourceFilePath)) {
     throw new Error('Stem separation source path is invalid.');
   }
+  if (input.storageKey != null && (typeof input.storageKey !== 'string' || input.storageKey.length < 1 || input.storageKey.length > 8192)) {
+    throw new Error('Stem separation storage key is invalid.');
+  }
+}
+
+// Demucs reports progress through tqdm on stderr ("  42%|████      | 98.1/234.0 ...").
+function parseSeparationProgress(chunk) {
+  const matches = [...String(chunk).matchAll(/(\d{1,3})%\|/g)];
+  if (matches.length === 0) return null;
+  const percent = Number(matches.at(-1)[1]);
+  return Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) / 100 : null;
 }
 
 function validatePreviewRequest(input) {
@@ -320,11 +331,14 @@ class StemSeparationBridge {
     return this._spawnHealthWorker(launch);
   }
 
-  prepare(input) {
+  prepare(input, { onProgress } = {}) {
     validateRequest(input);
     const key = this._jobKey(input.trackId, input.sourceFingerprint, input.separatorVersion);
     const existing = this.jobs.get(key);
-    if (existing) return existing.promise;
+    if (existing) {
+      if (typeof onProgress === 'function') existing.progressListeners.add(onProgress);
+      return existing.promise;
+    }
 
     let resolvePromise;
     const promise = new Promise((resolve) => { resolvePromise = resolve; });
@@ -339,6 +353,7 @@ class StemSeparationBridge {
       settled: false,
       resolve: resolvePromise,
       promise,
+      progressListeners: new Set(typeof onProgress === 'function' ? [onProgress] : []),
     };
     this.jobs.set(key, job);
     this.separationQueue.push(job);
@@ -446,6 +461,13 @@ class StemSeparationBridge {
       if (!job.started) this._settleSeparationJob(job, this._cancelledResult(job));
     }
     this.separationQueue = [];
+  }
+
+  async clearCache() {
+    this.close();
+    const root = stemStorageRoot(this.options.userDataPath());
+    await fs.rm(root, { recursive: true, force: true });
+    return { ok: true };
   }
 
   async _loadCachedPreview(finalDir, finalLocatorDir, input) {
@@ -622,7 +644,7 @@ class StemSeparationBridge {
     const jobId = crypto.randomUUID();
     const jobRoot = path.join(stagingRoot, jobId);
     const preparedDir = path.join(jobRoot, 'pair');
-    const trackDir = hash(input.trackId).slice(0, 20);
+    const trackDir = hash(input.storageKey ?? input.trackId).slice(0, 20);
     const identityDir = hash(`${input.sourceFingerprint}\0${input.separatorVersion}`).slice(0, 24);
     const finalLocatorDir = ['generated', trackDir, identityDir].join('/');
     const finalDir = path.join(root, 'generated', trackDir, identityDir);
@@ -817,7 +839,14 @@ class StemSeparationBridge {
       child.stdout.setEncoding('utf8');
       child.stderr.setEncoding('utf8');
       child.stdout.on('data', (chunk) => { stdout = appendCapped(stdout, chunk); });
-      child.stderr.on('data', (chunk) => { stderr = appendCapped(stderr, chunk); });
+      child.stderr.on('data', (chunk) => {
+        stderr = appendCapped(stderr, chunk);
+        const progress = parseSeparationProgress(chunk);
+        if (progress == null || !job.progressListeners) return;
+        for (const listener of job.progressListeners) {
+          try { listener(progress); } catch { /* a closed renderer must not break separation */ }
+        }
+      });
       child.on('error', (error) => finish({ ok: false, error: { kind: 'runtime_unavailable', message: `Local stem separator failed to start: ${error.message}` } }));
       child.on('exit', (code, signal) => {
         if (job.cancelled || signal === 'SIGTERM') {
@@ -865,6 +894,7 @@ module.exports = {
   STEM_MODEL_NAME,
   StemSeparationBridge,
   atomicPublishDirectory,
+  parseSeparationProgress,
   defaultDevelopmentPython,
   defaultModelRoot,
   resolveHealthLaunch,
