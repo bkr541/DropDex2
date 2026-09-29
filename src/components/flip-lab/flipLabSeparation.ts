@@ -24,9 +24,11 @@ function failureMessage(
 ): string {
   switch (error.kind) {
     case 'source_media_required':
-    case 'not_found':
-    case 'permission_denied':
       return `Connect the USB that has "${track.title}" and press Flip again.`;
+    case 'not_found':
+      return `"${track.title}" isn't on the connected USB where your library says it should be.`;
+    case 'permission_denied':
+      return `Your computer blocked DropDex from reading "${track.title}" on the USB. Allow access and press Flip again.`;
     case 'source_media_mismatch':
       return `The connected USB doesn't have "${track.title}". Connect the right USB and press Flip again.`;
     case 'runtime_unavailable':
@@ -59,12 +61,19 @@ async function separateTrack(
     if (payload.trackId === track.id) onProgress(payload.progress);
   });
   try {
-    const result = await bridge.separateFlipLabTrack({
+    const input = {
       trackId: track.id,
       sourceSegments: media.sourceSegments,
       expectedVolumeName: media.expectedVolumeName,
       expectedDurationMs: trackDurationMs(track),
-    });
+    };
+    let result = await bridge.separateFlipLabTrack(input);
+    // After an import, DropDex hands the USB back to Rekordbox. Reclaim the
+    // remembered drive once and retry before asking the user to reconnect.
+    if (!result.ok && (result as Extract<DesktopRouletteStemPreparationResult, { ok: false }>).error.kind === 'source_media_required') {
+      const reconnect = await bridge.reconnectUsb(media.expectedVolumeName);
+      if (reconnect.reconnected) result = await bridge.separateFlipLabTrack(input);
+    }
     if (!result.ok) {
       const failure = result as Extract<DesktopRouletteStemPreparationResult, { ok: false }>;
       return {
