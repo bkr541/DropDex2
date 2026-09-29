@@ -465,7 +465,6 @@ function SelectPanel({
   const isVocal = role === 'vocal';
   const roleColor = isVocal ? SECONDARY : PRIMARY;
   const roleLabel = isVocal ? 'Vocal' : 'Instrumental';
-  const roleEmoji = isVocal ? '🎤' : '⚡';
   const list = tab === 'suggested' ? suggested : library;
   const deferredSearch = useDeferredValue(search);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -533,16 +532,9 @@ function SelectPanel({
         padding: '12px 14px 10px',
         background: PANEL, borderBottom: `1px solid ${BORDER_F}`,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 8,
-            background: `${roleColor}18`, border: `1px solid ${roleColor}30`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
-          }}>{roleEmoji}</div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: FG }}>Select {roleLabel}</div>
-            <div style={{ fontSize: 10, color: MUTED }}>Choose the {role} track</div>
-          </div>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: FG }}>Select {roleLabel}</div>
+          <div style={{ fontSize: 10, color: MUTED }}>Choose the {role} track</div>
         </div>
         <div style={{
           display: 'flex', gap: 2, background: SURFACE,
@@ -1209,6 +1201,7 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
   return (
     <div style={{
       display: 'flex', flexDirection: 'column',
+      flex: 1, minHeight: 0, overflowY: 'auto',
       borderTop: `1px solid ${BORDER_F}`,
       borderBottom: `1px solid ${BORDER_F}`,
       background: BG, fontFamily: 'inherit',
@@ -1216,22 +1209,24 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
       <style>{FLIP_LAB_KEYFRAMES}</style>
 
       {showLoadedPair ? (
-        <TopWaveformSection
-          vocalTrack={selectedVocal.track}
-          instrTrack={selectedInstr.track}
-          vocalAnalysis={vocalAnalysis}
-          instrAnalysis={instrAnalysis}
-          vocalWaveformState={getWaveformState(selectedVocal.track.id)}
-          instrWaveformState={getWaveformState(selectedInstr.track.id)}
-          timeline={flipState.timeline!}
-          flipLab={flipLab}
-        />
+        <div style={{ flexShrink: 0 }}>
+          <TopWaveformSection
+            vocalTrack={selectedVocal.track}
+            instrTrack={selectedInstr.track}
+            vocalAnalysis={vocalAnalysis}
+            instrAnalysis={instrAnalysis}
+            vocalWaveformState={getWaveformState(selectedVocal.track.id)}
+            instrWaveformState={getWaveformState(selectedInstr.track.id)}
+            timeline={flipState.timeline!}
+            flipLab={flipLab}
+          />
+        </div>
       ) : (
         <div
           data-testid="flip-lab-empty-pair"
           style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            gap: 6, minHeight: 200, padding: '32px 16px', background: BG, textAlign: 'center',
+            gap: 6, minHeight: 200, flexShrink: 0, padding: '32px 16px', background: BG, textAlign: 'center',
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 800, color: FG }}>No pair loaded</div>
@@ -1252,11 +1247,10 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
       ) : (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 260px 1fr',
+          gridTemplateColumns: '1fr 236px 1fr',
           borderTop: `1px solid ${BORDER_F}`,
-          height: 'min(480px, 46vh)',
-          minHeight: 0,
-          maxHeight: 'calc(100vh - 320px)',
+          flex: 1,
+          minHeight: 200,
           overflow: 'hidden',
         }}>
           <SelectPanel

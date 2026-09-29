@@ -1324,7 +1324,13 @@ export default function App() {
         )}
 
         {/* Scrollable content */}
-        <main className={cn('flex-1 overflow-y-auto px-4 md:px-8 pt-6 pb-32 md:pb-8', currentView === 'cues' && 'scrollbar-none')}>
+        <main className={cn(
+          'flex-1',
+          currentView === 'flip-lab'
+            ? 'flex min-h-0 flex-col overflow-hidden'
+            : 'overflow-y-auto px-4 md:px-8 pt-6 pb-32 md:pb-8',
+          currentView === 'cues' && 'scrollbar-none',
+        )}>
           <ApplicationErrorBoundary level="feature" resetKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
           <RouteFailureProbe />
           <AnimatePresence mode="wait">
@@ -1973,7 +1979,7 @@ export default function App() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="md:max-w-7xl md:mx-auto"
+                className="flex min-h-0 flex-1 flex-col"
               >
                 <FlipLabView
                   activeImport={latestImport ?? null}
