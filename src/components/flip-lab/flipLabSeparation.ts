@@ -13,9 +13,15 @@ function desktop() {
   return window.dropdexDesktop?.isElectron ? window.dropdexDesktop : null;
 }
 
-function trackDurationMs(track: RekordboxTrack): number | null {
-  if (track.duration_ms != null) return Math.max(0, Math.round(track.duration_ms));
-  if (track.duration_seconds != null) return Math.max(0, Math.round(track.duration_seconds * 1000));
+// Rekordbox stores length in whole seconds (a 152.904 s file is stored as
+// 152000 ms), which trips the separator's strict 500 ms length check. The
+// separator still requires both stems to have identical length; a large gap
+// against the library length is logged as a warning instead.
+const LIBRARY_LENGTH_WARNING_MS = 1500;
+
+function libraryDurationMs(track: RekordboxTrack): number | null {
+  if (track.duration_ms != null && Number.isFinite(track.duration_ms) && track.duration_ms > 0) return track.duration_ms;
+  if (track.duration_seconds != null && track.duration_seconds > 0) return track.duration_seconds * 1000;
   return null;
 }
 
@@ -86,7 +92,7 @@ async function separateTrack(
       trackId: track.id,
       sourceSegments: media.sourceSegments,
       expectedVolumeName: media.expectedVolumeName,
-      expectedDurationMs: trackDurationMs(track),
+      expectedDurationMs: null,
     };
     let result = await bridge.separateFlipLabTrack(input);
     // After an import, DropDex hands the USB back to Rekordbox. Reclaim the
@@ -121,6 +127,14 @@ async function separateTrack(
       };
     }
     onProgress(1);
+    const libraryMs = libraryDurationMs(track);
+    if (libraryMs != null && Math.abs(result.outputs.vocals.durationMs - libraryMs) > LIBRARY_LENGTH_WARNING_MS) {
+      logger.warn('fliplab.separation.length_mismatch', {
+        ...logContext,
+        stemDurationMs: result.outputs.vocals.durationMs,
+        libraryDurationMs: libraryMs,
+      });
+    }
     logger.info('fliplab.separation.done', {
       ...logContext,
       cached: result.cached,
