@@ -10,6 +10,17 @@ export interface FlipLabEngineLoad {
 
 const SCHEDULE_LEAD_SEC = 0.03;
 
+export type FlipLabStem = 'vocal' | 'instrumental';
+export type FlipLabEqBand = 'low' | 'mid' | 'high';
+export type FlipLabStemEq = Record<FlipLabEqBand, number>;
+export const FLIP_LAB_EQ_RANGE_DB = 12;
+
+interface DeckChain {
+  /** Solo/mute gain feeding the 3-band EQ, then the master volume. */
+  input: GainNode;
+  eq: Record<FlipLabEqBand, BiquadFilterNode>;
+}
+
 /**
  * Two AudioBufferSourceNodes on one transport clock. Each deck starts at its
  * own timeline offset so both first downbeats coincide, and the transport
@@ -25,12 +36,45 @@ export class FlipLabEngine {
   private pausedAt = 0;
   private playing = false;
   private endTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly decks: Record<FlipLabStem, DeckChain>;
   onEnded: (() => void) | null = null;
 
   constructor() {
     this.context = new AudioContext();
     this.master = this.context.createGain();
     this.master.connect(this.context.destination);
+    this.decks = { vocal: this.createDeck(), instrumental: this.createDeck() };
+  }
+
+  // Same bands as the earlier Flip Lab mixer: low shelf 180 Hz, peak 1 kHz, high shelf 6 kHz.
+  private createDeck(): DeckChain {
+    const input = this.context.createGain();
+    const low = this.context.createBiquadFilter();
+    low.type = 'lowshelf';
+    low.frequency.value = 180;
+    const mid = this.context.createBiquadFilter();
+    mid.type = 'peaking';
+    mid.frequency.value = 1_000;
+    mid.Q.value = 0.8;
+    const high = this.context.createBiquadFilter();
+    high.type = 'highshelf';
+    high.frequency.value = 6_000;
+    input.connect(low);
+    low.connect(mid);
+    mid.connect(high);
+    high.connect(this.master);
+    return { input, eq: { low, mid, high } };
+  }
+
+  setSolo(solo: FlipLabStem | null): void {
+    const now = this.context.currentTime;
+    this.decks.vocal.input.gain.setTargetAtTime(solo === 'instrumental' ? 0 : 1, now, 0.01);
+    this.decks.instrumental.input.gain.setTargetAtTime(solo === 'vocal' ? 0 : 1, now, 0.01);
+  }
+
+  setEq(stem: FlipLabStem, band: FlipLabEqBand, db: number): void {
+    const value = Math.max(-FLIP_LAB_EQ_RANGE_DB, Math.min(FLIP_LAB_EQ_RANGE_DB, Number.isFinite(db) ? db : 0));
+    this.decks[stem].eq[band].gain.setTargetAtTime(value, this.context.currentTime, 0.01);
   }
 
   get durationSec(): number {
@@ -107,20 +151,20 @@ export class FlipLabEngine {
     this.originCtxTime = now - positionSec;
     const generation = ++this.generation;
 
-    const startDeck = (buffer: AudioBuffer, rate: number, startSec: number, spanSec: number) => {
+    const startDeck = (deck: GainNode, buffer: AudioBuffer, rate: number, startSec: number, spanSec: number) => {
       if (positionSec >= startSec + spanSec) return;
       const node = this.context.createBufferSource();
       node.buffer = buffer;
       node.playbackRate.value = rate;
-      node.connect(this.master);
+      node.connect(deck);
       const when = now + Math.max(0, startSec - positionSec);
       const offset = Math.max(0, positionSec - startSec) * rate;
       node.start(when, Math.min(offset, buffer.duration));
       this.nodes.push(node);
     };
 
-    startDeck(loaded.instrumental, 1, timeline.instrumentalStartSec, timeline.instrumentalSpanSec);
-    startDeck(loaded.vocal, loaded.vocalRate, timeline.vocalStartSec, timeline.vocalSpanSec);
+    startDeck(this.decks.instrumental.input, loaded.instrumental, 1, timeline.instrumentalStartSec, timeline.instrumentalSpanSec);
+    startDeck(this.decks.vocal.input, loaded.vocal, loaded.vocalRate, timeline.vocalStartSec, timeline.vocalSpanSec);
     this.playing = true;
 
     const remainingMs = Math.max(0, (timeline.totalSec - positionSec) * 1000) + SCHEDULE_LEAD_SEC * 1000 + 50;

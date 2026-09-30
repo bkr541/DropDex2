@@ -19,3 +19,5 @@ export type { BrandTone, TypographyProps, TypographyVariant } from './Typography
 export { ViewModeNavigation } from './ViewModeNavigation';
 export type { ViewModeNavigationProps } from './ViewModeNavigation';
 export type { NavigationOption } from './types';
+export { KeyBadge } from './KeyBadge';
+export { camelotKeyColor, formatCamelotCode } from './camelotKey';

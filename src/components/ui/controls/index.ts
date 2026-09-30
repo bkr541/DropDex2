@@ -19,3 +19,6 @@ export { TextareaControl } from './TextareaControl';
 export { TextControl } from './TextControl';
 export type { AccentTone } from './types';
 export { UrlControl } from './UrlControl';
+export { FilterDropdown } from './FilterDropdown';
+export type { FilterDropdownOption } from './FilterDropdown';
+export { Knob } from './Knob';

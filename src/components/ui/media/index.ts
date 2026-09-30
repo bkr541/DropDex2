@@ -8,3 +8,6 @@ export type {
   TransportButtonSize,
   TransportButtonTone,
 } from './TransportButton';
+export { TrackWaveformPreview } from './TrackWaveformPreview';
+export { cueMarkersFromState } from './trackCueMarkers';
+export type { TrackCueMarker } from './trackCueMarkers';

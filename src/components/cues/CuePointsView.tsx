@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Add, ChevronDown, CircleDash, Close, Edit, Export, Idea, Music, Pause, Play, Repeat, Save, Search, Subtract, Upload, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
+import { Add, ChevronDown, CircleDash, Close, Edit, Export, Idea, Music, Pause, Play, Repeat, Save, Subtract, Upload, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -38,10 +38,11 @@ import {
 } from '../../lib/queries/analysisData';
 import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { ControlButton, SearchControl, SelectControl, TextControl } from '../ui/controls';
+import { ControlButton, FilterDropdown, SearchControl, SelectControl, TextControl } from '../ui/controls';
 import { Artwork } from '../ui/display/Artwork';
 import { TabNavigation } from '../ui/display/TabNavigation';
-import { MediaTransportControlGroup } from '../ui/media';
+import { MediaTransportControlGroup, TrackWaveformPreview, cueMarkersFromState } from '../ui/media';
+import { KeyBadge } from '../ui/display';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import { clampCueTransportTime, cueAdjacentTrackIndex, cuePlaybackPlayheadPercent } from '../../lib/cues/cuePlaybackTransport';
@@ -512,168 +513,6 @@ function CueBpmRangeSlider({
   );
 }
 
-function CueFilterDropdown({
-  label,
-  value,
-  onChange,
-  options,
-  searchable = false,
-  className,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-  searchable?: boolean;
-  className?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const listboxRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const selectedLabel = options.find((o) => o.value === value)?.label ?? options[0]?.label ?? value;
-
-  const filtered = searchable && search.trim()
-    ? options.filter((o) => o.label.toLowerCase().includes(search.trim().toLowerCase()))
-    : options;
-
-  const closeAndRestoreFocus = useCallback(() => {
-    setOpen(false);
-    requestAnimationFrame(() => triggerRef.current?.focus());
-  }, []);
-
-  useEffect(() => {
-    if (!open) { setSearch(''); return; }
-    const focusTimer = window.setTimeout(() => {
-      if (searchable) searchRef.current?.focus();
-      else {
-        const selected = listboxRef.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]');
-        const first = listboxRef.current?.querySelector<HTMLElement>('[role="option"]');
-        (selected ?? first)?.focus();
-      }
-    }, 0);
-    function onPointerDown(e: PointerEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closeAndRestoreFocus();
-      }
-    }
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.clearTimeout(focusTimer);
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [closeAndRestoreFocus, open, searchable]);
-
-  function handleListboxKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const optionElements = [...(listboxRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
-    if (optionElements.length === 0) return;
-    event.preventDefault();
-    const currentIndex = optionElements.indexOf(document.activeElement as HTMLElement);
-    let nextIndex = currentIndex;
-    if (event.key === 'Home') nextIndex = 0;
-    else if (event.key === 'End') nextIndex = optionElements.length - 1;
-    else if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : Math.min(optionElements.length - 1, currentIndex + 1);
-    else if (event.key === 'ArrowUp') nextIndex = currentIndex < 0 ? optionElements.length - 1 : Math.max(0, currentIndex - 1);
-    optionElements[nextIndex]?.focus();
-  }
-
-  const isFiltered = options.length > 0 && options[0].label.toLowerCase() === 'all' && value !== options[0].value;
-
-  return (
-    <div ref={ref} className={cn('relative min-w-[130px]', className)}>
-      <div className="pb-2 border-b border-white/15 hover:border-white/35 transition-colors">
-        <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">{label}</p>
-        <div className="flex items-center gap-1">
-          <button
-            ref={triggerRef}
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="flex flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-            aria-haspopup="listbox"
-            aria-expanded={open}
-          >
-            <span className="text-sm text-foreground truncate">{selectedLabel}</span>
-          </button>
-          {isFiltered && (
-            <button
-              type="button"
-              aria-label={`Clear ${label} filter`}
-              onClick={() => { onChange(options[0].value); closeAndRestoreFocus(); }}
-              className="shrink-0 text-red-400 hover:text-red-300 transition-colors focus-visible:outline-none"
-            >
-              <Close size={12} />
-            </button>
-          )}
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-hidden="true"
-            onClick={() => setOpen((v) => !v)}
-            className="shrink-0 text-muted-foreground focus-visible:outline-none"
-          >
-            <ChevronDown
-              size={14}
-              className={cn('transition-transform duration-200', open && 'rotate-180')}
-            />
-          </button>
-        </div>
-      </div>
-      {open && (
-        <div
-          ref={listboxRef}
-          role="listbox"
-          aria-label={`${label} filter options`}
-          onKeyDown={handleListboxKeyDown}
-          className="absolute top-full left-0 mt-1.5 z-50 min-w-full overflow-y-auto overscroll-contain rounded-md border border-[var(--color-control-border)] bg-[var(--color-control-surface)] shadow-[0_12px_28px_rgba(0,0,0,0.32)] max-h-[320px]"
-        >
-          {searchable && (
-            <div className="dd-control-wrap sticky top-0 p-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)]">
-              <Search size={16} className="dd-control-start-icon" aria-hidden="true" />
-              <input
-                ref={searchRef}
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search…"
-                aria-label={`Search ${label} filter options`}
-                className="dd-text-control dd-text-control--with-start-icon"
-                style={{ minHeight: 34, fontSize: 13 }}
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
-          )}
-          {filtered.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-muted-foreground">No results</p>
-          ) : filtered.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              role="option"
-              aria-selected={value === opt.value}
-              onClick={() => { onChange(opt.value); closeAndRestoreFocus(); }}
-              className={cn(
-                'w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-white/[0.06]',
-                value === opt.value ? 'text-foreground' : 'font-medium text-muted-foreground',
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function percentageAt(ms: number, viewStart: number, viewEnd: number): number {
   return ((ms - viewStart) / (viewEnd - viewStart)) * 100;
 }
@@ -878,7 +717,7 @@ function CuePointsAudioDock({
       </div>
 
       <div className="flex shrink-0 items-center gap-3 border-l border-white/10 pl-4">
-        <CueFilterDropdown
+        <FilterDropdown
           label="Snap"
           value={snapResolution}
           onChange={(v) => onSnapResolutionChange(v as CueSnapResolution)}
@@ -890,7 +729,7 @@ function CuePointsAudioDock({
             { value: '4-beats', label: '4 Beats' },
           ]}
         />
-        <CueFilterDropdown
+        <FilterDropdown
           label="Beat Count"
           value={gridDisplayMode}
           onChange={(v) => onGridDisplayModeChange(v as CueGridDisplayMode)}
@@ -4574,7 +4413,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                   aria-label="Search cue point tracks"
                 />
               </div>
-              <CueFilterDropdown
+              <FilterDropdown
                 label="Status"
                 value={statusFilter}
                 onChange={(v) => setStatusFilter(v as StatusFilter)}
@@ -4587,7 +4426,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                   { value: 'pending', label: 'Pending' },
                 ]}
               />
-              <CueFilterDropdown
+              <FilterDropdown
                 label="Genre"
                 value={genre}
                 onChange={setGenre}
@@ -4598,7 +4437,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                   ...(stats?.genreTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
                 ]}
               />
-              <CueFilterDropdown
+              <FilterDropdown
                 label="Key"
                 value={keyFilter}
                 onChange={setKeyFilter}
@@ -4609,7 +4448,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                   ...(stats?.keyTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
                 ]}
               />
-              <CueFilterDropdown
+              <FilterDropdown
                 label="Cue States"
                 value={cueFilter}
                 onChange={(v) => setCueFilter(v as CueFilter)}
@@ -4620,7 +4459,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                   { value: 'without-cues', label: 'No cues' },
                 ]}
               />
-              <CueFilterDropdown
+              <FilterDropdown
                 label="Analysis"
                 value={analysisFilter}
                 onChange={(v) => setAnalysisFilter(v as AnalysisFilter)}
@@ -4805,56 +4644,19 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                               <p className={cn('truncate text-sm font-bold leading-tight', selected && 'text-primary')}>{track.title}</p>
                               <p className="truncate text-[10px] text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
                             </div>
-                            <div className="flex-1 min-w-[80px] flex flex-col gap-1">
-                              <div className="relative h-3" aria-hidden="true">
-                                {(() => {
-                                  if (cueState?.status !== 'loaded-with-cues') return null;
-                                  const trackDurationMs = durationMsForTrack(track, null);
-                                  if (!trackDurationMs) return null;
-                                  return cueState.cues
-                                    .filter((cue) => cue.start_ms != null)
-                                    .map((cue) => {
-                                      const color = cue.color_hex ?? (cue.cue_family === 'hot' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.22)');
-                                      return (
-                                        <span
-                                          key={cue.id}
-                                          className="absolute top-0 -translate-x-1/2"
-                                          style={{ left: `${Math.min(100, Math.max(0, (cue.start_ms! / trackDurationMs) * 100))}%` }}
-                                        >
-                                          <svg viewBox="0 0 8 10" width={6} height={8} style={{ display: 'block' }}>
-                                            <polygon points="0,0 8,0 8,6 4,10 0,6" fill={color} />
-                                          </svg>
-                                        </span>
-                                      );
-                                    });
-                                })()}
-                              </div>
-                              <RekordboxPreviewWaveform
-                                state={getWaveformState(track.id)}
-                                height={26}
-                                variant="compact"
-                                appearance="dropdex"
-                                showCenterLine={false}
-                                surface={false}
-                                ariaLabel={`Waveform for ${track.title}`}
-                              />
-                            </div>
+                            <TrackWaveformPreview
+                              className="flex-1 min-w-[80px]"
+                              waveformState={getWaveformState(track.id)}
+                              durationMs={durationMsForTrack(track, null)}
+                              cues={cueMarkersFromState(cueState)}
+                              height={26}
+                              ariaLabel={`Waveform for ${track.title}`}
+                            />
                           </div>
                         </td>
                         <td className="px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
                         <td className="px-3 py-1.5">
-                          {(() => {
-                            const kc = camelotColor(track.musical_key);
-                            const key = formatCamelotKey(track.musical_key);
-                            if (!key) return <span className="text-xs text-muted-foreground">—</span>;
-                            return (
-                              <span className="inline-flex items-center rounded-[5px] bg-white/[0.05] pl-[3px] pr-2 py-1 font-mono text-[13px] font-bold"
-                                style={{ color: kc ?? 'rgba(255,255,255,0.5)' }}>
-                                <span className="mr-1.5 h-[14px] w-[3px] shrink-0 rounded-full" style={{ backgroundColor: kc ?? 'rgba(255,255,255,0.2)' }} />
-                                {key}
-                              </span>
-                            );
-                          })()}
+                          <KeyBadge camelotKey={formatCamelotKey(track.musical_key)} />
                         </td>
                         <td className="w-[178px] px-3 py-1.5 text-xs text-muted-foreground">
                           {editingGenreTrackId === track.id ? (

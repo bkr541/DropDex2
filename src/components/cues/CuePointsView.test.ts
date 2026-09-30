@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 const source = readFileSync(new URL('./CuePointsView.tsx', import.meta.url), 'utf8');
 const waveformSource = readFileSync(new URL('../library/RekordboxPreviewWaveform.tsx', import.meta.url), 'utf8');
 const appSource = readFileSync(new URL('../../App.tsx', import.meta.url), 'utf8');
+const filterDropdownSource = readFileSync(new URL('../ui/controls/FilterDropdown.tsx', import.meta.url), 'utf8');
+const trackWaveformPreviewSource = readFileSync(new URL('../ui/media/TrackWaveformPreview.tsx', import.meta.url), 'utf8');
 
 describe('Cue Points Stage 1 workstation redesign', () => {
   it('remains wired through the production App route', () => {
@@ -461,8 +463,9 @@ describe('Cue Points Stage 2 browser workspace', () => {
     expect(source).toContain("{ col: 'duration', label: 'Duration'");
     expect(source).toContain('src={track.artwork_path}');
     expect(source).toContain('fallbackTitle="No artwork"');
-    expect(source).toContain('state={getWaveformState(track.id)}');
-    expect(source).toContain('appearance="dropdex"');
+    expect(source).toContain('<TrackWaveformPreview');
+    expect(source).toContain('waveformState={getWaveformState(track.id)}');
+    expect(trackWaveformPreviewSource).toContain('appearance="dropdex"');
   });
 
   it('keeps row selection playback-free and exposes the deterministic Stage 3 ordered-track extension point', () => {
@@ -547,11 +550,12 @@ describe('Cue Points Stage 5 integrated hardening', () => {
   });
 
   it('restores focus and supports directional keyboard navigation in custom filter dropdowns', () => {
-    expect(source).toContain('const closeAndRestoreFocus = useCallback(() => {');
-    expect(source).toContain('requestAnimationFrame(() => triggerRef.current?.focus())');
-    expect(source).toContain('aria-label={`${label} filter options`}');
-    expect(source).toContain('onKeyDown={handleListboxKeyDown}');
-    expect(source).toContain('aria-label={`Search ${label} filter options`}');
+    expect(source).toContain('<FilterDropdown');
+    expect(filterDropdownSource).toContain('const closeAndRestoreFocus = useCallback(() => {');
+    expect(filterDropdownSource).toContain('requestAnimationFrame(() => triggerRef.current?.focus())');
+    expect(filterDropdownSource).toContain('aria-label={`${label} filter options`}');
+    expect(filterDropdownSource).toContain('onKeyDown={handleListboxKeyDown}');
+    expect(filterDropdownSource).toContain('aria-label={`Search ${label} filter options`}');
   });
 
   it('gives the Apply menu deterministic focus entry, Escape restoration, and arrow-key movement', () => {

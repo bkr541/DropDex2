@@ -3,7 +3,7 @@ import type { RekordboxTrack } from '../../types';
 import type { BeatGridRow } from '../../lib/queries/analysisData';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { createRouletteTimeStretchProcessor } from '../../features/roulette/rouletteTimeStretch';
-import { FlipLabEngine } from './flipLabEngine';
+import { FlipLabEngine, type FlipLabEqBand, type FlipLabStem, type FlipLabStemEq } from './flipLabEngine';
 import {
   FLIP_LAB_MAX_BPM_DIFFERENCE,
   computeFlipLabTimeline,
@@ -40,6 +40,9 @@ export interface FlipLabState {
   positionSec: number;
   volume: number;
   keyShift: boolean;
+  /** Only one stem can be soloed; the other is silenced. */
+  solo: FlipLabStem | null;
+  eq: Record<FlipLabStem, FlipLabStemEq>;
   /** Semitones applied to the vocal when key shift is on; null when keys are unknown. */
   keyShiftSemitones: number | null;
 }
@@ -55,6 +58,11 @@ const INITIAL: FlipLabState = {
   positionSec: 0,
   volume: 1,
   keyShift: false,
+  solo: null,
+  eq: {
+    vocal: { low: 0, mid: 0, high: 0 },
+    instrumental: { low: 0, mid: 0, high: 0 },
+  },
   keyShiftSemitones: null,
 };
 
@@ -74,11 +82,17 @@ export function useFlipLab() {
   const instrumentalRef = useRef<AudioBuffer | null>(null);
   const keyShiftRef = useRef(false);
   const volumeRef = useRef(1);
+  const soloRef = useRef<FlipLabStem | null>(null);
+  const eqRef = useRef(INITIAL.eq);
 
   const engine = useCallback(() => {
     if (!engineRef.current) {
       engineRef.current = new FlipLabEngine();
       engineRef.current.setVolume(volumeRef.current);
+      engineRef.current.setSolo(soloRef.current);
+      for (const stem of ['vocal', 'instrumental'] as const) {
+        for (const band of ['low', 'mid', 'high'] as const) engineRef.current.setEq(stem, band, eqRef.current[stem][band]);
+      }
       engineRef.current.onEnded = () => setState((s) => ({ ...s, playing: false, positionSec: 0 }));
     }
     return engineRef.current;
@@ -115,6 +129,15 @@ export function useFlipLab() {
     rawVocalRef.current = null;
     instrumentalRef.current = null;
     engineRef.current?.unload();
+    soloRef.current = null;
+    eqRef.current = INITIAL.eq;
+    const current = engineRef.current;
+    if (current) {
+      current.setSolo(null);
+      for (const stem of ['vocal', 'instrumental'] as const) {
+        for (const band of ['low', 'mid', 'high'] as const) current.setEq(stem, band, 0);
+      }
+    }
     setState((s) => ({ ...INITIAL, volume: s.volume, keyShift: s.keyShift }));
   }, [state.phase]);
 
@@ -178,6 +201,8 @@ export function useFlipLab() {
       ...INITIAL,
       volume: s.volume,
       keyShift: s.keyShift,
+      solo: s.solo,
+      eq: s.eq,
       phase: 'separating',
       loadedPair: { vocalId: pair.vocal.id, instrumentalId: pair.instrumental.id },
       timeline,
@@ -298,6 +323,19 @@ export function useFlipLab() {
     setState((s) => ({ ...s, positionSec: current.getPosition() }));
   }, []);
 
+  const toggleSolo = useCallback((stem: FlipLabStem) => {
+    const next = soloRef.current === stem ? null : stem;
+    soloRef.current = next;
+    engineRef.current?.setSolo(next);
+    setState((s) => ({ ...s, solo: next }));
+  }, []);
+
+  const setEqBand = useCallback((stem: FlipLabStem, band: FlipLabEqBand, db: number) => {
+    eqRef.current = { ...eqRef.current, [stem]: { ...eqRef.current[stem], [band]: db } };
+    engineRef.current?.setEq(stem, band, db);
+    setState((s) => ({ ...s, eq: eqRef.current }));
+  }, []);
+
   const setVolume = useCallback((volume: number) => {
     const next = Math.max(0, Math.min(1, volume));
     volumeRef.current = next;
@@ -339,5 +377,7 @@ export function useFlipLab() {
     seek,
     setVolume,
     setKeyShift,
-  }), [busy, clear, flip, pause, seek, setKeyShift, setVolume, state, togglePlay]);
+    toggleSolo,
+    setEqBand,
+  }), [busy, clear, flip, pause, seek, setEqBand, setKeyShift, setVolume, state, toggleSolo, togglePlay]);
 }

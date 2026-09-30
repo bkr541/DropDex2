@@ -25,7 +25,7 @@ describe('Flip Lab workflow', () => {
   });
 
   it('shows progress, locks both lists and explains why while separating', () => {
-    expect(view).toContain('<FlipProgressCircle progress={progress} />');
+    expect(view).toContain('{busy && <FlipLoadingOverlay phase={flipState.phase} progress={flipState.progress} />}');
     expect(view).toContain('Track Selection is disabled until stem separation is finished');
     expect(view.match(/disabled=\{busy\}/g)?.length).toBe(2);
     expect(view).not.toContain('data-testid="flip-lab-messages"');
@@ -41,6 +41,7 @@ describe('Flip Lab workflow', () => {
 
   it('uses an icon-only glow Flip button', () => {
     expect(view).toContain('<GlowFlipButton enabled={canFlip} onClick={onFlip} />');
+    expect(view).toContain("left: 'calc(100% + 6px)'");
     expect(view).toContain('<FlipIcon size={26} />');
   });
 
@@ -50,8 +51,22 @@ describe('Flip Lab workflow', () => {
   });
 
   it('offers Key Shift on the vocal header row', () => {
-    expect(view).toContain('data-testid="flip-lab-key-shift"');
+    expect(view).toContain('testId="flip-lab-key-shift"');
     expect(view).toContain('onToggle: (next) => { void flipLab.setKeyShift(next); }');
+  });
+
+  it('lets one stem be soloed at a time and grays out the muted waveform', () => {
+    expect(hook).toContain('const next = soloRef.current === stem ? null : stem;');
+    expect(view).toContain("solo={{ enabled: state.solo === 'vocal'");
+    expect(view).toContain("solo={{ enabled: state.solo === 'instrumental'");
+    expect(view).toContain("muted={state.solo === 'instrumental'}");
+    expect(view).toContain("muted={state.solo === 'vocal'}");
+  });
+
+  it('puts vocal EQ knobs left and instrumental EQ knobs right of a centered half-width dock', () => {
+    expect(view).toContain('<StemEqKnobs stem="vocal"');
+    expect(view).toContain('<StemEqKnobs stem="instrumental"');
+    expect(view).toContain("width: '50%', flexShrink: 0");
   });
 
   it('never writes Flip Lab work to the database', () => {
