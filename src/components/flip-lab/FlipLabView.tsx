@@ -14,17 +14,24 @@ import type { RekordboxTrack } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { fetchTrackBeatGrid, fetchTrackPhrases, type BeatGridRow, type PhraseRow } from '../../lib/queries/analysisData';
 import {
-  flipLabBeatGrid,
   mapPhrasesToTimelineSegments,
   resolveFlipLabArtist,
   resolveFlipLabCamelotKey,
   trackDurationMs,
   type FlipLabTimelineSegment,
 } from './flipLabAnalysis';
-import { flipLabKeyShiftSemitones, formatFlipLabTime, type FlipLabTimeline } from './flipLabTimeline';
+import {
+  flipLabCombinedBeatGrid,
+  flipLabKeyShiftSemitones,
+  formatFlipLabTime,
+  type FlipLabCombinedBeat,
+  type FlipLabTimeline,
+} from './flipLabTimeline';
+import { MIN_CUE_TIMELINE_WINDOW_MS, panCueTimelineView, zoomCueTimelineView } from '../../lib/cues/cueTimelineViewport';
 import { useFlipLab } from './useFlipLab';
 import { NotificationCenter, type AppNotification } from '../ui/feedback';
-import { Close } from '@carbon/icons-react';
+import { Add, Close, Subtract } from '@carbon/icons-react';
+import { ControlButton } from '../ui/controls';
 import { FlipIcon, InstrumentalIcon, VocalIcon } from './FlipLabIcons';
 import { motion, useReducedMotion } from 'motion/react';
 import {
@@ -217,7 +224,13 @@ function TrackHeader({ track, titleSide = 'left', targetBpm, keyShift }: TrackHe
       display: 'flex', alignItems: 'center', gap: 12,
       padding: '6px 16px', background: PANEL, borderBottom: `1px solid ${BORDER_F}`,
     }}>
-      <div style={{ flex: 1, minWidth: 0, textAlign: titleSide === 'right' ? 'right' : 'left', order: titleSide === 'right' ? 2 : 0 }}>
+      <div style={{
+        flex: titleSide === 'right' ? 1 : '0 1 auto',
+        minWidth: 0,
+        textAlign: titleSide === 'right' ? 'right' : 'left',
+        order: titleSide === 'right' ? 2 : 0,
+        marginRight: titleSide === 'right' ? 0 : 12,
+      }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: FG, letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
         <div style={{ fontSize: 11, color: MUTED, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resolveFlipLabArtist(track, '')}</div>
       </div>
@@ -778,67 +791,67 @@ function FlipColumn({
 }
 
 // ── Timeline lanes ────────────────────────────────────────────────────────────
-function laneBox(startSec: number, spanSec: number, totalSec: number): React.CSSProperties {
-  const total = totalSec > 0 ? totalSec : 1;
+interface TimelineView {
+  start: number;
+  end: number;
+}
+
+function laneBox(startSec: number, spanSec: number, view: TimelineView): React.CSSProperties {
+  const range = Math.max(1, view.end - view.start);
   return {
     position: 'absolute', top: 0, bottom: 0,
-    left: `${(startSec / total) * 100}%`,
-    width: `${(spanSec / total) * 100}%`,
+    left: `${((startSec * 1000 - view.start) / range) * 100}%`,
+    width: `${((spanSec * 1000) / range) * 100}%`,
   };
 }
 
-// Matches the CuePoints beat-grid lane: red downbeats, green beats, bar numbers.
-function BeatGridLane({
-  track,
-  analysis,
-  box,
-}: {
-  track: RekordboxTrack;
-  analysis: FlipLabTrackAnalysisState;
-  box: React.CSSProperties;
-}) {
-  const grid = analysis.status === 'loaded' ? analysis.beatGrid : null;
-  const { ticks, labels } = useMemo(() => flipLabBeatGrid(grid, trackDurationMs(track)), [grid, track]);
-  const emptyLabel = analysis.status === 'loading' ? 'Loading beat grid…' : 'No beat grid';
+// One beat grid for the combined track, styled like the CuePoints lane:
+// red downbeats, green beats, bar numbers.
+const MAX_BAR_LABELS = 24;
+
+function CombinedBeatGridLane({ beats, view }: { beats: FlipLabCombinedBeat[]; view: TimelineView }) {
+  const range = Math.max(1, view.end - view.start);
+  const visible = beats.filter((beat) => beat.timeSec * 1000 >= view.start && beat.timeSec * 1000 <= view.end);
+  const labeled = visible.filter((beat) => beat.downbeat && beat.bar >= 1);
+  const step = Math.max(1, Math.ceil(labeled.length / MAX_BAR_LABELS));
+  const percent = (timeSec: number) => ((timeSec * 1000 - view.start) / range) * 100;
   return (
     <div
       data-testid="flip-lab-beat-grid"
       style={{ position: 'relative', height: 30, borderBottom: `1px solid ${BORDER_F}`, background: BG, overflow: 'hidden' }}
     >
-      <div style={box}>
-        {ticks.length === 0 ? (
-          <div style={{
-            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 9, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase',
-          }}>{emptyLabel}</div>
-        ) : (
-          <>
-            {ticks.map((tick) => (
-              <span
-                key={`tick-${tick.seq}`}
-                aria-hidden="true"
-                style={{
-                  position: 'absolute', left: `${tick.percent}%`, transform: 'translateX(-50%)', borderRadius: 999,
-                  top: tick.downbeat ? 2 : 3,
-                  height: tick.downbeat ? 14 : 8,
-                  width: tick.downbeat ? 2 : 1.5,
-                  background: tick.downbeat ? '#f87171' : '#4ade80',
-                  opacity: tick.downbeat ? 1 : 0.9,
-                }}
-              />
-            ))}
-            {labels.map((label) => (
-              <span
-                key={`bar-${label.bar}-${label.percent}`}
-                style={{
-                  position: 'absolute', bottom: 2, left: `${label.percent}%`, transform: 'translateX(-50%)',
-                  fontFamily: 'monospace', fontSize: 9, fontWeight: 500, color: '#9ca5ae', fontVariantNumeric: 'tabular-nums',
-                }}
-              >{label.bar}</span>
-            ))}
-          </>
-        )}
-      </div>
+      {visible.length === 0 ? (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 9, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase',
+        }}>No beat grid</div>
+      ) : (
+        <>
+          {visible.map((beat) => (
+            <span
+              key={`beat-${beat.timeSec.toFixed(4)}`}
+              aria-hidden="true"
+              style={{
+                position: 'absolute', left: `${percent(beat.timeSec)}%`, transform: 'translateX(-50%)', borderRadius: 999,
+                top: beat.downbeat ? 2 : 3,
+                height: beat.downbeat ? 14 : 8,
+                width: beat.downbeat ? 2 : 1.5,
+                background: beat.downbeat ? '#f87171' : '#4ade80',
+                opacity: beat.downbeat ? 1 : 0.9,
+              }}
+            />
+          ))}
+          {labeled.filter((_, index) => index % step === 0).map((beat) => (
+            <span
+              key={`bar-${beat.bar}`}
+              style={{
+                position: 'absolute', bottom: 2, left: `${percent(beat.timeSec)}%`, transform: 'translateX(-50%)',
+                fontFamily: 'monospace', fontSize: 9, fontWeight: 500, color: '#9ca5ae', fontVariantNumeric: 'tabular-nums',
+              }}
+            >{beat.bar}</span>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -1024,9 +1037,61 @@ function TopWaveformSection({
   ), [instrAnalysis, instrTrack]);
   const semitones = flipLabKeyShiftSemitones(resolveFlipLabCamelotKey(vocalTrack), resolveFlipLabCamelotKey(instrTrack));
 
-  const vocalBox = laneBox(timeline.vocalStartSec, timeline.vocalSpanSec, timeline.totalSec);
-  const instrBox = laneBox(timeline.instrumentalStartSec, timeline.instrumentalSpanSec, timeline.totalSec);
-  const playheadProgress = timeline.totalSec > 0 ? state.positionSec / timeline.totalSec : 0;
+  // One zoom window shared by every row, so both stems zoom together like CuePoints.
+  const totalMs = timeline.totalSec * 1000;
+  const [view, setView] = useState<TimelineView>({ start: 0, end: totalMs });
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  useEffect(() => {
+    setView({ start: 0, end: totalMs });
+  }, [totalMs]);
+
+  const lanesRef = useRef<HTMLDivElement | null>(null);
+  const wheelFrameRef = useRef<number | null>(null);
+  useEffect(() => {
+    const el = lanesRef.current;
+    if (!el || totalMs <= 0) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const current = viewRef.current;
+      const range = current.end - current.start;
+      const next = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+        ? panCueTimelineView(current, totalMs, (event.deltaX / rect.width) * range)
+        : zoomCueTimelineView(current, totalMs, Math.exp(event.deltaY * 0.005), Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)));
+      if (!next) return;
+      viewRef.current = next;
+      if (wheelFrameRef.current == null) {
+        wheelFrameRef.current = requestAnimationFrame(() => {
+          wheelFrameRef.current = null;
+          setView(viewRef.current);
+        });
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      if (wheelFrameRef.current != null) cancelAnimationFrame(wheelFrameRef.current);
+      wheelFrameRef.current = null;
+    };
+  }, [totalMs]);
+
+  const handleZoom = useCallback((factor: number) => {
+    const next = zoomCueTimelineView(viewRef.current, totalMs, factor, 0.5);
+    if (next) setView(next);
+  }, [totalMs]);
+  const canZoomIn = view.end - view.start > Math.min(MIN_CUE_TIMELINE_WINDOW_MS, totalMs);
+  const canZoomOut = view.end - view.start < totalMs;
+
+  const combinedBeats = useMemo(() => flipLabCombinedBeatGrid(
+    timeline,
+    instrAnalysis.status === 'loaded' ? instrAnalysis.beatGrid?.beats ?? [] : [],
+    instrTrack.bpm ?? 0,
+  ), [instrAnalysis, instrTrack.bpm, timeline]);
+
+  const vocalBox = laneBox(timeline.vocalStartSec, timeline.vocalSpanSec, view);
+  const instrBox = laneBox(timeline.instrumentalStartSec, timeline.instrumentalSpanSec, view);
+  const playheadProgress = (state.positionSec * 1000 - view.start) / Math.max(1, view.end - view.start);
   // Vocal separates first (0–50% of the combined progress), then the instrumental.
   const separating = state.phase === 'separating' || state.phase === 'error';
   const vocalFill = separating ? Math.max(0, Math.min(1, state.progress * 2)) : 1;
@@ -1046,13 +1111,11 @@ function TopWaveformSection({
         }}
       />
 
-      <BeatGridLane track={vocalTrack} analysis={vocalAnalysis} box={vocalBox} />
-
-      <div style={{ position: 'relative', height: 40, borderBottom: `1px solid ${BORDER_F}` }}>
+      <div style={{ position: 'relative', height: 40, borderBottom: `1px solid ${BORDER_F}`, overflow: 'hidden' }}>
         <div style={vocalBox}><SectionRow segments={vocalSections} analysisStatus={vocalAnalysis.status} /></div>
       </div>
 
-      <div data-testid="flip-lab-lanes" style={{ position: 'relative' }}>
+      <div ref={lanesRef} data-testid="flip-lab-lanes" className="group/waveform" style={{ position: 'relative' }}>
         <FillingWaveformLane
           box={vocalBox}
           fill={vocalFill}
@@ -1065,14 +1128,41 @@ function TopWaveformSection({
           waveformState={instrWaveformState}
           ariaLabel={`Waveform for ${instrTrack.title}`}
         />
-        {state.phase === 'ready' && <FlipLabPlayheadOverlay progress={playheadProgress} />}
+        {state.phase === 'ready' && playheadProgress >= 0 && playheadProgress <= 1 && (
+          <FlipLabPlayheadOverlay progress={playheadProgress} />
+        )}
+        <div
+          className="pointer-events-none absolute right-2 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-0.5 opacity-0 transition-opacity duration-150 group-hover/waveform:opacity-100"
+          aria-label="Waveform zoom controls"
+        >
+          <ControlButton
+            className="pointer-events-auto h-[26px] w-[26px] min-h-0 border border-[var(--color-border-faint)] bg-[var(--color-card)]/80 px-0 backdrop-blur-sm"
+            variant="surface"
+            onClick={() => handleZoom(0.75)}
+            disabled={!canZoomIn}
+            aria-label="Zoom in"
+            title="Zoom in"
+          >
+            <Add size={12} />
+          </ControlButton>
+          <ControlButton
+            className="pointer-events-auto h-[26px] w-[26px] min-h-0 border border-[var(--color-border-faint)] bg-[var(--color-card)]/80 px-0 backdrop-blur-sm"
+            variant="surface"
+            onClick={() => handleZoom(1 / 0.75)}
+            disabled={!canZoomOut}
+            aria-label="Zoom out"
+            title="Zoom out"
+          >
+            <Subtract size={12} />
+          </ControlButton>
+        </div>
       </div>
 
-      <div style={{ position: 'relative', height: 40, borderBottom: `1px solid ${BORDER_F}` }}>
+      <div style={{ position: 'relative', height: 40, borderBottom: `1px solid ${BORDER_F}`, overflow: 'hidden' }}>
         <div style={instrBox}><SectionRow segments={instrSections} analysisStatus={instrAnalysis.status} /></div>
       </div>
 
-      <BeatGridLane track={instrTrack} analysis={instrAnalysis} box={instrBox} />
+      <CombinedBeatGridLane beats={combinedBeats} view={view} />
 
       <TrackHeader track={instrTrack} titleSide="right" />
 

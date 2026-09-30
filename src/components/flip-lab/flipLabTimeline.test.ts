@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeFlipLabTimeline,
+  flipLabCombinedBeatGrid,
   flipLabBpmDifference,
   flipLabKeyShiftSemitones,
   formatFlipLabTime,
@@ -77,5 +78,32 @@ describe('Flip Lab key shift', () => {
   it('formats transport time', () => {
     expect(formatFlipLabTime(65.9)).toBe('1:05');
     expect(formatFlipLabTime(Number.NaN)).toBe('0:00');
+  });
+});
+
+describe('Flip Lab combined beat grid', () => {
+  const timeline = computeFlipLabTimeline({
+    vocalDurationSec: 20,
+    instrumentalDurationSec: 8,
+    vocalFirstDownbeatSec: 2,
+    instrumentalFirstDownbeatSec: 0,
+    vocalBpm: 120,
+    instrumentalBpm: 120,
+  });
+
+  it('uses the instrumental beats on the shared timeline and numbers bar 1 at the shared downbeat', () => {
+    const beats = [0, 500, 1000, 1500, 2000].map((ms, i) => ({ ms, beatInBar: (i % 4) + 1 }));
+    const grid = flipLabCombinedBeatGrid(timeline, beats, 120);
+    const barOne = grid.find((beat) => beat.bar === 1 && beat.downbeat);
+    expect(barOne?.timeSec).toBeCloseTo(timeline.downbeatSec);
+    expect(grid[0].timeSec).toBeCloseTo(0);
+  });
+
+  it('keeps counting beats at the instrumental BPM after the instrumental ends', () => {
+    const grid = flipLabCombinedBeatGrid(timeline, [{ ms: 0, beatInBar: 1 }], 120);
+    const last = grid[grid.length - 1];
+    expect(last.timeSec).toBeGreaterThan(19.4);
+    expect(grid.filter((beat) => beat.downbeat).length).toBeGreaterThan(8);
+    expect(grid[1].timeSec - grid[0].timeSec).toBeCloseTo(0.5);
   });
 });

@@ -108,36 +108,3 @@ export function mapPhrasesToTimelineSegments(
     }];
   });
 }
-
-export interface FlipLabGridTick {
-  seq: number;
-  percent: number;
-  downbeat: boolean;
-}
-
-export interface FlipLabGridLabel {
-  bar: number;
-  percent: number;
-}
-
-const MAX_BAR_LABELS = 24;
-
-/** Beat ticks (downbeats flagged) and bar-number labels for a whole-track lane, matching CuePoints. */
-export function flipLabBeatGrid(
-  grid: BeatGridRow | null,
-  durationMs: number | null,
-): { ticks: FlipLabGridTick[]; labels: FlipLabGridLabel[] } {
-  if (!grid || !finitePositive(durationMs)) return { ticks: [], labels: [] };
-  const beats = grid.beats.filter((beat) => Number.isFinite(beat.ms) && beat.ms >= 0 && beat.ms <= durationMs);
-  const ticks = beats.map((beat) => ({
-    seq: beat.seq,
-    percent: clampPercent((beat.ms / durationMs) * 100),
-    downbeat: beat.isDownbeat || beat.beatInBar === 1,
-  }));
-  const downbeats = beats.filter((beat) => beat.isDownbeat || beat.beatInBar === 1);
-  const step = Math.max(1, Math.ceil(downbeats.length / MAX_BAR_LABELS));
-  const labels = downbeats
-    .filter((_, index) => index % step === 0)
-    .map((beat) => ({ bar: beat.bar, percent: clampPercent((beat.ms / durationMs) * 100) }));
-  return { ticks, labels };
-}

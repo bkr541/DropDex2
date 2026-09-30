@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PhraseRow } from '../../lib/queries/analysisData';
-import { flipLabBeatGrid, mapPhrasesToTimelineSegments, trackDurationMs } from './flipLabAnalysis';
+import { mapPhrasesToTimelineSegments, trackDurationMs } from './flipLabAnalysis';
 import { fixtureGrid } from './flipLabTestFixtures';
 
 function phrase(start: number, end: number, label: string): PhraseRow {
@@ -26,18 +26,6 @@ describe('Flip Lab phrase and beat-grid lanes', () => {
       { label: 'Intro', tone: 'intro', startPercent: 0, endPercent: 25 },
       { label: 'Chorus', tone: 'chorus', startPercent: 25, endPercent: 100 },
     ]);
-  });
-
-  it('builds CuePoints-style beat ticks with downbeats flagged and bar labels', () => {
-    const { ticks, labels } = flipLabBeatGrid(fixtureGrid('t', 1000, 120), 10_000);
-    expect(ticks).toHaveLength(16);
-    expect(ticks[0]).toEqual({ seq: 1, percent: 10, downbeat: true });
-    expect(ticks[1].downbeat).toBe(false);
-    expect(labels.map((l) => l.bar)).toEqual([1, 2, 3, 4]);
-  });
-
-  it('has no beat grid ticks without a grid', () => {
-    expect(flipLabBeatGrid(null, 10_000)).toEqual({ ticks: [], labels: [] });
   });
 
   it('reads track length from milliseconds or seconds', () => {

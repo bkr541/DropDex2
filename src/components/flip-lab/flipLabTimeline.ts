@@ -87,3 +87,61 @@ export function formatFlipLabTime(seconds: number): string {
   const secs = total % 60;
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
+
+export interface FlipLabCombinedBeat {
+  timeSec: number;
+  downbeat: boolean;
+  /** Bar number of the new combined track; bar 1 starts at the shared first downbeat. */
+  bar: number;
+}
+
+const BEATS_PER_BAR = 4;
+
+/**
+ * One beat grid for the flipped track. The instrumental is the tempo master and
+ * plays unstretched, so its Rekordbox beats are used where it plays; before and
+ * after it, beats continue at the instrumental BPM so the grid covers the whole
+ * combined timeline.
+ */
+export function flipLabCombinedBeatGrid(
+  timeline: FlipLabTimeline,
+  instrumentalBeats: ReadonlyArray<{ ms: number; beatInBar: number }>,
+  instrumentalBpm: number,
+): FlipLabCombinedBeat[] {
+  if (!positive(instrumentalBpm) || !positive(timeline.totalSec)) return [];
+  const beatSec = 60 / instrumentalBpm;
+  const wrap = (value: number) => ((((value - 1) % BEATS_PER_BAR) + BEATS_PER_BAR) % BEATS_PER_BAR) + 1;
+
+  let beats = instrumentalBeats
+    .filter((beat) => Number.isFinite(beat.ms))
+    .map((beat) => ({ timeSec: timeline.instrumentalStartSec + beat.ms / 1000, beatInBar: wrap(beat.beatInBar || 1) }))
+    .sort((a, b) => a.timeSec - b.timeSec);
+  if (beats.length === 0) beats = [{ timeSec: timeline.downbeatSec, beatInBar: 1 }];
+
+  const before: typeof beats = [];
+  for (let t = beats[0].timeSec - beatSec, b = wrap(beats[0].beatInBar - 1); t >= -1e-6; t -= beatSec, b = wrap(b - 1)) {
+    before.unshift({ timeSec: Math.max(0, t), beatInBar: b });
+  }
+  const after: typeof beats = [];
+  const last = beats[beats.length - 1];
+  for (let t = last.timeSec + beatSec, b = wrap(last.beatInBar + 1); t <= timeline.totalSec + 1e-6; t += beatSec, b = wrap(b + 1)) {
+    after.push({ timeSec: t, beatInBar: b });
+  }
+  const all = [...before, ...beats, ...after].filter((beat) => beat.timeSec >= 0 && beat.timeSec <= timeline.totalSec + 1e-6);
+
+  const downbeatIndexes = all.flatMap((beat, index) => (beat.beatInBar === 1 ? [index] : []));
+  let anchor = downbeatIndexes[0] ?? -1;
+  for (const index of downbeatIndexes) {
+    if (Math.abs(all[index].timeSec - timeline.downbeatSec) < Math.abs(all[anchor].timeSec - timeline.downbeatSec)) anchor = index;
+  }
+  const anchorOrder = downbeatIndexes.indexOf(anchor);
+  let barCursor = 0;
+  let downbeatOrder = -1;
+  return all.map((beat) => {
+    if (beat.beatInBar === 1) {
+      downbeatOrder += 1;
+      barCursor = downbeatOrder - anchorOrder + 1;
+    }
+    return { timeSec: beat.timeSec, downbeat: beat.beatInBar === 1, bar: barCursor };
+  });
+}
