@@ -180,16 +180,6 @@ export async function cancelFlipLabSeparation(trackIds: string[]): Promise<void>
 }
 
 export async function clearFlipLabStemCache(): Promise<{ ok: boolean; message: string | null }> {
-  if (typeof window !== 'undefined') {
-    try {
-      const keys: string[] = [];
-      for (let i = 0; i < window.localStorage.length; i += 1) {
-        const key = window.localStorage.key(i);
-        if (key?.startsWith('dropdex:flip-lab-session:')) keys.push(key);
-      }
-      keys.forEach((key) => window.localStorage.removeItem(key));
-    } catch { /* storage may be unavailable */ }
-  }
   const bridge = desktop();
   if (!bridge) return { ok: true, message: null };
   const result = await bridge.clearFlipLabStemCache();

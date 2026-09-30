@@ -23,6 +23,10 @@ import {
 } from './flipLabAnalysis';
 import { flipLabKeyShiftSemitones, formatFlipLabTime, type FlipLabTimeline } from './flipLabTimeline';
 import { useFlipLab } from './useFlipLab';
+import { NotificationCenter, type AppNotification } from '../ui/feedback';
+import { Close } from '@carbon/icons-react';
+import { FlipIcon, InstrumentalIcon, VocalIcon } from './FlipLabIcons';
+import { motion, useReducedMotion } from 'motion/react';
 import {
   FLIP_LAB_ROW_HEIGHT,
   computeFlipLabWindowRange,
@@ -30,12 +34,6 @@ import {
   isCurrentFlipLabLoad,
   scrollTopForFlipLabSelection,
 } from './flipLabPerformance';
-import {
-  FLIP_LAB_SESSION_VERSION,
-  loadFlipLabSession,
-  resolveFlipLabRestoredSelection,
-  saveFlipLabSession,
-} from './flipLabSession';
 
 // ── Color tokens ──────────────────────────────────────────────────────────────
 const BG       = 'var(--color-background)';
@@ -50,7 +48,6 @@ const CTRL_BDR = 'var(--color-control-border)';
 const PRIMARY  = 'var(--color-primary)';
 const SECONDARY = 'var(--color-secondary)';
 const ERROR_RED = '#ef4444';
-const WARN_AMBER = '#f59e0b';
 
 // ── Section colors (from CuePointsView sectionTone()) ────────────────────────
 const SECTION_COLORS = {
@@ -194,6 +191,8 @@ function HeaderStat({ label, value, valueColor }: { label: string; value: string
 // ── Track header ──────────────────────────────────────────────────────────────
 interface TrackHeaderProps {
   track: RekordboxTrack;
+  /** 'right' puts BPM/Key first and right-justifies the title and artist. */
+  titleSide?: 'left' | 'right';
   targetBpm?: number | null;
   keyShift?: {
     enabled: boolean;
@@ -204,7 +203,7 @@ interface TrackHeaderProps {
   };
 }
 
-function TrackHeader({ track, targetBpm, keyShift }: TrackHeaderProps) {
+function TrackHeader({ track, titleSide = 'left', targetBpm, keyShift }: TrackHeaderProps) {
   const bpm = track.bpm != null ? track.bpm.toFixed(0) : '—';
   const bpmValue = targetBpm != null && track.bpm != null && Math.abs(targetBpm - track.bpm) >= 0.05
     ? `${bpm} → ${targetBpm.toFixed(0)}`
@@ -218,7 +217,7 @@ function TrackHeader({ track, targetBpm, keyShift }: TrackHeaderProps) {
       display: 'flex', alignItems: 'center', gap: 12,
       padding: '6px 16px', background: PANEL, borderBottom: `1px solid ${BORDER_F}`,
     }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, textAlign: titleSide === 'right' ? 'right' : 'left', order: titleSide === 'right' ? 2 : 0 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: FG, letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
         <div style={{ fontSize: 11, color: MUTED, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resolveFlipLabArtist(track, '')}</div>
       </div>
@@ -529,9 +528,14 @@ function SelectPanel({
         padding: '12px 14px 10px',
         background: PANEL, borderBottom: `1px solid ${BORDER_F}`,
       }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: FG }}>Select {roleLabel}</div>
-          <div style={{ fontSize: 10, color: MUTED }}>Choose the {role} track</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ color: FG, display: 'flex', flexShrink: 0 }}>
+            {isVocal ? <VocalIcon size={30} /> : <InstrumentalIcon size={30} />}
+          </span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: FG }}>Select {roleLabel}</div>
+            <div style={{ fontSize: 10, color: MUTED }}>Choose the {role} track</div>
+          </div>
         </div>
         <div style={{
           display: 'flex', gap: 2, background: SURFACE,
@@ -667,6 +671,55 @@ function FlipProgressCircle({ progress }: { progress: number }) {
   );
 }
 
+// Rebuild of the Framer "PremiumGlowButton": a pill whose 1.5px border is a
+// spinning conic gradient over a near-black fill, with a soft outer glow.
+const GLOW_COLOR = '#00F0FF';
+
+function GlowFlipButton({ enabled, onClick }: { enabled: boolean; onClick: () => void }) {
+  const reduceMotion = useReducedMotion();
+  const spinning = enabled && !reduceMotion;
+  return (
+    <motion.button
+      type="button"
+      data-testid="flip-lab-flip"
+      aria-label="Flip"
+      title="Flip"
+      onClick={onClick}
+      disabled={!enabled}
+      whileHover={enabled ? { scale: 1.02 } : undefined}
+      whileTap={enabled ? { scale: 0.98 } : undefined}
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+      style={{
+        position: 'relative', padding: 1.5, borderRadius: 100, overflow: 'hidden',
+        border: 'none', background: enabled ? 'transparent' : CTRL_BDR,
+        display: 'flex', justifyContent: 'center', alignItems: 'center',
+        cursor: enabled ? 'pointer' : 'not-allowed',
+        opacity: enabled ? 1 : 0.45,
+        boxShadow: enabled ? '0px 15px 35px 0px rgba(0, 240, 255, 0.25)' : 'none',
+      }}
+    >
+      {enabled && (
+        <motion.span
+          aria-hidden="true"
+          animate={spinning ? { rotate: 360 } : undefined}
+          transition={spinning ? { repeat: Infinity, duration: 3, ease: 'linear' } : undefined}
+          style={{
+            position: 'absolute', left: '50%', top: '50%', x: '-50%', y: '-50%',
+            width: 2000, height: 2000, zIndex: 0,
+            background: `conic-gradient(from 0deg, transparent 0%, ${GLOW_COLOR} 20%, transparent 50%)`,
+          }}
+        />
+      )}
+      <span style={{
+        position: 'relative', zIndex: 1, background: '#0D0D0D', borderRadius: 100 - 1.5,
+        padding: '10px 26px', display: 'flex', alignItems: 'center', color: '#FFFFFF',
+      }}>
+        <FlipIcon size={26} />
+      </span>
+    </motion.button>
+  );
+}
+
 // ── Flip column (center) ──────────────────────────────────────────────────────
 function FlipColumn({
   canFlip,
@@ -674,8 +727,6 @@ function FlipColumn({
   busy,
   phase,
   progress,
-  errors,
-  warnings,
   onFlip,
   onClear,
 }: {
@@ -684,15 +735,13 @@ function FlipColumn({
   busy: boolean;
   phase: ReturnType<typeof useFlipLab>['state']['phase'];
   progress: number;
-  errors: string[];
-  warnings: string[];
   onFlip: () => void;
   onClear: () => void;
 }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      background: PANEL, padding: 16, gap: 12, overflowY: 'auto',
+      background: PANEL, padding: 12, gap: 12, overflowY: 'auto',
     }}>
       {busy && (
         <>
@@ -705,54 +754,25 @@ function FlipColumn({
           </div>
         </>
       )}
-      <button
-        type="button"
-        data-testid="flip-lab-flip"
-        onClick={onFlip}
-        disabled={!canFlip}
-        style={{
-          padding: '12px 20px', borderRadius: 10, width: '100%',
-          background: canFlip ? PRIMARY : CTRL_BG,
-          border: canFlip ? 'none' : `1px solid ${CTRL_BDR}`,
-          color: canFlip ? '#fff' : MUTED,
-          fontSize: 13, fontWeight: 800,
-          cursor: canFlip ? 'pointer' : 'not-allowed',
-        }}
-      >
-        Flip
-      </button>
+      <GlowFlipButton enabled={canFlip} onClick={onFlip} />
       <button
         type="button"
         data-testid="flip-lab-clear-pair"
         onClick={onClear}
         disabled={!canClear}
+        aria-label="Clear loaded pair"
+        title="Clear loaded pair"
         style={{
-          padding: '10px 20px', borderRadius: 10,
+          width: 44, height: 44, borderRadius: '50%', padding: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'transparent', border: `1px solid ${BORDER_S}`,
           color: canClear ? FG : MUTED,
-          fontSize: 12, fontWeight: 700, width: '100%',
           cursor: canClear ? 'pointer' : 'not-allowed',
           opacity: canClear ? 1 : 0.5,
         }}
       >
-        Clear Loaded Pair
+        <Close size={20} />
       </button>
-      {(errors.length > 0 || warnings.length > 0) && (
-        <div data-testid="flip-lab-messages" style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
-          {errors.map((message) => (
-            <div key={`e-${message}`} role="alert" style={{
-              fontSize: 10, lineHeight: 1.4, color: ERROR_RED,
-              padding: '6px 8px', borderRadius: 6, background: `${ERROR_RED}14`, border: `1px solid ${ERROR_RED}40`,
-            }}>{message}</div>
-          ))}
-          {warnings.map((message) => (
-            <div key={`w-${message}`} style={{
-              fontSize: 10, lineHeight: 1.4, color: WARN_AMBER,
-              padding: '6px 8px', borderRadius: 6, background: `${WARN_AMBER}14`, border: `1px solid ${WARN_AMBER}40`,
-            }}>{message}</div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -823,6 +843,49 @@ function BeatGridLane({
   );
 }
 
+// A gray copy of the waveform with the normal blue one revealed left→right by
+// `fill` (0..1), so the waveform itself acts as the separation progress bar.
+function FillingWaveformLane({
+  box,
+  fill,
+  waveformState,
+  ariaLabel,
+}: {
+  box: React.CSSProperties;
+  fill: number;
+  waveformState: WaveformLoadState;
+  ariaLabel: string;
+}) {
+  const hidden = `${(1 - Math.max(0, Math.min(1, fill))) * 100}%`;
+  return (
+    <div style={{ height: 88, position: 'relative', overflow: 'hidden', background: BG }}>
+      <div style={box}>
+        {fill < 1 && (
+          <div aria-hidden="true" style={{ position: 'absolute', inset: 0, filter: 'grayscale(1)', opacity: 0.35 }}>
+            <RekordboxPreviewWaveform state={waveformState} height={88} variant="detail" surface={false} />
+          </div>
+        )}
+        <div
+          data-testid="flip-lab-waveform-fill"
+          style={{
+            position: 'absolute', inset: 0,
+            clipPath: `inset(0 ${hidden} 0 0)`,
+            transition: 'clip-path 0.4s linear',
+          }}
+        >
+          <RekordboxPreviewWaveform
+            state={waveformState}
+            height={88}
+            variant="detail"
+            surface={false}
+            ariaLabel={ariaLabel}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FlipLabPlayheadOverlay({ progress }: { progress: number }) {
   const percent = Math.max(0, Math.min(100, progress * 100));
   return (
@@ -843,22 +906,6 @@ function FlipLabPlayheadOverlay({ progress }: { progress: number }) {
           boxShadow: '0 0 6px rgba(255,255,255,0.8)',
         }} />
       </div>
-    </div>
-  );
-}
-
-function LoadingOverlay() {
-  return (
-    <div data-testid="flip-lab-waveform-loading" style={{
-      position: 'absolute', inset: 0, zIndex: 3,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(0,0,0,0.35)', pointerEvents: 'none',
-    }}>
-      <span className="flip-lab-spin" aria-label="Separating stems" style={{
-        width: 22, height: 22, borderRadius: '50%',
-        border: '2px solid rgba(255,255,255,0.25)', borderTopColor: '#fff',
-        animation: 'flip-lab-spin 0.9s linear infinite',
-      }} />
     </div>
   );
 }
@@ -980,7 +1027,10 @@ function TopWaveformSection({
   const vocalBox = laneBox(timeline.vocalStartSec, timeline.vocalSpanSec, timeline.totalSec);
   const instrBox = laneBox(timeline.instrumentalStartSec, timeline.instrumentalSpanSec, timeline.totalSec);
   const playheadProgress = timeline.totalSec > 0 ? state.positionSec / timeline.totalSec : 0;
-  const lanesDimmed = busy || state.phase === 'error';
+  // Vocal separates first (0–50% of the combined progress), then the instrumental.
+  const separating = state.phase === 'separating' || state.phase === 'error';
+  const vocalFill = separating ? Math.max(0, Math.min(1, state.progress * 2)) : 1;
+  const instrFill = separating ? Math.max(0, Math.min(1, (state.progress - 0.5) * 2)) : 1;
 
   return (
     <>
@@ -1003,33 +1053,18 @@ function TopWaveformSection({
       </div>
 
       <div data-testid="flip-lab-lanes" style={{ position: 'relative' }}>
-        <div style={{
-          filter: lanesDimmed ? 'grayscale(0.85)' : undefined,
-          opacity: lanesDimmed ? 0.55 : 1,
-          transition: 'opacity 0.2s, filter 0.2s',
-        }}>
-          <div style={{ height: 88, position: 'relative', overflow: 'hidden', background: BG }}>
-            <div style={vocalBox}>
-              <RekordboxPreviewWaveform
-                state={vocalWaveformState}
-                height={88}
-                variant="detail"
-                ariaLabel={`Waveform for ${vocalTrack.title}`}
-              />
-            </div>
-          </div>
-          <div style={{ height: 88, position: 'relative', overflow: 'hidden', background: BG }}>
-            <div style={instrBox}>
-              <RekordboxPreviewWaveform
-                state={instrWaveformState}
-                height={88}
-                variant="detail"
-                ariaLabel={`Waveform for ${instrTrack.title}`}
-              />
-            </div>
-          </div>
-        </div>
-        {busy && <LoadingOverlay />}
+        <FillingWaveformLane
+          box={vocalBox}
+          fill={vocalFill}
+          waveformState={vocalWaveformState}
+          ariaLabel={`Waveform for ${vocalTrack.title}`}
+        />
+        <FillingWaveformLane
+          box={instrBox}
+          fill={instrFill}
+          waveformState={instrWaveformState}
+          ariaLabel={`Waveform for ${instrTrack.title}`}
+        />
         {state.phase === 'ready' && <FlipLabPlayheadOverlay progress={playheadProgress} />}
       </div>
 
@@ -1039,7 +1074,7 @@ function TopWaveformSection({
 
       <BeatGridLane track={instrTrack} analysis={instrAnalysis} box={instrBox} />
 
-      <TrackHeader track={instrTrack} />
+      <TrackHeader track={instrTrack} titleSide="right" />
 
       <FlipLabAudioDock
         canPlay={state.phase === 'ready'}
@@ -1075,7 +1110,6 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
 
   const [selectedVocalId, setSelectedVocalId] = useState<string | null>(null);
   const [selectedInstrId, setSelectedInstrId] = useState<string | null>(null);
-  const [sessionHydratedImportId, setSessionHydratedImportId] = useState<string | null>(null);
 
   const [vocalTab, setVocalTab] = useState<'suggested' | 'library'>('library');
   const [instrTab, setInstrTab] = useState<'suggested' | 'library'>('library');
@@ -1093,10 +1127,8 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
     const generation = ++candidateLoadGenerationRef.current;
     const controller = new AbortController();
     const requestImportId = activeImportId;
-    const storedSession = requestImportId ? loadFlipLabSession(requestImportId) : null;
 
     // Import/session boundaries invalidate every old selection immediately.
-    setSessionHydratedImportId(null);
     setVocals([]);
     setInstrs([]);
     setSelectedVocalId(null);
@@ -1130,12 +1162,6 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
         if (!isCurrentFlipLabLoad(generation, candidateLoadGenerationRef.current, requestImportId, activeImportIdRef.current, controller.signal)) return;
         setVocals(pools.vocals);
         setInstrs(pools.instrumentals);
-        const restored = resolveFlipLabRestoredSelection(storedSession, pools.vocals, pools.instrumentals);
-        setSelectedVocalId(restored.vocalId);
-        setSelectedInstrId(restored.instrumentalId);
-        setVocalTab(restored.instrumentalId ? 'suggested' : 'library');
-        setInstrTab(restored.vocalId ? 'suggested' : 'library');
-        setSessionHydratedImportId(requestImportId);
       })
       .catch((error: unknown) => {
         if (!isCurrentFlipLabLoad(generation, candidateLoadGenerationRef.current, requestImportId, activeImportIdRef.current, controller.signal)) return;
@@ -1175,15 +1201,6 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
 
   const { getState: getWaveformState } = useTrackPreviewWaveforms(importId, waveformTrackIds);
 
-  useEffect(() => {
-    if (!activeImportId || sessionHydratedImportId !== activeImportId || loading) return;
-    saveFlipLabSession({
-      version: FLIP_LAB_SESSION_VERSION,
-      importId: activeImportId,
-      selectedVocalId,
-      selectedInstrumentalId: selectedInstrId,
-    });
-  }, [activeImportId, loading, selectedInstrId, selectedVocalId, sessionHydratedImportId]);
 
   const commitSelection = useCallback((role: 'vocal' | 'instrumental', trackId: string) => {
     if (busy) return;
@@ -1223,6 +1240,18 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
     setInstrTab('library');
   }, [clearFlip]);
 
+  const [dismissedNotificationIds, setDismissedNotificationIds] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    setDismissedNotificationIds(new Set());
+  }, [flipState.errors, flipState.warnings]);
+  const notifications = useMemo<AppNotification[]>(() => [
+    ...flipState.errors.map((message) => ({ id: `error:${message}`, tone: 'error' as const, title: "Flip didn't work", message })),
+    ...flipState.warnings.map((message) => ({ id: `warning:${message}`, tone: 'warning' as const, title: 'Heads up', message })),
+  ].filter((notification) => !dismissedNotificationIds.has(notification.id)), [dismissedNotificationIds, flipState.errors, flipState.warnings]);
+  const dismissNotification = useCallback((id: string) => {
+    setDismissedNotificationIds((current) => new Set(current).add(id));
+  }, []);
+
   const handlePreview = useCallback((track: RekordboxTrack) => {
     flipLab.pause();
     void globalPlayer.toggleTrack(track);
@@ -1245,6 +1274,7 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
       background: BG, fontFamily: 'inherit',
     }}>
       <style>{FLIP_LAB_KEYFRAMES}</style>
+      <NotificationCenter notifications={notifications} onDismiss={dismissNotification} label="Flip Lab notifications" />
 
       {showLoadedPair ? (
         <div style={{ flexShrink: 0 }}>
@@ -1285,7 +1315,7 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
       ) : (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) 236px minmax(0, 1fr)',
+          gridTemplateColumns: 'minmax(0, 1fr) 160px minmax(0, 1fr)',
           borderTop: `1px solid ${BORDER_F}`,
           flex: 1,
           minHeight: 200,
@@ -1314,8 +1344,6 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
             busy={busy}
             phase={flipState.phase}
             progress={flipState.progress}
-            errors={flipState.errors}
-            warnings={flipState.warnings}
             onFlip={handleFlip}
             onClear={handleClearPair}
           />

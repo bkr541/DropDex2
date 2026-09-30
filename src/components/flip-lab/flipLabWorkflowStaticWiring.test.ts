@@ -28,12 +28,20 @@ describe('Flip Lab workflow', () => {
     expect(view).toContain('<FlipProgressCircle progress={progress} />');
     expect(view).toContain('Track Selection is disabled until stem separation is finished');
     expect(view.match(/disabled=\{busy\}/g)?.length).toBe(2);
-    expect(view).toContain('data-testid="flip-lab-messages"');
+    expect(view).not.toContain('data-testid="flip-lab-messages"');
+    expect(view).toContain('<NotificationCenter notifications={notifications} onDismiss={dismissNotification}');
   });
 
-  it('keeps play disabled and waveforms dimmed with a spinner until stems are ready', () => {
+  it('keeps play disabled and fills each waveform left to right as its stem separates', () => {
     expect(view).toContain("canPlay={state.phase === 'ready'}");
-    expect(view).toContain('{busy && <LoadingOverlay />}');
+    expect(view).toContain('const vocalFill = separating ? Math.max(0, Math.min(1, state.progress * 2)) : 1;');
+    expect(view).toContain('const instrFill = separating ? Math.max(0, Math.min(1, (state.progress - 0.5) * 2)) : 1;');
+    expect(view).toContain('clipPath: `inset(0 ${hidden} 0 0)`');
+  });
+
+  it('uses an icon-only glow Flip button', () => {
+    expect(view).toContain('<GlowFlipButton enabled={canFlip} onClick={onFlip} />');
+    expect(view).toContain('<FlipIcon size={26} />');
   });
 
   it('uses the instrumental BPM as the master and enforces the 5 BPM limit', () => {

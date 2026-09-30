@@ -28,7 +28,7 @@ function FlipLabStemCachePanel() {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">Empty Stem Cache</p>
           <p className="text-xs text-muted-foreground">
-            Deletes every vocal and instrumental stem Flip Lab has saved on this computer, plus your saved Flip Lab picks. Tracks will be separated again the next time you press Flip.
+            Deletes every vocal and instrumental stem Flip Lab has saved on this computer. Tracks will be separated again the next time you press Flip.
           </p>
           {message && (
             <p role="status" className={cn('mt-1 text-xs', status === 'error' ? 'text-red-400' : 'text-emerald-400')}>{message}</p>
