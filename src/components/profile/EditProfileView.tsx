@@ -293,7 +293,7 @@ export function EditProfileView({
   const inputClass = 'w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-lg py-1.5 px-3 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50';
 
   return (
-    <div className="space-y-3 md:max-w-3xl md:mx-auto">
+    <div className="space-y-3">
 
       {/* ── Identity row ── */}
       <div className="flex gap-4 items-start">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PhraseRow } from '../../lib/queries/analysisData';
-import { flipLabBarLines, mapPhrasesToTimelineSegments, trackDurationMs } from './flipLabAnalysis';
+import { flipLabBeatGrid, mapPhrasesToTimelineSegments, trackDurationMs } from './flipLabAnalysis';
 import { fixtureGrid } from './flipLabTestFixtures';
 
 function phrase(start: number, end: number, label: string): PhraseRow {
@@ -16,15 +16,28 @@ describe('Flip Lab phrase and beat-grid lanes', () => {
     ]);
   });
 
-  it('draws one line per bar, marking the first downbeat and every fourth bar', () => {
-    const lines = flipLabBarLines(fixtureGrid('t', 1000, 120), 10_000);
-    expect(lines).toHaveLength(4);
-    expect(lines[0]).toMatchObject({ bar: 1, percent: 10, first: true, major: true });
-    expect(lines[1]).toMatchObject({ first: false, major: false });
+  it('places phrases that only have beat numbers using the beat grid', () => {
+    const grid = fixtureGrid('t', 0, 120); // one beat every 500 ms
+    const beatOnly = [
+      { start_ms: null, end_ms: null, start_beat: 1, end_beat: 5, normalized_label: 'Intro', source_kind: null },
+      { start_ms: null, end_ms: null, start_beat: 5, end_beat: null, normalized_label: 'Chorus', source_kind: null },
+    ] as unknown as PhraseRow[];
+    expect(mapPhrasesToTimelineSegments(beatOnly, 8000, grid)).toEqual([
+      { label: 'Intro', tone: 'intro', startPercent: 0, endPercent: 25 },
+      { label: 'Chorus', tone: 'chorus', startPercent: 25, endPercent: 100 },
+    ]);
   });
 
-  it('has no bar lines without a beat grid', () => {
-    expect(flipLabBarLines(null, 10_000)).toEqual([]);
+  it('builds CuePoints-style beat ticks with downbeats flagged and bar labels', () => {
+    const { ticks, labels } = flipLabBeatGrid(fixtureGrid('t', 1000, 120), 10_000);
+    expect(ticks).toHaveLength(16);
+    expect(ticks[0]).toEqual({ seq: 1, percent: 10, downbeat: true });
+    expect(ticks[1].downbeat).toBe(false);
+    expect(labels.map((l) => l.bar)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('has no beat grid ticks without a grid', () => {
+    expect(flipLabBeatGrid(null, 10_000)).toEqual({ ticks: [], labels: [] });
   });
 
   it('reads track length from milliseconds or seconds', () => {

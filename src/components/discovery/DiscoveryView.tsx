@@ -150,7 +150,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
   const showSearchResults = query.trim().length >= 2;
 
   return (
-    <div className="md:max-w-7xl md:mx-auto">
+    <div className="min-w-0">
       {/* Scrape progress modal */}
       <DiscoveryScrapeProgressModal
         isOpen={showScrapeModal}

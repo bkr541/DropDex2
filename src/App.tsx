@@ -57,6 +57,7 @@ import { EditProfileView } from './components/profile/EditProfileView';
 import { DeveloperTab } from './components/profile/DeveloperTab';
 import { UsbConnectionProvider, useUsbConnection } from './contexts/UsbConnectionContext';
 import { UsbConnectionButton } from './components/usb/UsbConnectionButton';
+import { LogoTitleFlyout, type PageHeading } from './components/navigation/LogoTitleFlyout';
 import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerContext';
 import { NowPlayingBar } from './components/player/NowPlayingBar';
 import { buildPlaylistIdentityKey } from './lib/queries/userPlaylists';
@@ -64,7 +65,7 @@ import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
-import { CheckmarkFilled, ChevronLeft, CircleDash, Close, DataBase, Edit, Growth, Layers, Logout, Moon, Music, PaintBrush, Radio, RecordingFilled, Renew, Search, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, CircleDash, Close, DataBase, Edit, Growth, Layers, Logout, Moon, Music, PaintBrush, Radio, RecordingFilled, Renew, Search, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
 import { LayoutLabWindow } from './components/ui/LayoutLabWindow';
 import { ControlButton } from './components/ui/controls';
 
@@ -333,7 +334,7 @@ function ImportStatusView({
     && item.analysis_status !== 'not_requested';
 
   return (
-    <section className="mx-auto max-w-2xl space-y-5 pt-4" data-testid="import-status-screen">
+    <section className="space-y-5" data-testid="import-status-screen">
       <div className="glass rounded-3xl border border-[var(--color-border-subtle)] p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
@@ -1088,6 +1089,58 @@ export default function App() {
     { view: 'flip-lab', icon: Shuffle, label: 'Flip Lab', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
   ];
 
+  const titledPage = (title: string, onBack: (() => void) | null = goBack): PageHeading => ({ title, onBack });
+  const pageHeading: PageHeading | null = (() => {
+    if (currentView === 'not-found') return null;
+    if (currentView === 'playlist-edit') return editingPlaylist ? titledPage(editingPlaylist.name) : null;
+    if (currentView === 'import') return titledPage('Import Status');
+    if (routeBlocked) return null;
+    switch (currentView) {
+      case 'home': return titledPage(libraryLabel, null);
+      case 'playlist':
+        return {
+          title: selectedPlaylist?.name ?? 'Playlist',
+          onBack: goBack,
+          details: (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
+                {playlistTracksLoading ? 'Loading…' : `${playlistTracks.length} Tracks`}
+              </span>
+              {avgBpm && (
+                <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
+                  Avg {avgBpm} BPM
+                </span>
+              )}
+              {totalDuration && (
+                <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
+                  {formatPlaylistDuration(totalDuration)}
+                </span>
+              )}
+              {topKey && (
+                <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-secondary uppercase tracking-widest">
+                  Key: {topKey}
+                </span>
+              )}
+              {selectedPlaylist && !selectedPlaylist.is_folder && (
+                <ControlButton variant="neutral" onClick={() => selectedPlaylist && handleEditPlaylist(selectedPlaylist)} className="ml-auto text-xs">
+                  <Edit size={12} /> Edit
+                </ControlButton>
+              )}
+            </div>
+          ),
+        };
+      case 'track': return titledPage('Track Intelligence');
+      case 'review': return titledPage('Set Review Mode');
+      case 'settings': return titledPage('Profile');
+      case 'discovery': return titledPage('Artist Discovery');
+      case 'search': return titledPage('Artist Search');
+      case 'flip-lab': return titledPage('Flip Lab');
+      case 'drop-lab': return titledPage('Drop Lab', handleDropLabBack);
+      case 'cues': return titledPage('Cue Points');
+      default: return null;
+    }
+  })();
+
   return (
     <UsbConnectionProvider>
     <AudioPlayerProvider imports={allImports}>
@@ -1109,13 +1162,16 @@ export default function App() {
           'h-16 flex items-center shrink-0 border-b border-[var(--color-border-subtle)]',
           sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-6'
         )}>
-          <img
-            src="/logos/dropdexlogo.png"
-            alt="DropDex"
-            onClick={toggleSidebar}
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="w-8 h-8 object-contain shrink-0 cursor-pointer"
-          />
+          <LogoTitleFlyout heading={pageHeading}>
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            >
+              <img src="/logos/dropdexlogo.png" alt="DropDex" className="w-8 h-8 object-contain" />
+            </button>
+          </LogoTitleFlyout>
           {!sidebarCollapsed && (
             <span className="text-xl font-black tracking-tighter uppercase leading-none">
               Drop<span className="text-[var(--color-brand-primary)]">Dex</span>
@@ -1163,172 +1219,41 @@ export default function App() {
 
         <div className="p-3 border-t border-[var(--color-border-subtle)] flex flex-col gap-2">
           <UsbConnectionButton collapsed={sidebarCollapsed} />
+          <button
+            type="button"
+            onClick={() => navigate({ name: 'profile' })}
+            aria-label="Open profile"
+            aria-current={currentView === 'settings' ? 'page' : undefined}
+            title={sidebarCollapsed ? 'Profile' : undefined}
+            className={cn(
+              'flex items-center rounded-xl font-bold text-sm transition-all border w-full',
+              sidebarCollapsed ? 'justify-center py-2 px-0' : 'gap-3 px-3 py-2 text-left',
+              currentView === 'settings'
+                ? 'text-primary bg-primary/10 border-primary/20'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent',
+            )}
+          >
+            <span className="w-8 h-8 shrink-0 rounded-full overflow-hidden border border-[var(--color-border-subtle)] flex items-center justify-center bg-[var(--color-surface)]">
+              {userProfile?.avatar_url ? (
+                <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <User size={16} className="text-muted-foreground" />
+              )}
+            </span>
+            {!sidebarCollapsed && <span className="truncate">{userProfile?.display_name ?? 'Profile'}</span>}
+          </button>
         </div>
       </aside>
 
       {/* ── Main content column ── */}
       <div className="flex flex-col flex-1 min-w-0 h-screen">
 
-        {/* View subheader */}
-        {currentView !== 'not-found' && (
-          <div className="h-16 flex items-stretch px-6 shrink-0 border-b border-[var(--color-border-subtle)]">
-            <div className="flex-1 min-w-0 flex flex-col justify-center">
-              {!routeBlocked && currentView === 'playlist' && (
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <ControlButton variant="ghost" onClick={goBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic truncate">{selectedPlaylist?.name}</h2>
-                    {selectedPlaylist && !selectedPlaylist.is_folder && (
-                      <ControlButton variant="neutral" onClick={() => selectedPlaylist && handleEditPlaylist(selectedPlaylist)} className="ml-auto text-xs">
-                        <Edit size={12} /> Edit
-                      </ControlButton>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
-                      {playlistTracksLoading ? 'Loading…' : `${playlistTracks.length} Tracks`}
-                    </span>
-                    {avgBpm && (
-                      <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
-                        Avg {avgBpm} BPM
-                      </span>
-                    )}
-                    {totalDuration && (
-                      <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-muted-foreground uppercase tracking-widest">
-                        {formatPlaylistDuration(totalDuration)}
-                      </span>
-                    )}
-                    {topKey && (
-                      <span className="px-2 py-0.5 bg-[var(--color-surface)] rounded text-[8px] font-mono text-secondary uppercase tracking-widest">
-                        Key: {topKey}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-              {currentView === 'playlist-edit' && editingPlaylist && (
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <ControlButton variant="ghost" onClick={goBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic truncate">{editingPlaylist.name}</h2>
-                  </div>
-                </div>
-              )}
-              {!routeBlocked && currentView === 'track' && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ControlButton variant="ghost" onClick={goBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic">Track Intelligence</h2>
-                  </div>
-                </div>
-              )}
-              {!routeBlocked && currentView === 'review' && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ControlButton variant="ghost" onClick={goBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic">Set Review Mode</h2>
-                  </div>
-                </div>
-              )}
-              {!routeBlocked && currentView === 'settings' && (
-                <div className="flex items-center gap-2">
-                  <ControlButton variant="ghost" onClick={goBack}>
-                    <ChevronLeft size={20} />
-                  </ControlButton>
-                  <h2 className="text-2xl font-black italic">Profile</h2>
-                </div>
-              )}
-              {!routeBlocked && currentView === 'discovery' && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ControlButton variant="ghost" onClick={goBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic">Artist Discovery</h2>
-                  </div>
-                </div>
-              )}
-              {!routeBlocked && currentView === 'search' && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ControlButton variant="ghost" onClick={goBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic">Artist Search</h2>
-                  </div>
-                </div>
-              )}
-              {currentView === 'import' && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ControlButton variant="ghost" onClick={goBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic">Import Status</h2>
-                  </div>
-                </div>
-              )}
-              {!routeBlocked && currentView === 'flip-lab' && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ControlButton variant="ghost" onClick={goBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic">Flip Lab</h2>
-                  </div>
-                </div>
-              )}
-              {!routeBlocked && currentView === 'drop-lab' && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ControlButton variant="ghost" onClick={handleDropLabBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic">Drop Lab</h2>
-                  </div>
-                </div>
-              )}
-              {!routeBlocked && currentView === 'cues' && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ControlButton variant="ghost" onClick={goBack}>
-                      <ChevronLeft size={20} />
-                    </ControlButton>
-                    <h2 className="text-2xl font-black italic">Cue Points</h2>
-                  </div>
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate({ name: 'profile' })}
-              className="flex items-center ml-4 shrink-0"
-            >
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-[var(--color-border-subtle)] flex items-center justify-center bg-[var(--color-surface)] hover:opacity-80 transition-opacity">
-                {userProfile?.avatar_url ? (
-                  <img src={userProfile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
-                ) : (
-                  <User size={16} className="text-muted-foreground" />
-                )}
-              </div>
-            </button>
-          </div>
-        )}
-
         {/* Scrollable content */}
         <main className={cn(
           'flex-1',
           currentView === 'flip-lab'
-            ? 'flex min-h-0 flex-col overflow-hidden'
-            : 'overflow-y-auto px-4 md:px-8 pt-6 pb-32 md:pb-8',
+            ? 'flex min-h-0 flex-col overflow-hidden p-6'
+            : 'overflow-y-auto px-6 pt-6 pb-32 md:pb-6',
           currentView === 'cues' && 'scrollbar-none',
         )}>
           <ApplicationErrorBoundary level="feature" resetKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
@@ -1398,7 +1323,7 @@ export default function App() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="space-y-4 md:max-w-7xl md:mx-auto"
+                className="space-y-4"
               >
                 <div className="glass p-6 rounded-3xl mb-6 relative overflow-hidden">
                   <Growth className="absolute -right-4 -bottom-4 text-primary/10 w-24 h-24" />
@@ -1495,7 +1420,7 @@ export default function App() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="md:max-w-7xl md:mx-auto"
+                className="min-w-0"
               >
                 <PlaylistEditView
                   playlist={editingPlaylist}
@@ -1522,7 +1447,7 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="md:max-w-7xl md:mx-auto"
+                className="min-w-0"
               >
                 <TrackDetailView
                   track={selectedTrack}
@@ -1547,7 +1472,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
-                className="md:max-w-7xl md:mx-auto"
+                className="min-w-0"
               >
                 <LazyFeature label="Loading Drop Lab…" boundaryKey={`${routeKey(route)}:drop-lab`} onReturnToLibrary={returnToLibrary}>
                   <DropLabView
@@ -1573,7 +1498,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
-                className="md:max-w-7xl md:mx-auto"
+                className="min-w-0"
               >
                 <ImportStatusView
                   item={selectedImport}
@@ -1594,7 +1519,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
-                className="md:max-w-7xl md:mx-auto"
+                className="min-w-0"
               >
                 <LazyFeature label="Loading Cue Points…" boundaryKey={`${routeKey(route)}:cues`} onReturnToLibrary={returnToLibrary}>
                   <CuePointsView importId={importId} onImport={() => setIsImportModalOpen(true)} />
@@ -1609,7 +1534,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
-                className="space-y-6 pb-32 md:pb-8 md:max-w-7xl md:mx-auto"
+                className="space-y-6"
               >
                 <LazyFeature label="Loading Review…" boundaryKey={`${routeKey(route)}:review`} onReturnToLibrary={returnToLibrary}>
                   {!importId ? (
@@ -1949,7 +1874,7 @@ export default function App() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="md:max-w-7xl md:mx-auto"
+                className="min-w-0"
               >
                 <LazyFeature label="Loading Discovery…" boundaryKey={`${routeKey(route)}:discovery`} onReturnToLibrary={returnToLibrary}>
                   <DiscoveryView accessToken={session?.access_token ?? null} />
@@ -1964,7 +1889,7 @@ export default function App() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="md:max-w-7xl md:mx-auto"
+                className="min-w-0"
               >
                 <LazyFeature label="Loading Search…" boundaryKey={`${routeKey(route)}:search`} onReturnToLibrary={returnToLibrary}>
                   <SearchView />

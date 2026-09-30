@@ -129,7 +129,7 @@ export function PlaylistEditView({
   };
 
   return (
-    <div className="space-y-6 md:max-w-4xl md:mx-auto pb-8">
+    <div className="space-y-6 pb-8">
 
       {/* ── Rescan Device — prominent ── */}
       <div className="glass rounded-3xl p-5 border border-[var(--color-border-subtle)] bg-gradient-to-r from-primary/5 to-transparent">

@@ -14,7 +14,7 @@ import type { RekordboxTrack } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { fetchTrackBeatGrid, fetchTrackPhrases, type BeatGridRow, type PhraseRow } from '../../lib/queries/analysisData';
 import {
-  flipLabBarLines,
+  flipLabBeatGrid,
   mapPhrasesToTimelineSegments,
   resolveFlipLabArtist,
   resolveFlipLabCamelotKey,
@@ -194,8 +194,6 @@ function HeaderStat({ label, value, valueColor }: { label: string; value: string
 // ── Track header ──────────────────────────────────────────────────────────────
 interface TrackHeaderProps {
   track: RekordboxTrack;
-  role: 'VOCAL' | 'INSTRUMENTAL';
-  roleColor: string;
   targetBpm?: number | null;
   keyShift?: {
     enabled: boolean;
@@ -206,7 +204,7 @@ interface TrackHeaderProps {
   };
 }
 
-function TrackHeader({ track, role, roleColor, targetBpm, keyShift }: TrackHeaderProps) {
+function TrackHeader({ track, targetBpm, keyShift }: TrackHeaderProps) {
   const bpm = track.bpm != null ? track.bpm.toFixed(0) : '—';
   const bpmValue = targetBpm != null && track.bpm != null && Math.abs(targetBpm - track.bpm) >= 0.05
     ? `${bpm} → ${targetBpm.toFixed(0)}`
@@ -227,7 +225,6 @@ function TrackHeader({ track, role, roleColor, targetBpm, keyShift }: TrackHeade
       <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexShrink: 0 }}>
         <HeaderStat label="BPM" value={bpmValue} />
         <HeaderStat label="Key" value={keyValue} valueColor={shownKey ? camelotColor(shownKey) : undefined} />
-        <HeaderStat label="Stem" value={role} valueColor={roleColor} />
         {keyShift && (
           <button
             type="button"
@@ -770,17 +767,58 @@ function laneBox(startSec: number, spanSec: number, totalSec: number): React.CSS
   };
 }
 
-function BarLines({ track, beatGrid }: { track: RekordboxTrack; beatGrid: BeatGridRow | null }) {
-  const lines = useMemo(() => flipLabBarLines(beatGrid, trackDurationMs(track)), [beatGrid, track]);
+// Matches the CuePoints beat-grid lane: red downbeats, green beats, bar numbers.
+function BeatGridLane({
+  track,
+  analysis,
+  box,
+}: {
+  track: RekordboxTrack;
+  analysis: FlipLabTrackAnalysisState;
+  box: React.CSSProperties;
+}) {
+  const grid = analysis.status === 'loaded' ? analysis.beatGrid : null;
+  const { ticks, labels } = useMemo(() => flipLabBeatGrid(grid, trackDurationMs(track)), [grid, track]);
+  const emptyLabel = analysis.status === 'loading' ? 'Loading beat grid…' : 'No beat grid';
   return (
-    <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-      {lines.map((line) => (
-        <span key={`${line.bar}-${line.percent}`} style={{
-          position: 'absolute', top: 0, bottom: 0, left: `${line.percent}%`,
-          width: line.first ? 2 : 1,
-          background: line.first ? PRIMARY : line.major ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)',
-        }} />
-      ))}
+    <div
+      data-testid="flip-lab-beat-grid"
+      style={{ position: 'relative', height: 30, borderBottom: `1px solid ${BORDER_F}`, background: BG, overflow: 'hidden' }}
+    >
+      <div style={box}>
+        {ticks.length === 0 ? (
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 9, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase',
+          }}>{emptyLabel}</div>
+        ) : (
+          <>
+            {ticks.map((tick) => (
+              <span
+                key={`tick-${tick.seq}`}
+                aria-hidden="true"
+                style={{
+                  position: 'absolute', left: `${tick.percent}%`, transform: 'translateX(-50%)', borderRadius: 999,
+                  top: tick.downbeat ? 2 : 3,
+                  height: tick.downbeat ? 14 : 8,
+                  width: tick.downbeat ? 2 : 1.5,
+                  background: tick.downbeat ? '#f87171' : '#4ade80',
+                  opacity: tick.downbeat ? 1 : 0.9,
+                }}
+              />
+            ))}
+            {labels.map((label) => (
+              <span
+                key={`bar-${label.bar}-${label.percent}`}
+                style={{
+                  position: 'absolute', bottom: 2, left: `${label.percent}%`, transform: 'translateX(-50%)',
+                  fontFamily: 'monospace', fontSize: 9, fontWeight: 500, color: '#9ca5ae', fontVariantNumeric: 'tabular-nums',
+                }}
+              >{label.bar}</span>
+            ))}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -929,12 +967,12 @@ function TopWaveformSection({
   const { state, busy } = flipLab;
   const vocalSections = useMemo(() => (
     vocalAnalysis.status === 'loaded'
-      ? mapPhrasesToTimelineSegments(vocalAnalysis.phrases, trackDurationMs(vocalTrack))
+      ? mapPhrasesToTimelineSegments(vocalAnalysis.phrases, trackDurationMs(vocalTrack), vocalAnalysis.beatGrid)
       : []
   ), [vocalAnalysis, vocalTrack]);
   const instrSections = useMemo(() => (
     instrAnalysis.status === 'loaded'
-      ? mapPhrasesToTimelineSegments(instrAnalysis.phrases, trackDurationMs(instrTrack))
+      ? mapPhrasesToTimelineSegments(instrAnalysis.phrases, trackDurationMs(instrTrack), instrAnalysis.beatGrid)
       : []
   ), [instrAnalysis, instrTrack]);
   const semitones = flipLabKeyShiftSemitones(resolveFlipLabCamelotKey(vocalTrack), resolveFlipLabCamelotKey(instrTrack));
@@ -948,8 +986,6 @@ function TopWaveformSection({
     <>
       <TrackHeader
         track={vocalTrack}
-        role="VOCAL"
-        roleColor={SECONDARY}
         targetBpm={instrTrack.bpm}
         keyShift={{
           enabled: state.keyShift,
@@ -959,6 +995,8 @@ function TopWaveformSection({
           onToggle: (next) => { void flipLab.setKeyShift(next); },
         }}
       />
+
+      <BeatGridLane track={vocalTrack} analysis={vocalAnalysis} box={vocalBox} />
 
       <div style={{ position: 'relative', height: 40, borderBottom: `1px solid ${BORDER_F}` }}>
         <div style={vocalBox}><SectionRow segments={vocalSections} analysisStatus={vocalAnalysis.status} /></div>
@@ -978,7 +1016,6 @@ function TopWaveformSection({
                 variant="detail"
                 ariaLabel={`Waveform for ${vocalTrack.title}`}
               />
-              <BarLines track={vocalTrack} beatGrid={vocalAnalysis.status === 'loaded' ? vocalAnalysis.beatGrid : null} />
             </div>
           </div>
           <div style={{ height: 88, position: 'relative', overflow: 'hidden', background: BG }}>
@@ -989,7 +1026,6 @@ function TopWaveformSection({
                 variant="detail"
                 ariaLabel={`Waveform for ${instrTrack.title}`}
               />
-              <BarLines track={instrTrack} beatGrid={instrAnalysis.status === 'loaded' ? instrAnalysis.beatGrid : null} />
             </div>
           </div>
         </div>
@@ -1001,7 +1037,9 @@ function TopWaveformSection({
         <div style={instrBox}><SectionRow segments={instrSections} analysisStatus={instrAnalysis.status} /></div>
       </div>
 
-      <TrackHeader track={instrTrack} role="INSTRUMENTAL" roleColor={PRIMARY} />
+      <BeatGridLane track={instrTrack} analysis={instrAnalysis} box={instrBox} />
+
+      <TrackHeader track={instrTrack} />
 
       <FlipLabAudioDock
         canPlay={state.phase === 'ready'}
@@ -1247,7 +1285,7 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
       ) : (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 236px 1fr',
+          gridTemplateColumns: 'minmax(0, 1fr) 236px minmax(0, 1fr)',
           borderTop: `1px solid ${BORDER_F}`,
           flex: 1,
           minHeight: 200,

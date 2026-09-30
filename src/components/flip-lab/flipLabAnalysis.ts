@@ -11,14 +11,6 @@ export interface FlipLabTimelineSegment {
   endPercent: number;
 }
 
-export interface FlipLabBarLine {
-  bar: number;
-  percent: number;
-  /** Every fourth bar (1, 5, 9, …) is drawn stronger. */
-  major: boolean;
-  first: boolean;
-}
-
 function finitePositive(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
@@ -76,37 +68,76 @@ function finitePhraseEnd(phrases: PhraseRow[]): number | null {
   return maximum;
 }
 
-/** Rekordbox phrase timing as percentages of the whole track. */
+function beatMs(grid: BeatGridRow | null, beatNumber: number | null | undefined): number | null {
+  if (beatNumber == null || !grid) return null;
+  return grid.beats.find((beat) => beat.seq === beatNumber)?.ms ?? null;
+}
+
+/**
+ * Rekordbox phrase timing as percentages of the whole track. Phrases that only
+ * carry beat numbers are placed using the beat grid, the same way CuePoints does.
+ */
 export function mapPhrasesToTimelineSegments(
   phrases: PhraseRow[],
   durationMs: number | null,
+  grid: BeatGridRow | null = null,
 ): FlipLabTimelineSegment[] {
   if (phrases.length === 0) return [];
   const rangeEnd = durationMs ?? finitePhraseEnd(phrases);
   if (!finitePositive(rangeEnd)) return [];
 
-  return phrases.flatMap((phrase) => {
-    if (!Number.isFinite(phrase.start_ms)) return [];
-    const startMs = Math.max(0, phrase.start_ms as number);
-    const endMs = Math.min(rangeEnd, Number.isFinite(phrase.end_ms) ? phrase.end_ms as number : rangeEnd);
+  const timed = phrases
+    .map((phrase) => ({
+      phrase,
+      startMs: Number.isFinite(phrase.start_ms) ? phrase.start_ms as number : beatMs(grid, phrase.start_beat),
+      endMs: Number.isFinite(phrase.end_ms) ? phrase.end_ms as number : beatMs(grid, phrase.end_beat),
+    }))
+    .filter((entry): entry is { phrase: PhraseRow; startMs: number; endMs: number | null } => entry.startMs != null)
+    .sort((a, b) => a.startMs - b.startMs);
+
+  return timed.flatMap((entry, index) => {
+    const startMs = Math.max(0, entry.startMs);
+    const fallbackEnd = timed[index + 1]?.startMs ?? rangeEnd;
+    const endMs = Math.min(rangeEnd, entry.endMs ?? fallbackEnd);
     if (endMs <= startMs) return [];
     return [{
-      label: phraseLabel(phrase),
-      tone: phraseTone(phrase.normalized_label ?? phrase.source_kind),
+      label: phraseLabel(entry.phrase),
+      tone: phraseTone(entry.phrase.normalized_label ?? entry.phrase.source_kind),
       startPercent: clampPercent((startMs / rangeEnd) * 100),
       endPercent: clampPercent((endMs / rangeEnd) * 100),
     }];
   });
 }
 
-/** Bar lines (downbeats) from the stored Rekordbox beat grid, as track percentages. */
-export function flipLabBarLines(grid: BeatGridRow | null, durationMs: number | null): FlipLabBarLine[] {
-  if (!grid || !finitePositive(durationMs)) return [];
-  const downbeats = grid.beats.filter((beat) => beat.isDownbeat && Number.isFinite(beat.ms) && beat.ms >= 0 && beat.ms <= durationMs);
-  return downbeats.map((beat, index) => ({
-    bar: beat.bar,
+export interface FlipLabGridTick {
+  seq: number;
+  percent: number;
+  downbeat: boolean;
+}
+
+export interface FlipLabGridLabel {
+  bar: number;
+  percent: number;
+}
+
+const MAX_BAR_LABELS = 24;
+
+/** Beat ticks (downbeats flagged) and bar-number labels for a whole-track lane, matching CuePoints. */
+export function flipLabBeatGrid(
+  grid: BeatGridRow | null,
+  durationMs: number | null,
+): { ticks: FlipLabGridTick[]; labels: FlipLabGridLabel[] } {
+  if (!grid || !finitePositive(durationMs)) return { ticks: [], labels: [] };
+  const beats = grid.beats.filter((beat) => Number.isFinite(beat.ms) && beat.ms >= 0 && beat.ms <= durationMs);
+  const ticks = beats.map((beat) => ({
+    seq: beat.seq,
     percent: clampPercent((beat.ms / durationMs) * 100),
-    major: index % 4 === 0,
-    first: index === 0,
+    downbeat: beat.isDownbeat || beat.beatInBar === 1,
   }));
+  const downbeats = beats.filter((beat) => beat.isDownbeat || beat.beatInBar === 1);
+  const step = Math.max(1, Math.ceil(downbeats.length / MAX_BAR_LABELS));
+  const labels = downbeats
+    .filter((_, index) => index % step === 0)
+    .map((beat) => ({ bar: beat.bar, percent: clampPercent((beat.ms / durationMs) * 100) }));
+  return { ticks, labels };
 }

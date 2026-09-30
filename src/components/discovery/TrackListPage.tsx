@@ -134,7 +134,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="space-y-4 md:max-w-5xl md:mx-auto"
+      className="space-y-4"
     >
       {/* ── Page header card ──────────────────────────────────────────────── */}
       <div className="glass rounded-3xl border border-[var(--color-border-subtle)] overflow-hidden">

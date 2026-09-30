@@ -1339,7 +1339,7 @@ export function LibraryView({
   } = useTrackPreviewWaveforms(importId, waveformIds);
 
   return (
-    <div className="md:max-w-7xl md:mx-auto">
+    <div className="min-w-0">
       <AnimatePresence mode="wait">
         {showSearch ? (
           <motion.div

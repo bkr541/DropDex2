@@ -51,7 +51,7 @@ export function SearchView() {
   };
 
   return (
-    <div className="space-y-8 md:max-w-5xl md:mx-auto">
+    <div className="space-y-8">
       {/* Search input */}
       <div className="relative">
         <Search
