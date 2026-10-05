@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Close, Subtract, Maximize, Add } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
+import { HeroMockupsContent } from './LayoutLabHeroMockups';
+import { LoadedTrackMockupsContent } from './LayoutLabLoadedTrackMockups';
+import { RekordboxMockupsContent } from './LayoutLabRekordboxMockups';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +26,9 @@ const TAB_BAR_HEIGHT = 36;
 const DEFAULT_TABS: Tab[] = [
   { id: 'ui-components', label: 'UI Components' },
   { id: 'scratch-pad',   label: 'Scratch Pad'   },
+  { id: 'hero',          label: 'Hero'          },
+  { id: 'loaded-track',  label: 'Loaded Track'  },
+  { id: 'rekordbox',     label: 'Rekordbox'     },
 ];
 
 let tabCounter = 0;
@@ -2000,6 +2006,12 @@ export function LayoutLabWindow({ onClose }: LayoutLabWindowProps) {
         <div className="relative flex-1 overflow-hidden" style={{ height: canvasHeight }}>
           {activeId === 'scratch-pad' ? (
             <ScratchPadContent />
+          ) : activeId === 'hero' ? (
+            <HeroMockupsContent />
+          ) : activeId === 'loaded-track' ? (
+            <LoadedTrackMockupsContent />
+          ) : activeId === 'rekordbox' ? (
+            <RekordboxMockupsContent />
           ) : (
             <BlankCanvas />
           )}

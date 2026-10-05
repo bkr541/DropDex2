@@ -38,11 +38,11 @@ import {
 import { MIN_CUE_TIMELINE_WINDOW_MS, panCueTimelineView, zoomCueTimelineView } from '../../lib/cues/cueTimelineViewport';
 import { useFlipLab } from './useFlipLab';
 import { NotificationCenter, type AppNotification } from '../ui/feedback';
-import { KeyBadge } from '../ui/display';
+import { KeyBadge, TabNavigation } from '../ui/display';
 import { MediaTransportControlGroup, TrackWaveformPreview, cueMarkersFromState, type TrackCueMarker } from '../ui/media';
 import { logger } from '../../lib/logger';
 import { Add, Close, Subtract } from '@carbon/icons-react';
-import { ControlButton, Knob } from '../ui/controls';
+import { ControlButton, Knob, SearchControl } from '../ui/controls';
 import { FLIP_LAB_EQ_RANGE_DB, type FlipLabEqBand, type FlipLabStem, type FlipLabStemEq } from './flipLabEngine';
 import { FlipIcon, InstrumentalIcon, VocalIcon } from './FlipLabIcons';
 import { motion, useReducedMotion } from 'motion/react';
@@ -57,7 +57,6 @@ import {
 // ── Color tokens ──────────────────────────────────────────────────────────────
 const BG       = 'var(--color-background)';
 const PANEL    = 'var(--color-panel)';
-const SURFACE  = 'var(--color-surface)';
 const FG       = 'var(--color-foreground)';
 const MUTED    = 'var(--color-muted-foreground)';
 const BORDER_F = 'var(--color-border-faint)';
@@ -516,7 +515,6 @@ function SelectPanel({
   onPreview, previewStatusFor, cueMarkersFor, disabled,
 }: SelectPanelProps) {
   const isVocal = role === 'vocal';
-  const roleColor = isVocal ? SECONDARY : PRIMARY;
   const roleLabel = isVocal ? 'Vocal' : 'Instrumental';
   const list = tab === 'suggested' ? suggested : library;
   const deferredSearch = useDeferredValue(search);
@@ -593,45 +591,27 @@ function SelectPanel({
             <div style={{ fontSize: 10, color: MUTED }}>Choose the {role} track</div>
           </div>
         </div>
-        <div style={{
-          display: 'flex', gap: 2, background: SURFACE,
-          borderRadius: 8, padding: 2, border: `1px solid ${BORDER_S}`,
-        }}>
-          {(['suggested', 'library'] as const).map(t => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => onTabChange(t)}
-              style={{
-                padding: '4px 12px', borderRadius: 6, fontSize: 10, fontWeight: 700,
-                cursor: 'pointer', border: 'none',
-                background: tab === t ? roleColor : 'transparent',
-                color: tab === t ? '#fff' : MUTED,
-                transition: 'all 0.15s',
-              }}
-            >
-              {t.charAt(0).toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-        </div>
+        <TabNavigation
+          ariaLabel={`${roleLabel} source`}
+          variant="primary"
+          className="dd-tab-nav--compact"
+          value={tab}
+          onChange={(value) => onTabChange(value as 'suggested' | 'library')}
+          options={[
+            { id: 'suggested', label: 'Suggested' },
+            { id: 'library', label: 'Library' },
+          ]}
+        />
       </div>
 
       <div style={{ padding: '8px 12px', background: PANEL, borderBottom: `1px solid ${BORDER_F}` }}>
-        <div style={{ position: 'relative' }}>
-          <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: MUTED, pointerEvents: 'none' }}>⌕</div>
-          <input
-            type="text"
-            value={search}
-            onChange={e => onSearchChange(e.target.value)}
-            placeholder={`Search ${role}s, artists…`}
-            style={{
-              width: '100%', boxSizing: 'border-box',
-              padding: '6px 10px 6px 26px', borderRadius: 8,
-              background: SURFACE, border: `1px solid ${BORDER_S}`,
-              fontSize: 11, color: FG, outline: 'none',
-            }}
-          />
-        </div>
+        <SearchControl
+          underline
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder={`Search ${role}s, artists…`}
+          aria-label={`Search ${role} tracks`}
+        />
       </div>
 
       <TrackListColumnHeader />

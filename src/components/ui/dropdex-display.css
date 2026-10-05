@@ -310,6 +310,9 @@
   height: 2px;
   background: var(--color-control-blue);
 }
+.dd-tab-nav--compact { border-bottom-color: var(--color-border-faint); }
+.dd-tab-nav--compact .dd-tab-nav__item { flex: 0 0 auto; padding: 8px 13px 7px; font-size: 10px; }
+.dd-tab-nav--compact.dd-tab-nav--primary .dd-tab-nav__item[aria-selected="true"]::after { left: 13px; right: 13px; height: 2px; }
 .dd-tab-nav__item:hover { color: #f2f5f8; }
 .dd-tab-nav__item:focus-visible { z-index: 2; outline: 2px solid var(--color-control-focus); outline-offset: -2px; }
 .dd-tab-nav--filter { gap: 4px; padding: 4px; border: 1px solid var(--color-control-border-soft); border-radius: var(--radius-control); background: var(--color-control-surface); }
