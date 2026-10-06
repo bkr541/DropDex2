@@ -3,12 +3,21 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(".env", ".env.spotify.local"),
+        extra="ignore",
+    )
 
     supabase_url: str
     supabase_secret_key: str
     supabase_jwt_secret: str | None = None  # HS256 legacy/test only; ES256 uses JWKS
     frontend_origin: str = "http://127.0.0.1:3000"
+    spotify_client_id: str | None = None
+    spotify_client_secret: str | None = None
+    spotify_token_encryption_key: str | None = None
+    spotify_redirect_uri: str = (
+        "http://127.0.0.1:8000/api/external-accounts/spotify/callback"
+    )
     max_upload_bytes: int = 52_428_800  # 50 MB (legacy alias — prefer max_rekordbox_db_upload_bytes)
 
     # ── Analysis file upload limits ───────────────────────────────────────────

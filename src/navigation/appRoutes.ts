@@ -5,6 +5,7 @@ export type LibraryTab =
   | 'tracks'
   | 'genres'
   | 'artists'
+  | 'spotify'
   | 'incomplete-analysis';
 
 export type AppRoute =
@@ -36,6 +37,7 @@ const LIBRARY_TAB_PATHS: Record<LibraryTab, string> = {
   tracks: '/library/tracks',
   genres: '/library/genres',
   artists: '/library/artists',
+  spotify: '/library/spotify',
   'incomplete-analysis': '/library/incomplete-analysis',
 };
 

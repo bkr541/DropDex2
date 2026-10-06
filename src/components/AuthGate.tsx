@@ -8,8 +8,8 @@ import {
   submitEmailOtp,
   verifyEmailOtp,
 } from '../auth/emailOtp';
-import { ArrowLeft, ArrowRight, CheckmarkFilled, CircleDash, Email, Renew, TrashCan, WarningAlt } from '@carbon/icons-react';
-import { ControlButton } from './ui/controls';
+import { ArrowLeft, ArrowRight, CheckmarkFilled, CircleDash, Email, Password, Renew, TrashCan, WarningAlt } from '@carbon/icons-react';
+import { ControlButton, TextControl } from './ui/controls';
 
 function AuthenticationFailure({
   error,
@@ -222,7 +222,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               </p>
 
               <form onSubmit={handleVerifyOtp} className="space-y-4">
-                <input
+                <TextControl
+                  icon={<Password size={18} />}
                   type="text"
                   inputMode="numeric"
                   autoComplete="one-time-code"
@@ -231,7 +232,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   value={otp}
                   onChange={(event) => setOtp(normalizeEmailOtp(event.target.value))}
                   autoFocus
-                  className="w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-4 text-center text-2xl font-black tracking-[0.35em] text-foreground placeholder:text-muted-foreground/35 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  className="text-center font-black tracking-[0.35em]"
                 />
 
                 {error && (
@@ -273,12 +274,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                 Enter your email to receive a one-time verification code.
               </p>
               <form onSubmit={handleSendOtp} className="space-y-4">
-                <div className="relative">
-                  <Email
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-                    size={16}
-                  />
-                  <input
+                <div>
+                  <TextControl
+                    icon={<Email size={18} />}
                     type="email"
                     aria-label="Email address"
                     placeholder="your@email.com"
@@ -286,7 +284,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                     onChange={(event) => setEmail(event.target.value)}
                     required
                     autoFocus
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-xl py-3.5 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-foreground placeholder:text-muted-foreground text-sm"
                   />
                 </div>
                 {error && <p className="text-red-400 text-xs" role="alert">{error}</p>}

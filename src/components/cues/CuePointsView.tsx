@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Add, ChevronDown, CircleDash, Close, Edit, Export, Idea, Music, Pause, Play, Repeat, Save, Subtract, Upload, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
+import { Add, ChevronDown, CircleDash, Close, ColorPalette, Edit, Export, Idea, Music, Pause, Play, Repeat, Save, Subtract, Tag, Time, Timer, Upload, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -1000,8 +1000,10 @@ function CueInspector({
         <label className="min-w-0 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
           Start (ms)
           <TextControl
+            icon={<Timer size={15} />}
             key={`${cue.editorId}:start:${cue.startMs}`}
-            className="mt-1 font-mono tabular-nums"
+            className="font-mono tabular-nums"
+            containerClassName="mt-1"
             disabled={!editable}
             type="number"
             min={0}
@@ -1049,8 +1051,10 @@ function CueInspector({
             </SelectControl>
           ) : (
             <TextControl
+              icon={<ColorPalette size={15} />}
               key={`${cue.editorId}:color-index:${cue.colorTableIndex}`}
-              className="mt-1 font-mono tabular-nums"
+              className="font-mono tabular-nums"
+              containerClassName="mt-1"
               disabled={!editable}
               type="number"
               min={0}
@@ -1068,8 +1072,10 @@ function CueInspector({
           <label className="text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
             Loop end (ms)
             <TextControl
+              icon={<Timer size={15} />}
               key={`${cue.editorId}:end:${cue.endMs}`}
-              className="mt-1 font-mono tabular-nums"
+              className="font-mono tabular-nums"
+              containerClassName="mt-1"
               disabled={!editable}
               type="number"
               min={0}
@@ -1086,8 +1092,10 @@ function CueInspector({
           <label className="text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
             Loop length (ms)
             <TextControl
+              icon={<Time size={15} />}
               key={`${cue.editorId}:length:${loopLengthMs}`}
-              className="mt-1 font-mono tabular-nums"
+              className="font-mono tabular-nums"
+              containerClassName="mt-1"
               disabled={!editable}
               type="number"
               min={1}
@@ -1125,7 +1133,8 @@ function CueInspector({
       <label className="mt-3 block text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
         Comment / name
         <TextControl
-          className="mt-1"
+          icon={<Edit size={15} />}
+          containerClassName="mt-1"
           disabled={!editable}
           value={cue.comment ?? ''}
           maxLength={255}
@@ -4662,8 +4671,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                           {editingGenreTrackId === track.id ? (
                             <div className="space-y-1.5" onClick={(event) => event.stopPropagation()}>
                               <div className="flex items-center gap-1.5">
-                                <div className="flex-1 pb-2 border-b border-white/15 focus-within:border-white/35 transition-colors">
-                                  <input
+                                <div className="flex-1">
+                                  <TextControl
+                                    icon={<Tag size={15} />}
                                     type="text"
                                     autoFocus
                                     maxLength={REKORDBOX_GENRE_MAX_LENGTH}
@@ -4685,7 +4695,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                                     }}
                                     disabled={genreSaving || !genreEditingAvailable}
                                     aria-label={`Genre for ${track.title}`}
-                                    className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/30 outline-none disabled:opacity-60"
+                                    className="disabled:opacity-60"
                                     placeholder="Genre…"
                                   />
                                 </div>

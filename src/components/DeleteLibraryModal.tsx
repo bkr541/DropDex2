@@ -8,7 +8,7 @@ import {
 } from '../lib/rekordbox/libraryDeletion';
 import { cn } from '../lib/utils';
 import { CircleDash, Close, TrashCan, WarningAlt } from '@carbon/icons-react';
-import { ControlButton } from './ui/controls';
+import { ControlButton, TextControl } from './ui/controls';
 
 interface DeleteLibraryModalProps {
   target: RekordboxImport | null;
@@ -168,7 +168,8 @@ export function DeleteLibraryModal({
             <label htmlFor="delete-library-confirmation" className="text-xs font-bold">
               Type <span className="font-mono text-red-400">DELETE</span> exactly to confirm
             </label>
-            <input
+            <TextControl
+              icon={<TrashCan size={17} />}
               id="delete-library-confirmation"
               autoFocus
               disabled={deleting}
@@ -176,7 +177,8 @@ export function DeleteLibraryModal({
               onChange={(event) => setConfirmation(event.target.value)}
               autoComplete="off"
               spellCheck={false}
-              className="mt-2 w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-2.5 font-mono text-sm outline-none transition-colors focus:border-red-500/60"
+              className="font-mono"
+              containerClassName="mt-2"
               placeholder="DELETE"
             />
             <p className="mt-1 text-[10px] text-muted-foreground">Confirmation is case-sensitive.</p>

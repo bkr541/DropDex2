@@ -4,8 +4,8 @@ import { cn } from '../../lib/utils';
 import { useArtistsByGenre } from '../../hooks/useArtistsByGenre';
 import { ArtistCard, artistAvatarColor } from './ArtistCard';
 import type { SearchArtist } from '../../types';
-import { CircleDash, Close, Group, Search } from '@carbon/icons-react';
-import { ControlButton } from '../ui/controls';
+import { CircleDash, Close, Group } from '@carbon/icons-react';
+import { ControlButton, SearchControl } from '../ui/controls';
 
 const GENRES = ['Melodic Dubstep', 'Future Bass'];
 
@@ -54,19 +54,15 @@ export function SearchView() {
     <div className="space-y-8">
       {/* Search input */}
       <div className="relative">
-        <Search
-          className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none z-10"
-          size={18}
-        />
-        <input
+        <SearchControl
           ref={inputRef}
-          type="text"
           placeholder="Filter artists…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-2xl py-4 pl-12 pr-12 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-medium text-foreground placeholder:text-muted-foreground"
+          aria-label="Filter artists"
+          className="pr-12"
         />
         {query && (
           <ControlButton

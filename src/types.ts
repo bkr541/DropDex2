@@ -547,6 +547,7 @@ export interface UserProfile {
   spotify_url: string | null;
   soundcloud_url: string | null;
   instagram_url: string | null;
+  tiktok_url: string | null;
   youtube_url: string | null;
   website_url: string | null;
   created_at: string;

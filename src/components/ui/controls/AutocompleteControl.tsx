@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from 'react';
 import { Close, Waveform } from '@carbon/icons-react';
 import '../dropdex-controls.css';
+import { TextControl } from './TextControl';
 
 export interface AutocompleteOption {
   value: string;
@@ -37,46 +38,44 @@ export function AutocompleteControl({
 
   return (
     <div className="dd-autocomplete">
-      <div className="dd-control-wrap">
-        <Waveform size={18} className="dd-control-start-icon dd-control-start-icon--active" aria-hidden="true" />
-        <input
-          role="combobox"
-          aria-label={ariaLabel}
-          aria-expanded={open}
-          aria-controls={`${id}-listbox`}
-          aria-autocomplete="list"
-          aria-activedescendant={open && filtered[activeIndex] ? `${id}-${activeIndex}` : undefined}
-          value={value}
-          placeholder={placeholder}
-          className="dd-text-control dd-text-control--with-start-icon dd-text-control--focus-demo"
-          onFocus={() => setOpen(true)}
-          onChange={(event) => {
-            onChange(event.target.value);
-            setActiveIndex(0);
+      <TextControl
+        icon={<Waveform size={18} className="text-primary" />}
+        role="combobox"
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        aria-controls={`${id}-listbox`}
+        aria-autocomplete="list"
+        aria-activedescendant={open && filtered[activeIndex] ? `${id}-${activeIndex}` : undefined}
+        value={value}
+        placeholder={placeholder}
+        className="dd-text-control--focus-demo"
+        onFocus={() => setOpen(true)}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setActiveIndex(0);
+          setOpen(true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
             setOpen(true);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'ArrowDown') {
-              event.preventDefault();
-              setOpen(true);
-              setActiveIndex((index) => Math.min(index + 1, Math.max(filtered.length - 1, 0)));
-            } else if (event.key === 'ArrowUp') {
-              event.preventDefault();
-              setActiveIndex((index) => Math.max(index - 1, 0));
-            } else if (event.key === 'Enter' && open) {
-              event.preventDefault();
-              commit(filtered[activeIndex]);
-            } else if (event.key === 'Escape') {
-              setOpen(false);
-            }
-          }}
-        />
-        {value && (
+            setActiveIndex((index) => Math.min(index + 1, Math.max(filtered.length - 1, 0)));
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            setActiveIndex((index) => Math.max(index - 1, 0));
+          } else if (event.key === 'Enter' && open) {
+            event.preventDefault();
+            commit(filtered[activeIndex]);
+          } else if (event.key === 'Escape') {
+            setOpen(false);
+          }
+        }}
+        endAdornment={value ? (
           <button type="button" aria-label="Clear autocomplete" className="dd-control-end-action" onClick={() => { onChange(''); setOpen(true); }}>
             <Close size={16} />
           </button>
-        )}
-      </div>
+        ) : null}
+      />
       {open && filtered.length > 0 && (
         <div id={`${id}-listbox`} role="listbox" className="dd-autocomplete__list">
           {filtered.map((option, index) => (

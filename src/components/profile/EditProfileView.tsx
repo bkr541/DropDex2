@@ -13,8 +13,17 @@ import {
   searchArtistsByName,
 } from '../../lib/queries/userPreferences';
 import type { UserProfile, UserGenrePreference, UserArtistPreference } from '../../types';
-import { CircleDash, Close, Search, Upload, User } from '@carbon/icons-react';
-import { ControlButton } from '../ui/controls';
+import { At, CircleDash, Close, Cloud, Globe, LogoInstagram, LogoYoutube, Music, TextAlignLeft, Upload, User } from '@carbon/icons-react';
+import { ControlButton, SearchControl, TextareaControl, TextControl } from '../ui/controls';
+
+function TikTokIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M14.2 3.5v10.1a4.7 4.7 0 1 1-4-4.65v2.8a2 2 0 1 0 1.2 1.85V3.5h2.8Z" fill="currentColor" />
+      <path d="M14.2 3.5c.45 2.35 1.8 3.75 4.3 4.1v2.75c-1.75-.05-3.15-.55-4.3-1.5V3.5Z" fill="currentColor" />
+    </svg>
+  );
+}
 
 // ── Preference picker (genres or artists) ────────────────────────────────────
 
@@ -82,21 +91,14 @@ function PreferencePicker({
       {/* Search input */}
       {!atMax && (
         <div className="relative">
-          <div className="relative">
-            <Search
-              size={11}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-            />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setTimeout(() => setFocused(false), 150)}
-              placeholder={placeholder}
-              className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-lg py-1.5 pl-7 pr-3 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
-            />
-          </div>
+          <SearchControl
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setTimeout(() => setFocused(false), 150)}
+            placeholder={placeholder}
+            aria-label={placeholder}
+          />
 
           {showDropdown && (
             <div
@@ -179,6 +181,7 @@ export function EditProfileView({
   const [spotifyUrl, setSpotifyUrl] = useState(existingProfile?.spotify_url ?? '');
   const [soundcloudUrl, setSoundcloudUrl] = useState(existingProfile?.soundcloud_url ?? '');
   const [instagramUrl, setInstagramUrl] = useState(existingProfile?.instagram_url ?? '');
+  const [tiktokUrl, setTiktokUrl] = useState(existingProfile?.tiktok_url ?? '');
   const [youtubeUrl, setYoutubeUrl] = useState(existingProfile?.youtube_url ?? '');
   const [websiteUrl, setWebsiteUrl] = useState(existingProfile?.website_url ?? '');
 
@@ -227,6 +230,7 @@ export function EditProfileView({
         spotify_url: spotifyUrl.trim() || null,
         soundcloud_url: soundcloudUrl.trim() || null,
         instagram_url: instagramUrl.trim() || null,
+        tiktok_url: tiktokUrl.trim() || null,
         youtube_url: youtubeUrl.trim() || null,
         website_url: websiteUrl.trim() || null,
       };
@@ -286,11 +290,10 @@ export function EditProfileView({
     spotifyUrl !== (existingProfile?.spotify_url ?? '') ||
     soundcloudUrl !== (existingProfile?.soundcloud_url ?? '') ||
     instagramUrl !== (existingProfile?.instagram_url ?? '') ||
+    tiktokUrl !== (existingProfile?.tiktok_url ?? '') ||
     youtubeUrl !== (existingProfile?.youtube_url ?? '') ||
     websiteUrl !== (existingProfile?.website_url ?? '') ||
     pendingAvatar !== null;
-
-  const inputClass = 'w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-lg py-1.5 px-3 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50';
 
   return (
     <div className="space-y-3">
@@ -322,66 +325,42 @@ export function EditProfileView({
             <label className="block text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
               Display Name <span className="text-primary">*</span>
             </label>
-            <input
+            <TextControl
+              icon={<User size={17} />}
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Your artist name"
               maxLength={120}
-              className={inputClass}
             />
           </div>
 
           <div className="space-y-1">
             <label className="block text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Username</label>
-            <input
+            <TextControl
+              icon={<At size={17} />}
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="@yourhandle"
               maxLength={60}
-              className={inputClass}
             />
           </div>
 
           <div className="col-span-2 space-y-1">
             <label className="block text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Bio</label>
-            <textarea
+            <TextareaControl
+              icon={<TextAlignLeft size={17} />}
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               placeholder="Tell people about your sound…"
               rows={2}
               maxLength={500}
-              className={`${inputClass} resize-none`}
+              className="resize-none"
             />
           </div>
         </div>
       </div>
-
-      {/* ── Social links ── */}
-      <section className="space-y-1.5">
-        <h3 className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground px-0.5">Social Links</h3>
-        <div className="glass rounded-xl divide-y divide-[var(--color-border-faint)] overflow-hidden">
-          {[
-            { label: 'Spotify', value: spotifyUrl, set: setSpotifyUrl, placeholder: 'https://open.spotify.com/artist/…' },
-            { label: 'SoundCloud', value: soundcloudUrl, set: setSoundcloudUrl, placeholder: 'https://soundcloud.com/…' },
-            { label: 'Instagram', value: instagramUrl, set: setInstagramUrl, placeholder: 'https://instagram.com/…' },
-            { label: 'YouTube', value: youtubeUrl, set: setYoutubeUrl, placeholder: 'https://youtube.com/…' },
-            { label: 'Website', value: websiteUrl, set: setWebsiteUrl, placeholder: 'https://yoursite.com' },
-          ].map(({ label, value, set, placeholder }) => (
-            <div key={label} className="px-3 py-1.5 flex items-center gap-3">
-              <p className="text-[9px] uppercase font-bold tracking-widest text-muted-foreground w-18 shrink-0">{label}</p>
-              <input
-                type="url"
-                value={value}
-                onChange={(e) => set(e.target.value)}
-                placeholder={placeholder}
-                className="flex-1 bg-transparent text-xs font-mono focus:outline-none placeholder:text-muted-foreground/40 text-foreground min-w-0"
-              />
-            </div>
-          ))}
-        </div>
-      </section>
 
       {/* ── Genres + Artists ── */}
       <div className="grid grid-cols-2 gap-3">
@@ -408,6 +387,44 @@ export function EditProfileView({
           />
         </div>
       </div>
+
+      {/* ── Social links ── */}
+      <section className="glass overflow-hidden rounded-xl">
+        <div className="px-3 py-2.5">
+          <h3 className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Social Links</h3>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2">
+          {[
+            { label: 'Spotify', value: spotifyUrl, set: setSpotifyUrl, placeholder: 'https://open.spotify.com/artist/…', icon: <Music size={16} /> },
+            { label: 'SoundCloud', value: soundcloudUrl, set: setSoundcloudUrl, placeholder: 'https://soundcloud.com/…', icon: <Cloud size={16} /> },
+            { label: 'Instagram', value: instagramUrl, set: setInstagramUrl, placeholder: 'https://instagram.com/…', icon: <LogoInstagram size={16} /> },
+            { label: 'TikTok', value: tiktokUrl, set: setTiktokUrl, placeholder: 'https://tiktok.com/@…', icon: <TikTokIcon /> },
+            { label: 'YouTube', value: youtubeUrl, set: setYoutubeUrl, placeholder: 'https://youtube.com/…', icon: <LogoYoutube size={16} /> },
+            { label: 'Website', value: websiteUrl, set: setWebsiteUrl, placeholder: 'https://yoursite.com', icon: <Globe size={16} /> },
+          ].map(({ label, value, set, placeholder, icon }, index) => (
+            <div
+              key={label}
+              className={cn(
+                'flex min-w-0 items-center gap-3 border-[var(--color-border-faint)] px-3 py-1.5',
+                index < 5 && 'border-b',
+                index % 2 === 0 && 'sm:border-r',
+                index >= 4 && 'sm:border-b-0',
+              )}
+            >
+              <p className="w-18 shrink-0 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+              <TextControl
+                icon={icon}
+                type="url"
+                value={value}
+                onChange={(e) => set(e.target.value)}
+                placeholder={placeholder}
+                className="font-mono"
+                containerClassName="min-w-0 flex-1"
+              />
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* ── Save ── */}
       {(isDirty || saving) && (

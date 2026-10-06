@@ -121,15 +121,22 @@
 .dd-text-control--error { border-color: var(--color-control-red); background: rgb(var(--color-control-red-rgb) / .05); color: #ff8a94; box-shadow: none; }
 .dd-text-control--error:focus { border-color: var(--color-control-red); box-shadow: 0 0 0 2px rgb(255 54 71 / .15); }
 .dd-text-control--with-start-icon { padding-left: 44px; }
+.dd-text-input,
 .dd-text-control--underline { border: 0; border-bottom: 1px solid rgb(255 255 255 / 0.15); border-radius: 0; background: transparent; box-shadow: none; }
+.dd-text-input:hover,
 .dd-text-control--underline:hover { border-bottom-color: rgb(255 255 255 / 0.35); }
+.dd-text-input:focus,
 .dd-text-control--underline:focus { border-bottom-color: var(--color-control-focus); background: transparent; box-shadow: none; }
-.dd-control-start-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); z-index: 1; color: #758291; pointer-events: none; }
+.dd-text-input.dd-text-control--error { border-bottom-color: var(--color-control-red); background: rgb(var(--color-control-red-rgb) / .05); }
+.dd-text-input.dd-text-control--error:focus { border-bottom-color: var(--color-control-red); box-shadow: none; }
+.dd-control-start-icon { position: absolute; left: 13px; top: 50%; display: grid; place-items: center; transform: translateY(-50%); z-index: 1; color: #758291; pointer-events: none; }
+.dd-control-wrap--textarea .dd-control-start-icon { top: 16px; transform: none; }
 .dd-control-start-icon--active { color: #438fff; }
 .dd-control-end-icon { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); color: #8f9ba9; pointer-events: none; }
 .dd-control-end-action { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; display: grid; place-items: center; border-radius: 5px; color: #818c98; }
 .dd-control-end-action:hover { color: white; background: #202a35; }
 .dd-textarea-control { min-height: 84px; padding: 13px 16px; resize: vertical; }
+.dd-textarea-control.dd-text-control--with-start-icon { padding-left: 44px; }
 .dd-select-control { appearance: none; padding-right: 44px; cursor: pointer; }
 
 .dd-autocomplete { position: relative; z-index: 5; }

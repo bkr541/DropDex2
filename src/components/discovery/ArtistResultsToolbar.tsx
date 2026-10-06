@@ -1,6 +1,7 @@
 import { cn } from '../../lib/utils';
 import type { ArtistTabId } from './ArtistResultsTabs';
-import { ChevronDown, Search } from '@carbon/icons-react';
+import { ChevronDown } from '@carbon/icons-react';
+import { SearchControl } from '../ui/controls';
 
 export type SortKey = 'date_desc' | 'date_asc' | 'most_viewed' | 'highest_completion';
 
@@ -68,17 +69,12 @@ export function ArtistResultsToolbar({
       </div>
 
       {/* Search input */}
-      <div className="relative flex-1 min-w-0">
-        <Search
-          size={11}
-          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-        />
-        <input
-          type="text"
+      <div className="flex-1 min-w-0">
+        <SearchControl
           value={filterQuery}
           onChange={(e) => onFilterChange(e.target.value)}
           placeholder="Filter setlists…"
-          className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-xl py-1.5 pl-7 pr-3 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
+          aria-label="Filter setlists"
         />
       </div>
 

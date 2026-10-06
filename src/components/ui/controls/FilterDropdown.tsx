@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ChevronDown, Close, Search } from '@carbon/icons-react';
+import { ChevronDown, Close } from '@carbon/icons-react';
 import { cn } from '../../../lib/utils';
+import { SearchControl } from './SearchControl';
 
 export interface FilterDropdownOption {
   value: string;
@@ -136,16 +137,13 @@ export function FilterDropdown({
           className="absolute top-full left-0 mt-1.5 z-50 min-w-full overflow-y-auto overscroll-contain rounded-md border border-[var(--color-control-border)] bg-[var(--color-control-surface)] shadow-[0_12px_28px_rgba(0,0,0,0.32)] max-h-[320px]"
         >
           {searchable && (
-            <div className="dd-control-wrap sticky top-0 p-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)]">
-              <Search size={16} className="dd-control-start-icon" aria-hidden="true" />
-              <input
+            <div className="sticky top-0 p-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)]">
+              <SearchControl
                 ref={searchRef}
-                type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search…"
                 aria-label={`Search ${label} filter options`}
-                className="dd-text-control dd-text-control--with-start-icon"
                 style={{ minHeight: 34, fontSize: 13 }}
                 onClick={(e) => e.stopPropagation()}
               />

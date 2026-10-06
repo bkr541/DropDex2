@@ -40,6 +40,11 @@ describe('app routes', () => {
     });
     expect(routeToUrl({ name: 'library', tab: 'tracks', search: 'Artist One' }))
       .toBe('/library/tracks?q=Artist+One');
+    expect(parseAppRoute('/library/spotify')).toEqual({
+      name: 'library',
+      tab: 'spotify',
+      search: '',
+    });
   });
 
   it('returns a readable not-found route for unknown or malformed paths', () => {

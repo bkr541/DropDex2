@@ -28,6 +28,7 @@ from .bundle_import_service import import_bundle
 from .config import settings
 from .discovery.repository import DiscoveryRepository
 from .discovery.routes import router as discovery_router
+from .external_accounts import router as external_accounts_router
 from .import_jobs import (
     cancel_import_job,
     create_import_job,
@@ -105,6 +106,7 @@ app.add_middleware(
 )
 
 app.include_router(discovery_router)
+app.include_router(external_accounts_router)
 
 
 @app.middleware("http")

@@ -55,6 +55,7 @@ import { PlaylistEditView } from './components/library/PlaylistEditView';
 import { TrackDetailView } from './components/library/TrackDetailView';
 import { EditProfileView } from './components/profile/EditProfileView';
 import { DeveloperTab } from './components/profile/DeveloperTab';
+import { SpotifyExternalAccount } from './components/profile/SpotifyExternalAccount';
 import { UsbConnectionProvider, useUsbConnection } from './contexts/UsbConnectionContext';
 import { UsbConnectionButton } from './components/usb/UsbConnectionButton';
 import { LogoTitleFlyout, type PageHeading } from './components/navigation/LogoTitleFlyout';
@@ -1297,6 +1298,7 @@ export default function App() {
                   importId={importId}
                   profile={userProfile}
                   genres={userGenres}
+                  spotifyAccessToken={session?.access_token ?? null}
                   onPlaylistClick={handlePlaylistClick}
                   onEditPlaylist={handleEditPlaylist}
                   onTrackClick={handleTrackClick}
@@ -1574,14 +1576,14 @@ export default function App() {
                           : 'border-transparent text-muted-foreground hover:text-foreground'
                       )}
                     >
-                      {tab}
+                      {tab === 'appearance' ? 'Personalization' : tab}
                     </button>
                   ))}
                 </div>
 
                 {/* ── Account tab ── */}
                 {settingsTab === 'account' && userId && (
-                  <div className="flex flex-col min-h-[calc(100vh-200px)]">
+                  <div className="flex flex-col min-h-[calc(100vh-200px)] lg:px-[188px]">
                     <div className="space-y-6">
                       <EditProfileView
                         userId={userId}
@@ -1601,9 +1603,9 @@ export default function App() {
                   </div>
                 )}
 
-                {/* ── Appearance tab ── */}
+                {/* ── Personalization tab ── */}
                 {settingsTab === 'appearance' && (
-                  <section className="space-y-3">
+                  <section className="space-y-6 lg:px-[188px]">
                     <div className="glass rounded-2xl p-5 space-y-4">
                       <div>
                         <p className="font-bold text-sm mb-0.5">Theme</p>
@@ -1639,12 +1641,18 @@ export default function App() {
                         })}
                       </div>
                     </div>
+                    <div className="space-y-3">
+                      <h2 className="px-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        External Accounts
+                      </h2>
+                      <SpotifyExternalAccount accessToken={session?.access_token ?? null} />
+                    </div>
                   </section>
                 )}
 
                 {/* ── Library tab ── */}
                 {settingsTab === 'library' && (
-                  <>
+                  <div className="space-y-8 lg:px-[188px]">
                     {/* Library stat cards */}
                     <section className="space-y-3">
                       <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><DataBase size={11} />Library</h2>
@@ -1841,12 +1849,12 @@ export default function App() {
                         </button>
                       </div>
                     </section>
-                  </>
+                  </div>
                 )}
 
                 {/* ── About tab ── */}
                 {settingsTab === 'about' && (
-                  <section className="space-y-3">
+                  <section className="space-y-3 lg:px-[188px]">
                     <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
                       {[
                         { label: 'Version', value: '2.0.0' },
@@ -1863,7 +1871,11 @@ export default function App() {
                 )}
 
                 {/* ── Developer tab ── */}
-                {settingsTab === 'developer' && <DeveloperTab />}
+                {settingsTab === 'developer' && (
+                  <div className="lg:px-[188px]">
+                    <DeveloperTab />
+                  </div>
+                )}
               </motion.div>
             )}
 

@@ -6,7 +6,7 @@ import { SetTrackRow } from './SetTrackRow';
 import { SetTrackTimeline } from './SetTrackTimeline';
 import type { DiscoverySetlistResult } from '../../types';
 import { Branch, Calendar, ChevronLeft, CircleDash, Close, Document, Launch, Music, Playlist, Renew, RotateCounterclockwise, Time, Timer, Upload, WarningAlt } from '@carbon/icons-react';
-import { ControlButton } from '../ui/controls';
+import { ControlButton, TextareaControl } from '../ui/controls';
 
 type ViewMode = 'list' | 'timeline';
 
@@ -365,12 +365,13 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
             <span className="font-mono text-foreground">View Page Source</span>, then paste the
             full HTML here so DropDex can parse the tracks.
           </p>
-          <textarea
+          <TextareaControl
+            icon={<Document size={17} />}
             value={importHtmlText}
             onChange={(e) => setImportHtmlText(e.target.value)}
             disabled={scraping}
             placeholder="Paste 1001Tracklists page HTML here…"
-            className="w-full h-40 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50 placeholder:text-muted-foreground/50"
+            className="h-40 font-mono resize-y disabled:opacity-50"
           />
           {importError && (
             <p className="text-xs text-red-400 font-mono leading-relaxed">{importError}</p>

@@ -1,6 +1,5 @@
-import { cn } from '../../lib/utils';
-import { CircleDash, Close, Search } from '@carbon/icons-react';
-import { ControlButton } from '../ui/controls';
+import { CircleDash, Close } from '@carbon/icons-react';
+import { ControlButton, SearchControl } from '../ui/controls';
 
 interface ArtistSearchInputProps {
   value: string;
@@ -21,27 +20,13 @@ export function ArtistSearchInput({
     // mx-[3px] my-[3px]: gives the focus ring (outset box-shadow) room to render
     // without being clipped by any ancestor overflow boundary.
     <div className="relative mx-[3px] my-[3px]">
-      {loading ? (
-        <CircleDash
-          className="absolute left-4 top-1/2 -translate-y-1/2 text-primary animate-spin"
-          size={16}
-        />
-      ) : (
-        <Search
-          className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-          size={16}
-        />
-      )}
-      <input
-        type="text"
+      <SearchControl
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={cn(
-          'w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-2xl',
-          'py-2.5 pl-11 pr-11 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all',
-          'text-sm font-medium text-foreground placeholder:text-muted-foreground',
-        )}
+        aria-label={placeholder}
+        className="pr-11"
+        icon={loading ? <CircleDash className="animate-spin text-primary" size={16} aria-hidden="true" /> : undefined}
       />
       {value && (
         <ControlButton variant="ghost" onClick={onClear} aria-label="Clear search" className="absolute right-4 top-1/2 -translate-y-1/2">

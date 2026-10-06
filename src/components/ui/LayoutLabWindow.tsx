@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Close, Subtract, Maximize, Add } from '@carbon/icons-react';
+import { Close, Subtract, Maximize, Add, Edit } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
 import { HeroMockupsContent } from './LayoutLabHeroMockups';
 import { LoadedTrackMockupsContent } from './LayoutLabLoadedTrackMockups';
@@ -349,15 +349,18 @@ function TabBar({
             )}
           >
             {isEditing ? (
-              <input
-                ref={editInputRef}
-                value={editingValue}
-                onChange={(e) => onEditChange(e.target.value)}
-                onBlur={onEditCommit}
-                onKeyDown={onEditKeyDown}
-                className="bg-transparent outline-none w-24 text-[11px] font-semibold text-foreground placeholder:text-muted-foreground/50"
-                placeholder="Tab name…"
-              />
+              <span className="relative block">
+                <Edit size={11} className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <input
+                  ref={editInputRef}
+                  value={editingValue}
+                  onChange={(e) => onEditChange(e.target.value)}
+                  onBlur={onEditCommit}
+                  onKeyDown={onEditKeyDown}
+                  className="w-24 bg-transparent pl-4 text-[11px] font-semibold text-foreground outline-none placeholder:text-muted-foreground/50"
+                  placeholder="Tab name…"
+                />
+              </span>
             ) : (
               tab.label
             )}

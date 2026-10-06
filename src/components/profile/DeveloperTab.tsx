@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChevronDown, ChevronRight, Search, TrashCan } from '@carbon/icons-react';
+import { ChevronDown, ChevronRight, TrashCan } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
 import { getLogEntries, subscribeToLogs, clearLogEntries, type LogEntry, type LogLevel } from '../../lib/logger';
 import { clearFlipLabStemCache } from '../flip-lab/flipLabSeparation';
+import { SearchControl } from '../ui/controls';
 
 // ── Flip Lab stem cache ───────────────────────────────────────────────────────
 
@@ -276,14 +277,12 @@ export function DeveloperTab() {
           {/* Filter row */}
           <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--color-border-faint)] flex-wrap">
             {/* Search */}
-            <div className="relative flex-1 min-w-40">
-              <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              <input
-                type="text"
+            <div className="flex-1 min-w-40">
+              <SearchControl
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search logs…"
-                className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-lg py-1.5 pl-7 pr-3 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
+                aria-label="Search logs"
               />
             </div>
 

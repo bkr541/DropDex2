@@ -4,8 +4,8 @@ import { uploadPlaylistArtwork } from '../../lib/queries/storage';
 import { upsertPlaylistProfile, buildPlaylistIdentityKey } from '../../lib/queries/userPlaylists';
 import type { RekordboxImport, UserPlaylistProfile } from '../../types';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
-import { Checkmark, CircleDash, FolderOpen, Music, Renew, Upload } from '@carbon/icons-react';
-import { ControlButton } from '../ui/controls';
+import { Checkmark, CircleDash, FolderOpen, Music, Renew, TextAlignLeft, Upload } from '@carbon/icons-react';
+import { ControlButton, TextareaControl, TextControl } from '../ui/controls';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ACCEPTED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
@@ -230,13 +230,13 @@ export function PlaylistEditView({
             <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
               Custom Display Name
             </label>
-            <input
+            <TextControl
+              icon={<Music size={17} />}
               type="text"
               value={displayName}
               onChange={(e) => { setDisplayName(e.target.value); setSaved(false); }}
               placeholder={playlist.name}
               maxLength={120}
-              className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
             />
             <p className="text-[10px] text-muted-foreground">
               Leave blank to use the original Rekordbox name.
@@ -248,13 +248,14 @@ export function PlaylistEditView({
             <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
               Description
             </label>
-            <textarea
+            <TextareaControl
+              icon={<TextAlignLeft size={17} />}
               value={description}
               onChange={(e) => { setDescription(e.target.value); setSaved(false); }}
               placeholder="What's this playlist for? Notes, vibes, occasion…"
               rows={3}
               maxLength={500}
-              className="w-full bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50 resize-none"
+              className="resize-none"
             />
           </div>
 
