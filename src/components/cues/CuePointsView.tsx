@@ -1536,18 +1536,18 @@ function CueWaveformPanel({
 
   return (
     <section className="cue-workstation relative overflow-visible border-y border-[var(--color-border-faint)]" data-testid="cue-points-workstation">
-      <div className="cue-workstation__header flex flex-col gap-3 border-b border-[var(--color-border-faint)] px-4 py-3 lg:px-5 xl:flex-row xl:items-center xl:justify-between">
+      <div className="cue-workstation__header flex flex-col gap-3 border-b border-[var(--color-border-faint)] px-4 py-2 lg:px-5 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-3.5">
           <Artwork
             src={track.artwork_path}
             alt={`Artwork for ${track.title}`}
             fallbackTitle="No artwork"
-            className="h-16 w-16 shrink-0 rounded-[7px]"
+            className="h-14 w-14 shrink-0 rounded-[7px]"
           />
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-xl font-bold tracking-[-0.02em] text-foreground md:text-[21px]">{track.title}</h1>
-            <p className="mt-0.5 truncate text-xs font-medium text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-semibold text-muted-foreground">
+            <h1 className="truncate text-xl font-bold leading-tight tracking-[-0.02em] text-foreground md:text-[21px]">{track.title}</h1>
+            <p className="truncate text-xs font-medium leading-tight text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-semibold text-muted-foreground">
               <span><span className="uppercase tracking-[0.08em] text-foreground/45">BPM</span> <strong className="ml-1 text-foreground/90">{bpmDisplay}</strong></span>
               <span><span className="uppercase tracking-[0.08em] text-foreground/45">Key</span> <strong className="ml-1" style={{ color: camelotColor(track.musical_key) }}>{keyDisplay}</strong></span>
               <span><span className="uppercase tracking-[0.08em] text-foreground/45">Duration</span> <strong className="ml-1 text-foreground/90">{durationDisplay}</strong></span>
@@ -1698,7 +1698,7 @@ function CueWaveformPanel({
                 viewEndMs={effectiveViewEnd}
               />
             <div className="grid gap-0 grid-cols-[minmax(0,1fr)]">
-              <div className="cue-timeline__data-lane h-[52px] pt-3 overflow-hidden">
+              <div className="cue-timeline__data-lane h-[34px] pt-1.5 overflow-hidden">
                 <div className="relative h-full overflow-visible">
                 {cueLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading cue points…</div>
@@ -1776,14 +1776,14 @@ function CueWaveformPanel({
                           }}
                         >
                         <span
-                          className="pointer-events-none absolute top-[2px] left-1/2 -translate-x-1/2 flex items-center justify-center"
-                          style={{ width: 28, height: 32 }}
+                          className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 flex items-center justify-center"
+                          style={{ width: 24, height: 27 }}
                           aria-hidden="true"
                         >
                           <svg
                             viewBox="0 0 256 256"
-                            width={28}
-                            height={32}
+                            width={24}
+                            height={27}
                             xmlns="http://www.w3.org/2000/svg"
                             style={{ fill: 'none', stroke: markerColor, strokeWidth: 14, transform: 'rotate(90deg)', display: 'block', flexShrink: 0 }}
                           >
@@ -1791,7 +1791,7 @@ function CueWaveformPanel({
                           </svg>
                           <span
                             className="absolute font-black uppercase leading-none"
-                            style={{ fontSize: 10, top: '48%', left: '50%', transform: 'translate(-50%, -50%)', color: markerColor }}
+                            style={{ fontSize: 9, top: '48%', left: '50%', transform: 'translate(-50%, -50%)', color: markerColor }}
                           >
                             {cue.family === 'hot' ? cueLabel(cue) : String(memoryIndex + 1)}
                           </span>
@@ -1804,7 +1804,7 @@ function CueWaveformPanel({
                 </div>
               </div>
 
-              <div className="cue-timeline__data-lane h-[40px]">
+              <div className="cue-timeline__data-lane h-[28px]">
                 <div className="relative h-full overflow-hidden">
                 {phraseLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
@@ -1824,7 +1824,7 @@ function CueWaveformPanel({
                       return (
                         <div
                           key={section.id}
-                          className="absolute top-[5px] h-[28px] flex items-center justify-center overflow-hidden"
+                          className="absolute top-0 h-[22px] flex items-center justify-center overflow-hidden"
                           style={{
                             left: `${left}%`,
                             width: `${width}%`,
@@ -1851,7 +1851,7 @@ function CueWaveformPanel({
                       const width = Math.max(0, right - left);
                       return width > 0 ? (
                         <div
-                          className="absolute top-[5px] h-[28px]"
+                          className="absolute top-0 h-[22px]"
                           style={{ left: `${left}%`, width: `${width}%`, backgroundColor: 'rgba(255,255,255,0.18)' }}
                         />
                       ) : null;

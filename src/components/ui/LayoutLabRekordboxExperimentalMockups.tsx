@@ -1,23 +1,20 @@
 import type { ReactNode } from 'react';
 
 const SECTIONS = [
-  { label: 'INTRO', from: 0, to: 11, color: '#2f9bff' },
-  { label: 'VERSE', from: 11, to: 24, color: '#8069ff' },
-  { label: 'BUILD', from: 24, to: 35, color: '#ff9b32' },
-  { label: 'DROP 1', from: 35, to: 52, color: '#e45cff' },
-  { label: 'BREAK', from: 52, to: 64, color: '#23c6b8' },
-  { label: 'BUILD', from: 64, to: 73, color: '#ff9b32' },
-  { label: 'DROP 2', from: 73, to: 90, color: '#e45cff' },
-  { label: 'OUTRO', from: 90, to: 100, color: '#2f9bff' },
+  { label: 'INTRO', from: 0, to: 11, color: '#2f9bff', fill: null },
+  { label: 'VERSE', from: 11, to: 24, color: '#8069ff', fill: 22 },
+  { label: 'UP', from: 24, to: 35, color: '#ff9b32', fill: 33 },
+  { label: 'CHORUS', from: 35, to: 52, color: '#e45cff', fill: null },
+  { label: 'DOWN', from: 52, to: 64, color: '#23c6b8', fill: null },
+  { label: 'VERSE', from: 64, to: 73, color: '#8069ff', fill: 71 },
+  { label: 'CHORUS', from: 73, to: 90, color: '#e45cff', fill: null },
+  { label: 'OUTRO', from: 90, to: 100, color: '#2f9bff', fill: null },
 ];
 
 const CUES = [
-  { label: 'A', name: 'MIX IN', at: 5, bar: '009.1', time: '00:15.0', color: '#20b8ff' },
-  { label: 'B', name: 'BUILD', at: 24, bar: '033.1', time: '01:00.0', color: '#ff9b32' },
-  { label: 'C', name: 'DROP 1', at: 35, bar: '049.1', time: '01:30.0', color: '#45e477' },
-  { label: 'D', name: 'BREAK', at: 52, bar: '073.1', time: '02:15.0', color: '#ff597b' },
-  { label: 'E', name: 'DROP 2', at: 73, bar: '105.1', time: '03:15.0', color: '#a567ff' },
-  { label: 'F', name: 'MIX OUT', at: 91, bar: '133.1', time: '04:07.5', color: '#20b8ff' },
+  { label: 'B', name: 'BUILD', at: 31, bar: '045.1', time: '01:12.4', color: '#20b8ff', family: 'Hot Cue', type: 'Cue' },
+  { label: 'C', name: 'DROP', at: 38, bar: '054.1', time: '01:26.8', color: '#45e477', family: 'Hot Cue', type: 'Cue' },
+  { label: 'D', name: 'SWITCH', at: 44, bar: '063.1', time: '01:40.9', color: '#a567ff', family: 'Hot Cue', type: 'Cue' },
 ];
 
 function makeSignal(length: number, seed: number) {
@@ -27,15 +24,17 @@ function makeSignal(length: number, seed: number) {
     const random = state / 0xffffffff;
     const position = index / Math.max(1, length - 1);
     const section = SECTIONS.find((item) => position * 100 >= item.from && position * 100 < item.to);
-    const envelope = section?.label.includes('DROP') ? .92 : section?.label === 'BREAK' ? .34 : section?.label === 'BUILD' ? .62 : .46;
+    const envelope = section?.label === 'CHORUS' ? .92 : section?.label === 'DOWN' ? .34 : section?.label === 'UP' ? .62 : .46;
     return Math.max(.1, Math.min(1, envelope * (.48 + random * .72)));
   });
 }
 
 const SIGNAL = makeSignal(224, 128);
 
-function sectionAt(position: number) {
-  return SECTIONS.find((section) => position >= section.from && position < section.to) ?? SECTIONS[SECTIONS.length - 1];
+function waveformColor(index: number, value: number) {
+  if (value > .78) return index % 5 === 0 ? '#ff9438' : '#ae61ff';
+  if (value > .48) return index % 4 === 0 ? '#25c1dd' : '#318cff';
+  return '#286ca8';
 }
 
 function ConceptFrame({ number, title, premise, children }: { number: number; title: string; premise: string; children: ReactNode }) {
@@ -60,12 +59,84 @@ function TrackIdentity({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function TrackArtwork({ size = 36 }: { size?: number }) {
   return (
-    <div className="min-w-[62px] border-l border-[#26313c] pl-3">
-      <p className="text-[7px] font-bold uppercase tracking-[.17em] text-[#65717e]">{label}</p>
-      <p className={`mt-1 font-mono text-[11px] font-bold ${accent ? 'text-[#35a2ff]' : 'text-[#dce5ed]'}`}>{value}</p>
+    <div className="grid shrink-0 place-items-center rounded-[6px] border border-[#34414d] bg-[#0a1016]" style={{ width: size, height: size }}>
+      <svg viewBox="0 0 32 32" width={size * .68} height={size * .68} fill="none" aria-hidden="true">
+        <circle cx="16" cy="16" r="13" stroke="#d7e2ec" strokeWidth="1.4" />
+        <circle cx="16" cy="16" r="8.5" stroke="#72808d" strokeWidth="1" />
+        <circle cx="16" cy="16" r="3.5" stroke="#35a2ff" strokeWidth="1.6" />
+        <circle cx="16" cy="16" r="1" fill="#d7e2ec" />
+      </svg>
     </div>
+  );
+}
+
+function HeaderButton({ children, primary = false, iconOnly = false }: { children: ReactNode; primary?: boolean; iconOnly?: boolean }) {
+  return (
+    <button type="button" className={`inline-flex h-7 items-center justify-center gap-1.5 whitespace-nowrap rounded-[5px] border px-2 text-[8px] font-bold ${primary ? 'border-[#35a2ff] bg-[#168cf0] text-white' : 'border-[#34404b] bg-[#151d25] text-[#aab6c1]'} ${iconOnly ? 'w-7 px-0' : ''}`}>
+      {children}
+    </button>
+  );
+}
+
+function HeaderActions({ iconOnly = false }: { iconOnly?: boolean }) {
+  return (
+    <div className="flex shrink-0 items-center gap-1.5">
+      <HeaderButton iconOnly={iconOnly}>{iconOnly ? '0' : 'Pending 0'}</HeaderButton>
+      <HeaderButton iconOnly={iconOnly}>{iconOnly ? '✦' : '✦ Auto Cue'}</HeaderButton>
+      <div className="flex">
+        <HeaderButton primary iconOnly={iconOnly}>{iconOnly ? '↥' : '↥ Apply All (0)'}</HeaderButton>
+        {!iconOnly && <button type="button" className="h-7 w-6 rounded-r-[5px] border border-l-0 border-[#35a2ff] bg-[#168cf0] text-[8px] text-white">⌄</button>}
+      </div>
+    </div>
+  );
+}
+
+function EditingStatus() {
+  return <span className="rounded-[3px] border border-[#35a2ff]/30 bg-[#35a2ff]/10 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[.12em] text-[#65b9ff]">Editing · Original</span>;
+}
+
+function OneLineTrackHeader() {
+  return (
+    <header className="flex h-[48px] items-center gap-3 overflow-hidden border-b border-[#2a3540] bg-[#0f161d] px-3">
+      <TrackArtwork size={28} /><TrackIdentity compact /><span className="hidden text-[8px] text-[#687582] sm:inline">Artist Not Available</span><span className="h-5 w-px bg-[#2b3540]" />
+      <div className="hidden shrink-0 items-center gap-3 font-mono text-[8px] md:flex"><span>150.00 <b className="text-[#64717d]">BPM</b></span><span className="rounded bg-[#35a2ff]/15 px-1.5 py-0.5 font-black text-[#35a2ff]">10A</span><span>03:51</span><span>3 <b className="text-[#64717d]">CUES</b></span><EditingStatus /></div>
+      <div className="ml-auto"><HeaderActions iconOnly /></div>
+    </header>
+  );
+}
+
+function TwoTierTrackHeader() {
+  return (
+    <header className="border-b border-[#2a3540] bg-[#111820]">
+      <div className="flex h-[42px] items-center gap-3 px-4"><TrackArtwork size={28} /><TrackIdentity compact /><span className="text-[9px] text-[#74818d]">Artist Not Available</span><div className="ml-auto"><HeaderActions /></div></div>
+      <div className="flex h-[27px] items-center gap-5 border-t border-[#26313b] bg-[#090f14] px-4 font-mono text-[8px] text-[#a5b0ba]"><span><b className="text-[#596672]">BPM</b> 150.00</span><span><b className="text-[#596672]">KEY</b> <em className="not-italic text-[#35a2ff]">10A / Bm</em></span><span><b className="text-[#596672]">DURATION</b> 03:51.0</span><span><b className="text-[#596672]">CUES</b> 3</span><EditingStatus /></div>
+    </header>
+  );
+}
+
+function HeaderCell({ label, value, accent = false }: { label: string; value: ReactNode; accent?: boolean }) {
+  return <div className="flex h-full min-w-[68px] flex-col justify-center border-l border-[#2a3540] px-3"><span className="text-[7px] font-bold uppercase tracking-[.13em] text-[#5f6c78]">{label}</span><span className={`mt-1 font-mono text-[11px] font-bold ${accent ? 'text-[#35a2ff]' : 'text-[#dce5ed]'}`}>{value}</span></div>;
+}
+
+function ReadoutTrackHeader() {
+  return (
+    <header className="flex h-[56px] items-stretch overflow-hidden border-b border-[#2a3540] bg-[#10171e]">
+      <div className="flex min-w-0 flex-1 items-center gap-3 px-4"><TrackArtwork size={36} /><div><TrackIdentity compact /><p className="mt-0.5 text-[8px] text-[#71808d]">Artist Not Available · <span className="text-[#65b9ff]">Editing · Original</span></p></div></div>
+      <div className="hidden items-stretch lg:flex"><HeaderCell label="BPM" value="150.00" /><HeaderCell label="Key" value="10A" accent /><HeaderCell label="Duration" value="03:51" /><HeaderCell label="Cues" value="3" /><HeaderCell label="Mode" value={<EditingStatus />} /></div>
+      <div className="flex items-center border-l border-[#2a3540] px-3"><HeaderActions /></div>
+    </header>
+  );
+}
+
+function KeyRibbonTrackHeader() {
+  return (
+    <header className="relative flex min-h-[58px] flex-wrap items-center gap-3 overflow-hidden border-b border-[#2a3540] bg-[#10171e] px-4 py-2" style={{ backgroundImage: 'linear-gradient(90deg, rgb(53 162 255 / .14), transparent 42%)' }}>
+      <span className="absolute inset-y-0 left-0 w-[3px] bg-[#35a2ff]" /><TrackArtwork size={34} /><div className="min-w-0"><TrackIdentity compact /><p className="text-[8px] text-[#71808d]">Artist Not Available</p></div>
+      <div className="ml-2 hidden items-center gap-4 font-mono text-[10px] md:flex"><span className="font-black">150.00 <small className="text-[7px] text-[#64717d]">BPM</small></span><span className="rounded bg-[#35a2ff]/15 px-2 py-1 font-black text-[#35a2ff]">10A</span><span>03:51</span><span>3 <small className="text-[7px] text-[#64717d]">CUES</small></span><EditingStatus /></div>
+      <div className="ml-auto"><HeaderActions iconOnly /></div>
+    </header>
   );
 }
 
@@ -77,7 +148,7 @@ function BeatRuler({ start = 1, end = 145 }: { start?: number; end?: number }) {
 function PhraseRail({ labels = true }: { labels?: boolean }) {
   return (
     <div className="flex h-7 gap-px bg-[#080d12]" aria-label="Phrase analysis">
-      {SECTIONS.map((section) => <div key={`${section.label}-${section.from}`} className="flex min-w-0 items-center justify-center border-t-2 px-1" style={{ width: `${section.to - section.from}%`, borderColor: section.color, background: `${section.color}18` }}>{labels && <span className="truncate text-[7px] font-black tracking-[.08em]" style={{ color: section.color }}>{section.label}</span>}</div>)}
+      {SECTIONS.map((section) => <div key={`${section.label}-${section.from}`} className="relative flex min-w-0 items-center justify-center border-t-2 px-1" style={{ width: `${section.to - section.from}%`, borderColor: section.color, background: `${section.color}18` }}>{labels && <span className="truncate text-[7px] font-black tracking-[.08em]" style={{ color: section.color }}>{section.label}</span>}{section.fill != null && <span className="absolute bottom-0 right-0 h-1.5 w-px bg-[#f3bd44]" title="Rekordbox phrase fill" />}</div>)}
     </div>
   );
 }
@@ -86,14 +157,10 @@ function Waveform({ height = 120, cues = true, playhead = 43, viewport, selected
   return (
     <div className="relative overflow-hidden border-y border-[#26313b] bg-[#060a0e]" style={{ height }}>
       <div className="absolute inset-0 opacity-55" style={{ backgroundImage: 'repeating-linear-gradient(90deg, transparent 0 calc(6.25% - 1px), #2b3540 calc(6.25% - 1px) 6.25%)' }} />
-      <svg viewBox="0 0 224 100" preserveAspectRatio="none" className="absolute inset-0 size-full" aria-label="Three-band track waveform">
+      <svg viewBox="0 0 224 100" preserveAspectRatio="none" className="absolute inset-0 size-full" aria-label="Rekordbox color waveform">
         {SIGNAL.map((value, index) => {
-          const position = index / (SIGNAL.length - 1) * 100;
-          const color = sectionAt(position).color;
           const high = Math.max(2, value * 32);
-          const mid = Math.max(1.5, value * 21);
-          const low = Math.max(1, value * 12);
-          return <g key={index}><line x1={index + .5} x2={index + .5} y1={50 - high} y2={50 + high} stroke={color} strokeWidth=".72" opacity=".72" /><line x1={index + .5} x2={index + .5} y1={50 - mid} y2={50 + mid} stroke="#32b9ff" strokeWidth=".48" opacity=".75" /><line x1={index + .5} x2={index + .5} y1={50 - low} y2={50 + low} stroke="#ff9f3f" strokeWidth=".32" opacity=".85" /></g>;
+          return <line key={index} x1={index + .5} x2={index + .5} y1={50 - high} y2={50 + high} stroke={waveformColor(index, value)} strokeWidth=".78" opacity=".9" />;
         })}
         <line x1="0" x2="224" y1="50" y2="50" stroke="#a9bac9" strokeWidth=".25" opacity=".3" />
       </svg>
@@ -107,9 +174,9 @@ function Waveform({ height = 120, cues = true, playhead = 43, viewport, selected
 function PreparationWorkspace() {
   return (
     <div className="bg-[#0b1016] text-[#dce5ed]">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2a3540] bg-[#111820] px-5 py-4"><TrackIdentity /><div className="flex gap-4"><Metric label="BPM" value="128.00" accent /><Metric label="Key" value="7A / Dm" /><Metric label="Length" value="04:30.0" /><Metric label="Grid" value="LOCKED" /></div></header>
+      <ReadoutTrackHeader />
       <div className="px-4 pb-4 pt-3">
-        <div className="mb-1 flex items-center justify-between text-[7px] font-bold uppercase tracking-[.15em] text-[#687685]"><span>Track overview</span><span>144.2 bars · 6 memory cues</span></div>
+        <div className="mb-1 flex items-center justify-between text-[7px] font-bold uppercase tracking-[.15em] text-[#687685]"><span>PWV5 track overview</span><span>144.2 bars · 3 Hot Cues</span></div>
         <Waveform height={46} cues={false} playhead={43} viewport={{ from: 18, to: 67 }} />
         <div className="mt-3 flex items-center justify-between text-[7px] font-bold uppercase tracking-[.15em] text-[#687685]"><span>Detail waveform</span><span className="text-[#31a4ff]">Beatgrid 1/4</span></div>
         <BeatRuler /><Waveform height={138} selectedCue="C" /><PhraseRail />
@@ -120,16 +187,19 @@ function PreparationWorkspace() {
 
 function CueDetailWorkspace() {
   return (
-    <div className="grid min-h-[350px] bg-[#0a0f14] text-[#dce5ed] md:grid-cols-[minmax(0,1fr)_260px]">
-      <div className="min-w-0 border-b border-[#2a3540] p-4 md:border-b-0 md:border-r">
-        <div className="mb-3 flex items-center justify-between"><TrackIdentity compact /><span className="rounded border border-[#45e477]/35 bg-[#45e477]/10 px-2 py-1 text-[7px] font-bold uppercase tracking-wider text-[#45e477]">Cue edit</span></div>
-        <BeatRuler /><Waveform height={190} playhead={35} selectedCue="C" /><PhraseRail />
-        <div className="mt-3 flex justify-between font-mono text-[8px] text-[#71808e]"><span>ZOOM 1 BAR</span><span>SNAP 1/4 BEAT</span><span className="text-[#45e477]">C · DROP 1 · 01:30.0</span></div>
+    <div className="min-h-[350px] bg-[#0a0f14] text-[#dce5ed]">
+      <ReadoutTrackHeader />
+      <div className="grid md:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="min-w-0 border-b border-[#2a3540] p-4 md:border-b-0 md:border-r">
+          <div className="mb-3 flex items-center justify-between"><span className="text-[8px] font-black uppercase tracking-[.18em] text-[#778592]">Detailed waveform</span><span className="rounded border border-[#45e477]/35 bg-[#45e477]/10 px-2 py-1 text-[7px] font-bold uppercase tracking-wider text-[#45e477]">Cue edit</span></div>
+          <BeatRuler /><Waveform height={190} playhead={35} selectedCue="C" /><PhraseRail />
+          <div className="mt-3 flex justify-between font-mono text-[8px] text-[#71808e]"><span>ZOOM 1 BAR</span><span>SNAP 1/4 BEAT</span><span className="text-[#45e477]">C · DROP · 01:26.8</span></div>
+        </div>
+        <aside className="bg-[#10171e] p-4">
+          <div className="flex items-center justify-between"><p className="text-[8px] font-black uppercase tracking-[.18em] text-[#8c99a6]">Imported cues</p><span className="font-mono text-[8px] text-[#65717e]">3 HOT · 0 MEMORY</span></div>
+          <div className="mt-3 space-y-1.5">{CUES.map((cue) => <div key={cue.label} className={`grid grid-cols-[24px_1fr_auto] items-center gap-2 rounded border px-2 py-2 ${cue.label === 'C' ? 'border-[#45e477]/60 bg-[#45e477]/8' : 'border-[#27313b] bg-[#0c1218]'}`}><span className="grid size-5 place-items-center rounded-[2px] font-mono text-[8px] font-black text-[#081015]" style={{ background: cue.color }}>{cue.label}</span><div><p className="text-[8px] font-bold text-[#dce5ed]">{cue.name}</p><p className="font-mono text-[7px] text-[#65717e]">{cue.family} · {cue.type} · BAR {cue.bar}</p></div><span className="font-mono text-[7px] text-[#8d99a5]">{cue.time}</span></div>)}</div>
+        </aside>
       </div>
-      <aside className="bg-[#10171e] p-4">
-        <div className="flex items-center justify-between"><p className="text-[8px] font-black uppercase tracking-[.18em] text-[#8c99a6]">Cue map</p><span className="font-mono text-[8px] text-[#65717e]">6 / 8</span></div>
-        <div className="mt-3 space-y-1.5">{CUES.map((cue) => <div key={cue.label} className={`grid grid-cols-[24px_1fr_auto] items-center gap-2 rounded border px-2 py-2 ${cue.label === 'C' ? 'border-[#45e477]/60 bg-[#45e477]/8' : 'border-[#27313b] bg-[#0c1218]'}`}><span className="grid size-5 place-items-center rounded-[2px] font-mono text-[8px] font-black text-[#081015]" style={{ background: cue.color }}>{cue.label}</span><div><p className="text-[8px] font-bold text-[#dce5ed]">{cue.name}</p><p className="font-mono text-[7px] text-[#65717e]">BAR {cue.bar}</p></div><span className="font-mono text-[7px] text-[#8d99a5]">{cue.time}</span></div>)}</div>
-      </aside>
     </div>
   );
 }
@@ -138,42 +208,44 @@ function AnalysisLane({ label, children }: { label: string; children: ReactNode 
   return <div className="grid grid-cols-[58px_1fr] border-t border-[#222d37]"><div className="flex items-center px-2 text-[7px] font-black uppercase tracking-[.12em] text-[#697786]">{label}</div><div className="min-w-0 border-l border-[#222d37]">{children}</div></div>;
 }
 
-function PhraseEnergyWorkspace() {
+function PhraseVocalWorkspace() {
   return (
     <div className="bg-[#0a1015] text-[#dce5ed]">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#29343e] px-4 py-3"><TrackIdentity compact /><div className="flex gap-4"><Metric label="BPM" value="128.00" /><Metric label="Key" value="7A" /><Metric label="Phrase" value="ANALYZED" accent /></div></header>
+      <ReadoutTrackHeader />
       <div className="p-4">
-        <BeatRuler /><Waveform height={108} playhead={64} />
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div><p className="text-[8px] font-black uppercase tracking-[.17em] text-[#8b98a4]">Rekordbox song structure</p><p className="mt-1 text-[8px] text-[#606d79]">PSSI · high_energy mood · 8 phrases</p></div><div className="flex gap-2"><span className="rounded border border-[#f3bd44]/30 bg-[#f3bd44]/10 px-2 py-1 text-[7px] font-bold text-[#f3bd44]">3 PHRASE FILLS</span><span className="rounded border border-[#31c0d8]/30 bg-[#31c0d8]/10 px-2 py-1 text-[7px] font-bold text-[#31c0d8]">PVDI VALID</span></div></div>
+        <BeatRuler /><Waveform height={104} playhead={64} />
         <AnalysisLane label="Phrase"><PhraseRail /></AnalysisLane>
-        <AnalysisLane label="Energy"><div className="flex h-9 items-end gap-px px-1 py-1">{SIGNAL.filter((_, index) => index % 4 === 0).map((value, index) => <span key={index} className="flex-1 rounded-t-sm bg-[#f05b70]" style={{ height: `${20 + value * 75}%`, opacity: .35 + value * .55 }} />)}</div></AnalysisLane>
-        <AnalysisLane label="Vocal"><div className="relative h-7 bg-[#090e13]">{[{ left: 12, width: 10 }, { left: 38, width: 11 }, { left: 55, width: 8 }, { left: 77, width: 12 }].map((block, index) => <div key={index} className="absolute inset-y-1 rounded-sm border border-[#31c0d8]/45 bg-[#31c0d8]/20" style={{ left: `${block.left}%`, width: `${block.width}%` }} />)}</div></AnalysisLane>
-        <AnalysisLane label="Mix zones"><div className="relative h-8 bg-[#090e13]"><div className="absolute inset-y-1 left-[2%] w-[18%] rounded-sm border border-[#35a2ff]/50 bg-[#35a2ff]/15 px-2 text-[7px] font-bold leading-5 text-[#35a2ff]">INTRO · 24 BARS</div><div className="absolute inset-y-1 right-[2%] w-[18%] rounded-sm border border-[#35a2ff]/50 bg-[#35a2ff]/15 px-2 text-right text-[7px] font-bold leading-5 text-[#35a2ff]">OUTRO · 24 BARS</div></div></AnalysisLane>
+        <AnalysisLane label="Fills"><div className="relative h-7 bg-[#090e13]">{[22, 33, 71].map((position) => <div key={position} className="absolute inset-y-1 w-px bg-[#f3bd44]" style={{ left: `${position}%` }}><span className="absolute -left-1 top-0 size-2 rotate-45 border border-[#f3bd44] bg-[#211c10]" /></div>)}</div></AnalysisLane>
+        <AnalysisLane label="Vocal"><div className="relative h-8 bg-[#090e13]">{[{ left: 12, width: 10, confidence: '.91' }, { left: 38, width: 11, confidence: '.87' }, { left: 55, width: 8, confidence: '.94' }, { left: 77, width: 12, confidence: '.89' }].map((block, index) => <div key={index} className="absolute inset-y-1 flex items-center rounded-sm border border-[#31c0d8]/45 bg-[#31c0d8]/20 px-1" style={{ left: `${block.left}%`, width: `${block.width}%` }}><span className="truncate font-mono text-[6px] text-[#62d5e7]">{block.confidence}</span></div>)}</div></AnalysisLane>
+        <div className="mt-2 text-right font-mono text-[7px] text-[#5f6d79]">Vocal lane shown only for complete, valid PVDI analysis</div>
       </div>
     </div>
   );
 }
 
-function TransitionPlanner() {
+function BeatgridInspector() {
   return (
     <div className="bg-[#0a0f14] text-[#dce5ed]">
-      <header className="grid gap-3 border-b border-[#29343e] bg-[#111820] px-4 py-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center"><div><p className="text-[7px] font-black uppercase tracking-[.17em] text-[#35a2ff]">Outgoing track</p><TrackIdentity compact /></div><div className="rounded border border-[#f3bd44]/40 bg-[#f3bd44]/10 px-4 py-2 text-center"><p className="text-[7px] font-bold uppercase tracking-widest text-[#f3bd44]">Selected mix window</p><p className="mt-1 font-mono text-[11px] font-bold">32 BARS · 01:00</p></div><div className="text-left sm:text-right"><p className="text-[7px] font-black uppercase tracking-[.17em] text-[#a567ff]">Target</p><p className="text-[11px] font-bold">Ring The Alarm (HAHNER Edit)</p></div></header>
+      <ReadoutTrackHeader />
       <div className="p-4">
-        <div className="mb-1 flex justify-between text-[7px] uppercase tracking-wider text-[#6b7885]"><span>Full track</span><span>Viewport: bars 33–81</span></div><Waveform height={52} cues={false} playhead={-1} viewport={{ from: 22, to: 55 }} />
-        <div className="mt-3 flex justify-between text-[7px] font-bold uppercase tracking-wider text-[#6b7885]"><span>Transition detail</span><span className="text-[#f3bd44]">Phrase aligned · 128 → 128 BPM</span></div><BeatRuler start={33} end={81} />
-        <div className="relative"><Waveform height={150} cues={false} playhead={52} /><div className="absolute inset-y-0 left-[12%] border-l-2 border-[#35a2ff]"><span className="absolute left-1 top-2 whitespace-nowrap rounded bg-[#35a2ff] px-1.5 py-1 text-[7px] font-black text-[#071019]">MIX IN</span></div><div className="absolute inset-y-0 left-[78%] border-l-2 border-[#f3bd44]"><span className="absolute right-1 top-2 whitespace-nowrap rounded bg-[#f3bd44] px-1.5 py-1 text-[7px] font-black text-[#17120a]">BASS SWAP</span></div><div className="absolute bottom-4 left-[12%] h-3 w-[66%] border-x border-t border-[#f3bd44]"><span className="absolute -top-4 left-1/2 -translate-x-1/2 font-mono text-[7px] font-bold text-[#f3bd44]">32 BAR BLEND</span></div></div>
-        <div className="grid grid-cols-3 gap-2 pt-3 text-[8px]"><div className="rounded border border-[#25313b] bg-[#10171e] p-2"><span className="text-[#697786]">KEY MOVE</span><b className="float-right text-[#dce5ed]">7A → 8A</b></div><div className="rounded border border-[#25313b] bg-[#10171e] p-2"><span className="text-[#697786]">TEMPO</span><b className="float-right text-[#45e477]">MATCHED</b></div><div className="rounded border border-[#25313b] bg-[#10171e] p-2"><span className="text-[#697786]">VOCAL CLASH</span><b className="float-right text-[#45e477]">CLEAR</b></div></div>
+        <div className="grid gap-2 sm:grid-cols-5">{[['SOURCE', 'PQTZ'], ['BEATS', '578'], ['BARS', '144.2'], ['BPM RANGE', '149.98–150.02'], ['TEMPO', 'CONSTANT']].map(([label, value]) => <div key={label} className="rounded border border-[#26323d] bg-[#10171e] px-3 py-2"><p className="text-[7px] font-black uppercase tracking-[.14em] text-[#667481]">{label}</p><p className="mt-1 font-mono text-[9px] font-bold text-[#dce5ed]">{value}</p></div>)}</div>
+        <div className="mb-1 mt-3 flex justify-between text-[7px] uppercase tracking-wider text-[#6b7885]"><span>PWV5 full-track waveform</span><span>Viewport: bars 49–65</span></div><Waveform height={52} cues={false} playhead={-1} viewport={{ from: 33, to: 45 }} />
+        <div className="mt-3 flex justify-between text-[7px] font-bold uppercase tracking-wider text-[#6b7885]"><span>Beatgrid detail</span><span className="text-[#35a2ff]">First downbeat 00:00.018</span></div><BeatRuler start={49} end={65} />
+        <div className="relative"><Waveform height={142} cues={false} playhead={44} />{Array.from({ length: 17 }, (_, index) => <div key={index} className={`absolute inset-y-0 w-px ${index % 4 === 0 ? 'bg-white/35' : 'bg-white/10'}`} style={{ left: `${index * 6.25}%` }}>{index % 4 === 0 && <span className="absolute bottom-1 left-1 font-mono text-[6px] text-[#8d9aa6]">{49 + index}</span>}</div>)}</div>
+        <div className="grid grid-cols-3 gap-2 pt-3 text-[8px]"><div className="rounded border border-[#25313b] bg-[#10171e] p-2"><span className="text-[#697786]">DOWNBEATS</span><b className="float-right text-[#dce5ed]">145</b></div><div className="rounded border border-[#25313b] bg-[#10171e] p-2"><span className="text-[#697786]">GRID SOURCE</span><b className="float-right text-[#35a2ff]">ANLZ</b></div><div className="rounded border border-[#25313b] bg-[#10171e] p-2"><span className="text-[#697786]">PARSE STATUS</span><b className="float-right text-[#45e477]">COMPLETE</b></div></div>
       </div>
     </div>
   );
 }
 
-function PerformanceReadiness() {
+function AnalysisApplyConsole() {
   return (
     <div className="bg-[#080d12] text-[#dce5ed]">
-      <header className="grid grid-cols-[1fr_auto] items-center border-b border-[#2b3540] bg-[#0f161d] px-4 py-3"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-full border border-[#35a2ff]/50 bg-[#35a2ff]/10 text-[#35a2ff]">▶</span><TrackIdentity /></div><div className="hidden items-end gap-5 sm:flex"><div className="text-right"><p className="text-[7px] uppercase tracking-widest text-[#697786]">BPM</p><p className="font-mono text-xl font-black text-[#eef5fb]">128.00</p></div><div className="text-right"><p className="text-[7px] uppercase tracking-widest text-[#697786]">Key</p><p className="font-mono text-xl font-black text-[#35a2ff]">7A</p></div></div></header>
+      <ReadoutTrackHeader />
       <div className="p-4"><BeatRuler /><Waveform height={126} playhead={35} selectedCue="C" /><PhraseRail />
-        <div className="mt-3 grid grid-cols-4 gap-1.5 sm:grid-cols-8">{Array.from({ length: 8 }, (_, index) => { const cue = CUES[index]; return <div key={index} className={`rounded border p-2 ${cue ? 'border-[#33404b] bg-[#111820]' : 'border-dashed border-[#28333d] bg-[#0b1117]'}`}><div className="flex items-center justify-between"><span className="font-mono text-[10px] font-black" style={{ color: cue?.color ?? '#4e5b67' }}>{String.fromCharCode(65 + index)}</span><span className="size-1.5 rounded-full" style={{ background: cue?.color ?? '#27313b' }} /></div><p className="mt-2 truncate text-[7px] font-bold text-[#8995a1]">{cue?.name ?? 'EMPTY'}</p><p className="mt-0.5 font-mono text-[7px] text-[#596673]">{cue?.bar ?? '—'}</p></div>; })}</div>
-        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-[#26313b] pt-3 text-[7px] font-bold uppercase tracking-[.12em] text-[#7c8995]">{['Beatgrid locked', 'Phrase analyzed', '6 cues assigned', 'USB export ready'].map((item) => <span key={item} className="flex items-center gap-1.5"><i className="size-1.5 rounded-full bg-[#45e477]" />{item}</span>)}</div>
+        <div className="mt-3 grid grid-cols-4 gap-1.5 sm:grid-cols-8">{Array.from({ length: 8 }, (_, index) => { const letter = String.fromCharCode(65 + index); const cue = CUES.find((item) => item.label === letter); return <div key={letter} className={`rounded border p-2 ${cue ? 'border-[#33404b] bg-[#111820]' : 'border-dashed border-[#28333d] bg-[#0b1117]'}`}><div className="flex items-center justify-between"><span className="font-mono text-[10px] font-black" style={{ color: cue?.color ?? '#4e5b67' }}>{letter}</span><span className="size-1.5 rounded-full" style={{ background: cue?.color ?? '#27313b' }} /></div><p className="mt-2 truncate text-[7px] font-bold text-[#8995a1]">{cue?.name ?? 'EMPTY'}</p><p className="mt-0.5 font-mono text-[7px] text-[#596673]">{cue?.bar ?? '—'}</p></div>; })}</div>
+        <div className="mt-3 grid gap-2 border-t border-[#26313b] pt-3 sm:grid-cols-[1fr_auto]"><div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[7px] font-bold uppercase tracking-[.12em] text-[#7c8995]">{['Beat grid · completed', 'Waveform · completed', 'Cues · completed', 'Phrases · completed', 'PVDI · valid'].map((item) => <span key={item} className="flex items-center gap-1.5"><i className="size-1.5 rounded-full bg-[#45e477]" />{item}</span>)}</div><div className="flex items-center gap-3 font-mono text-[7px] text-[#6b7885]"><span>MP3</span><span>320 KBPS</span><span>44.1 KHZ</span><span>16 BIT</span></div></div>
       </div>
     </div>
   );
@@ -182,12 +254,12 @@ function PerformanceReadiness() {
 export function RekordboxExperimentalConcepts() {
   return (
     <>
-      <div className="mb-8 mt-2 border-y border-[var(--color-border-faint)] py-5"><p className="font-mono text-[8px] font-black uppercase tracking-[.2em] text-primary">Professional workflow studies</p><p className="mt-1 max-w-3xl text-[10px] leading-relaxed text-muted-foreground">Five waveform-first directions for track preparation. Each preserves horizontal musical time while changing the information hierarchy for a specific DJ task.</p></div>
-      <ConceptFrame number={6} title="Full-Track Preparation" premise="Overview, zoomed waveform, grid, cues, and phrases in one scan."><PreparationWorkspace /></ConceptFrame>
-      <ConceptFrame number={7} title="Cue Detail Workspace" premise="A precise waveform editor paired with a time-and-bar cue map."><CueDetailWorkspace /></ConceptFrame>
-      <ConceptFrame number={8} title="Phrase & Energy Analysis" premise="Arrangement, energy, vocals, and mix zones share one timeline."><PhraseEnergyWorkspace /></ConceptFrame>
-      <ConceptFrame number={9} title="Transition Window Planner" premise="A phrase-aligned 32-bar blend with compatibility checks."><TransitionPlanner /></ConceptFrame>
-      <ConceptFrame number={10} title="Performance Readiness" premise="Hot cues and analysis state validated before USB export."><PerformanceReadiness /></ConceptFrame>
+      <div className="mb-8 mt-2 border-y border-[var(--color-border-faint)] py-5"><p className="font-mono text-[8px] font-black uppercase tracking-[.2em] text-primary">Rekordbox data studies</p><p className="mt-1 max-w-3xl text-[10px] leading-relaxed text-muted-foreground">Five waveform-first directions using only metadata DropDex currently imports, validates, displays, or uses for cue editing.</p></div>
+      <ConceptFrame number={6} title="Full-Track Preparation" premise="PWV5 waveform, exact beatgrid, imported cues, and PSSI phrases in one scan."><PreparationWorkspace /></ConceptFrame>
+      <ConceptFrame number={7} title="Cue Precision Editor" premise="A detailed waveform paired with editable Rekordbox cue fields and timing."><CueDetailWorkspace /></ConceptFrame>
+      <ConceptFrame number={8} title="Phrase & Vocal Map" premise="PSSI sections and fills with optional validated PVDI vocal regions."><PhraseVocalWorkspace /></ConceptFrame>
+      <ConceptFrame number={9} title="Beatgrid Inspector" premise="PQTZ beat/downbeat timing, BPM range, and waveform detail without inference."><BeatgridInspector /></ConceptFrame>
+      <ConceptFrame number={10} title="Analysis & Apply Console" premise="Imported cue slots, media metadata, feature status, and Apply controls."><AnalysisApplyConsole /></ConceptFrame>
     </>
   );
 }

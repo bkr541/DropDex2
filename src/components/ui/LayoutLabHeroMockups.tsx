@@ -205,53 +205,6 @@ function HeroSpotlight() {
   );
 }
 
-// ── 2. Slim Command Strip ────────────────────────────────────────────────────
-// Everything on one short row (~88px) so the track table starts higher.
-
-function HeroStrip() {
-  return (
-    <div className="glass rounded-2xl border border-[var(--color-border-subtle)] flex items-center gap-6 px-5 py-4">
-      <Avatar size={52} ring={false} />
-      <div className="min-w-0 shrink-0">
-        <h2 className="text-xl font-black uppercase tracking-tight leading-none">{HERO.name}</h2>
-        <Socials size={13} className="mt-2 gap-2.5" />
-      </div>
-
-      <div className="w-px self-stretch bg-[var(--color-border-subtle)]" />
-
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-400">
-          <CheckmarkFilled size={12} /> Imported · {HERO.usb}
-        </span>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-400">
-          <CheckmarkFilled size={12} /> Analyzed {HERO.analyzed}/{HERO.tracks}
-        </span>
-        <span className="text-[10px] text-muted-foreground font-mono ml-1">Last import {HERO.lastImport}</span>
-      </div>
-
-      <div className="flex-1" />
-
-      <div className="flex items-center gap-5 shrink-0">
-        <StripStat label="Tracks" value={String(HERO.tracks)} />
-        <StripStat label="BPM" value={String(HERO.bpm)} />
-        <StripStat label="Key" value={HERO.key} color={KEY_COLOR} />
-        <StripStat label="Genre" value={HERO.genre} />
-      </div>
-
-      <ImportButton compact className="shrink-0" />
-    </div>
-  );
-}
-
-function StripStat({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div className="flex flex-col items-center">
-      <span className="text-lg font-black tabular-nums leading-none" style={color ? { color } : undefined}>{value}</span>
-      <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold mt-1">{label}</span>
-    </div>
-  );
-}
-
 // ── 3. Bento Grid ────────────────────────────────────────────────────────────
 // Separate tiles of different sizes; the profile tile is tallest, the three
 // headline stats each get their own tile with a colored accent.
@@ -370,81 +323,6 @@ function HeroEditorial() {
   );
 }
 
-// ── 5. Deck Console ──────────────────────────────────────────────────────────
-// Hardware-inspired: LED status lights, LCD-style readouts, segmented meter.
-
-function Led({ on = true, color = '#10b981' }: { on?: boolean; color?: string }) {
-  return (
-    <span
-      className="inline-block h-2 w-2 rounded-full shrink-0"
-      style={{ background: on ? color : 'rgba(255,255,255,0.12)', boxShadow: on ? `0 0 8px ${color}` : undefined }}
-    />
-  );
-}
-
-function Lcd({ label, value, color = '#e2f3ff' }: { label: string; value: string; color?: string }) {
-  return (
-    <div className="flex-1 rounded-lg border border-white/10 bg-[#02060c] px-4 py-3 shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)]">
-      <p className="text-[8px] uppercase tracking-[0.25em] text-muted-foreground font-bold">{label}</p>
-      <p className="font-mono text-3xl font-bold tabular-nums leading-none mt-2 truncate" style={{ color, textShadow: `0 0 12px ${color}55` }}>
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function HeroConsole() {
-  const segments = 20;
-  const lit = Math.round((HERO.progress / 100) * segments);
-  return (
-    <div className="rounded-2xl border border-white/10 bg-[linear-gradient(180deg,#141a24_0%,#0b0f16_100%)] p-4 shadow-[0_1px_0_rgba(255,255,255,0.06)_inset]">
-      <div className="flex items-stretch gap-4">
-        <div className="flex items-center gap-4 rounded-xl border border-white/10 bg-black/30 px-4 py-3 shrink-0">
-          <Avatar size={60} ring={false} />
-          <div>
-            <h2 className="text-xl font-black uppercase tracking-tight leading-none">{HERO.name}</h2>
-            <div className="flex items-center gap-1.5 mt-2">
-              <Led /> <span className="text-[9px] uppercase tracking-widest text-emerald-400 font-bold">Online</span>
-            </div>
-            <Socials size={13} className="mt-2 gap-2.5" />
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-between gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-3 w-[250px] shrink-0">
-          <div className="flex items-center gap-2">
-            <Led /> <span className="text-[10px] font-bold uppercase tracking-widest">Import</span>
-            <span className="ml-auto text-[10px] font-mono text-muted-foreground">{HERO.usb}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Led /> <span className="text-[10px] font-bold uppercase tracking-widest">Analysis</span>
-            <span className="ml-auto text-[10px] font-mono text-muted-foreground">{HERO.analyzed}/{HERO.tracks}</span>
-          </div>
-          <div className="flex gap-[3px]" aria-label={`Analysis ${HERO.progress}%`}>
-            {Array.from({ length: segments }, (_, i) => (
-              <span key={i} className="h-2 flex-1 rounded-[1px]" style={{ background: i < lit ? (i > segments - 4 ? '#22d3ee' : '#10b981') : 'rgba(255,255,255,0.08)' }} />
-            ))}
-          </div>
-          <div className="flex items-center justify-between text-[9px] font-mono text-muted-foreground">
-            <span>Last import {HERO.lastImport}</span>
-            <span>{HERO.progress}%</span>
-          </div>
-        </div>
-
-        <div className="flex flex-1 gap-3 min-w-0">
-          <Lcd label="Main BPM" value={String(HERO.bpm)} color="#fbbf24" />
-          <Lcd label="Main Key" value={HERO.key} color={KEY_COLOR} />
-          <Lcd label="Main Genre" value={HERO.genre} color="#7dd3fc" />
-        </div>
-
-        <div className="flex flex-col justify-center shrink-0">
-          <ImportButton className="h-full flex-col gap-2 px-4" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
 // ── Pro suite concepts ───────────────────────────────────────────────────────
 // Flat surfaces, hairline dividers, small-caps labels, tabular figures and a
 // single accent. Modelled on DAW / DJ-software chrome rather than web heroes.
@@ -511,7 +389,7 @@ function InspectorCell({ label, children, className }: { label: string; children
   );
 }
 
-function HeroInspector() {
+function _HeroInspector() {
   return (
     <div className="flex h-[68px] items-stretch rounded-md border border-[var(--color-border-subtle)]" style={{ background: PRO.surface }}>
       <div className="flex items-center gap-3 px-4 shrink-0">
@@ -553,7 +431,7 @@ function SheetRow({ label, value, children }: { label: string; value?: string; c
   );
 }
 
-function HeroSessionSheet() {
+function _HeroSessionSheet() {
   return (
     <div className="rounded-md border border-[var(--color-border-subtle)]" style={{ background: PRO.surface }}>
       <div className="flex items-center gap-4 px-5 py-3 border-b border-[var(--color-border-subtle)]">
@@ -594,7 +472,7 @@ function HeroSessionSheet() {
 // The headline numbers earn their place by showing the spread behind them:
 // a tempo histogram, key share and genre share, each with the main value.
 
-function HeroDistributions() {
+function _HeroDistributions() {
   const maxBpm = Math.max(...BPM_SPREAD);
   const peakIndex = BPM_SPREAD.indexOf(maxBpm);
   const keyTotal = Object.values(KEY_SPREAD).reduce((a, b) => a + b, 0);
@@ -667,7 +545,7 @@ function HeroDistributions() {
 // Rekordbox/Engine-style: the USB is the subject. Device panel on the left,
 // library identity and sync state beside it, a toolbar-like action area.
 
-function HeroDevice() {
+function _HeroDevice() {
   return (
     <div className="rounded-md border border-[var(--color-border-subtle)] overflow-hidden" style={{ background: PRO.surface }}>
       <div className="flex items-stretch">
@@ -753,6 +631,91 @@ function HeroTypographic() {
   );
 }
 
+// ── 11–15. Editorial continuations ───────────────────────────────────────────
+
+function HeroGalleryMasthead() {
+  return (
+    <div className="border-y border-[var(--color-border-subtle)] py-5">
+      <div className="grid items-end gap-6 lg:grid-cols-[1.35fr_.8fr_1fr]">
+        <div className="flex items-end gap-4">
+          <SquareAvatar size={54} />
+          <div className="min-w-0">
+            <ProLabel>Library profile / 01</ProLabel>
+            <h2 className="mt-2 truncate text-[42px] font-medium leading-[.82] tracking-[-.055em]">{HERO.name}</h2>
+          </div>
+        </div>
+        <div className="border-l border-[var(--color-border-subtle)] pl-5">
+          <p className="max-w-[230px] text-[11px] leading-relaxed text-muted-foreground">{HERO.tracks} tracks organized across {HERO.playlists} playlists. Primary collection: {HERO.largestPlaylist}.</p>
+          <Socials size={13} className="mt-3 gap-2.5" />
+        </div>
+        <div className="flex items-end justify-between gap-5 border-l border-[var(--color-border-subtle)] pl-5">
+          {[['BPM', HERO.bpm], ['KEY', HERO.key], ['GENRE', HERO.genre]].map(([label, value]) => <div key={label}><ProLabel>{label}</ProLabel><p className="mt-1 text-[20px] font-light tracking-[-.03em]">{value}</p></div>)}
+        </div>
+      </div>
+      <div className="mt-5 flex items-center gap-5 border-t border-[var(--color-border-subtle)] pt-3 text-[10px] text-muted-foreground"><span className="flex items-center gap-2 text-foreground"><StatusDot /> Library current</span><span className="font-mono">{HERO.usb}</span><span>{HERO.lastImport}</span><span className="ml-auto">{HERO.analyzed}/{HERO.tracks} analyzed</span><ProButton><Upload size={12} /> Import</ProButton></div>
+    </div>
+  );
+}
+
+function HeroSwissIndex() {
+  return (
+    <div className="grid min-h-[170px] overflow-hidden border border-[var(--color-border-subtle)] lg:grid-cols-[52px_1.5fr_1fr]" style={{ background: PRO.surface }}>
+      <div className="flex items-center justify-center border-b border-[var(--color-border-subtle)] bg-[var(--color-panel)] lg:border-b-0 lg:border-r"><span className="font-mono text-[9px] tracking-[.2em] text-muted-foreground [writing-mode:vertical-rl]">DROPDEX / LIBRARY</span></div>
+      <div className="flex flex-col justify-between p-5">
+        <div className="flex items-center justify-between"><span className="font-mono text-[9px] text-muted-foreground">PROFILE—001</span><Socials size={12} className="gap-2" /></div>
+        <h2 className="text-[clamp(34px,6vw,72px)] font-semibold leading-[.78] tracking-[-.075em]">{HERO.name}</h2>
+        <div className="flex gap-5 text-[10px] text-muted-foreground"><span>{HERO.tracks} TRACKS</span><span>{HERO.playlists} PLAYLISTS</span><span>{HERO.progress}% ANALYZED</span></div>
+      </div>
+      <div className="grid grid-cols-2 border-t border-[var(--color-border-subtle)] lg:border-l lg:border-t-0">
+        {[['TEMPO', `${HERO.bpm}\nBPM`], ['KEY', HERO.key], ['GENRE', HERO.genre], ['SOURCE', HERO.usb]].map(([label, value], index) => <div key={label} className={cn('flex flex-col justify-between p-4', index % 2 === 1 && 'border-l border-[var(--color-border-subtle)]', index > 1 && 'border-t border-[var(--color-border-subtle)]')}><ProLabel>{label}</ProLabel><span className="whitespace-pre-line text-[17px] font-medium leading-tight">{value}</span></div>)}
+      </div>
+    </div>
+  );
+}
+
+function HeroQuietRegister() {
+  return (
+    <div className="px-4 py-8 text-center">
+      <div className="mx-auto flex max-w-[820px] items-center gap-4"><span className="h-px flex-1 bg-[var(--color-border-subtle)]" /><ProLabel>Artist library</ProLabel><span className="h-px flex-1 bg-[var(--color-border-subtle)]" /></div>
+      <h2 className="mt-5 text-[48px] font-light leading-none tracking-[-.045em]">{HERO.name}</h2>
+      <div className="mt-4 flex items-center justify-center gap-4 text-[11px] text-muted-foreground"><Socials size={13} className="gap-2.5" /><span className="h-3 w-px bg-[var(--color-border-subtle)]" /><span>{HERO.tracks} tracks</span><span>{HERO.playlists} playlists</span></div>
+      <div className="mx-auto mt-7 grid max-w-[820px] grid-cols-3 border-y border-[var(--color-border-subtle)] py-4">
+        {[['Tempo', `${HERO.bpm} BPM`], ['Key', HERO.key], ['Genre', HERO.genre]].map(([label, value], index) => <div key={label} className={cn(index > 0 && 'border-l border-[var(--color-border-subtle)]')}><ProLabel>{label}</ProLabel><p className="mt-2 text-[22px] font-light">{value}</p></div>)}
+      </div>
+      <div className="mx-auto mt-4 flex max-w-[820px] items-center justify-center gap-4 text-[10px] text-muted-foreground"><span className="flex items-center gap-2 text-foreground"><StatusDot /> Analysis complete</span><span>{HERO.analyzed} of {HERO.tracks}</span><span>Imported {HERO.lastImport}</span><ProButton><Upload size={12} /> Import</ProButton></div>
+    </div>
+  );
+}
+
+function HeroSplitLedger() {
+  return (
+    <div className="grid overflow-hidden border-y border-[var(--color-border-subtle)] lg:grid-cols-[.9fr_1.35fr]">
+      <div className="flex min-h-[190px] flex-col justify-between border-b border-[var(--color-border-subtle)] py-5 pr-7 lg:border-b-0 lg:border-r">
+        <div className="flex items-start justify-between"><ProLabel>Collection owner</ProLabel><span className="font-mono text-[9px] text-muted-foreground">{HERO.initials}—26</span></div>
+        <div><h2 className="text-[44px] font-medium leading-none tracking-[-.055em]">{HERO.name}</h2><div className="mt-3 flex items-center gap-3"><Socials size={13} className="gap-2.5" /><span className="text-[10px] text-muted-foreground">{HERO.tracks} tracks · {HERO.playlists} playlists</span></div></div>
+        <p className="font-mono text-[9px] text-muted-foreground">SOURCE {HERO.usb} / {HERO.lastImport}</p>
+      </div>
+      <div className="grid grid-rows-[1fr_auto] pl-0 lg:pl-7">
+        <div className="grid grid-cols-3 divide-x divide-[var(--color-border-subtle)] border-b border-[var(--color-border-subtle)]">{[['MAIN BPM', HERO.bpm], ['MAIN KEY', HERO.key], ['MAIN GENRE', HERO.genre]].map(([label, value]) => <div key={label} className="flex flex-col justify-between px-5 py-5 first:pl-0"><ProLabel>{label}</ProLabel><p className="text-[32px] font-light tracking-[-.04em]">{value}</p></div>)}</div>
+        <div className="flex items-center gap-4 py-3 text-[10px] text-muted-foreground"><StatusDot /><span className="text-foreground">Analysis complete</span><span className="font-mono">{HERO.analyzed}/{HERO.tracks}</span><div className="h-px flex-1 bg-[var(--color-border-subtle)]" /><ProButton><Upload size={12} /> Import library</ProButton></div>
+      </div>
+    </div>
+  );
+}
+
+function HeroMonograph() {
+  return (
+    <div className="border border-[var(--color-border-subtle)] bg-[var(--color-background)] p-5">
+      <div className="grid gap-5 lg:grid-cols-[auto_1fr_auto]">
+        <div className="flex min-w-[88px] flex-col justify-between border-r border-[var(--color-border-subtle)] pr-5"><span className="font-mono text-[9px] text-muted-foreground">CATALOG</span><span className="text-[36px] font-light leading-none tabular-nums">0{HERO.tracks}</span></div>
+        <div className="min-w-0"><div className="flex items-center gap-2 text-[10px] text-muted-foreground"><StatusDot /> Synchronized library · {HERO.lastImport}</div><h2 className="mt-4 truncate text-[46px] font-medium leading-none tracking-[-.06em]">{HERO.name}</h2><div className="mt-4 flex items-center gap-4"><Socials size={13} className="gap-2.5" /><span className="text-[10px] text-muted-foreground">{HERO.playlists} playlists · {HERO.analyzed} analyzed</span></div></div>
+        <div className="grid min-w-[330px] grid-cols-3 border-l border-[var(--color-border-subtle)]">{[['BPM', HERO.bpm], ['KEY', HERO.key], ['GENRE', HERO.genre]].map(([label, value]) => <div key={label} className="flex flex-col justify-between border-r border-[var(--color-border-subtle)] px-4 last:border-r-0"><ProLabel>{label}</ProLabel><span className="text-[21px] font-light">{value}</span></div>)}</div>
+      </div>
+      <div className="mt-5 flex items-center border-t border-[var(--color-border-subtle)] pt-3"><span className="font-mono text-[9px] text-muted-foreground">USB / {HERO.usb}</span><span className="ml-auto"><ProButton><Upload size={12} /> Import</ProButton></span></div>
+    </div>
+  );
+}
+
 // ── Tab content ──────────────────────────────────────────────────────────────
 
 export function HeroMockupsContent() {
@@ -761,14 +724,11 @@ export function HeroMockupsContent() {
       <div className="mb-7">
         <div className="text-sm font-extrabold text-foreground mb-1">Library Hero Concepts</div>
         <div className="text-[11px] text-muted-foreground leading-relaxed">
-          Five hero row styles using the same information as the artist library hero: profile, socials, USB import, track analysis and the main BPM, key and genre.
+          Nine hero directions using the same information as the artist library hero: profile, socials, USB import, track analysis and the main BPM, key and genre.
         </div>
       </div>
       <HeroMockupCard n={1} title="Spotlight Banner" concept="One wide banner: identity left, status chips middle, big stats right">
         <HeroSpotlight />
-      </HeroMockupCard>
-      <HeroMockupCard n={2} title="Slim Command Strip" concept="Everything on one short row so the track list starts higher">
-        <HeroStrip />
       </HeroMockupCard>
       <HeroMockupCard n={3} title="Bento Grid" concept="Separate tiles; profile tallest, each headline stat gets its own tile">
         <HeroBento />
@@ -776,30 +736,23 @@ export function HeroMockupsContent() {
       <HeroMockupCard n={4} title="Editorial Cover" concept="Oversized name, ruled stat row, status in a thin footer bar">
         <HeroEditorial />
       </HeroMockupCard>
-      <HeroMockupCard n={5} title="Deck Console" concept="Hardware look: LED status lights, LCD readouts, segmented progress meter">
-        <HeroConsole />
-      </HeroMockupCard>
-
-      <div className="mt-4 mb-7 pt-7 border-t border-[var(--color-border-subtle)]">
-        <div className="text-sm font-extrabold text-foreground mb-1">Pro Suite Concepts</div>
-        <div className="text-[11px] text-muted-foreground leading-relaxed">
-          Flat panels, thin dividers, labeled values and one accent color, closer to DAW and DJ software than a web landing page.
-        </div>
-      </div>
-      <HeroMockupCard n={6} title="Inspector Bar" concept="Single 68px strip of labeled cells, like a DAW track inspector">
-        <HeroInspector />
-      </HeroMockupCard>
-      <HeroMockupCard n={7} title="Session Sheet" concept="Title bar plus a ruled key/value sheet in three groups">
-        <HeroSessionSheet />
-      </HeroMockupCard>
-      <HeroMockupCard n={8} title="Library Profile" concept="Main BPM, key and genre shown with the spread behind them">
-        <HeroDistributions />
-      </HeroMockupCard>
-      <HeroMockupCard n={9} title="Device Header" concept="USB drive as the subject, with a status bar underneath">
-        <HeroDevice />
-      </HeroMockupCard>
       <HeroMockupCard n={10} title="Typographic Header" concept="No container: page header with a single closing rule">
         <HeroTypographic />
+      </HeroMockupCard>
+      <HeroMockupCard n={11} title="Gallery Masthead" concept="An asymmetrical identity, context, and statistics composition with editorial pacing">
+        <HeroGalleryMasthead />
+      </HeroMockupCard>
+      <HeroMockupCard n={12} title="Swiss Index" concept="A strict catalog grid pairing oversized identity with indexed library readouts">
+        <HeroSwissIndex />
+      </HeroMockupCard>
+      <HeroMockupCard n={13} title="Quiet Register" concept="Centered typography, generous negative space, and a restrained statistical rule">
+        <HeroQuietRegister />
+      </HeroMockupCard>
+      <HeroMockupCard n={14} title="Split Ledger" concept="Identity and library intelligence divided into a precise two-part ledger">
+        <HeroSplitLedger />
+      </HeroMockupCard>
+      <HeroMockupCard n={15} title="Studio Monograph" concept="A catalog-number composition with compact metadata and disciplined typography">
+        <HeroMonograph />
       </HeroMockupCard>
     </div>
   );
