@@ -1512,7 +1512,7 @@ function CueWaveformPanel({
 
   if (!track) {
     return (
-      <section className="overflow-hidden border-y border-[var(--color-border-subtle)] bg-[var(--color-card)]">
+      <section className="overflow-hidden border-t border-[var(--color-border-subtle)] bg-[var(--color-card)]">
         <div className="flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
             <Music size={26} />
@@ -1535,7 +1535,7 @@ function CueWaveformPanel({
   const applyAllDisabled = applyAllCount === 0 || applying;
 
   return (
-    <section className="cue-workstation relative overflow-visible border-y border-[var(--color-border-faint)]" data-testid="cue-points-workstation">
+    <section className="cue-workstation relative overflow-visible border-t border-[var(--color-border-faint)]" data-testid="cue-points-workstation">
       <div className="cue-workstation__header flex flex-col gap-3 border-b border-[var(--color-border-faint)] px-4 py-2 lg:px-5 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-3.5">
           <Artwork
@@ -2002,7 +2002,7 @@ function CueWaveformPanel({
               </div>
               </div>
 
-              <div className="cue-timeline__data-lane h-[58px] pb-3">
+              <div className="cue-timeline__data-lane h-[52px] pb-1.5">
                 <div className="relative h-full overflow-hidden">
                 {!gridVisible ? (
                   <div className="flex h-full items-center px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">Grid hidden</div>
@@ -3218,6 +3218,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
       else if (sortCol === 'bpm') { av = a.bpm ?? -1; bv = b.bpm ?? -1; }
       else if (sortCol === 'key') { av = formatCamelotKey(a.musical_key); bv = formatCamelotKey(b.musical_key); }
       else if (sortCol === 'genre') { av = a.genre ?? ''; bv = b.genre ?? ''; }
+      else if (sortCol === 'format') { av = a.file_format ?? ''; bv = b.file_format ?? ''; }
+      else if (sortCol === 'sampleRate') { av = a.sample_rate_hz ?? -1; bv = b.sample_rate_hz ?? -1; }
+      else if (sortCol === 'bitRate') { av = a.bitrate_kbps ?? -1; bv = b.bitrate_kbps ?? -1; }
       else if (sortCol === 'cues') {
         const aCount = cueLoadCount(cueSummaryStates.get(a.id));
         const bCount = cueLoadCount(cueSummaryStates.get(b.id));
@@ -4564,7 +4567,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
           </div>
         ) : (
           <>
-            <div className="overflow-y-auto overflow-x-hidden scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
+            <div className="overflow-auto scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
               <table className="cue-browser__table w-full min-w-[900px] border-collapse text-left" data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
                 <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
                   <tr className="border-b border-[var(--color-border-faint)]">
@@ -4584,6 +4587,9 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                       { col: 'key', label: 'Key', cls: 'px-3 py-2' },
                       { col: 'genre', label: 'Genre', cls: 'px-3 py-2 w-[178px]' },
                       { col: 'cues', label: 'Cues', cls: 'px-3 py-2 text-center' },
+                      { col: 'format', label: 'Format', cls: 'px-3 py-2 whitespace-nowrap' },
+                      { col: 'sampleRate', label: 'Sample Rate', cls: 'px-3 py-2 whitespace-nowrap' },
+                      { col: 'bitRate', label: 'Bit Rate', cls: 'px-3 py-2 whitespace-nowrap' },
                       { col: 'duration', label: 'Duration', cls: 'px-3 py-2 text-left w-[80px]' },
                     ] as const).map(({ col, label, cls }) => (
                       <th key={col} className={cn(cls, 'sticky top-0 z-10 bg-[var(--color-background)] select-none')}>
@@ -4654,7 +4660,7 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                               <p className="truncate text-[10px] text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
                             </div>
                             <TrackWaveformPreview
-                              className="flex-1 min-w-[80px]"
+                              className="w-[128px] shrink-0"
                               waveformState={getWaveformState(track.id)}
                               durationMs={durationMsForTrack(track, null)}
                               cues={cueMarkersFromState(cueState)}
@@ -4802,6 +4808,15 @@ export function CuePointsView({ importId, onImport }: CuePointsViewProps) {
                           )} title={cueState?.status === 'failed' ? cueState.error : undefined}>
                             {cueState?.status === 'loading' || !cueState ? '…' : cueState.status === 'failed' ? '!' : cueCount}
                           </span>
+                        </td>
+                        <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                          {track.file_format ?? '—'}
+                        </td>
+                        <td className="px-3 py-1.5 font-mono text-[13px] text-muted-foreground whitespace-nowrap">
+                          {track.sample_rate_hz != null && track.sample_rate_hz > 0 ? `${track.sample_rate_hz / 1000} kHz` : '—'}
+                        </td>
+                        <td className="px-3 py-1.5 font-mono text-[13px] text-muted-foreground whitespace-nowrap">
+                          {track.bitrate_kbps != null && track.bitrate_kbps > 0 ? `${track.bitrate_kbps} kbps` : '—'}
                         </td>
                         <td className="w-[80px] px-3 py-1.5 text-left font-mono text-[13px] text-muted-foreground">
                           {formatTime(durationMsForTrack(track, null))}
