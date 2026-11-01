@@ -63,6 +63,34 @@ export function computeFlipLabTimeline(input: FlipLabTimelineInput): FlipLabTime
 }
 
 /**
+ * Moves each stem by a user offset from the aligned position (positive = later).
+ * The transport can't start before 0, so if a stem is pushed earlier than that
+ * the whole timeline shifts right by `shiftSec` instead; the relative position
+ * of the two stems is what matters. The instrumental stays the beat-grid master.
+ */
+export function applyFlipLabOffsets(
+  base: FlipLabTimeline,
+  vocalOffsetSec: number,
+  instrumentalOffsetSec: number,
+): { timeline: FlipLabTimeline; shiftSec: number } {
+  const vocalStart = base.vocalStartSec + vocalOffsetSec;
+  const instrumentalStart = base.instrumentalStartSec + instrumentalOffsetSec;
+  const shiftSec = Math.max(0, -Math.min(vocalStart, instrumentalStart));
+  const vocalStartSec = vocalStart + shiftSec;
+  const instrumentalStartSec = instrumentalStart + shiftSec;
+  return {
+    shiftSec,
+    timeline: {
+      ...base,
+      vocalStartSec,
+      instrumentalStartSec,
+      downbeatSec: base.downbeatSec + instrumentalOffsetSec + shiftSec,
+      totalSec: Math.max(vocalStartSec + base.vocalSpanSec, instrumentalStartSec + base.instrumentalSpanSec),
+    },
+  };
+}
+
+/**
  * Smallest pitch move (−6…+5 semitones) that puts the vocal on the
  * instrumental's Camelot number. One semitone moves 7 steps around the wheel,
  * and a pitch shift never changes major/minor, so a letter mismatch lands on

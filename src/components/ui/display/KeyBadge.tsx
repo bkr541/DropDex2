@@ -2,16 +2,16 @@ import { cn } from '../../../lib/utils';
 import { camelotKeyColor, formatCamelotCode } from './camelotKey';
 
 /** Camelot key pill with a colored bar, as shown in the Cue Points track table. */
-export function KeyBadge({ camelotKey, className }: { camelotKey: string | null | undefined; className?: string }) {
+export function KeyBadge({ camelotKey, className, variant = 'badge' }: { camelotKey: string | null | undefined; className?: string; variant?: 'badge' | 'text' }) {
   const label = formatCamelotCode(camelotKey);
   if (!label) return <span className={cn('text-xs text-muted-foreground', className)}>—</span>;
   const color = camelotKeyColor(label);
   return (
     <span
-      className={cn('inline-flex items-center rounded-[5px] bg-white/[0.05] py-1 pl-[3px] pr-2 font-mono text-[13px] font-bold', className)}
+      className={cn('inline-flex items-center font-mono text-[13px] font-bold', variant === 'badge' && 'rounded-[5px] bg-white/[0.05] py-1 pl-[3px] pr-2', className)}
       style={{ color }}
     >
-      <span className="mr-1.5 h-[14px] w-[3px] shrink-0 rounded-full" style={{ backgroundColor: color }} />
+      {variant === 'badge' && <span className="mr-1.5 h-[14px] w-[3px] shrink-0 rounded-full" style={{ backgroundColor: color }} />}
       {label}
     </span>
   );

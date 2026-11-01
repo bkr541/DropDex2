@@ -6,6 +6,7 @@ import { createRouletteTimeStretchProcessor } from '../../features/roulette/roul
 import { FlipLabEngine, type FlipLabEqBand, type FlipLabStem, type FlipLabStemEq } from './flipLabEngine';
 import {
   FLIP_LAB_MAX_BPM_DIFFERENCE,
+  applyFlipLabOffsets,
   computeFlipLabTimeline,
   flipLabBpmDifference,
   flipLabKeyShiftSemitones,
@@ -45,6 +46,8 @@ export interface FlipLabState {
   eq: Record<FlipLabStem, FlipLabStemEq>;
   /** Semitones applied to the vocal when key shift is on; null when keys are unknown. */
   keyShiftSemitones: number | null;
+  /** How far the user has dragged each stem from the automatic alignment, in seconds. */
+  offsets: Record<FlipLabStem, number>;
 }
 
 const INITIAL: FlipLabState = {
@@ -64,6 +67,7 @@ const INITIAL: FlipLabState = {
     instrumental: { low: 0, mid: 0, high: 0 },
   },
   keyShiftSemitones: null,
+  offsets: { vocal: 0, instrumental: 0 },
 };
 
 function firstDownbeatSec(grid: BeatGridRow | null): number | null {
@@ -84,6 +88,12 @@ export function useFlipLab() {
   const volumeRef = useRef(1);
   const soloRef = useRef<FlipLabStem | null>(null);
   const eqRef = useRef(INITIAL.eq);
+  // The auto-aligned timeline, the user's drag offsets, and the playable vocal buffer,
+  // so a drag only has to re-place the stems, not re-stretch anything.
+  const baseTimelineRef = useRef<FlipLabTimeline | null>(null);
+  const offsetsRef = useRef<Record<FlipLabStem, number>>({ vocal: 0, instrumental: 0 });
+  const shiftRef = useRef(0);
+  const vocalPlayRef = useRef<{ vocal: AudioBuffer; vocalRate: number } | null>(null);
 
   const engine = useCallback(() => {
     if (!engineRef.current) {
@@ -128,6 +138,10 @@ export function useFlipLab() {
     pairRef.current = null;
     rawVocalRef.current = null;
     instrumentalRef.current = null;
+    baseTimelineRef.current = null;
+    vocalPlayRef.current = null;
+    offsetsRef.current = { vocal: 0, instrumental: 0 };
+    shiftRef.current = 0;
     engineRef.current?.unload();
     soloRef.current = null;
     eqRef.current = INITIAL.eq;
@@ -197,6 +211,10 @@ export function useFlipLab() {
     pairRef.current = pair;
     rawVocalRef.current = null;
     instrumentalRef.current = null;
+    baseTimelineRef.current = null;
+    vocalPlayRef.current = null;
+    offsetsRef.current = { vocal: 0, instrumental: 0 };
+    shiftRef.current = 0;
     setState((s) => ({
       ...INITIAL,
       volume: s.volume,
@@ -243,6 +261,8 @@ export function useFlipLab() {
       });
       const { vocal, vocalRate } = await buildVocal(exactTimeline, semitones, keyShiftRef.current);
       if (generation !== generationRef.current) return true;
+      baseTimelineRef.current = exactTimeline;
+      vocalPlayRef.current = { vocal, vocalRate };
       engine().load({ timeline: exactTimeline, instrumental, vocal, vocalRate });
       logger.info('fliplab.flip.ready', {
         ...pairContext,
@@ -281,6 +301,7 @@ export function useFlipLab() {
     try {
       const { vocal, vocalRate } = await buildVocal(state.timeline, state.keyShiftSemitones, on);
       if (generation !== generationRef.current) return;
+      vocalPlayRef.current = { vocal, vocalRate };
       current.load({ timeline: state.timeline, instrumental, vocal, vocalRate }, true);
       if (wasPlaying) await current.play();
       setState((s) => ({ ...s, phase: 'ready', playing: wasPlaying }));
@@ -322,6 +343,25 @@ export function useFlipLab() {
     current.seek(positionSec);
     setState((s) => ({ ...s, positionSec: current.getPosition() }));
   }, []);
+
+  /** Drags one stem by `deltaSec` (positive = later). Only allowed while paused. */
+  const moveStem = useCallback((stem: FlipLabStem, deltaSec: number): boolean => {
+    const current = engineRef.current;
+    const base = baseTimelineRef.current;
+    const play = vocalPlayRef.current;
+    const instrumental = instrumentalRef.current;
+    if (!current || !base || !play || !instrumental || state.phase !== 'ready' || !Number.isFinite(deltaSec)) return false;
+    if (current.isPlaying()) return false;
+    const offsets = { ...offsetsRef.current, [stem]: offsetsRef.current[stem] + deltaSec };
+    const { timeline, shiftSec } = applyFlipLabOffsets(base, offsets.vocal, offsets.instrumental);
+    const position = current.getPosition() + (shiftSec - shiftRef.current);
+    offsetsRef.current = offsets;
+    shiftRef.current = shiftSec;
+    current.load({ timeline, instrumental, vocal: play.vocal, vocalRate: play.vocalRate });
+    current.seek(position);
+    setState((s) => ({ ...s, timeline, offsets, positionSec: current.getPosition() }));
+    return true;
+  }, [state.phase]);
 
   const toggleSolo = useCallback((stem: FlipLabStem) => {
     const next = soloRef.current === stem ? null : stem;
@@ -379,5 +419,6 @@ export function useFlipLab() {
     setKeyShift,
     toggleSolo,
     setEqBand,
-  }), [busy, clear, flip, pause, seek, setEqBand, setKeyShift, setVolume, state, toggleSolo, togglePlay]);
+    moveStem,
+  }), [busy, clear, flip, moveStem, pause, seek, setEqBand, setKeyShift, setVolume, state, toggleSolo, togglePlay]);
 }

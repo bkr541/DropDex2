@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyFlipLabOffsets,
   computeFlipLabTimeline,
   flipLabCombinedBeatGrid,
   flipLabBpmDifference,
@@ -105,5 +106,42 @@ describe('Flip Lab combined beat grid', () => {
     expect(last.timeSec).toBeGreaterThan(19.4);
     expect(grid.filter((beat) => beat.downbeat).length).toBeGreaterThan(8);
     expect(grid[1].timeSec - grid[0].timeSec).toBeCloseTo(0.5);
+  });
+});
+
+describe('Flip Lab stem offsets', () => {
+  const base = computeFlipLabTimeline({
+    vocalDurationSec: 100,
+    instrumentalDurationSec: 120,
+    vocalFirstDownbeatSec: 0,
+    instrumentalFirstDownbeatSec: 0,
+    vocalBpm: 128,
+    instrumentalBpm: 128,
+  });
+
+  it('keeps the aligned timeline when nothing was dragged', () => {
+    const { timeline, shiftSec } = applyFlipLabOffsets(base, 0, 0);
+    expect(shiftSec).toBe(0);
+    expect(timeline).toEqual(base);
+  });
+
+  it('moves one stem later and extends the transport if it now ends last', () => {
+    const { timeline } = applyFlipLabOffsets(base, 30, 0);
+    expect(timeline.vocalStartSec).toBe(30);
+    expect(timeline.instrumentalStartSec).toBe(0);
+    expect(timeline.totalSec).toBe(130);
+  });
+
+  it('shifts everything right instead of starting a stem before 0, keeping the gap between stems', () => {
+    const { timeline, shiftSec } = applyFlipLabOffsets(base, -10, 0);
+    expect(shiftSec).toBe(10);
+    expect(timeline.vocalStartSec).toBe(0);
+    expect(timeline.instrumentalStartSec).toBe(10);
+    expect(timeline.instrumentalStartSec - timeline.vocalStartSec).toBe(10);
+  });
+
+  it('keeps the instrumental as the beat-grid anchor', () => {
+    const { timeline } = applyFlipLabOffsets(base, 0, 4);
+    expect(timeline.downbeatSec).toBe(base.downbeatSec + 4);
   });
 });

@@ -18,7 +18,7 @@ import { useRecentTracks } from './hooks/useRekordboxTracks';
 import { useTrackPlaylists } from './hooks/useTrackPlaylists';
 import { useImportList } from './hooks/useImportList';
 import { useTrackPreviewWaveforms } from './hooks/useTrackPreviewWaveforms';
-import { fetchImportById, fetchReviewTracks, setActiveImport } from './lib/queries/rekordbox';
+import { fetchImportById, setActiveImport } from './lib/queries/rekordbox';
 import { deleteAllRekordboxImports, deleteRekordboxImport, RekordboxImportError } from './lib/api/rekordboxImport';
 import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { BackgroundImportPanel } from './components/BackgroundImportPanel';
@@ -66,7 +66,7 @@ import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
-import { CheckmarkFilled, CircleDash, Close, DataBase, Edit, Growth, Layers, Logout, Moon, Music, PaintBrush, Radio, RecordingFilled, Renew, Search, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, CircleDash, Close, DataBase, Edit, Growth, Headphones, Layers, Logout, Moon, Music, PaintBrush, Radio, RecordingFilled, Renew, Search, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
 import { LayoutLabWindow } from './components/ui/LayoutLabWindow';
 import { ControlButton } from './components/ui/controls';
 
@@ -92,7 +92,7 @@ function CuePointsNavIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'settings' | 'discovery' | 'search' | 'drop-lab' | 'import' | 'flip-lab' | 'not-found';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'audition' | 'settings' | 'discovery' | 'search' | 'drop-lab' | 'import' | 'flip-lab' | 'not-found';
 
 type ImportNotice = {
   kind: 'success' | 'warning';
@@ -110,6 +110,7 @@ function viewForRoute(route: AppRoute): View {
     case 'import': return 'import';
     case 'review': return 'review';
     case 'cues': return 'cues';
+    case 'audition': return 'audition';
     case 'discovery': return 'discovery';
     case 'search': return 'search';
     case 'profile': return 'settings';
@@ -455,7 +456,6 @@ export default function App() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [backgroundImport, setBackgroundImport] = useState<{ importId: string; usbReleased: boolean } | null>(null);
   const { theme, setTheme } = useTheme();
-  const [reviewTracks, setReviewTracks] = useState<RekordboxTrack[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem('dropdex-sidebar-collapsed') === 'true'
   );
@@ -693,15 +693,6 @@ export default function App() {
     refetchImport, refetchProfiles, route, userId,
   ]);
 
-  // Load review tracks when entering review mode
-  useEffect(() => {
-    if (currentView !== 'review' || !importId) return;
-    fetchReviewTracks(importId)
-      .then(setReviewTracks)
-      .catch(console.error);
-  }, [currentView, importId]);
-
-
   const avgBpm = selectedPlaylistStats?.averageBpm != null
     ? selectedPlaylistStats.averageBpm.toFixed(1)
     : null;
@@ -783,6 +774,7 @@ export default function App() {
       case 'home': navigate(libraryRoute()); break;
       case 'review': navigate({ name: 'review' }); break;
       case 'cues': navigate({ name: 'cues' }); break;
+      case 'audition': navigate({ name: 'audition' }); break;
       case 'settings': navigate({ name: 'settings' }); break;
       case 'discovery': navigate({ name: 'discovery' }); break;
       case 'search': navigate({ name: 'search' }); break;
@@ -1085,6 +1077,7 @@ export default function App() {
     { view: 'home', icon: Music, label: libraryLabel, activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'review', icon: Growth, label: 'Review', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
     { view: 'cues', icon: CuePointsNavIcon, label: 'Cue Points', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
+    { view: 'audition', icon: Headphones, label: 'Audition', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'discovery', icon: Radio, label: 'Discover', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'search', icon: Search, label: 'Search', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'flip-lab', icon: Shuffle, label: 'Flip Lab', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
@@ -1131,13 +1124,14 @@ export default function App() {
           ),
         };
       case 'track': return titledPage('Track Intelligence');
-      case 'review': return titledPage('Set Review Mode');
+      case 'review': return titledPage('Review');
       case 'settings': return titledPage('Profile');
       case 'discovery': return titledPage('Artist Discovery');
       case 'search': return titledPage('Artist Search');
       case 'flip-lab': return titledPage('Flip Lab');
       case 'drop-lab': return titledPage('Drop Lab', handleDropLabBack);
       case 'cues': return titledPage('Cue Points');
+      case 'audition': return titledPage('Audition');
       default: return null;
     }
   })();
@@ -1255,7 +1249,7 @@ export default function App() {
           currentView === 'flip-lab'
             ? 'flex min-h-0 flex-col overflow-hidden p-6'
             : 'overflow-y-auto px-6 pt-6 pb-32 md:pb-6',
-          currentView === 'cues' && 'scrollbar-none',
+          (currentView === 'cues' || currentView === 'audition') && 'scrollbar-none',
         )}>
           <ApplicationErrorBoundary level="feature" resetKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
           <RouteFailureProbe />
@@ -1515,16 +1509,16 @@ export default function App() {
             )}
 
             {/* ── Cue Points ── */}
-            {!routeBlocked && currentView === 'cues' && (
+            {!routeBlocked && (currentView === 'cues' || currentView === 'audition') && (
               <motion.div
-                key="cues"
+                key={currentView}
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
                 className="min-w-0"
               >
-                <LazyFeature label="Loading Cue Points…" boundaryKey={`${routeKey(route)}:cues`} onReturnToLibrary={returnToLibrary}>
-                  <CuePointsView importId={importId} onImport={() => setIsImportModalOpen(true)} />
+                <LazyFeature label={currentView === 'audition' ? 'Loading Audition…' : 'Loading Cue Points…'} boundaryKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
+                  <CuePointsView importId={importId} key={currentView} mode={currentView === 'audition' ? 'audition' : 'cues'} onImport={() => setIsImportModalOpen(true)} />
                 </LazyFeature>
               </motion.div>
             )}
@@ -1539,13 +1533,17 @@ export default function App() {
                 className="space-y-6"
               >
                 <LazyFeature label="Loading Review…" boundaryKey={`${routeKey(route)}:review`} onReturnToLibrary={returnToLibrary}>
-                  {!importId ? (
+                  {!importId || !latestImport ? (
                     <ReviewEmptyState onImport={() => setIsImportModalOpen(true)} />
                   ) : (
                     <ReviewView
                       importId={importId}
-                      tracks={reviewTracks}
-                      loading={reviewTracks.length === 0}
+                      latestImport={latestImport}
+                      profile={userProfile}
+                      playlists={playlists}
+                      onImport={() => setIsImportModalOpen(true)}
+                      onResumeAnalysis={(id) => navigate({ name: 'import', importId: id, resume: true })}
+                      onShowIncompleteAnalysis={() => navigate({ name: 'library', tab: 'incomplete-analysis', search: '' })}
                       onTrackClick={handleTrackClick}
                     />
                   )}

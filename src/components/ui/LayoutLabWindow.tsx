@@ -4,6 +4,7 @@ import { cn } from '../../lib/utils';
 import { HeroMockupsContent } from './LayoutLabHeroMockups';
 import { LoadedTrackMockupsContent } from './LayoutLabLoadedTrackMockups';
 import { RekordboxMockupsContent } from './LayoutLabRekordboxMockups';
+import { PageNameMockupsContent } from './LayoutLabPageNameMockups';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'hero',          label: 'Hero'          },
   { id: 'loaded-track',  label: 'Loaded Track'  },
   { id: 'rekordbox',     label: 'Rekordbox'     },
+  { id: 'page-names',    label: 'Page Names'    },
 ];
 
 let tabCounter = 0;
@@ -2015,6 +2017,8 @@ export function LayoutLabWindow({ onClose }: LayoutLabWindowProps) {
             <LoadedTrackMockupsContent />
           ) : activeId === 'rekordbox' ? (
             <RekordboxMockupsContent />
+          ) : activeId === 'page-names' ? (
+            <PageNameMockupsContent />
           ) : (
             <BlankCanvas />
           )}

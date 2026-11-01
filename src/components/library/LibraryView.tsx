@@ -139,7 +139,7 @@ function TikTokIcon({ size = 16 }: { size?: number }) {
   );
 }
 
-function ArtistProfileCard({
+export function ArtistProfileCard({
   profile,
   latestImport,
 }: {
@@ -913,7 +913,7 @@ function OverviewPlaylistCard({
 
 const RECENT_BARS = [18, 30, 24, 42, 34, 58, 48, 72, 54, 82, 66, 92, 76, 64, 88, 98];
 
-function DesktopLibraryHero({
+export function DesktopLibraryHero({
   latestImport,
   profile,
   topGenres,

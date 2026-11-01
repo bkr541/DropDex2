@@ -32,6 +32,12 @@ describe('app routes', () => {
     expect(routeBackFallback({ name: 'cues' })).toEqual({ name: 'library', tab: 'overview', search: '' });
   });
 
+  it('round trips the Audition route', () => {
+    expect(parseAppRoute('/audition')).toEqual({ name: 'audition' });
+    expect(routeToUrl({ name: 'audition' })).toBe('/audition');
+    expect(routeBackFallback({ name: 'audition' })).toEqual({ name: 'library', tab: 'overview', search: '' });
+  });
+
   it('maps library tabs and search to canonical URLs', () => {
     expect(parseAppRoute('/library/recent', '?q=night+drive')).toEqual({
       name: 'library',

@@ -857,6 +857,9 @@ interface TimelineView {
   end: number;
 }
 
+/** Each stem's waveform row: 62px (was 88px, 30% shorter). */
+const WAVEFORM_LANE_HEIGHT = 62;
+
 function laneBox(startSec: number, spanSec: number, view: TimelineView): React.CSSProperties {
   const range = Math.max(1, view.end - view.start);
   return {
@@ -936,7 +939,7 @@ function FillingWaveformLane({
   return (
     <div
       data-testid={muted ? 'flip-lab-waveform-muted' : undefined}
-      style={{ height: 88, position: 'relative', overflow: 'hidden', background: BG }}
+      style={{ height: WAVEFORM_LANE_HEIGHT, position: 'relative', overflow: 'hidden', background: BG }}
     >
       <div style={{
         ...box,
@@ -946,7 +949,7 @@ function FillingWaveformLane({
       }}>
         {fill < 1 && (
           <div aria-hidden="true" style={{ position: 'absolute', inset: 0, filter: 'grayscale(1)', opacity: 0.35 }}>
-            <RekordboxPreviewWaveform state={waveformState} height={88} variant="detail" surface={false} />
+            <RekordboxPreviewWaveform state={waveformState} height={WAVEFORM_LANE_HEIGHT} variant="detail" surface={false} />
           </div>
         )}
         <div
@@ -959,7 +962,7 @@ function FillingWaveformLane({
         >
           <RekordboxPreviewWaveform
             state={waveformState}
-            height={88}
+            height={WAVEFORM_LANE_HEIGHT}
             variant="detail"
             surface={false}
             ariaLabel={ariaLabel}
@@ -1165,8 +1168,16 @@ function TopWaveformSection({
   const [view, setView] = useState<TimelineView>({ start: 0, end: totalMs });
   const viewRef = useRef(view);
   viewRef.current = view;
+  const previousTotalRef = useRef(totalMs);
   useEffect(() => {
-    setView({ start: 0, end: totalMs });
+    const previousTotal = previousTotalRef.current;
+    previousTotalRef.current = totalMs;
+    // Dragging a stem changes the total length; keep the user's zoom unless they were viewing everything.
+    setView((prev) => (
+      prev.start <= 0 && prev.end >= previousTotal - 1
+        ? { start: 0, end: totalMs }
+        : { start: Math.min(prev.start, Math.max(0, totalMs - MIN_CUE_TIMELINE_WINDOW_MS)), end: Math.min(prev.end, totalMs) }
+    ));
   }, [totalMs]);
 
   const lanesRef = useRef<HTMLDivElement | null>(null);
@@ -1198,6 +1209,75 @@ function TopWaveformSection({
       wheelFrameRef.current = null;
     };
   }, [totalMs]);
+
+  const ready = state.phase === 'ready';
+  const playing = state.playing;
+  const [pausePrompt, setPausePrompt] = useState(false);
+  const promptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragRef = useRef<{ stem: FlipLabStem; startX: number; lastX: number; dragging: boolean; blocked: boolean } | null>(null);
+  const [grabbing, setGrabbing] = useState(false);
+
+  const showPausePrompt = useCallback(() => {
+    setPausePrompt(true);
+    if (promptTimerRef.current) clearTimeout(promptTimerRef.current);
+    promptTimerRef.current = setTimeout(() => setPausePrompt(false), 4500);
+  }, []);
+  useEffect(() => () => { if (promptTimerRef.current) clearTimeout(promptTimerRef.current); }, []);
+  useEffect(() => { if (!playing) setPausePrompt(false); }, [playing]);
+
+  // Click = jump the playhead. Drag = slide that stem (top lane vocal, bottom lane instrumental), paused only.
+  const handleLanePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!ready || event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const stem: FlipLabStem = event.clientY < rect.top + rect.height / 2 ? 'vocal' : 'instrumental';
+    dragRef.current = { stem, startX: event.clientX, lastX: event.clientX, dragging: false, blocked: false };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, [ready]);
+
+  const handleLanePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    if (!drag.dragging) {
+      if (Math.abs(event.clientX - drag.startX) < 4) return;
+      drag.dragging = true;
+      setGrabbing(true);
+    }
+    const dx = event.clientX - drag.lastX;
+    drag.lastX = event.clientX;
+    if (playing) {
+      if (!drag.blocked) {
+        drag.blocked = true;
+        showPausePrompt();
+        logger.warn('fliplab.align.blocked_while_playing', { stem: drag.stem });
+      }
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const range = viewRef.current.end - viewRef.current.start;
+    flipLab.moveStem(drag.stem, (dx / rect.width) * (range / 1000));
+  }, [flipLab, playing, showPausePrompt]);
+
+  const handleLanePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    setGrabbing(false);
+    if (!drag) return;
+    if (drag.dragging) {
+      if (!drag.blocked) logger.info('fliplab.align.moved', { stem: drag.stem, offsetSec: flipLab.state.offsets[drag.stem] });
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const fraction = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const { start, end } = viewRef.current;
+    flipLab.seek(Math.max(0, Math.min(totalMs, start + fraction * (end - start))) / 1000);
+  }, [flipLab, totalMs]);
+
+  const handleLanePointerCancel = useCallback(() => {
+    dragRef.current = null;
+    setGrabbing(false);
+  }, []);
 
   const handleZoom = useCallback((factor: number) => {
     const next = zoomCueTimelineView(viewRef.current, totalMs, factor, 0.5);
@@ -1239,7 +1319,16 @@ function TopWaveformSection({
         <div style={vocalBox}><SectionRow segments={vocalSections} analysisStatus={vocalAnalysis.status} /></div>
       </div>
 
-      <div ref={lanesRef} data-testid="flip-lab-lanes" className="group/waveform" style={{ position: 'relative' }}>
+      <div
+        ref={lanesRef}
+        data-testid="flip-lab-lanes"
+        className="group/waveform"
+        onPointerDown={handleLanePointerDown}
+        onPointerMove={handleLanePointerMove}
+        onPointerUp={handleLanePointerUp}
+        onPointerCancel={handleLanePointerCancel}
+        style={{ position: 'relative', cursor: ready ? (grabbing ? 'grabbing' : 'grab') : undefined, touchAction: 'pan-y', userSelect: 'none' }}
+      >
         <FillingWaveformLane
           box={vocalBox}
           fill={vocalFill}
@@ -1256,6 +1345,30 @@ function TopWaveformSection({
         />
         {state.phase === 'ready' && playheadProgress >= 0 && playheadProgress <= 1 && (
           <FlipLabPlayheadOverlay progress={playheadProgress} />
+        )}
+        {pausePrompt && (
+          <div
+            role="alert"
+            data-testid="flip-lab-pause-prompt"
+            style={{
+              position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', zIndex: 30,
+              display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px 12px 16px',
+              background: 'rgba(27,34,48,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14,
+              boxShadow: '0 16px 40px rgba(0,0,0,0.5)', cursor: 'default',
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: FG }}>Pause the track first</div>
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>You can only slide a track left or right to line it up while it's paused.</div>
+            </div>
+            <ControlButton
+              variant="primary"
+              className="h-[30px] min-h-0 px-3 text-[11px]"
+              onClick={() => { flipLab.pause(); setPausePrompt(false); }}
+            >
+              Pause
+            </ControlButton>
+          </div>
         )}
         <div
           className="pointer-events-none absolute right-2 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-0.5 opacity-0 transition-opacity duration-150 group-hover/waveform:opacity-100"

@@ -82,4 +82,13 @@ describe('Flip Lab workflow', () => {
     expect(developer).toContain('Empty Stem Cache');
     expect(developer).toContain('clearFlipLabStemCache');
   });
+
+  it('lets a stem be dragged to line up beats, but only while paused', () => {
+    expect(view).toContain('handleLanePointerMove');
+    expect(view).toContain('flipLab.moveStem');
+    expect(view).toContain('Pause the track first');
+    expect(view).toContain('fliplab.align.blocked_while_playing');
+    expect(hook).toContain('applyFlipLabOffsets');
+    expect(hook).toMatch(/if \(current\.isPlaying\(\)\) return false;/);
+  });
 });
