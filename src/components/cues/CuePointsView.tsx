@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Add, ChevronDown, CircleDash, Close, ColorPalette, Edit, Export, Idea, Music, Pause, Play, Repeat, Save, Subtract, Tag, Time, Timer, Upload, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
+import { ChevronDown, CircleDash, Close, ColorPalette, Edit, Export, Idea, Music, Pause, Pending, Play, Repeat, Save, Tag, Time, Timer, Upload, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -37,11 +37,12 @@ import {
   type VocalAnalysisRow,
 } from '../../lib/queries/analysisData';
 import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
+import { CueEditorToolbar, CueStateIcon } from './CueEditorToolbar';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { ControlButton, FilterDropdown, SearchControl, SelectControl, TextControl } from '../ui/controls';
 import { Artwork } from '../ui/display/Artwork';
 import { TabNavigation } from '../ui/display/TabNavigation';
-import { MediaTransportControlGroup, TrackWaveformPreview, cueMarkersFromState } from '../ui/media';
+import { MediaTransportControlGroup, TrackWaveformPreview, WaveformZoomControls, cueMarkersFromState } from '../ui/media';
 import { KeyBadge } from '../ui/display';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
@@ -594,8 +595,6 @@ function CuePointsAudioDock({
   selectedTrack,
   orderedTracks,
   onSelectTrack,
-  snapResolution,
-  onSnapResolutionChange,
   gridDisplayMode,
   onGridDisplayModeChange,
   gridVisible,
@@ -606,8 +605,6 @@ function CuePointsAudioDock({
   selectedTrack: RekordboxTrack | null;
   orderedTracks: RekordboxTrack[];
   onSelectTrack: (track: RekordboxTrack) => void;
-  snapResolution: CueSnapResolution;
-  onSnapResolutionChange: (v: CueSnapResolution) => void;
   gridDisplayMode: CueGridDisplayMode;
   onGridDisplayModeChange: (v: CueGridDisplayMode) => void;
   gridVisible: boolean;
@@ -728,19 +725,9 @@ function CuePointsAudioDock({
         </span>
       </div>
 
+      {audition && (
+        <>
       <div className="flex shrink-0 items-center gap-3 border-l border-white/10 pl-4">
-        {!audition && <FilterDropdown
-          label="Snap"
-          value={snapResolution}
-          onChange={(v) => onSnapResolutionChange(v as CueSnapResolution)}
-          className="min-w-[80px]"
-          options={[
-            { value: 'off', label: 'Off' },
-            { value: '1-beat', label: '1 Beat' },
-            { value: '2-beats', label: '2 Beats' },
-            { value: '4-beats', label: '4 Beats' },
-          ]}
-        />}
         <FilterDropdown
           label="Beat Count"
           value={gridDisplayMode}
@@ -805,6 +792,8 @@ function CuePointsAudioDock({
           className="h-1.5 w-20 cursor-pointer accent-primary"
         />
       </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1207,6 +1196,7 @@ function CueWaveformPanel({
   gridDisplayMode,
   onGridDisplayModeChange,
   gridVisible,
+  onGridVisibleChange,
 }: {
   audition?: boolean;
   compact?: boolean;
@@ -1249,6 +1239,7 @@ function CueWaveformPanel({
   gridDisplayMode: CueGridDisplayMode;
   onGridDisplayModeChange: (v: CueGridDisplayMode) => void;
   gridVisible: boolean;
+  onGridVisibleChange: (v: boolean) => void;
 }) {
   const durationMs = durationMsForTrack(track, beatGrid, phrases);
 
@@ -1551,68 +1542,80 @@ function CueWaveformPanel({
   const applyAllDisabled = applyAllCount === 0 || applying;
 
   return (
-    <section className="cue-workstation relative overflow-visible border-t border-[var(--color-border-faint)]" data-testid="cue-points-workstation">
-      <div className={cn('cue-workstation__header flex flex-col border-b border-[var(--color-border-faint)] px-4 lg:px-5 xl:flex-row xl:items-center xl:justify-between', compact ? 'gap-2 py-1.5' : 'gap-3 py-2')}>
+    <section className="cue-workstation relative overflow-visible" data-testid="cue-points-workstation">
+      <div className={cn('cue-workstation__header flex flex-row items-start justify-between px-4 lg:px-5', compact ? 'gap-2 py-1.5' : 'gap-3 py-2')}>
         <div className={cn('flex min-w-0 flex-1 items-center', compact ? 'gap-2.5' : 'gap-3.5')}>
           <Artwork
             src={track.artwork_path}
             alt={`Artwork for ${track.title}`}
             fallbackTitle="No artwork"
-            className={cn('shrink-0 rounded-[7px]', compact ? 'h-10 w-10' : 'h-14 w-14')}
+            className={cn('shrink-0 rounded-[7px]', compact ? 'h-10 w-10' : 'h-9 w-9')}
           />
           <div className="min-w-0 flex-1">
-            <h1 className={cn('truncate font-bold leading-tight tracking-[-0.02em] text-foreground', compact ? 'text-base' : 'text-xl md:text-[21px]')}>{track.title}</h1>
-            <p className={cn('truncate font-medium leading-tight text-muted-foreground', compact ? 'text-[10px]' : 'text-xs')}>{track.artist ?? 'Artist Not Available'}</p>
-            <div className={cn('mt-0.5 flex flex-wrap items-center font-semibold text-muted-foreground', compact ? 'gap-x-3 gap-y-0.5 text-[9px]' : 'gap-x-4 gap-y-1 text-[10px]')}>
+            <h1 className={cn('truncate font-bold leading-tight tracking-[-0.02em] text-foreground', compact ? 'text-base' : 'text-base md:text-[17px]')}>{track.title}</h1>
+            <div className={compact ? undefined : 'flex min-w-0 items-center gap-4'}>
+            <p className={cn('truncate font-medium leading-tight text-muted-foreground', compact ? 'text-[10px]' : 'min-w-0 text-xs')}>{track.artist ?? 'Artist Not Available'}</p>
+            <div className={cn('flex items-center font-semibold text-muted-foreground', compact ? 'mt-0.5 flex-wrap gap-x-3 gap-y-0.5 text-[9px]' : 'shrink-0 gap-x-4 text-[10px]')}>
               <span><span className="uppercase tracking-[0.08em] text-foreground/45">BPM</span> <strong className="ml-1 text-foreground/90">{bpmDisplay}</strong></span>
               <span><span className="uppercase tracking-[0.08em] text-foreground/45">Key</span> <strong className="ml-1" style={{ color: camelotColor(track.musical_key) }}>{keyDisplay}</strong></span>
               <span><span className="uppercase tracking-[0.08em] text-foreground/45">Duration</span> <strong className="ml-1 text-foreground/90">{durationDisplay}</strong></span>
               <span className="flex items-center gap-1.5">
                 <span className="uppercase tracking-[0.08em] text-foreground/45">Cues</span>
                 <strong className="text-foreground/90">{cueLoading ? '…' : cueLoadStatus === 'failed' ? '!' : String(cues.length)}</strong>
-                {!audition && <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-primary/75">Editing</span>}
-                {!audition && <span className="rounded-[4px] border border-[var(--color-border-faint)] bg-white/[0.015] px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">{draftStatus}</span>}
               </span>
+            </div>
             </div>
           </div>
         </div>
 
-        {!audition && <div className="cue-workstation__actions flex flex-wrap items-center gap-1.5 xl:max-w-[900px] xl:justify-end">
+        {!audition && <div className="cue-workstation__actions -mt-[7px] flex shrink-0 items-center gap-0.5">
+          <CueStateIcon state={draftStatus} />
+          <span className="mx-1.5 h-5 w-px bg-white/10" aria-hidden="true" />
+          <CueEditorToolbar
+            snapResolution={snapResolution}
+            onSnapResolutionChange={onSnapResolutionChange}
+            gridDisplayMode={gridDisplayMode}
+            onGridDisplayModeChange={onGridDisplayModeChange}
+            gridVisible={gridVisible}
+            onGridVisibleChange={onGridVisibleChange}
+          />
+          <span className="mx-1.5 h-5 w-px bg-white/10" aria-hidden="true" />
           <ControlButton
-            className="min-h-[34px] px-2.5 text-[11px]"
-            variant="surface"
+            className="cue-action-icon"
+            variant="ghost"
             onClick={onOpenPendingChanges}
             aria-label={metadataDraftLoadStatus === 'loaded' ? `Open Pending Changes, ${pendingMetadataCount} pending` : 'Open Pending Changes'}
             title={metadataDraftLoadStatus === 'failed' ? 'Pending metadata state failed to load. Open to retry.' : 'Review saved metadata changes'}
           >
-            {metadataDraftLoadStatus === 'loaded'
-              ? `Pending ${pendingMetadataCount}`
-              : metadataDraftLoadStatus === 'failed' ? 'Pending (!)' : 'Pending…'}
+            <Pending size={20} />
+            {metadataDraftLoadStatus === 'loaded' && pendingMetadataCount > 0 && <span className="cue-action-icon__badge">{pendingMetadataCount}</span>}
+            {metadataDraftLoadStatus === 'failed' && <span className="cue-action-icon__badge cue-action-icon__badge--warn">!</span>}
           </ControlButton>
           <ControlButton
-            className="min-h-[34px] px-2.5 text-[11px]"
-            variant="surface"
+            className="cue-action-icon"
+            variant="ghost"
+            aria-label="Auto Cue"
             disabled={!autoCueReady}
             onClick={() => setEditorMessage(onAutoCue())}
             title={autoCueReady ? 'Auto Cue: generate deterministic A–H cue proposals' : "Auto Cue requires the selected track's exact beat grid and phrase data to finish loading"}
           >
-            <Idea size={16} />
-            <span>Auto Cue</span>
+            <Idea size={20} />
           </ControlButton>
           <div ref={applyMenuRef} className="relative flex" data-testid="cue-apply-menu">
             <ControlButton
-              className="min-h-[34px] rounded-r-none px-3 text-[11px]"
-              variant="primary"
+              className="cue-action-icon cue-action-icon--accent"
+              variant="ghost"
+              aria-label={`Apply All, ${applyAllCount} to apply`}
               disabled={applyAllDisabled}
               onClick={onApplyAll}
               title={applyAllCount > 0 ? `Apply all ${applyAllCount} saved track changes to local Rekordbox` : 'Apply All requires at least one saved draft that needs apply'}
             >
-              {applying ? <CircleDash size={16} className="animate-spin" /> : <Export size={16} />}
-              <span>Apply All ({applyAllCount})</span>
+              {applying ? <CircleDash size={20} className="animate-spin" /> : <Export size={20} />}
+              {applyAllCount > 0 && <span className="cue-action-icon__badge">{applyAllCount}</span>}
             </ControlButton>
             <ControlButton
-              className="min-h-[34px] w-[32px] rounded-l-none border-l border-white/10 px-0"
-              variant="primary"
+              className="cue-action-icon cue-action-icon--narrow"
+              variant="ghost"
               aria-label="Open Apply menu"
               aria-haspopup="menu"
               aria-expanded={applyMenuOpen}
@@ -1704,10 +1707,10 @@ function CueWaveformPanel({
         </div>
       )}
 
-      <div className={cn('px-4 lg:px-5', compact ? 'py-1.5' : 'pb-3 pt-3')}>
+      <div className={cn('px-4 lg:px-5', compact ? 'py-1.5' : 'pb-0 pt-0')}>
         <div className="overflow-x-auto">
           <div className="min-w-[920px]">
-            <div className="cue-timeline relative overflow-hidden border-y border-[var(--color-border-faint)] bg-[var(--color-background)]">
+            <div className="cue-timeline relative overflow-hidden bg-[var(--color-background)]">
               <CueEditorPlaybackPlayhead
                 trackId={track.id}
                 viewStartMs={viewStart}
@@ -1870,7 +1873,7 @@ function CueWaveformPanel({
                       return width > 0 ? (
                         <div
                           className="absolute top-0 h-[22px]"
-                          style={{ left: `${left}%`, width: `${width}%`, backgroundColor: 'rgba(255,255,255,0.18)' }}
+                          style={{ left: `${left}%`, width: `${width}%`, backgroundColor: 'transparent', borderBottom: '2px solid rgba(255,255,255,0.28)' }}
                         />
                       ) : null;
                     })()}
@@ -1879,7 +1882,7 @@ function CueWaveformPanel({
                 </div>
               </div>
 
-              <div className={cn('cue-timeline__data-lane relative group/waveform', compact ? 'h-[56px]' : 'h-[88px]')}>
+              <div className={cn('cue-timeline__data-lane relative group/waveform', compact ? 'h-[56px]' : 'h-[68px]')}>
               <div
                 ref={waveformDivRef}
                 className={cn('relative h-full overflow-hidden', audition ? 'cursor-pointer' : 'cursor-crosshair')}
@@ -1897,7 +1900,7 @@ function CueWaveformPanel({
                     <div className="absolute inset-y-0" style={{ left: `${wLeft}%`, width: `${wScale * 100}%` }}>
                       <RekordboxPreviewWaveform
                         state={waveformState}
-                        height={compact ? 54 : 86}
+                        height={compact ? 54 : 66}
                         variant="detail"
                         appearance="rekordbox"
                         renderMode="area"
@@ -1913,7 +1916,7 @@ function CueWaveformPanel({
                 })() : (
                   <RekordboxPreviewWaveform
                     state={waveformState}
-                    height={compact ? 54 : 86}
+                    height={compact ? 54 : 66}
                     variant="detail"
                     appearance="rekordbox"
                     renderMode="area"
@@ -1997,34 +2000,15 @@ function CueWaveformPanel({
                   </div>
                 )}
               </div>
-              <div
-                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-0.5 opacity-0 transition-opacity duration-150 group-hover/waveform:opacity-100"
-                aria-label="Waveform zoom controls"
-              >
-                <ControlButton
-                  className="pointer-events-auto h-[26px] w-[26px] min-h-0 border border-[var(--color-border-faint)] bg-[var(--color-card)]/80 px-0 backdrop-blur-sm"
-                  variant="surface"
-                  onClick={() => handleZoom(0.75)}
-                  disabled={!durationMs || durationMs <= 0 || effectiveViewEnd - viewStart <= Math.min(MIN_CUE_TIMELINE_WINDOW_MS, durationMs)}
-                  aria-label="Zoom in"
-                  title="Zoom in"
-                >
-                  <Add size={12} />
-                </ControlButton>
-                <ControlButton
-                  className="pointer-events-auto h-[26px] w-[26px] min-h-0 border border-[var(--color-border-faint)] bg-[var(--color-card)]/80 px-0 backdrop-blur-sm"
-                  variant="surface"
-                  onClick={() => handleZoom(1 / 0.75)}
-                  disabled={!durationMs || effectiveViewEnd - viewStart >= durationMs}
-                  aria-label="Zoom out"
-                  title="Zoom out"
-                >
-                  <Subtract size={12} />
-                </ControlButton>
-              </div>
+              <WaveformZoomControls
+                onZoomIn={() => handleZoom(0.75)}
+                onZoomOut={() => handleZoom(1 / 0.75)}
+                canZoomIn={Boolean(durationMs && durationMs > 0 && effectiveViewEnd - viewStart > Math.min(MIN_CUE_TIMELINE_WINDOW_MS, durationMs))}
+                canZoomOut={Boolean(durationMs && effectiveViewEnd - viewStart < durationMs)}
+              />
               </div>
 
-              <div className="cue-timeline__data-lane h-[52px] pb-1.5">
+              <div className="cue-timeline__data-lane h-[34px]">
                 <div className="relative h-full overflow-hidden">
                 {!gridVisible ? (
                   <div className="flex h-full items-center px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">Grid hidden</div>
@@ -2042,8 +2026,8 @@ function CueWaveformPanel({
                         className={cn(
                           'absolute -translate-x-1/2 rounded-full',
                           beat.isDownbeat || beat.beatInBar === 1
-                            ? 'top-[3px] h-[20px] w-[2px] bg-[#f87171]'
-                            : 'top-[4px] h-[12px] w-[1.5px] bg-[#4ade80] opacity-90',
+                            ? 'top-[2px] h-[14px] w-[2px] bg-[#f87171]'
+                            : 'top-[3px] h-[8px] w-[1.5px] bg-[#4ade80] opacity-90',
                         )}
                         style={{ left: `${percentageAt(beat.ms, viewStart, effectiveViewEnd)}%` }}
                         title={`Bar ${beat.bar}, beat ${beat.beatInBar} · ${formatTime(beat.ms)}`}
@@ -2212,12 +2196,12 @@ export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform }: {
         onSave={async () => null} applyTrackAvailable={false} applyAllCount={0} applying={false}
         onApplyTrack={noop} onApplyAll={noop} pendingMetadataCount={0} metadataDraftLoadStatus="loaded"
         onOpenPendingChanges={noop} snapResolution="off" onSnapResolutionChange={noop}
-        gridDisplayMode={gridDisplayMode} onGridDisplayModeChange={setGridDisplayMode} gridVisible={gridVisible} />
+        gridDisplayMode={gridDisplayMode} onGridDisplayModeChange={setGridDisplayMode} gridVisible={gridVisible} onGridVisibleChange={setGridVisible} />
       {analysisError && <div role="status" className="flex items-center justify-between gap-3 px-5 py-2 text-xs text-muted-foreground">
         <span>{analysisError}</span><ControlButton variant="ghost" onClick={retryAnalysis}>Retry analysis</ControlButton>
       </div>}
       <CuePointsAudioDock audition regionLabel="Track" showBrowserSource={false} selectedTrack={track}
-        orderedTracks={[track]} onSelectTrack={noop} snapResolution="off" onSnapResolutionChange={noop}
+        orderedTracks={[track]} onSelectTrack={noop}
         gridDisplayMode={gridDisplayMode} onGridDisplayModeChange={setGridDisplayMode}
         gridVisible={gridVisible} onGridVisibleChange={setGridVisible} browserSource="library" onBrowserSourceChange={noop} />
     </section>
@@ -4336,7 +4320,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
         onApplyAll={() => { void handleMetadataApplyAll(); }}
       />}
 
-      {!review && <div ref={waveformPanelWrapperRef} className="sticky top-0 z-30">
+      {!review && <div ref={waveformPanelWrapperRef} className="sticky top-0 z-30 bg-[var(--color-background)]">
       <CueWaveformPanel
         compact={mode === 'audition'}
         audition={audition}
@@ -4384,6 +4368,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
         gridDisplayMode={gridDisplayMode}
         onGridDisplayModeChange={setGridDisplayMode}
         gridVisible={gridVisible}
+        onGridVisibleChange={setGridVisible}
       />
       </div>}
 
@@ -4510,8 +4495,6 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                 selectedTrack={selectedTrack}
                 orderedTracks={orderedVisibleTracks}
                 onSelectTrack={setSelectedTrack}
-                snapResolution={snapResolution}
-                onSnapResolutionChange={setSnapResolution}
                 gridDisplayMode={gridDisplayMode}
                 onGridDisplayModeChange={setGridDisplayMode}
                 gridVisible={gridVisible}

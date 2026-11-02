@@ -11,3 +11,4 @@ export type {
 export { TrackWaveformPreview } from './TrackWaveformPreview';
 export { cueMarkersFromState } from './trackCueMarkers';
 export type { TrackCueMarker } from './trackCueMarkers';
+export { WaveformZoomControls } from './WaveformZoomControls';

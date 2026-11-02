@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { Growth, Music, Radio, Search, Shuffle } from '@carbon/icons-react';
+import { camelotKeyColor } from './display/camelotKey';
 import { cn } from '../../lib/utils';
 
 // Seven left-nav pages, each showing its name a different way. Every technique
@@ -125,115 +127,111 @@ function MockupCard({ n, page, title, concept, children }: { n: number; page: Pa
   );
 }
 
-// ── 1. Library: Watermark ────────────────────────────────────────────────────
-// Oversized outlined text sits behind the content, at very low contrast.
-// Cards and rows paint over it, so nothing is hidden.
+// ── Top-center page name, seven styles ───────────────────────────────────────
+// Every option sits in exactly the same place: horizontally centered at the top
+// edge of the page, inside the 24px padding strip. Only the styling changes, and
+// each style is taken from something the app already uses.
 
-function Watermark() {
+function TopCenter({ children }: { children: ReactNode }) {
+  return (
+    <div className="pointer-events-none absolute top-0 z-10" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+      {children}
+    </div>
+  );
+}
+
+// 1. Nav pill: the left nav's active-item style (primary/10 fill, primary/20 border, soft glow text).
+function NavPill() {
   return (
     <ScreenFrame page="Library">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-0 flex items-end justify-end overflow-hidden" style={{ zIndex: 0 }}>
-        <span
-          className="select-none pr-4 font-black uppercase leading-[0.8] tracking-tighter"
-          style={{ fontSize: 120, color: 'transparent', WebkitTextStroke: '1px rgb(255 255 255 / 0.07)', transform: 'translateY(18%)' }}
-        >
-          Library
+      <TopCenter>
+        <span className="mt-[3px] flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/10 px-3 py-[2px] text-[10px] font-semibold text-primary neon-text-blue">
+          <Music size={12} /> Library
         </span>
-      </div>
+      </TopCenter>
     </ScreenFrame>
   );
 }
 
-// ── 2. Review: Edge label ────────────────────────────────────────────────────
-// Vertical text in the left 24px gutter, reading bottom to top.
-
-function EdgeLabel() {
+// 2. Glass card: the app's `glass` surface (panel-alt fill, subtle border, surface shadow) attached to the top edge.
+function GlassCard() {
   return (
     <ScreenFrame page="Review">
-      <div className="absolute inset-y-0 left-0 flex w-[24px] items-center justify-center">
-        <span className="select-none text-[10px] font-bold uppercase tracking-[0.32em] text-muted-foreground" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-          Review
+      <TopCenter>
+        <span className="glass flex items-center gap-2 rounded-b-xl border-t-0 px-4 py-[3px] text-[10px] font-bold uppercase tracking-[0.2em] text-foreground">
+          <Growth size={12} className="text-secondary" /> Review
         </span>
-      </div>
+      </TopCenter>
     </ScreenFrame>
   );
 }
 
-// ── 3. Cue Points: Legend in the border ──────────────────────────────────────
-// The name is set into the top hairline of the main panel, like a form legend.
-
-function BorderLegend() {
+// 3. Section label: the Cue Points timeline's section labels (mono, bold, colored, 2px underline).
+function SectionLabel() {
   return (
     <ScreenFrame page="Cue Points">
-      <div className="pointer-events-none absolute inset-x-[24px] top-[24px] -translate-y-1/2">
-        <span className="ml-4 inline-block bg-[var(--color-background)] px-2 text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Cue Points</span>
-      </div>
+      <TopCenter>
+        <span
+          className="mt-[3px] block px-5 pb-[2px] font-mono text-[10px] font-bold tracking-wider"
+          style={{ color: '#b266ff', borderBottom: '2px solid #b266ff' }}
+        >
+          CUE POINTS
+        </span>
+      </TopCenter>
     </ScreenFrame>
   );
 }
 
-// ── 4. Audition: Top strip ───────────────────────────────────────────────────
-// One line of small caps in the 24px top padding, with a hairline under it.
-
-function TopStrip() {
+// 4. Key badge: the track table's key badge (white/5 fill, colored 3px bar, mono bold), in a Camelot color.
+function KeyBadgeStyle() {
+  const color = camelotKeyColor('10A');
   return (
     <ScreenFrame page="Audition">
-      <div className="absolute inset-x-0 top-0 flex items-center justify-between border-b border-[var(--color-border-faint)] px-[24px]" style={{ height: PAD - 4 }}>
-        <span className="text-[9px] font-bold uppercase tracking-[0.28em] text-foreground/70">Audition</span>
-        <span className="text-[9px] uppercase tracking-[0.2em] text-foreground/30">DropDex</span>
-      </div>
+      <TopCenter>
+        <span className="mt-[3px] inline-flex items-center rounded-[5px] bg-white/[0.05] py-[3px] pl-[3px] pr-3 font-mono text-[11px] font-bold" style={{ color }}>
+          <span className="mr-2 h-[14px] w-[3px] shrink-0 rounded-full" style={{ backgroundColor: color }} />
+          AUDITION
+        </span>
+      </TopCenter>
     </ScreenFrame>
   );
 }
 
-// ── 5. Discover: Status tag ──────────────────────────────────────────────────
-// A small pill in the bottom-right corner of the bottom padding, like a
-// status-bar mode indicator in an editor.
-
-function StatusTag() {
+// 5. Outline button: the hero's Import Library button (blue outline, transparent, bold caps, wide tracking).
+function OutlineButtonStyle() {
   return (
     <ScreenFrame page="Discover">
-      <div className="absolute bottom-[5px] right-[24px] flex items-center gap-1.5 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-card)] px-2.5 py-[3px]">
-        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-        <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-foreground/80">Discover</span>
-      </div>
+      <TopCenter>
+        <span className="mt-[3px] flex items-center gap-1.5 rounded-xl border border-blue-500 bg-transparent px-3 py-[2px] text-[9px] font-bold uppercase tracking-widest text-blue-400">
+          <Radio size={11} /> Discover
+        </span>
+      </TopCenter>
     </ScreenFrame>
   );
 }
 
-// ── 6. Search: Nav rail label ────────────────────────────────────────────────
-// The active nav icon grows a permanent label that slides out into the page's
-// left padding; the icon stays where it is.
-
-function RailLabel() {
-  const index = PAGES.indexOf('Search');
-  const top = 12 + 24 + 8 + index * 40; // logo + gap + preceding icons
+// 6. Brand gradient: the app's `brand-gradient` (coral to peach), attached to the top edge.
+function BrandGradientStyle() {
   return (
-    <ScreenFrame
-      page="Search"
-      rail={
-        <div
-          className="absolute left-[44px] z-10 flex h-8 items-center whitespace-nowrap rounded-r-lg border border-l-0 border-primary/30 bg-primary/15 pl-4 pr-3 text-[10px] font-bold uppercase tracking-[0.18em] text-primary"
-          style={{ top }}
-        >
-          Search
-        </div>
-      }
-    />
+    <ScreenFrame page="Search">
+      <TopCenter>
+        <span className="brand-gradient flex items-center gap-1.5 rounded-b-xl px-4 py-[3px] text-[9px] font-black uppercase tracking-[0.24em] text-white shadow-[0_4px_14px_rgb(207_107_101_/_0.3)]">
+          <Search size={11} /> Search
+        </span>
+      </TopCenter>
+    </ScreenFrame>
   );
 }
 
-// ── 7. Flip Lab: Top-edge notch ──────────────────────────────────────────────
-// A small tab hangs from the very top edge, centered, in the padding strip.
-
-function TopNotch() {
+// 7. Primary tint notch: the original. Primary/15 fill and primary/30 border, attached to the top edge.
+function TintNotch() {
   return (
     <ScreenFrame page="Flip Lab">
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
-        <span className="rounded-b-lg border border-t-0 border-primary/30 bg-primary/15 px-4 py-[3px] text-[9px] font-bold uppercase tracking-[0.24em] text-primary" style={{ marginLeft: -PAD }}>
-          Flip Lab
+      <TopCenter>
+        <span className="flex items-center gap-1.5 rounded-b-lg border border-t-0 border-primary/30 bg-primary/15 px-4 py-[3px] text-[9px] font-bold uppercase tracking-[0.24em] text-primary">
+          <Shuffle size={11} /> Flip Lab
         </span>
-      </div>
+      </TopCenter>
     </ScreenFrame>
   );
 }
@@ -246,16 +244,16 @@ export function PageNameMockupsContent() {
       <div className="mb-7">
         <div className="mb-1 text-sm font-extrabold text-foreground">Page Name Concepts</div>
         <div className="text-[11px] leading-relaxed text-muted-foreground">
-          Seven ways to show the current page name, one per left-nav page. Each uses space the screen already has (the 24px padding, a border, or the nav rail), so no content moves, shrinks or gets covered. The grey blocks are stand-ins for each page's real content.
+          The page name floats at the top center of the page, in the same spot for all seven. Only the styling differs, and each style is borrowed from something already in the app (nav, glass surface, timeline labels, key badge, hero button, brand gradient). Number 7 is the original. No content moves, shrinks or gets covered. The grey blocks are stand-ins for each page's real content.
         </div>
       </div>
-      <MockupCard n={1} page="Library" title="Watermark" concept="Huge outlined text behind the content at very low contrast"><Watermark /></MockupCard>
-      <MockupCard n={2} page="Review" title="Edge Label" concept="Vertical text in the left padding gutter"><EdgeLabel /></MockupCard>
-      <MockupCard n={3} page="Cue Points" title="Border Legend" concept="Name set into the top border of the main panel"><BorderLegend /></MockupCard>
-      <MockupCard n={4} page="Audition" title="Top Strip" concept="A single line of small caps in the top padding"><TopStrip /></MockupCard>
-      <MockupCard n={5} page="Discover" title="Status Tag" concept="Small pill in the bottom-right corner, like an editor's mode indicator"><StatusTag /></MockupCard>
-      <MockupCard n={6} page="Search" title="Rail Label" concept="The active nav icon gets a label that slides out into the margin"><RailLabel /></MockupCard>
-      <MockupCard n={7} page="Flip Lab" title="Top Notch" concept="A small tab hanging from the top edge, centered"><TopNotch /></MockupCard>
+      <MockupCard n={1} page="Library" title="Nav Pill" concept="The left nav's active-item style"><NavPill /></MockupCard>
+      <MockupCard n={2} page="Review" title="Glass Card" concept="The app's glass surface, attached to the top edge"><GlassCard /></MockupCard>
+      <MockupCard n={3} page="Cue Points" title="Section Label" concept="The timeline's section labels: mono, colored, 2px underline"><SectionLabel /></MockupCard>
+      <MockupCard n={4} page="Audition" title="Key Badge" concept="The track table's key badge, in a Camelot color"><KeyBadgeStyle /></MockupCard>
+      <MockupCard n={5} page="Discover" title="Outline Button" concept="The hero's Import Library button style"><OutlineButtonStyle /></MockupCard>
+      <MockupCard n={6} page="Search" title="Brand Gradient" concept="The app's coral brand gradient, attached to the top edge"><BrandGradientStyle /></MockupCard>
+      <MockupCard n={7} page="Flip Lab" title="Tint Notch" concept="The original: primary-tinted tab on the top edge"><TintNotch /></MockupCard>
     </div>
   );
 }

@@ -24,6 +24,7 @@ const REKORDBOX_MEDIA_FOLDERS = ['Contents', 'Music'];
 const REKORDBOX_ROOT_ENTRIES = [REKORDBOX_DATABASE_FOLDER, ...REKORDBOX_MEDIA_FOLDERS];
 const mediaTokens = new Map();
 let mainWindow = null;
+let layoutLabWindow = null;
 let usbConnection = null;
 let releasedUsbMetadata = null;
 let cachedUsbState = {
@@ -842,10 +843,52 @@ function registerIpcHandlers() {
     assertExactObject(payload, ['token', 'scope', 'savedDrafts'], 'Cue apply payload');
     return cueApplyBridge.apply(payload.token, payload.scope, payload.savedDrafts);
   });
+  ipcMain.handle('dropdex:open-layout-lab', () => {
+    openLayoutLabWindow();
+    return true;
+  });
   ipcMain.handle('dropdex:open-external', async (_event, url) => {
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return false;
     await shell.openExternal(url);
     return true;
+  });
+}
+
+function openLayoutLabWindow() {
+  if (layoutLabWindow && !layoutLabWindow.isDestroyed()) {
+    if (layoutLabWindow.isMinimized()) layoutLabWindow.restore();
+    layoutLabWindow.focus();
+    return;
+  }
+  layoutLabWindow = new BrowserWindow({
+    width: 1480,
+    height: 960,
+    minWidth: 720,
+    minHeight: 480,
+    show: false,
+    backgroundColor: '#080b10',
+    title: 'DropDex · Layout Lab',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+    },
+  });
+  layoutLabWindow.once('ready-to-show', () => layoutLabWindow?.show());
+  layoutLabWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  const devUrl = process.env.ELECTRON_RENDERER_URL || (!app.isPackaged ? 'http://127.0.0.1:3000' : null);
+  if (devUrl) {
+    void layoutLabWindow.loadURL(`${devUrl.replace(/#.*$/, '')}#layout-lab`);
+  } else {
+    void layoutLabWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), { hash: 'layout-lab' });
+  }
+  layoutLabWindow.on('closed', () => {
+    layoutLabWindow = null;
   });
 }
 

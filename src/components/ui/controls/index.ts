@@ -22,3 +22,5 @@ export { UrlControl } from './UrlControl';
 export { FilterDropdown } from './FilterDropdown';
 export type { FilterDropdownOption } from './FilterDropdown';
 export { Knob } from './Knob';
+export { DualRangeSlider } from './DualRangeSlider';
+export type { DualRangeVariant } from './DualRangeSlider';

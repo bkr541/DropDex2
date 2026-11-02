@@ -58,7 +58,7 @@ import { DeveloperTab } from './components/profile/DeveloperTab';
 import { SpotifyExternalAccount } from './components/profile/SpotifyExternalAccount';
 import { UsbConnectionProvider, useUsbConnection } from './contexts/UsbConnectionContext';
 import { UsbConnectionButton } from './components/usb/UsbConnectionButton';
-import { LogoTitleFlyout, type PageHeading } from './components/navigation/LogoTitleFlyout';
+import { PageNameTab, type PageHeading } from './components/navigation/PageNameTab';
 import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerContext';
 import { NowPlayingBar } from './components/player/NowPlayingBar';
 import { buildPlaylistIdentityKey } from './lib/queries/userPlaylists';
@@ -67,7 +67,7 @@ import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './typ
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
 import { CheckmarkFilled, CircleDash, Close, DataBase, Edit, Growth, Headphones, Layers, Logout, Moon, Music, PaintBrush, Radio, RecordingFilled, Renew, Search, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
-import { LayoutLabWindow } from './components/ui/LayoutLabWindow';
+import { openLayoutLab } from './components/ui/openLayoutLab';
 import { ControlButton } from './components/ui/controls';
 
 type ThemeOption = {
@@ -474,7 +474,6 @@ export default function App() {
   const [deleteAllLibrariesRemainingCount, setDeleteAllLibrariesRemainingCount] = useState(0);
   const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(() => new Set());
   const [settingsTab, setSettingsTab] = useState<'account' | 'appearance' | 'library' | 'about' | 'developer'>('account');
-  const [layoutLabOpen, setLayoutLabOpen] = useState(false);
   const deleteExecutorRef = useRef<ConfirmedDeleteExecutor | null>(null);
   const pendingDeletionContextsRef = useRef<Map<string, PendingDeletionContext>>(new Map());
   const importStatusRef = useRef<Map<string, {
@@ -1136,6 +1135,12 @@ export default function App() {
     }
   })();
 
+  const pageIcon: React.ElementType | undefined = (
+    sidebarNavItems.find((item) => item.view === currentView)?.icon
+    ?? ({ settings: User, import: Upload, 'drop-lab': Layers } as Partial<Record<View, React.ElementType>>)[currentView]
+    ?? Music
+  );
+
   return (
     <UsbConnectionProvider>
     <AudioPlayerProvider imports={allImports}>
@@ -1157,16 +1162,14 @@ export default function App() {
           'h-16 flex items-center shrink-0 border-b border-[var(--color-border-subtle)]',
           sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-6'
         )}>
-          <LogoTitleFlyout heading={pageHeading}>
-            <button
-              type="button"
-              onClick={toggleSidebar}
-              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-            >
-              <img src="/logos/dropdexlogo.png" alt="DropDex" className="w-8 h-8 object-contain" />
-            </button>
-          </LogoTitleFlyout>
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
+            <img src="/logos/dropdexlogo.png" alt="DropDex" className="w-8 h-8 object-contain" />
+          </button>
           {!sidebarCollapsed && (
             <span className="text-xl font-black tracking-tighter uppercase leading-none">
               Drop<span className="text-[var(--color-brand-primary)]">Dex</span>
@@ -1195,15 +1198,12 @@ export default function App() {
           ))}
           <div className="mt-auto pt-2 border-t border-[var(--color-border-faint)]">
             <button
-              onClick={() => setLayoutLabOpen((v) => !v)}
-              title={sidebarCollapsed ? 'Layout Lab' : undefined}
-              aria-pressed={layoutLabOpen}
+              onClick={openLayoutLab}
+              title={sidebarCollapsed ? 'Layout Lab (opens in a new window)' : 'Opens in a new window'}
               className={cn(
                 'flex items-center rounded-xl font-bold text-sm transition-all border w-full',
                 sidebarCollapsed ? 'justify-center py-3 px-0' : 'gap-3 px-4 py-3 text-left',
-                layoutLabOpen
-                  ? 'text-amber-400 bg-amber-400/10 border-amber-400/20'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent'
+                'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent'
               )}
             >
               <PaintBrush size={18} />
@@ -1241,7 +1241,8 @@ export default function App() {
       </aside>
 
       {/* ── Main content column ── */}
-      <div className="flex flex-col flex-1 min-w-0 h-screen">
+      <div className="relative flex flex-col flex-1 min-w-0 h-screen">
+        {pageHeading && <PageNameTab title={pageHeading.title} icon={pageIcon} />}
 
         {/* Scrollable content */}
         <main className={cn(
@@ -2051,9 +2052,6 @@ export default function App() {
         />
       )}
 
-      {layoutLabOpen && (
-        <LayoutLabWindow onClose={() => setLayoutLabOpen(false)} />
-      )}
     </div>
     </>
     </AudioPlayerProvider>

@@ -520,6 +520,7 @@ export interface DropDexDesktopBridge {
   cueApplyPreflight(scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyPreflightResult>;
   cueApply(token: string, scope: DesktopCueApplyScope, savedDrafts: DesktopCueApplyDraft[]): Promise<DesktopCueApplyResult>;
   openExternal(url: string): Promise<boolean>;
+  openLayoutLab(): Promise<boolean>;
 }
 
 declare global {

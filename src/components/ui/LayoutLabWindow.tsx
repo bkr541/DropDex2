@@ -5,6 +5,9 @@ import { HeroMockupsContent } from './LayoutLabHeroMockups';
 import { LoadedTrackMockupsContent } from './LayoutLabLoadedTrackMockups';
 import { RekordboxMockupsContent } from './LayoutLabRekordboxMockups';
 import { PageNameMockupsContent } from './LayoutLabPageNameMockups';
+import { LibraryCueModeMockupsContent } from './LayoutLabLibraryCueModeMockups';
+import { UiComponentsContent } from './LayoutLabUiComponents';
+import { HeaderStatusMockupsContent } from './LayoutLabHeaderStatusMockups';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +34,8 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'loaded-track',  label: 'Loaded Track'  },
   { id: 'rekordbox',     label: 'Rekordbox'     },
   { id: 'page-names',    label: 'Page Names'    },
+  { id: 'library-cue-mode', label: 'Library + Cue Mode' },
+  { id: 'header-status', label: 'Header Status' },
 ];
 
 let tabCounter = 0;
@@ -1811,9 +1816,11 @@ function BlankCanvas() {
 
 interface LayoutLabWindowProps {
   onClose(): void;
+  /** Fill a dedicated browser window: no dragging, resizing, minimizing or window chrome. */
+  standalone?: boolean;
 }
 
-export function LayoutLabWindow({ onClose }: LayoutLabWindowProps) {
+export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindowProps) {
   const [{ pos, size }, setState] = useState(fullscreenState);
   const [minimized, setMinimized] = useState(false);
 
@@ -1943,16 +1950,21 @@ export function LayoutLabWindow({ onClose }: LayoutLabWindowProps) {
 
   return (
     <div
-      className="fixed z-[9999] flex flex-col rounded-2xl border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden"
-      style={{
-        left: pos.x, top: pos.y,
-        width: size.width,
-        height: minimized ? TITLE_BAR_HEIGHT : size.height,
-        background: 'var(--color-panel)',
-      }}
+      className={cn(
+        'fixed z-[9999] flex flex-col overflow-hidden',
+        standalone ? 'inset-0' : 'rounded-2xl border border-[var(--color-border-subtle)] shadow-2xl',
+      )}
+      style={standalone
+        ? { background: 'var(--color-panel)' }
+        : {
+          left: pos.x, top: pos.y,
+          width: size.width,
+          height: minimized ? TITLE_BAR_HEIGHT : size.height,
+          background: 'var(--color-panel)',
+        }}
     >
       {/* Resize handles */}
-      {!minimized && (
+      {!minimized && !standalone && (
         <>
           <div onMouseDown={onResizeHandleMouseDown('n')}  className="absolute top-0 left-3 right-3 h-1 cursor-ns-resize   z-10" />
           <div onMouseDown={onResizeHandleMouseDown('s')}  className="absolute bottom-0 left-3 right-3 h-1 cursor-ns-resize   z-10" />
@@ -1967,15 +1979,17 @@ export function LayoutLabWindow({ onClose }: LayoutLabWindowProps) {
 
       {/* Title bar */}
       <div
-        className="flex items-center px-4 shrink-0 border-b border-[var(--color-border-subtle)] cursor-grab active:cursor-grabbing select-none"
+        className={cn('flex items-center px-4 shrink-0 border-b border-[var(--color-border-subtle)] select-none', !standalone && 'cursor-grab active:cursor-grabbing')}
         style={{ height: TITLE_BAR_HEIGHT, background: 'var(--color-surface)' }}
-        onMouseDown={onTitleBarMouseDown}
+        onMouseDown={standalone ? undefined : onTitleBarMouseDown}
       >
         <div className="flex items-center gap-1.5 mr-3">
           <button onClick={onClose} aria-label="Close Layout Lab"
             className="w-3 h-3 rounded-full bg-red-500 hover:bg-red-400 transition-colors flex items-center justify-center group">
             <Close size={8} className="opacity-0 group-hover:opacity-100 text-red-900" />
           </button>
+          {!standalone && (
+            <>
           <button onClick={() => setMinimized((v) => !v)} aria-label={minimized ? 'Restore' : 'Minimize'}
             className="w-3 h-3 rounded-full bg-amber-400 hover:bg-amber-300 transition-colors flex items-center justify-center group">
             <Subtract size={8} className="opacity-0 group-hover:opacity-100 text-amber-900" />
@@ -1984,6 +1998,8 @@ export function LayoutLabWindow({ onClose }: LayoutLabWindowProps) {
             className="w-3 h-3 rounded-full bg-emerald-500 hover:bg-emerald-400 transition-colors flex items-center justify-center group">
             <Maximize size={8} className="opacity-0 group-hover:opacity-100 text-emerald-900" />
           </button>
+            </>
+          )}
         </div>
         <span className="text-xs font-bold tracking-widest uppercase text-muted-foreground flex-1 text-center pr-16">
           Layout Lab
@@ -2019,6 +2035,12 @@ export function LayoutLabWindow({ onClose }: LayoutLabWindowProps) {
             <RekordboxMockupsContent />
           ) : activeId === 'page-names' ? (
             <PageNameMockupsContent />
+          ) : activeId === 'header-status' ? (
+            <HeaderStatusMockupsContent />
+          ) : activeId === 'ui-components' ? (
+            <UiComponentsContent />
+          ) : activeId === 'library-cue-mode' ? (
+            <LibraryCueModeMockupsContent />
           ) : (
             <BlankCanvas />
           )}

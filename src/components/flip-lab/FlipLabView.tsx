@@ -39,9 +39,9 @@ import { MIN_CUE_TIMELINE_WINDOW_MS, panCueTimelineView, zoomCueTimelineView } f
 import { useFlipLab } from './useFlipLab';
 import { NotificationCenter, type AppNotification } from '../ui/feedback';
 import { KeyBadge, TabNavigation } from '../ui/display';
-import { MediaTransportControlGroup, TrackWaveformPreview, cueMarkersFromState, type TrackCueMarker } from '../ui/media';
+import { MediaTransportControlGroup, TrackWaveformPreview, WaveformZoomControls, cueMarkersFromState, type TrackCueMarker } from '../ui/media';
 import { logger } from '../../lib/logger';
-import { Add, Close, Subtract } from '@carbon/icons-react';
+import { Close } from '@carbon/icons-react';
 import { ControlButton, Knob, SearchControl } from '../ui/controls';
 import { FLIP_LAB_EQ_RANGE_DB, type FlipLabEqBand, type FlipLabStem, type FlipLabStemEq } from './flipLabEngine';
 import { FlipIcon, InstrumentalIcon, VocalIcon } from './FlipLabIcons';
@@ -1370,31 +1370,7 @@ function TopWaveformSection({
             </ControlButton>
           </div>
         )}
-        <div
-          className="pointer-events-none absolute right-2 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-0.5 opacity-0 transition-opacity duration-150 group-hover/waveform:opacity-100"
-          aria-label="Waveform zoom controls"
-        >
-          <ControlButton
-            className="pointer-events-auto h-[26px] w-[26px] min-h-0 border border-[var(--color-border-faint)] bg-[var(--color-card)]/80 px-0 backdrop-blur-sm"
-            variant="surface"
-            onClick={() => handleZoom(0.75)}
-            disabled={!canZoomIn}
-            aria-label="Zoom in"
-            title="Zoom in"
-          >
-            <Add size={12} />
-          </ControlButton>
-          <ControlButton
-            className="pointer-events-auto h-[26px] w-[26px] min-h-0 border border-[var(--color-border-faint)] bg-[var(--color-card)]/80 px-0 backdrop-blur-sm"
-            variant="surface"
-            onClick={() => handleZoom(1 / 0.75)}
-            disabled={!canZoomOut}
-            aria-label="Zoom out"
-            title="Zoom out"
-          >
-            <Subtract size={12} />
-          </ControlButton>
-        </div>
+        <WaveformZoomControls onZoomIn={() => handleZoom(0.75)} onZoomOut={() => handleZoom(1 / 0.75)} canZoomIn={canZoomIn} canZoomOut={canZoomOut} />
       </div>
 
       <div style={{ position: 'relative', height: 40, borderBottom: `1px solid ${BORDER_F}`, overflow: 'hidden' }}>

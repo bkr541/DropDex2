@@ -34,4 +34,5 @@ contextBridge.exposeInMainWorld('dropdexDesktop', Object.freeze({
   cueApplyPreflight: (scope, savedDrafts) => ipcRenderer.invoke('dropdex:cue-apply-preflight', { scope, savedDrafts }),
   cueApply: (token, scope, savedDrafts) => ipcRenderer.invoke('dropdex:cue-apply', { token, scope, savedDrafts }),
   openExternal: (url) => ipcRenderer.invoke('dropdex:open-external', url),
+  openLayoutLab: () => ipcRenderer.invoke('dropdex:open-layout-lab'),
 }));
