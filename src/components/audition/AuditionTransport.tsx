@@ -3,8 +3,7 @@ import { VolumeMute, VolumeUp } from '@carbon/icons-react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import { logger } from '../../lib/logger';
-import { MediaTransportControlGroup, TransportButton } from '../ui/media';
-import { formatClock } from './auditionTracks';
+import { MediaTransportControlGroup, PlaybackSeekBar, TransportButton } from '../ui/media';
 import type { RekordboxTrack } from '../../types';
 
 interface AuditionTransportProps {
@@ -87,25 +86,14 @@ export function AuditionTransport({ track, fallbackDurationMs, previousTrack, ne
         nextDisabled={!nextTrack}
       />
 
-      <div className="flex min-w-[220px] flex-1 items-center gap-2.5">
-        <span className="w-10 shrink-0 text-right font-mono text-[11px] tabular-nums text-muted-foreground">
-          {formatClock(currentSeconds * 1000)}
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={durationSeconds > 0 ? durationSeconds : 1}
-          step={0.1}
-          value={seekable ? Math.min(durationSeconds, Math.max(0, currentSeconds)) : 0}
-          disabled={!seekable}
-          onChange={(event) => seek(Number(event.target.value))}
-          aria-label="Playback position"
-          className="h-1.5 min-w-[120px] flex-1 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
-        />
-        <span className="w-10 shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
-          {durationSeconds > 0 ? formatClock(durationSeconds * 1000) : '—'}
-        </span>
-      </div>
+      <PlaybackSeekBar
+        className="min-w-[220px]"
+        currentSeconds={currentSeconds}
+        durationSeconds={durationSeconds}
+        seekable={seekable}
+        onSeek={seek}
+        ariaLabel="Playback position"
+      />
 
       <div className="flex shrink-0 items-center gap-2">
         <TransportButton label={muted ? 'Unmute' : 'Mute'} tone="mute" size="compact" active={muted} onClick={toggleMute}>

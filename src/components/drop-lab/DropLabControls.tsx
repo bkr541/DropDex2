@@ -1,20 +1,14 @@
 import { cn } from '../../lib/utils';
 import type { DropPoint } from '../../lib/music/dropPointResolver';
-import type { DropLabPreviewPhase } from '../../hooks/useDropLabPreview';
 import type { DropLabBarCount, DropLabBeatOffset } from '../../lib/music/dropLabSegments';
-import { ArrowRight, CircleDash, Play, RotateCounterclockwise, Stop } from '@carbon/icons-react';
+import { CircleDash, Play, RotateCounterclockwise, Stop } from '@carbon/icons-react';
 import { FilterDropdown } from '../ui/controls';
 import { TabNavigation } from '../ui/display';
-import { TransportButton } from '../ui/media';
+import { AudioDock, MediaTransportControlGroup, PlaybackSeekBar } from '../ui/media';
 
 function formatCueTime(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(totalSeconds / 60)}:${(totalSeconds % 60).toString().padStart(2, '0')}`;
-}
-
-function phaseLabel(phase: DropLabPreviewPhase, playing: boolean): string {
-  if (!playing) return 'Ready to audition';
-  return phase === 'drop' ? 'Playing candidate drop' : 'Playing selected build';
 }
 
 interface DropLabDockProps {
@@ -23,60 +17,41 @@ interface DropLabDockProps {
   previewPlaying: boolean;
   previewLoading: boolean;
   previewError: boolean;
+  /** 0 to 1 through the whole preview (build, then drop). */
   previewProgress: number;
-  previewPhase: DropLabPreviewPhase;
+  /** Length of the whole preview in seconds, or 0 when it is not known yet. */
+  previewSeconds: number;
   disabledReason: string | null;
   onPreview: () => void;
 }
 
-/** The audio dock row: transport, progress with the swap marker, and a status chip. */
+/** The audio dock row: the same dock band, transport capsule and progress bar as Cue Points. */
 export function DropLabDock({
-  previewLabel, previewDisabled, previewPlaying, previewLoading, previewError, previewProgress, previewPhase, disabledReason, onPreview,
+  previewLabel, previewDisabled, previewPlaying, previewLoading, previewError, previewProgress, previewSeconds, disabledReason, onPreview,
 }: DropLabDockProps) {
   const progress = Math.max(0, Math.min(1, previewProgress));
   return (
-    <div
-      className="flex shrink-0 flex-wrap items-center gap-4 border-y border-[var(--color-border-faint)] bg-[color-mix(in_srgb,var(--color-surface)_56%,var(--color-background))] px-4 py-2"
-      role="region"
-      aria-label="Drop Lab audio dock"
-    >
-      <div className="w-[230px] shrink-0">
-        <p className="text-[9px] font-black uppercase tracking-[0.22em] text-primary">Transition transport</p>
-        <p className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-foreground/80">
-          Selected build <ArrowRight size={10} className="text-muted-foreground" />
-          <span className="rounded border border-primary/30 bg-primary/10 px-1 text-primary">Swap at cue</span>
-          <ArrowRight size={10} className="text-muted-foreground" /> Candidate drop
-        </p>
-      </div>
-      <TransportButton
-        label={previewLabel}
-        tone={previewPlaying ? 'stop' : 'play'}
-        size="compact"
-        onClick={onPreview}
-        disabled={previewDisabled}
-        title={disabledReason ?? previewLabel}
-      >
-        {previewLoading ? <CircleDash size={16} className="animate-spin" /> : previewPlaying ? <Stop size={14} /> : previewError ? <RotateCounterclockwise size={16} /> : <Play size={16} />}
-      </TransportButton>
-      <div className="flex min-w-[160px] flex-1 items-center gap-2" aria-hidden="true">
-        <div className="relative h-1.5 flex-1 rounded-full bg-white/10">
-          <div className="absolute inset-y-0 left-0 rounded-full bg-primary transition-[width] duration-75" style={{ width: `${progress * 100}%` }} />
-          <span className="absolute inset-y-[-3px] left-1/2 w-px bg-foreground/70" />
-        </div>
-      </div>
-      <span
-        className={cn(
-          'shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em]',
-          previewPlaying
-            ? 'border-primary/40 bg-primary/15 text-primary'
-            : previewError
-              ? 'border-amber-400/35 bg-amber-400/10 text-amber-300'
-              : 'border-[var(--color-border-subtle)] text-muted-foreground',
-        )}
-      >
-        {previewLoading ? 'Preparing audio' : previewError ? 'Audio needs attention' : phaseLabel(previewPhase, previewPlaying)}
-      </span>
-    </div>
+    <AudioDock data-testid="drop-lab-audio-dock" aria-label="Drop Lab audio dock" className="flex-none flex-row flex-wrap items-center gap-4">
+      <MediaTransportControlGroup
+        compact
+        playOnly
+        ariaLabel="Drop Lab transport controls"
+        playing={previewPlaying}
+        playLabel={previewDisabled && disabledReason ? `${previewLabel} (${disabledReason})` : previewLabel}
+        playIcon={previewLoading
+          ? <CircleDash size={16} className="animate-spin" />
+          : previewPlaying ? <Stop size={14} fill="currentColor" /> : previewError ? <RotateCounterclockwise size={16} /> : <Play size={16} fill="currentColor" />}
+        onTogglePlay={onPreview}
+        playDisabled={previewDisabled}
+      />
+      <PlaybackSeekBar
+        currentSeconds={progress * previewSeconds}
+        durationSeconds={previewSeconds}
+        seekable={false}
+        readOnly
+        ariaLabel="Transition preview position"
+      />
+    </AudioDock>
   );
 }
 
@@ -111,7 +86,8 @@ interface DropLabControlsProps {
   candidateDropPoints: DropPoint[];
   sourceDropId: string | null;
   candidateDropId: string | null;
-  disabledReason: string | null;
+  /** When something blocks the preview, the status line above the dock already says what. */
+  previewBlocked: boolean;
   onSourceDropChange: (dropId: string) => void;
   onCandidateDropChange: (dropId: string) => void;
   onBeatOffsetChange: (offset: DropLabBeatOffset) => void;
@@ -120,7 +96,7 @@ interface DropLabControlsProps {
 
 /** The four preview controls, laid out like the Cue Points filter row. */
 export function DropLabControls({
-  beatOffset, barCount, sourceDropPoints, candidateDropPoints, sourceDropId, candidateDropId, disabledReason,
+  beatOffset, barCount, sourceDropPoints, candidateDropPoints, sourceDropId, candidateDropId, previewBlocked,
   onSourceDropChange, onCandidateDropChange, onBeatOffsetChange, onBarCountChange,
 }: DropLabControlsProps) {
   return (
@@ -130,7 +106,7 @@ export function DropLabControls({
       <Segmented label="3 · Line up the entry" helper="Move the candidate start around its detected drop.">
         <TabNavigation
           ariaLabel="Candidate drop alignment"
-          variant="filter"
+          variant="primary"
           value={String(beatOffset)}
           onChange={(value) => onBeatOffsetChange(Number(value) as DropLabBeatOffset)}
           options={[{ id: '-1', label: '−1 beat' }, { id: '0', label: 'On drop' }, { id: '1', label: '+1 beat' }]}
@@ -139,15 +115,17 @@ export function DropLabControls({
       <Segmented label="4 · Preview length" helper="Choose how much build and drop audio to hear.">
         <TabNavigation
           ariaLabel="Comparison window"
-          variant="filter"
+          variant="primary"
           value={String(barCount)}
           onChange={(value) => onBarCountChange(Number(value) as DropLabBarCount)}
           options={[{ id: '4', label: '4 bars' }, { id: '8', label: '8 bars' }, { id: '16', label: '16 bars' }]}
         />
       </Segmented>
-      <p className={cn('ml-auto max-w-[260px] self-center text-[10px] leading-snug', disabledReason ? 'text-amber-300' : 'text-muted-foreground')}>
-        {disabledReason ?? 'Press play to hear the build, then the automatic swap into the candidate drop.'}
-      </p>
+      {!previewBlocked && (
+        <p className={cn('ml-auto max-w-[260px] self-center text-[10px] leading-snug text-muted-foreground')}>
+          Press play to hear the build, then the automatic swap into the candidate drop.
+        </p>
+      )}
     </div>
   );
 }

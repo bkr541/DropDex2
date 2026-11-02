@@ -9,6 +9,7 @@ import {
   scoreRouletteCandidate,
 } from '../features/roulette/rouletteMatching';
 import { logger } from '../lib/logger';
+import { formatCamelotCode } from '../components/ui/display/camelotKey';
 import type { RekordboxTrack } from '../types';
 
 export type DropLabMatchLabel = 'Strong Match' | 'Good Match' | 'Compatible' | 'Experimental';
@@ -47,7 +48,8 @@ function reasonsFor(source: RekordboxTrack, candidate: RekordboxTrack): Array<{ 
 
 /** Camelot code for display, since candidate rows carry only the light track columns. */
 export function dropLabKeyLabel(track: RekordboxTrack | null): string {
-  return (track && resolveTrackCamelotCode(track)) ?? '—';
+  const code = track ? resolveTrackCamelotCode(track) : null;
+  return code ? formatCamelotCode(code) : '—';
 }
 
 /**

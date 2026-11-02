@@ -84,3 +84,39 @@
 .dd-media-listbox__option:hover,
 .dd-media-listbox__option[data-active="true"] { background: var(--color-control-surface-hover); color: white; }
 .dd-media-listbox__option[aria-selected="true"] { background: rgb(var(--color-control-blue-rgb) / .12); color: white; box-shadow: inset 2px 0 0 var(--color-control-blue); }
+
+/* Timeline lanes and audio dock (Cue Points style), shared with Drop Lab. */
+.cue-timeline {
+  --cue-timeline-inline-inset: 24px;
+  box-shadow: none;
+}
+
+.cue-timeline__data-lane {
+  padding-inline: var(--cue-timeline-inline-inset);
+}
+
+.cue-timeline__rail {
+  background: color-mix(in srgb, var(--color-background) 86%, var(--color-surface));
+}
+
+.cue-audio-dock {
+  border-top: 1px solid var(--color-border-faint);
+  border-bottom: 1px solid var(--color-border-faint);
+  background: color-mix(in srgb, var(--color-surface) 56%, var(--color-background));
+  box-shadow: none;
+}
+
+.cue-audio-dock .dd-media-transport-group {
+  border-color: var(--color-border-faint);
+  background: color-mix(in srgb, var(--color-control-surface) 72%, transparent);
+  box-shadow: none;
+}
+
+.cue-audio-dock .dd-media-button {
+  border-color: var(--color-border-faint);
+  background: transparent;
+}
+
+.cue-audio-dock .dd-media-button--play {
+  background: rgb(var(--color-control-blue-rgb) / 0.035);
+}

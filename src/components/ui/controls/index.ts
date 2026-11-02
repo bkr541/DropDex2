@@ -24,3 +24,6 @@ export type { FilterDropdownOption } from './FilterDropdown';
 export { Knob } from './Knob';
 export { DualRangeSlider } from './DualRangeSlider';
 export type { DualRangeVariant } from './DualRangeSlider';
+export { ContextMenu } from './ContextMenu';
+export type { ContextMenuItem } from './ContextMenu';
+export { ToolbarIconButton, ToolbarIconGroup } from './ToolbarIconButton';

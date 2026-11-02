@@ -49,6 +49,7 @@ const ReviewView = lazyWithRecovery('review', () => import('./components/library
 const ReviewEmptyState = lazyWithRecovery('review-empty', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewEmptyState })));
 const CuePointsView = lazyWithRecovery('cue-points', () => import('./components/cues/CuePointsView').then(m => ({ default: m.CuePointsView })));
 const AuditionView = lazyWithRecovery('audition', () => import('./components/audition/AuditionView').then(m => ({ default: m.AuditionView })));
+const UsbManagementView = lazyWithRecovery('usb-management', () => import('./components/usb-management/UsbManagementView').then(m => ({ default: m.UsbManagementView })));
 const DropLabView = lazyWithRecovery('drop-lab', () => import('./components/drop-lab/DropLabView').then(m => ({ default: m.DropLabView })));
 
 import { LibraryView } from './components/library/LibraryView';
@@ -93,7 +94,7 @@ function CuePointsNavIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'audition' | 'settings' | 'discovery' | 'search' | 'drop-lab' | 'import' | 'flip-lab' | 'not-found';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'audition' | 'settings' | 'discovery' | 'search' | 'drop-lab' | 'import' | 'flip-lab' | 'usb' | 'not-found';
 
 type ImportNotice = {
   kind: 'success' | 'warning';
@@ -117,6 +118,7 @@ function viewForRoute(route: AppRoute): View {
     case 'profile': return 'settings';
     case 'settings': return 'settings';
     case 'flip-lab': return 'flip-lab';
+    case 'usb': return 'usb';
     case 'not-found': return 'not-found';
   }
 }
@@ -779,6 +781,7 @@ export default function App() {
       case 'discovery': navigate({ name: 'discovery' }); break;
       case 'search': navigate({ name: 'search' }); break;
       case 'flip-lab': navigate({ name: 'flip-lab' }); break;
+      case 'usb': navigate({ name: 'usb' }); break;
       case 'drop-lab': navigate({ name: 'drop-lab', sourceTrackId: null, candidateTrackId: null, sourceDropId: null, candidateDropId: null }); break;
       default: break;
     }
@@ -1090,6 +1093,7 @@ export default function App() {
     { view: 'search', icon: Search, label: 'Search', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'drop-lab', icon: Chemistry, label: 'Drop Lab', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
     { view: 'flip-lab', icon: Shuffle, label: 'Flip Lab', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
+    { view: 'usb', icon: Usb, label: 'USB Management', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
   ];
 
   const titledPage = (title: string, onBack: (() => void) | null = goBack): PageHeading => ({ title, onBack });
@@ -1138,6 +1142,7 @@ export default function App() {
       case 'discovery': return titledPage('Artist Discovery');
       case 'search': return titledPage('Artist Search');
       case 'flip-lab': return titledPage('Flip Lab');
+      case 'usb': return titledPage('USB Management');
       case 'drop-lab': return titledPage('Drop Lab', handleDropLabBack);
       case 'cues': return titledPage('Cue Points');
       case 'audition': return titledPage('Audition');
@@ -1948,6 +1953,21 @@ export default function App() {
                   activeImportLoading={importLoading}
                   activeImportError={importError}
                 />
+              </motion.div>
+            )}
+
+            {/* ── USB Management ── */}
+            {!routeBlocked && currentView === 'usb' && (
+              <motion.div
+                key="usb"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                className="min-w-0"
+              >
+                <LazyFeature label="Loading USB Management…" boundaryKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
+                  <UsbManagementView />
+                </LazyFeature>
               </motion.div>
             )}
 

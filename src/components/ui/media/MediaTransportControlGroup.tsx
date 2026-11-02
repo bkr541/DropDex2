@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Pause, Play, SkipBack, SkipForward } from '@carbon/icons-react';
 import { cn } from '../../../lib/utils';
 import { TransportButton } from './TransportButton';
@@ -17,6 +18,12 @@ export interface MediaTransportControlGroupProps {
   nextDisabled?: boolean;
   compact?: boolean;
   ariaLabel?: string;
+  /** Show only the play button, in the same capsule. For screens with nothing to skip to. */
+  playOnly?: boolean;
+  /** Replaces the Play / Pause label. */
+  playLabel?: string;
+  /** Replaces the Play / Pause icon, e.g. a stop square. */
+  playIcon?: ReactNode;
 }
 
 export function MediaTransportControlGroup({
@@ -34,33 +41,44 @@ export function MediaTransportControlGroup({
   nextDisabled = false,
   compact = false,
   ariaLabel = 'Media transport controls',
+  playOnly = false,
+  playLabel,
+  playIcon,
 }: MediaTransportControlGroupProps) {
   const size = compact ? 'compact' : 'standard';
   const iconSize = compact ? 14 : 18;
   return (
     <div className={cn('dd-media-transport-group', compact && 'dd-media-transport-group--compact')} role="group" aria-label={ariaLabel}>
-      <TransportButton label="Previous track" size={size} disabled={disabled || previousDisabled} onClick={onPrevious}>
-        <SkipBack size={iconSize} fill="currentColor" />
-      </TransportButton>
-      <TransportButton label="Rewind" size={size} disabled={disabled || rewindDisabled} onClick={onRewind}>
-        <SkipBack size={iconSize} fill="currentColor" />
-      </TransportButton>
+      {!playOnly && (
+        <>
+          <TransportButton label="Previous track" size={size} disabled={disabled || previousDisabled} onClick={onPrevious}>
+            <SkipBack size={iconSize} fill="currentColor" />
+          </TransportButton>
+          <TransportButton label="Rewind" size={size} disabled={disabled || rewindDisabled} onClick={onRewind}>
+            <SkipBack size={iconSize} fill="currentColor" />
+          </TransportButton>
+        </>
+      )}
       <TransportButton
-        label={playing ? 'Pause' : 'Play'}
+        label={playLabel ?? (playing ? 'Pause' : 'Play')}
         tone="play"
         size={compact ? 'standard' : 'hero'}
         active={playing}
         disabled={disabled || playDisabled}
         onClick={onTogglePlay}
       >
-        {playing ? <Pause size={compact ? 17 : 22} fill="currentColor" /> : <Play size={compact ? 17 : 22} fill="currentColor" />}
+        {playIcon ?? (playing ? <Pause size={compact ? 17 : 22} fill="currentColor" /> : <Play size={compact ? 17 : 22} fill="currentColor" />)}
       </TransportButton>
-      <TransportButton label="Fast forward" size={size} disabled={disabled || forwardDisabled} onClick={onForward}>
-        <SkipForward size={iconSize} fill="currentColor" />
-      </TransportButton>
-      <TransportButton label="Next track" size={size} disabled={disabled || nextDisabled} onClick={onNext}>
-        <SkipForward size={iconSize} fill="currentColor" />
-      </TransportButton>
+      {!playOnly && (
+        <>
+          <TransportButton label="Fast forward" size={size} disabled={disabled || forwardDisabled} onClick={onForward}>
+            <SkipForward size={iconSize} fill="currentColor" />
+          </TransportButton>
+          <TransportButton label="Next track" size={size} disabled={disabled || nextDisabled} onClick={onNext}>
+            <SkipForward size={iconSize} fill="currentColor" />
+          </TransportButton>
+        </>
+      )}
     </div>
   );
 }

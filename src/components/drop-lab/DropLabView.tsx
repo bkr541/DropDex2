@@ -15,6 +15,9 @@ import type { RekordboxTrack } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { logger } from '../../lib/logger';
 import { ChevronLeft, CircleDash, Chemistry, Document, Search } from '@carbon/icons-react';
+import { useUsbConnection } from '../../contexts/UsbConnectionContext';
+import { ToolbarIconButton, ToolbarIconGroup } from '../ui/controls';
+import { resolveDropLabLoad, type DropLabLoadMethod, type DropLabSide } from './dropLabDrag';
 
 interface DropLabViewProps {
   sourceTrack: RekordboxTrack | null;
@@ -83,21 +86,6 @@ function DetailWaveformStatus({ label, state, usedFallback, onRetry }: { label: 
   );
 }
 
-function HeaderIconButton({ title, onClick, disabled, children }: { title: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onClick={onClick}
-      disabled={disabled}
-      className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-35"
-    >
-      {children}
-    </button>
-  );
-}
-
 export function DropLabView({
   sourceTrack,
   importId,
@@ -117,6 +105,8 @@ export function DropLabView({
   const [selectedDropId, setSelectedDropId] = useState<string | null>(preservedSourceDropId ?? null);
   const [candidateDropId, setCandidateDropId] = useState<string | null>(preservedCandidateDropId ?? null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const usb = useUsbConnection();
+  const usbReady = usb.status === 'connected';
 
   // Same engine as Flip Lab: library pool, best pair when nothing is chosen, ranked candidates after.
   const picks = useDropLabFlipPicks(importId, sourceTrack, preservedActiveCandidate ?? null);
@@ -228,6 +218,20 @@ export function DropLabView({
     onDropSelectionChange?.(selectedDropId, null);
   }
 
+  // A track from the candidate list goes into the left side (the build, which becomes the
+  // selected track) or the right side (the drop, which becomes the active candidate).
+  function handleLoadTrack(trackId: string, side: DropLabSide, method: DropLabLoadMethod) {
+    const entry = candidates.find((candidate) => candidate.track.id === trackId);
+    const action = resolveDropLabLoad(side, trackId, sourceTrack?.id ?? null, activeCandidateId);
+    logger.info(`droplab.load.${side}`, { trackId, title: entry?.track.title ?? null, method, result: action.kind });
+    if (action.kind === 'set-candidate') {
+      handleCandidateSelect(action.trackId);
+    } else if (action.kind === 'set-source') {
+      preview.stop();
+      onPickSource(action.sourceTrackId, action.candidateTrackId, { auto: false });
+    }
+  }
+
   function handleSourceDropChange(dropId: string) {
     setSelectedDropId(dropId);
     onDropSelectionChange?.(dropId, candidateDropId);
@@ -244,6 +248,8 @@ export function DropLabView({
     preview.stop();
     onPickSource(track.id, null, { auto: false });
   }
+
+  const previewSeconds = segments.source && segments.candidate ? (segments.source.durationMs + segments.candidate.durationMs) / 1000 : 0;
 
   const alignmentLabel = beatOffset === -1
     ? 'Candidate starts one beat before its detected drop'
@@ -302,11 +308,11 @@ export function DropLabView({
         track={sourceTrack}
         dropPoint={sourceDrop}
         actions={(
-          <>
-            <HeaderIconButton title="Back" onClick={onBack}><ChevronLeft size={20} /></HeaderIconButton>
-            <HeaderIconButton title="Change source track" onClick={() => setPickerOpen((open) => !open)}><Search size={20} /></HeaderIconButton>
-            <HeaderIconButton title="Candidate details" onClick={() => activeCandidate && onTrackDetails(activeCandidate)} disabled={!activeCandidate}><Document size={20} /></HeaderIconButton>
-          </>
+          <ToolbarIconGroup className="-mt-[7px]">
+            <ToolbarIconButton label="Back" onClick={onBack}><ChevronLeft size={20} /></ToolbarIconButton>
+            <ToolbarIconButton label="Change source track" onClick={() => setPickerOpen((open) => !open)}><Search size={20} /></ToolbarIconButton>
+            <ToolbarIconButton label="Candidate details" onClick={() => activeCandidate && onTrackDetails(activeCandidate)} disabled={!activeCandidate}><Document size={20} /></ToolbarIconButton>
+          </ToolbarIconGroup>
         )}
       />
       {pickerOpen && (
@@ -325,9 +331,9 @@ export function DropLabView({
         loading={analysis.loading || sourceDetail.detailState.status === 'loading' || candidateDetail.detailState.status === 'loading'}
         unavailableMessage={waveformPanelMessage}
         previewProgress={preview.progress}
-        previewPlaying={preview.playing}
         alignmentLabel={alignmentLabel}
         barCount={barCount}
+        onLoadTrack={(trackId, side) => handleLoadTrack(trackId, side, 'drag')}
       />
 
       {/* Active candidate: below the timeline, on the right, like Flip Lab's instrumental */}
@@ -342,7 +348,7 @@ export function DropLabView({
         previewLoading={preview.status === 'loading'}
         previewError={preview.status === 'error'}
         previewProgress={preview.progress}
-        previewPhase={preview.phase}
+        previewSeconds={previewSeconds}
         disabledReason={preview.disabledReason}
         onPreview={preview.playOrStop}
       />
@@ -353,7 +359,7 @@ export function DropLabView({
         candidateDropPoints={candidateAnalysis?.dropPoints ?? []}
         sourceDropId={sourceDrop?.id ?? null}
         candidateDropId={candidateDrop?.id ?? null}
-        disabledReason={preview.disabledReason}
+        previewBlocked={Boolean(preview.disabledReason)}
         onSourceDropChange={handleSourceDropChange}
         onCandidateDropChange={handleCandidateDropChange}
         onBeatOffsetChange={setBeatOffset}
@@ -364,7 +370,8 @@ export function DropLabView({
         analyses={analysis.byTrackId}
         activeCandidateId={activeCandidateId}
         loading={picks.loading || analysis.loading}
-        onSelect={handleCandidateSelect}
+        usbReady={usbReady}
+        onLoadTrack={handleLoadTrack}
       />
     </div>
   );

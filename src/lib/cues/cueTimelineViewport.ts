@@ -46,13 +46,14 @@ export function zoomCueTimelineView(
   durationMs: number,
   factor: number,
   focusFraction = 0.5,
+  minimumWindow = MIN_CUE_TIMELINE_WINDOW_MS,
 ): CueTimelineView | null {
   const normalized = normalizeView(view, durationMs);
   if (!normalized || !Number.isFinite(factor) || factor <= 0) return null;
 
   const fraction = Math.max(0, Math.min(1, focusFraction));
   const currentRange = normalized.end - normalized.start;
-  const minimumRange = Math.min(MIN_CUE_TIMELINE_WINDOW_MS, durationMs);
+  const minimumRange = Math.min(minimumWindow, durationMs);
   const nextRange = Math.max(minimumRange, Math.min(durationMs, currentRange * factor));
   const focusMs = normalized.start + fraction * currentRange;
   const start = focusMs - fraction * nextRange;
@@ -68,4 +69,21 @@ export function panCueTimelineView(
   const normalized = normalizeView(view, durationMs);
   if (!normalized || !Number.isFinite(deltaMs)) return null;
   return clampViewToDuration(normalized.start + deltaMs, normalized.end + deltaMs, durationMs);
+}
+
+/**
+ * What a mouse wheel does over a timeline: a mostly sideways scroll pans, anything
+ * else zooms around the pointer. `focusFraction` is where the pointer sits across the timeline, 0 to 1.
+ */
+export function applyTimelineWheel(
+  view: CueTimelineView,
+  durationMs: number,
+  wheel: { deltaX: number; deltaY: number; focusFraction: number; width: number },
+  minimumWindow = MIN_CUE_TIMELINE_WINDOW_MS,
+): CueTimelineView | null {
+  if (Math.abs(wheel.deltaX) > Math.abs(wheel.deltaY)) {
+    if (!(wheel.width > 0)) return null;
+    return panCueTimelineView(view, durationMs, (wheel.deltaX / wheel.width) * (view.end - view.start));
+  }
+  return zoomCueTimelineView(view, durationMs, Math.exp(wheel.deltaY * 0.005), Math.max(0, Math.min(1, wheel.focusFraction)), minimumWindow);
 }

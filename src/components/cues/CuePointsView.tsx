@@ -3,7 +3,8 @@ import { ChevronDown, CircleDash, Close, ColorPalette, Edit, Export, Idea, Music
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
-import { gridBeatsForMode, MIN_CUE_TIMELINE_WINDOW_MS, panCueTimelineView, zoomCueTimelineView, type CueGridDisplayMode } from '../../lib/cues/cueTimelineViewport';
+import { gridBeatsForMode, type CueGridDisplayMode } from '../../lib/cues/cueTimelineViewport';
+import { useTimelineZoom } from '../../hooks/useTimelineZoom';
 import { applyAutoCueStrategy } from '../../lib/music/autoCueStrategy';
 import {
   addWorkingCue,
@@ -40,9 +41,9 @@ import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/
 import { CueEditorToolbar, CueStateIcon } from './CueEditorToolbar';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { ControlButton, FilterDropdown, SearchControl, SelectControl, TextControl } from '../ui/controls';
-import { Artwork } from '../ui/display/Artwork';
+import { TrackIdentity, TrackNameCell, TrackTable, TrackTableBody, TrackTableHead, TrackTableHeadCell, TrackTableRow } from '../ui/display';
 import { TabNavigation } from '../ui/display/TabNavigation';
-import { MediaTransportControlGroup, TrackWaveformPreview, WaveformZoomControls, cueMarkersFromState } from '../ui/media';
+import { AudioDock, MediaTransportControlGroup, PlaybackSeekBar, TimelineBeatLane, TimelineSectionLane, TrackWaveformPreview, WaveformZoomControls, cueMarkersFromState } from '../ui/media';
 import { KeyBadge } from '../ui/display';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
@@ -551,10 +552,9 @@ function CuePointsAudioDock({
   }, [currentSeconds, durationSeconds, seek, seekable]);
 
   return (
-    <div
+    <AudioDock
       data-testid="cue-audio-dock"
-      className={cn('cue-audio-dock flex min-w-0 flex-1 gap-2 px-2.5 py-2', audition ? 'flex-row items-center overflow-x-auto' : 'flex-col xl:flex-row xl:items-center')}
-      role="region"
+      className={audition ? 'flex-row items-center overflow-x-auto' : 'flex-col xl:flex-row xl:items-center'}
       aria-label={`${label} audio dock`}
     >
       {showBrowserSource && <div className="flex min-w-0 shrink-0 self-stretch xl:w-[190px]">
@@ -586,25 +586,13 @@ function CuePointsAudioDock({
         nextDisabled={transportBlocked || nextIndex == null}
       />
 
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="w-9 shrink-0 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
-          {formatTime(currentSeconds * 1000)}
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={durationSeconds > 0 ? durationSeconds : 1}
-          step={0.1}
-          value={seekable ? Math.min(durationSeconds, Math.max(0, currentSeconds)) : 0}
-          disabled={!seekable}
-          onChange={(event) => seek(Number(event.target.value))}
-          aria-label={`${label} playback position`}
-          className="h-1.5 min-w-[120px] flex-1 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
-        />
-        <span className="w-9 shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-          {formatTime(durationSeconds > 0 ? durationSeconds * 1000 : null)}
-        </span>
-      </div>
+      <PlaybackSeekBar
+        currentSeconds={currentSeconds}
+        durationSeconds={durationSeconds}
+        seekable={seekable}
+        onSeek={seek}
+        ariaLabel={`${label} playback position`}
+      />
 
       {audition && (
         <>
@@ -675,7 +663,7 @@ function CuePointsAudioDock({
       </div>
         </>
       )}
-    </div>
+    </AudioDock>
   );
 }
 
@@ -1124,28 +1112,25 @@ function CueWaveformPanel({
 }) {
   const durationMs = durationMsForTrack(track, beatGrid, phrases);
 
-  const [viewStart, setViewStart] = useState(0);
-  const [viewEnd, setViewEnd] = useState<number | null>(null);
+  const zoom = useTimelineZoom(durationMs);
+  const { viewStart, containerRef: waveformDivRef } = zoom;
   const [selectedCueId, setSelectedCueId] = useState<string | null>(null);
-  const viewRef = useRef({ start: 0, end: null as number | null });
-  const wheelRafRef = useRef<number | null>(null);
-  const waveformDivRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<CueContextMenuState | null>(null);
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
   const [applyMenuOpen, setApplyMenuOpen] = useState(false);
   const applyMenuRef = useRef<HTMLDivElement>(null);
   const dragStateRef = useRef<{ cueId: string; pointerId: number; startX: number; moved: boolean } | null>(null);
-  const effectiveViewEnd = viewEnd ?? durationMs ?? 0;
+  const effectiveViewEnd = zoom.viewEnd;
 
+  const resetZoom = zoom.reset;
   useEffect(() => {
-    setViewStart(0);
-    setViewEnd(null);
+    resetZoom();
     setSelectedCueId(null);
     setContextMenu(null);
     setEditorMessage(null);
     setApplyMenuOpen(false);
     dragStateRef.current = null;
-  }, [track?.id, durationMs]);
+  }, [track?.id, durationMs, resetZoom]);
 
   useEffect(() => {
     onSnapResolutionChange('1-beat');
@@ -1209,41 +1194,6 @@ function CueWaveformPanel({
   }
 
 
-  // Keep viewRef in sync so wheel handler always reads the latest view without stale closures
-  useEffect(() => { viewRef.current = { start: viewStart, end: viewEnd }; }, [viewStart, viewEnd]);
-
-  useEffect(() => {
-    const el = waveformDivRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      if (!durationMs || durationMs <= 0) return;
-      e.preventDefault();
-      const rect = el.getBoundingClientRect();
-      const { start: vStart, end: vEndRaw } = viewRef.current;
-      const vEnd = vEndRaw ?? durationMs;
-      const viewRange = vEnd - vStart;
-      const nextView = Math.abs(e.deltaX) > Math.abs(e.deltaY)
-        ? panCueTimelineView({ start: vStart, end: vEnd }, durationMs, (e.deltaX / rect.width) * viewRange)
-        : zoomCueTimelineView(
-          { start: vStart, end: vEnd },
-          durationMs,
-          Math.exp(e.deltaY * 0.005),
-          Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
-        );
-      if (!nextView) return;
-      viewRef.current = nextView;
-      if (!wheelRafRef.current) {
-        wheelRafRef.current = requestAnimationFrame(() => {
-          setViewStart(viewRef.current.start);
-          setViewEnd(viewRef.current.end);
-          wheelRafRef.current = null;
-        });
-      }
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [durationMs]);
-
   const sections = useMemo(
     () => buildTimelineSections(phrases, beatGrid, durationMs),
     [beatGrid, durationMs, phrases],
@@ -1297,15 +1247,7 @@ function CueWaveformPanel({
     && phrases.every((phrase) => phrase.track_id === track.id),
   );
 
-  const handleZoom = useCallback((factor: number) => {
-    if (!durationMs || durationMs <= 0) return;
-    const currentEnd = viewRef.current.end ?? durationMs;
-    const nextView = zoomCueTimelineView({ start: viewRef.current.start, end: currentEnd }, durationMs, factor, 0.5);
-    if (!nextView) return;
-    viewRef.current = nextView;
-    setViewStart(nextView.start);
-    setViewEnd(nextView.end);
-  }, [durationMs]);
+  const handleZoom = zoom.zoomBy;
 
   const timeAtClientX = useCallback((clientX: number, element: HTMLElement): number | null => {
     if (effectiveViewEnd <= viewStart) return null;
@@ -1425,29 +1367,19 @@ function CueWaveformPanel({
   return (
     <section className="cue-workstation relative overflow-visible" data-testid="cue-points-workstation">
       <div className={cn('cue-workstation__header flex flex-row items-start justify-between px-4 lg:px-5', compact ? 'gap-2 py-1.5' : 'gap-3 py-2')}>
-        <div className={cn('flex min-w-0 flex-1 items-center', compact ? 'gap-2.5' : 'gap-3.5')}>
-          <Artwork
-            src={track.artwork_path}
-            alt={`Artwork for ${track.title}`}
-            fallbackTitle="No artwork"
-            className={cn('shrink-0 rounded-[7px]', compact ? 'h-10 w-10' : 'h-9 w-9')}
-          />
-          <div className="min-w-0 flex-1">
-            <h1 className={cn('truncate font-bold leading-tight tracking-[-0.02em] text-foreground', compact ? 'text-base' : 'text-base md:text-[17px]')}>{track.title}</h1>
-            <div className={compact ? undefined : 'flex min-w-0 items-center gap-4'}>
-            <p className={cn('truncate font-medium leading-tight text-muted-foreground', compact ? 'text-[10px]' : 'min-w-0 text-xs')}>{track.artist ?? 'Artist Not Available'}</p>
-            <div className={cn('flex items-center font-semibold text-muted-foreground', compact ? 'mt-0.5 flex-wrap gap-x-3 gap-y-0.5 text-[9px]' : 'shrink-0 gap-x-4 text-[10px]')}>
-              <span><span className="uppercase tracking-[0.08em] text-foreground/45">BPM</span> <strong className="ml-1 text-foreground/90">{bpmDisplay}</strong></span>
-              <span><span className="uppercase tracking-[0.08em] text-foreground/45">Key</span> <strong className="ml-1" style={{ color: camelotColor(track.musical_key) }}>{keyDisplay}</strong></span>
-              <span><span className="uppercase tracking-[0.08em] text-foreground/45">Duration</span> <strong className="ml-1 text-foreground/90">{durationDisplay}</strong></span>
-              <span className="flex items-center gap-1.5">
-                <span className="uppercase tracking-[0.08em] text-foreground/45">Cues</span>
-                <strong className="text-foreground/90">{cueLoading ? '…' : cueLoadStatus === 'failed' ? '!' : String(cues.length)}</strong>
-              </span>
-            </div>
-            </div>
-          </div>
-        </div>
+        <TrackIdentity
+          as="h1"
+          compact={compact}
+          title={track.title}
+          subtitle={track.artist}
+          artworkSrc={track.artwork_path}
+          stats={[
+            { label: 'BPM', value: bpmDisplay },
+            { label: 'Key', value: keyDisplay, color: camelotColor(track.musical_key) },
+            { label: 'Duration', value: durationDisplay },
+            { label: 'Cues', value: cueLoading ? '…' : cueLoadStatus === 'failed' ? '!' : String(cues.length) },
+          ]}
+        />
 
         {!audition && <div className="cue-workstation__actions -mt-[7px] flex shrink-0 items-center gap-0.5">
           <CueStateIcon state={draftStatus} />
@@ -1706,9 +1638,8 @@ function CueWaveformPanel({
                 </div>
               </div>
 
-              <div className="cue-timeline__data-lane h-[28px]">
-                <div className="relative h-full overflow-hidden">
-                {phraseLoading ? (
+              <TimelineSectionLane
+                message={phraseLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
                 ) : sections.length === 0 ? (
                   <div className="absolute inset-0 flex items-center px-2">
@@ -1717,51 +1648,25 @@ function CueWaveformPanel({
                       Sections unavailable
                     </span>
                   </div>
-                ) : (
-                  <>
-                    {sections.map((section) => {
-                      const left = percentageAt(section.startMs, viewStart, effectiveViewEnd);
-                      const right = percentageAt(section.endMs, viewStart, effectiveViewEnd);
-                      const width = Math.max(0, right - left);
-                      return (
-                        <div
-                          key={section.id}
-                          className="absolute top-0 h-[22px] flex items-center justify-center overflow-hidden"
-                          style={{
-                            left: `${left}%`,
-                            width: `${width}%`,
-                            backgroundColor: 'transparent',
-                            borderBottom: `2px solid ${section.waveformColor}`,
-                          }}
-                          title={`${section.label} · ${formatTime(section.startMs)}–${formatTime(section.endMs)}`}
-                        >
-                          <span
-                            className="whitespace-nowrap font-mono text-[9px] font-bold leading-none tracking-wide"
-                            style={{
-                              color: section.waveformColor,
-                              textShadow: '0 1px 4px rgba(0,0,0,0.8)',
-                            }}
-                          >
-                            {section.label.toUpperCase()}
-                          </span>
-                        </div>
-                      );
-                    })}
-                    {durationMs != null && sections.length > 0 && sections[sections.length - 1].endMs < durationMs && (() => {
-                      const left = percentageAt(sections[sections.length - 1].endMs, viewStart, effectiveViewEnd);
-                      const right = percentageAt(durationMs, viewStart, effectiveViewEnd);
-                      const width = Math.max(0, right - left);
-                      return width > 0 ? (
-                        <div
-                          className="absolute top-0 h-[22px]"
-                          style={{ left: `${left}%`, width: `${width}%`, backgroundColor: 'transparent', borderBottom: '2px solid rgba(255,255,255,0.28)' }}
-                        />
-                      ) : null;
-                    })()}
-                  </>
-                )}
-                </div>
-              </div>
+                ) : undefined}
+                sections={sections.map((section) => {
+                  const left = percentageAt(section.startMs, viewStart, effectiveViewEnd);
+                  const right = percentageAt(section.endMs, viewStart, effectiveViewEnd);
+                  return {
+                    id: section.id,
+                    label: section.label,
+                    color: section.waveformColor,
+                    leftPercent: left,
+                    widthPercent: Math.max(0, right - left),
+                    title: `${section.label} · ${formatTime(section.startMs)}–${formatTime(section.endMs)}`,
+                  };
+                })}
+                trailing={durationMs != null && sections.length > 0 && sections[sections.length - 1].endMs < durationMs ? (() => {
+                  const left = percentageAt(sections[sections.length - 1].endMs, viewStart, effectiveViewEnd);
+                  const right = percentageAt(durationMs, viewStart, effectiveViewEnd);
+                  return { leftPercent: left, widthPercent: Math.max(0, right - left) };
+                })() : null}
+              />
 
               <div className={cn('cue-timeline__data-lane relative group/waveform', compact ? 'h-[56px]' : 'h-[68px]')}>
               <div
@@ -1884,14 +1789,13 @@ function CueWaveformPanel({
               <WaveformZoomControls
                 onZoomIn={() => handleZoom(0.75)}
                 onZoomOut={() => handleZoom(1 / 0.75)}
-                canZoomIn={Boolean(durationMs && durationMs > 0 && effectiveViewEnd - viewStart > Math.min(MIN_CUE_TIMELINE_WINDOW_MS, durationMs))}
-                canZoomOut={Boolean(durationMs && effectiveViewEnd - viewStart < durationMs)}
+                canZoomIn={zoom.canZoomIn}
+                canZoomOut={zoom.canZoomOut}
               />
               </div>
 
-              <div className="cue-timeline__data-lane h-[34px]">
-                <div className="relative h-full overflow-hidden">
-                {!gridVisible ? (
+              <TimelineBeatLane
+                message={!gridVisible ? (
                   <div className="flex h-full items-center px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">Grid hidden</div>
                 ) : beatGridLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading beat grid…</div>
@@ -1899,34 +1803,19 @@ function CueWaveformPanel({
                   <div className="flex h-full items-center px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">
                     No beat grid
                   </div>
-                ) : (
-                  <>
-                    {rulerTicks.map((beat) => (
-                      <span
-                        key={`ruler-${beat.seq}`}
-                        className={cn(
-                          'absolute -translate-x-1/2 rounded-full',
-                          beat.isDownbeat || beat.beatInBar === 1
-                            ? 'top-[2px] h-[14px] w-[2px] bg-[#f87171]'
-                            : 'top-[3px] h-[8px] w-[1.5px] bg-[#4ade80] opacity-90',
-                        )}
-                        style={{ left: `${percentageAt(beat.ms, viewStart, effectiveViewEnd)}%` }}
-                        title={`Bar ${beat.bar}, beat ${beat.beatInBar} · ${formatTime(beat.ms)}`}
-                      />
-                    ))}
-                    {rulerLabels.map((beat) => (
-                      <span
-                        key={`bar-label-${beat.seq}`}
-                        className="absolute bottom-[3px] -translate-x-1/2 font-mono text-[10px] font-medium tabular-nums text-[#9ca5ae]"
-                        style={{ left: `${percentageAt(beat.ms, viewStart, effectiveViewEnd)}%` }}
-                      >
-                        {beat.bar}
-                      </span>
-                    ))}
-                  </>
-                )}
-                </div>
-              </div>
+                ) : undefined}
+                ticks={rulerTicks.map((beat) => ({
+                  key: `ruler-${beat.seq}`,
+                  leftPercent: percentageAt(beat.ms, viewStart, effectiveViewEnd),
+                  downbeat: beat.isDownbeat || beat.beatInBar === 1,
+                  title: `Bar ${beat.bar}, beat ${beat.beatInBar} · ${formatTime(beat.ms)}`,
+                }))}
+                labels={rulerLabels.map((beat) => ({
+                  key: `bar-label-${beat.seq}`,
+                  leftPercent: percentageAt(beat.ms, viewStart, effectiveViewEnd),
+                  text: beat.bar,
+                }))}
+              />
             </div>
             </div>
           </div>
@@ -4543,45 +4432,23 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
         ) : (
           <>
             <div className="overflow-auto scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
-              <table className="cue-browser__table w-full min-w-[900px] border-collapse text-left" data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
-                <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
-                  <tr className="border-b border-[var(--color-border-faint)]">
-                    <th className="sticky top-0 z-10 bg-[var(--color-background)] px-3 py-2 select-none">
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-                        aria-label="Sort by Track"
-                        onClick={() => handleColClick('title')}
-                      >
-                        Track
-                        <span className={cn('text-primary', sortCol !== 'title' && 'invisible')}>{sortDir === 'asc' ? '↑' : '↓'}</span>
-                      </button>
-                    </th>
-                    {([
-                      { col: 'bpm', label: 'BPM', cls: 'px-3 py-2' },
-                      { col: 'key', label: 'Key', cls: 'px-3 py-2' },
-                      { col: 'genre', label: 'Genre', cls: mode === 'audition' ? 'px-3 py-2 w-[112px]' : 'px-3 py-2 w-[178px]' },
-                      { col: 'cues', label: 'Cues', cls: 'px-3 py-2 text-center' },
-                      { col: 'format', label: 'Format', cls: 'px-3 py-2 whitespace-nowrap' },
-                      { col: 'sampleRate', label: 'Sample Rate', cls: 'px-3 py-2 whitespace-nowrap' },
-                      { col: 'bitRate', label: 'Bit Rate', cls: 'px-3 py-2 whitespace-nowrap' },
-                      { col: 'duration', label: 'Duration', cls: 'px-3 py-2 text-left w-[80px]' },
-                    ] as const).map(({ col, label, cls }) => (
-                      <th key={col} className={cn(cls, 'sticky top-0 z-10 bg-[var(--color-background)] select-none')}>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-                          aria-label={`Sort by ${label}`}
-                          onClick={() => handleColClick(col)}
-                        >
-                          {label}
-                          <span className={cn('text-primary', sortCol !== col && 'invisible')}>{sortDir === 'asc' ? '↑' : '↓'}</span>
-                        </button>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--color-border-faint)]">
+              <TrackTable className="min-w-[900px]" data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
+                <TrackTableHead>
+                  <TrackTableHeadCell label="Track" column="title" sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
+                  {([
+                    { col: 'bpm', label: 'BPM', cls: 'px-3 py-2' },
+                    { col: 'key', label: 'Key', cls: 'px-3 py-2' },
+                    { col: 'genre', label: 'Genre', cls: mode === 'audition' ? 'px-3 py-2 w-[112px]' : 'px-3 py-2 w-[178px]' },
+                    { col: 'cues', label: 'Cues', cls: 'px-3 py-2 text-center' },
+                    { col: 'format', label: 'Format', cls: 'px-3 py-2 whitespace-nowrap' },
+                    { col: 'sampleRate', label: 'Sample Rate', cls: 'px-3 py-2 whitespace-nowrap' },
+                    { col: 'bitRate', label: 'Bit Rate', cls: 'px-3 py-2 whitespace-nowrap' },
+                    { col: 'duration', label: 'Duration', cls: 'px-3 py-2 text-left w-[80px]' },
+                  ] as const).map(({ col, label, cls }) => (
+                    <TrackTableHeadCell key={col} label={label} column={col} className={cls} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
+                  ))}
+                </TrackTableHead>
+                <TrackTableBody>
                   {orderedVisibleTracks.map((track, rowIndex) => {
                     const cueState = cueSummaryStates.get(track.id);
                     const cueCount = cueLoadCount(cueState);
@@ -4595,10 +4462,9 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                     const genreRuntimeBlocked = Boolean(metadataCloudOutcome && metadataCloudOutcome.state !== 'finalized');
                     const genreEditingAvailable = metadataDraftLoadStatus === 'loaded' && !genreRecoveryLocked && !genreRuntimeBlocked;
                     return (
-                      <tr
+                      <TrackTableRow
                         key={`${browserSource}:${selectedPlaylistId ?? 'library'}:${track.id}:${rowIndex}`}
-                        tabIndex={0}
-                        aria-selected={selected}
+                        selected={selected}
                         onClick={() => review ? onTrackOpen?.(track) : setSelectedTrack(track)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
@@ -4607,44 +4473,31 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                             else setSelectedTrack(track);
                           }
                         }}
-                        className={cn(
-                          'cue-browser__row cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50',
-                          selected ? 'cue-browser__row--selected' : 'hover:bg-[var(--color-surface-hover)]',
-                        )}
                       >
-                        <td className="px-3 py-1.5">
-                          <div className="group flex min-w-0 items-center gap-2.5">
-                            <span className={cn(
-                              'h-1.5 w-1.5 shrink-0 rounded-full',
-                              analysisReady(track)
-                                ? 'bg-emerald-400'
-                                : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required'
-                                  ? 'bg-red-400'
-                                  : track.analysis_parse_status == null
-                                    ? 'bg-muted-foreground/40'
-                                    : 'bg-amber-400',
-                            )} aria-hidden="true" />
-                            <span className={cn('h-8 w-0.5 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
-                            <Artwork
-                              src={track.artwork_path}
-                              alt={`Artwork for ${track.title}`}
-                              fallbackTitle="No artwork"
-                              className="h-9 w-9 shrink-0 rounded-[6px]"
-                            />
-                            <div className="w-[346px] shrink-0 min-w-0">
-                              <p className={cn('truncate text-sm font-bold leading-tight', selected && 'text-primary')}>{track.title}</p>
-                              <p className="truncate text-[10px] text-muted-foreground">{track.artist ?? 'Artist Not Available'}</p>
-                            </div>
-                            <TrackWaveformPreview
-                              className={cn('w-[128px] shrink-0', mode === 'audition' && 'grow')}
-                              waveformState={getWaveformState(track.id)}
-                              durationMs={durationMsForTrack(track, null)}
-                              cues={cueMarkersFromState(cueState)}
-                              height={26}
-                              ariaLabel={`Waveform for ${track.title}`}
-                            />
-                          </div>
-                        </td>
+                        <TrackNameCell
+                          title={track.title}
+                          artist={track.artist}
+                          artworkSrc={track.artwork_path}
+                          selected={selected}
+                          status={
+                            analysisReady(track)
+                              ? 'ready'
+                              : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required'
+                                ? 'error'
+                                : track.analysis_parse_status == null
+                                  ? 'none'
+                                  : 'warning'
+                          }
+                        >
+                          <TrackWaveformPreview
+                            className={cn('w-[128px] shrink-0', mode === 'audition' && 'grow')}
+                            waveformState={getWaveformState(track.id)}
+                            durationMs={durationMsForTrack(track, null)}
+                            cues={cueMarkersFromState(cueState)}
+                            height={26}
+                            ariaLabel={`Waveform for ${track.title}`}
+                          />
+                        </TrackNameCell>
                         <td className="px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
                         <td className="px-3 py-1.5">
                           <KeyBadge camelotKey={formatCamelotKey(track.musical_key)} variant={mode === 'audition' ? 'text' : 'badge'} />
@@ -4801,11 +4654,11 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                         <td className={cn('w-[80px] px-3 py-1.5 text-left text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]')}>
                           {formatTime(durationMsForTrack(track, null))}
                         </td>
-                      </tr>
+                      </TrackTableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TrackTableBody>
+              </TrackTable>
             </div>
 
             <div className="flex flex-col gap-3 border-t border-[var(--color-border-subtle)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-5">

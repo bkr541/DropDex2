@@ -12,3 +12,8 @@ export { TrackWaveformPreview } from './TrackWaveformPreview';
 export { cueMarkersFromState } from './trackCueMarkers';
 export type { TrackCueMarker } from './trackCueMarkers';
 export { WaveformZoomControls } from './WaveformZoomControls';
+export { AudioDock } from './AudioDock';
+export { PlaybackSeekBar } from './PlaybackSeekBar';
+export type { PlaybackSeekBarProps } from './PlaybackSeekBar';
+export { TimelineBeatLane, TimelineLane, TimelineSectionLane } from './TimelineLanes';
+export type { TimelineBeatLabel, TimelineBeatTick, TimelineSectionItem } from './TimelineLanes';

@@ -5,6 +5,10 @@ const source = readFileSync(new URL('./CuePointsView.tsx', import.meta.url), 'ut
 const waveformSource = readFileSync(new URL('../library/RekordboxPreviewWaveform.tsx', import.meta.url), 'utf8');
 const appSource = readFileSync(new URL('../../App.tsx', import.meta.url), 'utf8');
 const trackTimingSource = readFileSync(new URL('../../lib/music/trackTiming.ts', import.meta.url), 'utf8');
+const timelineZoomSource = readFileSync(new URL('../../hooks/useTimelineZoom.ts', import.meta.url), 'utf8');
+const viewportSource = readFileSync(new URL('../../lib/cues/cueTimelineViewport.ts', import.meta.url), 'utf8');
+const trackIdentitySource = readFileSync(new URL('../ui/display/TrackIdentity.tsx', import.meta.url), 'utf8');
+const trackTableSource = readFileSync(new URL('../ui/display/TrackTable.tsx', import.meta.url), 'utf8');
 const filterDropdownSource = readFileSync(new URL('../ui/controls/FilterDropdown.tsx', import.meta.url), 'utf8');
 const trackWaveformPreviewSource = readFileSync(new URL('../ui/media/TrackWaveformPreview.tsx', import.meta.url), 'utf8');
 
@@ -18,12 +22,13 @@ describe('Cue Points Stage 1 workstation redesign', () => {
   it('renders selected-track artwork, fallback, metadata, and compact real actions', () => {
     expect(source).toContain("import { Artwork } from '../ui/display/Artwork';");
     expect(source).toContain('data-testid="cue-points-workstation"');
-    expect(source).toContain('src={track.artwork_path}');
-    expect(source).toContain('fallbackTitle="No artwork"');
+    expect(source).toContain('<TrackIdentity');
+    expect(source).toContain('artworkSrc={track.artwork_path}');
+    expect(trackIdentitySource).toContain('fallbackTitle="No artwork"');
     expect(source).toContain('Editing Track');
-    expect(source).toContain('>{bpmDisplay}</strong>');
-    expect(source).toContain('>{keyDisplay}</strong>');
-    expect(source).toContain('>{durationDisplay}</strong>');
+    expect(source).toContain("{ label: 'BPM', value: bpmDisplay }");
+    expect(source).toContain("value: keyDisplay");
+    expect(source).toContain("{ label: 'Duration', value: durationDisplay }");
     expect(source).toContain("cueLoadStatus === 'failed' ? '!' : String(cues.length)");
     expect(source).toContain('<span>Auto Cue</span>');
     expect(source).toContain('<span>Discard Changes</span>');
@@ -102,8 +107,10 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('<option value="bars">Bars</option>');
     expect(source).toContain('aria-label="Zoom out"');
     expect(source).toContain('aria-label="Zoom in"');
-    expect(source).toContain('zoomCueTimelineView');
-    expect(source).toContain('panCueTimelineView');
+    expect(source).toContain('useTimelineZoom(durationMs)');
+    expect(timelineZoomSource).toContain('applyTimelineWheel');
+    expect(viewportSource).toContain('zoomCueTimelineView');
+    expect(viewportSource).toContain('panCueTimelineView');
   });
 
   it('enters Save through the production Cue Points action and complete-document RPC path', () => {
@@ -462,8 +469,8 @@ describe('Cue Points Stage 2 browser workspace', () => {
     expect(source).toContain("{ col: 'key', label: 'Key'");
     expect(source).toContain("{ col: 'cues', label: 'Cues'");
     expect(source).toContain("{ col: 'duration', label: 'Duration'");
-    expect(source).toContain('src={track.artwork_path}');
-    expect(source).toContain('fallbackTitle="No artwork"');
+    expect(source).toContain('artworkSrc={track.artwork_path}');
+    expect(trackTableSource).toContain('fallbackTitle="No artwork"');
     expect(source).toContain('<TrackWaveformPreview');
     expect(source).toContain('waveformState={getWaveformState(track.id)}');
     expect(trackWaveformPreviewSource).toContain('appearance="dropdex"');

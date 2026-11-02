@@ -184,3 +184,67 @@
 .dd-form-field__required { color: var(--color-control-red); }
 .dd-form-field__message { display: flex; align-items: center; gap: 6px; color: #7f8b98; font-size: 10px; line-height: 1.35; }
 .dd-form-field__message--error { color: #f03442; }
+
+/* Icon-only toolbar buttons (Cue Points header style), shared with Drop Lab. */
+.cue-workstation__actions button.cue-action-icon {
+  position: relative;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--color-muted-foreground);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cue-workstation__actions button.cue-action-icon--narrow {
+  width: 24px;
+}
+
+.cue-workstation__actions button.cue-action-icon:hover:not(:disabled) {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-foreground);
+}
+
+.cue-workstation__actions button.cue-action-icon[aria-pressed="true"]:not(:disabled) {
+  color: var(--color-primary);
+}
+
+.cue-workstation__actions button.cue-action-icon--accent:not(:disabled) {
+  color: var(--color-primary);
+}
+
+.cue-workstation__actions button.cue-action-icon:disabled {
+  background: transparent;
+  border-color: transparent;
+  opacity: 0.4;
+}
+
+.cue-action-icon__badge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 14px;
+  text-align: center;
+}
+
+.cue-action-icon__badge--warn {
+  background: #f59e0b;
+  color: #1a1204;
+}
