@@ -1,0 +1,208 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { RekordboxTrack } from '../../types';
+import type { TimelineSection } from '../../lib/music/phraseSections';
+
+const libraryFixture = vi.hoisted(() => ({ tracks: [] as RekordboxTrack[], error: null as string | null }));
+
+vi.mock('../../theme/ThemeProvider', () => ({
+  useTheme: () => ({ theme: 'dropdex', setTheme: vi.fn() }),
+}));
+
+vi.mock('../../contexts/UsbConnectionContext', () => ({
+  useUsbConnection: () => ({
+    status: 'connected',
+    connect: vi.fn(),
+    ensurePermission: vi.fn(),
+    resolveTrackSource: vi.fn(),
+  }),
+}));
+
+vi.mock('../../hooks/useRekordboxTracks', () => ({
+  useLibraryStats: () => ({
+    stats: {
+      genreTotals: [{ name: 'House', count: 2 }],
+      keyTotals: [{ name: '8A', count: 2 }],
+      bpmTotals: [{ bpm: 128, count: 2 }],
+    },
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+  }),
+  useLibraryTracks: () => ({
+    tracks: libraryFixture.error ? [] : libraryFixture.tracks,
+    total: libraryFixture.tracks.length,
+    loading: false,
+    loadingMore: false,
+    error: libraryFixture.error,
+    hasMore: false,
+    loadMore: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}));
+
+vi.mock('../../hooks/useTrackPreviewWaveforms', () => ({
+  useTrackPreviewWaveforms: () => ({
+    states: new Map(),
+    loadingBatchCount: 0,
+    retry: vi.fn(),
+    getState: (trackId: string | null | undefined) => ({ status: 'idle', trackId: trackId ?? 'none' }),
+  }),
+}));
+
+let AuditionView: typeof import('./AuditionView').AuditionView;
+let AuditionTrackHeader: typeof import('./AuditionTrackHeader').AuditionTrackHeader;
+let AuditionFullSong: typeof import('./AuditionFullSong').AuditionFullSong;
+let AudioPlayerProvider: typeof import('../../contexts/AudioPlayerContext').AudioPlayerProvider;
+
+const track = (overrides: Partial<RekordboxTrack>): RekordboxTrack => ({
+  id: 't1', title: 'Fixture Title', artist: 'Fixture Artist', genre: 'House',
+  bpm: 128, musical_key: '8A', duration_ms: 372_000, file_format: 'WAV',
+  ...overrides,
+} as RekordboxTrack);
+
+const wrap = (child: ReturnType<typeof createElement>) =>
+  renderToStaticMarkup(createElement(AudioPlayerProvider, { imports: [], children: child }));
+
+beforeAll(async () => {
+  vi.stubGlobal('window', { devicePixelRatio: 1 });
+  ({ AuditionView } = await import('./AuditionView'));
+  ({ AuditionTrackHeader } = await import('./AuditionTrackHeader'));
+  ({ AuditionFullSong } = await import('./AuditionFullSong'));
+  ({ AudioPlayerProvider } = await import('../../contexts/AudioPlayerContext'));
+});
+
+afterEach(() => {
+  libraryFixture.tracks = [];
+  libraryFixture.error = null;
+});
+
+describe('Audition page', () => {
+  it('stacks the header, full song and library in one column using the real library', () => {
+    libraryFixture.tracks = [
+      track({ id: 'a', title: 'First Fixture', artist: 'Artist One' }),
+      track({ id: 'b', title: 'Second Fixture', artist: 'Artist Two', bpm: 140, musical_key: '5B' }),
+    ];
+    const markup = wrap(createElement(AuditionView, { importId: 'import-test', onImport: vi.fn() }));
+
+    const header = markup.indexOf('data-testid="audition-track-header"');
+    const fullSong = markup.indexOf('data-testid="audition-full-song"');
+    const library = markup.indexOf('data-testid="audition-library"');
+    expect(header).toBeGreaterThan(-1);
+    expect(fullSong).toBeGreaterThan(header);
+    expect(library).toBeGreaterThan(fullSong);
+
+    expect(markup).toContain('First Fixture');
+    expect(markup).toContain('Artist Two');
+    expect(markup).toContain('2 tracks');
+    expect(markup).toContain('aria-label="Search the library"');
+    for (const filter of ['Genre', 'Key', 'BPM']) expect(markup).toContain(filter);
+  });
+
+  it('offers to import a library when none is connected', () => {
+    const markup = wrap(createElement(AuditionView, { importId: null, onImport: vi.fn() }));
+    expect(markup).toContain('Import library');
+    expect(markup).not.toContain('data-testid="audition-library"');
+  });
+
+  it('shows a plain message with a retry when the library cannot be loaded', () => {
+    libraryFixture.error = 'network down';
+    const markup = wrap(createElement(AuditionView, { importId: 'import-test', onImport: vi.fn() }));
+    expect(markup).toContain('Your library could not be loaded.');
+    expect(markup).toContain('Try again');
+    expect(markup).not.toContain('network down');
+  });
+
+  it('does not render side panels or the Cue Points editor', () => {
+    libraryFixture.tracks = [track({})];
+    const markup = wrap(createElement(AuditionView, { importId: 'import-test', onImport: vi.fn() }));
+    expect(markup).not.toContain('cue-workstation');
+    expect(markup).not.toContain('cue-browser');
+    expect(markup).not.toContain('Save Draft');
+  });
+});
+
+describe('Audition track header', () => {
+  it('shows the selected track with its real details and the position in the list', () => {
+    const markup = renderToStaticMarkup(createElement(AuditionTrackHeader, {
+      track: track({ title: 'Real Track Name', artist: 'Real Artist', genre: 'Techno', bpm: 132.4 }),
+      durationMs: 372_000,
+      positionLabel: '14 of 387',
+      onPrevious: () => undefined,
+      onNext: null,
+    }));
+    expect(markup).toContain('Real Track Name');
+    expect(markup).toContain('Real Artist');
+    expect(markup).toContain('Techno');
+    expect(markup).toContain('132 BPM');
+    expect(markup).toContain('6:12');
+    expect(markup).toContain('14 of 387');
+    expect(markup).toMatch(/aria-label="Next track"[^>]*disabled=""/);
+    expect(markup).not.toMatch(/aria-label="Previous track"[^>]*disabled=""/);
+  });
+
+  it('keeps Keep, Maybe and Remove visible but switched off until they are connected', () => {
+    const markup = renderToStaticMarkup(createElement(AuditionTrackHeader, {
+      track: track({}), durationMs: null, positionLabel: null, onPrevious: null, onNext: null,
+    }));
+    for (const id of ['keep', 'maybe', 'remove']) {
+      expect(markup).toMatch(new RegExp(`<button[^>]*disabled=""[^>]*data-testid="audition-decision-${id}"`));
+    }
+    expect(markup).toContain('Coming soon');
+  });
+
+  it('asks the user to pick a track when nothing is selected', () => {
+    const markup = renderToStaticMarkup(createElement(AuditionTrackHeader, {
+      track: null, durationMs: null, positionLabel: null, onPrevious: null, onNext: null,
+    }));
+    expect(markup).toContain('Select a track');
+  });
+});
+
+describe('Audition full song', () => {
+  const sections: TimelineSection[] = [
+    { id: 's1', label: 'Intro', sourceLabel: 'intro', startMs: 0, endMs: 93_000, panelColor: '#16477a', waveformColor: '#2997ff' },
+    { id: 's2', label: 'Drop', sourceLabel: 'down', startMs: 93_000, endMs: 372_000, panelColor: '#8f2d2f', waveformColor: '#ff514b' },
+  ];
+  const render = (props: Partial<Parameters<typeof AuditionFullSong>[0]> = {}) => wrap(createElement(AuditionFullSong, {
+    track: track({}),
+    durationMs: 372_000,
+    waveformState: { status: 'idle', trackId: 't1' },
+    onRetryWaveform: vi.fn(),
+    sections,
+    sectionsLoading: false,
+    sectionsError: null,
+    onRetrySections: vi.fn(),
+    ...props,
+  }));
+
+  it('lays out one chip per real section, sized by how long the section lasts', () => {
+    const markup = render();
+    expect(markup.match(/data-testid="audition-section"/g)).toHaveLength(2);
+    expect(markup).toContain('Intro');
+    expect(markup).toContain('Drop');
+    expect(markup).toContain('left:25%');
+    expect(markup).toContain('left:0%');
+    expect(markup).toContain('6:12');
+    expect(markup).toContain('0:30');
+  });
+
+  it('says so plainly when a track has no sections', () => {
+    expect(render({ sections: [] })).toContain('No sections were found for this track.');
+  });
+
+  it('offers a retry when the sections could not be loaded', () => {
+    const markup = render({ sections: [], sectionsError: 'Track sections could not be loaded.' });
+    expect(markup).toContain('Track sections could not be loaded.');
+    expect(markup).toContain('Try again');
+  });
+
+  it('shows a loading note while sections load', () => {
+    expect(render({ sections: [], sectionsLoading: true })).toContain('Loading sections…');
+  });
+
+  it('renders the playback controls passed into the panel', () => {
+    expect(render({ children: createElement('div', { 'data-testid': 'slot' }, 'controls') })).toContain('data-testid="slot"');
+  });
+});

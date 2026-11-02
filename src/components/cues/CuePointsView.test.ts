@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 const source = readFileSync(new URL('./CuePointsView.tsx', import.meta.url), 'utf8');
 const waveformSource = readFileSync(new URL('../library/RekordboxPreviewWaveform.tsx', import.meta.url), 'utf8');
 const appSource = readFileSync(new URL('../../App.tsx', import.meta.url), 'utf8');
+const trackTimingSource = readFileSync(new URL('../../lib/music/trackTiming.ts', import.meta.url), 'utf8');
 const filterDropdownSource = readFileSync(new URL('../ui/controls/FilterDropdown.tsx', import.meta.url), 'utf8');
 const trackWaveformPreviewSource = readFileSync(new URL('../ui/media/TrackWaveformPreview.tsx', import.meta.url), 'utf8');
 
@@ -421,9 +422,9 @@ describe('Cue Points production editor wiring', () => {
     // Regression guard: Device Library Plus Content.length (seconds) was previously stored
     // verbatim as duration_ms, producing values like 95, 147, 167 ms. durationMsForTrack()
     // must not trust those values as a 95 ms timeline scale.
-    expect(source).toContain('track.duration_ms >= 1_000');
+    expect(trackTimingSource).toContain('track.duration_ms >= 1_000');
     // The beat-grid fallback must still be present so the function recovers the real duration.
-    expect(source).toContain('lastBeat.ms + (lastBeat.bpm > 0 ? 60_000 / lastBeat.bpm : 500)');
+    expect(trackTimingSource).toContain('lastBeat.ms + (lastBeat.bpm > 0 ? 60_000 / lastBeat.bpm : 500)');
   });
 
 });

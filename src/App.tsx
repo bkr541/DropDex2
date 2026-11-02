@@ -48,6 +48,7 @@ const SearchView = lazyWithRecovery('search', () => import('./components/search/
 const ReviewView = lazyWithRecovery('review', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewView })));
 const ReviewEmptyState = lazyWithRecovery('review-empty', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewEmptyState })));
 const CuePointsView = lazyWithRecovery('cue-points', () => import('./components/cues/CuePointsView').then(m => ({ default: m.CuePointsView })));
+const AuditionView = lazyWithRecovery('audition', () => import('./components/audition/AuditionView').then(m => ({ default: m.AuditionView })));
 const DropLabView = lazyWithRecovery('drop-lab', () => import('./components/drop-lab/DropLabView').then(m => ({ default: m.DropLabView })));
 
 import { LibraryView } from './components/library/LibraryView';
@@ -1520,7 +1521,7 @@ export default function App() {
             )}
 
             {/* ── Cue Points ── */}
-            {!routeBlocked && (currentView === 'cues' || currentView === 'audition') && (
+            {!routeBlocked && currentView === 'cues' && (
               <motion.div
                 key={currentView}
                 initial={{ opacity: 0, y: 16 }}
@@ -1528,8 +1529,23 @@ export default function App() {
                 exit={{ opacity: 0, y: 16 }}
                 className="min-w-0"
               >
-                <LazyFeature label={currentView === 'audition' ? 'Loading Audition…' : 'Loading Cue Points…'} boundaryKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
-                  <CuePointsView importId={importId} key={currentView} mode={currentView === 'audition' ? 'audition' : 'cues'} onImport={() => setIsImportModalOpen(true)} />
+                <LazyFeature label="Loading Cue Points…" boundaryKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
+                  <CuePointsView importId={importId} key={currentView} mode="cues" onImport={() => setIsImportModalOpen(true)} />
+                </LazyFeature>
+              </motion.div>
+            )}
+
+            {/* ── Audition ── */}
+            {!routeBlocked && currentView === 'audition' && (
+              <motion.div
+                key={currentView}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                className="min-w-0"
+              >
+                <LazyFeature label="Loading Audition…" boundaryKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
+                  <AuditionView importId={importId} onImport={() => setIsImportModalOpen(true)} />
                 </LazyFeature>
               </motion.div>
             )}
