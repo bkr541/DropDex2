@@ -54,7 +54,7 @@ export function resolveTrackCamelotCode(
     ?? null;
 }
 
-function rouletteKeyRelationship(
+export function rouletteKeyRelationship(
   reference: Pick<RekordboxTrack, 'camelot_key' | 'key_tonic' | 'key_mode'>,
   candidate: Pick<RekordboxTrack, 'camelot_key' | 'key_tonic' | 'key_mode'>,
 ): 'exact' | 'branch' | 'mismatch' | 'missing' {

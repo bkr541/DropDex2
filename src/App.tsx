@@ -66,7 +66,7 @@ import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
-import { CheckmarkFilled, CircleDash, Close, DataBase, Edit, Growth, Headphones, Layers, Logout, Moon, Music, PaintBrush, Radio, RecordingFilled, Renew, Search, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, Chemistry, CircleDash, Close, DataBase, Edit, Growth, Headphones, Layers, Logout, Moon, Music, PaintBrush, Radio, RecordingFilled, Renew, Search, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
 import { openLayoutLab } from './components/ui/openLayoutLab';
 import { ControlButton } from './components/ui/controls';
 
@@ -517,7 +517,7 @@ export default function App() {
   const routeImport = useRouteImport(routeImportId);
 
   const selectedTrack = route.name === 'track' ? routeTracks.tracksById.get(route.trackId) ?? null : null;
-  const dropLabSourceTrack = route.name === 'drop-lab'
+  const dropLabSourceTrack = route.name === 'drop-lab' && route.sourceTrackId
     ? routeTracks.tracksById.get(route.sourceTrackId) ?? null
     : null;
   const dropLabActiveCandidateId = route.name === 'drop-lab' ? route.candidateTrackId : null;
@@ -749,7 +749,7 @@ export default function App() {
   const routeEntityMissing = !routeEntityLoading && !routeEntityError && (
     route.name === 'not-found'
     || (route.name === 'track' && !selectedTrack)
-    || (route.name === 'drop-lab' && (!dropLabSourceTrack || candidateTrackMissing || candidateImportMismatch))
+    || (route.name === 'drop-lab' && ((Boolean(route.sourceTrackId) && !dropLabSourceTrack) || candidateTrackMissing || candidateImportMismatch))
     || (route.name === 'playlist' && !selectedPlaylist)
     || (route.name === 'playlist-edit' && !editingPlaylist)
     || (route.name === 'import' && !selectedImport)
@@ -778,6 +778,7 @@ export default function App() {
       case 'discovery': navigate({ name: 'discovery' }); break;
       case 'search': navigate({ name: 'search' }); break;
       case 'flip-lab': navigate({ name: 'flip-lab' }); break;
+      case 'drop-lab': navigate({ name: 'drop-lab', sourceTrackId: null, candidateTrackId: null, sourceDropId: null, candidateDropId: null }); break;
       default: break;
     }
   };
@@ -1028,9 +1029,16 @@ export default function App() {
   };
 
   const handleDropLabBack = () => {
-    navigateBack(route.name === 'drop-lab'
+    navigateBack(route.name === 'drop-lab' && route.sourceTrackId
       ? { name: 'track', trackId: route.sourceTrackId }
       : libraryRoute());
+  };
+
+  const handleDropLabPickSource = (sourceTrackId: string, candidateTrackId: string | null, options: { auto: boolean }) => {
+    navigate(
+      { name: 'drop-lab', sourceTrackId, candidateTrackId, sourceDropId: null, candidateDropId: null },
+      { replace: options.auto },
+    );
   };
 
   const handleDropLabCandidateDetails = (track: RekordboxTrack) => {
@@ -1079,6 +1087,7 @@ export default function App() {
     { view: 'audition', icon: Headphones, label: 'Audition', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'discovery', icon: Radio, label: 'Discover', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
     { view: 'search', icon: Search, label: 'Search', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
+    { view: 'drop-lab', icon: Chemistry, label: 'Drop Lab', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
     { view: 'flip-lab', icon: Shuffle, label: 'Flip Lab', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
   ];
 
@@ -1483,6 +1492,7 @@ export default function App() {
                     onDropSelectionChange={handleDropLabDropSelectionChange}
                     onBack={handleDropLabBack}
                     onTrackDetails={handleDropLabCandidateDetails}
+                    onPickSource={handleDropLabPickSource}
                   />
                 </LazyFeature>
               </motion.div>

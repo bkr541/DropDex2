@@ -1,25 +1,28 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CandidateRotation } from './CandidateRotation';
 import { DropAnalysisStatus } from './DropAnalysisStatus';
-import { DropLabControls } from './DropLabControls';
+import { DropLabControls, DropLabDock } from './DropLabControls';
+import { DropLabSourcePicker } from './DropLabSourcePicker';
 import { DropLabTrackHeader } from './DropLabTrackHeader';
 import { DropLabWaveform } from './DropLabWaveform';
 import { useDropLabAnalysis, chooseBestDrop, hasUsableDropLabAnalysis } from '../../hooks/useDropLabAnalysis';
-import { useDropLabCandidates } from '../../hooks/useDropLabCandidates';
+import { useDropLabFlipPicks } from '../../hooks/useDropLabFlipPicks';
 import { useDropLabDetailWaveform } from '../../hooks/useDropLabDetailWaveform';
 import { useDropLabPreview } from '../../hooks/useDropLabPreview';
 import { buildDropLabSegments, resolveTrackDurationMs, type DropLabBarCount, type DropLabBeatOffset } from '../../lib/music/dropLabSegments';
 import { sliceWaveformSegment } from '../../lib/music/waveformSegments';
 import type { RekordboxTrack } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { Chemistry, ChevronLeft } from '@carbon/icons-react';
-import { ControlButton } from '../ui/controls';
+import { logger } from '../../lib/logger';
+import { ChevronLeft, CircleDash, Chemistry, Document, Search } from '@carbon/icons-react';
 
 interface DropLabViewProps {
   sourceTrack: RekordboxTrack | null;
   importId: string | null;
   onBack: () => void;
   onTrackDetails: (track: RekordboxTrack) => void;
+  /** Called when Drop Lab picks (or the user chooses) a source and, optionally, a candidate. */
+  onPickSource: (sourceTrackId: string, candidateTrackId: string | null, options: { auto: boolean }) => void;
   preservedActiveCandidateId?: string | null;
   preservedActiveCandidate?: RekordboxTrack | null;
   preservedSourceDropId?: string | null;
@@ -46,63 +49,52 @@ function waveformMessageForPanel(
 
 function RetryButton({ onClick, label }: { onClick: () => void; label: string }) {
   return (
-    <ControlButton type="button" variant="ghost" onClick={onClick} aria-label={label} className="ml-2 shrink-0 text-[10px]">
+    <button type="button" onClick={onClick} aria-label={label} className="ml-2 shrink-0 rounded px-1.5 text-[10px] font-semibold text-foreground/80 hover:bg-white/10">
       Retry
-    </ControlButton>
+    </button>
   );
 }
 
-function TrackWaveformStatus({
-  label,
-  state,
-  onRetry,
-}: {
-  label: string;
-  state: WaveformLoadState | undefined;
-  onRetry: () => void;
-}) {
+function TrackWaveformStatus({ label, state, onRetry }: { label: string; state: WaveformLoadState | undefined; onRetry: () => void }) {
   if (!state || state.status === 'idle' || state.status === 'loading' || state.status === 'loaded') return null;
-  if (state.status === 'unavailable') {
-    return <DropAnalysisStatus kind="info">{label} has no waveform analysis.</DropAnalysisStatus>;
-  }
-  if (state.status === 'invalid') {
-    return <DropAnalysisStatus kind="warning">{label} waveform is invalid or unsupported: {state.error}</DropAnalysisStatus>;
-  }
+  if (state.status === 'unavailable') return <DropAnalysisStatus kind="info">{label} has no waveform analysis.</DropAnalysisStatus>;
+  if (state.status === 'invalid') return <DropAnalysisStatus kind="warning">{label} waveform is invalid or unsupported: {state.error}</DropAnalysisStatus>;
   return (
     <DropAnalysisStatus kind="warning">
       <div className="flex items-center justify-between gap-2">
-        <span>{label} waveform failed to load: {state.error}</span>
+        <span className="min-w-0 truncate">{label} waveform failed to load: {state.error}</span>
         <RetryButton onClick={onRetry} label={`Retry ${label.toLowerCase()} waveform`} />
       </div>
     </DropAnalysisStatus>
   );
 }
 
-function DetailWaveformStatus({
-  label,
-  state,
-  usedFallback,
-  onRetry,
-}: {
-  label: string;
-  state: WaveformLoadState;
-  usedFallback: boolean;
-  onRetry: () => void;
-}) {
+function DetailWaveformStatus({ label, state, usedFallback, onRetry }: { label: string; state: WaveformLoadState; usedFallback: boolean; onRetry: () => void }) {
   if (!usedFallback || state.status === 'idle' || state.status === 'loading' || state.status === 'loaded') return null;
-  if (state.status === 'unavailable') {
-    return <DropAnalysisStatus kind="info">{label} detailed waveform is unavailable. Using its preview waveform.</DropAnalysisStatus>;
-  }
-  if (state.status === 'invalid') {
-    return <DropAnalysisStatus kind="warning">{label} detailed waveform is invalid or unsupported. Using its preview waveform. {state.error}</DropAnalysisStatus>;
-  }
+  if (state.status === 'unavailable') return <DropAnalysisStatus kind="info">{label} detailed waveform is unavailable. Using its preview waveform.</DropAnalysisStatus>;
+  if (state.status === 'invalid') return <DropAnalysisStatus kind="warning">{label} detailed waveform is invalid or unsupported. Using its preview waveform. {state.error}</DropAnalysisStatus>;
   return (
     <DropAnalysisStatus kind="warning">
       <div className="flex items-center justify-between gap-2">
-        <span>{label} detailed waveform failed to load. Using its preview waveform. {state.error}</span>
+        <span className="min-w-0 truncate">{label} detailed waveform failed to load. Using its preview waveform. {state.error}</span>
         <RetryButton onClick={onRetry} label={`Retry ${label.toLowerCase()} detailed waveform`} />
       </div>
     </DropAnalysisStatus>
+  );
+}
+
+function HeaderIconButton({ title, onClick, disabled, children }: { title: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      disabled={disabled}
+      className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-35"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -111,6 +103,7 @@ export function DropLabView({
   importId,
   onBack,
   onTrackDetails,
+  onPickSource,
   preservedActiveCandidateId,
   preservedActiveCandidate,
   preservedSourceDropId,
@@ -123,14 +116,23 @@ export function DropLabView({
   const [beatOffset, setBeatOffset] = useState<DropLabBeatOffset>(0);
   const [selectedDropId, setSelectedDropId] = useState<string | null>(preservedSourceDropId ?? null);
   const [candidateDropId, setCandidateDropId] = useState<string | null>(preservedCandidateDropId ?? null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
-  const { candidates, loading: candidatesLoading } = useDropLabCandidates(
-    sourceTrack,
-    importId,
-    preservedActiveCandidate ?? null,
-  );
+  // Same engine as Flip Lab: library pool, best pair when nothing is chosen, ranked candidates after.
+  const picks = useDropLabFlipPicks(importId, sourceTrack, preservedActiveCandidate ?? null);
+  const candidates = picks.candidates;
   const candidateTracks = useMemo(() => candidates.map((candidate) => candidate.track), [candidates]);
   const analysis = useDropLabAnalysis(sourceTrack, candidateTracks);
+
+  // Opened from the nav with nothing chosen: start with the best pair.
+  const autoPickedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (sourceTrack || !picks.autoPair) return;
+    const key = `${picks.autoPair.sourceTrackId}:${picks.autoPair.candidateTrackId}`;
+    if (autoPickedRef.current === key) return;
+    autoPickedRef.current = key;
+    onPickSource(picks.autoPair.sourceTrackId, picks.autoPair.candidateTrackId, { auto: true });
+  }, [onPickSource, picks.autoPair, sourceTrack]);
 
   useEffect(() => {
     setBeatOffset(0);
@@ -142,15 +144,16 @@ export function DropLabView({
   useEffect(() => {
     if (activeCandidateId && candidates.some((candidate) => candidate.track.id === activeCandidateId)) return;
     const usable = candidates.find((candidate) => hasUsableDropLabAnalysis(analysis.byTrackId.get(candidate.track.id)));
-    const fallback = candidates[0];
-    const next = (usable ?? fallback)?.track.id ?? null;
+    const next = (usable ?? candidates[0])?.track.id ?? null;
     setActiveCandidateId(next);
     onActiveCandidateChange?.(next);
   }, [activeCandidateId, analysis.byTrackId, candidates, onActiveCandidateChange]);
 
   const activeCandidate = useMemo(
-    () => candidates.find((candidate) => candidate.track.id === activeCandidateId)?.track ?? null,
-    [activeCandidateId, candidates],
+    () => (preservedActiveCandidate && preservedActiveCandidate.id === activeCandidateId
+      ? preservedActiveCandidate
+      : candidates.find((candidate) => candidate.track.id === activeCandidateId)?.track ?? null),
+    [activeCandidateId, candidates, preservedActiveCandidate],
   );
   const sourceAnalysis = sourceTrack ? analysis.byTrackId.get(sourceTrack.id) : undefined;
   const candidateAnalysis = activeCandidate ? analysis.byTrackId.get(activeCandidate.id) : undefined;
@@ -168,6 +171,7 @@ export function DropLabView({
     setCandidateDropId(null);
     onDropSelectionChange?.(selectedDropId, null);
   }, [candidateAnalysis, candidateDropId, onDropSelectionChange, selectedDropId]);
+
   const sourceDrop = useMemo(
     () => sourceAnalysis ? sourceAnalysis.dropPoints.find((point) => point.id === selectedDropId) ?? chooseBestDrop(sourceAnalysis.dropPoints) : null,
     [selectedDropId, sourceAnalysis],
@@ -206,11 +210,7 @@ export function DropLabView({
     () => segments.candidate ? sliceWaveformSegment(candidateDisplayWaveform, segments.candidate.startMs, segments.candidate.endMs, candidateDuration) : null,
     [candidateDisplayWaveform, candidateDuration, segments.candidate],
   );
-
-  const waveformPanelMessage = waveformMessageForPanel(
-    sourceAnalysis?.waveformState,
-    candidateAnalysis?.waveformState,
-  );
+  const waveformPanelMessage = waveformMessageForPanel(sourceAnalysis?.waveformState, candidateAnalysis?.waveformState);
 
   const preview = useDropLabPreview({
     sourceTrack,
@@ -218,7 +218,6 @@ export function DropLabView({
     sourceSegment: segments.source,
     candidateSegment: segments.candidate,
   });
-
   useEffect(() => preview.stop, [preview.stop]);
 
   function handleCandidateSelect(trackId: string) {
@@ -239,118 +238,104 @@ export function DropLabView({
     onDropSelectionChange?.(selectedDropId, dropId);
   }
 
+  function handlePickSource(track: RekordboxTrack) {
+    setPickerOpen(false);
+    logger.info('droplab.source.picked', { track: track.title });
+    preview.stop();
+    onPickSource(track.id, null, { auto: false });
+  }
+
   const alignmentLabel = beatOffset === -1
     ? 'Candidate starts one beat before its detected drop'
     : beatOffset === 1
       ? 'Candidate starts one beat after its detected drop'
       : 'Candidate starts exactly on its detected drop';
 
+  // Nothing chosen yet: Drop Lab is picking a pair, or could not find one.
   if (!sourceTrack) {
+    const stuck = picks.noPairFound || Boolean(picks.error);
     return (
-      <div className="md:max-w-3xl md:mx-auto py-12 text-center space-y-4">
-        <Chemistry size={42} className="mx-auto text-muted-foreground" />
-        <h2 className="text-2xl font-black italic">Drop Lab</h2>
-        <p className="text-sm text-muted-foreground">Open Drop Lab from Track Intelligence so a source track can be fixed for comparison.</p>
-        <ControlButton variant="primary" onClick={onBack} className="w-auto px-4 py-2 text-sm min-h-0"><ChevronLeft size={14} /> Back to Book</ControlButton>
+      <div className="relative mx-auto flex max-w-xl flex-col items-center gap-3 py-16 text-center">
+        <Chemistry size={40} className="text-muted-foreground" />
+        <h2 className="text-lg font-bold">{stuck ? 'No pair to start with yet' : 'Finding a pair to start with…'}</h2>
+        <p className="text-sm text-muted-foreground">
+          {picks.error
+            ?? (picks.noPairFound
+              ? 'Your library has no two tracks close enough in tempo and key to suggest. Choose a source track to begin.'
+              : 'Drop Lab is picking two tracks that fit together, using the same matching as Flip Lab.')}
+        </p>
+        {!stuck && <CircleDash size={20} className="animate-spin text-muted-foreground" aria-label="Loading" />}
+        {stuck && (
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setPickerOpen(true)} className="rounded-md border border-primary/40 bg-primary/15 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/25">Choose a source track</button>
+            <button type="button" onClick={onBack} className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground">Back to library</button>
+          </div>
+        )}
+        {pickerOpen && <DropLabSourcePicker tracks={picks.pools?.vocals.map((entry) => entry.track) ?? []} loading={picks.loading} currentId={null} onPick={handlePickSource} onClose={() => setPickerOpen(false)} />}
       </div>
     );
   }
 
+  const issueLines = (
+    <>
+      {!sourceDrop && <DropAnalysisStatus kind="warning">A drop point could not be identified from this track&apos;s cues or phrase analysis.</DropAnalysisStatus>}
+      <TrackWaveformStatus label="Selected track" state={sourceAnalysis?.waveformState} onRetry={() => sourceTrack && analysis.retryWaveform(sourceTrack.id)} />
+      <TrackWaveformStatus label="Active candidate" state={candidateAnalysis?.waveformState} onRetry={() => activeCandidate && analysis.retryWaveform(activeCandidate.id)} />
+      <DetailWaveformStatus label="Selected track" state={sourceDetail.detailState} usedFallback={sourceDetail.usedFallback} onRetry={sourceDetail.retry} />
+      <DetailWaveformStatus label="Active candidate" state={candidateDetail.detailState} usedFallback={candidateDetail.usedFallback} onRetry={candidateDetail.retry} />
+      {segments.source?.timingSource === 'bpm' || segments.candidate?.timingSource === 'bpm' ? (
+        <DropAnalysisStatus kind="info">Beat-grid timing is incomplete, so BPM timing is being used for this window.</DropAnalysisStatus>
+      ) : null}
+      {preview.status === 'loading' && <DropAnalysisStatus kind="info">Preparing source and candidate audio for the transition preview.</DropAnalysisStatus>}
+      {preview.status !== 'loading' && preview.disabledReason && <DropAnalysisStatus kind="warning">{preview.disabledReason}</DropAnalysisStatus>}
+      {preview.ready && activeCandidate && sourceDrop && candidateDrop && <DropAnalysisStatus kind="ready">Transition preview is prepared from decoded source and candidate audio.</DropAnalysisStatus>}
+      {picks.error && <DropAnalysisStatus kind="warning">{picks.error}</DropAnalysisStatus>}
+      {analysis.error && <DropAnalysisStatus kind="warning">{analysis.error}</DropAnalysisStatus>}
+    </>
+  );
+
   return (
-    <div className="max-w-7xl mx-auto pb-24 space-y-5">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <ControlButton variant="ghost" onClick={onBack} aria-label="Back to Track Intelligence">
-              <ChevronLeft size={20} />
-            </ControlButton>
-            <h2 className="text-2xl md:text-3xl font-black italic">Drop Lab</h2>
-          </div>
-          <p className="text-[10px] md:text-xs text-muted-foreground uppercase tracking-[0.2em] pl-7">
-            Test how different drops land against the selected track&apos;s buildup.
-          </p>
-        </div>
-      </header>
-
-      <div className="glass rounded-3xl border border-[var(--color-border-subtle)] p-4 md:p-6 space-y-5">
-        <div className="grid gap-5 lg:grid-cols-2">
-          <DropLabTrackHeader label="Selected Track" track={sourceTrack} dropPoint={sourceDrop} />
-          <DropLabTrackHeader label="Active Candidate" track={activeCandidate} dropPoint={candidateDrop} muted={!activeCandidate} />
-        </div>
-
-        <DropLabWaveform
-          sourceSegment={sourceWaveformSegment}
-          candidateSegment={candidateWaveformSegment}
-          loading={
-            analysis.loading ||
-            sourceDetail.detailState.status === 'loading' ||
-            candidateDetail.detailState.status === 'loading'
-          }
-          unavailableMessage={waveformPanelMessage}
-          previewProgress={preview.progress}
-          previewPlaying={preview.playing}
-          alignmentLabel={alignmentLabel}
+    <div className="relative flex flex-col pb-6">
+      {/* Selected track: above the timeline, on the left */}
+      <DropLabTrackHeader
+        label="Selected track"
+        track={sourceTrack}
+        dropPoint={sourceDrop}
+        actions={(
+          <>
+            <HeaderIconButton title="Back" onClick={onBack}><ChevronLeft size={20} /></HeaderIconButton>
+            <HeaderIconButton title="Change source track" onClick={() => setPickerOpen((open) => !open)}><Search size={20} /></HeaderIconButton>
+            <HeaderIconButton title="Candidate details" onClick={() => activeCandidate && onTrackDetails(activeCandidate)} disabled={!activeCandidate}><Document size={20} /></HeaderIconButton>
+          </>
+        )}
+      />
+      {pickerOpen && (
+        <DropLabSourcePicker
+          tracks={picks.pools?.vocals.map((entry) => entry.track) ?? []}
+          loading={picks.loading}
+          currentId={sourceTrack.id}
+          onPick={handlePickSource}
+          onClose={() => setPickerOpen(false)}
         />
+      )}
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.72fr)]">
-          <div className="space-y-2">
-            {!sourceDrop && (
-              <DropAnalysisStatus kind="warning">A drop point could not be identified from this track&apos;s cues or phrase analysis.</DropAnalysisStatus>
-            )}
-            <TrackWaveformStatus
-              label="Selected track"
-              state={sourceAnalysis?.waveformState}
-              onRetry={() => sourceTrack && analysis.retryWaveform(sourceTrack.id)}
-            />
-            <TrackWaveformStatus
-              label="Active candidate"
-              state={candidateAnalysis?.waveformState}
-              onRetry={() => activeCandidate && analysis.retryWaveform(activeCandidate.id)}
-            />
-            <DetailWaveformStatus
-              label="Selected track"
-              state={sourceDetail.detailState}
-              usedFallback={sourceDetail.usedFallback}
-              onRetry={sourceDetail.retry}
-            />
-            <DetailWaveformStatus
-              label="Active candidate"
-              state={candidateDetail.detailState}
-              usedFallback={candidateDetail.usedFallback}
-              onRetry={candidateDetail.retry}
-            />
-            {segments.source?.timingSource === 'bpm' || segments.candidate?.timingSource === 'bpm' ? (
-              <DropAnalysisStatus kind="info">Beat-grid timing is incomplete, so BPM timing is being used for this window.</DropAnalysisStatus>
-            ) : null}
-            {preview.status === 'loading' && (
-              <DropAnalysisStatus kind="info">Preparing source and candidate audio for the transition preview.</DropAnalysisStatus>
-            )}
-            {preview.status !== 'loading' && preview.disabledReason && (
-              <DropAnalysisStatus kind="warning">{preview.disabledReason}</DropAnalysisStatus>
-            )}
-            {preview.ready && activeCandidate && sourceDrop && candidateDrop && (
-              <DropAnalysisStatus kind="ready">Transition preview is prepared from decoded source and candidate audio.</DropAnalysisStatus>
-            )}
-            {analysis.error && <DropAnalysisStatus kind="warning">{analysis.error}</DropAnalysisStatus>}
-          </div>
-
-          <CandidateRotation
-            candidates={candidates}
-            analyses={analysis.byTrackId}
-            activeCandidateId={activeCandidateId}
-            loading={candidatesLoading || analysis.loading}
-            onSelect={handleCandidateSelect}
-          />
-        </div>
-      </div>
-
-      <DropLabControls
-        beatOffset={beatOffset}
+      <DropLabWaveform
+        sourceSegment={sourceWaveformSegment}
+        candidateSegment={candidateWaveformSegment}
+        loading={analysis.loading || sourceDetail.detailState.status === 'loading' || candidateDetail.detailState.status === 'loading'}
+        unavailableMessage={waveformPanelMessage}
+        previewProgress={preview.progress}
+        previewPlaying={preview.playing}
+        alignmentLabel={alignmentLabel}
         barCount={barCount}
-        sourceDropPoints={sourceAnalysis?.dropPoints ?? []}
-        candidateDropPoints={candidateAnalysis?.dropPoints ?? []}
-        sourceDropId={sourceDrop?.id ?? null}
-        candidateDropId={candidateDrop?.id ?? null}
+      />
+
+      {/* Active candidate: below the timeline, on the right, like Flip Lab's instrumental */}
+      <DropLabTrackHeader label="Active candidate" track={activeCandidate} dropPoint={candidateDrop} muted={!activeCandidate} side="right" />
+
+      <div className="pb-1">{issueLines}</div>
+
+      <DropLabDock
         previewLabel={preview.buttonLabel}
         previewDisabled={preview.actionDisabled}
         previewPlaying={preview.playing}
@@ -359,15 +344,28 @@ export function DropLabView({
         previewProgress={preview.progress}
         previewPhase={preview.phase}
         disabledReason={preview.disabledReason}
+        onPreview={preview.playOrStop}
+      />
+      <DropLabControls
+        beatOffset={beatOffset}
+        barCount={barCount}
+        sourceDropPoints={sourceAnalysis?.dropPoints ?? []}
+        candidateDropPoints={candidateAnalysis?.dropPoints ?? []}
+        sourceDropId={sourceDrop?.id ?? null}
+        candidateDropId={candidateDrop?.id ?? null}
+        disabledReason={preview.disabledReason}
         onSourceDropChange={handleSourceDropChange}
         onCandidateDropChange={handleCandidateDropChange}
         onBeatOffsetChange={setBeatOffset}
         onBarCountChange={setBarCount}
-        onPreview={preview.playOrStop}
-        onTrackDetails={() => activeCandidate && onTrackDetails(activeCandidate)}
-        trackDetailsDisabled={!activeCandidate}
+      />
+      <CandidateRotation
+        candidates={candidates}
+        analyses={analysis.byTrackId}
+        activeCandidateId={activeCandidateId}
+        loading={picks.loading || analysis.loading}
+        onSelect={handleCandidateSelect}
       />
     </div>
   );
 }
-

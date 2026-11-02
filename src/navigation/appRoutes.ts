@@ -15,7 +15,8 @@ export type AppRoute =
   | { name: 'track'; trackId: string }
   | {
       name: 'drop-lab';
-      sourceTrackId: string;
+      /** null when Drop Lab was opened from the left nav; it then picks a pair itself. */
+      sourceTrackId: string | null;
       candidateTrackId: string | null;
       sourceDropId: string | null;
       candidateDropId: string | null;
@@ -101,6 +102,16 @@ export function parseAppRoute(pathname: string, search = ''): AppRoute {
       : { name: 'not-found', pathname: normalizedPath };
   }
 
+  if (normalizedPath === '/drop-lab') {
+    return {
+      name: 'drop-lab',
+      sourceTrackId: null,
+      candidateTrackId: queryValue(params, 'candidate'),
+      sourceDropId: null,
+      candidateDropId: null,
+    };
+  }
+
   const dropLabMatch = normalizedPath.match(/^\/drop-lab\/([^/]+)$/);
   if (dropLabMatch) {
     const sourceTrackId = safeDecode(dropLabMatch[1]);
@@ -156,7 +167,7 @@ export function routeToUrl(route: AppRoute): string {
       if (route.sourceDropId) params.set('sourceDrop', route.sourceDropId);
       if (route.candidateDropId) params.set('candidateDrop', route.candidateDropId);
       const query = params.toString();
-      return `/drop-lab/${encodeURIComponent(route.sourceTrackId)}${query ? `?${query}` : ''}`;
+      return `${route.sourceTrackId ? `/drop-lab/${encodeURIComponent(route.sourceTrackId)}` : '/drop-lab'}${query ? `?${query}` : ''}`;
     }
     case 'import':
       return `/imports/${encodeURIComponent(route.importId)}${route.resume ? '?resume=1' : ''}`;
@@ -179,7 +190,9 @@ export function routeKey(route: AppRoute): string {
 export function routeBackFallback(route: AppRoute): AppRoute {
   switch (route.name) {
     case 'playlist-edit': return { name: 'playlist', playlistId: route.playlistId };
-    case 'drop-lab': return { name: 'track', trackId: route.sourceTrackId };
+    case 'drop-lab': return route.sourceTrackId
+      ? { name: 'track', trackId: route.sourceTrackId }
+      : { name: 'library', tab: 'overview', search: '' };
     case 'track':
     case 'playlist':
     case 'review':

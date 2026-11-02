@@ -1,5 +1,5 @@
-import { CandidateRow } from './CandidateRow';
-import type { DropLabCandidate } from '../../hooks/useDropLabCandidates';
+import { CandidateRow, CANDIDATE_COLUMNS } from './CandidateRow';
+import type { DropLabCandidate } from '../../hooks/useDropLabFlipPicks';
 import type { DropLabTrackAnalysis } from '../../hooks/useDropLabAnalysis';
 import { CircleDash } from '@carbon/icons-react';
 
@@ -11,28 +11,28 @@ interface CandidateRotationProps {
   onSelect: (trackId: string) => void;
 }
 
-export function CandidateRotation({
-  candidates,
-  analyses,
-  activeCandidateId,
-  loading,
-  onSelect,
-}: CandidateRotationProps) {
+/** The candidate list, as a Cue Points-style table. */
+export function CandidateRotation({ candidates, analyses, activeCandidateId, loading, onSelect }: CandidateRotationProps) {
   return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">Candidate Rotation</h3>
-        {loading && <CircleDash size={14} className="animate-spin text-muted-foreground" aria-label="Loading candidates" />}
+    <section className="min-h-0 flex-1">
+      <div className="flex items-center justify-between px-5 py-3">
+        <h3 className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Candidate rotation</h3>
+        <span className="flex items-center gap-2 font-mono text-[11px] tabular-nums text-muted-foreground">
+          {loading && <CircleDash size={13} className="animate-spin" aria-label="Loading candidates" />}
+          {candidates.length} candidates
+        </span>
       </div>
-      <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1" role="listbox" aria-label="Drop Lab candidates">
+      <div
+        className="grid items-center border-y border-[var(--color-border-faint)] px-5 py-2 text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground"
+        style={{ gridTemplateColumns: CANDIDATE_COLUMNS }}
+      >
+        <span>Candidate</span><span>BPM</span><span>Key</span><span>Match</span><span>Why it fits</span><span>Status</span><span />
+      </div>
+      <div role="listbox" aria-label="Drop Lab candidates">
         {loading && candidates.length === 0 ? (
-          Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="h-20 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-faint)] animate-pulse" />
-          ))
+          Array.from({ length: 4 }).map((_, index) => <div key={index} className="m-3 h-12 animate-pulse rounded-lg bg-white/[0.05]" />)
         ) : candidates.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic text-center py-6">
-            No compatible drop candidates were found for this track.
-          </p>
+          <p className="py-8 text-center text-xs italic text-muted-foreground">No compatible drop candidates were found for this track.</p>
         ) : (
           candidates.map((candidate) => (
             <CandidateRow
@@ -48,4 +48,3 @@ export function CandidateRotation({
     </section>
   );
 }
-

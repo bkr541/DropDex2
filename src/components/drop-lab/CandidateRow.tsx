@@ -1,7 +1,12 @@
-import { cn, formatKey } from '../../lib/utils';
-import type { DropLabCandidate } from '../../hooks/useDropLabCandidates';
+import { cn } from '../../lib/utils';
+import type { DropLabCandidate } from '../../hooks/useDropLabFlipPicks';
+import { dropLabKeyLabel } from '../../hooks/useDropLabFlipPicks';
 import type { DropLabTrackAnalysis } from '../../hooks/useDropLabAnalysis';
-import { CheckmarkFilled, CircleOutline, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, WarningAlt } from '@carbon/icons-react';
+import { Artwork } from '../ui/display';
+import { camelotKeyColor } from '../ui/display/camelotKey';
+
+export const CANDIDATE_COLUMNS = 'minmax(0,1.6fr) 64px 70px 120px minmax(0,1.1fr) 170px 28px';
 
 interface CandidateRowProps {
   candidate: DropLabCandidate;
@@ -12,14 +17,17 @@ interface CandidateRowProps {
 
 export function CandidateRow({ candidate, analysis, active, onSelect }: CandidateRowProps) {
   const track = candidate.track;
-  const bpm = track.bpm != null ? track.bpm.toFixed(1) : '--';
-  const key = formatKey(track.musical_key);
-  const initials = `${track.artist?.[0] ?? track.title[0] ?? '?'}${track.title[0] ?? '?'}`.toUpperCase();
+  const key = dropLabKeyLabel(track);
   const hasDrop = Boolean(analysis?.dropPoints.length);
   const waveformStatus = analysis?.waveformState.status ?? 'idle';
   const hasWaveform = waveformStatus === 'loaded';
   const ready = hasDrop && hasWaveform;
-  const reasons = candidate.reasons.slice(0, 2).map((reason) => reason.label);
+  const problem = !hasWaveform
+    ? waveformStatus === 'error' ? 'Waveform failed'
+      : waveformStatus === 'invalid' ? 'Invalid waveform'
+        : waveformStatus === 'loading' ? 'Loading waveform'
+          : 'Missing waveform'
+    : 'Missing drop';
 
   return (
     <button
@@ -28,49 +36,31 @@ export function CandidateRow({ candidate, analysis, active, onSelect }: Candidat
       aria-selected={active}
       onClick={onSelect}
       className={cn(
-        'w-full grid grid-cols-[44px_1fr_auto] gap-3 items-center p-3 rounded-xl border text-left transition-all focus:outline-none focus:ring-2 focus:ring-primary/50',
-        active
-          ? 'bg-primary/10 border-primary/40 shadow-primary-card'
-          : 'bg-[var(--color-surface)] border-[var(--color-border-faint)] hover:bg-[var(--color-surface-hover)]',
+        'relative grid h-[58px] w-full items-center border-b border-[var(--color-border-faint)] px-5 text-left transition-colors hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+        active && 'bg-primary/[0.07]',
       )}
+      style={{ gridTemplateColumns: CANDIDATE_COLUMNS }}
     >
-      <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center text-xs font-black', active ? 'brand-gradient text-white' : 'bg-[var(--color-avatar-bg)] text-muted-foreground')}>
-        {initials}
-      </div>
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <h4 className="text-sm font-bold truncate">{track.title}</h4>
-          <span className="shrink-0 text-[9px] font-bold uppercase tracking-widest text-primary">{candidate.matchLabel}</span>
-        </div>
-        <p className="text-[10px] text-muted-foreground uppercase tracking-tighter truncate">{track.artist ?? 'Artist not stored'}</p>
-        <div className="flex flex-wrap gap-1 mt-1">
-          <span className="text-[9px] font-mono text-[var(--color-text-subdued)]">{bpm} BPM</span>
-          <span className="text-[9px] font-mono text-secondary">{key}</span>
-          {reasons.map((reason) => (
-            <span key={reason} className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-surface-hover)] text-muted-foreground">
-              {reason}
-            </span>
-          ))}
-          {!ready && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400 flex items-center gap-1">
-              <WarningAlt size={10} />
-              {!hasWaveform
-                ? waveformStatus === 'error'
-                  ? 'Waveform failed'
-                  : waveformStatus === 'invalid'
-                    ? 'Invalid waveform'
-                    : waveformStatus === 'loading'
-                      ? 'Loading waveform'
-                      : 'Missing waveform'
-                : 'Missing drop'}
-            </span>
-          )}
+      {active && <span className="absolute inset-y-0 left-0 w-[3px] bg-primary" />}
+      <div className="flex min-w-0 items-center gap-3">
+        <Artwork src={track.artwork_path ?? null} alt="" fallbackTitle="No artwork" className="h-10 w-10 shrink-0 rounded-md" />
+        <div className="min-w-0">
+          <div className={cn('truncate text-[13px] font-bold', active && 'text-primary')}>{track.title}</div>
+          <div className="truncate text-[11px] text-muted-foreground">{track.artist ?? 'Artist not stored'}</div>
         </div>
       </div>
-      <div className="text-primary">
-        {active ? <CheckmarkFilled size={18} /> : <CircleOutline size={18} className="text-muted-foreground" />}
-      </div>
+      <span className="font-mono text-[13px] font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '--'}</span>
+      <span className="font-mono text-[13px] font-bold" style={{ color: camelotKeyColor(key) }}>{key}</span>
+      <span className="text-[11px] font-bold uppercase tracking-wider text-primary">{candidate.matchLabel}</span>
+      <span className="flex flex-wrap gap-1">
+        {candidate.reasons.slice(0, 2).map((reason) => (
+          <span key={reason.label} className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground">{reason.label}</span>
+        ))}
+      </span>
+      {ready
+        ? <span className="flex items-center gap-1.5 text-[11px] text-emerald-400"><CheckmarkFilled size={12} /> Ready to preview</span>
+        : <span className="flex items-center gap-1.5 text-[11px] text-amber-400"><WarningAlt size={12} /> {problem}</span>}
+      <span aria-hidden="true">{active ? <CheckmarkFilled size={16} className="text-primary" /> : <span className="block h-3.5 w-3.5 rounded-full border border-white/25" />}</span>
     </button>
   );
 }
-

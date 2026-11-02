@@ -53,6 +53,13 @@ describe('app routes', () => {
     });
   });
 
+  it('opens Drop Lab from the nav without a source track, and keeps the source in the URL once picked', () => {
+    const open = { name: 'drop-lab', sourceTrackId: null, candidateTrackId: null, sourceDropId: null, candidateDropId: null } as const;
+    expect(parseAppRoute('/drop-lab')).toEqual(open);
+    expect(routeToUrl(open)).toBe('/drop-lab');
+    expect(routeToUrl({ ...open, sourceTrackId: 't1', candidateTrackId: 't2' })).toBe('/drop-lab/t1?candidate=t2');
+  });
+
   it('returns a readable not-found route for unknown or malformed paths', () => {
     expect(parseAppRoute('/unknown')).toEqual({ name: 'not-found', pathname: '/unknown' });
     expect(parseAppRoute('/tracks/%E0%A4%A')).toEqual({
@@ -64,6 +71,8 @@ describe('app routes', () => {
   it('uses entity-aware fallback routes for direct-entry back actions', () => {
     expect(routeBackFallback({ name: 'drop-lab', sourceTrackId: 't1', candidateTrackId: null, sourceDropId: null, candidateDropId: null }))
       .toEqual({ name: 'track', trackId: 't1' });
+    expect(routeBackFallback({ name: 'drop-lab', sourceTrackId: null, candidateTrackId: null, sourceDropId: null, candidateDropId: null }))
+      .toEqual({ name: 'library', tab: 'overview', search: '' });
     expect(routeBackFallback({ name: 'playlist-edit', playlistId: 'p1' }))
       .toEqual({ name: 'playlist', playlistId: 'p1' });
   });
