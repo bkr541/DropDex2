@@ -8,6 +8,7 @@ import { PageNameMockupsContent } from './LayoutLabPageNameMockups';
 import { LibraryCueModeMockupsContent } from './LayoutLabLibraryCueModeMockups';
 import { UiComponentsContent } from './LayoutLabUiComponents';
 import { HeaderStatusMockupsContent } from './LayoutLabHeaderStatusMockups';
+import { DropLabMockupsContent } from './LayoutLabDropLabMockups';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'page-names',    label: 'Page Names'    },
   { id: 'library-cue-mode', label: 'Library + Cue Mode' },
   { id: 'header-status', label: 'Header Status' },
+  { id: 'drop-lab', label: 'Drop Lab' },
 ];
 
 let tabCounter = 0;
@@ -2035,6 +2037,8 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
             <RekordboxMockupsContent />
           ) : activeId === 'page-names' ? (
             <PageNameMockupsContent />
+          ) : activeId === 'drop-lab' ? (
+            <DropLabMockupsContent />
           ) : activeId === 'header-status' ? (
             <HeaderStatusMockupsContent />
           ) : activeId === 'ui-components' ? (

@@ -21,7 +21,7 @@ const FRAME_MIN_WIDTH = 1180;
 
 const PROFILE = { name: 'DVYDRM', initials: 'DV', usb: 'DVYDRMNG', lastImport: 'Sep 29, 2026', tracks: 45, playlists: 8, bpm: 140, key: '7A', genre: 'Nasty' };
 
-const TRACKS = [
+export const TRACKS = [
   { title: 'Disappearance w EVOKE45', artist: 'Artist Not Available', bpm: '150.0', key: '10A', genre: '—', cues: 3, dur: '3:51', seed: 3, cueAt: [0.25, 0.3, 0.36] },
   { title: 'Ring The Alarm (HAHNER Edit)', artist: 'DJ Snake & Malaa x Anxi x Marshmello & SVDDEN DEATH', bpm: '145.0', key: '12A', genre: '—', cues: 0, dur: '2:27', seed: 8, cueAt: [] },
   { title: 'DJ DIESEL & CELO x LIL JON - In The Pit (TALIX …', artist: 'TALIX & VIBE LINK', bpm: '150.0', key: '02A', genre: 'Dubstep', cues: 0, dur: '1:45', seed: 15, cueAt: [] },
@@ -36,12 +36,12 @@ const CUE_COLORS = ['#1fb6ff', '#2be02b', '#5a22f2', '#ff4d4d'];
 
 // ── Small helpers ────────────────────────────────────────────────────────────
 
-function makeRand(seed: number) {
+export function makeRand(seed: number) {
   let s = seed >>> 0;
   return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 0xffffffff; };
 }
 
-function MiniWave({ seed, cueAt, height = 26 }: { seed: number; cueAt: number[]; height?: number }) {
+export function MiniWave({ seed, cueAt, height = 26 }: { seed: number; cueAt: number[]; height?: number }) {
   const bars = useMemo(() => {
     const rand = makeRand(seed);
     return Array.from({ length: 70 }, (_, i) => {
@@ -65,7 +65,7 @@ function MiniWave({ seed, cueAt, height = 26 }: { seed: number; cueAt: number[];
   );
 }
 
-function Frame({ children }: { children: ReactNode }) {
+export function Frame({ children }: { children: ReactNode }) {
   return (
     <div className="overflow-x-auto">
       <div
@@ -78,18 +78,18 @@ function Frame({ children }: { children: ReactNode }) {
   );
 }
 
-interface NavItem { label: string; icon: typeof Music }
+export interface NavItem { label: string; icon: typeof Music }
 const NAV_SIX: NavItem[] = [
   { label: 'Library', icon: Music }, { label: 'Review', icon: Growth }, { label: 'Audition', icon: Headphones },
   { label: 'Discover', icon: Radio }, { label: 'Search', icon: Search }, { label: 'Flip Lab', icon: Shuffle },
 ];
 const NAV_SEVEN: NavItem[] = [{ label: 'Overview', icon: Dashboard }, ...NAV_SIX];
-const NAV_TODAY: NavItem[] = [
+export const NAV_TODAY: NavItem[] = [
   { label: 'Library', icon: Music }, { label: 'Review', icon: Growth }, { label: 'Cue Points', icon: Idea },
   { label: 'Audition', icon: Headphones }, { label: 'Discover', icon: Radio }, { label: 'Search', icon: Search }, { label: 'Flip Lab', icon: Shuffle },
 ];
 
-function Rail({ items, active }: { items: NavItem[]; active: string }) {
+export function Rail({ items, active }: { items: NavItem[]; active: string }) {
   return (
     <div className="flex w-[72px] shrink-0 flex-col items-center gap-1.5 border-r border-[var(--color-border-faint)] bg-[var(--color-card)] py-3">
       <div className="mb-2 h-7 w-7 rounded-md bg-primary/80" />
@@ -106,7 +106,7 @@ function Rail({ items, active }: { items: NavItem[]; active: string }) {
   );
 }
 
-function Main({ children, className }: { children: ReactNode; className?: string }) {
+export function Main({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn('flex min-w-0 flex-1 flex-col overflow-hidden px-6 pt-6', className)}>{children}</div>;
 }
 
@@ -177,7 +177,7 @@ function Dock({ tabs, tab, cueMode, unsaved }: { tabs: string[]; tab: string; cu
 
 // ── Filters + table ──────────────────────────────────────────────────────────
 
-function Filters() {
+export function Filters({ showExport = true }: { showExport?: boolean }) {
   const dd = (label: string) => <FilterDropdown key={label} label={label} value="all" onChange={() => undefined} className="min-w-[96px]" options={[{ value: 'all', label: 'All' }]} />;
   return (
     <div className="flex shrink-0 items-end gap-x-5 border-b border-[var(--color-border-faint)] px-4 py-2.5">
@@ -192,16 +192,18 @@ function Filters() {
           <span className="absolute -right-1 -top-[11px] flex h-6 w-6 items-center justify-center rounded-full border border-primary bg-[var(--color-card)] text-[8px] font-bold">150</span>
         </div>
       </div>
-      <div className="ml-auto pb-[3px]">
-        <ControlButton variant="surface" className="h-[34px] min-h-0 px-3 text-[11px]"><Export size={14} /> Export 45</ControlButton>
-      </div>
+      {showExport && (
+        <div className="ml-auto pb-[3px]">
+          <ControlButton variant="surface" className="h-[34px] min-h-0 px-3 text-[11px]"><Export size={14} /> Export 45</ControlButton>
+        </div>
+      )}
     </div>
   );
 }
 
 const ROW_COLS = 'minmax(0,1.5fr) minmax(0,1fr) 70px 80px 100px 70px 70px';
 
-function TrackTable({ selected = 0 }: { selected?: number | null }) {
+export function TrackTable({ selected = 0 }: { selected?: number | null }) {
   return (
     <div className="min-h-0 flex-1 overflow-hidden">
       <div className="grid items-center border-b border-[var(--color-border-faint)] px-5 py-2 text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground" style={{ gridTemplateColumns: ROW_COLS }}>
