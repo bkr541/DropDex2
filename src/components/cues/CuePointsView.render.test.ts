@@ -4,6 +4,11 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { RekordboxTrack } from '../../types';
 
 const libraryFixture = vi.hoisted(() => ({ tracks: [] as RekordboxTrack[] }));
+const playlistCountFixture = vi.hoisted(() => ({ counts: new Map<string, number>(), error: null as string | null }));
+
+vi.mock('../../hooks/useTrackPlaylistCounts', () => ({
+  useTrackPlaylistCounts: () => ({ counts: playlistCountFixture.counts, loading: false, error: playlistCountFixture.error, retry: vi.fn() }),
+}));
 
 vi.mock('../../theme/ThemeProvider', () => ({
   useTheme: () => ({ theme: 'dropdex', setTheme: vi.fn() }),
@@ -163,7 +168,8 @@ describe('Review shared browser and focused track timeline', () => {
       expect(markup).toContain('aria-label="Search review tracks"');
       expect(markup).toContain('data-testid="cue-browser-filters"');
       expect(markup).toContain('Review Track');
-      expect(markup).toContain('Sort by Sample Rate');
+      expect(markup).toContain('Sort by Rate');
+      expect(markup).not.toContain('Sample Rate');
       expect(markup).not.toContain('Select a track');
       expect(markup).not.toContain('data-testid="cue-audio-dock"');
       expect(markup).not.toContain('Edit Genre');
@@ -171,6 +177,132 @@ describe('Review shared browser and focused track timeline', () => {
       libraryFixture.tracks = [];
       vi.unstubAllGlobals();
     }
+  });
+
+  const renderRows = (mode: 'review' | 'cues') => {
+    vi.stubGlobal('window', { devicePixelRatio: 1 });
+    libraryFixture.tracks = [track];
+    try {
+      const markup = renderToStaticMarkup(createElement(AudioPlayerProvider, {
+        imports: [], children: createElement(CuePointsView, { mode, importId: 'import-test', onImport: vi.fn(), onTrackOpen: vi.fn() }),
+      }));
+      return markup.slice(markup.indexOf('<tbody'));
+    } finally {
+      libraryFixture.tracks = [];
+      vi.unstubAllGlobals();
+    }
+  };
+  const formatClass = 'px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap';
+
+  it('Review: BPM and key are plain text in the same style as the format value, with no key badge', () => {
+    const rows = renderRows('review');
+    expect(rows).toContain(`<td class="${formatClass}">128.0</td>`);
+    expect(rows).toContain(`<td class="${formatClass}">08A</td>`);
+    expect(rows).toContain(`<td class="${formatClass}">WAV</td>`);
+    expect(rows).not.toContain('font-mono text-[13px] font-bold tabular-nums">128.0');
+    expect(rows).not.toContain('rounded-[5px] bg-white/[0.05]');
+  });
+
+  it('Review: adds a Playlists column showing how many playlists each track is in', () => {
+    playlistCountFixture.counts = new Map([['review-track', 3]]);
+    try {
+      const markup = renderRows('review');
+      expect(markup).toContain('data-testid="playlist-count"');
+      expect(markup).toMatch(/data-testid="playlist-count"><span title="In 3 playlists">3<\/span>/);
+    } finally {
+      playlistCountFixture.counts = new Map();
+    }
+  });
+
+  it('Review: says "playlist" for one, shows … while loading, and a retry when the counts failed', () => {
+    playlistCountFixture.counts = new Map([['review-track', 1]]);
+    expect(renderRows('review')).toContain('title="In 1 playlist">1</span>');
+    playlistCountFixture.counts = new Map();
+    expect(renderRows('review')).toMatch(/data-testid="playlist-count">…<\/td>/);
+    playlistCountFixture.error = 'Playlist counts could not be loaded.';
+    try {
+      const failed = renderRows('review');
+      expect(failed).toContain('aria-label="Playlist counts could not be loaded. Try again."');
+    } finally {
+      playlistCountFixture.error = null;
+    }
+  });
+
+  it('Cue Points does not get the Playlists column', () => {
+    expect(renderRows('cues')).not.toContain('data-testid="playlist-count"');
+  });
+
+  it('Review: every column heading is larger and has an icon to the left of its text; Cue Points headings are unchanged', () => {
+    const head = (mode: 'review' | 'cues') => {
+      vi.stubGlobal('window', { devicePixelRatio: 1 });
+      libraryFixture.tracks = [track];
+      try {
+        const markup = renderToStaticMarkup(createElement(AudioPlayerProvider, {
+          imports: [], children: createElement(CuePointsView, { mode, importId: 'import-test', onImport: vi.fn(), onTrackOpen: vi.fn() }),
+        }));
+        return markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'));
+      } finally {
+        libraryFixture.tracks = [];
+        vi.unstubAllGlobals();
+      }
+    };
+    const review = head('review');
+    expect(review).toContain('text-xs');
+    expect(review).not.toContain('text-[9px]');
+    const headings = review.match(/<th [^>]*>[\s\S]*?<\/th>/g) ?? [];
+    expect(headings).toHaveLength(10);
+    for (const heading of headings) expect(heading).toMatch(/<svg[^>]*>[\s\S]*?<\/svg>[^<]*[A-Za-z]/);
+    for (const label of ['Track', 'BPM', 'Key', 'Genre', 'Cues', 'Playlists', 'Format', 'Rate', 'Bit Rate', 'Duration']) {
+      expect(review).toContain(label);
+    }
+    expect(review).not.toContain('Sample Rate');
+    const cues = head('cues');
+    expect(cues).toContain('Sample Rate');
+    expect(cues).toContain('text-[9px]');
+    expect(cues).not.toContain('<svg');
+    expect(cues).not.toContain('Playlists');
+  });
+
+  it('Review: the cues count has no box around it and starts at the left of its column like the others', () => {
+    const rows = renderRows('review');
+    expect(rows).toContain('<td class="px-3 py-1.5"><span class="text-xs text-muted-foreground whitespace-nowrap">');
+    expect(rows).not.toContain('inline-flex min-w-8 justify-center rounded-md border');
+    expect(rows).not.toContain('<td class="px-3 py-1.5 text-center">');
+  });
+
+  it('Review: the Cues heading is left-aligned too, while Cue Points keeps it centred', () => {
+    const heading = (mode: 'review' | 'cues') => {
+      vi.stubGlobal('window', { devicePixelRatio: 1 });
+      libraryFixture.tracks = [track];
+      try {
+        const markup = renderToStaticMarkup(createElement(AudioPlayerProvider, {
+          imports: [], children: createElement(CuePointsView, { mode, importId: 'import-test', onImport: vi.fn(), onTrackOpen: vi.fn() }),
+        }));
+        return markup.match(/<th [^>]*>(?:(?!<\/th>)[\s\S])*Sort by Cues[\s\S]*?<\/th>/)?.[0] ?? '';
+      } finally {
+        libraryFixture.tracks = [];
+        vi.unstubAllGlobals();
+      }
+    };
+    expect(heading('review')).not.toContain('text-center');
+    expect(heading('cues')).toContain('text-center');
+  });
+
+  it('Review: the genre column is 60% narrower, and the track name sits closer to its status dot at 12px', () => {
+    const markup = renderRows('review');
+    expect(markup).toContain('w-[71px] max-w-[71px]');
+    expect(markup).not.toContain('w-[178px]');
+    expect(markup).toContain('group flex min-w-0 items-center gap-1.5');
+    expect(markup).toContain('truncate font-bold text-xs leading-tight');
+  });
+
+  it('Cue Points keeps its badge, boxed cue count, wide genre column and 14px title', () => {
+    const markup = renderRows('cues');
+    expect(markup).toContain('w-[178px]');
+    expect(markup).toContain('inline-flex min-w-8 justify-center rounded-md border');
+    expect(markup).toContain('font-mono text-[13px] font-bold tabular-nums">128.0');
+    expect(markup).toContain('group flex min-w-0 items-center gap-2.5');
+    expect(markup).toContain('truncate font-bold text-sm leading-tight');
   });
 
   it('renders the focused track identity, aligned timeline, and transport without editing or browser controls', () => {

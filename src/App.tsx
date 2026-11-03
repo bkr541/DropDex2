@@ -1137,7 +1137,7 @@ export default function App() {
           ),
         };
       case 'track': return titledPage('Track Intelligence');
-      case 'review': return titledPage('Review');
+      case 'review': return titledPage(`${userProfile?.display_name?.trim() || 'My'} Library`);
       case 'settings': return titledPage('Profile');
       case 'discovery': return titledPage('Artist Discovery');
       case 'search': return titledPage('Artist Search');
@@ -1573,6 +1573,13 @@ export default function App() {
                       latestImport={latestImport}
                       profile={userProfile}
                       playlists={playlists}
+                      playlistsLoading={playlistsLoading}
+                      playlistProfilesByRbId={playlistProfilesByRbId}
+                      recentTracks={recentTracks}
+                      recentTracksLoading={recentTracksLoading}
+                      spotifyAccessToken={session?.access_token ?? null}
+                      onPlaylistClick={handlePlaylistClick}
+                      onEditPlaylist={handleEditPlaylist}
                       onImport={() => setIsImportModalOpen(true)}
                       onResumeAnalysis={(id) => navigate({ name: 'import', importId: id, resume: true })}
                       onShowIncompleteAnalysis={() => navigate({ name: 'library', tab: 'incomplete-analysis', search: '' })}

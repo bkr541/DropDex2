@@ -90,8 +90,10 @@ export function FilterDropdown({
   const isFiltered = options.length > 0 && options[0].label.toLowerCase() === 'all' && value !== options[0].value;
 
   return (
-    <div ref={ref} className={cn('relative min-w-[130px]', className)}>
-      <div className="pb-2 border-b border-white/15 hover:border-white/35 transition-colors">
+    // When a row stretches its items to one height, the label stays on top and the value
+    // and underline stay at the bottom. In a row that does not stretch, nothing changes.
+    <div ref={ref} className={cn('relative flex min-w-[130px] flex-col', className)}>
+      <div className="flex flex-1 flex-col justify-between pb-2 border-b border-white/15 hover:border-white/35 transition-colors">
         <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-1">{label}</p>
         <div className="flex items-center gap-1">
           <button
@@ -159,7 +161,7 @@ export function FilterDropdown({
               aria-selected={value === opt.value}
               onClick={() => { onChange(opt.value); closeAndRestoreFocus(); }}
               className={cn(
-                'w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-white/[0.06]',
+                'w-full text-left px-4 py-1.5 text-sm transition-colors hover:bg-white/[0.06]',
                 value === opt.value ? 'text-foreground' : 'font-medium text-muted-foreground',
               )}
             >

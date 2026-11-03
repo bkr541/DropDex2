@@ -20,14 +20,14 @@ export function PageNameTab({ title, icon: Icon }: { title: string; icon?: Eleme
       style={{ left: '50%', transform: 'translateX(-50%)' }}
     >
       <span
-        className="glass flex items-center gap-2 rounded-b-3xl px-6 py-2.5 text-[15px] font-medium leading-5 uppercase tracking-[0.2em] text-foreground"
+        className="glass flex items-center gap-2 rounded-b-3xl px-6 py-1.5 text-[13px] font-medium leading-4 uppercase tracking-[0.2em] text-foreground"
         style={{
           borderColor: 'var(--color-secondary)',
           borderTopWidth: 0,
           boxShadow: '0 8px 16px -4px rgb(0 0 0 / 0.5), 0 2px 5px rgb(0 0 0 / 0.3)',
         }}
       >
-        {Icon && <Icon size={18} className="shrink-0 text-secondary" />}
+        {Icon && <Icon size={16} className="shrink-0 text-secondary" />}
         <span className="truncate">{title}</span>
       </span>
     </div>

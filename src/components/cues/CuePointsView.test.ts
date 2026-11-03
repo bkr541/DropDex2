@@ -7,6 +7,7 @@ const appSource = readFileSync(new URL('../../App.tsx', import.meta.url), 'utf8'
 const trackTimingSource = readFileSync(new URL('../../lib/music/trackTiming.ts', import.meta.url), 'utf8');
 const timelineZoomSource = readFileSync(new URL('../../hooks/useTimelineZoom.ts', import.meta.url), 'utf8');
 const viewportSource = readFileSync(new URL('../../lib/cues/cueTimelineViewport.ts', import.meta.url), 'utf8');
+const dualRangeSource = readFileSync(new URL('../ui/controls/DualRangeSlider.tsx', import.meta.url), 'utf8');
 const trackIdentitySource = readFileSync(new URL('../ui/display/TrackIdentity.tsx', import.meta.url), 'utf8');
 const trackTableSource = readFileSync(new URL('../ui/display/TrackTable.tsx', import.meta.url), 'utf8');
 const filterDropdownSource = readFileSync(new URL('../ui/controls/FilterDropdown.tsx', import.meta.url), 'utf8');
@@ -453,7 +454,8 @@ describe('Cue Points Stage 2 browser workspace', () => {
     expect(source).toContain('label="Key"');
     expect(source).toContain('label="Cue States"');
     expect(source).toContain('label="Analysis"');
-    expect(source).toContain('<CueBpmRangeSlider');
+    expect(source).toContain('<DualRangeSlider variant="inline"');
+    expect(source).not.toContain('function CueBpmRangeSlider');
     expect(source).toContain('aria-label="Search cue point tracks"');
     expect(source).toContain("if (browserSource === 'library') return activeSourceTracks;");
     expect(source).toContain("[track.title, track.artist, track.genre]");
@@ -546,15 +548,14 @@ describe('Cue Points Stage 5 integrated hardening', () => {
     expect(source).toContain('if (!target || transportBlocked) return;');
   });
 
-  it('makes the custom BPM range filter keyboard accessible and prevents hover-only pointer drift', () => {
-    expect(source).toContain('if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;');
-    expect(source).toContain('role="slider"');
-    expect(source).toContain('aria-label="Minimum BPM"');
-    expect(source).toContain('aria-label="Maximum BPM"');
-    expect(source).toContain("onKeyDown={(event) => handleSliderKeyDown(event, 'minimum')}");
-    expect(source).toContain("onKeyDown={(event) => handleSliderKeyDown(event, 'maximum')}");
-    expect(source).toContain("event.key === 'PageUp'");
-    expect(source).toContain("event.key === 'Home'");
+  it('makes the BPM range filter keyboard accessible and prevents hover-only pointer drift', () => {
+    expect(source).toContain('<DualRangeSlider variant="inline"');
+    expect(dualRangeSource).toContain('if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;');
+    expect(dualRangeSource).toContain("role: 'slider'");
+    expect(dualRangeSource).toContain("`${kind === 'minimum' ? 'Minimum' : 'Maximum'} ${label}`");
+    expect(dualRangeSource).toContain('onKeyDown: (event) => keyDown(event, kind)');
+    expect(dualRangeSource).toContain("event.key === 'PageUp'");
+    expect(dualRangeSource).toContain("event.key === 'Home'");
   });
 
   it('restores focus and supports directional keyboard navigation in custom filter dropdowns', () => {

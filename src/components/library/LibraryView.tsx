@@ -1,4 +1,4 @@
-import { useState, useMemo, memo, useCallback, useRef, useEffect, type ReactNode } from 'react';
+import { useState, useMemo, memo, useCallback, useRef, useEffect, type ElementType, type ReactNode } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
@@ -21,7 +21,6 @@ import {
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import { LibraryHero } from './LibraryHero';
-import { PlaylistOverviewCard } from './PlaylistOverviewCard';
 import { RecentlyAddedTracksTable } from './RecentlyAddedTracksTable';
 import { LibrarySearchResults } from './LibrarySearchResults';
 import type {
@@ -36,24 +35,29 @@ import { supabase } from '../../lib/supabase';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
 import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Tag, Undo, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
+import { Cloud, Dashboard, Playlist, Time, UserMultiple } from '@carbon/icons-react';
 import { Artwork } from '../ui/display/Artwork';
 import { ControlButton, SearchControl } from '../ui/controls';
 import { HeroActionButton } from './HeroActionButton';
 import { SpotifyLibraryTab } from './SpotifyLibraryTab';
-import { fetchSpotifyAccountStatus } from '../../lib/api/externalAccounts';
+import { useSpotifyAvailability } from '../../hooks/useSpotifyAvailability';
+import { LibraryTabBar } from './LibraryTabBar';
+import { ArtistsPanel, GenresPanel, PlaylistsPanel } from './LibraryTabPanels';
 
 
-const TABS: { id: LibraryTab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'playlists', label: 'Playlists' },
-  { id: 'recently-added', label: 'Recently Added' },
-  { id: 'tracks', label: 'Tracks' },
-  { id: 'genres', label: 'Genres' },
-  { id: 'artists', label: 'Artists' },
-  { id: 'incomplete-analysis', label: 'Analysis Incomplete' },
+const TABS: { id: LibraryTab; label: string; icon: ElementType }[] = [
+  { id: 'overview', label: 'Overview', icon: Dashboard },
+  { id: 'playlists', label: 'Playlists', icon: Playlist },
+  { id: 'recently-added', label: 'Recently Added', icon: Time },
+  { id: 'tracks', label: 'Tracks', icon: Music },
+  { id: 'genres', label: 'Genres', icon: Tag },
+  { id: 'artists', label: 'Artists', icon: UserMultiple },
+  { id: 'incomplete-analysis', label: 'Analysis Incomplete', icon: WarningAlt },
 ];
 
-const SPOTIFY_TAB: { id: LibraryTab; label: string } = { id: 'spotify', label: 'Spotify' };
+const SPOTIFY_TAB: { id: LibraryTab; label: string; icon: ElementType } = { id: 'spotify', label: 'Spotify', icon: Cloud };
+
+export { TABS as LIBRARY_TABS, SPOTIFY_TAB };
 
 interface LibraryViewProps {
   latestImport: RekordboxImport | null;
@@ -328,7 +332,7 @@ function DesktopLibraryInfoCard({
 
 type LibrarySortCol = 'title' | 'bpm' | 'key' | 'genre' | 'duration';
 
-interface LibraryTrackTableProps {
+export interface LibraryTrackTableProps {
   tracks: RekordboxTrack[];
   loading: boolean;
   emptyText?: string;
@@ -343,7 +347,7 @@ interface LibraryTrackTableProps {
   footer?: React.ReactNode;
 }
 
-function LibraryTrackTable({
+export function LibraryTrackTable({
   tracks,
   loading,
   emptyText,
@@ -451,6 +455,18 @@ function LibraryTrackTable({
         </table>
       </div>
       {footer}
+    </div>
+  );
+}
+
+/** The Recently Added tab: the newest tracks in a table. Shared by the Library and Review pages. */
+export function RecentlyAddedPanel({ tracks, loading, ...tableProps }: Omit<LibraryTrackTableProps, 'emptyText' | 'footer'>) {
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground font-mono">
+        {loading ? 'Loading…' : `${tracks.length.toLocaleString()} recently added tracks`}
+      </p>
+      <LibraryTrackTable tracks={tracks} loading={loading} emptyText="No recently added tracks." {...tableProps} />
     </div>
   );
 }
@@ -1225,21 +1241,7 @@ export function LibraryView({
   onSearchQueryChange,
 }: LibraryViewProps) {
 
-  const [spotifyAvailable, setSpotifyAvailable] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (!spotifyAccessToken) {
-      setSpotifyAvailable(false);
-      return;
-    }
-    const controller = new AbortController();
-    fetchSpotifyAccountStatus(spotifyAccessToken, controller.signal)
-      .then((status) => setSpotifyAvailable(status.status === 'linked' && status.playlist_access))
-      .catch(() => {
-        if (!controller.signal.aborted) setSpotifyAvailable(false);
-      });
-    return () => controller.abort();
-  }, [spotifyAccessToken]);
+  const spotifyAvailable = useSpotifyAvailability(spotifyAccessToken);
 
   useEffect(() => {
     if (spotifyAvailable === false && activeTab === 'spotify') {
@@ -1507,28 +1509,11 @@ export function LibraryView({
                       </div>
 
                       {/* Tab bar */}
-                        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none border-b border-[var(--color-border-subtle)]">
-                          {visibleTabs.map((tab) => {
-                            const isDisabled = tab.id === 'incomplete-analysis' && !hasIncompleteAnalysis;
-                            return (
-                              <button
-                                key={tab.id}
-                                disabled={isDisabled}
-                                onClick={() => { if (!isDisabled) onActiveTabChange(tab.id); }}
-                                className={cn(
-                                  'shrink-0 px-4 py-2.5 text-sm font-bold transition-all border-b-2 -mb-px',
-                                  isDisabled
-                                    ? 'text-muted-foreground/30 border-transparent cursor-not-allowed'
-                                    : activeTab === tab.id
-                                      ? 'text-primary border-primary'
-                                      : 'text-muted-foreground border-transparent hover:text-foreground',
-                                )}
-                              >
-                                {tab.label}
-                              </button>
-                            );
-                          })}
-                        </div>
+                      <LibraryTabBar
+                        tabs={visibleTabs.map((tab) => ({ ...tab, disabled: tab.id === 'incomplete-analysis' && !hasIncompleteAnalysis }))}
+                        activeTab={activeTab}
+                        onChange={onActiveTabChange}
+                      />
                     </div>
 
                     {/* ── Scrollable tab content ── */}
@@ -1595,61 +1580,29 @@ export function LibraryView({
 
                       {/* ── PLAYLISTS ── */}
                       {activeTab === 'playlists' && (
-                        <section className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs text-muted-foreground font-mono">
-                              {playlistsLoading ? '…' : `${playlists.length} items`}
-                            </p>
-                          </div>
-                          {playlistsLoading ? (
-                            <div className="flex items-center justify-center py-10">
-                              <CircleDash className="animate-spin text-muted-foreground" size={20} />
-                            </div>
-                          ) : playlists.length === 0 ? (
-                            <div className="text-center py-10 border-2 border-dashed border-[var(--color-border-subtle)] rounded-3xl">
-                              <p className="text-muted-foreground text-sm">No playlists in this import.</p>
-                            </div>
-                          ) : (
-                            <div className="flex flex-wrap gap-3">
-                              {playlists.map((playlist) => {
-                                const prof = playlistProfilesByRbId.get(playlist.rekordbox_playlist_id);
-                                return (
-                                  <div key={playlist.id} className="w-[304px]">
-                                    <PlaylistOverviewCard
-                                      playlist={playlist}
-                                      artworkUrl={prof?.artwork_url}
-                                      displayName={prof?.display_name}
-                                      onClick={() => onPlaylistClick(playlist)}
-                                      onEdit={() => onEditPlaylist(playlist)}
-                                    />
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </section>
+                        <PlaylistsPanel
+                          playlists={playlists}
+                          loading={playlistsLoading}
+                          profilesByRbId={playlistProfilesByRbId}
+                          onPlaylistClick={onPlaylistClick}
+                          onEditPlaylist={onEditPlaylist}
+                        />
                       )}
 
                       {/* ── RECENTLY ADDED ── */}
                       {activeTab === 'recently-added' && (
-                        <div className="space-y-3">
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {recentTracksLoading ? 'Loading…' : `${recentTracks.length.toLocaleString()} recently added tracks`}
-                          </p>
-                          <LibraryTrackTable
-                            tracks={recentTracks}
-                            loading={recentTracksLoading}
-                            emptyText="No recently added tracks."
-                            getWaveformState={getWaveformState}
-                            retryWaveform={retryWaveform}
-                            activeTrack={activeTrack}
-                            playerStatus={playerStatus}
-                            playIntent={playIntent}
-                            usbConnected={usbConnected}
-                            onTrackClick={onTrackClick}
-                            onPlay={handlePlay}
-                          />
-                        </div>
+                        <RecentlyAddedPanel
+                          tracks={recentTracks}
+                          loading={recentTracksLoading}
+                          getWaveformState={getWaveformState}
+                          retryWaveform={retryWaveform}
+                          activeTrack={activeTrack}
+                          playerStatus={playerStatus}
+                          playIntent={playIntent}
+                          usbConnected={usbConnected}
+                          onTrackClick={onTrackClick}
+                          onPlay={handlePlay}
+                        />
                       )}
 
                       {/* ── TRACKS ── */}
@@ -1692,87 +1645,10 @@ export function LibraryView({
                       )}
 
                       {/* ── GENRES ── */}
-                      {activeTab === 'genres' && (
-                        <div className="space-y-3">
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {statsLoading ? 'Loading…' : `${genreStats.length} genres`}
-                          </p>
-                          {statsLoading ? (
-                            <div className="flex items-center justify-center py-16">
-                              <CircleDash className="animate-spin text-primary" size={28} />
-                            </div>
-                          ) : genreStats.length === 0 ? (
-                            <p className="text-center py-12 text-muted-foreground italic text-sm">No genre data in this library.</p>
-                          ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-                              {genreStats.map(([genre, count]) => (
-                                <div
-                                  key={genre}
-                                  className="glass rounded-2xl p-4 border border-[var(--color-border-subtle)] hover:border-primary/25 transition-all"
-                                >
-                                  <div className="flex items-start justify-between gap-2 mb-2">
-                                    <p className="font-bold text-sm leading-snug">{genre}</p>
-                                    <span className="text-[10px] font-mono text-muted-foreground shrink-0 mt-0.5">
-                                      {count.toLocaleString()}
-                                    </span>
-                                  </div>
-                                  <div className="h-1 rounded-full bg-[var(--color-border-subtle)] overflow-hidden">
-                                    <div
-                                      className="h-full bg-primary rounded-full transition-all"
-                                      style={{ width: `${(count / genreStats[0][1]) * 100}%` }}
-                                    />
-                                  </div>
-                                  <p className="text-[9px] text-muted-foreground mt-1.5 font-mono">tracks</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {activeTab === 'genres' && <GenresPanel genreStats={genreStats} loading={statsLoading} />}
 
                       {/* ── ARTISTS ── */}
-                      {activeTab === 'artists' && (
-                        <div className="space-y-3">
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {statsLoading ? 'Loading…' : `${artistStats.length.toLocaleString()} artists`}
-                          </p>
-                          {statsLoading ? (
-                            <div className="flex items-center justify-center py-16">
-                              <CircleDash className="animate-spin text-primary" size={28} />
-                            </div>
-                          ) : artistStats.length === 0 ? (
-                            <p className="text-center py-12 text-muted-foreground italic text-sm">No artist data in this library.</p>
-                          ) : (
-                            <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
-                              <div className="hidden sm:grid grid-cols-[auto_1fr_80px] px-4 py-2.5 border-b border-[var(--color-border-faint)]">
-                                {['', 'Artist', 'Tracks'].map((col, i) => (
-                                  <p key={i} className={cn('text-[9px] uppercase tracking-widest text-muted-foreground font-bold', i === 2 && 'text-right')}>
-                                    {col}
-                                  </p>
-                                ))}
-                              </div>
-                              <div className="divide-y divide-[var(--color-border-faint)]">
-                                {artistStats.map(([artist, count]) => (
-                                  <div
-                                    key={artist}
-                                    className="grid grid-cols-[auto_1fr_80px] items-center px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
-                                  >
-                                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center mr-3 shrink-0">
-                                      <span className="text-xs font-black text-primary">
-                                        {artist[0]?.toUpperCase() ?? '?'}
-                                      </span>
-                                    </div>
-                                    <span className="text-sm font-semibold truncate">{artist}</span>
-                                    <span className="text-[10px] font-mono text-muted-foreground text-right">
-                                      {count.toLocaleString()}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {activeTab === 'artists' && <ArtistsPanel artistStats={artistStats} loading={statsLoading} />}
 
                       {/* ── SPOTIFY ── */}
                       {activeTab === 'spotify' && spotifyAvailable && spotifyAccessToken && (

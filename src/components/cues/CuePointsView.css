@@ -61,7 +61,7 @@
 }
 
 .cue-browser__filters {
-  align-items: flex-end;
+  align-items: stretch;
 }
 
 .cue-browser__filters > * {
@@ -69,7 +69,7 @@
 }
 
 .cue-browser__filters > :last-child {
-  min-width: 180px;
+  min-width: 148px;
 }
 
 .cue-browser__filters [data-testid="cue-browser-source-tabs"] .dd-tab-nav {

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, CircleDash, Close, ColorPalette, Edit, Export, Idea, Music, Pause, Pending, Play, Repeat, Save, Tag, Time, Timer, Upload, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
+import { ChartLine, ChevronDown, CircleDash, Close, ColorPalette, DocumentAudio, Edit, Export, Idea, Key, Meter, Music, Pause, Pending, Pin, Play, Playlist, Repeat, Save, Tag, Time, Timer, Upload, VolumeMute, VolumeUp, WarningAlt, Waveform } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
 import { gridBeatsForMode, type CueGridDisplayMode } from '../../lib/cues/cueTimelineViewport';
 import { useTimelineZoom } from '../../hooks/useTimelineZoom';
+import { useTrackPlaylistCounts } from '../../hooks/useTrackPlaylistCounts';
 import { applyAutoCueStrategy } from '../../lib/music/autoCueStrategy';
 import {
   addWorkingCue,
@@ -40,7 +41,7 @@ import {
 import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
 import { CueEditorToolbar, CueStateIcon } from './CueEditorToolbar';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { ControlButton, FilterDropdown, SearchControl, SelectControl, TextControl } from '../ui/controls';
+import { ControlButton, DualRangeSlider, FilterDropdown, SearchControl, SelectControl, TextControl } from '../ui/controls';
 import { TrackIdentity, TrackNameCell, TrackTable, TrackTableBody, TrackTableHead, TrackTableHeadCell, TrackTableRow } from '../ui/display';
 import { TabNavigation } from '../ui/display/TabNavigation';
 import { AudioDock, MediaTransportControlGroup, PlaybackSeekBar, TimelineBeatLane, TimelineSectionLane, TrackWaveformPreview, WaveformZoomControls, cueMarkersFromState } from '../ui/media';
@@ -269,133 +270,6 @@ function barLabelBeats(beats: BeatEntry[]): BeatEntry[] {
   if (downbeats.length <= MAX_BAR_LABELS) return downbeats;
   const step = Math.ceil(downbeats.length / MAX_BAR_LABELS);
   return downbeats.filter((_, index) => index % step === 0 || index === downbeats.length - 1);
-}
-
-function CueBpmRangeSlider({
-  bounds,
-  value,
-  onChange,
-  onReset,
-}: {
-  bounds: [number, number];
-  value: [number, number];
-  onChange: (range: [number, number]) => void;
-  onReset: () => void;
-}) {
-  const trackRef = useRef<HTMLDivElement>(null);
-  const [lo, hi] = value;
-  const [bMin, bMax] = bounds;
-  const span = bMax - bMin || 1;
-  const loPct = ((lo - bMin) / span) * 100;
-  const hiPct = ((hi - bMin) / span) * 100;
-  const isFiltered = lo > bMin || hi < bMax;
-
-  function valFromClientX(clientX: number): number {
-    if (!trackRef.current) return bMin;
-    const rect = trackRef.current.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    return Math.round(bMin + pct * span);
-  }
-
-  function handleLoPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-    const val = valFromClientX(e.clientX);
-    onChange([Math.min(val, hi), hi]);
-  }
-
-  function handleHiPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-    const val = valFromClientX(e.clientX);
-    onChange([lo, Math.max(val, lo)]);
-  }
-
-  function handleSliderKeyDown(
-    event: React.KeyboardEvent<HTMLDivElement>,
-    kind: 'minimum' | 'maximum',
-  ) {
-    const current = kind === 'minimum' ? lo : hi;
-    const minimum = kind === 'minimum' ? bMin : lo;
-    const maximum = kind === 'minimum' ? hi : bMax;
-    let next: number | null = null;
-
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next = current - 1;
-    else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next = current + 1;
-    else if (event.key === 'PageDown') next = current - 5;
-    else if (event.key === 'PageUp') next = current + 5;
-    else if (event.key === 'Home') next = minimum;
-    else if (event.key === 'End') next = maximum;
-
-    if (next == null) return;
-    event.preventDefault();
-    const clamped = Math.max(minimum, Math.min(maximum, next));
-    if (kind === 'minimum') onChange([clamped, hi]);
-    else onChange([lo, clamped]);
-  }
-
-  return (
-    <div className="min-w-[180px]">
-      <div className="pb-2">
-        <div className="flex items-center gap-1 mb-1">
-          <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">BPM</p>
-          {isFiltered && (
-            <button
-              type="button"
-              onClick={onReset}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Reset BPM filter"
-            >
-              <RotateCcw size={8} />
-            </button>
-          )}
-        </div>
-        <div ref={trackRef} className="relative h-5 select-none mx-3.5">
-          <div className="absolute left-0 right-0 bottom-[5px] h-px bg-white/15 rounded-full" />
-          <div
-            className="absolute bottom-[5px] h-px bg-primary rounded-full"
-            style={{ left: `${loPct}%`, right: `${100 - hiPct}%` }}
-          />
-          <div
-            role="slider"
-            tabIndex={0}
-            aria-label="Minimum BPM"
-            aria-valuemin={bMin}
-            aria-valuemax={hi}
-            aria-valuenow={lo}
-            aria-valuetext={`${lo} BPM`}
-            className="absolute bottom-[5px] translate-y-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-[var(--color-card)] border border-primary cursor-grab active:cursor-grabbing touch-none flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            style={{ left: `${loPct}%` }}
-            onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
-              handleLoPointerMove(e);
-            }}
-            onPointerMove={handleLoPointerMove}
-            onKeyDown={(event) => handleSliderKeyDown(event, 'minimum')}
-          >
-            <span className="text-[8px] font-black text-foreground tabular-nums leading-none pointer-events-none">{lo}</span>
-          </div>
-          <div
-            role="slider"
-            tabIndex={0}
-            aria-label="Maximum BPM"
-            aria-valuemin={lo}
-            aria-valuemax={bMax}
-            aria-valuenow={hi}
-            aria-valuetext={`${hi} BPM`}
-            className="absolute bottom-[5px] translate-y-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-[var(--color-card)] border border-primary cursor-grab active:cursor-grabbing touch-none flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            style={{ left: `${hiPct}%` }}
-            onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
-              handleHiPointerMove(e);
-            }}
-            onPointerMove={handleHiPointerMove}
-            onKeyDown={(event) => handleSliderKeyDown(event, 'maximum')}
-          >
-            <span className="text-[8px] font-black text-foreground tabular-nums leading-none pointer-events-none">{hi}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function percentageAt(ms: number, viewStart: number, viewEnd: number): number {
@@ -3033,6 +2907,10 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
     };
   }, [cueSummaryRetryNonce, importId, trackIdsKey]);
 
+  // Review shows how many playlists each track is in.
+  const activeSourceTrackIds = useMemo(() => activeSourceTracks.map((track) => track.id), [activeSourceTracks]);
+  const playlistCounts = useTrackPlaylistCounts(activeSourceTrackIds, review);
+
   const sourceSearchFilteredTracks = useMemo(() => {
     if (browserSource === 'library') return activeSourceTracks;
     const query = search.trim().toLowerCase();
@@ -3082,6 +2960,10 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
         av = aCount ?? Number.POSITIVE_INFINITY;
         bv = bCount ?? Number.POSITIVE_INFINITY;
       }
+      else if (sortCol === 'playlists') {
+        av = playlistCounts.counts.get(a.id) ?? Number.POSITIVE_INFINITY;
+        bv = playlistCounts.counts.get(b.id) ?? Number.POSITIVE_INFINITY;
+      }
       else if (sortCol === 'analysis') { av = analysisReady(a) ? 1 : 0; bv = analysisReady(b) ? 1 : 0; }
       else if (sortCol === 'duration') {
         av = a.duration_ms ?? (a.duration_seconds != null ? a.duration_seconds * 1000 : -1);
@@ -3091,7 +2973,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
       const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [filteredTracks, sortCol, sortDir, cueSummaryStates]);
+  }, [filteredTracks, sortCol, sortDir, cueSummaryStates, playlistCounts.counts]);
 
   // Stage 3 consumes this derived list for Previous/Next playback. It intentionally
   // follows the active source, current playlist, filters, sort order, and only the
@@ -4273,15 +4155,8 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                 onBrowserSourceChange={setBrowserSource}
               />
             </div>}
-            {review && (
-              <div className="flex items-center justify-between gap-4 px-5 py-4">
-                <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground"><Music size={13} /> Tracks</h2>
-                <span className="text-xs font-mono tabular-nums text-muted-foreground">{activeSourceTotal.toLocaleString()} tracks</span>
-              </div>
-            )}
-
-            <div className="cue-browser__filters flex flex-wrap items-end gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] px-4 py-2.5 md:px-5" data-testid="cue-browser-filters">
-              <div className="min-w-[200px] max-w-[320px] flex-1" data-testid="cue-browser-search">
+            <div className="cue-browser__filters flex flex-wrap items-stretch gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] px-4 py-2.5 md:px-5" data-testid="cue-browser-filters">
+              <div className="flex min-w-[200px] max-w-[320px] flex-1 flex-col justify-end" data-testid="cue-browser-search">
                 <SearchControl
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
@@ -4346,14 +4221,14 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                   { value: 'incomplete', label: 'Needs analysis' },
                 ]}
               />
-              <CueBpmRangeSlider
+              <DualRangeSlider variant="inline"
                 bounds={bpmBounds}
                 value={bpmRange ?? bpmBounds}
                 onChange={setBpmRange}
                 onReset={() => setBpmRange(null)}
               />
               {browserSource === 'playlists' && (
-                <div className="min-w-[220px] max-w-[360px] flex-1" data-testid="cue-browser-playlist-selector">
+                <div className="flex min-w-[220px] max-w-[360px] flex-1 flex-col justify-end" data-testid="cue-browser-playlist-selector">
                   <SelectControl
                     aria-label="Select Rekordbox playlist"
                     value={selectedPlaylistId ?? ''}
@@ -4433,19 +4308,20 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
           <>
             <div className="overflow-auto scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
               <TrackTable className="min-w-[900px]" data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
-                <TrackTableHead>
-                  <TrackTableHeadCell label="Track" column="title" sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
+                <TrackTableHead large={review}>
+                  <TrackTableHeadCell label="Track" column="title" icon={review ? Music : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
                   {([
-                    { col: 'bpm', label: 'BPM', cls: 'px-3 py-2' },
-                    { col: 'key', label: 'Key', cls: 'px-3 py-2' },
-                    { col: 'genre', label: 'Genre', cls: mode === 'audition' ? 'px-3 py-2 w-[112px]' : 'px-3 py-2 w-[178px]' },
-                    { col: 'cues', label: 'Cues', cls: 'px-3 py-2 text-center' },
-                    { col: 'format', label: 'Format', cls: 'px-3 py-2 whitespace-nowrap' },
-                    { col: 'sampleRate', label: 'Sample Rate', cls: 'px-3 py-2 whitespace-nowrap' },
-                    { col: 'bitRate', label: 'Bit Rate', cls: 'px-3 py-2 whitespace-nowrap' },
-                    { col: 'duration', label: 'Duration', cls: 'px-3 py-2 text-left w-[80px]' },
-                  ] as const).map(({ col, label, cls }) => (
-                    <TrackTableHeadCell key={col} label={label} column={col} className={cls} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
+                    { col: 'bpm', label: 'BPM', cls: 'px-3 py-2', icon: Meter },
+                    { col: 'key', label: 'Key', cls: 'px-3 py-2', icon: Key },
+                    { col: 'genre', label: 'Genre', cls: mode === 'audition' ? 'px-3 py-2 w-[112px]' : review ? 'px-3 py-2 w-[71px]' : 'px-3 py-2 w-[178px]', icon: Tag },
+                    { col: 'cues', label: 'Cues', cls: review ? 'px-3 py-2' : 'px-3 py-2 text-center', icon: Pin },
+                    ...(review ? [{ col: 'playlists', label: 'Playlists', cls: 'px-3 py-2', icon: Playlist }] : []),
+                    { col: 'format', label: 'Format', cls: 'px-3 py-2 whitespace-nowrap', icon: DocumentAudio },
+                    { col: 'sampleRate', label: review ? 'Rate' : 'Sample Rate', cls: 'px-3 py-2 whitespace-nowrap', icon: Waveform },
+                    { col: 'bitRate', label: 'Bit Rate', cls: 'px-3 py-2 whitespace-nowrap', icon: ChartLine },
+                    { col: 'duration', label: 'Duration', cls: 'px-3 py-2 text-left w-[80px]', icon: Time },
+                  ]).map(({ col, label, cls, icon }) => (
+                    <TrackTableHeadCell key={col} label={label} column={col} className={cls} icon={review ? icon : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
                   ))}
                 </TrackTableHead>
                 <TrackTableBody>
@@ -4479,6 +4355,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                           artist={track.artist}
                           artworkSrc={track.artwork_path}
                           selected={selected}
+                          dense={review}
                           status={
                             analysisReady(track)
                               ? 'ready'
@@ -4498,11 +4375,13 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                             ariaLabel={`Waveform for ${track.title}`}
                           />
                         </TrackNameCell>
-                        <td className="px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
-                        <td className="px-3 py-1.5">
-                          <KeyBadge camelotKey={formatCamelotKey(track.musical_key)} variant={mode === 'audition' ? 'text' : 'badge'} />
+                        <td className={review ? 'px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap' : 'px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums'}>{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
+                        <td className={review ? 'px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap' : 'px-3 py-1.5'}>
+                          {review
+                            ? (track.musical_key ? formatCamelotKey(track.musical_key) : '—')
+                            : <KeyBadge camelotKey={formatCamelotKey(track.musical_key)} variant={mode === 'audition' ? 'text' : 'badge'} />}
                         </td>
-                        <td className={cn('px-3 py-1.5 text-xs text-muted-foreground', mode === 'audition' ? 'w-[112px] max-w-[112px]' : 'w-[178px]')}>
+                        <td className={cn('px-3 py-1.5 text-xs text-muted-foreground', mode === 'audition' ? 'w-[112px] max-w-[112px]' : review ? 'w-[71px] max-w-[71px]' : 'w-[178px]')}>
                           {audition ? (
                             <span className="block min-w-0 truncate">{effectiveGenre ?? '—'}</span>
                           ) : editingGenreTrackId === track.id ? (
@@ -4628,9 +4507,11 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                             </div>
                           )}
                         </td>
-                        <td className="px-3 py-1.5 text-center">
+                        <td className={review ? 'px-3 py-1.5' : 'px-3 py-1.5 text-center'}>
                           <span className={cn(
-                            mode === 'audition'
+                            review
+                              ? 'text-xs text-muted-foreground whitespace-nowrap'
+                              : mode === 'audition'
                               ? 'font-mono text-[12px] font-black text-primary'
                               : cn('inline-flex min-w-8 justify-center rounded-md border px-2 py-1 font-mono text-[12px] font-black',
                             cueState?.status === 'failed'
@@ -4642,6 +4523,23 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                             {cueState?.status === 'loading' || !cueState ? '…' : cueState.status === 'failed' ? '!' : cueCount}
                           </span>
                         </td>
+                        {review && (
+                          <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap" data-testid="playlist-count">
+                            {playlistCounts.counts.has(track.id)
+                              ? <span title={`In ${playlistCounts.counts.get(track.id)} ${playlistCounts.counts.get(track.id) === 1 ? 'playlist' : 'playlists'}`}>{playlistCounts.counts.get(track.id)}</span>
+                              : playlistCounts.error
+                                ? (
+                                  <button
+                                    type="button"
+                                    className="text-red-300 hover:text-red-200"
+                                    title="Playlist counts could not be loaded. Click to try again."
+                                    aria-label="Playlist counts could not be loaded. Try again."
+                                    onClick={(event) => { event.stopPropagation(); playlistCounts.retry(); }}
+                                  >!</button>
+                                )
+                                : '…'}
+                          </td>
+                        )}
                         <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
                           {track.file_format ?? '—'}
                         </td>

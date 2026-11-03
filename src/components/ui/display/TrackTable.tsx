@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode, TableHTMLAttributes, ThHTMLAttributes } from 'react';
+import type { ElementType, HTMLAttributes, ReactNode, TableHTMLAttributes, ThHTMLAttributes } from 'react';
 import { cn } from '../../../lib/utils';
 import '../dropdex-display.css';
 import { Artwork } from './Artwork';
@@ -25,9 +25,9 @@ export function TrackTableBody({ children, ...props }: HTMLAttributes<HTMLTableS
   return <tbody className="divide-y divide-[var(--color-border-faint)]" {...props}>{children}</tbody>;
 }
 
-export function TrackTableHead({ children }: { children: ReactNode }) {
+export function TrackTableHead({ children, large = false }: { children: ReactNode; /** 12px headings instead of 9px. */ large?: boolean }) {
   return (
-    <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+    <thead className={cn('font-bold uppercase tracking-widest text-muted-foreground', large ? 'text-xs' : 'text-[9px]')}>
       <tr className="border-b border-[var(--color-border-faint)]">{children}</tr>
     </thead>
   );
@@ -39,8 +39,11 @@ export interface TrackTableSort<K extends string = string> {
 }
 
 export function TrackTableHeadCell<K extends string>({
-  label, column, sort, onSort, sticky = true, className, ...props
+  label, column, sort, onSort, sticky = true, icon: Icon, iconSize = 14, className, ...props
 }: Omit<ThHTMLAttributes<HTMLTableCellElement>, 'onClick'> & {
+  /** Shown to the left of the heading text. */
+  icon?: ElementType;
+  iconSize?: number;
   /** Keep the header visible while the list scrolls. */
   sticky?: boolean;
   label: ReactNode;
@@ -56,17 +59,22 @@ export function TrackTableHeadCell<K extends string>({
       className={cn('select-none bg-[var(--color-background)] px-3 py-2', sticky && 'sticky top-0 z-10', !(column !== undefined && onSort) && 'normal-case tracking-normal', className)}
       {...props}
     >
-      {column !== undefined && onSort ? (
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
-          aria-label={`Sort by ${typeof label === 'string' ? label : column}`}
-          onClick={() => onSort(column)}
-        >
-          {label}
-          <span className={cn('text-primary', !active && 'invisible')} aria-hidden="true">{sort?.direction === 'desc' ? '↓' : '↑'}</span>
-        </button>
-      ) : label}
+      {(() => {
+        const content = Icon
+          ? (<span className="inline-flex items-center gap-1.5"><Icon size={iconSize} className="shrink-0" aria-hidden="true" />{label}</span>)
+          : label;
+        return column !== undefined && onSort ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+            aria-label={`Sort by ${typeof label === 'string' ? label : column}`}
+            onClick={() => onSort(column)}
+          >
+            {content}
+            <span className={cn('text-primary', !active && 'invisible')} aria-hidden="true">{sort?.direction === 'desc' ? '↓' : '↑'}</span>
+          </button>
+        ) : content;
+      })()}
     </th>
   );
 }
@@ -95,7 +103,7 @@ export function TrackTableRow({
  * artist, then anything passed as children (usually the mini waveform).
  */
 export function TrackNameCell({
-  title, artist, artworkSrc, selected, status = 'none', nameClassName, children,
+  title, artist, artworkSrc, selected, status = 'none', nameClassName, dense = false, children,
 }: {
   title: string;
   artist: string | null | undefined;
@@ -104,16 +112,18 @@ export function TrackNameCell({
   status?: TrackTableStatus;
   /** Width of the text column. The Cue Points table fixes it so waveforms line up. */
   nameClassName?: string;
+  /** Closer together: less space between the status dot and the artwork, and a 12px title. */
+  dense?: boolean;
   children?: ReactNode;
 }) {
   return (
     <td className="px-3 py-1.5">
-      <div className="group flex min-w-0 items-center gap-2.5">
+      <div className={cn('group flex min-w-0 items-center', dense ? 'gap-1.5' : 'gap-2.5')}>
         <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT[status])} aria-hidden="true" />
         <span className={cn('h-8 w-0.5 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
         <Artwork src={artworkSrc} alt={`Artwork for ${title}`} fallbackTitle="No artwork" className="h-9 w-9 shrink-0 rounded-[6px]" />
         <div className={cn('min-w-0', nameClassName ?? 'w-[346px] shrink-0')}>
-          <p className={cn('truncate text-sm font-bold leading-tight', selected && 'text-primary')}>{title}</p>
+          <p className={cn('truncate font-bold', dense ? 'text-xs' : 'text-sm', 'leading-tight', selected && 'text-primary')}>{title}</p>
           <p className="truncate text-[10px] text-muted-foreground">{artist ?? 'Artist Not Available'}</p>
         </div>
         {children}

@@ -1,8 +1,9 @@
-import { useRef, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type PointerEvent } from 'react';
 import { Close } from '@carbon/icons-react';
 import { cn } from '../../../lib/utils';
+import { commitTypedBound } from './dualRangeMath';
 
-export type DualRangeVariant = 'rings' | 'pills' | 'flags' | 'ticks' | 'histogram' | 'capsule';
+export type DualRangeVariant = 'inline' | 'rings' | 'pills' | 'flags' | 'ticks' | 'histogram' | 'capsule';
 
 type ThumbKind = 'minimum' | 'maximum';
 type ThumbProps = HTMLAttributes<HTMLDivElement> & { role: 'slider' };
@@ -17,6 +18,8 @@ interface DualRangeState {
   hiPct: number;
   isFiltered: boolean;
   thumb: (kind: ThumbKind) => ThumbProps;
+  /** Apply a number typed for one end. Ignored when there is nothing to apply. */
+  commitTyped: (kind: ThumbKind, text: string) => void;
 }
 
 /**
@@ -88,8 +91,13 @@ function useDualRange(
     };
   };
 
+  const commitTyped = (kind: ThumbKind, text: string) => {
+    const next = commitTypedBound(kind, text, [lo, hi], [bMin, bMax]);
+    if (next) onChange(next);
+  };
+
   return {
-    trackRef, lo, hi, bMin, bMax,
+    trackRef, lo, hi, bMin, bMax, commitTyped,
     loPct: ((lo - bMin) / span) * 100,
     hiPct: ((hi - bMin) / span) * 100,
     isFiltered: lo > bMin || hi < bMax,
@@ -105,6 +113,120 @@ const SURFACE = 'bg-[var(--color-control-surface)]';
 const THUMB_BORDER = 'border border-white/30 hover:border-white/55 transition-colors';
 const RAIL = 'bg-white/15';
 const FILL = 'bg-foreground/75';
+
+/**
+ * One line tall, like a dropdown's value: the two values as plain text in the dropdown's
+ * text style, each right beside its drag dot, with a hairline rail between them. Each value
+ * has room for three digits, so the rail does not move while a number gains a digit.
+ */
+function Inline({ s }: { s: DualRangeState }) {
+  const [editing, setEditing] = useState<ThumbKind | null>(null);
+  const digitCount = String(s.bMax).length;
+
+  const value = (kind: ThumbKind) => {
+    const number = kind === 'minimum' ? s.lo : s.hi;
+    const side = kind === 'minimum' ? 'text-right' : 'text-left';
+    if (editing === kind) {
+      return (
+        <ValueInput
+          initial={String(number)}
+          maxLength={digitCount}
+          className={side}
+          label={`${kind === 'minimum' ? 'Minimum' : 'Maximum'} BPM value`}
+          onCommit={(text) => { s.commitTyped(kind, text); setEditing(null); }}
+          onCancel={() => setEditing(null)}
+        />
+      );
+    }
+    return (
+      <span
+        className={cn('min-w-[3ch] shrink-0 cursor-text text-sm tabular-nums text-foreground', side)}
+        title="Double-click to type a value"
+        onDoubleClick={() => setEditing(kind)}
+      >
+        {number}
+      </span>
+    );
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      {value('minimum')}
+      <div ref={s.trackRef} className="relative mx-1.5 h-5 min-w-0 flex-1 select-none">
+        <div className={cn('absolute inset-x-0 top-1/2 h-px -translate-y-1/2 rounded-full', RAIL)} />
+        <div className={cn('absolute top-1/2 h-px -translate-y-1/2 rounded-full', FILL)} style={{ left: `${s.loPct}%`, right: `${100 - s.hiPct}%` }} />
+        {(['minimum', 'maximum'] as const).map((kind) => (
+          <div
+            key={kind}
+            {...s.thumb(kind)}
+            className={cn('group absolute top-1/2 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center focus-visible:outline-none', GRAB)}
+            style={{ left: `${kind === 'minimum' ? s.loPct : s.hiPct}%` }}
+          >
+            <span
+              className={cn(
+                'block h-2.5 w-2.5 rounded-full group-focus-visible:border-[var(--color-control-focus)] group-focus-visible:ring-2 group-focus-visible:ring-primary/30',
+                SURFACE, THUMB_BORDER,
+              )}
+            />
+          </div>
+        ))}
+      </div>
+      {value('maximum')}
+    </div>
+  );
+}
+
+/**
+ * The typing box that replaces a value on double-click. It looks like the value: same size,
+ * font and room. Enter or leaving the box applies the number, Escape puts the old one back.
+ */
+function ValueInput({
+  initial, maxLength, className, label, onCommit, onCancel,
+}: {
+  initial: string;
+  maxLength: number;
+  className?: string;
+  label: string;
+  onCommit: (text: string) => void;
+  onCancel: () => void;
+}) {
+  const [text, setText] = useState(initial);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const finished = useRef(false);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const finish = (apply: boolean) => {
+    if (finished.current) return;
+    finished.current = true;
+    if (apply) onCommit(text);
+    else onCancel();
+  };
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      maxLength={maxLength}
+      value={text}
+      aria-label={label}
+      onChange={(event) => setText(event.target.value.replace(/\D/g, ''))}
+      onBlur={() => finish(true)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+        else if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+        event.stopPropagation();
+      }}
+      style={{ width: `${Math.max(maxLength, 3)}ch` }}
+      className={cn('shrink-0 bg-transparent p-0 text-sm tabular-nums text-foreground shadow-[0_1px_0_var(--color-control-focus)] outline-none', className)}
+    />
+  );
+}
 
 /** Round thumbs with the value inside, hairline rail. */
 function Rings({ s }: { s: DualRangeState }) {
@@ -278,8 +400,8 @@ export function DualRangeSlider({
   const s = useDualRange(bounds, value, onChange, label, unit);
   const showReadout = READOUT_VARIANTS.includes(variant);
   return (
-    <div className={cn('min-w-[180px] border-b border-white/15 pb-2 transition-colors hover:border-white/35 focus-within:border-[var(--color-control-focus)]', className)} style={style}>
-      <div className="mb-1 flex items-center gap-1">
+    <div className={cn(variant === 'inline' ? 'min-w-[148px]' : 'min-w-[180px]', 'border-b border-white/15 pb-2 transition-colors hover:border-white/35 focus-within:border-[var(--color-control-focus)]', className)} style={style}>
+      <div className="mb-1 flex items-start gap-1">
         <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">{label}</p>
         {showReadout && (
           <span className="ml-auto font-mono text-[10px] font-bold tabular-nums text-foreground">
@@ -292,6 +414,7 @@ export function DualRangeSlider({
           </button>
         )}
       </div>
+      {variant === 'inline' && <Inline s={s} />}
       {variant === 'rings' && <Rings s={s} />}
       {variant === 'pills' && <Pills s={s} />}
       {variant === 'flags' && <Flags s={s} />}
