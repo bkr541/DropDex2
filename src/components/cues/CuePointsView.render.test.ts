@@ -296,6 +296,50 @@ describe('Review shared browser and focused track timeline', () => {
     expect(markup).toContain('truncate font-bold text-xs leading-tight');
   });
 
+  it('Review: the artwork is 30px, the height of the 15px title line and the 15px artist line together; Cue Points keeps 36px', () => {
+    const review = renderRows('review');
+    expect(review).toContain('h-[30px] w-[30px]');
+    expect(review).not.toContain('h-9 w-9');
+    expect(review).toContain('truncate font-bold text-xs leading-tight');
+    expect(review).toContain('truncate text-[10px] text-muted-foreground');
+    const cues = renderRows('cues');
+    expect(cues).toContain('h-9 w-9');
+    expect(cues).not.toContain('h-[30px] w-[30px]');
+  });
+
+  it('Review: the track name is 12px narrower (334px) and the waveform 12px wider (140px), so together they take the same room', () => {
+    const review = renderRows('review');
+    expect(review).toContain('min-w-0 w-[334px] shrink-0');
+    expect(review).toContain('w-[140px] shrink-0');
+    expect(review).not.toContain('w-[346px]');
+    expect(review).not.toContain('w-[128px]');
+    const cues = renderRows('cues');
+    expect(cues).toContain('w-[346px] shrink-0');
+    expect(cues).toContain('w-[128px] shrink-0');
+    expect(cues).not.toContain('w-[334px]');
+    expect(cues).not.toContain('w-[140px]');
+  });
+
+  it('Review: columns sit 4px closer (10px on each side of a cell instead of 12px); Cue Points is unchanged', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(new URL('../ui/dropdex-display.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.cue-browser__table--tight th,\s*\.cue-browser__table--tight td \{\s*padding-inline: 10px;/);
+    const tableOf = (mode: 'review' | 'cues') => {
+      vi.stubGlobal('window', { devicePixelRatio: 1 });
+      libraryFixture.tracks = [track];
+      try {
+        return renderToStaticMarkup(createElement(AudioPlayerProvider, {
+          imports: [], children: createElement(CuePointsView, { mode, importId: 'import-test', onImport: vi.fn(), onTrackOpen: vi.fn() }),
+        })).match(/<table [^>]*>/)?.[0] ?? '';
+      } finally {
+        libraryFixture.tracks = [];
+        vi.unstubAllGlobals();
+      }
+    };
+    expect(tableOf('review')).toContain('cue-browser__table--tight');
+    expect(tableOf('cues')).not.toContain('cue-browser__table--tight');
+  });
+
   it('Cue Points keeps its badge, boxed cue count, wide genre column and 14px title', () => {
     const markup = renderRows('cues');
     expect(markup).toContain('w-[178px]');

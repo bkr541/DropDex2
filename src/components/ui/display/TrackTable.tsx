@@ -112,7 +112,7 @@ export function TrackNameCell({
   status?: TrackTableStatus;
   /** Width of the text column. The Cue Points table fixes it so waveforms line up. */
   nameClassName?: string;
-  /** Closer together: less space between the status dot and the artwork, and a 12px title. */
+  /** Closer together: less space between the status dot and the artwork, a 12px title, and artwork as tall as the title and artist lines together (30px). */
   dense?: boolean;
   children?: ReactNode;
 }) {
@@ -121,7 +121,7 @@ export function TrackNameCell({
       <div className={cn('group flex min-w-0 items-center', dense ? 'gap-1.5' : 'gap-2.5')}>
         <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT[status])} aria-hidden="true" />
         <span className={cn('h-8 w-0.5 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
-        <Artwork src={artworkSrc} alt={`Artwork for ${title}`} fallbackTitle="No artwork" className="h-9 w-9 shrink-0 rounded-[6px]" />
+        <Artwork src={artworkSrc} alt={`Artwork for ${title}`} fallbackTitle="No artwork" className={cn('shrink-0 rounded-[6px]', dense ? 'h-[30px] w-[30px]' : 'h-9 w-9')} />
         <div className={cn('min-w-0', nameClassName ?? 'w-[346px] shrink-0')}>
           <p className={cn('truncate font-bold', dense ? 'text-xs' : 'text-sm', 'leading-tight', selected && 'text-primary')}>{title}</p>
           <p className="truncate text-[10px] text-muted-foreground">{artist ?? 'Artist Not Available'}</p>

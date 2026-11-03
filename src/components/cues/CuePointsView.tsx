@@ -4307,7 +4307,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
         ) : (
           <>
             <div className="overflow-auto scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
-              <TrackTable className="min-w-[900px]" data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
+              <TrackTable className={cn('min-w-[900px]', review && 'cue-browser__table--tight')} data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
                 <TrackTableHead large={review}>
                   <TrackTableHeadCell label="Track" column="title" icon={review ? Music : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
                   {([
@@ -4356,6 +4356,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                           artworkSrc={track.artwork_path}
                           selected={selected}
                           dense={review}
+                          nameClassName={review ? 'w-[334px] shrink-0' : undefined}
                           status={
                             analysisReady(track)
                               ? 'ready'
@@ -4367,7 +4368,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                           }
                         >
                           <TrackWaveformPreview
-                            className={cn('w-[128px] shrink-0', mode === 'audition' && 'grow')}
+                            className={cn(review ? 'w-[140px] shrink-0' : 'w-[128px] shrink-0', mode === 'audition' && 'grow')}
                             waveformState={getWaveformState(track.id)}
                             durationMs={durationMsForTrack(track, null)}
                             cues={cueMarkersFromState(cueState)}

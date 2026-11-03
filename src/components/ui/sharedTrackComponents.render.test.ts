@@ -116,6 +116,17 @@ describe('Track table parts', () => {
   });
 });
 
+describe('Dense track name cell', () => {
+  const cell = (dense: boolean) => render(createElement(TrackNameCell, { title: 'T', artist: 'A', dense }));
+
+  it('makes the artwork as tall as the title and artist lines together (30px), instead of 36px', () => {
+    expect(cell(true)).toContain('h-[30px] w-[30px]');
+    expect(cell(true)).not.toContain('h-9 w-9');
+    expect(cell(false)).toContain('h-9 w-9');
+    expect(cell(false)).not.toContain('h-[30px]');
+  });
+});
+
 describe('Timeline lanes', () => {
   it('draws section names in mono caps with a 2px colored underline and a gray trailing bar', () => {
     const markup = render(createElement(TimelineSectionLane, {

@@ -389,3 +389,9 @@
 .cue-browser__row--selected:hover {
   background: rgb(var(--color-control-blue-rgb) / 0.075);
 }
+
+/* A tighter table: 10px each side of every cell instead of 12px, so columns sit 4px closer. */
+.cue-browser__table--tight th,
+.cue-browser__table--tight td {
+  padding-inline: 10px;
+}
