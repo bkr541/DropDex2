@@ -13,6 +13,8 @@ const ANALYSIS_TITLES: Record<string, string> = {
 
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatKey } from '../../lib/utils';
+import { bpmRangeStatsFrom, camelotColor, keyStatsFrom } from './libraryInsights';
+import { InsightBpmDistribution, InsightKeyProfile, InsightTopGenres } from './InsightCharts';
 import {
   useLibraryStats,
   useLibraryTracks,
@@ -640,28 +642,6 @@ function SidebarSection({ icon: Icon, title, children }: {
 
 // ── Genre donut chart ─────────────────────────────────────────────────────────
 
-// ── Insight chart color palettes ─────────────────────────────────────────────
-const GENRE_RANK_COLORS = ['#22d3ee', '#a855f7', '#f59e0b', '#ec4899', '#14b8a6', '#f97316'];
-const GENRE_OTHER_COLOR = '#6b7280';
-
-const CAMELOT_COLORS: Record<number, string> = {
-  1: '#e74c3c', 2: '#3b82f6', 3: '#1d4ed8', 4: '#f59e0b', 5: '#16a34a', 6: '#d97706',
-  7: '#8b5cf6', 8: '#0d9488', 9: '#22c55e', 10: '#0891b2', 11: '#06b6d4', 12: '#ec4899',
-};
-
-function parseCamelotKey(key: string): { n: number; letter: 'A' | 'B' } | null {
-  const m = key.match(/^(\d{1,2})([AB])$/i);
-  if (!m) return null;
-  const n = parseInt(m[1], 10);
-  if (n < 1 || n > 12) return null;
-  return { n, letter: m[2].toUpperCase() as 'A' | 'B' };
-}
-
-function camelotColor(key: string): string {
-  const parsed = parseCamelotKey(key);
-  return parsed ? (CAMELOT_COLORS[parsed.n] ?? '#6b7280') : '#6b7280';
-}
-
 function formatCamelotKey(key: string | null | undefined): string {
   const raw = formatKey(key);
   if (!raw || raw === '—') return '';
@@ -673,202 +653,6 @@ function formatLibraryTime(ms: number | null | undefined): string {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
   return `${m}:${(s % 60).toString().padStart(2, '0')}`;
-}
-
-// ── Camelot wheel SVG ─────────────────────────────────────────────────────────
-function CamelotWheel({ keyStats }: { keyStats: readonly (readonly [string, number])[] }) {
-  const cx = 80, cy = 80;
-  const bO = 72, bI = 56, aO = 54, aI = 32;
-  const INACTIVE = '#182333';
-  const GAP = 0.025;
-
-  const activeColors = new Map<string, string>();
-  for (const [key] of keyStats.slice(0, 6)) {
-    const p = parseCamelotKey(key);
-    if (p) activeColors.set(`${p.n}${p.letter}`, CAMELOT_COLORS[p.n] ?? '#6b7280');
-  }
-
-  function arc(r1: number, r2: number, sA: number, eA: number): string {
-    const s = sA + GAP, e = eA - GAP;
-    const lg = e - s > Math.PI ? 1 : 0;
-    const [x1, y1] = [cx + r2 * Math.cos(s), cy + r2 * Math.sin(s)];
-    const [x2, y2] = [cx + r2 * Math.cos(e), cy + r2 * Math.sin(e)];
-    const [x3, y3] = [cx + r1 * Math.cos(e), cy + r1 * Math.sin(e)];
-    const [x4, y4] = [cx + r1 * Math.cos(s), cy + r1 * Math.sin(s)];
-    return `M ${x1} ${y1} A ${r2} ${r2} 0 ${lg} 1 ${x2} ${y2} L ${x3} ${y3} A ${r1} ${r1} 0 ${lg} 0 ${x4} ${y4} Z`;
-  }
-
-  const segs = Array.from({ length: 12 }, (_, i) => {
-    const n = i + 1;
-    const ca = -Math.PI / 2 + i * (Math.PI / 6);
-    const sa = ca - Math.PI / 12, ea = ca + Math.PI / 12;
-    const bColor = activeColors.get(`${n}B`) ?? INACTIVE;
-    const aColor = activeColors.get(`${n}A`) ?? INACTIVE;
-    const bTx = cx + ((bI + bO) / 2) * Math.cos(ca), bTy = cy + ((bI + bO) / 2) * Math.sin(ca);
-    const aTx = cx + ((aI + aO) / 2) * Math.cos(ca), aTy = cy + ((aI + aO) / 2) * Math.sin(ca);
-    return { n, sa, ea, bColor, aColor, bPath: arc(bI, bO, sa, ea), aPath: arc(aI, aO, sa, ea), bTx, bTy, aTx, aTy };
-  });
-
-  return (
-    <svg width="100%" viewBox="0 0 160 160" aria-hidden="true" style={{ display: 'block' }}>
-      {segs.map(({ n, bPath, bColor, bTx, bTy }) => (
-        <g key={`b${n}`}>
-          <path d={bPath} fill={bColor} />
-          <text x={bTx} y={bTy} textAnchor="middle" dominantBaseline="middle"
-            fontSize="6" fontWeight="700"
-            fill={bColor === INACTIVE ? '#3a5068' : 'rgba(255,255,255,0.88)'}
-            style={{ fontFamily: 'inherit', pointerEvents: 'none' }}>
-            {n}B
-          </text>
-        </g>
-      ))}
-      {segs.map(({ n, aPath, aColor, aTx, aTy }) => (
-        <g key={`a${n}`}>
-          <path d={aPath} fill={aColor} />
-          <text x={aTx} y={aTy} textAnchor="middle" dominantBaseline="middle"
-            fontSize="6" fontWeight="700"
-            fill={aColor === INACTIVE ? '#3a5068' : 'rgba(255,255,255,0.88)'}
-            style={{ fontFamily: 'inherit', pointerEvents: 'none' }}>
-            {n}A
-          </text>
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-// ── Top Genres card ────────────────────────────────────────────────────────────
-function InsightTopGenres({ genres }: { genres: readonly (readonly [string, number])[] }) {
-  if (genres.length === 0) return null;
-  const total = genres.reduce((s, [, n]) => s + n, 0);
-  const named = genres.filter(([name]) => name.toLowerCase() !== 'other');
-  const preOther = genres.filter(([name]) => name.toLowerCase() === 'other').reduce((s, [, n]) => s + n, 0);
-  const top5 = named.slice(0, 5);
-  const overflowTotal = named.slice(5).reduce((s, [, n]) => s + n, 0) + preOther;
-  const items: [string, number][] = [
-    ...top5.map(([name, count]) => [name, count] as [string, number]),
-    ...(overflowTotal > 0 ? [['Other', overflowTotal] as [string, number]] : []),
-  ];
-  const top1 = items[0]?.[0] ?? '';
-  const top2 = items[1]?.[0] ?? '';
-
-  return (
-    <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-hidden">
-      <div>
-        <p className="text-xl font-black leading-snug">
-          <span style={{ color: GENRE_RANK_COLORS[0] }}>{top1}</span>
-          {top2 ? <> and <span style={{ color: GENRE_RANK_COLORS[1] }}>{top2}</span></> : null}
-          <br />lead the library
-        </p>
-      </div>
-      <div className="space-y-2.5">
-        {items.map(([name, count], i) => {
-          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-          const color = name === 'Other' ? GENRE_OTHER_COLOR : (GENRE_RANK_COLORS[i] ?? GENRE_OTHER_COLOR);
-          return (
-            <div key={name}>
-              <div className="flex items-baseline justify-between mb-0.5 gap-2">
-                <span className="text-[11px] font-semibold truncate" style={{ color }}>{name}</span>
-                <span className="text-[11px] font-mono font-black tabular-nums shrink-0">{pct}%</span>
-              </div>
-              <div className="h-[3px] w-full rounded-full bg-white/[0.06]">
-                <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── BPM Distribution card ──────────────────────────────────────────────────────
-const BPM_HIGHLIGHT = '#f43f5e';
-
-function InsightBpmDistribution({ bpmRangeStats }: { bpmRangeStats: readonly (readonly [string, number])[] }) {
-  if (bpmRangeStats.length === 0) return null;
-  const total = bpmRangeStats.reduce((s, [, n]) => s + n, 0);
-  const maxCount = Math.max(...bpmRangeStats.map(([, n]) => n));
-  const dominantIdx = bpmRangeStats.findIndex(([, n]) => n === maxCount);
-  const [dominantRange, dominantCount] = bpmRangeStats[dominantIdx] ?? ['—', 0];
-  const dominantPct = total > 0 ? Math.round((dominantCount / total) * 100) : 0;
-  return (
-    <div className="flex flex-col flex-1 min-h-0 gap-3">
-      <div className="shrink-0">
-        <p className="text-2xl font-black leading-tight" style={{ color: BPM_HIGHLIGHT }}>
-          {dominantRange} BPM · {dominantPct}%
-        </p>
-        <p className="text-[11px] text-muted-foreground mt-0.5">of your tracks are in this range</p>
-      </div>
-      <div className="flex flex-col flex-1 min-h-0">
-        {/* bars — fills all remaining card height */}
-        <div className="flex-1 relative min-h-0">
-          <div className="absolute inset-0 flex gap-1.5">
-            {bpmRangeStats.map(([range, count], i) => {
-              const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-              const barPct = maxCount > 0 ? Math.max(2, Math.round((count / maxCount) * 88)) : 2;
-              const isHl = i === dominantIdx;
-              return (
-                <div key={range} className="flex-1 h-full flex flex-col items-center justify-end gap-0.5">
-                  <span className="text-[9px] font-mono font-black tabular-nums" style={{ color: isHl ? BPM_HIGHLIGHT : 'var(--color-foreground)' }}>
-                    {pct}%
-                  </span>
-                  <div className="w-full rounded-[3px]"
-                    style={{ height: `${barPct}%`, backgroundColor: isHl ? BPM_HIGHLIGHT : '#1f2d3d' }} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        {/* x-axis */}
-        <div className="flex gap-1.5 mt-1.5 border-t border-white/[0.05] pt-1.5 shrink-0">
-          {bpmRangeStats.map(([range]) => (
-            <span key={range} className="flex-1 text-center text-[8px] text-muted-foreground leading-tight truncate">{range}</span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Key Profile card ───────────────────────────────────────────────────────────
-function InsightKeyProfile({ keyStats }: { keyStats: readonly (readonly [string, number])[] }) {
-  if (keyStats.length === 0) return null;
-  const total = keyStats.reduce((s, [, n]) => s + n, 0);
-
-  function KeyRow({ keyName, count, rank }: { keyName: string; count: number; rank: number }) {
-    const color = camelotColor(keyName);
-    const pct = total > 0 ? (count / total) * 100 : 0;
-    return (
-      <div className="flex items-center gap-1.5 min-w-0 shrink-0">
-        <span className="text-[9px] text-muted-foreground font-mono w-3 shrink-0">{rank}</span>
-        <span className="text-[11px] font-black shrink-0 w-7" style={{ color }}>{keyName}</span>
-        <div className="flex-1 h-[3px] bg-white/[0.06] rounded-full min-w-0 overflow-hidden">
-          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-        </div>
-        <span className="text-[10px] font-mono tabular-nums shrink-0 text-right" style={{ minWidth: '4.5rem' }}>
-          <span className="text-[14px] text-foreground font-black">{count.toLocaleString()}</span>
-          <span className="text-muted-foreground font-bold">/{total.toLocaleString()}</span>
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex gap-4 flex-1 min-h-0">
-      <div className="w-[180px] shrink-0 flex items-center">
-        <CamelotWheel keyStats={keyStats} />
-      </div>
-      <div
-        className="flex-1 min-w-0 flex flex-col gap-[6px] overflow-y-auto self-center"
-        style={{ maxHeight: '132px', scrollbarWidth: 'none' }}
-      >
-        {keyStats.map(([k, count], i) => (
-          <KeyRow key={k} keyName={k} count={count} rank={i + 1} />
-        ))}
-      </div>
-    </div>
-  );
 }
 
 // ── Compact playlist card for Overview reference grid ─────────────────────────
@@ -929,12 +713,22 @@ function OverviewPlaylistCard({
 
 const RECENT_BARS = [18, 30, 24, 42, 34, 58, 48, 72, 54, 82, 66, 92, 76, 64, 88, 98];
 
+/** One insight column in the hero: a small heading and its chart, with a divider on the left. */
+function HeroInsight({ title, first = false, children }: { title: string; first?: boolean; children: ReactNode }) {
+  return (
+    <div className={cn('flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-white/[0.07] px-3', first && 'border-l-0')}>
+      <p className="mb-1.5 shrink-0 truncate text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{title}</p>
+      {children}
+    </div>
+  );
+}
+
 export function DesktopLibraryHero({
   latestImport,
   profile,
   topGenres,
-  mostCommonBpm,
-  mostCommonKey,
+  bpmRangeStats,
+  keyStats,
   largestPlaylistName,
   onImport,
   onResumeAnalysis,
@@ -943,8 +737,8 @@ export function DesktopLibraryHero({
   latestImport: RekordboxImport;
   profile: UserProfile | null;
   topGenres: readonly (readonly [string, number])[];
-  mostCommonBpm: number | null;
-  mostCommonKey: string | null;
+  bpmRangeStats: readonly (readonly [string, number])[];
+  keyStats: readonly (readonly [string, number])[];
   largestPlaylistName: string | null;
   onImport: () => void;
   onResumeAnalysis?: (importId: string) => void;
@@ -1019,19 +813,19 @@ export function DesktopLibraryHero({
         onChange={handleBgUpload}
       />
 
-      <div className="relative z-10 flex items-center min-h-[218px] px-8 py-7 gap-6">
+      <div className="relative z-10 flex h-[218px] items-stretch px-5 py-4 gap-4">
 
         {/* USB Import */}
-        <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-4 py-3 w-[264px] shrink-0">
-          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">USB Import</p>
+        <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-3 py-3 w-[200px] shrink-0">
+          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1.5">USB Import</p>
           <div className="flex items-center gap-2">
             <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
             <span className="font-black text-sm leading-none text-emerald-500">Import Complete</span>
           </div>
-          <HeroActionButton variant="import" onClick={onImport} className="mt-3">
+          <HeroActionButton variant="import" onClick={onImport} className="mt-2">
             <Upload size={11} /> Import Library
           </HeroActionButton>
-          <div className="grid grid-cols-1 gap-y-2 mt-3">
+          <div className="grid grid-cols-1 gap-y-1.5 mt-2">
             {latestImport.device_name && (
               <div className="flex items-center gap-1.5 min-w-0">
                 <Usb size={11} className="text-muted-foreground shrink-0" />
@@ -1050,16 +844,16 @@ export function DesktopLibraryHero({
         {/* Track Analysis */}
         <div
           className={cn(
-            'rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-4 py-3 w-[264px] shrink-0',
+            'rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-3 py-3 w-[200px] shrink-0',
             showAnalysisWarning && onShowIncompleteAnalysis && 'cursor-pointer hover:bg-white/[0.07] transition-colors',
           )}
           onClick={showAnalysisWarning && onShowIncompleteAnalysis ? onShowIncompleteAnalysis : undefined}
           role={showAnalysisWarning && onShowIncompleteAnalysis ? 'button' : undefined}
         >
-          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">Track Analysis</p>
+          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1.5">Track Analysis</p>
           {showAnalysisWarning ? (
             <>
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1.5">
                 <WarningAlt size={13} className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'} />
                 <span className={cn('font-black text-sm leading-none', isAmber ? 'text-amber-400' : 'text-red-400')}>
                   {ANALYSIS_TITLES[analysisStatus ?? ''] ?? 'Analysis Issue'}
@@ -1077,10 +871,10 @@ export function DesktopLibraryHero({
                 <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
                 <span className="font-black text-sm leading-none text-emerald-500">Analysis Complete</span>
               </div>
-              <div className="mt-3 h-7" aria-hidden="true" />
+              <div className="mt-2 h-7" aria-hidden="true" />
             </>
           )}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
+          <div className="grid grid-cols-1 gap-y-1 mt-2">
             {[
               { icon: RecordingFilled, label: 'Status', value: { completed: 'Completed', partial: 'Partial', failed: 'Failed', in_progress: 'In Progress', awaiting_upload: 'Awaiting Upload', uploading: 'Uploading', not_requested: 'Not Started' }[analysisStatus ?? ''] ?? '—' },
               { icon: Waveform, label: 'Analyzed', value: analyzedCount.toLocaleString() },
@@ -1096,50 +890,24 @@ export function DesktopLibraryHero({
           </div>
         </div>
 
-        {[
-          {
-            label: 'Main BPM',
-            value: mostCommonBpm != null ? `${mostCommonBpm}` : '—',
-            icon: (
-              <svg viewBox="0 0 256 256" className="w-5 h-5 mb-2 text-muted-foreground" fill="currentColor" aria-hidden="true">
-                <path fillRule="evenodd" d="M64.458 228.867c-.428 2.167 1.007 3.91 3.226 3.893l121.557-.938c2.21-.017 3.68-1.794 3.284-3.97l-11.838-64.913c-.397-2.175-1.626-2.393-2.747-.487l-9.156 15.582c-1.12 1.907-1.71 5.207-1.313 7.388l4.915 27.03c.395 2.175-1.072 3.937-3.288 3.937H88.611c-2.211 0-3.659-1.755-3.233-3.92L114.85 62.533l28.44-.49 11.786 44.43c.567 2.139 2.01 2.386 3.236.535l8.392-12.67c1.22-1.843 1.73-5.058 1.139-7.185l-9.596-34.5c-1.184-4.257-5.735-7.677-10.138-7.638l-39.391.349c-4.415.039-8.688 3.584-9.544 7.912L64.458 228.867z"/>
-                <path fillRule="evenodd" d="M118.116 198.935c-1.182 1.865-.347 3.377 1.867 3.377h12.392c2.214 0 4.968-1.524 6.143-3.39l64.55-102.463c1.18-1.871 3.906-3.697 6.076-4.074l9.581-1.667c2.177-.379 4.492-2.38 5.178-4.496l4.772-14.69c.683-2.104-.063-5.034-1.677-6.555L215.53 54.173c-1.609-1.517-4.482-1.862-6.4-.78l-11.799 6.655c-1.925 1.086-3.626 3.754-3.799 5.954l-.938 11.967c-.173 2.202-1.27 5.498-2.453 7.363l-72.026 113.603z"/>
-              </svg>
-            ),
-          },
-          {
-            label: 'Main Key',
-            value: mostCommonKey ? formatKey(mostCommonKey) : '—',
-            icon: (
-              <svg viewBox="0 0 47 47" className="w-5 h-5 mb-2 text-muted-foreground" fill="currentColor" aria-hidden="true">
-                <path d="M40.975,1.968c-0.706-0.706-1.851-0.706-2.558,0c-0.706,0.706-0.706,1.85,0,2.557c5.81,5.813,5.81,15.27,0,21.081c-0.706,0.707-0.706,1.852,0,2.558c0.354,0.353,0.816,0.528,1.278,0.528s0.926-0.176,1.279-0.528C48.191,20.94,48.192,9.19,40.975,1.968z"/>
-                <path d="M36.539,6.399c-0.707-0.707-1.85-0.707-2.556,0c-0.707,0.706-0.707,1.851,0,2.556c3.368,3.368,3.368,8.848-0.001,12.216c-0.706,0.706-0.706,1.851,0.001,2.558c0.353,0.352,0.814,0.528,1.278,0.528c0.463,0,0.926-0.177,1.278-0.53C41.316,18.95,41.316,11.176,36.539,6.399z"/>
-                <path d="M8.583,4.524c0.706-0.707,0.706-1.851,0-2.557c-0.707-0.705-1.851-0.706-2.557,0c-7.218,7.223-7.217,18.973,0,26.193c0.353,0.354,0.816,0.529,1.279,0.529c0.463,0,0.925-0.176,1.278-0.529c0.706-0.706,0.706-1.852,0-2.557C2.772,19.793,2.772,10.336,8.583,4.524z"/>
-                <path d="M13.016,8.955c0.707-0.706,0.707-1.851,0-2.556c-0.706-0.707-1.85-0.707-2.556,0c-4.777,4.777-4.777,12.551,0,17.33c0.353,0.353,0.816,0.529,1.279,0.529c0.463,0,0.925-0.177,1.278-0.529c0.707-0.707,0.707-1.851,0.001-2.557C9.647,17.803,9.647,12.323,13.016,8.955z"/>
-                <path d="M29.525,0c-1.331,0-2.411,1.079-2.411,2.41v18.077c0,1.994-1.622,3.615-3.615,3.615c-1.993,0-3.615-1.622-3.615-3.615V2.41c0-1.331-1.08-2.41-2.411-2.41s-2.41,1.079-2.41,2.41v18.077c0,3.813,2.546,7.041,6.026,8.082V44.59c0,1.331,1.079,2.41,2.41,2.41c1.331,0,2.41-1.079,2.41-2.41V28.568c3.48-1.041,6.026-4.268,6.026-8.082V2.41C31.936,1.079,30.856,0,29.525,0z"/>
-              </svg>
-            ),
-          },
-          {
-            label: 'Main Genre',
-            value: topGenres[0]?.[0] ?? '—',
-            icon: (
-              <svg viewBox="0 0 398.508 398.508" className="w-5 h-5 mb-2 text-muted-foreground" fill="currentColor" aria-hidden="true">
-                <path d="M314.38,157.492c-23.028,0-41.763,18.734-41.763,41.762c0,23.028,18.734,41.762,41.763,41.762c23.027,0,41.762-18.734,41.762-41.762C356.142,176.227,337.408,157.492,314.38,157.492z M314.38,222.016c-12.552,0-22.763-10.211-22.763-22.762s10.211-22.762,22.763-22.762c12.551,0,22.762,10.211,22.762,22.762S326.931,222.016,314.38,222.016z"/>
-                <path d="M314.38,314.984c-23.028,0-41.763,18.734-41.763,41.762s18.734,41.762,41.763,41.762c23.027,0,41.762-18.734,41.762-41.762S337.408,314.984,314.38,314.984z M314.38,379.508c-12.552,0-22.763-10.211-22.763-22.762s10.211-22.762,22.763-22.762c12.551,0,22.762,10.211,22.762,22.762S326.931,379.508,314.38,379.508z"/>
-                <path d="M314.38,83.524c23.027,0,41.762-18.734,41.762-41.762C356.142,18.734,337.408,0,314.38,0c-23.028,0-41.763,18.734-41.763,41.762C272.618,64.79,291.352,83.524,314.38,83.524z M314.38,19c12.551,0,22.762,10.211,22.762,22.762s-10.211,22.762-22.762,22.762c-12.552,0-22.763-10.211-22.763-22.762S301.829,19,314.38,19z"/>
-                <path d="M255.517,51.262c5.247,0,9.5-4.253,9.5-9.5s-4.253-9.5-9.5-9.5h-35.998c-5.247,0-9.5,4.253-9.5,9.5v147.992h-24.999c-5.247,0-9.5,4.253-9.5,9.5s4.253,9.5,9.5,9.5h24.999v147.992c0,5.247,4.253,9.5,9.5,9.5h35.998c5.247,0,9.5-4.253,9.5-9.5s-4.253-9.5-9.5-9.5h-26.498V208.754h26.498c5.247,0,9.5-4.253,9.5-9.5s-4.253-9.5-9.5-9.5h-26.498V51.262H255.517z"/>
-                <path d="M125.989,142.508c8.234-7.633,13.4-18.531,13.4-30.617c0-23.028-18.734-41.762-41.762-41.762S55.865,88.863,55.865,111.89c0,12.086,5.166,22.984,13.4,30.617c-16.1,9.669-26.899,27.297-26.899,47.406v41.971c0,9.296,5.544,17.322,13.5,20.944v56.76c0,10.361,8.43,18.791,18.791,18.791h45.942c10.361,0,18.791-8.43,18.791-18.791v-56.76c7.955-3.623,13.499-11.648,13.499-20.944v-41.971C152.889,169.805,142.089,152.176,125.989,142.508z M74.865,111.89c0-12.551,10.211-22.762,22.762-22.762s22.762,10.211,22.762,22.762s-10.211,22.762-22.762,22.762S74.865,124.441,74.865,111.89z M133.889,231.885c0,2.205-1.794,3.999-3.999,3.999c-5.247,0-9.5,4.253-9.5,9.5v63.997h-13.262v-54.932c0-5.247-4.253-9.5-9.5-9.5s-9.5,4.253-9.5,9.5v54.932H74.866l0-63.997c0-5.247-4.253-9.5-9.5-9.5c-2.205,0-3.999-1.794-3.999-3.999v-41.971c0-19.994,16.267-36.261,36.261-36.261s36.261,16.267,36.261,36.261V231.885z"/>
-              </svg>
-            ),
-          },
-        ].map(({ label, value, icon }) => (
-          <div key={label} className="flex-1 flex flex-col items-center justify-center text-center border-l border-white/[0.07] self-stretch px-4">
-            {icon}
-            <p className="text-3xl font-black tabular-nums leading-none tracking-tight truncate">{value}</p>
-            <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mt-1.5">{label}</p>
-          </div>
-        ))}
+        {/* Insights: main genre, BPM distribution, Camelot wheel */}
+        <div className="grid min-w-0 flex-1 grid-cols-3 self-stretch" data-testid="hero-insights">
+          {topGenres.length > 0 && (
+            <HeroInsight title="Top Genres" first>
+              <InsightTopGenres genres={topGenres} compact />
+            </HeroInsight>
+          )}
+          {bpmRangeStats.length > 0 && (
+            <HeroInsight title="BPM Distribution">
+              <InsightBpmDistribution bpmRangeStats={bpmRangeStats} compact />
+            </HeroInsight>
+          )}
+          {keyStats.length > 0 && (
+            <HeroInsight title="Camelot Wheel">
+              <InsightKeyProfile keyStats={keyStats} compact />
+            </HeroInsight>
+          )}
+        </div>
 
       </div>
     </section>
@@ -1322,26 +1090,9 @@ export function LibraryView({
     [libraryStats?.artistTotals],
   );
 
-  const mostCommonBpm = libraryStats?.mostCommonBpm ?? null;
-  const mostCommonKey = libraryStats?.mostCommonKey ?? null;
+  const bpmRangeStats = useMemo(() => bpmRangeStatsFrom(libraryStats?.bpmTotals), [libraryStats?.bpmTotals]);
 
-  const bpmRangeStats = useMemo((): readonly (readonly [string, number])[] => {
-    const raw = libraryStats?.bpmTotals ?? [];
-    const buckets = new Map<number, number>();
-    for (const { bpm, count } of raw) {
-      const bucket = Math.floor(bpm / 20) * 20;
-      buckets.set(bucket, (buckets.get(bucket) ?? 0) + count);
-    }
-    return Array.from(buckets.entries())
-      .sort(([a], [b]) => a - b)
-      .map(([bucket, count]) => [`${bucket}–${bucket + 19}`, count] as const);
-  }, [libraryStats?.bpmTotals]);
-
-  const keyStats = useMemo((): readonly (readonly [string, number])[] =>
-    (libraryStats?.keyTotals ?? [])
-      .map(({ name, count }) => [formatKey(name), count] as const)
-      .sort(([, a], [, b]) => b - a),
-  [libraryStats?.keyTotals]);
+  const keyStats = useMemo(() => keyStatsFrom(libraryStats?.keyTotals), [libraryStats?.keyTotals]);
 
   const largestPlaylist = useMemo(() => {
     const real = playlists.filter((p) => !p.is_folder);
@@ -1489,8 +1240,8 @@ export function LibraryView({
                               latestImport={latestImport}
                               profile={profile}
                               topGenres={topGenres}
-                              mostCommonBpm={mostCommonBpm}
-                              mostCommonKey={mostCommonKey}
+                              bpmRangeStats={bpmRangeStats}
+                              keyStats={keyStats}
                               largestPlaylistName={largestPlaylist?.name ?? null}
                               onImport={onImport}
                               onResumeAnalysis={onResumeAnalysis}

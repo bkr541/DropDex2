@@ -11,6 +11,7 @@ import { CuePointsView } from '../cues/CuePointsView';
 import { ControlButton } from '../ui/controls';
 import { ArtistProfileCard, DesktopLibraryHero, RecentlyAddedPanel } from './LibraryView';
 import { LibraryHero } from './LibraryHero';
+import { bpmRangeStatsFrom, keyStatsFrom } from './libraryInsights';
 import { LibraryTabBar } from './LibraryTabBar';
 import { ArtistsPanel, GenresPanel, PlaylistsPanel } from './LibraryTabPanels';
 import { reviewTabs, type ReviewTab } from './reviewTabs';
@@ -74,6 +75,8 @@ export function ReviewView({
   const topGenres = useMemo(() => (stats?.genreTotals ?? []).slice(0, 8).map(({ name, count }) => [name, count] as const), [stats?.genreTotals]);
   const genreStats = useMemo(() => (stats?.genreTotals ?? []).map(({ name, count }) => [name, count] as const), [stats?.genreTotals]);
   const artistStats = useMemo(() => (stats?.artistTotals ?? []).map(({ name, count }) => [name, count] as const), [stats?.artistTotals]);
+  const bpmRangeStats = useMemo(() => bpmRangeStatsFrom(stats?.bpmTotals), [stats?.bpmTotals]);
+  const keyStats = useMemo(() => keyStatsFrom(stats?.keyTotals), [stats?.keyTotals]);
   const largestPlaylist = useMemo(() => playlists.filter((playlist) => !playlist.is_folder).sort((a, b) => b.track_count - a.track_count)[0], [playlists]);
 
   return (
@@ -85,7 +88,7 @@ export function ReviewView({
         <div className="min-w-0 flex-1">
           <div className="hidden lg:block">
             <DesktopLibraryHero latestImport={latestImport} profile={profile} topGenres={topGenres}
-              mostCommonBpm={stats?.mostCommonBpm ?? null} mostCommonKey={stats?.mostCommonKey ?? null}
+              bpmRangeStats={bpmRangeStats} keyStats={keyStats}
               largestPlaylistName={largestPlaylist?.name ?? null} onImport={onImport}
               onResumeAnalysis={onResumeAnalysis} onShowIncompleteAnalysis={onShowIncompleteAnalysis} />
           </div>

@@ -127,7 +127,7 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
   }
 
   return (
-    <div className="flex w-full flex-col gap-3 pb-10 pt-4" data-testid="audition-view">
+    <div className="flex w-full flex-col gap-3 pb-10" data-testid="audition-view">
       <AuditionTrackHeader
         track={selectedTrack}
         durationMs={durationMs}

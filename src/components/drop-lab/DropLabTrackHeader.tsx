@@ -30,7 +30,7 @@ export function DropLabTrackHeader({ label, track, dropPoint, muted, side = 'lef
   return (
     <div
       data-testid={side === 'left' ? 'drop-lab-selected-header' : 'drop-lab-candidate-header'}
-      className={cn('flex flex-row items-start gap-3 px-4 py-2 lg:px-5', side === 'right' ? 'justify-end' : 'justify-between', muted && 'opacity-70')}
+      className={cn('flex flex-row items-start gap-3 px-4 lg:px-5', side === 'left' ? 'pb-2 pt-0' : 'py-2', side === 'right' ? 'justify-end' : 'justify-between', muted && 'opacity-70')}
     >
       {identity}
       {actions}

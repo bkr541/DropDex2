@@ -31,18 +31,15 @@ type Entry =
   | { key: 'usb-connect'; kind: 'usb'; divider: true }
   | { key: 'profile'; kind: 'profile' };
 
-// The nav keeps one fixed height whichever page is current. The pieces share it: the current page's piece
-// is its natural size and the other pieces split what is left, so their options sit closer together.
-const SIDEBAR_HEIGHT = '46rem';
 const SLIDE_MS = 320;
 
 const ROW = 'flex items-center rounded-xl font-bold text-sm transition-all w-full';
 const IDLE = 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)]';
 
 /**
- * The left nav. It floats as separate rounded pieces: the entries above the current page, the current
- * page on its own, and the entries below it, with a gap where the current page sits. Each piece has the
- * logo-red gradient border and soft shadow of the page-name tab.
+ * The left nav. The entries above and below the current page each sit in their own fully rounded card
+ * (logo-red gradient border, soft page-name-tab shadow). The current page has no card or border: it sits
+ * in the gap between them as a larger gradient icon.
  */
 export function FloatingSidebar({
   collapsed, onToggleCollapsed, items, currentView, onSelectView, onOpenLayoutLab, onOpenProfile, profile,
@@ -58,7 +55,7 @@ export function FloatingSidebar({
   const { before, active, after } = splitAtActive(entries, activeKey);
   const activeRef = useRef<HTMLDivElement>(null);
   const previousTop = useRef<number | null>(null);
-  // Slides the current page's piece from where the old page was to where the new one is.
+  // Slides the current page from where the old one was to where the new one is.
   useLayoutEffect(() => {
     const el = activeRef.current;
     if (!el) {
@@ -107,7 +104,12 @@ export function FloatingSidebar({
             aria-current={isActive ? 'page' : undefined}
             className={cn(ROW, 'py-2', padX, isActive ? 'text-foreground' : IDLE)}
           >
-            <Icon size={18} className={isActive ? 'logo-gradient-icon' : undefined} />
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+              <Icon
+                size={18}
+                className={cn('origin-center transition-transform duration-300 ease-out', isActive ? 'logo-gradient-icon scale-[1.4]' : 'scale-100')}
+              />
+            </span>
             {!collapsed && entry.item.label}
           </button>
         );
@@ -120,7 +122,9 @@ export function FloatingSidebar({
             title={collapsed ? 'Layout Lab (opens in a new window)' : 'Opens in a new window'}
             className={cn(ROW, 'py-2', padX, IDLE)}
           >
-            <PaintBrush size={18} />
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+              <PaintBrush size={18} />
+            </span>
             {!collapsed && 'Layout Lab'}
           </button>
         );
@@ -136,7 +140,12 @@ export function FloatingSidebar({
             title={collapsed ? 'Profile' : undefined}
             className={cn(ROW, 'py-2', collapsed ? 'justify-center px-0' : 'gap-3 px-3 text-left', isActive ? 'text-foreground' : IDLE)}
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
+            <span
+              className={cn(
+                'flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] transition-transform duration-300 ease-out',
+                isActive && 'scale-[1.2]',
+              )}
+            >
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
               ) : (
@@ -149,21 +158,17 @@ export function FloatingSidebar({
     }
   };
 
-  const piece = (list: Entry[], name: string, isActive = false) => (
+  const card = (list: Entry[], name: string) => (
     <div
       key={name}
-      ref={isActive ? activeRef : undefined}
       data-testid={`sidebar-${name}`}
-      className={cn(
-        'glass logo-gradient-border flex flex-col rounded-3xl p-2 transition-[flex-grow] duration-300',
-        isActive ? 'relative z-10 shrink-0 gap-1' : 'gap-0',
-      )}
-      style={{ boxShadow: PAGE_NAME_TAB_SHADOW, ...(isActive ? {} : { flexGrow: list.length, flexBasis: 0 }) }}
+      className="glass logo-gradient-border flex flex-col gap-0 rounded-3xl p-2"
+      style={{ boxShadow: PAGE_NAME_TAB_SHADOW }}
     >
       {list.map((entry, index) => (
-        <div key={entry.key} className={cn('flex flex-col justify-center', !isActive && 'flex-1')}>
+        <div key={entry.key} className="flex flex-col justify-center">
           {'divider' in entry && index > 0 && <div className="my-1 border-t border-[var(--color-border-faint)]" />}
-          {render(entry, isActive)}
+          {render(entry, false)}
         </div>
       ))}
     </div>
@@ -172,19 +177,19 @@ export function FloatingSidebar({
   return (
     <aside
       className={cn(
-        'z-40 hidden shrink-0 flex-col justify-center p-3 transition-all duration-200 md:flex',
+        'z-40 hidden shrink-0 flex-col justify-center py-3 pl-6 pr-0 transition-all duration-200 md:flex',
         collapsed ? 'w-[88px]' : 'w-[264px]',
       )}
     >
-      {/* Padding and a matching negative margin give the pieces' shadows room inside the scroll area. */}
-      <div
-        data-testid="floating-sidebar"
-        className="-m-4 flex max-h-[calc(100%+2rem)] flex-col gap-2 overflow-y-auto p-4 scrollbar-none"
-        style={{ height: `calc(${SIDEBAR_HEIGHT} + 2rem)` }}
-      >
-        {before.length > 0 && piece(before, 'above')}
-        {active && piece([active], 'active', true)}
-        {after.length > 0 && piece(after, 'below')}
+      {/* Padding and a matching negative margin give the cards' shadows room inside the scroll area. */}
+      <div data-testid="floating-sidebar" className="-m-4 flex max-h-[calc(100%+2rem)] flex-col gap-2 overflow-y-auto p-4 scrollbar-none">
+        {before.length > 0 && card(before, 'above')}
+        {active && (
+          <div ref={activeRef} data-testid="sidebar-active" className="relative z-10 px-2 py-1.5">
+            {render(active, true)}
+          </div>
+        )}
+        {after.length > 0 && card(after, 'below')}
       </div>
     </aside>
   );

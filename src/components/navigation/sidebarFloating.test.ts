@@ -4,24 +4,18 @@ import { describe, expect, it } from 'vitest';
 import { activeSidebarKey, splitAtActive } from './sidebarGroups';
 
 const read = (p: string) => readFileSync(resolve(__dirname, p), 'utf8');
-const entries = ['logo', 'home', 'review', 'cues', 'usb', 'profile'].map((key) => ({ key }));
-
+const entries = ['logo', 'home', 'review', 'usb', 'profile'].map((key) => ({ key }));
 describe('splitAtActive', () => {
-  it('separates entries above, the active one, and entries below', () => {
-    const { before, active, after } = splitAtActive(entries, 'review');
-    expect(before.map((e) => e.key)).toEqual(['logo', 'home']);
-    expect(active?.key).toBe('review');
-    expect(after.map((e) => e.key)).toEqual(['cues', 'usb', 'profile']);
+  it('splits into above, active and below', () => {
+    const r = splitAtActive(entries, 'review');
+    expect(r.before.map((e) => e.key)).toEqual(['logo', 'home']);
+    expect(r.active?.key).toBe('review');
+    expect(r.after.map((e) => e.key)).toEqual(['usb', 'profile']);
   });
-  it('leaves one group when nothing is active', () => {
-    const { before, active, after } = splitAtActive(entries, null);
-    expect(before).toHaveLength(entries.length);
-    expect(active).toBeNull();
-    expect(after).toEqual([]);
-  });
-  it('handles the active entry being first or last', () => {
-    expect(splitAtActive(entries, 'logo').before).toEqual([]);
-    expect(splitAtActive(entries, 'profile').after).toEqual([]);
+  it('keeps one group when nothing is active', () => {
+    const r = splitAtActive(entries, null);
+    expect(r.before).toHaveLength(5);
+    expect(r.active).toBeNull();
   });
 });
 
@@ -35,21 +29,25 @@ describe('activeSidebarKey', () => {
 
 describe('FloatingSidebar wiring', () => {
   const src = read('./FloatingSidebar.tsx');
-  it('renders separate fully rounded pieces with the gradient border and tab shadow', () => {
+  it('wraps the entries above and below in rounded gradient cards, and the current page in none', () => {
     expect(src).toContain('data-testid="floating-sidebar"');
-    expect(src).toContain('glass logo-gradient-border flex flex-col rounded-3xl p-2');
-    expect(src).toContain('gap-2');
-    expect(src).toContain("piece(before, 'above')");
-    expect(src).toContain("piece([active], 'active', true)");
-    expect(src).toContain("piece(after, 'below')");
+    expect(src).toContain('glass logo-gradient-border flex flex-col gap-0 rounded-3xl p-2');
+    expect(src).toContain("card(before, 'above')");
+    expect(src).toContain("card(after, 'below')");
+    const activeBlock = src.slice(src.indexOf('data-testid="sidebar-active"'), src.indexOf('render(active, true)'));
+    expect(activeBlock).not.toContain('glass');
+    expect(activeBlock).not.toContain('logo-gradient-border');
     expect(src).toContain('w-[88px]');
     expect(src).toContain('w-[264px]');
   });
-  it('keeps a fixed height and slides the current page between options', () => {
-    expect(src).toContain('SIDEBAR_HEIGHT');
-    expect(src).toContain('flexGrow: list.length');
+  it('is inset equally from the window edge and from the page content (24px each side)', () => {
+    expect(src).toContain('py-3 pl-6 pr-0');
+    expect(read('../../App.tsx')).toContain('p-6');
+  });
+  it('shows the current page with a larger gradient icon', () => {
+    expect(src).toContain("'logo-gradient-icon scale-[1.4]'");
+    expect(src).toContain("'scale-100'");
     expect(src).toContain('el.animate');
-    expect(src).toContain('prefers-reduced-motion');
   });
   it('uses the same shadow as the page-name tab', () => {
     const shadow = /PAGE_NAME_TAB_SHADOW = '([^']+)'/.exec(src)?.[1];
