@@ -58,7 +58,7 @@ export function TrackTableHeadCell<K extends string>({
   return (
     <th
       aria-sort={active ? (sort?.direction === 'asc' ? 'ascending' : 'descending') : undefined}
-      className={cn('select-none bg-[var(--color-background)] px-3 py-2 [font-weight:inherit]', sticky && 'sticky top-0 z-10', !(column !== undefined && onSort) && 'normal-case tracking-normal', className)}
+      className={cn('select-none bg-[var(--color-background)] px-3 py-2 [font-weight:inherit]', sticky && 'sticky top-0 z-10', !(column !== undefined && onSort) && !uppercase && 'normal-case tracking-normal', className)}
       {...props}
     >
       {(() => {

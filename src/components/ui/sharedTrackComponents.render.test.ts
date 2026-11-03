@@ -238,6 +238,14 @@ describe('MediaTransportControlGroup play-only mode', () => {
   });
 });
 
+describe('StatusBadge style override', () => {
+  it('passes a style through so one badge can be a different size, and leaves other badges alone', async () => {
+    const { StatusBadge } = await import('./feedback/StatusBadge');
+    expect(render(createElement(StatusBadge, { style: { fontSize: 12 }, children: 'WAV' }))).toContain('style="font-size:12px"');
+    expect(render(createElement(StatusBadge, { children: 'WAV' }))).not.toContain('style=');
+  });
+});
+
 describe('AudioDock and toolbar icons', () => {
   it('renders the dock band with its region role', () => {
     const markup = render(createElement(AudioDock, { 'aria-label': 'Dock', className: 'flex-row' }, 'x'));

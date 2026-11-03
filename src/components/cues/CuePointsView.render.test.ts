@@ -168,7 +168,8 @@ describe('Review shared browser and focused track timeline', () => {
       expect(markup).toContain('aria-label="Search review tracks"');
       expect(markup).toContain('data-testid="cue-browser-filters"');
       expect(markup).toContain('Review Track');
-      expect(markup).toContain('Sort by Rate');
+      expect(markup).toContain('Properties');
+      expect(markup).not.toContain('Sort by Rate');
       expect(markup).not.toContain('Sample Rate');
       expect(markup).not.toContain('Select a track');
       expect(markup).not.toContain('data-testid="cue-audio-dock"');
@@ -192,19 +193,46 @@ describe('Review shared browser and focused track timeline', () => {
       vi.unstubAllGlobals();
     }
   };
-  const valueClass = 'text-sm font-medium text-foreground';
+  const valueClass = 'text-xs font-medium text-foreground';
   const cell = (rows: string, text: string) => rows.match(new RegExp(`<td class="([^"]*)"[^>]*>(?:<span[^>]*>)?${text}(?:</span>)?</td>`))?.[1] ?? '';
 
-  it('Review: every data value is 14px, in the normal text colour, medium weight, with no key badge, colours or boxes', () => {
+  it('Review: every data value is 12px, the same size as the track title, in the normal text colour, medium weight, with no key badge, colours or boxes', () => {
     const rows = renderRows('review');
-    for (const value of ['128.0', '08A', 'WAV', '44.1 kHz', '1411 kbps', '3:00']) {
+    expect(renderRows('review')).toContain('truncate font-bold text-xs leading-tight');
+    for (const value of ['128.0', '08A', '3:00']) {
       expect(cell(rows, value), value).toContain(valueClass);
-      expect(cell(rows, value), value).not.toContain('text-xs');
-      expect(cell(rows, value), value).not.toContain('text-muted-foreground');
+            expect(cell(rows, value), value).not.toContain('text-muted-foreground');
       expect(cell(rows, value), value).not.toContain('font-mono');
     }
     expect(rows).not.toContain('rounded-[5px] bg-white/[0.05]');
     expect(rows).not.toContain('font-bold tabular-nums">128.0');
+  });
+
+  it('Review: Format, rate and bit rate share one Properties column, each value in its own 12px badge, the same size as the other values', () => {
+    const rows = renderRows('review');
+    const cell = rows.match(/<td class="px-3 py-1.5 whitespace-nowrap" data-testid="properties-cell">([\s\S]*?)<\/td>/)?.[1] ?? '';
+    const badges = cell.match(/<span class="dd-status-badge dd-tone-neutral"[^>]*>[\s\S]*?<\/span><\/span>/g) ?? [];
+    expect(badges).toHaveLength(3);
+    expect(badges.map((badge) => badge.replace(/<[^>]+>/g, ''))).toEqual(['WAV', '44.1 kHz', '1411 kbps']);
+    for (const badge of badges) expect(badge).toContain('font-size:12px;font-weight:700;letter-spacing:normal;text-transform:none');
+    expect(rows.match(/properties-cell/g)).toHaveLength(1);
+    expect(rows).not.toMatch(/<td[^>]*>WAV<\/td>/);
+  });
+
+  it('Review: shows a dash when a track has no format, rate or bit rate', () => {
+    vi.stubGlobal('window', { devicePixelRatio: 1 });
+    libraryFixture.tracks = [{ ...track, file_format: null, sample_rate_hz: null, bitrate_kbps: null } as RekordboxTrack];
+    try {
+      const markup = renderToStaticMarkup(createElement(AudioPlayerProvider, {
+        imports: [], children: createElement(CuePointsView, { mode: 'review', importId: 'import-test', onImport: vi.fn(), onTrackOpen: vi.fn() }),
+      }));
+      const cell = markup.match(/data-testid="properties-cell">([\s\S]*?)<\/td>/)?.[1] ?? '';
+      expect(cell).toContain('—');
+      expect(cell).not.toContain('dd-status-badge');
+    } finally {
+      libraryFixture.tracks = [];
+      vi.unstubAllGlobals();
+    }
   });
 
   it('Review: the genre, cues and playlists values look the same as the rest', () => {
@@ -219,7 +247,7 @@ describe('Review shared browser and focused track timeline', () => {
     const rows = renderRows('review');
     expect(rows).not.toContain('inline-flex min-w-8 justify-center rounded-md border');
     expect(rows).not.toContain('<td class="px-3 py-1.5 text-center">');
-    expect(rows).toContain('<td class="px-3 py-1.5"><span class="whitespace-nowrap text-sm font-medium text-foreground">');
+    expect(rows).toContain('<td class="px-3 py-1.5"><span class="whitespace-nowrap text-xs font-medium text-foreground">');
   });
 
   it('Cue Points keeps its smaller muted values, monospace numbers and boxed cue count', () => {
@@ -228,6 +256,8 @@ describe('Review shared browser and focused track timeline', () => {
     expect(rows).toContain('font-mono text-[13px]');
     expect(rows).toContain('inline-flex min-w-8 justify-center rounded-md border');
     expect(rows).not.toContain(valueClass);
+    expect(rows).not.toContain('properties-cell');
+    expect(rows).not.toContain('dd-status-badge');
   });
 
   it('Review: adds a Playlists column showing how many playlists each track is in', () => {
@@ -259,7 +289,7 @@ describe('Review shared browser and focused track timeline', () => {
     expect(renderRows('cues')).not.toContain('data-testid="playlist-count"');
   });
 
-  it('Review: all ten column headings are 13px, extra bold and in capitals, with no icons; Playlists and Rate are in the list', () => {
+  it('Review: all eight column headings are 13px, extra bold and in capitals, with no icons; Properties replaces Format, Rate and Bit Rate', () => {
     const table = (mode: 'review' | 'cues') => {
       vi.stubGlobal('window', { devicePixelRatio: 1 });
       libraryFixture.tracks = [track];
@@ -275,14 +305,17 @@ describe('Review shared browser and focused track timeline', () => {
     };
     const review = table('review');
     const head = review.slice(review.indexOf('<thead'), review.indexOf('</thead>'));
-    expect(head.match(/<th /g)).toHaveLength(10);
-    for (const label of ['Track', 'BPM', 'Key', 'Genre', 'Cues', 'Playlists', 'Format', 'Rate', 'Bit Rate', 'Duration']) {
+    expect(head.match(/<th /g)).toHaveLength(8);
+    for (const label of ['Track', 'BPM', 'Key', 'Genre', 'Cues', 'Playlists', 'Properties', 'Duration']) {
       expect(head).toContain(`>${label}<`);
     }
     expect(head).toContain('text-[13px] font-extrabold');
     expect(head).not.toContain('text-[9px]');
     expect(head).not.toContain('text-xs');
-    expect(head.match(/<button[^>]*class="[^"]*\buppercase\b/g)).toHaveLength(10);
+    expect(head.match(/<button[^>]*class="[^"]*\buppercase\b/g)).toHaveLength(7);
+    const properties = head.match(/<th [^>]*>[^]*?Properties[^]*?<\/th>/)?.[0] ?? '';
+    expect(properties).not.toContain('normal-case');
+    for (const gone of ['>Format<', '>Rate<', '>Bit Rate<', 'Sort by Properties']) expect(head).not.toContain(gone);
     expect(head).not.toContain('<svg');
     expect(head).not.toContain('Sample Rate');
     const cues = table('cues');
