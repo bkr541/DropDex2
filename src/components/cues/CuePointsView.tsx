@@ -182,8 +182,8 @@ const LIBRARY_LARGE_ICON_HEADINGS = false;
 /** The Library page's column headings: 13px, extra bold, in capitals. */
 const LIBRARY_HEADING = 'text-[13px] font-extrabold';
 
-/** The Library page's Format, rate and bit rate badges: 12px like every other value, with the track title's weight and no extra letter spacing, text as written. */
-const LIBRARY_PROPERTY_BADGE = { fontSize: 12, fontWeight: 700, letterSpacing: 'normal', textTransform: 'none' } as const;
+/** The Library page's Format, rate and bit rate badges: 12px, medium weight and the normal text colour, exactly like every other value in the table; text as written. */
+const LIBRARY_PROPERTY_BADGE = { fontSize: 12, fontWeight: 500, letterSpacing: 'normal', textTransform: 'none', color: 'var(--color-foreground)' } as const;
 
 /** How every data value looks in the Library page's table: 12px like the track title, normal text colour, medium weight. */
 const LIBRARY_VALUE = 'text-xs font-medium text-foreground';
@@ -4564,7 +4564,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                           <td className="px-3 py-1.5 whitespace-nowrap" data-testid="properties-cell">
                             <span className="inline-flex items-center gap-1.5">
                               {[
-                                track.file_format,
+                                track.file_format ? `.${track.file_format.toLowerCase()}` : null,
                                 track.sample_rate_hz != null && track.sample_rate_hz > 0 ? `${track.sample_rate_hz / 1000} kHz` : null,
                                 track.bitrate_kbps != null && track.bitrate_kbps > 0 ? `${track.bitrate_kbps} kbps` : null,
                               ].filter((value): value is string => Boolean(value)).map((value) => (

@@ -213,10 +213,11 @@ describe('Review shared browser and focused track timeline', () => {
     const cell = rows.match(/<td class="px-3 py-1.5 whitespace-nowrap" data-testid="properties-cell">([\s\S]*?)<\/td>/)?.[1] ?? '';
     const badges = cell.match(/<span class="dd-status-badge dd-tone-neutral"[^>]*>[\s\S]*?<\/span><\/span>/g) ?? [];
     expect(badges).toHaveLength(3);
-    expect(badges.map((badge) => badge.replace(/<[^>]+>/g, ''))).toEqual(['WAV', '44.1 kHz', '1411 kbps']);
-    for (const badge of badges) expect(badge).toContain('font-size:12px;font-weight:700;letter-spacing:normal;text-transform:none');
+    expect(badges.map((badge) => badge.replace(/<[^>]+>/g, ''))).toEqual(['.wav', '44.1 kHz', '1411 kbps']);
+    for (const badge of badges) expect(badge).toContain('font-size:12px;font-weight:500;letter-spacing:normal;text-transform:none;color:var(--color-foreground)');
     expect(rows.match(/properties-cell/g)).toHaveLength(1);
     expect(rows).not.toMatch(/<td[^>]*>WAV<\/td>/);
+    expect(cell).not.toContain('>WAV<');
   });
 
   it('Review: shows a dash when a track has no format, rate or bit rate', () => {
