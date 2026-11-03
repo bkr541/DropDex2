@@ -25,9 +25,9 @@ export function TrackTableBody({ children, ...props }: HTMLAttributes<HTMLTableS
   return <tbody className="divide-y divide-[var(--color-border-faint)]" {...props}>{children}</tbody>;
 }
 
-export function TrackTableHead({ children, large = false }: { children: ReactNode; /** 12px headings instead of 9px. */ large?: boolean }) {
+export function TrackTableHead({ children, large = false, className }: { children: ReactNode; /** 12px headings instead of 9px. */ large?: boolean; /** Overrides the heading size and weight. */ className?: string }) {
   return (
-    <thead className={cn('font-bold uppercase tracking-widest text-muted-foreground', large ? 'text-xs' : 'text-[9px]')}>
+    <thead className={cn('font-bold uppercase tracking-widest text-muted-foreground', large ? 'text-xs' : 'text-[9px]', className)}>
       <tr className="border-b border-[var(--color-border-faint)]">{children}</tr>
     </thead>
   );
@@ -39,11 +39,13 @@ export interface TrackTableSort<K extends string = string> {
 }
 
 export function TrackTableHeadCell<K extends string>({
-  label, column, sort, onSort, sticky = true, icon: Icon, iconSize = 14, className, ...props
+  label, column, sort, onSort, sticky = true, icon: Icon, iconSize = 14, uppercase = false, className, ...props
 }: Omit<ThHTMLAttributes<HTMLTableCellElement>, 'onClick'> & {
   /** Shown to the left of the heading text. */
   icon?: ElementType;
   iconSize?: number;
+  /** Capital letters on a sortable heading (its button otherwise shows the label as written). */
+  uppercase?: boolean;
   /** Keep the header visible while the list scrolls. */
   sticky?: boolean;
   label: ReactNode;
@@ -56,7 +58,7 @@ export function TrackTableHeadCell<K extends string>({
   return (
     <th
       aria-sort={active ? (sort?.direction === 'asc' ? 'ascending' : 'descending') : undefined}
-      className={cn('select-none bg-[var(--color-background)] px-3 py-2', sticky && 'sticky top-0 z-10', !(column !== undefined && onSort) && 'normal-case tracking-normal', className)}
+      className={cn('select-none bg-[var(--color-background)] px-3 py-2 [font-weight:inherit]', sticky && 'sticky top-0 z-10', !(column !== undefined && onSort) && 'normal-case tracking-normal', className)}
       {...props}
     >
       {(() => {
@@ -66,7 +68,7 @@ export function TrackTableHeadCell<K extends string>({
         return column !== undefined && onSort ? (
           <button
             type="button"
-            className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+            className={cn('inline-flex items-center gap-1 transition-colors hover:text-foreground', uppercase && 'uppercase')}
             aria-label={`Sort by ${typeof label === 'string' ? label : column}`}
             onClick={() => onSort(column)}
           >

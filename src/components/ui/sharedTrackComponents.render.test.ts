@@ -100,6 +100,16 @@ describe('Track table parts', () => {
     expect(cells[2]).toContain('normal-case');
   });
 
+  it('can show sortable headings in capitals and lets a custom size and weight through; cells take the heading row weight', () => {
+    const markup = render(createElement(TrackTable, { children: createElement(TrackTableHead, { className: 'text-[13px] font-extrabold', children: [
+        createElement(TrackTableHeadCell, { key: 'a', label: 'BPM', column: 'bpm', onSort: vi.fn(), uppercase: true }),
+        createElement(TrackTableHeadCell, { key: 'b', label: 'Key', column: 'key', onSort: vi.fn() })] }) }));
+    expect(markup).toContain('text-[13px] font-extrabold');
+    expect(markup).not.toContain('text-[9px]');
+    expect(markup.match(/<button[^>]*\buppercase\b/g)).toHaveLength(1);
+    expect(markup.match(/\[font-weight:inherit\]/g)).toHaveLength(2);
+  });
+
   it('can leave the header out of sticky positioning', () => {
     const cells = table.match(/<th [^>]*>/g) ?? [];
     expect(cells[0]).toContain('sticky');

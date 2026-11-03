@@ -172,6 +172,17 @@ interface CueRebaseRecoveryState {
   items: CueRebaseRecoveryItem[];
 }
 
+/**
+ * The Library page's column headings stay at the normal size with no icons for now. Switching
+ * this on gives them 12px text and an icon beside each, which makes the columns wider.
+ */
+const LIBRARY_LARGE_ICON_HEADINGS = false;
+
+/** The Library page's column headings: 13px, extra bold, in capitals. */
+const LIBRARY_HEADING = 'text-[13px] font-extrabold';
+
+/** How every data value looks in the Library page's table: 14px, normal text colour, medium weight. */
+const LIBRARY_VALUE = 'text-sm font-medium text-foreground';
 const CUE_PAGE_SIZE = 100;
 const MAX_TIMELINE_GRID_LINES = 640;
 const MAX_BEAT_RULER_TICKS = 640;
@@ -4308,8 +4319,8 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
           <>
             <div className="overflow-auto scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
               <TrackTable className={cn('min-w-[900px]', review && 'cue-browser__table--tight')} data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
-                <TrackTableHead large={review}>
-                  <TrackTableHeadCell label="Track" column="title" icon={review ? Music : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
+                <TrackTableHead large={review && LIBRARY_LARGE_ICON_HEADINGS} className={review ? LIBRARY_HEADING : undefined}>
+                  <TrackTableHeadCell label="Track" column="title" uppercase={review} icon={review && LIBRARY_LARGE_ICON_HEADINGS ? Music : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
                   {([
                     { col: 'bpm', label: 'BPM', cls: 'px-3 py-2', icon: Meter },
                     { col: 'key', label: 'Key', cls: 'px-3 py-2', icon: Key },
@@ -4321,7 +4332,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                     { col: 'bitRate', label: 'Bit Rate', cls: 'px-3 py-2 whitespace-nowrap', icon: ChartLine },
                     { col: 'duration', label: 'Duration', cls: 'px-3 py-2 text-left w-[80px]', icon: Time },
                   ]).map(({ col, label, cls, icon }) => (
-                    <TrackTableHeadCell key={col} label={label} column={col} className={cls} icon={review ? icon : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
+                    <TrackTableHeadCell key={col} label={label} column={col} uppercase={review} className={cls} icon={review && LIBRARY_LARGE_ICON_HEADINGS ? icon : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
                   ))}
                 </TrackTableHead>
                 <TrackTableBody>
@@ -4368,7 +4379,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                           }
                         >
                           <TrackWaveformPreview
-                            className={cn(review ? 'w-[140px] shrink-0' : 'w-[128px] shrink-0', mode === 'audition' && 'grow')}
+                            className={cn(review ? 'w-[152px] shrink-0' : 'w-[128px] shrink-0', mode === 'audition' && 'grow')}
                             waveformState={getWaveformState(track.id)}
                             durationMs={durationMsForTrack(track, null)}
                             cues={cueMarkersFromState(cueState)}
@@ -4376,13 +4387,13 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                             ariaLabel={`Waveform for ${track.title}`}
                           />
                         </TrackNameCell>
-                        <td className={review ? 'px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap' : 'px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums'}>{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
-                        <td className={review ? 'px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap' : 'px-3 py-1.5'}>
+                        <td className={review ? cn('px-3 py-1.5 whitespace-nowrap', LIBRARY_VALUE) : 'px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums'}>{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
+                        <td className={review ? cn('px-3 py-1.5 whitespace-nowrap', LIBRARY_VALUE) : 'px-3 py-1.5'}>
                           {review
                             ? (track.musical_key ? formatCamelotKey(track.musical_key) : '—')
                             : <KeyBadge camelotKey={formatCamelotKey(track.musical_key)} variant={mode === 'audition' ? 'text' : 'badge'} />}
                         </td>
-                        <td className={cn('px-3 py-1.5 text-xs text-muted-foreground', mode === 'audition' ? 'w-[112px] max-w-[112px]' : review ? 'w-[71px] max-w-[71px]' : 'w-[178px]')}>
+                        <td className={cn('px-3 py-1.5', review ? LIBRARY_VALUE : 'text-xs text-muted-foreground', mode === 'audition' ? 'w-[112px] max-w-[112px]' : review ? 'w-[71px] max-w-[71px]' : 'w-[178px]')}>
                           {audition ? (
                             <span className="block min-w-0 truncate">{effectiveGenre ?? '—'}</span>
                           ) : editingGenreTrackId === track.id ? (
@@ -4511,7 +4522,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                         <td className={review ? 'px-3 py-1.5' : 'px-3 py-1.5 text-center'}>
                           <span className={cn(
                             review
-                              ? 'text-xs text-muted-foreground whitespace-nowrap'
+                              ? cn('whitespace-nowrap', LIBRARY_VALUE)
                               : mode === 'audition'
                               ? 'font-mono text-[12px] font-black text-primary'
                               : cn('inline-flex min-w-8 justify-center rounded-md border px-2 py-1 font-mono text-[12px] font-black',
@@ -4525,7 +4536,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                           </span>
                         </td>
                         {review && (
-                          <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap" data-testid="playlist-count">
+                          <td className={cn('px-3 py-1.5 whitespace-nowrap', LIBRARY_VALUE)} data-testid="playlist-count">
                             {playlistCounts.counts.has(track.id)
                               ? <span title={`In ${playlistCounts.counts.get(track.id)} ${playlistCounts.counts.get(track.id) === 1 ? 'playlist' : 'playlists'}`}>{playlistCounts.counts.get(track.id)}</span>
                               : playlistCounts.error
@@ -4541,16 +4552,16 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                                 : '…'}
                           </td>
                         )}
-                        <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                        <td className={cn('px-3 py-1.5 whitespace-nowrap', review ? LIBRARY_VALUE : 'text-xs text-muted-foreground')}>
                           {track.file_format ?? '—'}
                         </td>
-                        <td className={cn('px-3 py-1.5 text-muted-foreground whitespace-nowrap', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]')}>
+                        <td className={cn('px-3 py-1.5 whitespace-nowrap', review ? LIBRARY_VALUE : cn('text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]'))}>
                           {track.sample_rate_hz != null && track.sample_rate_hz > 0 ? `${track.sample_rate_hz / 1000} kHz` : '—'}
                         </td>
-                        <td className={cn('px-3 py-1.5 text-muted-foreground whitespace-nowrap', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]')}>
+                        <td className={cn('px-3 py-1.5 whitespace-nowrap', review ? LIBRARY_VALUE : cn('text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]'))}>
                           {track.bitrate_kbps != null && track.bitrate_kbps > 0 ? `${track.bitrate_kbps} kbps` : '—'}
                         </td>
-                        <td className={cn('w-[80px] px-3 py-1.5 text-left text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]')}>
+                        <td className={cn('w-[80px] px-3 py-1.5 text-left', review ? LIBRARY_VALUE : cn('text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]'))}>
                           {formatTime(durationMsForTrack(track, null))}
                         </td>
                       </TrackTableRow>
