@@ -59,7 +59,7 @@ import { EditProfileView } from './components/profile/EditProfileView';
 import { DeveloperTab } from './components/profile/DeveloperTab';
 import { SpotifyExternalAccount } from './components/profile/SpotifyExternalAccount';
 import { UsbConnectionProvider, useUsbConnection } from './contexts/UsbConnectionContext';
-import { UsbConnectionButton } from './components/usb/UsbConnectionButton';
+import { FloatingSidebar } from './components/navigation/FloatingSidebar';
 import { PageNameTab, type PageHeading } from './components/navigation/PageNameTab';
 import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerContext';
 import { NowPlayingBar } from './components/player/NowPlayingBar';
@@ -68,7 +68,7 @@ import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
-import { CheckmarkFilled, Chemistry, CircleDash, Close, DataBase, Edit, Growth, Headphones, Layers, Logout, Moon, Music, PaintBrush, Radio, RecordingFilled, Renew, Search, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, Chemistry, CircleDash, Close, DataBase, Edit, Growth, Headphones, Layers, Logout, Moon, Music, Radio, RecordingFilled, Renew, Search, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
 import { openLayoutLab } from './components/ui/openLayoutLab';
 import { ControlButton } from './components/ui/controls';
 
@@ -1084,16 +1084,16 @@ export default function App() {
 
   const libraryLabel = userProfile?.display_name ?? 'My Book';
 
-  const sidebarNavItems: { view: View; icon: React.ElementType; label: string; activeColor: string; activeBg: string }[] = [
-    { view: 'home', icon: Music, label: libraryLabel, activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
-    { view: 'review', icon: Growth, label: 'Review', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
-    { view: 'cues', icon: CuePointsNavIcon, label: 'Cue Points', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
-    { view: 'audition', icon: Headphones, label: 'Audition', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
-    { view: 'discovery', icon: Radio, label: 'Discover', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
-    { view: 'search', icon: Search, label: 'Search', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
-    { view: 'drop-lab', icon: Chemistry, label: 'Drop Lab', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
-    { view: 'flip-lab', icon: Shuffle, label: 'Flip Lab', activeColor: 'text-secondary neon-text-purple', activeBg: 'bg-secondary/10 border-secondary/20' },
-    { view: 'usb', icon: Usb, label: 'USB Management', activeColor: 'text-primary neon-text-blue', activeBg: 'bg-primary/10 border-primary/20' },
+  const sidebarNavItems: { view: View; icon: React.ElementType; label: string }[] = [
+    { view: 'home', icon: Music, label: libraryLabel },
+    { view: 'review', icon: Growth, label: 'Review' },
+    { view: 'cues', icon: CuePointsNavIcon, label: 'Cue Points' },
+    { view: 'audition', icon: Headphones, label: 'Audition' },
+    { view: 'discovery', icon: Radio, label: 'Discover' },
+    { view: 'search', icon: Search, label: 'Search' },
+    { view: 'drop-lab', icon: Chemistry, label: 'Drop Lab' },
+    { view: 'flip-lab', icon: Shuffle, label: 'Flip Lab' },
+    { view: 'usb', icon: Usb, label: 'USB Management' },
   ];
 
   const titledPage = (title: string, onBack: (() => void) | null = goBack): PageHeading => ({ title, onBack });
@@ -1162,6 +1162,16 @@ export default function App() {
     <>
     <RootFailureProbe />
     <div className="flex h-screen overflow-hidden font-sans relative">
+      {/* The logo's red gradient, shared by every icon that uses the logo-gradient-icon class. */}
+      <svg width="0" height="0" className="absolute" aria-hidden="true" focusable="false">
+        <defs>
+          <linearGradient id="dd-logo-gradient" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#fa2830" />
+            <stop offset="50%" stopColor="#ff4e4f" />
+            <stop offset="100%" stopColor="#fb7974" />
+          </linearGradient>
+        </defs>
+      </svg>
       {/* Background ambience */}
       <div className="fixed inset-0 -z-10 bg-background overflow-hidden">
         <div className="ambience-blob absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 blur-[120px] rounded-full" />
@@ -1169,91 +1179,16 @@ export default function App() {
       </div>
 
       {/* ── Desktop sidebar ── */}
-      <aside className={cn(
-        'hidden md:flex flex-col shrink-0 border-r border-[var(--color-border-subtle)] bg-[var(--color-panel)] z-40 transition-all duration-200',
-        sidebarCollapsed ? 'w-16' : 'w-60'
-      )}>
-        <div className={cn(
-          'h-16 flex items-center shrink-0 border-b border-[var(--color-border-subtle)]',
-          sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-6'
-        )}>
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-          >
-            <img src="/logos/dropdexlogo.png" alt="DropDex" className="w-8 h-8 object-contain" />
-          </button>
-          {!sidebarCollapsed && (
-            <span className="text-xl font-black tracking-tighter uppercase leading-none">
-              Drop<span className="text-[var(--color-brand-primary)]">Dex</span>
-            </span>
-          )}
-        </div>
-
-        <nav className="flex flex-col gap-1 p-3 flex-1">
-          {sidebarNavItems.map(({ view, icon: Icon, label, activeColor, activeBg }) => (
-            <button
-              key={label}
-              onClick={() => setCurrentView(view)}
-              title={sidebarCollapsed ? label : undefined}
-              aria-current={currentView === view ? 'page' : undefined}
-              className={cn(
-                'flex items-center rounded-xl font-bold text-sm transition-all border w-full',
-                sidebarCollapsed ? 'justify-center py-3 px-0' : 'gap-3 px-4 py-3 text-left',
-                currentView === view
-                  ? `${activeColor} ${activeBg}`
-                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent'
-              )}
-            >
-              <Icon size={18} />
-              {!sidebarCollapsed && label}
-            </button>
-          ))}
-          <div className="mt-auto pt-2 border-t border-[var(--color-border-faint)]">
-            <button
-              onClick={openLayoutLab}
-              title={sidebarCollapsed ? 'Layout Lab (opens in a new window)' : 'Opens in a new window'}
-              className={cn(
-                'flex items-center rounded-xl font-bold text-sm transition-all border w-full',
-                sidebarCollapsed ? 'justify-center py-3 px-0' : 'gap-3 px-4 py-3 text-left',
-                'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent'
-              )}
-            >
-              <PaintBrush size={18} />
-              {!sidebarCollapsed && 'Layout Lab'}
-            </button>
-          </div>
-        </nav>
-
-        <div className="p-3 border-t border-[var(--color-border-subtle)] flex flex-col gap-2">
-          <UsbConnectionButton collapsed={sidebarCollapsed} />
-          <button
-            type="button"
-            onClick={() => navigate({ name: 'profile' })}
-            aria-label="Open profile"
-            aria-current={currentView === 'settings' ? 'page' : undefined}
-            title={sidebarCollapsed ? 'Profile' : undefined}
-            className={cn(
-              'flex items-center rounded-xl font-bold text-sm transition-all border w-full',
-              sidebarCollapsed ? 'justify-center py-2 px-0' : 'gap-3 px-3 py-2 text-left',
-              currentView === 'settings'
-                ? 'text-primary bg-primary/10 border-primary/20'
-                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)] border-transparent',
-            )}
-          >
-            <span className="w-8 h-8 shrink-0 rounded-full overflow-hidden border border-[var(--color-border-subtle)] flex items-center justify-center bg-[var(--color-surface)]">
-              {userProfile?.avatar_url ? (
-                <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <User size={16} className="text-muted-foreground" />
-              )}
-            </span>
-            {!sidebarCollapsed && <span className="truncate">{userProfile?.display_name ?? 'Profile'}</span>}
-          </button>
-        </div>
-      </aside>
+      <FloatingSidebar
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={toggleSidebar}
+        items={sidebarNavItems}
+        currentView={currentView}
+        onSelectView={(view) => setCurrentView(view as View)}
+        onOpenLayoutLab={openLayoutLab}
+        onOpenProfile={() => navigate({ name: 'profile' })}
+        profile={userProfile}
+      />
 
       {/* ── Main content column ── */}
       <div className="relative flex flex-col flex-1 min-w-0 h-screen">

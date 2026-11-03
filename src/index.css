@@ -201,6 +201,35 @@
   box-shadow: 0 8px 22px rgb(26 28 46 / 0.07);
 }
 
+/*
+ * The logo's red: deep red to coral red. Used for the borders and icons of the floating nav and the
+ * page-name tab. The border is the gradient itself, drawn behind a fill, so rounded corners stay rounded.
+ */
+:root {
+  --gradient-logo: linear-gradient(135deg, #fa2830 0%, #ff4e4f 50%, #fb7974 100%);
+  --color-logo-red: #ff4e4f;
+}
+
+/* `html` in front outranks the per-theme `.glass` rules (for example the CDJ theme's), which come later. */
+html .glass.logo-gradient-border {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--color-panel-alt), var(--color-panel-alt)) padding-box,
+    var(--gradient-logo) border-box;
+}
+
+[data-theme="light"] .glass.logo-gradient-border {
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    var(--gradient-logo) border-box;
+}
+
+/* Icons filled with the logo gradient (the gradient itself is defined once, in App). */
+.logo-gradient-icon {
+  color: var(--color-logo-red);
+  fill: url(#dd-logo-gradient);
+}
+
 /* Compact metadata chips use the same surface language in every appearance. */
 .library-genre-badge {
   display: inline-flex;
