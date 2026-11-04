@@ -39,6 +39,63 @@ export interface DesktopUsbReleaseResult {
   activity: DesktopUsbActivityState;
 }
 
+/** What the operating system knows about a drive. Anything it could not read is null. */
+export interface DesktopUsbDetails {
+  volumeName: string;
+  connectedAt?: string;
+  totalBytes: number | null;
+  freeBytes: number | null;
+  usedBytes: number | null;
+  filesystem: string | null;
+  brand: string | null;
+  model: string | null;
+  protocol: string | null;
+  solidState: boolean | null;
+  removable: boolean | null;
+  volumeUuid: string | null;
+  deviceId: string | null;
+}
+
+export type DesktopTransferCategory = 'tracks' | 'rekordbox' | 'other';
+
+export type DesktopTransferScan = Record<DesktopTransferCategory, { fileCount: number; totalBytes: number }>;
+
+export interface DesktopTransferProgress {
+  copied: number;
+  skipped: number;
+  failed: number;
+  bytes: number;
+  currentPath: string;
+  neededBytes: number;
+}
+
+export interface DesktopTransferFile {
+  path: string;
+  size: number;
+  status: 'copied' | 'skipped' | 'failed';
+}
+
+export interface DesktopTransferResult {
+  status: 'completed' | 'partial' | 'failed' | 'cancelled';
+  copied: number;
+  skipped: number;
+  failed: number;
+  bytes: number;
+  files: DesktopTransferFile[];
+  filesTruncated: boolean;
+  error: string | null;
+  categories: DesktopTransferCategory[];
+  neededBytes: number;
+  startedAt: string;
+  finishedAt: string;
+  sourceVolumeName: string | null;
+  destinationVolumeName: string | null;
+}
+
+export type DesktopStartTransferResult =
+  | { ok: true; result: DesktopTransferResult }
+  | { ok: false; error: string; neededBytes?: number; freeBytes?: number };
+
 export type DesktopTrackSourceResult =
   | {
       ok: true;
@@ -501,6 +558,14 @@ export interface DropDexDesktopBridge {
   reconnectUsb(expectedVolumeName?: string | null): Promise<DesktopUsbReconnectResult>;
   releaseUsb(): Promise<DesktopUsbReleaseResult>;
   disconnectUsb(): Promise<DesktopUsbReleaseResult>;
+  getUsbDetails(): Promise<DesktopUsbDetails | null>;
+  getTransferDestination(): Promise<DesktopUsbDetails | null>;
+  selectTransferDestination(): Promise<{ cancelled: boolean; destination: DesktopUsbDetails | null; error?: string }>;
+  clearTransferDestination(): Promise<null>;
+  scanTransfer(): Promise<DesktopTransferScan | null>;
+  startTransfer(categories: DesktopTransferCategory[]): Promise<DesktopStartTransferResult>;
+  cancelTransfer(): Promise<boolean>;
+  onTransferProgress(listener: (progress: DesktopTransferProgress) => void): () => void;
   resolveTrackSource(segments: string[]): Promise<DesktopTrackSourceResult>;
   inspectStemAsset(locator: string): Promise<DesktopStemAssetInspectResult>;
   resolveStemAsset(locator: string): Promise<DesktopStemAssetSourceResult>;

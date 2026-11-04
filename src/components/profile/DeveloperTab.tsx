@@ -77,9 +77,9 @@ function writeDisabledEvents(disabled: Set<string>): void {
 
 // ── Component classification ──────────────────────────────────────────────────
 
-type LogComponent = 'All' | 'Rekordbox' | 'Library' | 'Audition' | 'Drop Lab' | 'Flip Lab' | 'Supabase' | 'Discovery' | 'Auth' | 'React' | 'Browser' | 'App';
+type LogComponent = 'All' | 'Rekordbox' | 'Library' | 'Audition' | 'Drop Lab' | 'Flip Lab' | 'Supabase' | 'Discovery' | 'USB' | 'Auth' | 'React' | 'Browser' | 'App';
 
-const COMPONENTS: LogComponent[] = ['All', 'Rekordbox', 'Library', 'Audition', 'Drop Lab', 'Flip Lab', 'Supabase', 'Discovery', 'Auth', 'React', 'Browser', 'App'];
+const COMPONENTS: LogComponent[] = ['All', 'Rekordbox', 'Library', 'Audition', 'Drop Lab', 'Flip Lab', 'Supabase', 'Discovery', 'USB', 'Auth', 'React', 'Browser', 'App'];
 
 function classifyComponent(message: string): Exclude<LogComponent, 'All'> {
   if (message.startsWith('api.')) return 'Rekordbox';
@@ -89,6 +89,7 @@ function classifyComponent(message: string): Exclude<LogComponent, 'All'> {
   if (message.startsWith('fliplab.')) return 'Flip Lab';
   if (message.startsWith('supabase.')) return 'Supabase';
   if (message.startsWith('discovery.')) return 'Discovery';
+  if (message.startsWith('usb.')) return 'USB';
   if (message.startsWith('auth.')) return 'Auth';
   if (message.startsWith('react.')) return 'React';
   if (message.startsWith('window.')) return 'Browser';

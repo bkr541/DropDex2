@@ -16,6 +16,8 @@ const {
 } = require('./stemAssetStorage.cjs');
 const { SEPARATOR_VERSION, StemSeparationBridge } = require('./stemSeparationBridge.cjs');
 const { getOrCreateInstallationId } = require('./installationIdentity.cjs');
+const { readUsbDetails } = require('./usbDetails.cjs');
+const { assertSafeTransferPaths, runTransfer, scanTransferSource } = require('./usbTransfer.cjs');
 
 const APP_SCHEME = 'dropdex-media';
 const USB_CONFIG_FILE = 'usb-connection.json';
@@ -35,6 +37,9 @@ let cachedUsbState = {
   error: null,
 };
 let quittingAfterUsbRelease = false;
+// The second drive chosen on the Transfer tab, and the transfer running right now (if any).
+let transferDestination = null;
+let activeTransfer = null;
 let installationIdPromise = null;
 const usbStreams = new UsbStreamRegistry({ closeTimeoutMs: 2500 });
 const cueApplyBridge = new CueApplyBridge({
@@ -608,6 +613,106 @@ async function selectUsbRoot() {
   return { cancelled: false, state: await desktopConnectionState() };
 }
 
+
+// ── USB details and transfers ────────────────────────────────────────────────
+
+function transferSourceRoot() {
+  if (!usbConnection || usbStreams.releasing || usbStreams.released) return null;
+  return usbConnection.rootPath;
+}
+
+async function primaryUsbDetails() {
+  const rootPath = transferSourceRoot();
+  if (!rootPath) return null;
+  const details = await readUsbDetails(rootPath);
+  return { ...details, volumeName: usbConnection.volumeName || details.volumeName, connectedAt: usbConnection.connectedAt };
+}
+
+async function transferDestinationInfo() {
+  if (!transferDestination) return null;
+  try {
+    await fs.access(transferDestination.rootPath);
+  } catch {
+    transferDestination = null;
+    return null;
+  }
+  const details = await readUsbDetails(transferDestination.rootPath);
+  return { ...details, volumeName: transferDestination.volumeName };
+}
+
+async function selectTransferDestination() {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose the USB (or folder) to transfer to',
+    buttonLabel: 'Use this drive',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return { cancelled: true, destination: await transferDestinationInfo() };
+  try {
+    const rootPath = await fs.realpath(path.resolve(result.filePaths[0]));
+    const sourceRoot = transferSourceRoot();
+    if (sourceRoot) assertSafeTransferPaths(sourceRoot, rootPath);
+    await fs.access(rootPath, require('node:fs').constants.W_OK);
+    transferDestination = { rootPath, volumeName: path.basename(rootPath) || rootPath };
+    return { cancelled: false, destination: await transferDestinationInfo() };
+  } catch (error) {
+    const message = error && error.code === 'EACCES'
+      ? 'DropDex cannot write to that drive. It may be read-only or locked.'
+      : error instanceof Error ? error.message : 'That drive could not be used.';
+    return { cancelled: false, destination: await transferDestinationInfo(), error: message };
+  }
+}
+
+async function startTransfer(sender, categories) {
+  if (activeTransfer) return { ok: false, error: 'A transfer is already running.' };
+  const sourceRoot = transferSourceRoot();
+  if (!sourceRoot) return { ok: false, error: 'Connect the USB you want to copy from first.' };
+  if (!transferDestination) return { ok: false, error: 'Choose the drive you want to copy to first.' };
+
+  const startedAt = new Date().toISOString();
+  const scan = await scanTransferSource(sourceRoot);
+  const chosen = Array.isArray(categories) ? categories.filter((id) => scan[id]) : [];
+  const neededBytes = chosen.reduce((sum, id) => sum + scan[id].totalBytes, 0);
+  const destination = await transferDestinationInfo();
+  if (!destination) return { ok: false, error: 'The destination drive is no longer available.' };
+  if (destination.freeBytes != null && neededBytes > destination.freeBytes) {
+    return { ok: false, error: 'There is not enough free space on the destination drive.', neededBytes, freeBytes: destination.freeBytes };
+  }
+
+  const control = { cancelled: false };
+  activeTransfer = control;
+  let lastSent = 0;
+  try {
+    const result = await runTransfer({
+      sourceRoot,
+      destinationRoot: transferDestination.rootPath,
+      categories: chosen,
+      isCancelled: () => control.cancelled,
+      onProgress: (progress) => {
+        const now = Date.now();
+        if (now - lastSent < 200) return;
+        lastSent = now;
+        if (!sender.isDestroyed()) sender.send('dropdex:transfer-progress', { ...progress, neededBytes });
+      },
+    });
+    return {
+      ok: true,
+      result: {
+        ...result,
+        categories: chosen,
+        neededBytes,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        sourceVolumeName: usbConnection?.volumeName ?? null,
+        destinationVolumeName: transferDestination?.volumeName ?? null,
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'The transfer failed.' };
+  } finally {
+    activeTransfer = null;
+  }
+}
+
 function assertExactObject(value, allowedKeys, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be an object.`);
   const keys = Object.keys(value);
@@ -622,6 +727,22 @@ function registerIpcHandlers() {
   ipcMain.handle('dropdex:usb-activity-state', () => (
     usbStreams.snapshot({ connected: Boolean(usbConnection) })
   ));
+  ipcMain.handle('dropdex:usb-details', () => primaryUsbDetails());
+  ipcMain.handle('dropdex:transfer-destination', () => transferDestinationInfo());
+  ipcMain.handle('dropdex:select-transfer-destination', () => selectTransferDestination());
+  ipcMain.handle('dropdex:clear-transfer-destination', () => {
+    if (!activeTransfer) transferDestination = null;
+    return null;
+  });
+  ipcMain.handle('dropdex:scan-transfer', async () => {
+    const sourceRoot = transferSourceRoot();
+    return sourceRoot ? scanTransferSource(sourceRoot) : null;
+  });
+  ipcMain.handle('dropdex:start-transfer', (event, categories) => startTransfer(event.sender, categories));
+  ipcMain.handle('dropdex:cancel-transfer', () => {
+    if (activeTransfer) activeTransfer.cancelled = true;
+    return Boolean(activeTransfer);
+  });
   ipcMain.handle('dropdex:select-usb-root', () => selectUsbRoot());
   ipcMain.handle('dropdex:reconnect-usb', async (_event, expectedVolumeName = null) => {
     if (expectedVolumeName != null && (typeof expectedVolumeName !== 'string' || expectedVolumeName.length > 512)) {

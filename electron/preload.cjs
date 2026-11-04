@@ -11,6 +11,18 @@ contextBridge.exposeInMainWorld('dropdexDesktop', Object.freeze({
   reconnectUsb: (expectedVolumeName = null) => ipcRenderer.invoke('dropdex:reconnect-usb', expectedVolumeName),
   releaseUsb: () => ipcRenderer.invoke('dropdex:release-usb'),
   disconnectUsb: () => ipcRenderer.invoke('dropdex:disconnect-usb'),
+  getUsbDetails: () => ipcRenderer.invoke('dropdex:usb-details'),
+  getTransferDestination: () => ipcRenderer.invoke('dropdex:transfer-destination'),
+  selectTransferDestination: () => ipcRenderer.invoke('dropdex:select-transfer-destination'),
+  clearTransferDestination: () => ipcRenderer.invoke('dropdex:clear-transfer-destination'),
+  scanTransfer: () => ipcRenderer.invoke('dropdex:scan-transfer'),
+  startTransfer: (categories) => ipcRenderer.invoke('dropdex:start-transfer', categories),
+  cancelTransfer: () => ipcRenderer.invoke('dropdex:cancel-transfer'),
+  onTransferProgress: (listener) => {
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on('dropdex:transfer-progress', handler);
+    return () => ipcRenderer.removeListener('dropdex:transfer-progress', handler);
+  },
   resolveTrackSource: (segments) => ipcRenderer.invoke('dropdex:resolve-track-source', segments),
   inspectStemAsset: (locator) => ipcRenderer.invoke('dropdex:inspect-stem-asset', locator),
   resolveStemAsset: (locator) => ipcRenderer.invoke('dropdex:resolve-stem-asset', locator),
