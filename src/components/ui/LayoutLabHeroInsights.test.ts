@@ -4,33 +4,43 @@ import { describe, expect, it } from 'vitest';
 
 const src = readFileSync(resolve(__dirname, './LayoutLabHeroMockups.tsx'), 'utf8');
 const body = src.slice(src.indexOf('export function HeroMockupsContent'));
+const wheelSource = readFileSync(resolve(__dirname, '../library/InsightCharts.tsx'), 'utf8');
+
+const MOCKUPS = ['HeroSpotlight', 'HeroBento', 'HeroEditorial', 'HeroTypographic', 'HeroPlates', 'HeroSwiss', 'HeroHub', 'HeroLedger', 'HeroMonograph', 'HeroInstrument'];
+
+const block = (fn: string) => {
+  const start = src.indexOf(`function ${fn}(`);
+  const end = src.indexOf('\nfunction ', start + 10);
+  return src.slice(start, end === -1 ? undefined : end);
+};
 
 describe('Layout Lab hero mockups', () => {
-  it('shows all nine mockups', () => {
-    expect(body.match(/<HeroMockupCard /g)).toHaveLength(9);
+  it('shows ten mockups, and none of the removed premium ones', () => {
+    expect(body.match(/<HeroMockupCard /g)).toHaveLength(10);
+    for (const name of ['Obsidian', 'Champagne', 'Neon Noir', 'Frosted Aurora', 'Platinum']) expect(src).not.toContain(name);
   });
-  it('no longer shows the single main BPM / key / genre stats', () => {
-    expect(src).not.toContain('MAIN_STATS');
-    expect(src).not.toContain("label: 'Main BPM'");
-    expect(src).not.toContain("'MAIN BPM'");
+  it('keeps every mockup at the production hero height (218px) through one shared frame', () => {
+    expect(src).toContain("'relative h-[218px] overflow-hidden'");
+    for (const fn of MOCKUPS) expect({ fn, framed: block(fn).includes('<HeroFrame') }).toEqual({ fn, framed: true });
   });
-  it('includes top genres, BPM distribution and the Camelot wheel in each mockup', () => {
-    const fns = ['HeroSpotlight', 'HeroBento', 'HeroEditorial', 'HeroTypographic', 'HeroGalleryMasthead', 'HeroSwissIndex', 'HeroQuietRegister', 'HeroSplitLedger', 'HeroMonograph'];
-    for (const fn of fns) {
-      const start = src.indexOf(`function ${fn}(`);
-      const end = src.indexOf('\nfunction ', start + 10);
-      const block = src.slice(start, end === -1 ? undefined : end);
-      const hasGenres = /InsightTrio|Top Genres|TOP GENRES|Top genres|MiniInsights|MiniGenres/.test(block);
-      const hasBpm = /InsightTrio|BPM Distribution|BPM DISTRIBUTION|MiniInsights|MiniBpm/.test(block);
-      const hasWheel = /InsightTrio|Camelot Wheel|CAMELOT WHEEL|MiniInsights|MiniWheel|WheelWithKeys/.test(block);
-      expect({ fn, hasGenres, hasBpm, hasWheel }).toEqual({ fn, hasGenres: true, hasBpm: true, hasWheel: true });
+  it('includes the top genres, BPM distribution and Camelot wheel in every mockup', () => {
+    for (const fn of MOCKUPS) {
+      const b = block(fn);
+      expect({ fn, genres: /<GenreList|<LedGenres/.test(b), bpm: /<BpmChart|<LedTempo/.test(b), wheel: /<Wheel/.test(b) }).toEqual({ fn, genres: true, bpm: true, wheel: true });
     }
   });
-  it('keeps the taller mockups at the Spotlight Banner height (218px)', () => {
-    for (const fn of ['HeroBento', 'HeroEditorial', 'HeroGalleryMasthead', 'HeroSwissIndex', 'HeroQuietRegister']) {
-      const start = src.indexOf(`function ${fn}(`);
-      const end = src.indexOf('\nfunction ', start + 10);
-      expect({ fn, fixed: src.slice(start, end === -1 ? undefined : end).includes('h-[218px]') }).toEqual({ fn, fixed: true });
-    }
+  it('draws the Camelot wheel big enough to read every key name', () => {
+    // Names are 9 units in the wheel's 160-unit drawing, so any wheel at least 160px wide shows them at 9px or larger.
+    expect(src).toContain('labelSize={9}');
+    const sizes = [...src.matchAll(/<Wheel[^>]*size=\{(\d+)\}/g)].map((m) => Number(m[1]));
+    for (const size of sizes) expect(size).toBeGreaterThanOrEqual(160);
+    expect(src).toContain('function Wheel({ size = 162');
+  });
+  it('lets the production wheel keep its original label size', () => {
+    expect(wheelSource).toContain('labelSize = 6');
+  });
+  it('sizes groups to their content instead of stretching them', () => {
+    expect(src).not.toContain('justify-between gap-4 px-6');
+    for (const fn of ['HeroBento', 'HeroPlates', 'HeroSwiss', 'HeroLedger']) expect({ fn, hugs: block(fn).includes('w-fit') }).toEqual({ fn, hugs: true });
   });
 });

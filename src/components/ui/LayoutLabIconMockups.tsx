@@ -39,8 +39,8 @@ function IconSvg({ svg, size }: { svg: string; size: number }) {
 function StateChip({ state, svg, compact = false }: { state: IconState; svg: string; compact?: boolean }) {
   return (
     <div className={cn('ic-tile', `ic-${state}`)}>
-      <div className={cn('ic-chip flex items-center justify-center rounded-xl transition-colors', compact ? 'h-11 w-11' : 'h-16 w-16')}>
-        <IconSvg svg={svg} size={compact ? 20 : 32} />
+      <div className={cn('ic-chip flex items-center justify-center rounded-xl transition-colors', compact ? 'h-[72px] w-[72px]' : 'h-32 w-32')}>
+        <IconSvg svg={svg} size={compact ? 40 : 64} />
       </div>
     </div>
   );
@@ -97,7 +97,7 @@ export function IconMockupsContent() {
             <span className="text-[13px] font-bold text-foreground">{group.page}</span>
             <span className="text-[11px] text-muted-foreground">{group.icons.length} concepts</span>
           </div>
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))' }}>
+          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${mode === 'all' ? 440 : 230}px, 1fr))` }}>
             {group.icons.map((icon, index) => (
               <div key={icon.name} className="flex flex-col items-center gap-2 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-panel)] px-3 py-4" data-testid="icon-tile">
                 {mode === 'all' ? (

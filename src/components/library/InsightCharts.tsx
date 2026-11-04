@@ -2,7 +2,15 @@ import { cn } from '../../lib/utils';
 import { CAMELOT_COLORS, GENRE_OTHER_COLOR, GENRE_RANK_COLORS, camelotColor, parseCamelotKey } from './libraryInsights';
 
 // ── Camelot wheel SVG ─────────────────────────────────────────────────────────
-export function CamelotWheel({ keyStats }: { keyStats: readonly (readonly [string, number])[] }) {
+interface CamelotWheelProps {
+  keyStats: readonly (readonly [string, number])[];
+  /** Font size of the key names inside each section, in the wheel's 160-unit drawing space. Defaults to 6. */
+  labelSize?: number;
+  /** Colour of the names in sections with no tracks. */
+  idleLabelColor?: string;
+}
+
+export function CamelotWheel({ keyStats, labelSize = 6, idleLabelColor = '#3a5068' }: CamelotWheelProps) {
   const cx = 80, cy = 80;
   const bO = 72, bI = 56, aO = 54, aI = 32;
   const INACTIVE = '#182333';
@@ -41,8 +49,8 @@ export function CamelotWheel({ keyStats }: { keyStats: readonly (readonly [strin
         <g key={`b${n}`}>
           <path d={bPath} fill={bColor} />
           <text x={bTx} y={bTy} textAnchor="middle" dominantBaseline="middle"
-            fontSize="6" fontWeight="700"
-            fill={bColor === INACTIVE ? '#3a5068' : 'rgba(255,255,255,0.88)'}
+            fontSize={labelSize} fontWeight="700"
+            fill={bColor === INACTIVE ? idleLabelColor : 'rgba(255,255,255,0.88)'}
             style={{ fontFamily: 'inherit', pointerEvents: 'none' }}>
             {n}B
           </text>
@@ -52,8 +60,8 @@ export function CamelotWheel({ keyStats }: { keyStats: readonly (readonly [strin
         <g key={`a${n}`}>
           <path d={aPath} fill={aColor} />
           <text x={aTx} y={aTy} textAnchor="middle" dominantBaseline="middle"
-            fontSize="6" fontWeight="700"
-            fill={aColor === INACTIVE ? '#3a5068' : 'rgba(255,255,255,0.88)'}
+            fontSize={labelSize} fontWeight="700"
+            fill={aColor === INACTIVE ? idleLabelColor : 'rgba(255,255,255,0.88)'}
             style={{ fontFamily: 'inherit', pointerEvents: 'none' }}>
             {n}A
           </text>

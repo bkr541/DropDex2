@@ -24,6 +24,17 @@ describe('Layout Lab icon concepts', () => {
       }
     }
   });
+  it('draws every icon in two tones: a light tint and a solid tone', () => {
+    for (const { icons } of ICON_GROUPS) {
+      for (const { name, svg } of icons) {
+        const hasLight = /fill-opacity="\.3"|stroke-opacity="\.4"/.test(svg);
+        expect({ name, hasLight }).toEqual({ name, hasLight: true });
+      }
+    }
+  });
+  it('shows the icons at 64px, double the previous size', () => {
+    expect(read('./LayoutLabIconMockups.tsx')).toContain('size={compact ? 40 : 64}');
+  });
   it('offers the states in the toggle', () => {
     expect(ICON_STATES.map((s) => s.id)).toEqual(['idle', 'hover', 'active', 'pressed', 'disabled']);
     const ui = read('./LayoutLabIconMockups.tsx');
