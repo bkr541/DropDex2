@@ -44,7 +44,6 @@ import { useRouteImport, useRoutePlaylist, useRouteTracks } from './hooks/useRou
 
 const DiscoveryView = lazyWithRecovery('discovery', () => import('./components/discovery/DiscoveryView').then(m => ({ default: m.DiscoveryView })));
 const FlipLabView = lazyWithRecovery('flip-lab', () => import('./components/flip-lab/FlipLabView').then(m => ({ default: m.FlipLabView })));
-const SearchView = lazyWithRecovery('search', () => import('./components/search/SearchView').then(m => ({ default: m.SearchView })));
 const ReviewView = lazyWithRecovery('review', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewView })));
 const ReviewEmptyState = lazyWithRecovery('review-empty', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewEmptyState })));
 const CuePointsView = lazyWithRecovery('cue-points', () => import('./components/cues/CuePointsView').then(m => ({ default: m.CuePointsView })));
@@ -60,6 +59,7 @@ import { DeveloperTab } from './components/profile/DeveloperTab';
 import { SpotifyExternalAccount } from './components/profile/SpotifyExternalAccount';
 import { UsbConnectionProvider, useUsbConnection } from './contexts/UsbConnectionContext';
 import { FloatingSidebar } from './components/navigation/FloatingSidebar';
+import { FloatingLayoutLabButton } from './components/navigation/FloatingLayoutLabButton';
 import { PageNameTab, type PageHeading } from './components/navigation/PageNameTab';
 import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerContext';
 import { NowPlayingBar } from './components/player/NowPlayingBar';
@@ -68,7 +68,7 @@ import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
-import { CheckmarkFilled, Chemistry, CircleDash, Close, DataBase, Edit, Growth, Headphones, Layers, Logout, Moon, Music, Radio, RecordingFilled, Renew, Search, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, Chemistry, CircleDash, Close, DataBase, Edit, Growth, Headphones, Layers, Logout, Moon, Music, Radio, RecordingFilled, Renew, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
 import { openLayoutLab } from './components/ui/openLayoutLab';
 import { ControlButton } from './components/ui/controls';
 
@@ -94,7 +94,7 @@ function CuePointsNavIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'audition' | 'settings' | 'discovery' | 'search' | 'drop-lab' | 'import' | 'flip-lab' | 'usb' | 'not-found';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'audition' | 'settings' | 'discovery' | 'drop-lab' | 'import' | 'flip-lab' | 'usb' | 'not-found';
 
 type ImportNotice = {
   kind: 'success' | 'warning';
@@ -114,7 +114,6 @@ function viewForRoute(route: AppRoute): View {
     case 'cues': return 'cues';
     case 'audition': return 'audition';
     case 'discovery': return 'discovery';
-    case 'search': return 'search';
     case 'profile': return 'settings';
     case 'settings': return 'settings';
     case 'flip-lab': return 'flip-lab';
@@ -196,11 +195,11 @@ function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavPr
       </button>
 
       <button
-        onClick={() => setCurrentView('search')}
-        className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'search' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
+        onClick={() => setCurrentView('discovery')}
+        className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'discovery' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
       >
-        <Search size={20} />
-        <span className="text-[8px] font-bold uppercase tracking-widest">Search</span>
+        <Radio size={20} />
+        <span className="text-[8px] font-bold uppercase tracking-widest">Discover</span>
       </button>
     </nav>
   );
@@ -779,7 +778,6 @@ export default function App() {
       case 'audition': navigate({ name: 'audition' }); break;
       case 'settings': navigate({ name: 'settings' }); break;
       case 'discovery': navigate({ name: 'discovery' }); break;
-      case 'search': navigate({ name: 'search' }); break;
       case 'flip-lab': navigate({ name: 'flip-lab' }); break;
       case 'usb': navigate({ name: 'usb' }); break;
       case 'drop-lab': navigate({ name: 'drop-lab', sourceTrackId: null, candidateTrackId: null, sourceDropId: null, candidateDropId: null }); break;
@@ -1090,7 +1088,6 @@ export default function App() {
     { view: 'cues', icon: CuePointsNavIcon, label: 'Cue Points' },
     { view: 'audition', icon: Headphones, label: 'Audition' },
     { view: 'discovery', icon: Radio, label: 'Discover' },
-    { view: 'search', icon: Search, label: 'Search' },
     { view: 'drop-lab', icon: Chemistry, label: 'Drop Lab' },
     { view: 'flip-lab', icon: Shuffle, label: 'Flip Lab' },
     { view: 'usb', icon: Usb, label: 'USB Management' },
@@ -1140,7 +1137,6 @@ export default function App() {
       case 'review': return titledPage(`${userProfile?.display_name?.trim() || 'My'} Library`);
       case 'settings': return titledPage('Profile');
       case 'discovery': return titledPage('Artist Discovery');
-      case 'search': return titledPage('Artist Search');
       case 'flip-lab': return titledPage('Flip Lab');
       case 'usb': return titledPage('USB Management');
       case 'drop-lab': return titledPage('Drop Lab', handleDropLabBack);
@@ -1185,10 +1181,11 @@ export default function App() {
         items={sidebarNavItems}
         currentView={currentView}
         onSelectView={(view) => setCurrentView(view as View)}
-        onOpenLayoutLab={openLayoutLab}
         onOpenProfile={() => navigate({ name: 'profile' })}
         profile={userProfile}
       />
+
+      <FloatingLayoutLabButton onOpen={openLayoutLab} />
 
       {/* ── Main content column ── */}
       <div className="relative flex flex-col flex-1 min-w-0 h-screen">
@@ -1862,21 +1859,6 @@ export default function App() {
               >
                 <LazyFeature label="Loading Discovery…" boundaryKey={`${routeKey(route)}:discovery`} onReturnToLibrary={returnToLibrary}>
                   <DiscoveryView accessToken={session?.access_token ?? null} />
-                </LazyFeature>
-              </motion.div>
-            )}
-
-            {/* ── Search ── */}
-            {!routeBlocked && currentView === 'search' && (
-              <motion.div
-                key="search"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="min-w-0"
-              >
-                <LazyFeature label="Loading Search…" boundaryKey={`${routeKey(route)}:search`} onReturnToLibrary={returnToLibrary}>
-                  <SearchView />
                 </LazyFeature>
               </motion.div>
             )}

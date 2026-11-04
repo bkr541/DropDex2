@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   normalizeEmailOtp,
   submitEmailOtp,
+  UNKNOWN_EMAIL_MESSAGE,
   verifyEmailOtp,
 } from './emailOtp';
 
@@ -16,6 +17,15 @@ function verifyAuthWith(result: unknown) {
 }
 
 describe('email OTP submission', () => {
+  it('shows an error and sends nothing when the email is not an existing user', async () => {
+    const { auth } = sendAuthWith(Promise.resolve({
+      data: {},
+      error: Object.assign(new Error('Signups not allowed for otp'), { status: 422, code: 'otp_disabled' }),
+    }));
+    const result = await submitEmailOtp(auth, 'nobody@example.com', () => undefined);
+    expect(result).toEqual({ status: 'error', message: UNKNOWN_EMAIL_MESSAGE });
+  });
+
   it('requests a code for the trimmed email address', async () => {
     const submitting: boolean[] = [];
     const { auth, signInWithOtp } = sendAuthWith(Promise.resolve({ data: {}, error: null }));
@@ -27,7 +37,7 @@ describe('email OTP submission', () => {
     );
 
     expect(result).toEqual({ status: 'sent', notice: null });
-    expect(signInWithOtp).toHaveBeenCalledWith({ email: 'listener@example.com' });
+    expect(signInWithOtp).toHaveBeenCalledWith({ email: 'listener@example.com', options: { shouldCreateUser: false } });
     expect(submitting).toEqual([true, false]);
   });
 

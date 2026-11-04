@@ -12,6 +12,9 @@ import { DiscoveryScrapeProgressModal } from './DiscoveryScrapeProgressModal';
 import { ArtistPage } from './ArtistPage';
 import { TrackListPage } from './TrackListPage';
 import { DiscoveryHomeFeed } from './DiscoveryHomeFeed';
+import { GenreBrowser } from './GenreBrowser';
+import { GenreArtistGrid } from './GenreArtistGrid';
+import { useCatalogGenres } from '../../hooks/useCatalogGenres';
 import type { DiscoveryArtist, DiscoverySetlistResult } from '../../types';
 
 interface DiscoveryViewProps {
@@ -28,6 +31,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
   const [scrapeError, setScrapeError] = useState<string | null>(null);
   const [scrapeStarting, setScrapeStarting] = useState(false);
   const [showArtistPage, setShowArtistPage] = useState(false);
+  const [selectedGenreId, setSelectedGenreId] = useState<string | null>(null);
   const scrapeStartControllerRef = useRef<AbortController | null>(null);
   const scrapeStartGenerationRef = useRef(0);
 
@@ -54,6 +58,8 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
     activeJobId,
     accessToken,
   );
+  const { genres: catalogGenres, loading: genresLoading, error: genresError, retry: retryGenres } = useCatalogGenres();
+  const selectedGenre = catalogGenres.find((genre) => genre.id === selectedGenreId) ?? null;
   const { detail: artistDetail, loading: detailLoading } = useArtistDetail(
     selectedArtist?.id ?? null,
     accessToken,
@@ -94,6 +100,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
 
   const handleArtistSelect = async (artist: DiscoveryArtist) => {
     setSelectedArtist(artist);
+    setSelectedGenreId(null);
     setQuery('');
     setActiveJobId(null);
     setShowScrapeModal(false);
@@ -183,6 +190,14 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
               query={query.trim()}
             />
           )}
+          <GenreBrowser
+            genres={catalogGenres}
+            loading={genresLoading}
+            error={genresError}
+            onRetry={retryGenres}
+            selectedGenreId={selectedGenreId}
+            onSelectGenre={setSelectedGenreId}
+          />
         </div>
       )}
 
@@ -192,6 +207,13 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
           setlist={selectedSetlistForDetail}
           accessToken={accessToken}
           onBack={handleBackFromTrackList}
+        />
+      ) : !showSearchResults && selectedGenre ? (
+        <GenreArtistGrid
+          key={selectedGenre.id}
+          genreId={selectedGenre.id}
+          genreName={selectedGenre.name}
+          onSelectArtist={handleArtistSelect}
         />
       ) : !showSearchResults ? (
         <>

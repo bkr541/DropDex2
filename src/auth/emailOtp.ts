@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { readableAuthError } from './authSessionController';
+import { logger } from '../lib/logger';
 
 export const EMAIL_OTP_LENGTH = 8;
 
@@ -17,6 +18,19 @@ type EmailOtpAuthClient = Pick<
   'signInWithOtp' | 'verifyOtp'
 >;
 
+export const UNKNOWN_EMAIL_MESSAGE =
+  "We couldn't find an account for that email address. Check the spelling, or use the email you signed up with.";
+
+/** Supabase refuses to send a code to an email with no user when sign-ups through email codes are off. */
+function isUnknownUserError(error: { message: string; status?: number }): boolean {
+  const code = (error as { code?: string }).code;
+  const message = error.message.toLowerCase();
+  return code === 'otp_disabled'
+    || code === 'user_not_found'
+    || message.includes('signups not allowed')
+    || message.includes('user not found');
+}
+
 export function normalizeEmailOtp(value: string): string {
   return value.replace(/\D/g, '').slice(0, EMAIL_OTP_LENGTH);
 }
@@ -29,8 +43,26 @@ export async function submitEmailOtp(
   setSubmitting(true);
 
   try {
-    const { error } = await auth.signInWithOtp({ email: email.trim() });
-    if (!error) return { status: 'sent', notice: null };
+    // shouldCreateUser: false makes Supabase check that the email belongs to an existing user *before*
+    // sending anything. For an unknown email it sends no email and returns an error instead.
+    const { error } = await auth.signInWithOtp({
+      email: email.trim(),
+      options: { shouldCreateUser: false },
+    });
+    if (!error) {
+      logger.info('auth.otp.sent', { email: email.trim() });
+      return { status: 'sent', notice: null };
+    }
+
+    if (isUnknownUserError(error)) {
+      logger.warn('auth.otp.unknown_email', {
+        email: email.trim(),
+        status: error.status,
+        code: (error as { code?: string }).code,
+        message: error.message,
+      });
+      return { status: 'error', message: UNKNOWN_EMAIL_MESSAGE };
+    }
 
     if (error.status === 429 || error.message.toLowerCase().includes('rate limit')) {
       return {
@@ -39,11 +71,13 @@ export async function submitEmailOtp(
       };
     }
 
+    logger.error('auth.otp.send_failed', { email: email.trim(), status: error.status, message: error.message });
     return {
       status: 'error',
       message: readableAuthError(error, 'The verification code could not be sent.'),
     };
   } catch (error) {
+    logger.error('auth.otp.send_exception', { email: email.trim(), message: error instanceof Error ? error.message : String(error) });
     return {
       status: 'error',
       message: readableAuthError(

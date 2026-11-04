@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Close, Subtract, Maximize, Add, Edit } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
 import { HeroMockupsContent } from './LayoutLabHeroMockups';
+import { IconMockupsContent } from './LayoutLabIconMockups';
 import { LoadedTrackMockupsContent } from './LayoutLabLoadedTrackMockups';
 import { RekordboxMockupsContent } from './LayoutLabRekordboxMockups';
 import { PageNameMockupsContent } from './LayoutLabPageNameMockups';
@@ -38,6 +39,7 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'library-cue-mode', label: 'Library + Cue Mode' },
   { id: 'header-status', label: 'Header Status' },
   { id: 'drop-lab', label: 'Drop Lab' },
+  { id: 'icons', label: 'Icons' },
 ];
 
 let tabCounter = 0;
@@ -2031,6 +2033,8 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
             <ScratchPadContent />
           ) : activeId === 'hero' ? (
             <HeroMockupsContent />
+          ) : activeId === 'icons' ? (
+            <IconMockupsContent />
           ) : activeId === 'loaded-track' ? (
             <LoadedTrackMockupsContent />
           ) : activeId === 'rekordbox' ? (

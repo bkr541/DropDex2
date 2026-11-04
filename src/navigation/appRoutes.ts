@@ -26,7 +26,6 @@ export type AppRoute =
   | { name: 'cues' }
   | { name: 'audition' }
   | { name: 'discovery' }
-  | { name: 'search' }
   | { name: 'profile' }
   | { name: 'settings' }
   | { name: 'flip-lab' }
@@ -140,7 +139,8 @@ export function parseAppRoute(pathname: string, search = ''): AppRoute {
     case '/cues': return { name: 'cues' };
     case '/audition': return { name: 'audition' };
     case '/discovery': return { name: 'discovery' };
-    case '/search': return { name: 'search' };
+    // The old Artist Search page now lives inside Discovery; keep old links and bookmarks working.
+    case '/search': return { name: 'discovery' };
     case '/profile': return { name: 'profile' };
     case '/settings': return { name: 'settings' };
     case '/flip-lab': return { name: 'flip-lab' };
@@ -177,7 +177,6 @@ export function routeToUrl(route: AppRoute): string {
     case 'cues': return '/cues';
     case 'audition': return '/audition';
     case 'discovery': return '/discovery';
-    case 'search': return '/search';
     case 'profile': return '/profile';
     case 'settings': return '/settings';
     case 'flip-lab': return '/flip-lab';
@@ -202,7 +201,6 @@ export function routeBackFallback(route: AppRoute): AppRoute {
     case 'cues':
     case 'audition':
     case 'discovery':
-    case 'search':
     case 'profile':
     case 'settings':
     case 'flip-lab':

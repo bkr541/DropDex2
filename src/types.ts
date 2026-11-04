@@ -456,12 +456,19 @@ export interface ScrapeStartResponse {
   reused?: boolean;
 }
 
-export interface SearchArtist {
+/** A genre in the artist catalog and how many artists carry it. */
+export interface CatalogGenre {
+  id: string;
+  name: string;
+  artistCount: number;
+}
+
+/** An artist listed when browsing the catalog by genre. */
+export interface GenreBrowseArtist {
   id: string;
   name: string;
   normalized_name: string | null;
-  source_artist_url: string | null;
-  genres: string[];
+  profile_image_url: string | null;
 }
 
 // ── Set-detail (individual track rows) types ──────────────────────────────────

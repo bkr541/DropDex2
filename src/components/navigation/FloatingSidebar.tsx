@@ -1,8 +1,8 @@
-import { useLayoutEffect, useRef, type ElementType, type ReactNode } from 'react';
-import { PaintBrush, User } from '@carbon/icons-react';
+import type { ElementType, ReactNode } from 'react';
+import { User } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
 import { UsbConnectionButton } from '../usb/UsbConnectionButton';
-import { activeSidebarKey, splitAtActive } from './sidebarGroups';
+import { activeSidebarKey } from './sidebarGroups';
 
 // The same soft shadow as the page-name tab at the top middle.
 export const PAGE_NAME_TAB_SHADOW = '0 8px 16px -4px rgb(0 0 0 / 0.5), 0 2px 5px rgb(0 0 0 / 0.3)';
@@ -19,7 +19,6 @@ interface FloatingSidebarProps {
   items: FloatingSidebarItem[];
   currentView: string;
   onSelectView: (view: string) => void;
-  onOpenLayoutLab: () => void;
   onOpenProfile: () => void;
   profile: { display_name: string | null; avatar_url: string | null } | null;
 }
@@ -27,51 +26,26 @@ interface FloatingSidebarProps {
 type Entry =
   | { key: 'logo'; kind: 'logo' }
   | { key: string; kind: 'nav'; item: FloatingSidebarItem }
-  | { key: 'layout-lab'; kind: 'tool'; divider: true }
-  | { key: 'usb-connect'; kind: 'usb'; divider: true }
+  | { key: 'usb-connect'; kind: 'usb' }
   | { key: 'profile'; kind: 'profile' };
-
-const SLIDE_MS = 320;
 
 const ROW = 'flex items-center rounded-xl font-bold text-sm transition-all w-full';
 const IDLE = 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)]';
 
 /**
- * The left nav. The entries above and below the current page each sit in their own fully rounded card
- * (logo-red gradient border, soft page-name-tab shadow). The current page has no card or border: it sits
- * in the gap between them as a larger gradient icon.
+ * The left nav: one floating rounded card with the logo-red gradient border and the soft shadow of the
+ * page-name tab. Every entry sits in the same card; the current page is shown by a larger gradient icon.
  */
 export function FloatingSidebar({
-  collapsed, onToggleCollapsed, items, currentView, onSelectView, onOpenLayoutLab, onOpenProfile, profile,
+  collapsed, onToggleCollapsed, items, currentView, onSelectView, onOpenProfile, profile,
 }: FloatingSidebarProps) {
   const entries: Entry[] = [
     { key: 'logo', kind: 'logo' },
     ...items.map((item) => ({ key: item.view, kind: 'nav', item }) as Entry),
-    { key: 'layout-lab', kind: 'tool', divider: true },
-    { key: 'usb-connect', kind: 'usb', divider: true },
+    { key: 'usb-connect', kind: 'usb' },
     { key: 'profile', kind: 'profile' },
   ];
   const activeKey = activeSidebarKey(currentView, items.map((item) => item.view));
-  const { before, active, after } = splitAtActive(entries, activeKey);
-  const activeRef = useRef<HTMLDivElement>(null);
-  const previousTop = useRef<number | null>(null);
-  // Slides the current page from where the old one was to where the new one is.
-  useLayoutEffect(() => {
-    const el = activeRef.current;
-    if (!el) {
-      previousTop.current = null;
-      return;
-    }
-    const top = el.getBoundingClientRect().top;
-    const from = previousTop.current;
-    previousTop.current = top;
-    const reduceMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (from == null || Math.abs(from - top) < 1 || reduceMotion || typeof el.animate !== 'function') return;
-    el.animate(
-      [{ transform: `translateY(${from - top}px)` }, { transform: 'translateY(0)' }],
-      { duration: SLIDE_MS, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
-    );
-  }, [activeKey]);
   const padX = collapsed ? 'justify-center px-0' : 'gap-3 px-4 text-left';
 
   const render = (entry: Entry, isActive: boolean): ReactNode => {
@@ -114,20 +88,6 @@ export function FloatingSidebar({
           </button>
         );
       }
-      case 'tool':
-        return (
-          <button
-            type="button"
-            onClick={onOpenLayoutLab}
-            title={collapsed ? 'Layout Lab (opens in a new window)' : 'Opens in a new window'}
-            className={cn(ROW, 'py-2', padX, IDLE)}
-          >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center">
-              <PaintBrush size={18} />
-            </span>
-            {!collapsed && 'Layout Lab'}
-          </button>
-        );
       case 'usb':
         return <UsbConnectionButton collapsed={collapsed} />;
       case 'profile':
@@ -158,22 +118,6 @@ export function FloatingSidebar({
     }
   };
 
-  const card = (list: Entry[], name: string) => (
-    <div
-      key={name}
-      data-testid={`sidebar-${name}`}
-      className="glass logo-gradient-border flex flex-col gap-0 rounded-3xl p-2"
-      style={{ boxShadow: PAGE_NAME_TAB_SHADOW }}
-    >
-      {list.map((entry, index) => (
-        <div key={entry.key} className="flex flex-col justify-center">
-          {'divider' in entry && index > 0 && <div className="my-1 border-t border-[var(--color-border-faint)]" />}
-          {render(entry, false)}
-        </div>
-      ))}
-    </div>
-  );
-
   return (
     <aside
       className={cn(
@@ -181,15 +125,19 @@ export function FloatingSidebar({
         collapsed ? 'w-[88px]' : 'w-[264px]',
       )}
     >
-      {/* Padding and a matching negative margin give the cards' shadows room inside the scroll area. */}
-      <div data-testid="floating-sidebar" className="-m-4 flex max-h-[calc(100%+2rem)] flex-col gap-2 overflow-y-auto p-4 scrollbar-none">
-        {before.length > 0 && card(before, 'above')}
-        {active && (
-          <div ref={activeRef} data-testid="sidebar-active" className="relative z-10 px-2 py-1.5">
-            {render(active, true)}
-          </div>
-        )}
-        {after.length > 0 && card(after, 'below')}
+      {/* Padding and a matching negative margin give the card's shadow room inside the scroll area. */}
+      <div data-testid="floating-sidebar" className="-m-4 flex max-h-[calc(100%+2rem)] flex-col overflow-y-auto p-4 scrollbar-none">
+        <div
+          data-testid="sidebar-card"
+          className="glass logo-gradient-border flex flex-col gap-1 rounded-3xl p-2"
+          style={{ boxShadow: PAGE_NAME_TAB_SHADOW }}
+        >
+          {entries.map((entry) => (
+            <div key={entry.key} className="flex flex-col justify-center">
+              {render(entry, entry.key === activeKey)}
+            </div>
+          ))}
+        </div>
       </div>
     </aside>
   );
