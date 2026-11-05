@@ -68,7 +68,7 @@ export function AuditionTransport({ track, fallbackDurationMs, previousTrack, ne
       data-testid="audition-transport"
       role="region"
       aria-label="Audition playback"
-      className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2"
+      className="audition-transport"
     >
       <MediaTransportControlGroup
         compact
@@ -87,7 +87,7 @@ export function AuditionTransport({ track, fallbackDurationMs, previousTrack, ne
       />
 
       <PlaybackSeekBar
-        className="min-w-[220px]"
+        className="audition-seek min-w-[220px]"
         currentSeconds={currentSeconds}
         durationSeconds={durationSeconds}
         seekable={seekable}
@@ -95,7 +95,7 @@ export function AuditionTransport({ track, fallbackDurationMs, previousTrack, ne
         ariaLabel="Playback position"
       />
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="audition-volume flex shrink-0 items-center gap-2">
         <TransportButton label={muted ? 'Unmute' : 'Mute'} tone="mute" size="compact" active={muted} onClick={toggleMute}>
           {muted || volume === 0 ? <VolumeMute size={16} /> : <VolumeUp size={16} />}
         </TransportButton>

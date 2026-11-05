@@ -175,7 +175,7 @@ function StatusLines({ className, stacked = false }: { className?: string; stack
 // ── 1. Spotlight Banner ──────────────────────────────────────────────────────
 // A blue-lit banner with a faint dot grid. Everything sits in one row, left to right, in the order you read it.
 
-function HeroSpotlight() {
+export function HeroSpotlight() {
   return (
     <HeroFrame className="rounded-2xl border border-[var(--color-border-subtle)] bg-[linear-gradient(105deg,rgba(2,12,25,0.98)_0%,rgba(3,25,52,0.95)_50%,rgba(2,11,24,0.98)_100%)]">
       <Texture background="radial-gradient(circle at 16% 30%, rgba(16,103,220,0.4), transparent 38%), radial-gradient(circle at 84% 70%, rgba(24,94,190,0.2), transparent 32%)" />
@@ -210,7 +210,7 @@ function BentoTile({ children, accent, className, style }: { children: ReactNode
   );
 }
 
-function HeroBento() {
+export function HeroBento() {
   return (
     <HeroFrame className="w-fit max-w-full rounded-2xl bg-[#080b10]">
       <Texture background={GRAPH} opacity={0.6} />
@@ -261,7 +261,7 @@ function HeroEditorial() {
 // ── 4. Typographic Header ────────────────────────────────────────────────────
 // No box at all: just type, hairlines and one closing rule. The wheel closes the row on the right.
 
-function HeroTypographic() {
+export function HeroTypographic() {
   return (
     <HeroFrame className="border-b border-[var(--color-border-subtle)]">
       <div className="flex h-full items-center gap-6 pb-5">
@@ -347,7 +347,7 @@ function HeroSwiss() {
 // ── 7. Radial Hub ────────────────────────────────────────────────────────────
 // The wheel sits in the middle on faint concentric rings. Who and what on its left, the two charts on its right.
 
-function HeroHub() {
+export function HeroHub() {
   return (
     <HeroFrame className="rounded-2xl border border-[var(--color-border-subtle)] bg-[#070d17]">
       <div className="absolute left-1/2 top-1/2 h-[560px] w-[560px] -translate-x-1/2 -translate-y-1/2" style={{ background: RINGS, borderRadius: '50%', maskImage: 'radial-gradient(circle, #000 30%, transparent 70%)', WebkitMaskImage: 'radial-gradient(circle, #000 30%, transparent 70%)' }} />
@@ -449,7 +449,7 @@ function LedTempo() {
   );
 }
 
-function HeroInstrument() {
+export function HeroInstrument() {
   const readouts: [string, string][] = [['TRK', String(HERO.tracks).padStart(3, '0')], ['PLY', String(HERO.playlists).padStart(2, '0')], ['ANL', `${HERO.progress}%`]];
   return (
     <HeroFrame className="rounded-xl border border-[#3a3e45] bg-[linear-gradient(160deg,#23262b,#121417)]">

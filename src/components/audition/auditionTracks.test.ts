@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { RekordboxTrack } from '../../types';
 import {
   auditionPositionLabel,
-  bpmBandOptions,
   filterAuditionTracks,
   formatClock,
   nextAuditionSort,
@@ -24,26 +23,6 @@ function track(overrides: Partial<RekordboxTrack>): RekordboxTrack {
   } as RekordboxTrack;
 }
 
-describe('bpmBandOptions', () => {
-  it('groups tracks into 10-BPM bands that exist in the library, in order', () => {
-    const options = bpmBandOptions([
-      { bpm: 150, count: 4 },
-      { bpm: 148, count: 6 },
-      { bpm: 128, count: 3 },
-      { bpm: 0, count: 9 },
-    ]);
-    expect(options).toEqual([
-      { value: '120', label: '120–129 (3)' },
-      { value: '140', label: '140–149 (6)' },
-      { value: '150', label: '150–159 (4)' },
-    ]);
-  });
-
-  it('returns no options for an empty library', () => {
-    expect(bpmBandOptions([])).toEqual([]);
-  });
-});
-
 describe('filterAuditionTracks', () => {
   const tracks = [
     track({ id: 'a', bpm: 148, musical_key: '4A' }),
@@ -53,20 +32,27 @@ describe('filterAuditionTracks', () => {
   ];
 
   it('keeps everything when no filter is set', () => {
-    expect(filterAuditionTracks(tracks, { key: '', bpmBand: '' }).map((t) => t.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(filterAuditionTracks(tracks, { key: '', bpmRange: null }).map((t) => t.id)).toEqual(['a', 'b', 'c', 'd']);
   });
 
   it('filters by key', () => {
-    expect(filterAuditionTracks(tracks, { key: '4A', bpmBand: '' }).map((t) => t.id)).toEqual(['a', 'b']);
+    expect(filterAuditionTracks(tracks, { key: '4A', bpmRange: null }).map((t) => t.id)).toEqual(['a', 'b']);
   });
 
-  it('filters by BPM band and drops tracks with no tempo', () => {
-    expect(filterAuditionTracks(tracks, { key: '', bpmBand: '140' }).map((t) => t.id)).toEqual(['a']);
-    expect(filterAuditionTracks(tracks, { key: '', bpmBand: '120' }).map((t) => t.id)).toEqual(['c']);
+  it('filters by BPM range and drops tracks with no tempo', () => {
+    expect(filterAuditionTracks(tracks, { key: '', bpmRange: [140, 149] }).map((t) => t.id)).toEqual(['a']);
+    expect(filterAuditionTracks(tracks, { key: '', bpmRange: [120, 129] }).map((t) => t.id)).toEqual(['c']);
   });
 
-  it('combines key and BPM band', () => {
-    expect(filterAuditionTracks(tracks, { key: '4A', bpmBand: '150' }).map((t) => t.id)).toEqual(['b']);
+  it('includes both range boundaries, respects fractional tempos, and can reset to all tracks', () => {
+    expect(filterAuditionTracks(tracks, { key: '', bpmRange: [148, 150] }).map((t) => t.id)).toEqual(['a', 'b']);
+    expect(filterAuditionTracks(tracks, { key: '', bpmRange: [128, 128] })).toEqual([]);
+    expect(filterAuditionTracks(tracks, { key: '', bpmRange: [128, 129] }).map((t) => t.id)).toEqual(['c']);
+    expect(filterAuditionTracks(tracks, { key: '', bpmRange: null })).toHaveLength(4);
+  });
+
+  it('combines key and BPM range', () => {
+    expect(filterAuditionTracks(tracks, { key: '4A', bpmRange: [150, 150] }).map((t) => t.id)).toEqual(['b']);
   });
 });
 
@@ -89,6 +75,17 @@ describe('sortAuditionTracks', () => {
     expect(sortAuditionTracks(tracks, { column: 'bpm', direction: 'asc' }).map((t) => t.id)).toEqual(['c', 'a', 'b']);
     expect(sortAuditionTracks(tracks, { column: 'bpm', direction: 'desc' }).map((t) => t.id)).toEqual(['a', 'c', 'b']);
     expect(sortAuditionTracks(tracks, { column: 'length', direction: 'desc' }).map((t) => t.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('sorts file metadata with numeric units and keeps missing values last', () => {
+    const files = [
+      track({ id: 'a', file_format: 'WAV', sample_rate_hz: 44100, bitrate_kbps: 1411 }),
+      track({ id: 'b', file_format: 'MP3', sample_rate_hz: 48000, bitrate_kbps: 320 }),
+      track({ id: 'c', file_format: null, sample_rate_hz: null, bitrate_kbps: null }),
+    ];
+    expect(sortAuditionTracks(files, { column: 'format', direction: 'asc' }).map((t) => t.id)).toEqual(['b', 'a', 'c']);
+    expect(sortAuditionTracks(files, { column: 'sampleRate', direction: 'asc' }).map((t) => t.id)).toEqual(['a', 'b', 'c']);
+    expect(sortAuditionTracks(files, { column: 'bitRate', direction: 'desc' }).map((t) => t.id)).toEqual(['a', 'b', 'c']);
   });
 
   it('does not change the input list', () => {

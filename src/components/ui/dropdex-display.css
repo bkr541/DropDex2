@@ -354,6 +354,55 @@
 .dd-view-mode-nav__item:hover { color: #eef3f7; }
 .dd-view-mode-nav__item:focus-visible { outline: 2px solid var(--color-control-focus); outline-offset: -2px; }
 
+/* Shared track-browser chrome and filters. */
+.cue-browser {
+  background: var(--color-background);
+  box-shadow: none;
+}
+
+.cue-browser__chrome {
+  background: color-mix(in srgb, var(--color-background) 92%, var(--color-card));
+  box-shadow: 0 10px 22px rgb(0 0 0 / 0.16);
+}
+
+.cue-browser__chrome .dd-tab-nav {
+  border-bottom-color: var(--color-border-faint);
+}
+
+.cue-browser__chrome .dd-tab-nav__item {
+  flex: 0 0 auto;
+  padding: 8px 13px 7px;
+  font-size: 10px;
+}
+
+.cue-browser__chrome .dd-tab-nav--primary .dd-tab-nav__item[aria-selected="true"]::after {
+  left: 13px;
+  right: 13px;
+  height: 2px;
+}
+
+.cue-browser__transport-row {
+  width: 100%;
+  min-width: 0;
+}
+
+.cue-browser__filters {
+  align-items: stretch;
+}
+
+.cue-browser__filters > * {
+  min-width: 118px;
+}
+
+.cue-browser__filters > :last-child {
+  min-width: 148px;
+}
+
+.cue-browser__filters [data-testid="cue-browser-source-tabs"] .dd-tab-nav {
+  flex: 1;
+  height: 100%;
+}
+
 /* Track table and rows (Cue Points style), shared with Drop Lab. */
 .cue-browser__table {
   background: var(--color-background);

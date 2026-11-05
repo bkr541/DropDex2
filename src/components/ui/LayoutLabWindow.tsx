@@ -10,6 +10,8 @@ import { LibraryCueModeMockupsContent } from './LayoutLabLibraryCueModeMockups';
 import { UiComponentsContent } from './LayoutLabUiComponents';
 import { HeaderStatusMockupsContent } from './LayoutLabHeaderStatusMockups';
 import { DropLabMockupsContent } from './LayoutLabDropLabMockups';
+import { NavDesignMockupsContent } from './LayoutLabNavDesignMockups';
+import { AudioDockMockupsContent } from './LayoutLabAudioDockMockups';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,6 +35,8 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'ui-components', label: 'UI Components' },
   { id: 'scratch-pad',   label: 'Scratch Pad'   },
   { id: 'hero',          label: 'Hero'          },
+  { id: 'nav-design',    label: 'Nav Design'    },
+  { id: 'audio-dock',    label: 'Audio Dock'    },
   { id: 'loaded-track',  label: 'Loaded Track'  },
   { id: 'rekordbox',     label: 'Rekordbox'     },
   { id: 'page-names',    label: 'Page Names'    },
@@ -2033,6 +2037,10 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
             <ScratchPadContent />
           ) : activeId === 'hero' ? (
             <HeroMockupsContent />
+          ) : activeId === 'nav-design' ? (
+            <NavDesignMockupsContent />
+          ) : activeId === 'audio-dock' ? (
+            <AudioDockMockupsContent />
           ) : activeId === 'icons' ? (
             <IconMockupsContent />
           ) : activeId === 'loaded-track' ? (

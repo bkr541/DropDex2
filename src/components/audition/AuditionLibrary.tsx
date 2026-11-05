@@ -1,10 +1,11 @@
 import { CircleDash, Pause, Play, WarningAlt } from '@carbon/icons-react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
+import { cueAnalysisReady } from '../../lib/cues/cueReadiness';
 import { durationMsForTrack, formatTime } from '../../lib/music/trackTiming';
 import { cn } from '../../lib/utils';
-import { ControlButton, FilterDropdown, SearchControl } from '../ui/controls';
+import { ControlButton, DualRangeSlider, FilterDropdown, SearchControl } from '../ui/controls';
 import type { FilterDropdownOption } from '../ui/controls';
-import { KeyBadge } from '../ui/display/KeyBadge';
+import { KeyBadge, TrackNameCell, TrackTable, TrackTableBody, TrackTableHead, TrackTableHeadCell, TrackTableRow } from '../ui/display';
 import { nextAuditionSort, type AuditionSort, type AuditionSortColumn } from './auditionTracks';
 import type { RekordboxTrack } from '../../types';
 
@@ -30,22 +31,23 @@ interface AuditionLibraryProps {
   keyFilter: string;
   onKeyFilterChange: (value: string) => void;
   keyOptions: FilterDropdownOption[];
-  bpmBand: string;
-  onBpmBandChange: (value: string) => void;
-  bpmOptions: FilterDropdownOption[];
+  bpmBounds: [number, number];
+  bpmRange: [number, number] | null;
+  onBpmRangeChange: (value: [number, number] | null) => void;
 
   sort: AuditionSort | null;
   onSortChange: (sort: AuditionSort | null) => void;
 }
 
-const COLUMNS: Array<{ column: AuditionSortColumn | null; label: string; className?: string }> = [
-  { column: null, label: '#', className: 'w-[84px]' },
-  { column: 'title', label: 'Title' },
-  { column: 'artist', label: 'Artist', className: 'w-[22%]' },
-  { column: 'genre', label: 'Genre', className: 'w-[14%]' },
-  { column: 'key', label: 'Key', className: 'w-[72px]' },
-  { column: 'bpm', label: 'BPM', className: 'w-[72px]' },
-  { column: 'length', label: 'Length', className: 'w-[80px]' },
+const COLUMNS: Array<{ column: AuditionSortColumn; label: string; className?: string }> = [
+  { column: 'title', label: 'Track' },
+  { column: 'bpm', label: 'BPM' },
+  { column: 'key', label: 'Key' },
+  { column: 'genre', label: 'Genre', className: 'w-[178px]' },
+  { column: 'format', label: 'Format', className: 'whitespace-nowrap' },
+  { column: 'sampleRate', label: 'Sample Rate', className: 'whitespace-nowrap' },
+  { column: 'bitRate', label: 'Bit Rate', className: 'whitespace-nowrap' },
+  { column: 'length', label: 'Duration', className: 'w-[80px] text-left' },
 ];
 
 function RowPlayButton({ track }: { track: RekordboxTrack }) {
@@ -79,50 +81,51 @@ export function AuditionLibrary({
   tracks, selectedTrackId, onSelectTrack,
   countLabel, loading, loadingMore, error, hasMore, onLoadMore, onRetry,
   search, onSearchChange, genre, onGenreChange, genreOptions, keyFilter, onKeyFilterChange, keyOptions,
-  bpmBand, onBpmBandChange, bpmOptions, sort, onSortChange,
+  bpmBounds, bpmRange, onBpmRangeChange, sort, onSortChange,
 }: AuditionLibraryProps) {
   return (
     <section
       data-testid="audition-library"
       aria-label="Library"
-      className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-card)]/60"
+      className="audition-library cue-browser"
     >
-      <div className="flex flex-wrap items-end gap-x-5 gap-y-2.5 px-3.5 py-3">
-        <div className="flex items-baseline gap-2.5 self-center">
-          <h3 className="text-sm font-bold uppercase tracking-wide">Library</h3>
-          <span className="font-mono text-[13px] tabular-nums text-muted-foreground" data-testid="audition-library-count">{countLabel}</span>
+      <div className="audition-library-chrome cue-browser__chrome">
+        <div className="audition-library-heading">
+          <h3 className="audition-library-title">Library</h3>
+          <span className="font-mono text-[10px] tabular-nums text-muted-foreground" data-testid="audition-library-count">{countLabel}</span>
         </div>
-        <div className="min-w-[220px] max-w-[360px] flex-1" data-testid="audition-search">
-          <SearchControl
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search title, artist, or genre…"
-            aria-label="Search the library"
+        <div className="cue-browser__filters flex flex-wrap items-stretch gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] px-4 py-2.5 md:px-5" data-testid="audition-library-filters">
+          <div className="flex min-w-[200px] max-w-[320px] flex-1 flex-col justify-end" data-testid="audition-search">
+            <SearchControl
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Search title, artist, or genre…"
+              aria-label="Search the library"
+            />
+          </div>
+          <FilterDropdown
+            label="Genre"
+            value={genre}
+            onChange={onGenreChange}
+            searchable
+            className="min-w-[100px]"
+            options={[{ value: '', label: 'All' }, ...genreOptions]}
+          />
+          <FilterDropdown
+            label="Key"
+            value={keyFilter}
+            onChange={onKeyFilterChange}
+            searchable
+            className="min-w-[90px]"
+            options={[{ value: '', label: 'All' }, ...keyOptions]}
+          />
+          <DualRangeSlider variant="inline"
+            bounds={bpmBounds}
+            value={bpmRange ?? bpmBounds}
+            onChange={onBpmRangeChange}
+            onReset={() => onBpmRangeChange(null)}
           />
         </div>
-        <FilterDropdown
-          label="Genre"
-          value={genre}
-          onChange={onGenreChange}
-          searchable
-          className="min-w-[110px]"
-          options={[{ value: '', label: 'All' }, ...genreOptions]}
-        />
-        <FilterDropdown
-          label="Key"
-          value={keyFilter}
-          onChange={onKeyFilterChange}
-          searchable
-          className="min-w-[90px]"
-          options={[{ value: '', label: 'All' }, ...keyOptions]}
-        />
-        <FilterDropdown
-          label="BPM"
-          value={bpmBand}
-          onChange={onBpmBandChange}
-          className="min-w-[100px]"
-          options={[{ value: '', label: 'All' }, ...bpmOptions]}
-        />
       </div>
 
       {error ? (
@@ -143,44 +146,28 @@ export function AuditionLibrary({
         </div>
       ) : (
         <>
-          <div className="max-h-[calc(100vh-18rem)] min-h-[260px] overflow-auto scrollbar-none border-t border-[var(--color-border-faint)]">
-            <table className="w-full min-w-[760px] table-fixed border-collapse text-left" data-testid="audition-library-table" aria-label="Library tracks">
-              <thead className="text-xs text-muted-foreground">
-                <tr className="border-b border-[var(--color-border-faint)]">
-                  {COLUMNS.map(({ column, label, className }) => {
-                    const sorted = column !== null && sort?.column === column;
-                    return (
-                      <th
-                        key={label}
-                        scope="col"
-                        aria-sort={sorted ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}
-                        className={cn('sticky top-0 z-10 bg-[var(--color-background)] px-3 py-2 font-medium', className)}
-                      >
-                        {column ? (
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
-                            aria-label={`Sort by ${label}`}
-                            onClick={() => onSortChange(nextAuditionSort(sort, column))}
-                          >
-                            {label}
-                            <span className={cn('text-primary', !sorted && 'invisible')} aria-hidden="true">{sort?.direction === 'desc' ? '↓' : '↑'}</span>
-                          </button>
-                        ) : label}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--color-border-faint)]">
-                {tracks.map((track, index) => {
+          <div className="audition-table-scroll max-h-[calc(100vh-18rem)] min-h-[260px] overflow-auto scrollbar-none">
+            <TrackTable className="min-w-[900px]" data-testid="audition-library-table" aria-label="Library tracks">
+              <TrackTableHead>
+                {COLUMNS.map(({ column, label, className }) => (
+                  <TrackTableHeadCell
+                    key={column}
+                    label={label}
+                    column={column}
+                    className={className}
+                    sort={sort}
+                    onSort={(column) => onSortChange(nextAuditionSort(sort, column))}
+                  />
+                ))}
+              </TrackTableHead>
+              <TrackTableBody>
+                {tracks.map((track) => {
                   const selected = track.id === selectedTrackId;
                   return (
-                    <tr
+                    <TrackTableRow
                       key={track.id}
                       data-testid="audition-library-row"
-                      tabIndex={0}
-                      aria-selected={selected}
+                      selected={selected}
                       onClick={() => onSelectTrack(track)}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
@@ -188,28 +175,25 @@ export function AuditionLibrary({
                           onSelectTrack(track);
                         }
                       }}
-                      className={cn(
-                        'cursor-pointer text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50',
-                        selected ? 'bg-primary/15' : 'hover:bg-[var(--color-surface-hover)]',
-                      )}
                     >
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2 font-mono tabular-nums text-muted-foreground">
-                          <span className="w-6 text-right">{index + 1}</span>
-                          <RowPlayButton track={track} />
-                        </div>
-                      </td>
-                      <td className={cn('truncate px-3 py-2 font-medium', selected && 'text-primary')} title={track.title}>{track.title}</td>
-                      <td className="truncate px-3 py-2 text-muted-foreground" title={track.artist ?? undefined}>{track.artist ?? '—'}</td>
-                      <td className="truncate px-3 py-2 text-muted-foreground">{track.genre ?? '—'}</td>
-                      <td className="px-3 py-2"><KeyBadge camelotKey={track.musical_key} variant="text" className="!text-[13px]" /></td>
-                      <td className="px-3 py-2 font-mono tabular-nums">{track.bpm != null ? track.bpm.toFixed(0) : '—'}</td>
-                      <td className="px-3 py-2 font-mono tabular-nums text-muted-foreground">{formatTime(durationMsForTrack(track, null))}</td>
-                    </tr>
+                      <TrackNameCell title={track.title} artist={track.artist} artworkSrc={track.artwork_path} selected={selected}
+                        status={cueAnalysisReady(track) ? 'ready'
+                          : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required' ? 'error'
+                          : track.analysis_parse_status == null ? 'none' : 'warning'}>
+                        <RowPlayButton track={track} />
+                      </TrackNameCell>
+                      <td className="px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
+                      <td className="px-3 py-1.5"><KeyBadge camelotKey={track.musical_key} /></td>
+                      <td className="w-[178px] px-3 py-1.5 text-xs text-muted-foreground"><span className="block truncate">{track.genre ?? '—'}</span></td>
+                      <td className="whitespace-nowrap px-3 py-1.5 text-xs text-muted-foreground">{track.file_format ?? '—'}</td>
+                      <td className="whitespace-nowrap px-3 py-1.5 font-mono text-[13px] text-muted-foreground">{track.sample_rate_hz != null && track.sample_rate_hz > 0 ? `${track.sample_rate_hz / 1000} kHz` : '—'}</td>
+                      <td className="whitespace-nowrap px-3 py-1.5 font-mono text-[13px] text-muted-foreground">{track.bitrate_kbps != null && track.bitrate_kbps > 0 ? `${track.bitrate_kbps} kbps` : '—'}</td>
+                      <td className="w-[80px] whitespace-nowrap px-3 py-1.5 text-left font-mono text-[13px] text-muted-foreground">{formatTime(durationMsForTrack(track, null))}</td>
+                    </TrackTableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TrackTableBody>
+            </TrackTable>
           </div>
 
           {hasMore ? (

@@ -13,13 +13,13 @@ import { AuditionTrackHeader } from './AuditionTrackHeader';
 import { AuditionTransport } from './AuditionTransport';
 import {
   auditionPositionLabel,
-  bpmBandOptions,
   filterAuditionTracks,
   sortAuditionTracks,
   type AuditionSort,
 } from './auditionTracks';
 import { useAuditionTrackAnalysis } from './useAuditionTrackAnalysis';
 import type { RekordboxTrack } from '../../types';
+import './AuditionView.css';
 
 interface AuditionViewProps {
   importId: string | null;
@@ -33,7 +33,7 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
   const [search, setSearch] = useState('');
   const [genre, setGenre] = useState('');
   const [keyFilter, setKeyFilter] = useState('');
-  const [bpmBand, setBpmBand] = useState('');
+  const [bpmRange, setBpmRange] = useState<[number, number] | null>(null);
   const [sort, setSort] = useState<AuditionSort | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
   const [analysisRetry, setAnalysisRetry] = useState(0);
@@ -44,8 +44,8 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
   } = useLibraryTracks(importId, { search, genre: genre || null, debounceMs: 220, pageSize: PAGE_SIZE });
 
   const visibleTracks = useMemo(
-    () => sortAuditionTracks(filterAuditionTracks(tracks, { key: keyFilter, bpmBand }), sort),
-    [tracks, keyFilter, bpmBand, sort],
+    () => sortAuditionTracks(filterAuditionTracks(tracks, { key: keyFilter, bpmRange }), sort),
+    [tracks, keyFilter, bpmRange, sort],
   );
 
   // A different library means a different set of tracks, so start over.
@@ -54,7 +54,7 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
     setSearch('');
     setGenre('');
     setKeyFilter('');
-    setBpmBand('');
+    setBpmRange(null);
     setSort(null);
   }, [importId]);
 
@@ -83,7 +83,7 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
   const nextTrack = selectedIndex >= 0 && selectedIndex < visibleTracks.length - 1 ? visibleTracks[selectedIndex + 1] : null;
 
   // The key and BPM filters work on the tracks loaded so far, so their counts do too.
-  const clientFilterActive = keyFilter !== '' || bpmBand !== '';
+  const clientFilterActive = keyFilter !== '' || bpmRange !== null;
   const listCount = clientFilterActive ? visibleTracks.length : total;
   const countLabel = `${listCount.toLocaleString()}${clientFilterActive && hasMore ? '+' : ''} ${listCount === 1 ? 'track' : 'tracks'}`;
   const positionLabel = auditionPositionLabel(selectedIndex, listCount, clientFilterActive && hasMore);
@@ -96,7 +96,10 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
     () => (stats?.keyTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
     [stats?.keyTotals],
   );
-  const bpmOptions = useMemo(() => bpmBandOptions(stats?.bpmTotals ?? []), [stats?.bpmTotals]);
+  const bpmBounds = useMemo((): [number, number] => {
+    const bpms = (stats?.bpmTotals ?? []).map(({ bpm }) => bpm).filter((bpm) => Number.isFinite(bpm) && bpm > 0);
+    return bpms.length ? [Math.floor(Math.min(...bpms)), Math.ceil(Math.max(...bpms))] : [60, 200];
+  }, [stats?.bpmTotals]);
 
   function selectTrack(track: RekordboxTrack) {
     setSelectedTrack(track);
@@ -111,8 +114,8 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
 
   if (!importId) {
     return (
-      <div className="mx-auto max-w-3xl pt-8">
-        <div className="border-y border-[var(--color-border-faint)] bg-[var(--color-card)]/55 p-8 text-center">
+      <div className="audition-studio audition-empty mx-auto max-w-3xl">
+        <div className="p-8 text-center">
           <Music size={48} className="mx-auto mb-4 text-secondary opacity-60" />
           <h2 className="text-2xl font-black">Audition</h2>
           <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
@@ -127,7 +130,7 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
   }
 
   return (
-    <div className="flex w-full flex-col gap-3 pb-10" data-testid="audition-view">
+    <div className="audition-studio" data-testid="audition-view">
       <AuditionTrackHeader
         track={selectedTrack}
         durationMs={durationMs}
@@ -174,9 +177,9 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
         keyFilter={keyFilter}
         onKeyFilterChange={setKeyFilter}
         keyOptions={keyOptions}
-        bpmBand={bpmBand}
-        onBpmBandChange={setBpmBand}
-        bpmOptions={bpmOptions}
+        bpmBounds={bpmBounds}
+        bpmRange={bpmRange}
+        onBpmRangeChange={setBpmRange}
         sort={sort}
         onSortChange={setSort}
       />

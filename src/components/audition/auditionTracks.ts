@@ -3,7 +3,7 @@ import { formatKey } from '../../lib/utils';
 import { durationMsForTrack } from '../../lib/music/trackTiming';
 import type { RekordboxTrack } from '../../types';
 
-export type AuditionSortColumn = 'title' | 'artist' | 'genre' | 'key' | 'bpm' | 'length';
+export type AuditionSortColumn = 'title' | 'artist' | 'genre' | 'key' | 'bpm' | 'length' | 'format' | 'sampleRate' | 'bitRate';
 export type AuditionSortDirection = 'asc' | 'desc';
 
 export interface AuditionSort {
@@ -14,38 +14,15 @@ export interface AuditionSort {
 export interface AuditionFilters {
   /** Key exactly as the library statistics name it; empty means every key. */
   key: string;
-  /** Lower edge of a 10-BPM band, as a string; empty means every tempo. */
-  bpmBand: string;
-}
-
-export const AUDITION_BPM_BAND_WIDTH = 10;
-
-export function bpmBandStart(bpm: number): number {
-  return Math.floor(bpm / AUDITION_BPM_BAND_WIDTH) * AUDITION_BPM_BAND_WIDTH;
-}
-
-/** One option per 10-BPM band that actually contains tracks in the library. */
-export function bpmBandOptions(bpmTotals: ReadonlyArray<{ bpm: number; count: number }>): Array<{ value: string; label: string }> {
-  const counts = new Map<number, number>();
-  for (const { bpm, count } of bpmTotals) {
-    if (!Number.isFinite(bpm) || bpm <= 0) continue;
-    const start = bpmBandStart(bpm);
-    counts.set(start, (counts.get(start) ?? 0) + count);
-  }
-  return [...counts.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([start, count]) => ({
-      value: String(start),
-      label: `${start}–${start + AUDITION_BPM_BAND_WIDTH - 1} (${count})`,
-    }));
+  /** Inclusive tempo range; null leaves tracks with unknown BPM visible. */
+  bpmRange: [number, number] | null;
 }
 
 export function filterAuditionTracks(tracks: readonly RekordboxTrack[], filters: AuditionFilters): RekordboxTrack[] {
-  const bandStart = filters.bpmBand === '' ? null : Number(filters.bpmBand);
   return tracks.filter((track) => {
     if (filters.key && formatKey(track.musical_key) !== filters.key) return false;
-    if (bandStart != null && Number.isFinite(bandStart)) {
-      if (track.bpm == null || bpmBandStart(track.bpm) !== bandStart) return false;
+    if (filters.bpmRange) {
+      if (track.bpm == null || !Number.isFinite(track.bpm) || track.bpm < filters.bpmRange[0] || track.bpm > filters.bpmRange[1]) return false;
     }
     return true;
   });
@@ -59,6 +36,9 @@ function sortValue(track: RekordboxTrack, column: AuditionSortColumn): string | 
     case 'key': return formatCamelotCode(track.musical_key);
     case 'bpm': return track.bpm;
     case 'length': return durationMsForTrack(track, null);
+    case 'format': return track.file_format ?? '';
+    case 'sampleRate': return track.sample_rate_hz > 0 ? track.sample_rate_hz : null;
+    case 'bitRate': return track.bitrate_kbps > 0 ? track.bitrate_kbps : null;
   }
 }
 

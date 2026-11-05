@@ -118,7 +118,7 @@ describe('Audition page', () => {
     libraryFixture.tracks = [track({})];
     const markup = wrap(createElement(AuditionView, { importId: 'import-test', onImport: vi.fn() }));
     expect(markup).not.toContain('cue-workstation');
-    expect(markup).not.toContain('cue-browser');
+    expect(markup).not.toContain('data-testid="cue-browser-track-table"');
     expect(markup).not.toContain('Save Draft');
   });
 });

@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import type { TimelineSection } from '../../lib/music/phraseSections';
@@ -21,7 +21,11 @@ interface AuditionFullSongProps {
   children?: ReactNode;
 }
 
-const WAVEFORM_HEIGHT = 84;
+const WAVEFORM_HEIGHT = 104;
+
+function sectionInk(label: string) {
+  return /drop|chorus/i.test(label) ? '#F78361' : '#8997AE';
+}
 
 export function AuditionFullSong({
   track, durationMs, waveformState, onRetryWaveform, sections, sectionsLoading, sectionsError, onRetrySections, children,
@@ -36,7 +40,7 @@ export function AuditionFullSong({
     return sections.map((section) => ({
       startFraction: section.startMs / durationMs,
       endFraction: section.endMs / durationMs,
-      color: section.waveformColor,
+      color: sectionInk(section.label),
     }));
   }, [durationMs, sections]);
 
@@ -53,16 +57,16 @@ export function AuditionFullSong({
     <section
       data-testid="audition-full-song"
       aria-label="Full song"
-      className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-card)]/60"
+      className="audition-song"
     >
-      <div className="flex items-baseline gap-2.5 px-3.5 pb-1 pt-3">
-        <h3 className="text-sm font-bold uppercase tracking-wide">Full song</h3>
-        <span className="font-mono text-[13px] tabular-nums text-muted-foreground">{hasDuration ? formatClock(durationMs) : '—'}</span>
+      <div className="audition-song-heading">
+        <h3>Full song</h3>
+        <span>{sectionsLoading ? 'Reading track structure' : `${sections.length} ${sections.length === 1 ? 'section' : 'sections'}`}<span aria-hidden="true"> / </span>{hasDuration ? formatClock(durationMs) : '—'}</span>
       </div>
 
-      <div className="px-3.5">
+      <div className="audition-song-timeline">
         {/* Ruler, waveform and sections share this box, so a time lines up in all three. */}
-        <div className="relative h-5" aria-hidden="true">
+        <div className="audition-song-ruler relative h-5" aria-hidden="true">
           {hasDuration && ticks.map((tick) => (
             <span
               key={tick.ms}
@@ -100,19 +104,18 @@ export function AuditionFullSong({
           ))}
         </div>
 
-        <div className="relative mt-1.5 h-6" data-testid="audition-sections">
+        <div className="audition-song-sections relative mt-1.5 h-6" data-testid="audition-sections">
           {hasDuration && sections.map((section) => (
             <div
               key={section.id}
               data-testid="audition-section"
               title={`${section.label} · ${formatClock(section.startMs)}–${formatClock(section.endMs)}`}
-              className="absolute top-0 flex h-full items-center justify-center overflow-hidden rounded-[3px] border px-1 text-[11px] font-medium leading-none text-white"
+              className="audition-section absolute top-0 flex h-full items-center justify-center overflow-hidden px-1"
               style={{
                 left: `${(section.startMs / durationMs) * 100}%`,
                 width: `calc(${((section.endMs - section.startMs) / durationMs) * 100}% - 2px)`,
-                backgroundColor: `${section.panelColor}`,
-                borderColor: section.waveformColor,
-              }}
+                '--audition-section-ink': sectionInk(section.label),
+              } as CSSProperties}
             >
               <span className="truncate">{section.label}</span>
             </div>
@@ -134,7 +137,7 @@ export function AuditionFullSong({
       </div>
 
       {children ? (
-        <div className="mt-3 border-t border-[var(--color-border-faint)] px-3.5 py-2.5">{children}</div>
+        <div className="audition-song-transport">{children}</div>
       ) : <div className="h-3" />}
     </section>
   );
