@@ -9,6 +9,7 @@ import { HeaderStatusMockupsContent } from './LayoutLabHeaderStatusMockups';
 import { DropLabMockupsContent } from './LayoutLabDropLabMockups';
 import { NavDesignMockupsContent } from './LayoutLabNavDesignMockups';
 import { AudioDockMockupsContent } from './LayoutLabAudioDockMockups';
+import { ProgressMockupsContent } from './LayoutLabProgressMockups';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,7 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'header-status', label: 'Header Status' },
   { id: 'drop-lab', label: 'Drop Lab' },
   { id: 'icons', label: 'Icons' },
+  { id: 'progress', label: 'Progress' },
 ];
 
 let tabCounter = 0;
@@ -2037,6 +2039,8 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
             <AudioDockMockupsContent />
           ) : activeId === 'icons' ? (
             <IconMockupsContent />
+          ) : activeId === 'progress' ? (
+            <ProgressMockupsContent />
           ) : activeId === 'loaded-track' ? (
             <LoadedTrackMockupsContent />
           ) : activeId === 'drop-lab' ? (
