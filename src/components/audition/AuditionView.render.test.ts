@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -142,14 +143,26 @@ describe('Audition track header', () => {
     expect(markup).not.toMatch(/aria-label="Previous track"[^>]*disabled=""/);
   });
 
-  it('keeps Keep, Maybe and Remove visible but switched off until they are connected', () => {
+  it('no longer has Keep, Maybe and Remove in the header; they are in the transport row', () => {
     const markup = renderToStaticMarkup(createElement(AuditionTrackHeader, {
       track: track({}), durationMs: null, positionLabel: null, onPrevious: null, onNext: null,
     }));
+    expect(markup).not.toContain('audition-decision');
+  });
+
+  it('keeps Keep, Maybe and Remove visible but switched off until they are connected', async () => {
+    const { AuditionDecisions } = await import('./AuditionDecisions');
+    const markup = renderToStaticMarkup(createElement(AuditionDecisions));
     for (const id of ['keep', 'maybe', 'remove']) {
       expect(markup).toMatch(new RegExp(`<button[^>]*disabled=""[^>]*data-testid="audition-decision-${id}"`));
     }
     expect(markup).toContain('Coming soon');
+  });
+
+  it('puts them at the end of the transport row, to the right of the volume slider', () => {
+    const transport = readFileSync(new URL('./AuditionTransport.tsx', import.meta.url), 'utf8');
+    expect(transport.indexOf('aria-label="Volume"')).toBeGreaterThan(-1);
+    expect(transport.indexOf('aria-label="Volume"')).toBeLessThan(transport.indexOf('<AuditionDecisions />'));
   });
 
   it('asks the user to pick a track when nothing is selected', () => {
@@ -186,6 +199,26 @@ describe('Audition full song', () => {
     expect(markup).toContain('left:0%');
     expect(markup).toContain('6:12');
     expect(markup).toContain('0:30');
+  });
+
+  it('draws a marker above the waveform for each cue point, with the hot cue letter, and a line through the waveform', () => {
+    const markup = render({ cues: [
+      { id: 'c1', startMs: 93_000, color: '#2997ff', label: 'B' },
+      { id: 'c2', startMs: 186_000, color: '#9aa5b8', label: null },
+    ] });
+    expect(markup.match(/data-testid="audition-cue"/g)).toHaveLength(2);
+    expect(markup).toContain('data-testid="audition-cues"');
+    expect(markup).toContain('>B</span>');
+    expect(markup).toContain('title="Cue B · 1:33"');
+    expect(markup).toContain('title="Memory cue · 3:06"');
+    expect(markup).toContain('left:25%');
+    expect(markup.match(/audition-cue-line/g)).toHaveLength(2);
+    // The markers come before the ruler and waveform.
+    expect(markup.indexOf('data-testid="audition-cues"')).toBeLessThan(markup.indexOf('audition-song-ruler'));
+  });
+
+  it('shows no marker row for a track without cue points', () => {
+    expect(render({ cues: [] })).not.toContain('data-testid="audition-cues"');
   });
 
   it('says so plainly when a track has no sections', () => {

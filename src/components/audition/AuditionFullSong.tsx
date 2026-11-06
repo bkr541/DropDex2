@@ -5,9 +5,12 @@ import type { TimelineSection } from '../../lib/music/phraseSections';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
 import { formatClock, timeRulerTicks } from './auditionTracks';
+import type { AuditionCueMarker } from './useAuditionTrackAnalysis';
 import type { RekordboxTrack } from '../../types';
 
 interface AuditionFullSongProps {
+  /** Cue points for the selected track, drawn above the waveform. */
+  cues?: AuditionCueMarker[];
   track: RekordboxTrack | null;
   durationMs: number | null;
   waveformState: WaveformLoadState;
@@ -21,14 +24,14 @@ interface AuditionFullSongProps {
   children?: ReactNode;
 }
 
-const WAVEFORM_HEIGHT = 104;
+const WAVEFORM_HEIGHT = 72;
 
 function sectionInk(label: string) {
   return /drop|chorus/i.test(label) ? '#F78361' : '#8997AE';
 }
 
 export function AuditionFullSong({
-  track, durationMs, waveformState, onRetryWaveform, sections, sectionsLoading, sectionsError, onRetrySections, children,
+  track, durationMs, waveformState, onRetryWaveform, sections, sectionsLoading, sectionsError, onRetrySections, cues = [], children,
 }: AuditionFullSongProps) {
   const { activeTrack, seek, getAudioElement } = useAudioPlayer();
   const progress = useWaveformProgress(track?.id);
@@ -59,18 +62,31 @@ export function AuditionFullSong({
       aria-label="Full song"
       className="audition-song"
     >
-      <div className="audition-song-heading">
-        <h3>Full song</h3>
-        <span>{sectionsLoading ? 'Reading track structure' : `${sections.length} ${sections.length === 1 ? 'section' : 'sections'}`}<span aria-hidden="true"> / </span>{hasDuration ? formatClock(durationMs) : '—'}</span>
-      </div>
-
       <div className="audition-song-timeline">
+        <h3 className="sr-only">Full song</h3>
+        <span className="audition-song-caption">{sectionsLoading ? 'Reading track structure' : `${sections.length} ${sections.length === 1 ? 'section' : 'sections'}`}<span aria-hidden="true">·</span>{hasDuration ? formatClock(durationMs) : '—'}</span>
+        {hasDuration && cues.length > 0 && (
+          <div className="audition-song-cues relative h-[22px]" data-testid="audition-cues" aria-label="Cue points">
+            {cues.map((cue) => (
+              <span
+                key={cue.id}
+                data-testid="audition-cue"
+                title={`${cue.label ? `Cue ${cue.label}` : 'Memory cue'} · ${formatClock(cue.startMs)}`}
+                className={cue.label ? 'audition-cue-marker' : 'audition-cue-marker audition-cue-marker--memory'}
+                style={{ left: `${Math.min(100, Math.max(0, (cue.startMs / durationMs) * 100))}%`, '--audition-cue-ink': cue.color } as CSSProperties}
+              >
+                {cue.label}
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* Ruler, waveform and sections share this box, so a time lines up in all three. */}
-        <div className="audition-song-ruler relative h-5" aria-hidden="true">
+        <div className="audition-song-ruler relative h-4" aria-hidden="true">
           {hasDuration && ticks.map((tick) => (
             <span
               key={tick.ms}
-              className="absolute top-0 font-mono text-[11px] tabular-nums text-muted-foreground"
+              className="absolute top-0 font-mono text-[10px] tabular-nums text-muted-foreground"
               style={tick.ms === 0 ? { left: 0 } : { left: `${(tick.ms / durationMs) * 100}%`, transform: 'translateX(-50%)' }}
             >
               {tick.label}
@@ -94,6 +110,14 @@ export function AuditionFullSong({
             ariaLabel={track ? `Full waveform for ${track.title}` : 'Full waveform'}
             className="w-full"
           />
+          {hasDuration && cues.map((cue) => (
+            <span
+              key={`cue-line-${cue.id}`}
+              aria-hidden="true"
+              className="audition-cue-line pointer-events-none absolute bottom-0 top-0 w-px"
+              style={{ left: `${Math.min(100, Math.max(0, (cue.startMs / durationMs) * 100))}%`, '--audition-cue-ink': cue.color } as CSSProperties}
+            />
+          ))}
           {hasDuration && ticks.slice(1).map((tick) => (
             <span
               key={`line-${tick.ms}`}
@@ -104,7 +128,7 @@ export function AuditionFullSong({
           ))}
         </div>
 
-        <div className="audition-song-sections relative mt-1.5 h-6" data-testid="audition-sections">
+        <div className="audition-song-sections relative h-5" data-testid="audition-sections">
           {hasDuration && sections.map((section) => (
             <div
               key={section.id}

@@ -2,8 +2,9 @@ import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../lib/utils';
 import { useUsbConnection, type UsbStatus } from '../../contexts/UsbConnectionContext';
-import { CircleDash, CloseFilled, FolderOff, Renew, Unplug, Usb, WarningAlt, WifiOff } from '@carbon/icons-react';
+import { CircleDash, CloseFilled, FolderOff, Renew, Usb, WarningAlt, WifiOff } from '@carbon/icons-react';
 import { ControlButton } from '../ui/controls';
+import ejectIcon from './eject.svg';
 
 interface UsbConnectionButtonProps {
   collapsed?: boolean;
@@ -145,19 +146,19 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
   }
 
   const primaryButtonStyle = cn(
-    'relative flex items-center rounded-lg font-bold text-sm transition-all border border-[#27313d] bg-gradient-to-b from-[#121923] to-[#090d12] shadow-[0_5px_10px_rgb(10_15_22_/_0.25),inset_0_1px_0_rgb(255_255_255_/_0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8f42e8] focus-visible:ring-offset-2',
-    collapsed ? 'justify-center py-2.5 px-0 w-full' : 'gap-3 px-4 py-3 flex-1 min-w-0',
+    'flex h-10 items-center rounded-lg bg-transparent font-bold text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8f42e8]',
+    collapsed ? 'w-full justify-center' : 'min-w-0 flex-1 gap-3 px-4',
     status === 'connected'
-      ? 'text-slate-100 hover:border-green-500/50 hover:from-[#15221f]'
+      ? 'text-slate-100'
       : status === 'released'
-      ? 'text-cyan-300 hover:border-cyan-500/50 cursor-pointer'
+      ? 'text-cyan-300 cursor-pointer'
       : status === 'permission-required' || status === 'wrong_root' || status === 'unavailable'
-      ? 'text-amber-300 hover:border-amber-500/50 cursor-pointer'
+      ? 'text-amber-300 cursor-pointer'
       : status === 'error'
-      ? 'text-red-300 hover:border-red-500/50 cursor-pointer'
+      ? 'text-red-300 cursor-pointer'
       : isConnecting
       ? 'text-slate-400 cursor-wait'
-      : 'text-slate-100 hover:text-white hover:border-[#3c4857] hover:from-[#18222e] cursor-pointer',
+      : 'text-muted-foreground hover:text-foreground cursor-pointer',
   );
 
   return (
@@ -186,7 +187,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
         </div>
       )}
 
-      <div className={cn('flex items-center gap-1', collapsed && 'justify-center')}>
+      <div className="relative flex items-center gap-1">
         {/* Main action button */}
         <button
           ref={buttonRef}
@@ -199,8 +200,10 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
           aria-label={statusTitle(status, volumeName)}
           className={primaryButtonStyle}
         >
-          {status !== 'connected' && <StatusDot status={status} />}
-          <StatusIcon status={status} size={18} />
+          {!collapsed && status !== 'connected' && <StatusDot status={status} />}
+          <span className="inline-flex size-[18px] shrink-0 items-center justify-center [&>svg]:scale-150">
+            <StatusIcon status={status} />
+          </span>
           {!collapsed && (
             <span className="truncate">{statusLabel(status, volumeName)}</span>
           )}
@@ -231,21 +234,27 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
             aria-label="Select a different USB drive"
             className="shrink-0 text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20"
           >
-            <Renew size={16} />
+            <Renew size={16} className="scale-150" />
           </ControlButton>
         )}
 
-        {/* Disconnect button — only shown when connected, expanded */}
-        {!collapsed && status === 'connected' && (
-          <ControlButton
-            variant="ghost"
+        {status === 'connected' && (
+          <button
+            type="button"
             onClick={() => void disconnect()}
             title="Disconnect USB"
             aria-label="Disconnect USB drive"
-            className="shrink-0 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20"
+            className={cn(
+              'flex shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+              collapsed ? 'absolute -bottom-0.5 -right-1 z-10 size-6' : 'size-8',
+            )}
           >
-            <Unplug size={16} />
-          </ControlButton>
+            <span
+              aria-hidden="true"
+              className={cn('shrink-0 bg-current', collapsed ? 'size-[21px]' : 'size-6')}
+              style={{ mask: `url("${ejectIcon}") center / contain no-repeat` }}
+            />
+          </button>
         )}
       </div>
     </div>

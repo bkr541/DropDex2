@@ -80,8 +80,8 @@ export function FloatingSidebar({
           >
             <span className="flex h-6 w-6 shrink-0 items-center justify-center">
               <Icon
-                size={18}
-                className={cn('origin-center transition-transform duration-300 ease-out', isActive ? 'logo-gradient-icon scale-[1.4]' : 'scale-100')}
+                size={27}
+                className={cn('shrink-0 origin-center transition-transform duration-300 ease-out', isActive ? 'logo-gradient-icon scale-[1.4]' : 'scale-100')}
               />
             </span>
             {!collapsed && entry.item.label}
@@ -109,7 +109,7 @@ export function FloatingSidebar({
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
               ) : (
-                <User size={16} className="text-muted-foreground" />
+                <User size={24} className="shrink-0 text-muted-foreground" />
               )}
             </span>
             {!collapsed && <span className="truncate">{profile?.display_name ?? 'Profile'}</span>}
@@ -119,24 +119,26 @@ export function FloatingSidebar({
   };
 
   return (
-    <aside
-      className={cn(
-        'z-40 hidden shrink-0 flex-col justify-center py-3 pl-6 pr-0 transition-all duration-200 md:flex',
-        collapsed ? 'w-[88px]' : 'w-[264px]',
-      )}
-    >
-      {/* Padding and a matching negative margin give the card's shadow room inside the scroll area. */}
-      <div data-testid="floating-sidebar" className="-m-4 flex max-h-[calc(100%+2rem)] flex-col overflow-y-auto p-4 scrollbar-none">
-        <div
-          data-testid="sidebar-card"
-          className="glass logo-gradient-border flex flex-col gap-1 rounded-3xl p-2"
-          style={{ boxShadow: PAGE_NAME_TAB_SHADOW }}
-        >
-          {entries.map((entry) => (
-            <div key={entry.key} className="flex flex-col justify-center">
-              {render(entry, entry.key === activeKey)}
-            </div>
-          ))}
+    <aside className="pointer-events-none relative z-40 hidden w-[88px] shrink-0 md:block">
+      <div
+        className={cn(
+          'absolute inset-y-0 left-0 flex flex-col justify-center py-3 pl-6 pr-0 transition-[width] duration-200',
+          collapsed ? 'w-full' : 'w-[264px]',
+        )}
+      >
+        {/* Padding and a matching negative margin give the card's shadow room inside the scroll area. */}
+        <div data-testid="floating-sidebar" className="-m-4 flex max-h-[calc(100%+2rem)] flex-col overflow-y-auto p-4 scrollbar-none">
+          <div
+            data-testid="sidebar-card"
+            className="pointer-events-auto glass logo-gradient-border flex flex-col gap-1 rounded-3xl p-2"
+            style={{ boxShadow: PAGE_NAME_TAB_SHADOW }}
+          >
+            {entries.map((entry) => (
+              <div key={entry.key} className="flex flex-col justify-center">
+                {render(entry, entry.key === activeKey)}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </aside>

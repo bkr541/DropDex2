@@ -16,12 +16,15 @@ describe('FloatingSidebar wiring', () => {
   const src = read('./FloatingSidebar.tsx');
   it('is one rounded card holding every entry, with no separate group for the current page', () => {
     expect(src).toContain('data-testid="floating-sidebar"');
-    expect(src).toContain('glass logo-gradient-border flex flex-col gap-1 rounded-3xl p-2');
+    expect(src).toContain('pointer-events-auto glass logo-gradient-border flex flex-col gap-1 rounded-3xl p-2');
     expect(src).toContain('entries.map(');
     expect(src).not.toContain('splitAtActive');
     expect(src).not.toContain('sidebar-active');
-    expect(src).toContain('w-[88px]');
-    expect(src).toContain('w-[264px]');
+  });
+  it('reserves the collapsed rail width and expands the card over the page', () => {
+    expect(src).toMatch(/<aside className="pointer-events-none relative z-40 hidden w-\[88px\] shrink-0 md:block">/);
+    expect(src).toContain('absolute inset-y-0 left-0');
+    expect(src).toContain("collapsed ? 'w-full' : 'w-[264px]'");
   });
   it('is inset equally from the window edge and from the page content (24px each side)', () => {
     expect(src).toContain('py-3 pl-6 pr-0');

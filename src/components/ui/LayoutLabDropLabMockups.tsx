@@ -11,7 +11,7 @@ import { camelotKeyColor } from './display/camelotKey';
 import { MediaTransportControlGroup, TransportButton } from './media';
 import {
   Filters, Frame, Main, MiniWave, NAV_TODAY, Rail, TRACKS, TrackTable, makeRand, type NavItem,
-} from './LayoutLabLibraryCueModeMockups';
+} from './LayoutLabDropLabParts';
 
 // New Drop Lab, drawn in the Cue Points style: track header row, borderless timeline,
 // audio dock row, underline filter-style controls, and a Cue Points-style table for the
@@ -427,7 +427,7 @@ function PickTrackScreen() {
             <span className="w-9 shrink-0 font-mono text-[10px] text-muted-foreground">—</span>
           </div>
         </div>
-        <Filters showExport={false} />
+        <Filters />
         <TrackTable selected={0} />
       </Main>
     </Frame>

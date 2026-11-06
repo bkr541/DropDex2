@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -41,8 +42,6 @@ const render = () => renderToStaticMarkup(createElement(AudioPlayerProvider, {
   imports: [],
   children: createElement(ReviewView, {
     importId: 'import-1',
-    latestImport: { id: 'import-1', status: 'completed', device_name: 'LUMA', analysis_status: 'completed', track_count: 3, analysis_expected_track_count: 3, analysis_parsed_track_count: 3, created_at: '2026-11-01T00:00:00Z' } as unknown as RekordboxImport,
-    profile: null,
     playlists: [],
     playlistsLoading: false,
     playlistProfilesByRbId: new Map(),
@@ -52,13 +51,12 @@ const render = () => renderToStaticMarkup(createElement(AudioPlayerProvider, {
     onPlaylistClick: vi.fn(),
     onEditPlaylist: vi.fn(),
     onImport: vi.fn(),
-    onShowIncompleteAnalysis: vi.fn(),
     onTrackClick: vi.fn(),
   }),
 }));
 
 describe('Review page', () => {
-  it('shows the Library tab row between the hero and the table, with Tracks selected', () => {
+  it('shows the Library tab row above the table, with Tracks selected', () => {
     const markup = render();
     const tabs = markup.indexOf('role="tablist"');
     const filters = markup.indexOf('data-testid="cue-browser-filters"');
@@ -82,5 +80,27 @@ describe('Review page', () => {
     const markup = render();
     expect(markup).toContain('aria-label="Search review tracks"');
     expect(markup).toContain('data-testid="cue-browser-filters"');
+  });
+
+  it('no longer has the profile card or the USB, analysis, genre, BPM and Camelot hero, which are on the Overview page', () => {
+    const markup = render();
+    for (const text of ['USB Import', 'Track Analysis', 'Top Genres', 'BPM Distribution', 'Camelot Wheel', 'Import Library']) expect(markup).not.toContain(text);
+    const source = readFileSync(new URL('./ReviewView.tsx', import.meta.url), 'utf8');
+    for (const name of ['DesktopLibraryHero', 'ArtistProfileCard', 'LibraryHero']) expect(source).not.toContain(name);
+  });
+
+  it('shows the selected track\'s waveform panel (the Track Intelligence one) where the hero was, above the tabs', () => {
+    const source = readFileSync(new URL('./ReviewView.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('<CuePointsTrackPanel');
+    expect(source.indexOf('<CuePointsTrackPanel')).toBeLessThan(source.indexOf('<LibraryTabBar'));
+    expect(source).toContain('onSelectedTrackChange={setSelectedTrack}');
+  });
+
+  it('selects the first track by default, a click selects, and a double-click or Enter opens the track', () => {
+    const view = readFileSync(new URL('../cues/CuePointsView.tsx', import.meta.url), 'utf8');
+    expect(view).toContain('if (selectedTrackId == null && orderedVisibleTracks.length > 0) {\n      setSelectedTrack(orderedVisibleTracks[0]);');
+    expect(view).toContain('onClick={() => setSelectedTrack(track)}');
+    expect(view).toContain('onDoubleClick={review ? () => onTrackOpen?.(track) : undefined}');
+    expect(view).toContain("if (review && event.key === 'Enter') onTrackOpen?.(track);");
   });
 });

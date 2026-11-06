@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('dropdexDesktop', Object.freeze({
   reconnectUsb: (expectedVolumeName = null) => ipcRenderer.invoke('dropdex:reconnect-usb', expectedVolumeName),
   releaseUsb: () => ipcRenderer.invoke('dropdex:release-usb'),
   disconnectUsb: () => ipcRenderer.invoke('dropdex:disconnect-usb'),
+  encodePreview: (input) => ipcRenderer.invoke('dropdex:encode-preview', input),
   getUsbDetails: () => ipcRenderer.invoke('dropdex:usb-details'),
   getTransferDestination: () => ipcRenderer.invoke('dropdex:transfer-destination'),
   selectTransferDestination: () => ipcRenderer.invoke('dropdex:select-transfer-destination'),

@@ -56,6 +56,22 @@ export interface DesktopUsbDetails {
   deviceId: string | null;
 }
 
+export type DesktopEncodePreviewResult =
+  | { ok: true; skipped: true; sourceSize: number; sourceMtimeMs: number }
+  | {
+      ok: true;
+      skipped: false;
+      sourceSize: number;
+      sourceMtimeMs: number;
+      bytes: Uint8Array;
+      sizeBytes: number;
+      durationMs: number | null;
+      bitrateKbps: number;
+      sampleRate: number;
+      channels: number;
+    }
+  | { ok: false; error: { kind: string; message: string; path?: string } };
+
 export type DesktopTransferCategory = 'tracks' | 'rekordbox' | 'other';
 
 export type DesktopTransferScan = Record<DesktopTransferCategory, { fileCount: number; totalBytes: number }>;
@@ -558,6 +574,10 @@ export interface DropDexDesktopBridge {
   reconnectUsb(expectedVolumeName?: string | null): Promise<DesktopUsbReconnectResult>;
   releaseUsb(): Promise<DesktopUsbReleaseResult>;
   disconnectUsb(): Promise<DesktopUsbReleaseResult>;
+  encodePreview(input: {
+    segments: string[];
+    previous: { sourceSize: number; sourceMtimeMs: number } | null;
+  }): Promise<DesktopEncodePreviewResult>;
   getUsbDetails(): Promise<DesktopUsbDetails | null>;
   getTransferDestination(): Promise<DesktopUsbDetails | null>;
   selectTransferDestination(): Promise<{ cancelled: boolean; destination: DesktopUsbDetails | null; error?: string }>;

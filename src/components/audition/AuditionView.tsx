@@ -145,6 +145,7 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
         waveformState={waveformState}
         onRetryWaveform={() => retryWaveform(selectedTrackId ? [selectedTrackId] : undefined)}
         sections={sections}
+        cues={analysis.cues}
         sectionsLoading={analysis.loading}
         sectionsError={analysis.error}
         onRetrySections={() => setAnalysisRetry((value) => value + 1)}

@@ -6,12 +6,10 @@ import { useLibraryStats } from '../../hooks/useRekordboxTracks';
 import { useSpotifyAvailability } from '../../hooks/useSpotifyAvailability';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
-import type { RekordboxImport, RekordboxTrack, UserPlaylistProfile, UserProfile } from '../../types';
-import { CuePointsView } from '../cues/CuePointsView';
+import type { RekordboxTrack, UserPlaylistProfile } from '../../types';
+import { CuePointsTrackPanel, CuePointsView } from '../cues/CuePointsView';
 import { ControlButton } from '../ui/controls';
-import { ArtistProfileCard, DesktopLibraryHero, RecentlyAddedPanel } from './LibraryView';
-import { LibraryHero } from './LibraryHero';
-import { bpmRangeStatsFrom, keyStatsFrom } from './libraryInsights';
+import { RecentlyAddedPanel } from './LibraryView';
 import { LibraryTabBar } from './LibraryTabBar';
 import { ArtistsPanel, GenresPanel, PlaylistsPanel } from './LibraryTabPanels';
 import { reviewTabs, type ReviewTab } from './reviewTabs';
@@ -19,8 +17,6 @@ import { SpotifyLibraryTab } from './SpotifyLibraryTab';
 
 export interface ReviewViewProps {
   importId: string;
-  latestImport: RekordboxImport;
-  profile: UserProfile | null;
   playlists: PlaylistWithCount[];
   playlistsLoading: boolean;
   playlistProfilesByRbId: Map<string, UserPlaylistProfile>;
@@ -30,8 +26,6 @@ export interface ReviewViewProps {
   onPlaylistClick: (playlist: PlaylistWithCount) => void;
   onEditPlaylist: (playlist: PlaylistWithCount) => void;
   onImport: () => void;
-  onResumeAnalysis?: (importId: string) => void;
-  onShowIncompleteAnalysis: () => void;
   onTrackClick: (track: RekordboxTrack) => void;
 }
 
@@ -60,43 +54,36 @@ function ReviewRecentlyAdded({
 }
 
 export function ReviewView({
-  importId, latestImport, profile, playlists, playlistsLoading, playlistProfilesByRbId, recentTracks, recentTracksLoading,
-  spotifyAccessToken, onPlaylistClick, onEditPlaylist, onImport, onResumeAnalysis, onShowIncompleteAnalysis, onTrackClick,
+  importId, playlists, playlistsLoading, playlistProfilesByRbId, recentTracks, recentTracksLoading,
+  spotifyAccessToken, onPlaylistClick, onEditPlaylist, onImport, onTrackClick,
 }: ReviewViewProps) {
   const { stats, loading: statsLoading } = useLibraryStats(importId);
   const [activeTab, setActiveTab] = useState<ReviewTab>('tracks');
   const spotifyAvailable = useSpotifyAvailability(spotifyAccessToken);
+  // The track picked in the Tracks table. The table selects the first track on load.
+  const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
+  const panelTrackIds = useMemo(() => (selectedTrack ? [selectedTrack.id] : []), [selectedTrack]);
+  const panelWaveforms = useTrackPreviewWaveforms(importId, panelTrackIds);
   const tabs = useMemo(() => reviewTabs(spotifyAvailable), [spotifyAvailable]);
 
   useEffect(() => {
     if (spotifyAvailable === false && activeTab === 'spotify') setActiveTab('tracks');
   }, [activeTab, spotifyAvailable]);
 
-  const topGenres = useMemo(() => (stats?.genreTotals ?? []).slice(0, 8).map(({ name, count }) => [name, count] as const), [stats?.genreTotals]);
   const genreStats = useMemo(() => (stats?.genreTotals ?? []).map(({ name, count }) => [name, count] as const), [stats?.genreTotals]);
   const artistStats = useMemo(() => (stats?.artistTotals ?? []).map(({ name, count }) => [name, count] as const), [stats?.artistTotals]);
-  const bpmRangeStats = useMemo(() => bpmRangeStatsFrom(stats?.bpmTotals), [stats?.bpmTotals]);
-  const keyStats = useMemo(() => keyStatsFrom(stats?.keyTotals), [stats?.keyTotals]);
-  const largestPlaylist = useMemo(() => playlists.filter((playlist) => !playlist.is_folder).sort((a, b) => b.track_count - a.track_count)[0], [playlists]);
 
   return (
     <div className="min-w-0 space-y-5">
-      <div className="flex items-start gap-5">
-        <div className="hidden w-[250px] shrink-0 lg:block xl:w-[268px]">
-          <ArtistProfileCard profile={profile} latestImport={latestImport} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="hidden lg:block">
-            <DesktopLibraryHero latestImport={latestImport} profile={profile} topGenres={topGenres}
-              bpmRangeStats={bpmRangeStats} keyStats={keyStats}
-              largestPlaylistName={largestPlaylist?.name ?? null} onImport={onImport}
-              onResumeAnalysis={onResumeAnalysis} onShowIncompleteAnalysis={onShowIncompleteAnalysis} />
-          </div>
-          <div className="lg:hidden">
-            <LibraryHero latestImport={latestImport} profile={profile} onImport={onImport} onResumeAnalysis={onResumeAnalysis} />
-          </div>
-        </div>
-      </div>
+      {/* The selected track's waveform, cue points and beat grid: the same panel as Track Intelligence. */}
+      {selectedTrack && (
+        <CuePointsTrackPanel
+          key={selectedTrack.id}
+          track={selectedTrack}
+          waveformState={panelWaveforms.getState(selectedTrack.id)}
+          onRetryWaveform={() => panelWaveforms.retry([selectedTrack.id])}
+        />
+      )}
 
       <LibraryTabBar<ReviewTab> tabs={tabs} activeTab={activeTab} onChange={setActiveTab} ariaLabel="Library sections" />
 
@@ -114,7 +101,7 @@ export function ReviewView({
       )}
       {/* Kept mounted so its search and filters are still there when you come back to Tracks. */}
       <div className={activeTab === 'tracks' ? undefined : 'hidden'} data-testid="review-tracks-panel">
-        <CuePointsView mode="review" importId={importId} onImport={onImport} onTrackOpen={onTrackClick} />
+        <CuePointsView mode="review" importId={importId} onImport={onImport} onTrackOpen={onTrackClick} onSelectedTrackChange={setSelectedTrack} />
       </div>
       {activeTab === 'genres' && <GenresPanel genreStats={genreStats} loading={statsLoading} />}
       {activeTab === 'artists' && <ArtistsPanel artistStats={artistStats} loading={statsLoading} />}

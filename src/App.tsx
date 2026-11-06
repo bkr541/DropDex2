@@ -59,6 +59,7 @@ import { DeveloperTab } from './components/profile/DeveloperTab';
 import { SpotifyExternalAccount } from './components/profile/SpotifyExternalAccount';
 import { UsbConnectionProvider, useUsbConnection } from './contexts/UsbConnectionContext';
 import { FloatingSidebar } from './components/navigation/FloatingSidebar';
+import { StreamingSyncGroup } from './components/profile/StreamingSyncGroup';
 import { FloatingLayoutLabButton } from './components/navigation/FloatingLayoutLabButton';
 import { PageNameTab, type PageHeading } from './components/navigation/PageNameTab';
 import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerContext';
@@ -1502,8 +1503,6 @@ export default function App() {
                   ) : (
                     <ReviewView
                       importId={importId}
-                      latestImport={latestImport}
-                      profile={userProfile}
                       playlists={playlists}
                       playlistsLoading={playlistsLoading}
                       playlistProfilesByRbId={playlistProfilesByRbId}
@@ -1513,8 +1512,6 @@ export default function App() {
                       onPlaylistClick={handlePlaylistClick}
                       onEditPlaylist={handleEditPlaylist}
                       onImport={() => setIsImportModalOpen(true)}
-                      onResumeAnalysis={(id) => navigate({ name: 'import', importId: id, resume: true })}
-                      onShowIncompleteAnalysis={() => navigate({ name: 'library', tab: 'incomplete-analysis', search: '' })}
                       onTrackClick={handleTrackClick}
                     />
                   )}
@@ -1673,6 +1670,8 @@ export default function App() {
                       </div>
                     )}
                     </section>
+
+                    <StreamingSyncGroup importId={latestImport?.id ?? null} trackCount={latestImport?.track_count ?? null} sourceName={latestImport?.device_name ?? latestImport?.source_filename ?? null} deviceName={latestImport?.device_name ?? null} />
 
                     {/* Snapshots */}
                     <section className="space-y-3">
@@ -1899,11 +1898,11 @@ export default function App() {
           </ApplicationErrorBoundary>
         </main>
         {/* ── Desktop NowPlaying — in-flow at bottom of content column ── */}
-        <NowPlayingBar className="hidden md:flex shrink-0" />
+        {currentView !== 'audition' && <NowPlayingBar className="hidden md:flex shrink-0" />}
       </div>
 
       {/* ── Mobile NowPlaying — fixed above mobile nav ── */}
-      <NowPlayingBar className="md:hidden fixed bottom-0 left-0 right-0 z-50" />
+      {currentView !== 'audition' && <NowPlayingBar className="md:hidden fixed bottom-0 left-0 right-0 z-50" />}
 
       {/* ── Mobile-only: bottom nav (shifts up when player is active) ── */}
       <MobileNavBar

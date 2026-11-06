@@ -18,6 +18,7 @@ const { SEPARATOR_VERSION, StemSeparationBridge } = require('./stemSeparationBri
 const { getOrCreateInstallationId } = require('./installationIdentity.cjs');
 const { readUsbDetails } = require('./usbDetails.cjs');
 const { assertSafeTransferPaths, runTransfer, scanTransferSource } = require('./usbTransfer.cjs');
+const { encodePreview } = require('./previewEncoder.cjs');
 
 const APP_SCHEME = 'dropdex-media';
 const USB_CONFIG_FILE = 'usb-connection.json';
@@ -713,6 +714,49 @@ async function startTransfer(sender, categories) {
   }
 }
 
+
+// ── Cloud previews ───────────────────────────────────────────────────────────
+
+const PREVIEW_ENCODE_CONCURRENCY = 2;
+let activePreviewEncodes = 0;
+const previewEncodeWaiters = [];
+
+async function withPreviewSlot(work) {
+  if (activePreviewEncodes >= PREVIEW_ENCODE_CONCURRENCY) {
+    await new Promise((resolve) => previewEncodeWaiters.push(resolve));
+  }
+  activePreviewEncodes += 1;
+  try {
+    return await work();
+  } finally {
+    activePreviewEncodes -= 1;
+    previewEncodeWaiters.shift()?.();
+  }
+}
+
+/**
+ * Makes the 160 kbps preview of one track on the connected USB and hands its bytes back. The original file is only read.
+ * If the caller says what the original looked like last time and it has not changed, nothing is encoded.
+ */
+async function encodeTrackPreview(payload) {
+  assertExactObject(payload, ['segments', 'previous'], 'Preview payload');
+  const previous = payload.previous;
+  if (previous != null) assertExactObject(previous, ['sourceSize', 'sourceMtimeMs'], 'Preview payload.previous');
+  const resolved = await resolveUsbTrackPath(payload.segments);
+  if (!resolved.ok) return resolved;
+  const stat = await fs.stat(resolved.filePath);
+  const sourceMtimeMs = Math.round(stat.mtimeMs);
+  if (previous && previous.sourceSize === stat.size && Math.abs(previous.sourceMtimeMs - sourceMtimeMs) < 2000) {
+    return { ok: true, skipped: true, sourceSize: stat.size, sourceMtimeMs };
+  }
+  try {
+    const encoded = await withPreviewSlot(() => encodePreview(resolved.filePath));
+    return { ok: true, skipped: false, sourceSize: stat.size, sourceMtimeMs, ...encoded };
+  } catch (error) {
+    return { ok: false, error: { kind: 'encode_failed', message: error instanceof Error ? error.message : 'The preview could not be made.' } };
+  }
+}
+
 function assertExactObject(value, allowedKeys, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be an object.`);
   const keys = Object.keys(value);
@@ -727,6 +771,7 @@ function registerIpcHandlers() {
   ipcMain.handle('dropdex:usb-activity-state', () => (
     usbStreams.snapshot({ connected: Boolean(usbConnection) })
   ));
+  ipcMain.handle('dropdex:encode-preview', (_event, payload) => encodeTrackPreview(payload));
   ipcMain.handle('dropdex:usb-details', () => primaryUsbDetails());
   ipcMain.handle('dropdex:transfer-destination', () => transferDestinationInfo());
   ipcMain.handle('dropdex:select-transfer-destination', () => selectTransferDestination());

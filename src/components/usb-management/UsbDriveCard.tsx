@@ -52,7 +52,7 @@ export function StorageBar({ details, scan }: { details: DesktopUsbDetails; scan
         <p className="text-sm font-black tabular-nums">{formatBytes(details.freeBytes)} <span className="text-xs font-semibold text-muted-foreground">free of {formatBytes(total)}</span></p>
         {pct != null && <span className="font-mono text-[11px] font-bold text-muted-foreground">{pct}% full</span>}
       </div>
-      <div className="mt-2 flex h-3 w-full overflow-hidden rounded-full bg-white/[0.07]" role="img" aria-label={`${pct ?? 0} percent full`}>
+      <div className="mt-1.5 flex h-2.5 w-full overflow-hidden rounded-full bg-white/[0.07]" role="img" aria-label={`${pct ?? 0} percent full`}>
         {known.length > 0 ? (
           <>
             {known.map((segment) => <div key={segment.id} title={`${segment.label}: ${formatBytes(segment.bytes)}`} style={{ width: `${(segment.bytes / total) * 100}%`, background: segment.color }} />)}
@@ -63,7 +63,7 @@ export function StorageBar({ details, scan }: { details: DesktopUsbDetails; scan
         )}
       </div>
       {known.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
           {known.map((segment) => (
             <span key={segment.id} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <span className="h-2 w-2 rounded-full" style={{ background: segment.color }} />{segment.label} <b className="font-mono text-foreground">{formatBytes(segment.bytes)}</b>
@@ -104,22 +104,37 @@ interface UsbDriveCardProps {
 /** The stylised summary of one USB: name, make and model, size, free space, format, and how it is connected. */
 export function UsbDriveCard({ details, eyebrow, scan, compact = false, actions, footer, className }: UsbDriveCardProps) {
   const model = makeAndModel(details);
+  const driveType = details.removable == null ? null : details.removable ? 'Removable drive' : 'Built-in drive';
+  const heading = (
+    <>
+      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{eyebrow}</p>
+      <h2 className={cn('mt-1 truncate font-black tracking-tight', compact ? 'text-2xl' : 'text-3xl')} title={details.volumeName}>{details.volumeName}</h2>
+      {model && <p className="mt-0.5 truncate text-sm text-muted-foreground">{model}</p>}
+    </>
+  );
   const connection = [details.protocol, details.solidState == null ? null : details.solidState ? 'Solid state' : 'Spinning disk'].filter(Boolean).join(' · ');
   return (
     <section
       data-testid="usb-drive-card"
-      className={cn('glass relative overflow-hidden rounded-3xl border border-[var(--color-border-subtle)]', compact ? 'p-5' : 'p-7', className)}
+      className={cn('glass relative overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] px-5 py-4', className)}
     >
       <div className="pointer-events-none absolute -left-10 -top-16 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
-      <div className={cn('relative flex gap-6', compact ? 'flex-col sm:flex-row' : 'flex-col md:flex-row')}>
-        <div className="flex shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-black/25 px-7 py-5">
-          <UsbStickArt size={compact ? 104 : 148} />
+      <div className={cn('relative flex gap-4', compact ? 'flex-col sm:flex-row' : 'flex-col md:flex-row')}>
+        <div className={cn(
+          'flex shrink-0 items-center rounded-2xl border border-white/10 bg-black/25 px-5 py-3',
+          compact ? 'justify-center' : 'flex-col gap-2 text-center md:w-48',
+        )}>
+          {!compact && (
+            <div className="w-full">
+              {heading}
+              <p className="mt-1 text-xs text-muted-foreground">{driveType || 'Unknown drive type'}</p>
+            </div>
+          )}
+          <UsbStickArt size={compact ? 104 : 96} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{eyebrow}</p>
-          <h2 className={cn('mt-1 truncate font-black tracking-tight', compact ? 'text-2xl' : 'text-3xl')} title={details.volumeName}>{details.volumeName}</h2>
-          {model && <p className="mt-0.5 truncate text-sm text-muted-foreground">{model}</p>}
-          <div className={cn('mt-5 grid gap-x-6 gap-y-4', compact ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4')}>
+          {compact && heading}
+          <div className={cn('grid gap-x-6 gap-y-2', compact ? 'mt-3 grid-cols-2' : 'grid-cols-2 lg:grid-cols-4')}>
             <Fact label="Size" value={formatBytes(details.totalBytes)} />
             <Fact label="Free" value={formatBytes(details.freeBytes)} />
             <Fact label="Format" value={details.filesystem} />
@@ -127,13 +142,12 @@ export function UsbDriveCard({ details, eyebrow, scan, compact = false, actions,
             {!compact && <Fact label="Model" value={details.model} />}
             {!compact && <Fact label="Connection" value={connection || null} />}
             {!compact && <Fact label="Connected" value={formatDate(details.connectedAt)} />}
-            {!compact && <Fact label="Type" value={details.removable == null ? null : details.removable ? 'Removable drive' : 'Built-in drive'} />}
           </div>
-          <div className="mt-5"><StorageBar details={details} scan={scan} /></div>
-          {actions && <div className="mt-5 flex flex-wrap items-center gap-2">{actions}</div>}
+          <div className="mt-3"><StorageBar details={details} scan={scan} /></div>
+          {actions && <div className="mt-3 flex flex-wrap items-center gap-2">{actions}</div>}
         </div>
       </div>
-      {footer && <div className="relative mt-5 border-t border-white/10 pt-4">{footer}</div>}
+      {footer && <div className="relative mt-3 border-t border-white/10 pt-3">{footer}</div>}
     </section>
   );
 }

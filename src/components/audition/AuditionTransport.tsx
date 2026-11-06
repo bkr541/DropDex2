@@ -5,6 +5,7 @@ import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import { logger } from '../../lib/logger';
 import { MediaTransportControlGroup, PlaybackSeekBar, TransportButton } from '../ui/media';
 import type { RekordboxTrack } from '../../types';
+import { AuditionDecisions } from './AuditionDecisions';
 
 interface AuditionTransportProps {
   track: RekordboxTrack | null;
@@ -110,6 +111,8 @@ export function AuditionTransport({ track, fallbackDurationMs, previousTrack, ne
           className="h-1.5 w-24 cursor-pointer accent-primary"
         />
       </div>
+
+      <AuditionDecisions />
 
       {playbackError ? (
         <p role="alert" className="basis-full text-xs text-red-300">{playbackError}</p>

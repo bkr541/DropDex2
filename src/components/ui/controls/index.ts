@@ -4,6 +4,7 @@ export { AutocompleteControl } from './AutocompleteControl';
 export type { AutocompleteOption } from './AutocompleteControl';
 export { BreadcrumbControl } from './BreadcrumbControl';
 export { ChipMultiSelect } from './ChipMultiSelect';
+export { CheckboxControl } from './CheckboxControl';
 export { ClearableTextInput } from './ClearableTextInput';
 export { ControlButton } from './ControlButton';
 export type { ControlButtonVariant } from './ControlButton';

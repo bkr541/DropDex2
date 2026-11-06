@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChartLine, ChevronDown, CircleDash, Close, ColorPalette, DocumentAudio, Edit, Export, Idea, Key, Meter, Music, Pause, Pending, Pin, Play, Playlist, Repeat, Save, Tag, Time, Timer, Upload, VolumeMute, VolumeUp, WarningAlt, Waveform } from '@carbon/icons-react';
+import { ChartLine, ChevronDown, CircleDash, Cloud, Close, ColorPalette, DocumentAudio, Edit, Export, Idea, Key, Meter, Music, Pause, Pending, Pin, Play, Playlist, Repeat, Save, Tag, Time, Timer, Upload, VolumeMute, VolumeUp, WarningAlt, Waveform } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -7,6 +7,9 @@ import { gridBeatsForMode, type CueGridDisplayMode } from '../../lib/cues/cueTim
 import { StatusBadge } from '../ui/feedback';
 import { useTimelineZoom } from '../../hooks/useTimelineZoom';
 import { useTrackPlaylistCounts } from '../../hooks/useTrackPlaylistCounts';
+import { useSyncedPreviewKeys } from '../../hooks/useSyncedPreviewKeys';
+import { trackIdentityKey } from '../../lib/preview/trackIdentity';
+import { CloudSyncIcon } from '../library/CloudSyncIcon';
 import { applyAutoCueStrategy } from '../../lib/music/autoCueStrategy';
 import {
   addWorkingCue,
@@ -116,6 +119,8 @@ import type {
 interface CuePointsViewProps {
   mode?: 'cues' | 'audition' | 'review';
   onTrackOpen?: (track: RekordboxTrack) => void;
+  /** Library page only: told whenever the selected track changes, so the page can show that track's waveform. */
+  onSelectedTrackChange?: (track: RekordboxTrack | null) => void;
   importId: string | null;
   onImport: () => void;
 }
@@ -1867,7 +1872,7 @@ export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform }: {
   );
 }
 
-export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }: CuePointsViewProps) {
+export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, onSelectedTrackChange }: CuePointsViewProps) {
   const review = mode === 'review';
   const audition = mode !== 'cues';
   const auth = useAuthSession();
@@ -2925,6 +2930,8 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
   // Review shows how many playlists each track is in.
   const activeSourceTrackIds = useMemo(() => activeSourceTracks.map((track) => track.id), [activeSourceTracks]);
   const playlistCounts = useTrackPlaylistCounts(activeSourceTrackIds, review);
+  // Which tracks have a DropDex Cloud preview, for the cloud column on the Library page.
+  const cloudSynced = useSyncedPreviewKeys(review);
 
   const sourceSearchFilteredTracks = useMemo(() => {
     if (browserSource === 'library') return activeSourceTracks;
@@ -3049,11 +3056,18 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
     setVocalAnalysis(null);
   }, [importId, userId]);
 
+  // Every page starts with its first track selected (the Library page included).
   useEffect(() => {
-    if (!review && selectedTrackId == null && orderedVisibleTracks.length > 0) {
+    if (selectedTrackId == null && orderedVisibleTracks.length > 0) {
       setSelectedTrack(orderedVisibleTracks[0]);
     }
-  }, [orderedVisibleTracks, review, selectedTrackId]);
+  }, [orderedVisibleTracks, selectedTrackId]);
+
+  const selectedTrackChangeRef = useRef(onSelectedTrackChange);
+  selectedTrackChangeRef.current = onSelectedTrackChange;
+  useEffect(() => {
+    if (review) selectedTrackChangeRef.current?.(selectedTrack);
+  }, [review, selectedTrack]);
 
   useEffect(() => {
     let cancelled = false;
@@ -4339,6 +4353,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                         { col: 'bitRate', label: 'Bit Rate', cls: 'px-3 py-2 whitespace-nowrap', icon: ChartLine, sortable: true },
                       ]),
                     { col: 'duration', label: 'Duration', cls: 'px-3 py-2 text-left w-[80px]', icon: Time, sortable: true },
+                    ...(review ? [{ col: 'cloud', label: 'Cloud', cls: 'px-3 py-2 w-[64px]', icon: Cloud, sortable: false }] : []),
                   ]).map(({ col, label, cls, icon, sortable }) => (
                     <TrackTableHeadCell key={col} label={label} column={sortable ? col : undefined} uppercase={review} className={cls} icon={review && LIBRARY_LARGE_ICON_HEADINGS ? icon : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
                   ))}
@@ -4360,11 +4375,13 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                       <TrackTableRow
                         key={`${browserSource}:${selectedPlaylistId ?? 'library'}:${track.id}:${rowIndex}`}
                         selected={selected}
-                        onClick={() => review ? onTrackOpen?.(track) : setSelectedTrack(track)}
+                        onClick={() => setSelectedTrack(track)}
+                        // On the Library page a click selects the track (its waveform shows above), and a double-click or Enter opens it.
+                        onDoubleClick={review ? () => onTrackOpen?.(track) : undefined}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            if (review) onTrackOpen?.(track);
+                            if (review && event.key === 'Enter') onTrackOpen?.(track);
                             else setSelectedTrack(track);
                           }
                         }}
@@ -4589,6 +4606,11 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen }
                         <td className={cn('w-[80px] px-3 py-1.5 text-left', review ? LIBRARY_VALUE : cn('text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]'))}>
                           {formatTime(durationMsForTrack(track, null))}
                         </td>
+                        {review && (
+                          <td className="w-[64px] px-3 py-1.5" data-testid="cloud-cell">
+                            <CloudSyncIcon synced={cloudSynced.keys.has(trackIdentityKey(track))} unknown={cloudSynced.failed} />
+                          </td>
+                        )}
                       </TrackTableRow>
                     );
                   })}

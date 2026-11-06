@@ -90,11 +90,8 @@ export function AuditionLibrary({
       className="audition-library cue-browser"
     >
       <div className="audition-library-chrome cue-browser__chrome">
-        <div className="audition-library-heading">
-          <h3 className="audition-library-title">Library</h3>
-          <span className="font-mono text-[10px] tabular-nums text-muted-foreground" data-testid="audition-library-count">{countLabel}</span>
-        </div>
-        <div className="cue-browser__filters flex flex-wrap items-stretch gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] px-4 py-2.5 md:px-5" data-testid="audition-library-filters">
+        <h3 className="sr-only">Library</h3>
+        <div className="cue-browser__filters flex flex-wrap items-stretch gap-x-4 gap-y-2" data-testid="audition-library-filters">
           <div className="flex min-w-[200px] max-w-[320px] flex-1 flex-col justify-end" data-testid="audition-search">
             <SearchControl
               value={search}
@@ -125,6 +122,7 @@ export function AuditionLibrary({
             onChange={onBpmRangeChange}
             onReset={() => onBpmRangeChange(null)}
           />
+          <span className="audition-library-count" data-testid="audition-library-count">{countLabel}</span>
         </div>
       </div>
 
@@ -146,7 +144,7 @@ export function AuditionLibrary({
         </div>
       ) : (
         <>
-          <div className="audition-table-scroll max-h-[calc(100vh-18rem)] min-h-[260px] overflow-auto scrollbar-none">
+          <div className="audition-table-scroll overflow-auto scrollbar-none">
             <TrackTable className="min-w-[900px]" data-testid="audition-library-table" aria-label="Library tracks">
               <TrackTableHead>
                 {COLUMNS.map(({ column, label, className }) => (

@@ -290,7 +290,7 @@ describe('Review shared browser and focused track timeline', () => {
     expect(renderRows('cues')).not.toContain('data-testid="playlist-count"');
   });
 
-  it('Review: all eight column headings are 13px, extra bold and in capitals, with no icons; Properties replaces Format, Rate and Bit Rate', () => {
+  it('Review: all nine column headings are 13px, extra bold and in capitals, with no icons; Properties replaces Format, Rate and Bit Rate', () => {
     const table = (mode: 'review' | 'cues') => {
       vi.stubGlobal('window', { devicePixelRatio: 1 });
       libraryFixture.tracks = [track];
@@ -306,8 +306,8 @@ describe('Review shared browser and focused track timeline', () => {
     };
     const review = table('review');
     const head = review.slice(review.indexOf('<thead'), review.indexOf('</thead>'));
-    expect(head.match(/<th /g)).toHaveLength(8);
-    for (const label of ['Track', 'BPM', 'Key', 'Genre', 'Cues', 'Playlists', 'Properties', 'Duration']) {
+    expect(head.match(/<th /g)).toHaveLength(9);
+    for (const label of ['Track', 'BPM', 'Key', 'Genre', 'Cues', 'Playlists', 'Properties', 'Duration', 'Cloud']) {
       expect(head).toContain(`>${label}<`);
     }
     expect(head).toContain('text-[13px] font-extrabold');

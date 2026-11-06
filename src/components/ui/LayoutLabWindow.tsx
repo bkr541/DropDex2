@@ -4,9 +4,6 @@ import { cn } from '../../lib/utils';
 import { HeroMockupsContent } from './LayoutLabHeroMockups';
 import { IconMockupsContent } from './LayoutLabIconMockups';
 import { LoadedTrackMockupsContent } from './LayoutLabLoadedTrackMockups';
-import { RekordboxMockupsContent } from './LayoutLabRekordboxMockups';
-import { PageNameMockupsContent } from './LayoutLabPageNameMockups';
-import { LibraryCueModeMockupsContent } from './LayoutLabLibraryCueModeMockups';
 import { UiComponentsContent } from './LayoutLabUiComponents';
 import { HeaderStatusMockupsContent } from './LayoutLabHeaderStatusMockups';
 import { DropLabMockupsContent } from './LayoutLabDropLabMockups';
@@ -38,9 +35,6 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'nav-design',    label: 'Nav Design'    },
   { id: 'audio-dock',    label: 'Audio Dock'    },
   { id: 'loaded-track',  label: 'Loaded Track'  },
-  { id: 'rekordbox',     label: 'Rekordbox'     },
-  { id: 'page-names',    label: 'Page Names'    },
-  { id: 'library-cue-mode', label: 'Library + Cue Mode' },
   { id: 'header-status', label: 'Header Status' },
   { id: 'drop-lab', label: 'Drop Lab' },
   { id: 'icons', label: 'Icons' },
@@ -2045,18 +2039,12 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
             <IconMockupsContent />
           ) : activeId === 'loaded-track' ? (
             <LoadedTrackMockupsContent />
-          ) : activeId === 'rekordbox' ? (
-            <RekordboxMockupsContent />
-          ) : activeId === 'page-names' ? (
-            <PageNameMockupsContent />
           ) : activeId === 'drop-lab' ? (
             <DropLabMockupsContent />
           ) : activeId === 'header-status' ? (
             <HeaderStatusMockupsContent />
           ) : activeId === 'ui-components' ? (
             <UiComponentsContent />
-          ) : activeId === 'library-cue-mode' ? (
-            <LibraryCueModeMockupsContent />
           ) : (
             <BlankCanvas />
           )}

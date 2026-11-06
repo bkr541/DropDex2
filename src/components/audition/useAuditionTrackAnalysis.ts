@@ -1,18 +1,28 @@
 import { useEffect, useState } from 'react';
-import { fetchTrackBeatGrid, fetchTrackPhrases, type BeatGridRow, type PhraseRow } from '../../lib/queries/analysisData';
+import { fetchTrackBeatGrid, fetchTrackCueState, fetchTrackPhrases, type BeatGridRow, type PhraseRow } from '../../lib/queries/analysisData';
+import { hotCueLabel } from '../../lib/music/cueHelpers';
 import { logger } from '../../lib/logger';
+
+/** A cue point shown above the full-song waveform. Hot cues carry their letter (A, B, C…); memory cues have none. */
+export interface AuditionCueMarker {
+  id: string;
+  startMs: number;
+  color: string;
+  label: string | null;
+}
 
 export interface AuditionTrackAnalysis {
   /** The track these rows belong to; rows are empty until they match the selected track. */
   trackId: string | null;
   phrases: PhraseRow[];
   beatGrid: BeatGridRow | null;
+  cues: AuditionCueMarker[];
   loading: boolean;
   /** Plain-language message when the section data could not be loaded. */
   error: string | null;
 }
 
-const EMPTY: AuditionTrackAnalysis = { trackId: null, phrases: [], beatGrid: null, loading: false, error: null };
+const EMPTY: AuditionTrackAnalysis = { trackId: null, phrases: [], beatGrid: null, cues: [], loading: false, error: null };
 
 /**
  * Loads the Rekordbox sections (phrases) and beat grid for the selected track.
@@ -28,12 +38,13 @@ export function useAuditionTrackAnalysis(trackId: string | null, retryNonce = 0)
       return;
     }
     const controller = new AbortController();
-    setState({ trackId, phrases: [], beatGrid: null, loading: true, error: null });
+    setState({ trackId, phrases: [], beatGrid: null, cues: [], loading: true, error: null });
 
     void Promise.allSettled([
       fetchTrackPhrases(trackId, controller.signal),
       fetchTrackBeatGrid(trackId, controller.signal),
-    ]).then(([phraseResult, gridResult]) => {
+      fetchTrackCueState(trackId),
+    ]).then(([phraseResult, gridResult, cueResult]) => {
       if (controller.signal.aborted) return;
       const phrases = phraseResult.status === 'fulfilled' ? phraseResult.value : [];
       const beatGrid = gridResult.status === 'fulfilled' ? gridResult.value : null;
@@ -44,10 +55,24 @@ export function useAuditionTrackAnalysis(trackId: string | null, retryNonce = 0)
         // Sections can still be placed from their own timestamps, so this alone is not shown to the user.
         logger.warn('audition.beat_grid.load_failed', { trackId, error: describeError(gridResult.reason) });
       }
+      const cues: AuditionCueMarker[] = cueResult.status === 'fulfilled' && cueResult.value.status === 'loaded-with-cues'
+        ? cueResult.value.cues
+          .filter((cue) => cue.start_ms != null)
+          .map((cue) => ({
+            id: cue.id,
+            startMs: cue.start_ms as number,
+            color: cue.color_hex ?? (cue.cue_family === 'hot' ? '#ffffff' : '#9aa5b8'),
+            label: cue.cue_family === 'hot' ? hotCueLabel(cue.hot_cue_slot) : null,
+          }))
+        : [];
+      if (cueResult.status === 'rejected' || (cueResult.status === 'fulfilled' && cueResult.value.status === 'failed')) {
+        logger.warn('audition.cues.load_failed', { trackId, error: cueResult.status === 'rejected' ? describeError(cueResult.reason) : 'error' in cueResult.value ? cueResult.value.error : null });
+      }
       setState({
         trackId,
         phrases,
         beatGrid,
+        cues,
         loading: false,
         error: phraseResult.status === 'rejected' ? 'Track sections could not be loaded.' : null,
       });
