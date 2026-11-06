@@ -5,6 +5,9 @@ import { durationMsForTrack, formatTime } from '../../lib/music/trackTiming';
 import { cn } from '../../lib/utils';
 import { ControlButton, DualRangeSlider, FilterDropdown, SearchControl } from '../ui/controls';
 import type { FilterDropdownOption } from '../ui/controls';
+import { TrackWaveformPreview, cueMarkersFromState } from '../ui/media';
+import type { CueLoadState } from '../../lib/queries/analysisData';
+import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { KeyBadge, TrackNameCell, TrackTable, TrackTableBody, TrackTableHead, TrackTableHeadCell, TrackTableRow } from '../ui/display';
 import { nextAuditionSort, type AuditionSort, type AuditionSortColumn } from './auditionTracks';
 import type { RekordboxTrack } from '../../types';
@@ -13,6 +16,10 @@ interface AuditionLibraryProps {
   tracks: RekordboxTrack[];
   selectedTrackId: string | null;
   onSelectTrack: (track: RekordboxTrack) => void;
+  /** The waveform for a row's preview. Rows show an empty preview until it is available. */
+  getWaveformState?: (trackId: string) => WaveformLoadState;
+  /** Each track's cue points, drawn as markers above its row waveform. */
+  cueStates?: ReadonlyMap<string, CueLoadState>;
 
   /** Shown beside the Library heading, e.g. "387 tracks". */
   countLabel: string;
@@ -78,7 +85,7 @@ function RowPlayButton({ track }: { track: RekordboxTrack }) {
 }
 
 export function AuditionLibrary({
-  tracks, selectedTrackId, onSelectTrack,
+  tracks, selectedTrackId, onSelectTrack, getWaveformState, cueStates,
   countLabel, loading, loadingMore, error, hasMore, onLoadMore, onRetry,
   search, onSearchChange, genre, onGenreChange, genreOptions, keyFilter, onKeyFilterChange, keyOptions,
   bpmBounds, bpmRange, onBpmRangeChange, sort, onSortChange,
@@ -174,10 +181,18 @@ export function AuditionLibrary({
                         }
                       }}
                     >
-                      <TrackNameCell title={track.title} artist={track.artist} artworkSrc={track.artwork_path} selected={selected}
+                      <TrackNameCell title={track.title} artist={track.artist} artworkSrc={track.artwork_path} selected={selected} dense nameClassName="w-[240px] shrink-0"
                         status={cueAnalysisReady(track) ? 'ready'
                           : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required' ? 'error'
                           : track.analysis_parse_status == null ? 'none' : 'warning'}>
+                        <TrackWaveformPreview
+                          className="min-w-[140px] grow"
+                          waveformState={getWaveformState?.(track.id) ?? { status: 'idle', trackId: track.id }}
+                          durationMs={durationMsForTrack(track, null)}
+                          cues={cueMarkersFromState(cueStates?.get(track.id))}
+                          height={18}
+                          ariaLabel={`Waveform for ${track.title}`}
+                        />
                         <RowPlayButton track={track} />
                       </TrackNameCell>
                       <td className="px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>

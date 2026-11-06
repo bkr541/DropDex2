@@ -25,7 +25,7 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 3rem);
+  height: calc(100vh - 3rem - var(--page-header-height, 0px));
   min-height: 480px;
   overflow: hidden;
   color-scheme: dark;
@@ -68,7 +68,7 @@
 .audition-song-caption > span { margin-inline: 6px; color: #7b879c; }
 .audition-song-timeline { position: relative; padding: 8px 16px 0; }
 .audition-song-ruler > span { color: #9ba5b6; font-family: inherit; font-size: 10px; }
-.audition-song-sections { margin-top: 6px; }
+.audition-song-sections { margin-bottom: 4px; }
 .audition-section { color: #cad2df; border-bottom: 1px solid var(--audition-section-ink); background: color-mix(in srgb, var(--audition-section-ink) 7%, transparent); font-size: 10px; font-weight: 400; letter-spacing: .03em; }
 .audition-song-transport { margin-top: 8px; padding: 6px 16px; border-top: 1px solid #ffffff09; background: #ffffff02; }
 .audition-transport { display: grid; grid-template-columns: auto minmax(160px, 1fr) auto auto; align-items: center; gap: 14px; }

@@ -8,27 +8,25 @@ export interface PageHeading {
 }
 
 /**
- * The current page's name, floating at the top center of the page, attached to the
- * top edge inside the 24px padding strip. Uses the app's `glass` surface with the
- * logo's red gradient on its border and icon. It never takes layout space and ignores the pointer.
+ * The current page's name as a full-width row at the top of the content column, above the page itself.
+ * It takes its own height (`--page-header-height`), so pages that fill the window subtract it. Uses the
+ * app's `glass` surface, with the logo's red gradient on a hairline along its bottom edge and on the icon.
  */
 export function PageNameTab({ title, icon: Icon }: { title: string; icon?: ElementType }) {
   return (
-    <div
+    <header
       data-testid="page-name-tab"
-      className="pointer-events-none absolute top-0 z-40 max-w-[60%]"
-      style={{ left: '50%', transform: 'translateX(-50%)' }}
+      className="glass relative z-30 flex w-full shrink-0 items-center gap-2.5 px-6"
+      style={{
+        height: 'var(--page-header-height)',
+        border: 0,
+        borderRadius: 0,
+        boxShadow: '0 8px 16px -4px rgb(0 0 0 / 0.5), 0 2px 5px rgb(0 0 0 / 0.3)',
+      }}
     >
-      <span
-        className="glass logo-gradient-border flex items-center gap-2 rounded-b-3xl px-6 py-1.5 text-[13px] font-medium leading-4 uppercase tracking-[0.2em] text-foreground"
-        style={{
-          borderTopWidth: 0,
-          boxShadow: '0 8px 16px -4px rgb(0 0 0 / 0.5), 0 2px 5px rgb(0 0 0 / 0.3)',
-        }}
-      >
-        {Icon && <Icon size={16} className="logo-gradient-icon shrink-0" />}
-        <span className="truncate">{title}</span>
-      </span>
-    </div>
+      {Icon && <Icon size={16} className="logo-gradient-icon shrink-0" />}
+      <span className="truncate text-[13px] font-medium uppercase leading-4 tracking-[0.2em] text-foreground">{title}</span>
+      <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-px" style={{ background: 'var(--gradient-logo)' }} />
+    </header>
   );
 }

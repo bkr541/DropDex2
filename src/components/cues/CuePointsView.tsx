@@ -4335,7 +4335,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
           </div>
         ) : (
           <>
-            <div className="overflow-auto scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
+            <div className="overflow-auto scrollbar-none" style={{ maxHeight: `calc(100vh - var(--page-header-height, 0px) - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
               <TrackTable className={cn('min-w-[900px]', review && 'cue-browser__table--tight')} data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
                 <TrackTableHead large={review && LIBRARY_LARGE_ICON_HEADINGS} className={review ? LIBRARY_HEADING : undefined}>
                   <TrackTableHeadCell label="Track" column="title" uppercase={review} icon={review && LIBRARY_LARGE_ICON_HEADINGS ? Music : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />

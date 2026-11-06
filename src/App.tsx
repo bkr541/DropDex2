@@ -1158,7 +1158,7 @@ export default function App() {
     <AudioPlayerProvider imports={allImports}>
     <>
     <RootFailureProbe />
-    <div className="flex h-screen overflow-hidden font-sans relative">
+    <div className="flex h-screen flex-col overflow-hidden font-sans relative">
       {/* The logo's red gradient, shared by every icon that uses the logo-gradient-icon class. */}
       <svg width="0" height="0" className="absolute" aria-hidden="true" focusable="false">
         <defs>
@@ -1175,6 +1175,10 @@ export default function App() {
         <div className="ambience-blob absolute bottom-[10%] right-[-10%] w-[50%] h-[50%] bg-secondary/10 blur-[100px] rounded-full" />
       </div>
 
+      {/* ── Page name: a full-width row across the whole window, above the nav and the page ── */}
+      {pageHeading && <PageNameTab title={pageHeading.title} icon={pageIcon} />}
+
+      <div className="flex min-h-0 flex-1">
       {/* ── Desktop sidebar ── */}
       <FloatingSidebar
         collapsed={sidebarCollapsed}
@@ -1189,9 +1193,7 @@ export default function App() {
       <FloatingLayoutLabButton onOpen={openLayoutLab} />
 
       {/* ── Main content column ── */}
-      <div className="relative flex flex-col flex-1 min-w-0 h-screen">
-        {pageHeading && <PageNameTab title={pageHeading.title} icon={pageIcon} />}
-
+      <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
         {/* Scrollable content */}
         <main className={cn(
           'flex-1',
@@ -1899,6 +1901,7 @@ export default function App() {
         </main>
         {/* ── Desktop NowPlaying — in-flow at bottom of content column ── */}
         {currentView !== 'audition' && <NowPlayingBar className="hidden md:flex shrink-0" />}
+      </div>
       </div>
 
       {/* ── Mobile NowPlaying — fixed above mobile nav ── */}

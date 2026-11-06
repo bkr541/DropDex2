@@ -17,6 +17,7 @@ import {
   sortAuditionTracks,
   type AuditionSort,
 } from './auditionTracks';
+import { useAuditionRowCues } from './useAuditionRowCues';
 import { useAuditionTrackAnalysis } from './useAuditionTrackAnalysis';
 import type { RekordboxTrack } from '../../types';
 import './AuditionView.css';
@@ -68,8 +69,14 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
 
   const selectedTrackId = selectedTrack?.id ?? null;
   const analysis = useAuditionTrackAnalysis(selectedTrackId, analysisRetry);
-  const waveformIds = useMemo(() => (selectedTrackId ? [selectedTrackId] : []), [selectedTrackId]);
+  // Waveforms and cue points for every track in the list (each row shows a preview), plus the selected track.
+  const rowTrackIds = useMemo(() => visibleTracks.map((track) => track.id), [visibleTracks]);
+  const waveformIds = useMemo(
+    () => (selectedTrackId && !rowTrackIds.includes(selectedTrackId) ? [...rowTrackIds, selectedTrackId] : rowTrackIds),
+    [rowTrackIds, selectedTrackId],
+  );
   const { getState: getWaveformState, retry: retryWaveform } = useTrackPreviewWaveforms(importId, waveformIds);
+  const rowCueStates = useAuditionRowCues(rowTrackIds);
   const waveformState = getWaveformState(selectedTrackId);
 
   const durationMs = selectedTrack ? durationMsForTrack(selectedTrack, analysis.beatGrid, analysis.phrases) : null;
@@ -163,6 +170,8 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
         tracks={visibleTracks}
         selectedTrackId={selectedTrackId}
         onSelectTrack={selectTrack}
+        getWaveformState={getWaveformState}
+        cueStates={rowCueStates}
         countLabel={countLabel}
         loading={loading}
         loadingMore={loadingMore}

@@ -217,6 +217,17 @@ describe('Audition full song', () => {
     expect(markup.indexOf('data-testid="audition-cues"')).toBeLessThan(markup.indexOf('audition-song-ruler'));
   });
 
+  it('puts the track sections directly under the cue point row, above the ruler and the waveform', () => {
+    const markup = render({ cues: [{ id: 'c1', startMs: 93_000, color: '#2997ff', label: 'B' }] });
+    const cues = markup.indexOf('data-testid="audition-cues"');
+    const sectionsAt = markup.indexOf('data-testid="audition-sections"');
+    const ruler = markup.indexOf('audition-song-ruler');
+    expect(cues).toBeGreaterThan(-1);
+    expect(sectionsAt).toBeGreaterThan(cues);
+    expect(sectionsAt).toBeLessThan(ruler);
+    expect(ruler).toBeLessThan(markup.indexOf('aria-label="Full waveform'));
+  });
+
   it('shows no marker row for a track without cue points', () => {
     expect(render({ cues: [] })).not.toContain('data-testid="audition-cues"');
   });
@@ -237,5 +248,46 @@ describe('Audition full song', () => {
 
   it('renders the playback controls passed into the panel', () => {
     expect(render({ children: createElement('div', { 'data-testid': 'slot' }, 'controls') })).toContain('data-testid="slot"');
+  });
+});
+
+describe('Audition library rows', () => {
+  const libraryProps = (over: Record<string, unknown> = {}) => ({
+    tracks: [track({ id: 'a', title: 'Row Fixture', artist: 'Row Artist', duration_ms: 372_000 })],
+    selectedTrackId: null, onSelectTrack: vi.fn(), countLabel: '1 track', loading: false, loadingMore: false, error: null, hasMore: false,
+    onLoadMore: vi.fn(), onRetry: vi.fn(), search: '', onSearchChange: vi.fn(), genre: '', onGenreChange: vi.fn(), genreOptions: [],
+    keyFilter: '', onKeyFilterChange: vi.fn(), keyOptions: [], bpmBounds: [60, 200] as [number, number], bpmRange: null,
+    onBpmRangeChange: vi.fn(), sort: null, onSortChange: vi.fn(), ...over,
+  });
+
+  it('shows a waveform preview to the right of the title and artist, with the cue points marked on it', async () => {
+    const { AuditionLibrary } = await import('./AuditionLibrary');
+    const cueStates = new Map([['a', {
+      status: 'loaded-with-cues' as const, trackId: 'a',
+      cues: [
+        { id: 'c1', start_ms: 93_000, color_hex: '#2997ff', cue_family: 'hot' },
+        { id: 'c2', start_ms: 186_000, color_hex: null, cue_family: 'memory' },
+      ],
+    }]]);
+    const markup = wrap(createElement(AuditionLibrary, libraryProps({ cueStates }) as never));
+    expect(markup).toContain('aria-label="Waveform for Row Fixture"');
+    expect(markup.indexOf('Row Artist')).toBeLessThan(markup.indexOf('aria-label="Waveform for Row Fixture"'));
+    expect(markup).toContain('left:25%');
+    expect(markup).toContain('left:50%');
+    expect(markup).toContain('fill="#2997ff"');
+  });
+
+  it('still shows the row waveform area when a track has no cue points', async () => {
+    const { AuditionLibrary } = await import('./AuditionLibrary');
+    const markup = wrap(createElement(AuditionLibrary, libraryProps() as never));
+    expect(markup).toContain('aria-label="Waveform for Row Fixture"');
+  });
+
+  it('loads the waveforms and cue points for the rows the list shows', () => {
+    const view = readFileSync(new URL('./AuditionView.tsx', import.meta.url), 'utf8');
+    expect(view).toContain('useAuditionRowCues(rowTrackIds)');
+    expect(view).toContain('getWaveformState={getWaveformState}');
+    expect(view).toContain('cueStates={rowCueStates}');
+    expect(view).toContain('useTrackPreviewWaveforms(importId, waveformIds)');
   });
 });

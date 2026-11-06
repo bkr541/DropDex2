@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, protocol, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol, shell } = require('electron');
 const { createReadStream, promises: fs } = require('node:fs');
 const { Readable } = require('node:stream');
 const path = require('node:path');
@@ -1105,7 +1105,24 @@ function createMainWindow() {
 
 app.setName('DropDex');
 
+/**
+ * When DropDex is started from the source (`electron .`), macOS shows the Dock icon of the Electron program itself.
+ * Replace it with the DropDex logo. A packaged app already gets its icon from the build, so it is left alone.
+ */
+function useDropDexDockIcon() {
+  if (process.platform !== 'darwin' || app.isPackaged || !app.dock) return;
+  for (const candidate of [path.join(__dirname, '..', 'public', 'logos', 'dropdexlogo.png'), path.join(__dirname, '..', 'dist', 'logos', 'dropdexlogo.png')]) {
+    const icon = nativeImage.createFromPath(candidate);
+    if (!icon.isEmpty()) {
+      app.dock.setIcon(icon);
+      return;
+    }
+  }
+  console.warn('[DropDex] Could not find the logo for the Dock icon.');
+}
+
 app.whenReady().then(async () => {
+  useDropDexDockIcon();
   if (process.platform === 'win32') app.setAppUserModelId('com.dropdex.desktop');
   await loadUsbConnection();
   try {

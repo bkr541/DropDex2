@@ -81,7 +81,39 @@ export function AuditionFullSong({
           </div>
         )}
 
-        {/* Ruler, waveform and sections share this box, so a time lines up in all three. */}
+        {/* Sections sit under the cue points, so each section lines up with the waveform below it. */}
+        <div className="audition-song-sections relative h-5" data-testid="audition-sections">
+          {hasDuration && sections.map((section) => (
+            <div
+              key={section.id}
+              data-testid="audition-section"
+              title={`${section.label} · ${formatClock(section.startMs)}–${formatClock(section.endMs)}`}
+              className="audition-section absolute top-0 flex h-full items-center justify-center overflow-hidden px-1"
+              style={{
+                left: `${(section.startMs / durationMs) * 100}%`,
+                width: `calc(${((section.endMs - section.startMs) / durationMs) * 100}% - 2px)`,
+                '--audition-section-ink': sectionInk(section.label),
+              } as CSSProperties}
+            >
+              <span className="truncate">{section.label}</span>
+            </div>
+          ))}
+          {track && !sectionsLoading && sections.length === 0 ? (
+            <p className="absolute inset-0 flex items-center text-xs text-muted-foreground" role={sectionsError ? 'alert' : 'status'}>
+              {sectionsError ?? 'No sections were found for this track.'}
+              {sectionsError ? (
+                <button type="button" className="ml-2 font-medium text-primary underline underline-offset-2" onClick={onRetrySections}>
+                  Try again
+                </button>
+              ) : null}
+            </p>
+          ) : null}
+          {sectionsLoading ? (
+            <p className="absolute inset-0 flex items-center text-xs text-muted-foreground" role="status">Loading sections…</p>
+          ) : null}
+        </div>
+
+        {/* Cue points, sections, ruler and waveform share this width, so a time lines up in all three. */}
         <div className="audition-song-ruler relative h-4" aria-hidden="true">
           {hasDuration && ticks.map((tick) => (
             <span
@@ -126,37 +158,6 @@ export function AuditionFullSong({
               style={{ left: `${(tick.ms / durationMs) * 100}%` }}
             />
           ))}
-        </div>
-
-        <div className="audition-song-sections relative h-5" data-testid="audition-sections">
-          {hasDuration && sections.map((section) => (
-            <div
-              key={section.id}
-              data-testid="audition-section"
-              title={`${section.label} · ${formatClock(section.startMs)}–${formatClock(section.endMs)}`}
-              className="audition-section absolute top-0 flex h-full items-center justify-center overflow-hidden px-1"
-              style={{
-                left: `${(section.startMs / durationMs) * 100}%`,
-                width: `calc(${((section.endMs - section.startMs) / durationMs) * 100}% - 2px)`,
-                '--audition-section-ink': sectionInk(section.label),
-              } as CSSProperties}
-            >
-              <span className="truncate">{section.label}</span>
-            </div>
-          ))}
-          {track && !sectionsLoading && sections.length === 0 ? (
-            <p className="absolute inset-0 flex items-center text-xs text-muted-foreground" role={sectionsError ? 'alert' : 'status'}>
-              {sectionsError ?? 'No sections were found for this track.'}
-              {sectionsError ? (
-                <button type="button" className="ml-2 font-medium text-primary underline underline-offset-2" onClick={onRetrySections}>
-                  Try again
-                </button>
-              ) : null}
-            </p>
-          ) : null}
-          {sectionsLoading ? (
-            <p className="absolute inset-0 flex items-center text-xs text-muted-foreground" role="status">Loading sections…</p>
-          ) : null}
         </div>
       </div>
 
