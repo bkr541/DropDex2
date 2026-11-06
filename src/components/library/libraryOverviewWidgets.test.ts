@@ -74,6 +74,15 @@ describe('Personalization', () => {
     expect(markup).toContain('Show everything');
   });
 
+  it('lays the switches out in two columns on wider screens, one on narrow ones', async () => {
+    const { DashboardWidgetsGroup } = await import('../profile/DashboardWidgetsGroup');
+    const markup = renderToStaticMarkup(createElement(DashboardWidgetsGroup, { widgets: widgets([]) as never }));
+    expect(markup).toMatch(/data-testid="dashboard-widget-list"/);
+    expect(markup).toContain('grid grid-cols-1');
+    expect(markup).toContain('md:grid-cols-2');
+    expect(markup).not.toContain('divide-y');
+  });
+
   it('only offers "Show everything" when something is hidden, and says plainly when a choice could not be saved', async () => {
     const { DashboardWidgetsGroup } = await import('../profile/DashboardWidgetsGroup');
     expect(renderToStaticMarkup(createElement(DashboardWidgetsGroup, { widgets: widgets([]) as never }))).not.toContain('Show everything');

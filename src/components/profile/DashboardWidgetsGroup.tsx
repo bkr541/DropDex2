@@ -13,7 +13,7 @@ export function DashboardWidgetsGroup({ widgets }: { widgets: LibraryOverviewWid
   return (
     <section className="space-y-3" data-testid="dashboard-widgets-group">
       <h2 className="flex items-center gap-1.5 px-1 text-xs font-bold uppercase tracking-widest text-muted-foreground"><Dashboard size={11} />Library overview</h2>
-      <div className="glass divide-y divide-[var(--color-border-faint)] rounded-2xl">
+      <div className="glass overflow-hidden rounded-2xl">
         <div className="flex flex-wrap items-center justify-between gap-3 p-4">
           <div className="min-w-0">
             <p className="text-sm font-bold">Choose what shows on your Library page</p>
@@ -21,12 +21,13 @@ export function DashboardWidgetsGroup({ widgets }: { widgets: LibraryOverviewWid
           </div>
           {hidden.size > 0 && <ControlButton variant="neutral" onClick={showAll} data-testid="dashboard-widgets-show-all">Show everything</ControlButton>}
         </div>
-        <ul>
+        {/* Two columns on wider screens; hairlines between the rows and between the columns. */}
+        <ul className="grid grid-cols-1 border-t border-[var(--color-border-faint)] md:grid-cols-2" data-testid="dashboard-widget-list">
           {LIBRARY_OVERVIEW_WIDGETS.map((widget) => {
             const visible = !hidden.has(widget.id);
             const labelId = `dashboard-widget-${widget.id}`;
             return (
-              <li key={widget.id} className="flex items-start justify-between gap-4 px-4 py-3" data-testid="dashboard-widget-row">
+              <li key={widget.id} className="flex items-start justify-between gap-4 border-b border-[var(--color-border-faint)] px-4 py-3 md:odd:border-r" data-testid="dashboard-widget-row">
                 <div className="min-w-0">
                   <p id={labelId} className="text-sm font-bold">{widget.label}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{widget.description}</p>
@@ -50,7 +51,7 @@ export function DashboardWidgetsGroup({ widgets }: { widgets: LibraryOverviewWid
           })}
         </ul>
         {saveFailed && (
-          <p className="p-4 text-xs text-amber-400" role="alert">Your choice is applied on this computer, but it couldn&apos;t be saved to your account. It will try again the next time you change something.</p>
+          <p className="border-t border-[var(--color-border-faint)] p-4 text-xs text-amber-400" role="alert">Your choice is applied on this computer, but it couldn&apos;t be saved to your account. It will try again the next time you change something.</p>
         )}
       </div>
     </section>
