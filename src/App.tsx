@@ -1148,7 +1148,7 @@ export default function App() {
       case 'track': return titledPage('Track Intelligence');
       case 'review': return titledPage(`${userProfile?.display_name?.trim() || 'My'} Library`);
       case 'settings': return titledPage('Profile');
-      case 'discovery': return titledPage('Artist Discovery');
+      case 'discovery': return titledPage('Discovery');
       case 'flip-lab': return titledPage('Flip Lab');
       case 'usb': return titledPage('USB Management');
       case 'drop-lab': return titledPage('Drop Lab', handleDropLabBack);
@@ -1776,7 +1776,7 @@ export default function App() {
                 className="min-w-0"
               >
                 <LazyFeature label="Loading Discovery…" boundaryKey={`${routeKey(route)}:discovery`} onReturnToLibrary={returnToLibrary}>
-                  <DiscoveryView accessToken={session?.access_token ?? null} />
+                  <DiscoveryView accessToken={session?.access_token ?? null} userId={userId} onEditTaste={handleEditProfile} />
                 </LazyFeature>
               </motion.div>
             )}

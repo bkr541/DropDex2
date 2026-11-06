@@ -5,6 +5,8 @@ import type { DiscoverySetlistResult } from '../../types';
 interface SetlistFeedCardProps {
   setlist: DiscoverySetlistResult;
   onOpen: (setlist: DiscoverySetlistResult) => void;
+  /** Shown first in the detail line, for rows that mix artists. */
+  artistName?: string | null;
 }
 
 function SetlistThumb({ url }: { url: string | null }) {
@@ -13,11 +15,11 @@ function SetlistThumb({ url }: { url: string | null }) {
   return <span className="discovery-setlist-thumb" aria-hidden="true"><Music size={24} /></span>;
 }
 
-/** One setlist: a wide thumbnail, its title, then its date and the share of its tracks that are identified. */
-export function SetlistFeedCard({ setlist, onOpen }: SetlistFeedCardProps) {
+/** One setlist: a wide thumbnail, its title, then (for rows that mix artists) the artist, its date and the share of its tracks that are identified. */
+export function SetlistFeedCard({ setlist, onOpen, artistName }: SetlistFeedCardProps) {
   const title = setlist.title ?? 'Untitled Set';
   const completionPct = setlist.completion_pct != null ? Math.round(setlist.completion_pct) : null;
-  const detail = [setlist.set_date, completionPct != null ? `${completionPct}%` : null].filter(Boolean).join(' · ');
+  const detail = [artistName, setlist.set_date, completionPct != null ? `${completionPct}%` : null].filter(Boolean).join(' · ');
 
   return (
     <button

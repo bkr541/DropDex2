@@ -45,7 +45,7 @@ interface ArtistPageProps {
   onRefresh: () => void;
   onViewProgress: () => void;
   onLoadMore: () => void;
-  /** Go back to Artist Discovery (the top artists, or the genre list the artist was picked from). */
+  /** Go back to Discovery (the top artists, or the genre list the artist was picked from). */
   onBack: () => void;
 }
 
@@ -91,9 +91,9 @@ export function ArtistPage({
 
   return (
     <div className="space-y-6">
-      <button type="button" className="studio-back" onClick={onBack} aria-label="Back to Artist Discovery" data-testid="artist-back">
+      <button type="button" className="studio-back" onClick={onBack} aria-label="Back to Discovery" data-testid="artist-back">
         <span><ChevronLeft size={16} /></span>
-        <span>Artist Discovery</span>
+        <span>Discovery</span>
       </button>
 
       {/* Hero */}

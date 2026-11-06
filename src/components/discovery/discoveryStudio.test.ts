@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { DiscoveryFeed } from '../../hooks/useDiscoveryFeed';
+import type { DiscoveryForYou } from '../../hooks/useDiscoveryForYou';
 import type { FeedArtist } from '../../types';
 
 vi.mock('../../lib/supabase', () => ({ supabase: {} }));
@@ -13,6 +14,8 @@ const studioCss = read('../ui/studio.css');
 const auditionCss = read('../audition/AuditionView.css');
 const discoveryCss = read('./DiscoveryView.css');
 const view = read('./DiscoveryView.tsx');
+const noTaste: DiscoveryForYou = { hasTaste: false, favoriteGenres: [], shelves: [], loading: false, error: null, retry: vi.fn() };
+const homeProps = { forYou: noTaste, genres: [], onSelectGenre: vi.fn() };
 
 const artist = (id: string, name: string, over: Partial<FeedArtist> = {}): FeedArtist => ({
   id, name, normalized_name: name.toLowerCase(), profile_image_url: null, setlist_count: 1234,
@@ -73,16 +76,20 @@ describe('Discovery pieces', () => {
       setlistsByArtist: new Map([['a1', [{ id: 's1', title: 'Main Stage 2025', set_date: '2025-06-01', completion_pct: 80.4 } as never]]]),
       loading: false, error: null, retry: vi.fn(),
     };
-    const markup = renderToStaticMarkup(createElement(DiscoveryHomeFeed, { feed, onSelectArtist: vi.fn(), onOpenSetlist: vi.fn() }));
+    const markup = renderToStaticMarkup(createElement(DiscoveryHomeFeed, { ...homeProps, feed, onSelectArtist: vi.fn(), onOpenSetlist: vi.fn() }));
     expect(markup).not.toContain('<table');
     expect(markup.match(/data-testid="discovery-feed-row"/g)).toHaveLength(2);
-    expect(markup.match(/discovery-scroller-row/g)).toHaveLength(2);
-    expect(markup.match(/data-testid="artist-card"/g)).toHaveLength(2);
+    expect(markup.match(/discovery-scroller-row/g)).toHaveLength(4);
+    // Each top artist has a card in Trending artists and another in their own shelf.
+    expect(markup.match(/data-testid="artist-card"/g)).toHaveLength(4);
     // The artist card comes before the setlists in the shelf.
-    expect(markup.indexOf('data-testid="artist-card"')).toBeLessThan(markup.indexOf('Main Stage 2025'));
+    expect(markup.indexOf('discovery-feed-row')).toBeLessThan(markup.indexOf('discovery-feed-row', markup.indexOf('discovery-feed-row') + 1));
+    expect(markup.indexOf('data-testid="artist-card"', markup.indexOf('discovery-feed-row'))).toBeLessThan(markup.indexOf('Main Stage 2025', markup.indexOf('discovery-feed-row')));
     expect(markup).toContain('Melodic Dubstep · Future Bass');
     expect(markup).toContain('<span>1,234</span><small>Sets</small>');
     expect(markup).toContain('2025-06-01 · 80%');
+    // Fresh sets name the artist, since that row mixes artists.
+    expect(markup).toContain('Alpha Artist · 2025-06-01 · 80%');
     expect(markup).toContain('80% of its tracks identified');
     // The second artist's setlists are still loading.
     expect(markup).toContain('discovery-skeleton');
@@ -117,7 +124,7 @@ describe('Discovery pieces', () => {
   it('says plainly when the top artists could not be loaded, and offers to try again', async () => {
     const { DiscoveryHomeFeed } = await import('./DiscoveryHomeFeed');
     const feed: DiscoveryFeed = { artists: [], setlistsByArtist: new Map(), loading: false, error: 'The top artists could not be loaded.', retry: vi.fn() };
-    const markup = renderToStaticMarkup(createElement(DiscoveryHomeFeed, { feed, onSelectArtist: vi.fn(), onOpenSetlist: vi.fn() }));
+    const markup = renderToStaticMarkup(createElement(DiscoveryHomeFeed, { ...homeProps, feed, onSelectArtist: vi.fn(), onOpenSetlist: vi.fn() }));
     expect(markup).toContain('The top artists could not be loaded.');
     expect(markup).toContain('Try again');
   });
@@ -153,9 +160,9 @@ describe('Discovery pieces', () => {
     expect(discoveryCss).toMatch(/\.discovery-scroller-row \{[^}]*overflow-x: auto/);
   });
 
-  it('has a Back to Artist Discovery button on the artist page that returns to where the artist was picked', () => {
+  it('has a Back to Discovery button on the artist page that returns to where the artist was picked', () => {
     const page = read('./ArtistPage.tsx');
-    expect(page).toContain('aria-label="Back to Artist Discovery"');
+    expect(page).toContain('aria-label="Back to Discovery"');
     expect(page.indexOf('data-testid="artist-back"')).toBeLessThan(page.indexOf('<ArtistHero'));
     expect(view).toContain('onBack={handleBackFromArtist}');
     expect(view).toContain('setSelectedGenreId(genreBeforeArtist)');
@@ -166,5 +173,80 @@ describe('Discovery pieces', () => {
     const hook = read('../../hooks/useDiscoveryFeed.ts');
     expect(hook).toContain("logger.error('discovery.feed.load_failed'");
     expect(hook).toContain("logger.warn('discovery.feed.setlists_failed'");
+  });
+});
+
+describe('Discovery rows built from the user\'s favorites', () => {
+  const shelfArtist = (id: string, name: string, subtitle: string | null = null) => ({ id, name, normalized_name: name.toLowerCase(), profile_image_url: null, subtitle });
+  const forYou: DiscoveryForYou = {
+    hasTaste: true,
+    favoriteGenres: [{ id: 'g1', name: 'Melodic Dubstep', artistCount: 40 }],
+    shelves: [
+      { id: 'favorites', kind: 'favorites', title: 'Your artists', caption: 'From your profile', artists: [shelfArtist('a1', 'NGHTMRE', 'Your favorite')] },
+      { id: 'because-a1', kind: 'because', title: 'If you like NGHTMRE', caption: 'Shared genres', artists: [shelfArtist('a2', 'Wooli', 'Dubstep')] },
+      { id: 'genre-g1', kind: 'genre', title: 'More Melodic Dubstep', caption: '40 artists', artists: [shelfArtist('a3', 'Seven Lions', 'Melodic Dubstep')], genreId: 'g1' },
+    ],
+    loading: false, error: null, retry: vi.fn(),
+  };
+  const feed: DiscoveryFeed = { artists: [artist('t1', 'Trending One')], setlistsByArtist: new Map(), loading: false, error: null, retry: vi.fn() };
+  const genres = [{ id: 'g1', name: 'Melodic Dubstep', artistCount: 40 }, { id: 'g2', name: 'House', artistCount: 90 }];
+
+  it('shows your genres, your artists, artists like them and more of each favorite genre, before the general rows', async () => {
+    const { DiscoveryHomeFeed } = await import('./DiscoveryHomeFeed');
+    const markup = renderToStaticMarkup(createElement(DiscoveryHomeFeed, { feed, forYou, genres, onSelectArtist: vi.fn(), onOpenSetlist: vi.fn(), onSelectGenre: vi.fn() }));
+    const order = ['Your genres', 'Your artists', 'If you like NGHTMRE', 'More Melodic Dubstep', 'Trending artists', 'Popular genres', 'Latest sets by artist'].map((title) => markup.indexOf(title));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(markup).toContain('Your favorite');
+    expect(markup).toContain('See all');
+    expect(markup).not.toContain('discovery-taste-prompt');
+    // Popular genres are the biggest first.
+    expect(markup.indexOf('>House<')).toBeLessThan(markup.lastIndexOf('>Melodic Dubstep<'));
+  });
+
+  it('every row is one line that scrolls sideways', async () => {
+    const { DiscoveryHomeFeed } = await import('./DiscoveryHomeFeed');
+    const markup = renderToStaticMarkup(createElement(DiscoveryHomeFeed, { feed, forYou, genres, onSelectArtist: vi.fn(), onOpenSetlist: vi.fn(), onSelectGenre: vi.fn() }));
+    expect(markup.match(/data-testid="discovery-(shelf|your-genres)[^"]*"/g)!.length).toBeGreaterThanOrEqual(6);
+    expect(markup.match(/discovery-scroller-row/g)!.length).toBeGreaterThanOrEqual(7);
+    expect(markup).not.toContain('<table');
+  });
+
+  it('asks a new user to choose favorites instead of showing an empty page', async () => {
+    const { DiscoveryHomeFeed } = await import('./DiscoveryHomeFeed');
+    const markup = renderToStaticMarkup(createElement(DiscoveryHomeFeed, { feed, forYou: noTaste, genres, onSelectArtist: vi.fn(), onOpenSetlist: vi.fn(), onSelectGenre: vi.fn(), onEditTaste: vi.fn() }));
+    expect(markup).toContain('data-testid="discovery-taste-prompt"');
+    expect(markup).toContain('Choose favorites');
+    expect(markup).toContain('Trending artists');
+  });
+
+  it('passes the signed-in user down so the personal rows can be built', () => {
+    expect(view).toContain('useDiscoveryForYou(userId, catalogGenres)');
+    expect(read('../../App.tsx')).toContain('<DiscoveryView accessToken={session?.access_token ?? null} userId={userId} onEditTaste={handleEditProfile} />');
+    expect(read('../../hooks/useDiscoveryForYou.ts')).toContain("logger.error('discovery.foryou.load_failed'");
+  });
+});
+
+describe('Ranking artists like the favorites', () => {
+  const link = (artistId: string, genreId: string, name = artistId) => ({ artistId, genreId, artist: { id: artistId, name, normalized_name: null, profile_image_url: null } });
+  const base = { genreArtistCounts: new Map([['rare', 5], ['huge', 500]]), genreNames: new Map([['rare', 'Melodic Dubstep'], ['huge', 'Electronic']]), limit: 10 };
+
+  it('puts artists that share more, and narrower, genres first, and leaves out the favorites', async () => {
+    const { rankSimilarArtists } = await import('../../lib/discovery/forYou');
+    const ranked = rankSimilarArtists({
+      ...base,
+      links: [link('both', 'rare'), link('both', 'huge'), link('rareOnly', 'rare'), link('hugeOnly', 'huge'), link('fav', 'rare'), link('other', 'x')],
+      sourceGenreIds: new Set(['rare', 'huge']), excludeIds: new Set(['fav']),
+    });
+    expect(ranked.map((a) => a.id)).toEqual(['both', 'rareOnly', 'hugeOnly']);
+    expect(ranked[0].subtitle).toBe('Melodic Dubstep · Electronic');
+  });
+
+  it('keeps the same shuffle for the same day and changes it on another day', async () => {
+    const { seededShuffle } = await import('../../lib/discovery/forYou');
+    const items = Array.from({ length: 20 }, (_, i) => i);
+    expect(seededShuffle(items, 5)).toEqual(seededShuffle(items, 5));
+    expect(seededShuffle(items, 5)).not.toEqual(seededShuffle(items, 6));
+    expect([...seededShuffle(items, 5)].sort((a, b) => a - b)).toEqual(items);
   });
 });

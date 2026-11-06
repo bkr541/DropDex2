@@ -18,13 +18,18 @@ import { GenreBrowser } from './GenreBrowser';
 import { GenreArtistGrid } from './GenreArtistGrid';
 import { useCatalogGenres } from '../../hooks/useCatalogGenres';
 import { useDiscoveryFeed } from '../../hooks/useDiscoveryFeed';
+import { useDiscoveryForYou } from '../../hooks/useDiscoveryForYou';
 import type { DiscoveryArtist, DiscoverySetlistResult } from '../../types';
 
 interface DiscoveryViewProps {
   accessToken: string | null;
+  /** The signed-in user, whose favorite artists and genres shape the personal rows. */
+  userId?: string | null;
+  /** Opens the profile so the user can pick favorites. */
+  onEditTaste?: () => void;
 }
 
-export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
+export function DiscoveryView({ accessToken, userId = null, onEditTaste }: DiscoveryViewProps) {
   const [query, setQuery] = useState('');
   const [selectedArtist, setSelectedArtist] = useState<DiscoveryArtist | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -66,6 +71,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
   const feed = useDiscoveryFeed();
   const feedSetCount = feed.artists.reduce((total, artist) => total + artist.setlist_count, 0);
   const { genres: catalogGenres, loading: genresLoading, error: genresError, retry: retryGenres } = useCatalogGenres();
+  const forYou = useDiscoveryForYou(userId, catalogGenres);
   const selectedGenre = catalogGenres.find((genre) => genre.id === selectedGenreId) ?? null;
   const { detail: artistDetail, loading: detailLoading } = useArtistDetail(
     selectedArtist?.id ?? null,
@@ -279,8 +285,12 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
         ) : !selectedArtist ? (
           <DiscoveryHomeFeed
             feed={feed}
+            forYou={forYou}
+            genres={catalogGenres}
             onSelectArtist={handleArtistSelect}
             onOpenSetlist={handleOpenSetlist}
+            onSelectGenre={setSelectedGenreId}
+            onEditTaste={onEditTaste}
           />
         ) : null}
       </div>
