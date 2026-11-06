@@ -532,7 +532,7 @@ export async function createRekordboxImportJob(
   sourceFilename: string,
   sourceBundleType: 'database_only' | 'usb_folder' | 'zip_bundle',
   accessToken: string,
-  options?: { deviceName?: string; signal?: AbortSignal },
+  options?: { deviceName?: string; usbDeviceId?: string | null; signal?: AbortSignal },
 ): Promise<ImportJob> {
   const response = await fetch(`${API_BASE}/api/rekordbox/import/jobs`, {
     method: 'POST',
@@ -544,6 +544,7 @@ export async function createRekordboxImportJob(
       source_filename: sourceFilename,
       source_bundle_type: sourceBundleType,
       device_name: options?.deviceName,
+      usb_device_id: options?.usbDeviceId ?? undefined,
     }),
     signal: options?.signal,
   });

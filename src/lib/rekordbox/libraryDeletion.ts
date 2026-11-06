@@ -11,7 +11,7 @@ const PENDING_HARD_DELETE_STATUSES = new Set<RekordboxImport['status']>([
 export const USABLE_LIBRARY_STATUSES = ['completed', 'paused', 'interrupted'] as const;
 
 /** True when the import is a stable snapshot eligible for hard-delete fallback/recovery. */
-export function isUsableLibrarySnapshot(item: RekordboxImport): boolean {
+export function isUsableLibrarySnapshot(item: Pick<RekordboxImport, 'library_ready_at' | 'status'>): boolean {
   return Boolean(item.library_ready_at)
     && USABLE_LIBRARY_STATUSES.some((status) => status === item.status);
 }

@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { deviceKeyFor } from '../usb/usbFormat';
+import { deviceKeyFor, nameOnlyDeviceKey } from '../usb/usbFormat';
 import type { DesktopTransferFile, DesktopTransferResult, DesktopUsbDetails } from '../../types/dropdex-desktop';
 
 export interface UsbDeviceRecord {
@@ -75,22 +75,66 @@ export async function fetchUsbDevices(): Promise<UsbDeviceRecord[]> {
   return ((data ?? []) as DeviceRow[]).map(toDeviceRecord);
 }
 
-/** Remembers a drive the first time it is seen and refreshes its size and last-seen time after that. Un-retires it if it comes back. */
+const DEVICE_FIELDS = (details: DesktopUsbDetails) => ({
+  label: details.volumeName,
+  brand: details.brand,
+  model: details.model,
+  filesystem: details.filesystem,
+  total_bytes: details.totalBytes,
+  free_bytes: details.freeBytes,
+  last_seen_at: new Date().toISOString(),
+  retired_at: null,
+});
+
+/**
+ * Remembers a drive the first time it is seen and refreshes its size and last-seen time after that. Un-retires it if it comes back.
+ *
+ * A drive that was only known by name (a library imported before drives had ids) is claimed the first time its volume UUID
+ * is seen, so it keeps its id and its libraries instead of turning into a second drive.
+ */
 export async function rememberUsbDevice(userId: string, details: DesktopUsbDetails): Promise<UsbDeviceRecord> {
+  const deviceKey = deviceKeyFor(details);
+  if (details.volumeUuid) {
+    const { data: existing, error: lookupError } = await supabase
+      .from('user_usb_devices').select('id').eq('user_id', userId).eq('device_key', deviceKey).maybeSingle();
+    if (lookupError) throw new Error(lookupError.message);
+    if (!existing) {
+      const { data: claimed, error: claimError } = await supabase
+        .from('user_usb_devices')
+        .update({ device_key: deviceKey, ...DEVICE_FIELDS(details) })
+        .eq('user_id', userId)
+        .eq('device_key', nameOnlyDeviceKey(details.volumeName))
+        .select('*')
+        .maybeSingle();
+      if (claimError) throw new Error(claimError.message);
+      if (claimed) return toDeviceRecord(claimed as DeviceRow);
+    }
+  }
   const { data, error } = await supabase
     .from('user_usb_devices')
-    .upsert({
-      user_id: userId,
-      device_key: deviceKeyFor(details),
-      label: details.volumeName,
-      brand: details.brand,
-      model: details.model,
-      filesystem: details.filesystem,
-      total_bytes: details.totalBytes,
-      free_bytes: details.freeBytes,
-      last_seen_at: new Date().toISOString(),
-      retired_at: null,
-    }, { onConflict: 'user_id,device_key' })
+    .upsert({ user_id: userId, device_key: deviceKey, ...DEVICE_FIELDS(details) }, { onConflict: 'user_id,device_key' })
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return toDeviceRecord(data as DeviceRow);
+}
+
+/**
+ * For a drive whose hardware identity cannot be read (the browser build): the user's drive with this name. If there is
+ * exactly one it is used; if there are several, the one seen most recently; if there is none, a new one is saved.
+ */
+export async function rememberUsbDeviceByName(userId: string, name: string): Promise<UsbDeviceRecord> {
+  const wanted = name.trim().toLowerCase();
+  const matches = (await fetchUsbDevices()).filter((device) => !device.retiredAt && device.label.trim().toLowerCase() === wanted);
+  const existing = matches[0];
+  if (existing) {
+    const { error } = await supabase.from('user_usb_devices').update({ last_seen_at: new Date().toISOString() }).eq('id', existing.id);
+    if (error) throw new Error(error.message);
+    return existing;
+  }
+  const { data, error } = await supabase
+    .from('user_usb_devices')
+    .upsert({ user_id: userId, device_key: nameOnlyDeviceKey(name), label: name.trim(), last_seen_at: new Date().toISOString(), retired_at: null }, { onConflict: 'user_id,device_key' })
     .select('*')
     .single();
   if (error) throw new Error(error.message);

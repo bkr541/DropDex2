@@ -82,7 +82,7 @@ type LogComponent = 'All' | 'Rekordbox' | 'Library' | 'Audition' | 'Drop Lab' | 
 const COMPONENTS: LogComponent[] = ['All', 'Rekordbox', 'Library', 'Audition', 'Drop Lab', 'Flip Lab', 'Supabase', 'Discovery', 'USB', 'Preview', 'Auth', 'React', 'Browser', 'App'];
 
 function classifyComponent(message: string): Exclude<LogComponent, 'All'> {
-  if (message.startsWith('api.')) return 'Rekordbox';
+  if (message.startsWith('api.') || message.startsWith('rekordbox.')) return 'Rekordbox';
   if (message.startsWith('library.')) return 'Library';
   if (message.startsWith('audition.')) return 'Audition';
   if (message.startsWith('droplab.')) return 'Drop Lab';

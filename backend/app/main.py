@@ -292,6 +292,7 @@ def create_rekordbox_import_job(
         source_filename=body.source_filename,
         source_bundle_type=body.source_bundle_type,
         device_name=body.device_name,
+        usb_device_id=body.usb_device_id,
     )
     return _to_import_job_response(row)
 

@@ -25,7 +25,12 @@ export function percentUsed(details: Pick<DesktopUsbDetails, 'totalBytes' | 'use
 /** A stable identity for a drive, so the same USB is recognised each time it is plugged in. */
 export function deviceKeyFor(details: Pick<DesktopUsbDetails, 'volumeUuid' | 'volumeName' | 'totalBytes'>): string {
   if (details.volumeUuid) return `uuid:${details.volumeUuid.toLowerCase()}`;
-  return `name:${details.volumeName.trim().toLowerCase()}|${details.totalBytes ?? 'unknown'}`;
+  return details.totalBytes == null ? nameOnlyDeviceKey(details.volumeName) : `name:${details.volumeName.trim().toLowerCase()}|${details.totalBytes}`;
+}
+
+/** The key for a drive that is only known by its name, which is how libraries imported before drives had ids are recorded. */
+export function nameOnlyDeviceKey(volumeName: string): string {
+  return `name:${volumeName.trim().toLowerCase()}|unknown`;
 }
 
 /** "SanDisk Cruzer Blade", or whichever parts are known. */

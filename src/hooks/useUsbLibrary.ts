@@ -5,6 +5,8 @@ import {
   fetchUsbDevices, fetchUsbTransfers, recordUsbTransfer, rememberUsbDevice, renameUsbDevice, setUsbDeviceRetired,
   type UsbDeviceRecord, type UsbTransferRecord,
 } from '../lib/queries/usbDevices';
+import { fetchUsbSnapshots, summarizeUsbLibraries, type UsbLibrarySummary } from '../lib/queries/usbLibraries';
+import { setActiveImport } from '../lib/queries/rekordbox';
 import type { DesktopTransferResult, DesktopUsbDetails } from '../types/dropdex-desktop';
 
 /** The signed-in user's USBs and their transfer history. */
@@ -13,6 +15,7 @@ export function useUsbLibrary() {
   const userId = session?.user.id ?? null;
   const [devices, setDevices] = useState<UsbDeviceRecord[]>([]);
   const [transfers, setTransfers] = useState<UsbTransferRecord[]>([]);
+  const [libraries, setLibraries] = useState<ReadonlyMap<string, UsbLibrarySummary>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -25,11 +28,12 @@ export function useUsbLibrary() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([fetchUsbDevices(), fetchUsbTransfers()])
-      .then(([deviceRows, transferRows]) => {
+    Promise.all([fetchUsbDevices(), fetchUsbTransfers(), fetchUsbSnapshots(userId)])
+      .then(([deviceRows, transferRows, snapshots]) => {
         if (cancelled) return;
         setDevices(deviceRows);
         setTransfers(transferRows);
+        setLibraries(summarizeUsbLibraries(snapshots));
       })
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
@@ -41,6 +45,18 @@ export function useUsbLibrary() {
   }, [userId, attempt]);
 
   const refresh = useCallback(() => setAttempt((n) => n + 1), []);
+
+  /** Makes this USB's library the one the rest of the app shows. */
+  const makeLibraryActive = useCallback(async (importId: string): Promise<boolean> => {
+    try {
+      await setActiveImport(importId);
+      setAttempt((n) => n + 1);
+      return true;
+    } catch (err: unknown) {
+      logger.error('usb.library.make_active_failed', { importId, message: err instanceof Error ? err.message : String(err) });
+      return false;
+    }
+  }, []);
 
   /** Saves a drive to the user's list (or refreshes it), and returns its record. */
   const remember = useCallback(async (details: DesktopUsbDetails): Promise<UsbDeviceRecord | null> => {
@@ -91,5 +107,5 @@ export function useUsbLibrary() {
     }
   }, []);
 
-  return { devices, transfers, loading, error, refresh, remember, saveTransfer, rename, setRetired };
+  return { devices, transfers, libraries, loading, error, refresh, remember, saveTransfer, rename, setRetired, makeLibraryActive };
 }

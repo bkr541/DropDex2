@@ -6,6 +6,7 @@ declare module 'react' {
   }
 }
 
+import { resolveImportUsbDeviceId } from '../lib/usb/importUsbDevice';
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useUsbConnection, type UsbConnectionContextValue } from '../contexts/UsbConnectionContext';
@@ -1491,12 +1492,15 @@ export function ImportLibraryModal({
     try {
       setLocalUsbStage(mode === 'zip_bundle' ? 'uploading_bundle' : 'uploading_database');
       setPhase('uploading_usb_data');
+      // Each USB has its own id, so libraries from two USBs with the same name stay apart.
+      const usbDeviceId = await resolveImportUsbDeviceId(session.user.id, folderScanRef.current?.folderName);
       const job = await runTrackedLocalRequest(() => createRekordboxImportJob(
         sourceFilename,
         mode,
         token,
         {
           deviceName: folderScanRef.current?.folderName,
+          usbDeviceId,
           signal: controller.signal,
         },
       ));

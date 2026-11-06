@@ -3,12 +3,15 @@ import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import type { RekordboxImport, UserProfile } from '../../types';
 import { CheckmarkFilled, ChevronRight, Music, Renew, Upload, User, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from '../ui/controls';
+import type { LibraryOverviewWidgetId } from '../../lib/dashboard/libraryOverviewWidgets';
 
 interface LibraryHeroProps {
   latestImport: RekordboxImport;
   profile: UserProfile | null;
   onImport: () => void;
   onResumeAnalysis?: (importId: string) => void;
+  /** Groups the user has turned off in Personalization. */
+  hiddenWidgets?: ReadonlySet<LibraryOverviewWidgetId>;
 }
 
 const ANALYSIS_TITLES: Record<string, string> = {
@@ -19,7 +22,9 @@ const ANALYSIS_TITLES: Record<string, string> = {
   parsing: 'Analysis Processing…',
 };
 
-export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis }: LibraryHeroProps) {
+export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis, hiddenWidgets }: LibraryHeroProps) {
+  const showUsbImport = !hiddenWidgets?.has('usbImport');
+  const showTrackAnalysis = !hiddenWidgets?.has('trackAnalysis');
   const [imgError, setImgError] = useState(false);
   const { volumeName } = useUsbConnection();
 
@@ -80,6 +85,8 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
         <div className="shrink-0 border-t lg:border-t-0 lg:border-l border-[var(--color-border-subtle)] bg-[var(--color-surface)]/40 px-6 py-5 flex items-start gap-6">
 
           {/* Status column — rows mirror the stats column rows */}
+          {showUsbImport && (
+          <>
           <div className="flex flex-col rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 px-4 py-3">
             {/* Row 1: aligns with stat icons */}
             <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold leading-none h-3 flex items-center">
@@ -99,9 +106,11 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis 
           </div>
 
           <div className="w-px self-stretch bg-[var(--color-border-subtle)]" />
+          </>
+          )}
 
           {/* Analysis Status column — only rendered when non-complete */}
-          {showAnalysis && (
+          {showAnalysis && showTrackAnalysis && (
             <>
               <div className="flex flex-col rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 px-4 py-3">
                 {/* Row 1: aligns with stat icons */}

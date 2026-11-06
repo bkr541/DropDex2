@@ -29,6 +29,8 @@ export interface RekordboxImport {
   source_type: string;
   database_version: string | null;
   device_name: string | null;
+  /** The USB this snapshot came from (user_usb_devices.id). The drive name is only a label; this is its identity. */
+  usb_device_id?: string | null;
   rekordbox_created_date: string | null;
   track_count: number;
   playlist_count: number;

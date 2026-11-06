@@ -54,6 +54,8 @@ export function UsbManagementView() {
           onRetry={library.refresh}
           onRename={library.rename}
           onSetRetired={library.setRetired}
+          libraries={library.libraries}
+          onMakeLibraryActive={library.makeLibraryActive}
         />
       )}
     </div>

@@ -234,9 +234,30 @@ def create_import_job(
     source_filename: str,
     source_bundle_type: str,
     device_name: str | None = None,
+    usb_device_id: str | None = None,
 ) -> dict[str, Any]:
+    client = _create_supabase()
+    if usb_device_id is not None:
+        # The id comes from the client, so it must be one of this user's own USBs.
+        owned = (
+            client.table("user_usb_devices")
+            .select("id")
+            .eq("id", usb_device_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if not owned.data:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_code": "UNKNOWN_USB_DEVICE",
+                    "detail": "That USB is not in your list.",
+                    "retryable": False,
+                },
+            )
     response = (
-        _create_supabase()
+        client
         .table("rekordbox_imports")
         .insert(
             {
@@ -245,6 +266,7 @@ def create_import_job(
                 "source_type": "onelibrary",
                 "source_bundle_type": source_bundle_type,
                 "device_name": device_name,
+                "usb_device_id": usb_device_id,
                 "status": "created",
                 "error_message": None,
                 "error_code": None,

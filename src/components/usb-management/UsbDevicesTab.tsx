@@ -5,6 +5,8 @@ import type { UsbDeviceRecord } from '../../lib/queries/usbDevices';
 import { StatusBadge } from '../ui/feedback';
 import { ControlButton } from '../ui/controls';
 import { UsbStickArt } from './UsbDriveCard';
+import { UsbDeviceLibrary } from './UsbDeviceLibrary';
+import type { UsbLibrarySummary } from '../../lib/queries/usbLibraries';
 
 function formatSeen(iso: string): string {
   const date = new Date(iso);
@@ -20,9 +22,12 @@ interface DevicesTabProps {
   onRetry: () => void;
   onRename: (deviceId: string, nickname: string | null) => Promise<boolean>;
   onSetRetired: (deviceId: string, retired: boolean) => Promise<boolean>;
+  /** What each USB holds, by USB id. */
+  libraries: ReadonlyMap<string, UsbLibrarySummary>;
+  onMakeLibraryActive: (importId: string) => Promise<boolean>;
 }
 
-function DeviceCard({ device, connected, onRename, onSetRetired }: { device: UsbDeviceRecord; connected: boolean; onRename: DevicesTabProps['onRename']; onSetRetired: DevicesTabProps['onSetRetired'] }) {
+function DeviceCard({ device, connected, onRename, onSetRetired, library, onMakeLibraryActive }: { device: UsbDeviceRecord; connected: boolean; onRename: DevicesTabProps['onRename']; onSetRetired: DevicesTabProps['onSetRetired']; library: UsbLibrarySummary | undefined; onMakeLibraryActive: DevicesTabProps['onMakeLibraryActive'] }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(device.nickname ?? '');
   const [saving, setSaving] = useState(false);
@@ -58,6 +63,7 @@ function DeviceCard({ device, connected, onRename, onSetRetired }: { device: Usb
           {[model || null, formatBytes(device.totalBytes) !== '—' ? formatBytes(device.totalBytes) : null, device.filesystem].filter(Boolean).join(' · ') || 'No details recorded'}
         </p>
         <p className="mt-0.5 text-[11px] text-muted-foreground">Last used {formatSeen(device.lastSeenAt)} · first seen {formatSeen(device.firstSeenAt)}</p>
+        {!editing && <UsbDeviceLibrary summary={library} onMakeActive={onMakeLibraryActive} />}
         {!editing && (
           <div className="mt-3 flex flex-wrap gap-2">
             <ControlButton variant="neutral" onClick={() => setEditing(true)}><Edit size={14} /> Rename</ControlButton>
@@ -72,7 +78,7 @@ function DeviceCard({ device, connected, onRename, onSetRetired }: { device: Usb
 }
 
 /** Every USB the user plays from. A drive is added here automatically the first time it is connected or transferred to. */
-export function UsbDevicesTab({ devices, loading, error, connectedLabels, onRetry, onRename, onSetRetired }: DevicesTabProps) {
+export function UsbDevicesTab({ devices, loading, error, connectedLabels, onRetry, onRename, onSetRetired, libraries, onMakeLibraryActive }: DevicesTabProps) {
   if (loading) return <div className="flex items-center justify-center py-24"><CircleDash className="animate-spin text-primary" size={28} /></div>;
   if (error) {
     return (
@@ -98,12 +104,12 @@ export function UsbDevicesTab({ devices, loading, error, connectedLabels, onRetr
     <div className="space-y-6">
       <section>
         <h2 className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Your USBs · {current.length}</h2>
-        <ul className="grid gap-3 xl:grid-cols-2">{current.map((device) => <DeviceCard key={device.id} device={device} connected={isConnected(device)} onRename={onRename} onSetRetired={onSetRetired} />)}</ul>
+        <ul className="grid gap-3 xl:grid-cols-2">{current.map((device) => <DeviceCard key={device.id} device={device} connected={isConnected(device)} onRename={onRename} onSetRetired={onSetRetired} library={libraries.get(device.id)} onMakeLibraryActive={onMakeLibraryActive} />)}</ul>
       </section>
       {retired.length > 0 && (
         <section>
           <h2 className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">No longer used · {retired.length}</h2>
-          <ul className="grid gap-3 xl:grid-cols-2">{retired.map((device) => <DeviceCard key={device.id} device={device} connected={false} onRename={onRename} onSetRetired={onSetRetired} />)}</ul>
+          <ul className="grid gap-3 xl:grid-cols-2">{retired.map((device) => <DeviceCard key={device.id} device={device} connected={false} onRename={onRename} onSetRetired={onSetRetired} library={libraries.get(device.id)} onMakeLibraryActive={onMakeLibraryActive} />)}</ul>
         </section>
       )}
     </div>

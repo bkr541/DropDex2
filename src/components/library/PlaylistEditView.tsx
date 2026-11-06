@@ -1,7 +1,7 @@
 import { useState, useRef, type ChangeEvent } from 'react';
 import { cn, formatPlaylistDuration, getDeterministicBars } from '../../lib/utils';
 import { uploadPlaylistArtwork } from '../../lib/queries/storage';
-import { upsertPlaylistProfile, buildPlaylistIdentityKey } from '../../lib/queries/userPlaylists';
+import { upsertPlaylistProfile, buildPlaylistIdentityKey, playlistKeyOwner } from '../../lib/queries/userPlaylists';
 import type { RekordboxImport, UserPlaylistProfile } from '../../types';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import { Checkmark, CircleDash, FolderOpen, Music, Renew, TextAlignLeft, Upload } from '@carbon/icons-react';
@@ -68,7 +68,7 @@ export function PlaylistEditView({
   onSaved,
 }: PlaylistEditViewProps) {
   const identityKey = buildPlaylistIdentityKey(
-    latestImport.device_name ?? '',
+    playlistKeyOwner(latestImport),
     playlist.rekordbox_playlist_id,
   );
 

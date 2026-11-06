@@ -31,17 +31,17 @@ describe('Review tabs', () => {
     expect(reviewSource).toContain("activeTab === 'tracks' ? undefined : 'hidden'");
   });
 
-  it('shows each tab with the same panel the Library page uses', () => {
+  it('shows each tab with its own panel; the Library page no longer has these tabs', () => {
     expect(reviewSource).toContain('<PlaylistsPanel');
     expect(reviewSource).toContain('<GenresPanel');
     expect(reviewSource).toContain('<ArtistsPanel');
     expect(reviewSource).toContain('<RecentlyAddedPanel');
     expect(reviewSource).toContain('<SpotifyLibraryTab');
-    expect(libraryViewSource).toContain('<PlaylistsPanel');
-    expect(libraryViewSource).toContain('<GenresPanel');
-    expect(libraryViewSource).toContain('<ArtistsPanel');
-    expect(libraryViewSource).toContain('<RecentlyAddedPanel');
-    expect(libraryViewSource).toContain('<LibraryTabBar');
+    expect(libraryViewSource).not.toContain('<PlaylistsPanel');
+    expect(libraryViewSource).not.toContain('<GenresPanel');
+    expect(libraryViewSource).not.toContain('<ArtistsPanel');
+    expect(libraryViewSource).not.toContain('<RecentlyAddedPanel');
+    expect(libraryViewSource).not.toContain('<LibraryTabBar');
     expect(reviewSource).toContain('<LibraryTabBar');
   });
 

@@ -1,7 +1,15 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('dropdexDesktop', Object.freeze({
   isElectron: true,
+  // The full location on this computer of a file the user picked in a file chooser. Browsers do not share this; the desktop app can.
+  getPathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file) || '';
+    } catch {
+      return '';
+    }
+  },
   getRuntimeInfo: () => ipcRenderer.invoke('dropdex:runtime-info'),
   getInstallationId: () => ipcRenderer.invoke('dropdex:installation-id'),
   getRouletteRuntimeHealth: () => ipcRenderer.invoke('dropdex:roulette-runtime-health'),

@@ -60,11 +60,15 @@ import { SpotifyExternalAccount } from './components/profile/SpotifyExternalAcco
 import { UsbConnectionProvider, useUsbConnection } from './contexts/UsbConnectionContext';
 import { FloatingSidebar } from './components/navigation/FloatingSidebar';
 import { StreamingSyncGroup } from './components/profile/StreamingSyncGroup';
+import { RekordboxXmlGroup } from './components/profile/RekordboxXmlGroup';
 import { FloatingLayoutLabButton } from './components/navigation/FloatingLayoutLabButton';
 import { PageNameTab, type PageHeading } from './components/navigation/PageNameTab';
 import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerContext';
 import { NowPlayingBar } from './components/player/NowPlayingBar';
-import { buildPlaylistIdentityKey } from './lib/queries/userPlaylists';
+import { buildPlaylistIdentityKey, playlistKeyOwner } from './lib/queries/userPlaylists';
+import { useUsbDeviceNames } from './hooks/useUsbDeviceNames';
+import { useLibraryOverviewWidgets } from './hooks/useLibraryOverviewWidgets';
+import { DashboardWidgetsGroup } from './components/profile/DashboardWidgetsGroup';
 import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
@@ -488,6 +492,7 @@ export default function App() {
 
   const { session } = useAuthSession();
   const userId = session?.user?.id ?? null;
+  const libraryOverviewWidgets = useLibraryOverviewWidgets(userId);
 
   // ── Supabase data ──────────────────────────────────────────────────────────
   const { data: latestImport, loading: importLoading, error: importError, refetch: refetchImport } =
@@ -501,6 +506,7 @@ export default function App() {
     imports: allImports, loading: importsListLoading, error: importsListError,
     refetch: refetchImportList,
   } = useImportList(userId);
+  const usbDeviceNames = useUsbDeviceNames(userId, allImports.length);
   const inFlightImport = useMemo(() => getInFlightImport(allImports), [allImports]);
 
   const routeTrackId = route.name === 'track' ? route.trackId : null;
@@ -701,17 +707,17 @@ export default function App() {
   const totalDuration = selectedPlaylistStats?.totalDurationSeconds || null;
   const topKey = selectedPlaylistStats?.mostCommonKey ?? null;
 
-  // Map rekordbox_playlist_id → profile for the current device
+  // Map rekordbox_playlist_id → profile for the current USB
+  const usbKeyOwner = latestImport ? playlistKeyOwner(latestImport) : '';
   const playlistProfilesByRbId = useMemo(() => {
-    // Treat null device_name as '' — consistent with how PlaylistEditView builds the key
-    const deviceName = latestImport?.device_name ?? '';
-    const prefix = `${deviceName}::`;
+    // The USB's id, or '' when unknown — consistent with how PlaylistEditView builds the key
+    const prefix = `${usbKeyOwner}::`;
     const map = new Map<string, UserPlaylistProfile>();
     for (const [key, profile] of playlistProfiles) {
       if (key.startsWith(prefix)) map.set(key.slice(prefix.length), profile);
     }
     return map;
-  }, [playlistProfiles, latestImport?.device_name]);
+  }, [playlistProfiles, usbKeyOwner]);
 
   // Profile for the currently selected playlist (used in detail header + edit)
   const currentPlaylistProfile = useMemo(() => {
@@ -722,12 +728,9 @@ export default function App() {
   // Profile for the playlist being edited
   const existingProfileForEditing = useMemo(() => {
     if (!editingPlaylist) return null;
-    const key = buildPlaylistIdentityKey(
-      latestImport?.device_name ?? '',
-      editingPlaylist.rekordbox_playlist_id,
-    );
+    const key = buildPlaylistIdentityKey(usbKeyOwner, editingPlaylist.rekordbox_playlist_id);
     return playlistProfiles.get(key) ?? null;
-  }, [editingPlaylist, latestImport?.device_name, playlistProfiles]);
+  }, [editingPlaylist, usbKeyOwner, playlistProfiles]);
 
   const needsPlaylistResolution = route.name === 'playlist' || route.name === 'playlist-edit';
   const needsTrackResolution = route.name === 'track' || route.name === 'drop-lab';
@@ -1235,17 +1238,11 @@ export default function App() {
                   latestImport={latestImport}
                   importLoading={importLoading}
                   importError={importError}
-                  playlists={playlists}
-                  playlistsLoading={playlistsLoading}
-                  playlistProfilesByRbId={playlistProfilesByRbId}
-                  recentTracks={recentTracks}
-                  recentTracksLoading={recentTracksLoading}
+                  hiddenWidgets={libraryOverviewWidgets.hidden}
                   importId={importId}
                   profile={userProfile}
                   genres={userGenres}
                   spotifyAccessToken={session?.access_token ?? null}
-                  onPlaylistClick={handlePlaylistClick}
-                  onEditPlaylist={handleEditPlaylist}
                   onTrackClick={handleTrackClick}
                   onImport={() => setIsImportModalOpen(true)}
                   onEditProfile={handleEditProfile}
@@ -1609,6 +1606,7 @@ export default function App() {
                         })}
                       </div>
                     </div>
+                    <DashboardWidgetsGroup widgets={libraryOverviewWidgets} />
                     <div className="space-y-3">
                       <h2 className="px-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">
                         External Accounts
@@ -1675,6 +1673,8 @@ export default function App() {
 
                     <StreamingSyncGroup importId={latestImport?.id ?? null} trackCount={latestImport?.track_count ?? null} sourceName={latestImport?.device_name ?? latestImport?.source_filename ?? null} deviceName={latestImport?.device_name ?? null} />
 
+                    <RekordboxXmlGroup userId={userId} />
+
                     {/* Snapshots */}
                     <section className="space-y-3">
                       <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><Layers size={11} />USB Library Snapshots</h2>
@@ -1735,9 +1735,11 @@ export default function App() {
                                   <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
                                     {new Date(imp.imported_at).toLocaleDateString()} · {imp.track_count.toLocaleString()} tracks · {imp.playlist_count} playlists
                                   </p>
-                                  {imp.device_name && (
-                                    <p className="text-[10px] text-muted-foreground font-mono">{imp.device_name}</p>
-                                  )}
+                                  {(imp.usb_device_id ? usbDeviceNames.get(imp.usb_device_id) : null) ?? imp.device_name ? (
+                                    <p className="text-[10px] text-muted-foreground font-mono" data-testid="import-usb-name">
+                                      USB: {(imp.usb_device_id ? usbDeviceNames.get(imp.usb_device_id) : null) ?? imp.device_name}
+                                    </p>
+                                  ) : null}
                                   {importInFlight && (
                                     <div className="mt-2 max-w-md">
                                       <div className="flex items-center justify-between gap-3 text-[10px] text-muted-foreground">

@@ -126,13 +126,31 @@ describe('USB history and My USBs', () => {
     const markup = renderToStaticMarkup(createElement(UsbDevicesTab, {
       devices: [device({}), device({ id: 'd2', label: 'OLD ONE', nickname: 'Club stick', retiredAt: '2026-10-20T00:00:00Z' })],
       loading: false, error: null, connectedLabels: ['DJ STICK'], onRetry: () => undefined, onRename: async () => true, onSetRetired: async () => true,
+      libraries: new Map(), onMakeLibraryActive: async () => true,
     }));
     for (const text of ['Your USBs · 1', 'DJ STICK', 'Connected now', 'SanDisk Ultra Fit · 64 GB · exFAT', 'No longer used · 1', 'Club stick', 'Retired', 'Rename', 'Use again']) expect(markup).toContain(text);
   });
 
+  it('shows what each USB holds: its track and playlist counts, which is active, and a way to switch to it', async () => {
+    const { UsbDevicesTab } = await import('./UsbDevicesTab');
+    const snapshot = (importId: string, isActive: boolean) => ({ importId, usbDeviceId: 'd1', sourceFilename: 'export.db', trackCount: 2283, playlistCount: 14, importedAt: '2026-11-06T00:00:00Z', isActive });
+    const props = { devices: [device({}), device({ id: 'd2', label: 'SECOND' })], loading: false, error: null, connectedLabels: [], onRetry: () => undefined, onRename: async () => true, onSetRetired: async () => true, onMakeLibraryActive: async () => true };
+    const active = renderToStaticMarkup(createElement(UsbDevicesTab, { ...props, libraries: new Map([['d1', { usbDeviceId: 'd1', library: snapshot('i1', true), snapshotCount: 2, isActive: true }]]) }));
+    expect(active).toContain('2,283 tracks · 14 playlists');
+    expect(active).toContain('Active library');
+    expect(active).toContain('2 imports of this USB');
+    expect(active).toContain('Playlists');
+    expect(active).not.toContain('Use this library');
+    // The USB with no import says so.
+    expect(active).toContain('No library imported from this USB yet.');
+    const inactive = renderToStaticMarkup(createElement(UsbDevicesTab, { ...props, libraries: new Map([['d1', { usbDeviceId: 'd1', library: snapshot('i1', false), snapshotCount: 1, isActive: false }]]) }));
+    expect(inactive).toContain('Use this library');
+    expect(inactive).not.toContain('Active library');
+  });
+
   it('explains how a USB gets added when there are none', async () => {
     const { UsbDevicesTab } = await import('./UsbDevicesTab');
-    const markup = renderToStaticMarkup(createElement(UsbDevicesTab, { devices: [], loading: false, error: null, connectedLabels: [], onRetry: () => undefined, onRename: async () => true, onSetRetired: async () => true }));
+    const markup = renderToStaticMarkup(createElement(UsbDevicesTab, { devices: [], loading: false, error: null, connectedLabels: [], onRetry: () => undefined, onRename: async () => true, onSetRetired: async () => true, libraries: new Map(), onMakeLibraryActive: async () => true }));
     expect(markup).toContain('No USBs yet');
   });
 });

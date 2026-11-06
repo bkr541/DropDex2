@@ -4,20 +4,25 @@ import type { UserPlaylistProfile } from '../../types';
 /**
  * Build the stable playlist identity key used in user_playlist_profiles.
  *
- * Format: "<device_name>::<rekordbox_playlist_id>"
+ * Format: "<usb id>::<rekordbox_playlist_id>"
  *
- * rekordbox_playlist_id is Rekordbox's own internal numeric ID — stable for a
- * given playlist across rescans within the same library, but sequential-from-1
- * so it collides across different Rekordbox installations.  Prefixing with
- * device_name (from rekordbox_imports) makes the key unique per device.
- *
- * Source columns: rekordbox_imports.device_name + rekordbox_playlists.rekordbox_playlist_id
+ * rekordbox_playlist_id is Rekordbox's own internal numeric ID: stable for a given playlist across rescans of the same
+ * library, but numbered from 1 on every installation, so it collides across USBs. Each USB has its own id
+ * (user_usb_devices.id), so the key stays unique even when two USBs share a name.
  */
 export function buildPlaylistIdentityKey(
-  deviceName: string,
+  usbOwner: string,
   rekordboxPlaylistId: string,
 ): string {
-  return `${deviceName}::${rekordboxPlaylistId}`;
+  return `${usbOwner}::${rekordboxPlaylistId}`;
+}
+
+/**
+ * Who a snapshot's playlist customisations belong to: its USB's id. Snapshots without one (imported before USBs had ids,
+ * or when the drive could not be identified) fall back to the drive name, which is what their keys used before.
+ */
+export function playlistKeyOwner(snapshot: { usb_device_id?: string | null; device_name: string | null }): string {
+  return snapshot.usb_device_id ?? snapshot.device_name ?? '';
 }
 
 export async function fetchPlaylistProfile(

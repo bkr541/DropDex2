@@ -9,6 +9,8 @@ class ImportJobCreateRequest(BaseModel):
     source_filename: str
     source_bundle_type: str
     device_name: str | None = None
+    # The USB this library came from (user_usb_devices.id). The drive name is only a label; this is its identity.
+    usb_device_id: str | None = None
 
 
 class ImportJobResponse(BaseModel):

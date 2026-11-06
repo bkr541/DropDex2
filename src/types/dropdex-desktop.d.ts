@@ -565,6 +565,8 @@ export interface DesktopMetadataRecoveryVerificationResult {
 
 export interface DropDexDesktopBridge {
   readonly isElectron: true;
+  /** Where a file the user chose lives on this computer, or '' if that cannot be read. */
+  getPathForFile(file: File): string;
   getRuntimeInfo(): Promise<{ platform: string; version: string }>;
   getInstallationId(): Promise<string>;
   getRouletteRuntimeHealth(): Promise<DesktopRouletteRuntimeHealth>;

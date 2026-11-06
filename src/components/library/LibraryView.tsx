@@ -18,12 +18,12 @@ import { bpmRangeStatsFrom, camelotColor, keyStatsFrom } from './libraryInsights
 import { InsightBpmDistribution, InsightKeyProfile, InsightTopGenres } from './InsightCharts';
 import {
   useLibraryStats,
-  useLibraryTracks,
   useRekordboxSearch,
 } from '../../hooks/useRekordboxTracks';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import { LibraryHero } from './LibraryHero';
+import type { LibraryOverviewWidgetId } from '../../lib/dashboard/libraryOverviewWidgets';
 import { RecentlyAddedTracksTable } from './RecentlyAddedTracksTable';
 import { LibrarySearchResults } from './LibrarySearchResults';
 import type {
@@ -37,15 +37,13 @@ import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { supabase } from '../../lib/supabase';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
-import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Tag, Undo, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
+import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronLeft, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Tag, Undo, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
 import { Dashboard, Playlist, Time, UserMultiple } from '@carbon/icons-react';
 import { Artwork } from '../ui/display/Artwork';
 import { ControlButton, SearchControl } from '../ui/controls';
 import { HeroActionButton } from './HeroActionButton';
 import { SpotifyLibraryTab } from './SpotifyLibraryTab';
 import { useSpotifyAvailability } from '../../hooks/useSpotifyAvailability';
-import { LibraryTabBar } from './LibraryTabBar';
-import { ArtistsPanel, GenresPanel, PlaylistsPanel } from './LibraryTabPanels';
 
 
 const TABS: { id: LibraryTab; label: string; icon: ElementType }[] = [
@@ -62,21 +60,19 @@ const SPOTIFY_TAB: { id: LibraryTab; label: string; icon: ElementType } = { id: 
 
 export { TABS as LIBRARY_TABS, SPOTIFY_TAB };
 
+/** Columns for the insight cards, by how many are showing, so the cards share the row evenly. */
+const INSIGHT_COLUMNS: Record<number, string> = { 1: 'xl:grid-cols-1', 2: 'xl:grid-cols-2', 3: 'xl:grid-cols-3' };
+
 interface LibraryViewProps {
   latestImport: RekordboxImport | null;
   importLoading: boolean;
   importError: string | null;
-  playlists: PlaylistWithCount[];
-  playlistsLoading: boolean;
-  playlistProfilesByRbId: Map<string, UserPlaylistProfile>;
-  recentTracks: RekordboxTrack[];
-  recentTracksLoading: boolean;
+  /** Groups on the overview that the user has turned off in Personalization. */
+  hiddenWidgets: ReadonlySet<LibraryOverviewWidgetId>;
   importId: string | null;
   profile: UserProfile | null;
   genres: UserGenrePreference[];
   spotifyAccessToken: string | null;
-  onPlaylistClick: (p: PlaylistWithCount) => void;
-  onEditPlaylist: (p: PlaylistWithCount) => void;
   onTrackClick: (t: RekordboxTrack) => void;
   onImport: () => void;
   onEditProfile: () => void;
@@ -730,17 +726,18 @@ export function DesktopLibraryHero({
   topGenres,
   bpmRangeStats,
   keyStats,
-  largestPlaylistName,
   onImport,
   onResumeAnalysis,
   onShowIncompleteAnalysis,
+  hiddenWidgets,
 }: {
+  /** Groups the user has turned off in Personalization. */
+  hiddenWidgets: ReadonlySet<LibraryOverviewWidgetId>;
   latestImport: RekordboxImport;
   profile: UserProfile | null;
   topGenres: readonly (readonly [string, number])[];
   bpmRangeStats: readonly (readonly [string, number])[];
   keyStats: readonly (readonly [string, number])[];
-  largestPlaylistName: string | null;
   onImport: () => void;
   onResumeAnalysis?: (importId: string) => void;
   onShowIncompleteAnalysis?: () => void;
@@ -770,6 +767,10 @@ export function DesktopLibraryHero({
   const isAmber = analysisStatus === 'partial' || analysisStatus === 'awaiting_upload' || analysisStatus === 'uploading';
   const isActionable = analysisStatus === 'partial' || analysisStatus === 'failed' || analysisStatus === 'awaiting_upload' || analysisStatus === 'uploading';
   const analyzedCount = analysisStatus === 'completed' ? analysisTotal : analysisParsed;
+  const heroInsights: Array<{ id: string; title: string; content: ReactNode }> = [];
+  if (!hiddenWidgets.has('topGenres') && topGenres.length > 0) heroInsights.push({ id: 'topGenres', title: 'Top Genres', content: <InsightTopGenres genres={topGenres} compact /> });
+  if (!hiddenWidgets.has('bpmDistribution') && bpmRangeStats.length > 0) heroInsights.push({ id: 'bpmDistribution', title: 'BPM Distribution', content: <InsightBpmDistribution bpmRangeStats={bpmRangeStats} compact /> });
+  if (!hiddenWidgets.has('keyProfile') && keyStats.length > 0) heroInsights.push({ id: 'keyProfile', title: 'Camelot Wheel', content: <InsightKeyProfile keyStats={keyStats} compact /> });
 
   return (
     <section
@@ -817,6 +818,7 @@ export function DesktopLibraryHero({
       <div className="relative z-10 flex h-[218px] items-stretch px-5 py-4 gap-4">
 
         {/* USB Import */}
+        {!hiddenWidgets.has('usbImport') && (
         <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-3 py-3 w-[200px] shrink-0">
           <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1.5">USB Import</p>
           <div className="flex items-center gap-2">
@@ -841,8 +843,10 @@ export function DesktopLibraryHero({
             </div>
           </div>
         </div>
+        )}
 
         {/* Track Analysis */}
+        {!hiddenWidgets.has('trackAnalysis') && (
         <div
           className={cn(
             'rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-3 py-3 w-[200px] shrink-0',
@@ -890,25 +894,16 @@ export function DesktopLibraryHero({
             ))}
           </div>
         </div>
+        )}
 
-        {/* Insights: main genre, BPM distribution, Camelot wheel */}
-        <div className="grid min-w-0 flex-1 grid-cols-3 self-stretch" data-testid="hero-insights">
-          {topGenres.length > 0 && (
-            <HeroInsight title="Top Genres" first>
-              <InsightTopGenres genres={topGenres} compact />
-            </HeroInsight>
-          )}
-          {bpmRangeStats.length > 0 && (
-            <HeroInsight title="BPM Distribution">
-              <InsightBpmDistribution bpmRangeStats={bpmRangeStats} compact />
-            </HeroInsight>
-          )}
-          {keyStats.length > 0 && (
-            <HeroInsight title="Camelot Wheel">
-              <InsightKeyProfile keyStats={keyStats} compact />
-            </HeroInsight>
-          )}
-        </div>
+        {/* Insights: main genre, BPM distribution, Camelot wheel. Each follows its own switch in Personalization. */}
+        {heroInsights.length > 0 && (
+          <div className="grid min-w-0 flex-1 self-stretch" style={{ gridTemplateColumns: `repeat(${heroInsights.length}, minmax(0, 1fr))` }} data-testid="hero-insights">
+            {heroInsights.map(({ id, title, content }, index) => (
+              <HeroInsight key={id} title={title} first={index === 0}>{content}</HeroInsight>
+            ))}
+          </div>
+        )}
 
       </div>
     </section>
@@ -991,16 +986,10 @@ export function LibraryView({
   latestImport,
   importLoading,
   importError,
-  playlists,
-  playlistsLoading,
-  playlistProfilesByRbId,
-  recentTracks,
-  recentTracksLoading,
+  hiddenWidgets,
   importId,
   profile,
   spotifyAccessToken,
-  onPlaylistClick,
-  onEditPlaylist,
   onTrackClick,
   onImport,
   onResumeAnalysis,
@@ -1018,13 +1007,6 @@ export function LibraryView({
     }
   }, [activeTab, onActiveTabChange, spotifyAvailable]);
 
-  const visibleTabs = useMemo(
-    () => spotifyAvailable
-      ? [...TABS.slice(0, 6), SPOTIFY_TAB, ...TABS.slice(6)]
-      : TABS,
-    [spotifyAvailable],
-  );
-
   const {
     results: searchResults,
     total: searchTotal,
@@ -1033,15 +1015,7 @@ export function LibraryView({
     hasMore: searchHasMore,
     loadMore: loadMoreSearchResults,
   } = useRekordboxSearch(importId, searchQuery);
-  const {
-    tracks: libraryTracks,
-    total: libraryTrackTotal,
-    loading: tracksLoading,
-    loadingMore: tracksLoadingMore,
-    hasMore: tracksHaveMore,
-    loadMore: loadMoreLibraryTracks,
-  } = useLibraryTracks(importId);
-  const { stats: libraryStats, loading: statsLoading } = useLibraryStats(importId);
+  const { stats: libraryStats } = useLibraryStats(importId);
 
   // ── Audio player ───────────────────────────────────────────────────────────
   const { activeTrack, status: playerStatus, playIntent, toggleTrack } = useAudioPlayer();
@@ -1057,15 +1031,13 @@ export function LibraryView({
 
   const showSearch = searchQuery.trim().length >= 2;
 
-  // ── Incomplete analysis tab ────────────────────────────────────────────────
-  const hasIncompleteAnalysis = !!latestImport?.analysis_status &&
-    latestImport.analysis_status !== 'not_requested' &&
-    latestImport.analysis_status !== 'completed';
+  // ── Incomplete analysis list: opened from the Track Analysis card, with a way back to the overview ──
+  const isIncompleteView = activeTab === 'incomplete-analysis';
   const [incompleteTracks, setIncompleteTracks] = useState<RekordboxTrack[]>([]);
   const [incompleteFetching, setIncompleteFetching] = useState(false);
 
   useEffect(() => {
-    if (activeTab !== 'incomplete-analysis' || !importId) return;
+    if (!isIncompleteView || !importId) return;
     setIncompleteFetching(true);
     supabase
       .from('rekordbox_tracks')
@@ -1077,7 +1049,7 @@ export function LibraryView({
         setIncompleteTracks((data as RekordboxTrack[]) ?? []);
         setIncompleteFetching(false);
       });
-  }, [activeTab, importId]);
+  }, [isIncompleteView, importId]);
 
   // ── Derived stats ──────────────────────────────────────────────────────────
 
@@ -1086,33 +1058,16 @@ export function LibraryView({
     [libraryStats?.genreTotals],
   );
 
-  const artistStats = useMemo(
-    () => (libraryStats?.artistTotals ?? []).map(({ name, count }) => [name, count] as const),
-    [libraryStats?.artistTotals],
-  );
-
   const bpmRangeStats = useMemo(() => bpmRangeStatsFrom(libraryStats?.bpmTotals), [libraryStats?.bpmTotals]);
 
   const keyStats = useMemo(() => keyStatsFrom(libraryStats?.keyTotals), [libraryStats?.keyTotals]);
 
-  const largestPlaylist = useMemo(() => {
-    const real = playlists.filter((p) => !p.is_folder);
-    if (!real.length) return null;
-    return real.reduce((a, b) => (b.track_count > a.track_count ? b : a));
-  }, [playlists]);
-
   const topGenres = genreStats.slice(0, 8);
-  const visibleTracks = libraryTracks;
-
-  const visibleTrackIds = useMemo(
-    () => visibleTracks.map((t) => t.id),
-    [visibleTracks],
-  );
-
-  const recentTrackIds = useMemo(
-    () => recentTracks.map((t) => t.id),
-    [recentTracks],
-  );
+  // Each insight shows when the user has not hidden it and there is data for it.
+  const showTopGenres = !hiddenWidgets.has('topGenres') && topGenres.length > 0;
+  const showBpmDistribution = !hiddenWidgets.has('bpmDistribution') && bpmRangeStats.length > 0;
+  const showKeyProfile = !hiddenWidgets.has('keyProfile') && keyStats.length > 0;
+  const insightCount = [showTopGenres, showBpmDistribution, showKeyProfile].filter(Boolean).length;
 
   const searchResultIds = useMemo(
     () => (showSearch ? searchResults.map((t) => t.id) : []),
@@ -1126,10 +1081,9 @@ export function LibraryView({
 
   const waveformIds = useMemo(() => {
     if (showSearch) return searchResultIds;
-    if (activeTab === 'tracks') return visibleTrackIds;
-    if (activeTab === 'incomplete-analysis') return incompleteTrackIds;
-    return recentTrackIds;
-  }, [showSearch, searchResultIds, activeTab, visibleTrackIds, recentTrackIds, incompleteTrackIds]);
+    if (isIncompleteView) return incompleteTrackIds;
+    return [];
+  }, [showSearch, searchResultIds, isIncompleteView, incompleteTrackIds]);
 
   const {
     states: waveformStates,
@@ -1243,7 +1197,7 @@ export function LibraryView({
                               topGenres={topGenres}
                               bpmRangeStats={bpmRangeStats}
                               keyStats={keyStats}
-                              largestPlaylistName={largestPlaylist?.name ?? null}
+                              hiddenWidgets={hiddenWidgets}
                               onImport={onImport}
                               onResumeAnalysis={onResumeAnalysis}
                               onShowIncompleteAnalysis={() => onActiveTabChange('incomplete-analysis')}
@@ -1253,6 +1207,7 @@ export function LibraryView({
                             <LibraryHero
                               latestImport={latestImport}
                               profile={profile}
+                              hiddenWidgets={hiddenWidgets}
                               onImport={onImport}
                               onResumeAnalysis={onResumeAnalysis}
                             />
@@ -1260,19 +1215,13 @@ export function LibraryView({
                         </div>
                       </div>
 
-                      {/* Tab bar */}
-                      <LibraryTabBar
-                        tabs={visibleTabs.map((tab) => ({ ...tab, disabled: tab.id === 'incomplete-analysis' && !hasIncompleteAnalysis }))}
-                        activeTab={activeTab}
-                        onChange={onActiveTabChange}
-                      />
                     </div>
 
                     {/* ── Scrollable tab content ── */}
                     <div className="mt-4">
                     <AnimatePresence mode="wait">
                     <motion.div
-                      key={activeTab}
+                      key={isIncompleteView ? 'incomplete-analysis' : 'overview'}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
@@ -1280,17 +1229,17 @@ export function LibraryView({
                     >
 
                       {/* ── OVERVIEW ── */}
-                      {activeTab === 'overview' && (
+                      {!isIncompleteView && (
                         <div className="space-y-5">
 
                           {/* Insights */}
-                          {(topGenres.length > 0 || bpmRangeStats.length > 0 || keyStats.length > 0) && (
-                            <section className="space-y-3">
+                          {insightCount > 0 && (
+                            <section className="space-y-3" data-testid="library-insights">
                               <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                                 <ChartBar size={13} /> Insights
                               </h2>
-                              <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
-                                {topGenres.length > 0 && (
+                              <div className={cn('grid grid-cols-1 gap-3', INSIGHT_COLUMNS[insightCount])}>
+                                {showTopGenres && (
                                   <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-5 flex flex-col h-[280px] overflow-hidden">
                                     <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1.5 flex items-center gap-1.5 shrink-0">
                                       <svg viewBox="0 0 398.508 398.508" className="w-3 h-3 shrink-0" fill="currentColor" aria-hidden="true">
@@ -1301,7 +1250,7 @@ export function LibraryView({
                                     <InsightTopGenres genres={topGenres} />
                                   </div>
                                 )}
-                                {bpmRangeStats.length > 0 && (
+                                {showBpmDistribution && (
                                   <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-5 flex flex-col h-[280px] overflow-hidden">
                                     <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1.5 flex items-center gap-1.5 shrink-0">
                                       <svg viewBox="0 0 256 256" className="w-3 h-3 shrink-0" fill="currentColor" aria-hidden="true">
@@ -1312,7 +1261,7 @@ export function LibraryView({
                                     <InsightBpmDistribution bpmRangeStats={bpmRangeStats} />
                                   </div>
                                 )}
-                                {keyStats.length > 0 && (
+                                {showKeyProfile && (
                                   <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-5 flex flex-col h-[280px] overflow-hidden">
                                     <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1.5 flex items-center gap-1.5 shrink-0">
                                       <svg viewBox="0 0 47 47" className="w-3 h-3 shrink-0" fill="currentColor" aria-hidden="true">
@@ -1330,86 +1279,12 @@ export function LibraryView({
                         </div>
                       )}
 
-                      {/* ── PLAYLISTS ── */}
-                      {activeTab === 'playlists' && (
-                        <PlaylistsPanel
-                          playlists={playlists}
-                          loading={playlistsLoading}
-                          profilesByRbId={playlistProfilesByRbId}
-                          onPlaylistClick={onPlaylistClick}
-                          onEditPlaylist={onEditPlaylist}
-                        />
-                      )}
-
-                      {/* ── RECENTLY ADDED ── */}
-                      {activeTab === 'recently-added' && (
-                        <RecentlyAddedPanel
-                          tracks={recentTracks}
-                          loading={recentTracksLoading}
-                          getWaveformState={getWaveformState}
-                          retryWaveform={retryWaveform}
-                          activeTrack={activeTrack}
-                          playerStatus={playerStatus}
-                          playIntent={playIntent}
-                          usbConnected={usbConnected}
-                          onTrackClick={onTrackClick}
-                          onPlay={handlePlay}
-                        />
-                      )}
-
-                      {/* ── TRACKS ── */}
-                      {activeTab === 'tracks' && (
-                        <div className="space-y-3">
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {tracksLoading
-                              ? 'Loading…'
-                              : `${libraryTrackTotal.toLocaleString()} tracks · showing ${visibleTracks.length.toLocaleString()}`}
-                          </p>
-                          <LibraryTrackTable
-                            tracks={visibleTracks}
-                            loading={tracksLoading}
-                            emptyText="No tracks in this library."
-                            getWaveformState={getWaveformState}
-                            retryWaveform={retryWaveform}
-                            activeTrack={activeTrack}
-                            playerStatus={playerStatus}
-                            playIntent={playIntent}
-                            usbConnected={usbConnected}
-                            onTrackClick={onTrackClick}
-                            onPlay={handlePlay}
-                            footer={tracksHaveMore ? (
-                              <div className="border-t border-[var(--color-border-faint)] pt-2 pb-2 flex justify-center">
-                                <ControlButton
-                                  variant="neutral"
-                                  onClick={() => { void loadMoreLibraryTracks(); }}
-                                  disabled={tracksLoadingMore}
-                                >
-                                  {tracksLoadingMore ? (
-                                    <><CircleDash size={13} className="animate-spin" /> Loading more…</>
-                                  ) : (
-                                    `Load ${Math.min(200, libraryTrackTotal - visibleTracks.length).toLocaleString()} more…`
-                                  )}
-                                </ControlButton>
-                              </div>
-                            ) : undefined}
-                          />
-                        </div>
-                      )}
-
-                      {/* ── GENRES ── */}
-                      {activeTab === 'genres' && <GenresPanel genreStats={genreStats} loading={statsLoading} />}
-
-                      {/* ── ARTISTS ── */}
-                      {activeTab === 'artists' && <ArtistsPanel artistStats={artistStats} loading={statsLoading} />}
-
-                      {/* ── SPOTIFY ── */}
-                      {activeTab === 'spotify' && spotifyAvailable && spotifyAccessToken && (
-                        <SpotifyLibraryTab accessToken={spotifyAccessToken} />
-                      )}
-
                       {/* ── ANALYSIS INCOMPLETE ── */}
-                      {activeTab === 'incomplete-analysis' && (
+                      {isIncompleteView && (
                         <div className="space-y-3">
+                          <ControlButton variant="ghost" onClick={() => onActiveTabChange('overview')} data-testid="incomplete-back">
+                            <ChevronLeft size={14} /> Back to overview
+                          </ControlButton>
                           <p className="text-xs text-muted-foreground font-mono">
                             {incompleteFetching
                               ? 'Loading…'
