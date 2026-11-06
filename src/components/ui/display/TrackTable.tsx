@@ -105,7 +105,7 @@ export function TrackTableRow({
  * artist, then anything passed as children (usually the mini waveform).
  */
 export function TrackNameCell({
-  title, artist, artworkSrc, selected, status = 'none', nameClassName, dense = false, children,
+  title, artist, artworkSrc, selected, status = 'none', nameClassName, dense = false, hideArtwork = false, hideSelectionBar = false, leading, children,
 }: {
   title: string;
   artist: string | null | undefined;
@@ -116,14 +116,21 @@ export function TrackNameCell({
   nameClassName?: string;
   /** Closer together: less space between the status dot and the artwork, a 12px title, and artwork as tall as the title and artist lines together (30px). */
   dense?: boolean;
+  /** Leave out the artwork, e.g. where the page already shows it elsewhere. */
+  hideArtwork?: boolean;
+  /** Leave out the small bar before the artwork that marks the selected row. */
+  hideSelectionBar?: boolean;
+  /** Shown before the title and artist, e.g. a play button. */
+  leading?: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <td className="px-3 py-1.5">
       <div className={cn('group flex min-w-0 items-center', dense ? 'gap-1.5' : 'gap-2.5')}>
         <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT[status])} aria-hidden="true" />
-        <span className={cn('h-8 w-0.5 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
-        <Artwork src={artworkSrc} alt={`Artwork for ${title}`} fallbackTitle="No artwork" className={cn('shrink-0 rounded-[6px]', dense ? 'h-[30px] w-[30px]' : 'h-9 w-9')} />
+        {!hideSelectionBar && <span className={cn('h-8 w-0.5 shrink-0 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />}
+        {!hideArtwork && <Artwork src={artworkSrc} alt={`Artwork for ${title}`} fallbackTitle="No artwork" className={cn('shrink-0 rounded-[6px]', dense ? 'h-[30px] w-[30px]' : 'h-9 w-9')} />}
+        {leading}
         <div className={cn('min-w-0', nameClassName ?? 'w-[346px] shrink-0')}>
           <p className={cn('truncate font-bold', dense ? 'text-xs' : 'text-sm', 'leading-tight', selected && 'text-primary')}>{title}</p>
           <p className="truncate text-[10px] text-muted-foreground">{artist ?? 'Artist Not Available'}</p>

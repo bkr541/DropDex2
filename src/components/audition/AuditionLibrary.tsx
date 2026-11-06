@@ -5,10 +5,12 @@ import { durationMsForTrack, formatTime } from '../../lib/music/trackTiming';
 import { cn } from '../../lib/utils';
 import { ControlButton, DualRangeSlider, FilterDropdown, SearchControl } from '../ui/controls';
 import type { FilterDropdownOption } from '../ui/controls';
-import { TrackWaveformPreview, cueMarkersFromState } from '../ui/media';
+import { AuditionRowWaveform } from './AuditionRowWaveform';
+import { auditionCueMarkersFromState } from './auditionCueMarkers';
 import type { CueLoadState } from '../../lib/queries/analysisData';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { KeyBadge, TrackNameCell, TrackTable, TrackTableBody, TrackTableHead, TrackTableHeadCell, TrackTableRow } from '../ui/display';
+import { TrackNameCell, TrackTable, TrackTableBody, TrackTableHead, TrackTableHeadCell, TrackTableRow } from '../ui/display';
+import { formatCamelotCode } from '../ui/display/camelotKey';
 import { nextAuditionSort, type AuditionSort, type AuditionSortColumn } from './auditionTracks';
 import type { RekordboxTrack } from '../../types';
 
@@ -20,9 +22,9 @@ interface AuditionLibraryProps {
   getWaveformState?: (trackId: string) => WaveformLoadState;
   /** Each track's cue points, drawn as markers above its row waveform. */
   cueStates?: ReadonlyMap<string, CueLoadState>;
+  /** How many playlists each track is in, for the Playlists column. */
+  playlistCounts?: { counts: ReadonlyMap<string, number>; error: string | null; retry: () => void };
 
-  /** Shown beside the Library heading, e.g. "387 tracks". */
-  countLabel: string;
   loading: boolean;
   loadingMore: boolean;
   error: string | null;
@@ -52,8 +54,7 @@ const COLUMNS: Array<{ column: AuditionSortColumn; label: string; className?: st
   { column: 'key', label: 'Key' },
   { column: 'genre', label: 'Genre', className: 'w-[178px]' },
   { column: 'format', label: 'Format', className: 'whitespace-nowrap' },
-  { column: 'sampleRate', label: 'Sample Rate', className: 'whitespace-nowrap' },
-  { column: 'bitRate', label: 'Bit Rate', className: 'whitespace-nowrap' },
+  { column: 'playlists', label: 'Playlists', className: 'whitespace-nowrap' },
   { column: 'length', label: 'Duration', className: 'w-[80px] text-left' },
 ];
 
@@ -85,8 +86,8 @@ function RowPlayButton({ track }: { track: RekordboxTrack }) {
 }
 
 export function AuditionLibrary({
-  tracks, selectedTrackId, onSelectTrack, getWaveformState, cueStates,
-  countLabel, loading, loadingMore, error, hasMore, onLoadMore, onRetry,
+  tracks, selectedTrackId, onSelectTrack, getWaveformState, cueStates, playlistCounts,
+  loading, loadingMore, error, hasMore, onLoadMore, onRetry,
   search, onSearchChange, genre, onGenreChange, genreOptions, keyFilter, onKeyFilterChange, keyOptions,
   bpmBounds, bpmRange, onBpmRangeChange, sort, onSortChange,
 }: AuditionLibraryProps) {
@@ -129,7 +130,6 @@ export function AuditionLibrary({
             onChange={onBpmRangeChange}
             onReset={() => onBpmRangeChange(null)}
           />
-          <span className="audition-library-count" data-testid="audition-library-count">{countLabel}</span>
         </div>
       </div>
 
@@ -181,26 +181,39 @@ export function AuditionLibrary({
                         }
                       }}
                     >
-                      <TrackNameCell title={track.title} artist={track.artist} artworkSrc={track.artwork_path} selected={selected} dense nameClassName="w-[240px] shrink-0"
+                      <TrackNameCell title={track.title} artist={track.artist} artworkSrc={track.artwork_path} selected={selected} dense hideArtwork hideSelectionBar leading={<RowPlayButton track={track} />} nameClassName="w-[340px] shrink-0"
                         status={cueAnalysisReady(track) ? 'ready'
                           : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required' ? 'error'
                           : track.analysis_parse_status == null ? 'none' : 'warning'}>
-                        <TrackWaveformPreview
+                        <AuditionRowWaveform
                           className="min-w-[140px] grow"
                           waveformState={getWaveformState?.(track.id) ?? { status: 'idle', trackId: track.id }}
                           durationMs={durationMsForTrack(track, null)}
-                          cues={cueMarkersFromState(cueStates?.get(track.id))}
+                          cues={auditionCueMarkersFromState(cueStates?.get(track.id))}
                           height={18}
                           ariaLabel={`Waveform for ${track.title}`}
                         />
-                        <RowPlayButton track={track} />
                       </TrackNameCell>
                       <td className="px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
-                      <td className="px-3 py-1.5"><KeyBadge camelotKey={track.musical_key} /></td>
+                      <td className="px-3 py-1.5">{formatCamelotCode(track.musical_key) ?? '—'}</td>
                       <td className="w-[178px] px-3 py-1.5 text-xs text-muted-foreground"><span className="block truncate">{track.genre ?? '—'}</span></td>
                       <td className="whitespace-nowrap px-3 py-1.5 text-xs text-muted-foreground">{track.file_format ?? '—'}</td>
-                      <td className="whitespace-nowrap px-3 py-1.5 font-mono text-[13px] text-muted-foreground">{track.sample_rate_hz != null && track.sample_rate_hz > 0 ? `${track.sample_rate_hz / 1000} kHz` : '—'}</td>
-                      <td className="whitespace-nowrap px-3 py-1.5 font-mono text-[13px] text-muted-foreground">{track.bitrate_kbps != null && track.bitrate_kbps > 0 ? `${track.bitrate_kbps} kbps` : '—'}</td>
+                      <td className="whitespace-nowrap px-3 py-1.5 tabular-nums" data-testid="audition-playlist-count">
+                        {playlistCounts?.counts.has(track.id)
+                          ? <span title={`In ${playlistCounts.counts.get(track.id)} ${playlistCounts.counts.get(track.id) === 1 ? 'playlist' : 'playlists'}`}>{playlistCounts.counts.get(track.id)}</span>
+                          : playlistCounts?.error
+                            ? (
+                              <button
+                                type="button"
+                                className="text-red-300 hover:text-red-200"
+                                title="Playlist counts could not be loaded. Click to try again."
+                                aria-label="Playlist counts could not be loaded. Try again."
+                                onClick={(event) => { event.stopPropagation(); playlistCounts.retry(); }}
+                                onKeyDown={(event) => event.stopPropagation()}
+                              >!</button>
+                            )
+                            : '…'}
+                      </td>
                       <td className="w-[80px] whitespace-nowrap px-3 py-1.5 text-left font-mono text-[13px] text-muted-foreground">{formatTime(durationMsForTrack(track, null))}</td>
                     </TrackTableRow>
                   );

@@ -96,7 +96,7 @@ describe('Audition page', () => {
 
     expect(markup).toContain('First Fixture');
     expect(markup).toContain('Artist Two');
-    expect(markup).toContain('2 tracks');
+    expect(markup).not.toContain('2 tracks');
     expect(markup).toContain('aria-label="Search the library"');
     for (const filter of ['Genre', 'Key', 'BPM']) expect(markup).toContain(filter);
   });
@@ -136,11 +136,23 @@ describe('Audition track header', () => {
     expect(markup).toContain('Real Track Name');
     expect(markup).toContain('Real Artist');
     expect(markup).toContain('Techno');
-    expect(markup).toContain('132 BPM');
+    expect(markup).toContain('<span>132</span><small>Tempo</small>');
     expect(markup).toContain('6:12');
     expect(markup).toContain('14 of 387');
     expect(markup).toMatch(/aria-label="Next track"[^>]*disabled=""/);
     expect(markup).not.toMatch(/aria-label="Previous track"[^>]*disabled=""/);
+  });
+
+  it('styles tempo, key and genre exactly like the track length, and puts them to its left', () => {
+    const css = readFileSync(new URL('./AuditionView.css', import.meta.url), 'utf8');
+    expect(css).toContain('.audition-duration, .audition-stat {');
+    expect(css).toContain('.audition-duration > span, .audition-stat > span {');
+    expect(css).toContain('.audition-duration small, .audition-stat small {');
+    const markup = renderToStaticMarkup(createElement(AuditionTrackHeader, {
+      track: track({}), durationMs: 372_000, positionLabel: null, onPrevious: null, onNext: null,
+    }));
+    expect(markup.indexOf('audition-track-details')).toBeGreaterThan(markup.indexOf('Fixture Artist'));
+    expect(markup.indexOf('audition-track-details')).toBeLessThan(markup.indexOf('audition-duration'));
   });
 
   it('no longer has Keep, Maybe and Remove in the header; they are in the transport row', () => {
@@ -196,7 +208,7 @@ describe('Audition full song', () => {
     expect(markup).toContain('Intro');
     expect(markup).toContain('Drop');
     expect(markup).toContain('left:25%');
-    expect(markup).toContain('left:0%');
+    expect(markup).toContain('left:calc(0% - var(--audition-lead))');
     expect(markup).toContain('6:12');
     expect(markup).toContain('0:30');
   });
@@ -228,6 +240,47 @@ describe('Audition full song', () => {
     expect(ruler).toBeLessThan(markup.indexOf('aria-label="Full waveform'));
   });
 
+  it('ends the sections row with a blank section, in the same background and gray as the other sections that fills the rest of the width', () => {
+    const markup = render({ sections: [sections[0]] });
+    expect(markup).toContain('data-testid="audition-section-blank"');
+    expect(markup).toContain('left:25%;width:75%');
+    expect(markup.indexOf('data-testid="audition-section"')).toBeLessThan(markup.indexOf('data-testid="audition-section-blank"'));
+    const css = readFileSync(new URL('./AuditionView.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.audition-section--blank \{[^}]*--audition-section-ink: #8997AE/);
+    expect(css).not.toMatch(/\.audition-section--blank \{[^}]*background/);
+    // Sections that already reach the end of the song leave nothing to fill.
+    expect(render()).not.toContain('data-testid="audition-section-blank"');
+  });
+
+  it('shows the beat grid under the waveform', () => {
+    const beats = Array.from({ length: 8 }, (_, i) => ({ seq: i, srcIdx: i, beatInBar: (i % 4) + 1, bar: Math.floor(i / 4) + 1, ms: i * 500, bpm: 120, isDownbeat: i % 4 === 0 }));
+    const markup = render({ beatGrid: { beats } as never });
+    expect(markup).toContain('data-testid="audition-beat-grid"');
+    expect(markup.indexOf('aria-label="Full waveform')).toBeLessThan(markup.indexOf('data-testid="audition-beat-grid"'));
+    expect(markup.match(/Bar \d, beat \d/g)).toHaveLength(8);
+    expect(render()).toContain('No beat grid');
+  });
+
+  it('gives the sections row and beat grid row lead-in space before 0:00, with no numbers in it', () => {
+    const beats = Array.from({ length: 8 }, (_, i) => ({ seq: i, srcIdx: i, beatInBar: (i % 4) + 1, bar: Math.floor(i / 4) + 1, ms: 40 + i * 500, bpm: 120, isDownbeat: i % 4 === 0 }));
+    const markup = render({ beatGrid: { beats } as never });
+    // The song's first section stretches back into the lead-in space so its name fits.
+    expect(markup).toContain('width:calc(25% - 2px + var(--audition-lead))');
+    expect(markup).toContain('data-testid="audition-beat-lead"');
+    const lead = /<span data-testid="audition-beat-lead"[^>]*><\/span>/.exec(markup)?.[0] ?? '';
+    expect(lead).not.toMatch(/>\s*\d/);
+    expect(markup.match(/class="audition-lane/g)).toHaveLength(2);
+    const css = readFileSync(new URL('./AuditionView.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.audition-song-timeline \{[^}]*padding: 8px 16px 0 calc\(16px \+ var\(--audition-lead\)\)/);
+    expect(css).toMatch(/\.audition-lane \{[^}]*margin-left: calc\(-1 \* var\(--audition-lead\)\)/);
+  });
+
+  it('makes the sections row taller, with each name centred in its section', () => {
+    const markup = render();
+    expect(markup).toContain('audition-song-sections relative h-7');
+    expect(markup).toMatch(/audition-section absolute top-0 flex h-full items-center justify-center/);
+  });
+
   it('shows no marker row for a track without cue points', () => {
     expect(render({ cues: [] })).not.toContain('data-testid="audition-cues"');
   });
@@ -254,7 +307,7 @@ describe('Audition full song', () => {
 describe('Audition library rows', () => {
   const libraryProps = (over: Record<string, unknown> = {}) => ({
     tracks: [track({ id: 'a', title: 'Row Fixture', artist: 'Row Artist', duration_ms: 372_000 })],
-    selectedTrackId: null, onSelectTrack: vi.fn(), countLabel: '1 track', loading: false, loadingMore: false, error: null, hasMore: false,
+    selectedTrackId: null, onSelectTrack: vi.fn(), loading: false, loadingMore: false, error: null, hasMore: false,
     onLoadMore: vi.fn(), onRetry: vi.fn(), search: '', onSearchChange: vi.fn(), genre: '', onGenreChange: vi.fn(), genreOptions: [],
     keyFilter: '', onKeyFilterChange: vi.fn(), keyOptions: [], bpmBounds: [60, 200] as [number, number], bpmRange: null,
     onBpmRangeChange: vi.fn(), sort: null, onSortChange: vi.fn(), ...over,
@@ -265,8 +318,8 @@ describe('Audition library rows', () => {
     const cueStates = new Map([['a', {
       status: 'loaded-with-cues' as const, trackId: 'a',
       cues: [
-        { id: 'c1', start_ms: 93_000, color_hex: '#2997ff', cue_family: 'hot' },
-        { id: 'c2', start_ms: 186_000, color_hex: null, cue_family: 'memory' },
+        { id: 'c1', start_ms: 93_000, color_hex: '#2997ff', cue_family: 'hot', hot_cue_slot: 1 },
+        { id: 'c2', start_ms: 186_000, color_hex: null, cue_family: 'memory', hot_cue_slot: null },
       ],
     }]]);
     const markup = wrap(createElement(AuditionLibrary, libraryProps({ cueStates }) as never));
@@ -274,7 +327,59 @@ describe('Audition library rows', () => {
     expect(markup.indexOf('Row Artist')).toBeLessThan(markup.indexOf('aria-label="Waveform for Row Fixture"'));
     expect(markup).toContain('left:25%');
     expect(markup).toContain('left:50%');
-    expect(markup).toContain('fill="#2997ff"');
+    // Each cue is just a dot in the cue's own colour (grey when it has none), with no letter.
+    expect(markup.match(/data-testid="audition-row-cue"/g)).toHaveLength(2);
+    expect(markup).toContain('--audition-cue-ink:#2997ff');
+    expect(markup).toContain('--audition-cue-ink:#9aa5b8');
+    expect(markup).not.toContain('audition-cue-marker');
+    expect(markup).not.toContain('<polygon');
+  });
+
+  it('draws the row waveform as bars in the same gray as the full-song waveform', () => {
+    const rowWave = readFileSync(new URL('./AuditionRowWaveform.tsx', import.meta.url), 'utf8');
+    const fullSong = readFileSync(new URL('./AuditionFullSong.tsx', import.meta.url), 'utf8');
+    expect(rowWave).toContain('appearance="dropdex"');
+    expect(rowWave).not.toContain('renderMode="area"');
+    const gray = /const ROW_WAVEFORM_GRAY = '(#[0-9A-Fa-f]{6})'/.exec(rowWave)?.[1];
+    expect(fullSong).toContain(`: '${gray}'`);
+  });
+
+  it('puts the play button before the title and artist', async () => {
+    const { AuditionLibrary } = await import('./AuditionLibrary');
+    const markup = wrap(createElement(AuditionLibrary, libraryProps() as never));
+    expect(markup.indexOf('aria-label="Play Row Fixture"')).toBeGreaterThan(-1);
+    expect(markup.indexOf('aria-label="Play Row Fixture"')).toBeLessThan(markup.indexOf('>Row Fixture</p>'));
+  });
+
+  it('shows more of the track title in the rows before it is cut off', async () => {
+    const { AuditionLibrary } = await import('./AuditionLibrary');
+    const markup = wrap(createElement(AuditionLibrary, libraryProps() as never));
+    expect(markup).toContain('min-w-0 w-[340px] shrink-0');
+  });
+
+  it('has a Playlists column showing how many playlists each track is in', async () => {
+    const { AuditionLibrary } = await import('./AuditionLibrary');
+    const markup = wrap(createElement(AuditionLibrary, libraryProps({ playlistCounts: { counts: new Map([['a', 3]]), error: null, retry: vi.fn() } }) as never));
+    expect(markup).toContain('aria-label="Sort by Playlists"');
+    expect(markup).toMatch(/data-testid="audition-playlist-count"[^>]*><span title="In 3 playlists">3<\/span>/);
+    const loading = wrap(createElement(AuditionLibrary, libraryProps({ playlistCounts: { counts: new Map(), error: null, retry: vi.fn() } }) as never));
+    expect(loading).toMatch(/data-testid="audition-playlist-count"[^>]*>…/);
+  });
+
+  it('has no sample rate or bit rate columns, and shows the key as plain text', async () => {
+    const { AuditionLibrary } = await import('./AuditionLibrary');
+    const markup = wrap(createElement(AuditionLibrary, libraryProps() as never));
+    expect(markup).not.toContain('Sample Rate');
+    expect(markup).not.toContain('Bit Rate');
+    expect(markup).toContain('<td class="px-3 py-1.5">08A</td>');
+  });
+
+  it('shows no artwork and no selection bar in front of the title, and keeps the selected row highlighted', async () => {
+    const { AuditionLibrary } = await import('./AuditionLibrary');
+    const markup = wrap(createElement(AuditionLibrary, libraryProps({ selectedTrackId: 'a' }) as never));
+    expect(markup).not.toContain('Artwork for Row Fixture');
+    expect(markup).not.toContain('h-8 w-0.5');
+    expect(markup).toContain('cue-browser__row--selected');
   });
 
   it('still shows the row waveform area when a track has no cue points', async () => {

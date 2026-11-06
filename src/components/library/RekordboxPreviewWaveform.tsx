@@ -55,6 +55,8 @@ export interface RekordboxPreviewWaveformProps {
   colorSegments?: WaveformColorSegment[];
   /** Render the canvas/state without the shared framed waveform surface. */
   surface?: boolean;
+  /** Draw the bars in this one colour (a hex value) instead of the theme's waveform colours. */
+  tint?: string;
 }
 
 type RgbColor = [number, number, number];
@@ -452,6 +454,7 @@ export function RekordboxPreviewWaveform({
   allowTimelineSeek = false,
   colorSegments,
   surface = true,
+  tint,
 }: RekordboxPreviewWaveformProps) {
   const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -504,8 +507,9 @@ export function RekordboxPreviewWaveform({
     context.scale(dpr, dpr);
     context.clearRect(0, 0, width, height);
 
-    const primaryColor = readThemeRgb('--color-waveform-mono', resolveMonoBaseColor(theme));
-    const secondaryColor = readThemeRgb('--color-waveform-secondary', primaryColor);
+    const tintColor = tint ? parseHexColor(tint) : null;
+    const primaryColor = tintColor ?? readThemeRgb('--color-waveform-mono', resolveMonoBaseColor(theme));
+    const secondaryColor = tintColor ?? readThemeRgb('--color-waveform-secondary', primaryColor);
     const gridColor = readThemeRgb('--color-waveform-grid', primaryColor);
     const playheadColor = readThemeRgb(
       '--color-waveform-playhead',
@@ -549,7 +553,7 @@ export function RekordboxPreviewWaveform({
       });
     }
     context.restore();
-  }, [buckets, containerWidth, dimmed, dpr, height, hoverFraction, normalized, onSeek, progress, renderMode, resolvedAppearance, resolvedColorSegments, showCenterLine, theme, variant]);
+  }, [buckets, containerWidth, dimmed, dpr, height, hoverFraction, normalized, onSeek, progress, renderMode, resolvedAppearance, resolvedColorSegments, showCenterLine, theme, tint, variant]);
 
   function seekFractionFromPointer(clientX: number, element: HTMLDivElement): number {
     const rect = element.getBoundingClientRect();

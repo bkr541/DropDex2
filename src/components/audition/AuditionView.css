@@ -43,14 +43,12 @@
 .audition-header h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 20px; font-weight: 500; line-height: 1.2; letter-spacing: -.01em; }
 .audition-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; min-width: 0; }
 .audition-artist { color: #b4bdcb; font-size: 12px; letter-spacing: .01em; }
-.audition-track-details { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-.audition-track-details > span { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
-.audition-track-details small { color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; }
-.audition-track-details strong { color: #d1d7e2; font-size: 11px; font-weight: 400; }
-.audition-studio .audition-header-key { font-size: 11px; font-weight: 500; }
-.audition-duration { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-inline: 16px; border-inline: 1px solid #ffffff0d; }
-.audition-duration > span { color: #f6f7fa; font-size: 26px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -.04em; }
-.audition-duration small { color: #9aa5b8; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; }
+.audition-track-details { display: flex; align-items: center; flex: none; }
+.audition-track-details .audition-stat { border-right: 0; }
+.audition-stat > span { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audition-duration, .audition-stat { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-inline: 12px; border-inline: 1px solid #ffffff0d; }
+.audition-duration > span, .audition-stat > span { color: #f6f7fa; font-size: 20px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -.04em; }
+.audition-duration small, .audition-stat small { color: #9aa5b8; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; }
 .audition-header-tools { display: flex; flex-direction: row; align-items: center; gap: 16px; }
 .audition-track-navigation { display: flex; align-items: center; gap: 8px; }
 .audition-track-navigation > span { min-width: 64px; color: #bdc5d2; font-size: 11px; font-variant-numeric: tabular-nums; text-align: center; }
@@ -64,12 +62,23 @@
 .audition-decision { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding-block: 6px; color: #a7afbd; border-bottom: 1px solid #ffffff14; font-size: 10px; font-weight: 400; cursor: not-allowed; opacity: .55; }
 
 .audition-song { flex: none; border-top: 1px solid #ffffff0d; background: #00000012; }
-.audition-song-caption { position: absolute; top: 4px; right: 6px; z-index: 2; padding: 2px 8px; border-radius: 999px; background: #0000005c; color: #c3ccdb; font-size: 10px; font-variant-numeric: tabular-nums; pointer-events: none; }
-.audition-song-caption > span { margin-inline: 6px; color: #7b879c; }
-.audition-song-timeline { position: relative; padding: 8px 16px 0; }
+.audition-studio { --audition-lead: 32px; }
+.audition-song-timeline { position: relative; container-type: inline-size; padding: 8px 16px 0 calc(16px + var(--audition-lead)); }
+/* The sections row and beat grid row start in the lead-in space left of 0:00; everything else lines up with the waveform. */
+.audition-lane { margin-left: calc(-1 * var(--audition-lead)); padding-left: var(--audition-lead); }
+.audition-lane--clip { overflow: hidden; }
 .audition-song-ruler > span { color: #9ba5b6; font-family: inherit; font-size: 10px; }
+.audition-song-cues { margin-bottom: 4px; }
 .audition-song-sections { margin-bottom: 4px; }
+.audition-song-beats { position: relative; height: 26px; margin-top: 4px; }
+.audition-beat-lead { position: absolute; top: 2px; right: auto; left: calc(-1 * var(--audition-lead)); height: 6px; background: repeating-linear-gradient(to left, transparent 0, transparent calc(var(--audition-beat-gap) - 1px), #8997ae59 calc(var(--audition-beat-gap) - 1px), #8997ae59 var(--audition-beat-gap)); }
+.audition-beat-tick { position: absolute; top: 2px; width: 1px; height: 6px; transform: translateX(-50%); background: #8997ae59; }
+.audition-beat-tick--bar { height: 11px; background: #c3ccdb99; }
+.audition-beat-label { position: absolute; bottom: 1px; transform: translateX(-50%); color: #9ba5b6; font-size: 10px; font-variant-numeric: tabular-nums; line-height: 1; }
+.audition-beat-message { display: flex; align-items: center; height: 100%; color: #7b879c; font-size: 11px; }
 .audition-section { color: #cad2df; border-bottom: 1px solid var(--audition-section-ink); background: color-mix(in srgb, var(--audition-section-ink) 7%, transparent); font-size: 10px; font-weight: 400; letter-spacing: .03em; }
+/* The blank section uses the gray the other non-drop sections use, so its background and border come from the same rule. */
+.audition-section--blank { --audition-section-ink: #8997AE; }
 .audition-song-transport { margin-top: 8px; padding: 6px 16px; border-top: 1px solid #ffffff09; background: #ffffff02; }
 .audition-transport { display: grid; grid-template-columns: auto minmax(160px, 1fr) auto auto; align-items: center; gap: 14px; }
 .audition-transport > .audition-decisions { padding-left: 14px; border-left: 1px solid #ffffff10; }
@@ -88,7 +97,6 @@
 
 .audition-studio .audition-library { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; overflow: hidden; border: 0; border-top: 1px solid #ffffff0d; border-radius: 0 0 24px 24px; background: transparent; }
 .audition-studio .audition-library-chrome { border: 0; background: transparent; box-shadow: none; }
-.audition-library-count { margin-left: auto; align-self: center; color: #9da8ba; font-family: inherit; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .audition-studio .cue-browser__filters { gap: 16px; padding: 8px 16px; border-top: 0; }
 .audition-studio .cue-browser__filters > [data-testid="audition-search"] { max-width: 420px; }
 .audition-studio .cue-browser__filters > :last-child { min-width: 200px; }
@@ -128,12 +136,14 @@
   .audition-header-identity { gap: 10px; flex-basis: 100%; }
   .audition-header h2 { font-size: 18px; }
   .audition-duration { display: none; }
+  .audition-track-details { flex-wrap: wrap; flex-basis: 100%; }
   .audition-header-tools { gap: 10px; }
   .audition-decisions { gap: 8px; }
   .audition-transport > .audition-decisions { grid-column: 1 / -1; padding-left: 0; border-left: 0; justify-content: space-between; }
   .audition-track-navigation { gap: 5px; }
   .audition-track-navigation > span { min-width: 50px; font-size: 10px; }
-  .audition-song-timeline { padding-inline: 12px; }
+  .audition-studio { --audition-lead: 24px; }
+  .audition-song-timeline { padding: 8px 12px 0 calc(12px + var(--audition-lead)); }
   .audition-song-transport { padding: 6px 12px; }
   .audition-transport { grid-template-columns: 1fr auto; }
   .audition-seek { grid-column: 1 / -1; grid-row: 2; }
@@ -145,3 +155,7 @@
 @media (prefers-reduced-motion: reduce) {
   .audition-track-step { transition: none; }
 }
+
+/* Row waveform: a dot in each cue's colour above the waveform. */
+.audition-row-cues { height: 8px; margin-bottom: 2px; }
+.audition-row-cue-dot { position: absolute; top: 1px; width: 6px; height: 6px; transform: translateX(-50%); border-radius: 50%; background: var(--audition-cue-ink); }

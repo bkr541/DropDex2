@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchTrackBeatGrid, fetchTrackCueState, fetchTrackPhrases, type BeatGridRow, type PhraseRow } from '../../lib/queries/analysisData';
-import { hotCueLabel } from '../../lib/music/cueHelpers';
+import { auditionCueMarkersFromState } from './auditionCueMarkers';
 import { logger } from '../../lib/logger';
 
 /** A cue point shown above the full-song waveform. Hot cues carry their letter (A, B, C…); memory cues have none. */
@@ -55,16 +55,7 @@ export function useAuditionTrackAnalysis(trackId: string | null, retryNonce = 0)
         // Sections can still be placed from their own timestamps, so this alone is not shown to the user.
         logger.warn('audition.beat_grid.load_failed', { trackId, error: describeError(gridResult.reason) });
       }
-      const cues: AuditionCueMarker[] = cueResult.status === 'fulfilled' && cueResult.value.status === 'loaded-with-cues'
-        ? cueResult.value.cues
-          .filter((cue) => cue.start_ms != null)
-          .map((cue) => ({
-            id: cue.id,
-            startMs: cue.start_ms as number,
-            color: cue.color_hex ?? (cue.cue_family === 'hot' ? '#ffffff' : '#9aa5b8'),
-            label: cue.cue_family === 'hot' ? hotCueLabel(cue.hot_cue_slot) : null,
-          }))
-        : [];
+      const cues = cueResult.status === 'fulfilled' ? auditionCueMarkersFromState(cueResult.value) : [];
       if (cueResult.status === 'rejected' || (cueResult.status === 'fulfilled' && cueResult.value.status === 'failed')) {
         logger.warn('audition.cues.load_failed', { trackId, error: cueResult.status === 'rejected' ? describeError(cueResult.reason) : 'error' in cueResult.value ? cueResult.value.error : null });
       }

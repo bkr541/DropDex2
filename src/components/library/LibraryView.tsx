@@ -1,3 +1,4 @@
+import { SpotifyTabIcon } from './SpotifyTabIcon';
 import { useState, useMemo, memo, useCallback, useRef, useEffect, type ElementType, type ReactNode } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
@@ -37,7 +38,7 @@ import { supabase } from '../../lib/supabase';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
 import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Tag, Undo, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
-import { Cloud, Dashboard, Playlist, Time, UserMultiple } from '@carbon/icons-react';
+import { Dashboard, Playlist, Time, UserMultiple } from '@carbon/icons-react';
 import { Artwork } from '../ui/display/Artwork';
 import { ControlButton, SearchControl } from '../ui/controls';
 import { HeroActionButton } from './HeroActionButton';
@@ -57,7 +58,7 @@ const TABS: { id: LibraryTab; label: string; icon: ElementType }[] = [
   { id: 'incomplete-analysis', label: 'Analysis Incomplete', icon: WarningAlt },
 ];
 
-const SPOTIFY_TAB: { id: LibraryTab; label: string; icon: ElementType } = { id: 'spotify', label: 'Spotify', icon: Cloud };
+const SPOTIFY_TAB: { id: LibraryTab; label: string; icon: ElementType } = { id: 'spotify', label: 'Spotify', icon: SpotifyTabIcon };
 
 export { TABS as LIBRARY_TABS, SPOTIFY_TAB };
 

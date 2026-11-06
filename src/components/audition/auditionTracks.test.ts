@@ -67,6 +67,12 @@ describe('sortAuditionTracks', () => {
     expect(sortAuditionTracks(tracks, null).map((t) => t.id)).toEqual(['a', 'b', 'c']);
   });
 
+  it('sorts by how many playlists a track is in, with tracks whose count has not loaded last', () => {
+    const counts = new Map([['a', 5], ['b', 1]]);
+    expect(sortAuditionTracks(tracks, { column: 'playlists', direction: 'asc' }, counts).map((t) => t.id)).toEqual(['b', 'a', 'c']);
+    expect(sortAuditionTracks(tracks, { column: 'playlists', direction: 'desc' }, counts).map((t) => t.id)).toEqual(['a', 'b', 'c']);
+  });
+
   it('sorts text without regard to case', () => {
     expect(sortAuditionTracks(tracks, { column: 'title', direction: 'asc' }).map((t) => t.id)).toEqual(['b', 'a', 'c']);
   });

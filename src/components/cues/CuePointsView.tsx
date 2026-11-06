@@ -3,6 +3,7 @@ import { ChartLine, ChevronDown, CircleDash, Cloud, Close, ColorPalette, Documen
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
+import { barLabelBeats, beatRulerTicks, timelineGridLines } from '../../lib/cues/beatRuler';
 import { gridBeatsForMode, type CueGridDisplayMode } from '../../lib/cues/cueTimelineViewport';
 import { StatusBadge } from '../ui/feedback';
 import { useTimelineZoom } from '../../hooks/useTimelineZoom';
@@ -193,9 +194,6 @@ const LIBRARY_PROPERTY_BADGE = { fontSize: 12, fontWeight: 500, letterSpacing: '
 /** How every data value looks in the Library page's table: 12px like the track title, normal text colour, medium weight. */
 const LIBRARY_VALUE = 'text-xs font-medium text-foreground';
 const CUE_PAGE_SIZE = 100;
-const MAX_TIMELINE_GRID_LINES = 640;
-const MAX_BEAT_RULER_TICKS = 640;
-const MAX_BAR_LABELS = 24;
 
 const CAMELOT_COLORS: Record<number, string> = {
   1: '#e74c3c', 2: '#3b82f6', 3: '#1d4ed8', 4: '#f59e0b', 5: '#16a34a', 6: '#d97706',
@@ -263,33 +261,6 @@ function cueSnapResolutionLabel(resolution: CueSnapResolution): string {
   if (resolution === '2-beats') return '2 Beats';
   if (resolution === '4-beats') return '4 Beats';
   return 'Off';
-}
-
-function timelineGridLines(beats: BeatEntry[]): BeatEntry[] {
-  if (beats.length <= MAX_TIMELINE_GRID_LINES) return beats;
-  const step = Math.ceil(beats.length / MAX_TIMELINE_GRID_LINES);
-  const sampled = new Map<number, BeatEntry>();
-  beats.forEach((beat, index) => {
-    if (beat.isDownbeat || beat.beatInBar === 1 || index % step === 0) sampled.set(beat.seq, beat);
-  });
-  return [...sampled.values()].sort((a, b) => a.ms - b.ms);
-}
-
-function beatRulerTicks(beats: BeatEntry[]): BeatEntry[] {
-  if (beats.length <= MAX_BEAT_RULER_TICKS) return beats;
-  const step = Math.ceil(beats.length / MAX_BEAT_RULER_TICKS);
-  const sampled = new Map<number, BeatEntry>();
-  beats.forEach((beat, index) => {
-    if (beat.isDownbeat || beat.beatInBar === 1 || index % step === 0) sampled.set(beat.seq, beat);
-  });
-  return [...sampled.values()].sort((a, b) => a.ms - b.ms);
-}
-
-function barLabelBeats(beats: BeatEntry[]): BeatEntry[] {
-  const downbeats = beats.filter((beat) => beat.isDownbeat || beat.beatInBar === 1);
-  if (downbeats.length <= MAX_BAR_LABELS) return downbeats;
-  const step = Math.ceil(downbeats.length / MAX_BAR_LABELS);
-  return downbeats.filter((_, index) => index % step === 0 || index === downbeats.length - 1);
 }
 
 function percentageAt(ms: number, viewStart: number, viewEnd: number): number {

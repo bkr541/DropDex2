@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight } from '@carbon/icons-react';
 import { Artwork } from '../ui/display/Artwork';
-import { KeyBadge } from '../ui/display/KeyBadge';
+import { formatCamelotCode } from '../ui/display/camelotKey';
 import { formatClock } from './auditionTracks';
 import type { RekordboxTrack } from '../../types';
 
@@ -29,14 +29,14 @@ export function AuditionTrackHeader({ track, durationMs, positionLabel, onPrevio
           <h2 title={track?.title}>{track?.title ?? 'Select a track'}</h2>
           <div className="audition-meta">
           <p className="audition-artist">{track ? track.artist ?? 'Artist Not Available' : 'Pick a track from the library below.'}</p>
-          {track && <div className="audition-track-details">
-            <span><small>Tempo</small><strong>{track.bpm != null ? `${track.bpm.toFixed(0)} BPM` : '— BPM'}</strong></span>
-            <span><small>Key</small><KeyBadge camelotKey={track.musical_key} variant="text" className="audition-header-key" /></span>
-            <span><small>Genre</small><strong>{track.genre || '—'}</strong></span>
-          </div>}
           </div>
         </div>
       </div>
+      {track && <div className="audition-track-details">
+        <div className="audition-stat"><span>{track.bpm != null ? track.bpm.toFixed(0) : '—'}</span><small>Tempo</small></div>
+        <div className="audition-stat"><span>{formatCamelotCode(track.musical_key) ?? '—'}</span><small>Key</small></div>
+        <div className="audition-stat"><span title={track.genre ?? undefined}>{track.genre || '—'}</span><small>Genre</small></div>
+      </div>}
       <div className="audition-duration"><span>{durationMs != null ? formatClock(durationMs) : '—:—'}</span><small>Track length</small></div>
       <div className="audition-header-tools">
         <div className="audition-track-navigation" role="group" aria-label="Move between tracks">

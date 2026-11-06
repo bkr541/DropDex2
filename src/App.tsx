@@ -86,9 +86,9 @@ const THEME_OPTIONS: ThemeOption[] = [
   { id: 'cdj', label: 'CDJ', description: 'Performance deck', icon: RecordingFilled },
 ];
 
-function CuePointsNavIcon({ size = 18 }: { size?: number }) {
+function CuePointsNavIcon({ size = 18, className }: { size?: number; className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" style={{ transform: 'rotate(180deg)' }} aria-hidden="true">
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" style={{ transform: 'rotate(180deg)' }} className={className} aria-hidden="true">
       <path d="M18,22a1,1,0,0,1-1-1V19H15a1,1,0,0,1,0-2h2V15a1,1,0,0,1,2,0v2h2a1,1,0,0,1,0,2H19v2A1,1,0,0,1,18,22Z" />
       <path d="M15,13h3a1,1,0,0,0,1-1V9a1,1,0,0,0-.29-.71l-6-6a1,1,0,0,0-1.42,0l-6,6A1,1,0,0,0,5,9V20a2,2,0,0,0,2,2h5a1,1,0,0,0,1-1V15A2,2,0,0,1,15,13Z" />
     </svg>

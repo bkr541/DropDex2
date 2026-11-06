@@ -17,6 +17,7 @@ import {
   sortAuditionTracks,
   type AuditionSort,
 } from './auditionTracks';
+import { useTrackPlaylistCounts } from '../../hooks/useTrackPlaylistCounts';
 import { useAuditionRowCues } from './useAuditionRowCues';
 import { useAuditionTrackAnalysis } from './useAuditionTrackAnalysis';
 import type { RekordboxTrack } from '../../types';
@@ -44,9 +45,16 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
     tracks, total, loading, loadingMore, error, hasMore, loadMore, refresh,
   } = useLibraryTracks(importId, { search, genre: genre || null, debounceMs: 220, pageSize: PAGE_SIZE });
 
+  const filteredTracks = useMemo(
+    () => filterAuditionTracks(tracks, { key: keyFilter, bpmRange }),
+    [tracks, keyFilter, bpmRange],
+  );
+  // How many playlists each listed track is in. The list can also be sorted by it.
+  const filteredTrackIds = useMemo(() => filteredTracks.map((track) => track.id), [filteredTracks]);
+  const playlistCounts = useTrackPlaylistCounts(filteredTrackIds);
   const visibleTracks = useMemo(
-    () => sortAuditionTracks(filterAuditionTracks(tracks, { key: keyFilter, bpmRange }), sort),
-    [tracks, keyFilter, bpmRange, sort],
+    () => sortAuditionTracks(filteredTracks, sort, playlistCounts.counts),
+    [filteredTracks, sort, playlistCounts.counts],
   );
 
   // A different library means a different set of tracks, so start over.
@@ -92,7 +100,6 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
   // The key and BPM filters work on the tracks loaded so far, so their counts do too.
   const clientFilterActive = keyFilter !== '' || bpmRange !== null;
   const listCount = clientFilterActive ? visibleTracks.length : total;
-  const countLabel = `${listCount.toLocaleString()}${clientFilterActive && hasMore ? '+' : ''} ${listCount === 1 ? 'track' : 'tracks'}`;
   const positionLabel = auditionPositionLabel(selectedIndex, listCount, clientFilterActive && hasMore);
 
   const genreOptions = useMemo(
@@ -153,6 +160,7 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
         onRetryWaveform={() => retryWaveform(selectedTrackId ? [selectedTrackId] : undefined)}
         sections={sections}
         cues={analysis.cues}
+        beatGrid={analysis.beatGrid}
         sectionsLoading={analysis.loading}
         sectionsError={analysis.error}
         onRetrySections={() => setAnalysisRetry((value) => value + 1)}
@@ -172,7 +180,7 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
         onSelectTrack={selectTrack}
         getWaveformState={getWaveformState}
         cueStates={rowCueStates}
-        countLabel={countLabel}
+        playlistCounts={playlistCounts}
         loading={loading}
         loadingMore={loadingMore}
         error={error}

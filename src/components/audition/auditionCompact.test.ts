@@ -9,9 +9,9 @@ const library = read('./AuditionLibrary.tsx');
 const app = read('../../App.tsx');
 
 describe('compact Audition layout', () => {
-  it('uses smaller display sizes: a 20px title, 26px length, 48px cover and a 72px waveform', () => {
+  it('uses smaller display sizes: a 20px title, 20px length, 48px cover and a 72px waveform', () => {
     expect(css).toMatch(/\.audition-header h2 \{[^}]*font-size: 20px/);
-    expect(css).toMatch(/\.audition-duration > span \{[^}]*font-size: 26px/);
+    expect(css).toMatch(/\.audition-duration > span, \.audition-stat > span \{[^}]*font-size: 20px/);
     expect(css).toMatch(/\.audition-cover \{[^}]*width: 48px; height: 48px/);
     expect(song).toContain('const WAVEFORM_HEIGHT = 72;');
   });
@@ -29,13 +29,15 @@ describe('compact Audition layout', () => {
     expect(Math.min(...sizes)).toBeGreaterThanOrEqual(9);
   });
 
-  it('drops the eyebrow, and folds the Full Song and Library heading rows into a caption and the filter row', () => {
+  it('drops the eyebrow, and drops the Full Song and Library heading rows, and the section count and track count that replaced them', () => {
     expect(header).not.toContain('Listening room');
     expect(css).not.toContain('.audition-eyebrow');
     expect(css).not.toContain('.audition-song-heading');
     expect(css).not.toContain('.audition-library-heading');
-    expect(song).toContain('className="audition-song-caption"');
-    expect(library.indexOf('audition-library-filters')).toBeLessThan(library.indexOf('data-testid="audition-library-count"'));
+    expect(song).not.toContain('audition-song-caption');
+    expect(css).not.toContain('.audition-song-caption');
+    expect(library).not.toContain('audition-library-count');
+    expect(library).not.toContain('countLabel');
     expect(library).not.toContain('audition-library-heading');
   });
 

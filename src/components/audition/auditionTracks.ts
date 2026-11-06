@@ -3,7 +3,7 @@ import { formatKey } from '../../lib/utils';
 import { durationMsForTrack } from '../../lib/music/trackTiming';
 import type { RekordboxTrack } from '../../types';
 
-export type AuditionSortColumn = 'title' | 'artist' | 'genre' | 'key' | 'bpm' | 'length' | 'format' | 'sampleRate' | 'bitRate';
+export type AuditionSortColumn = 'title' | 'artist' | 'genre' | 'key' | 'bpm' | 'length' | 'format' | 'sampleRate' | 'bitRate' | 'playlists';
 export type AuditionSortDirection = 'asc' | 'desc';
 
 export interface AuditionSort {
@@ -28,7 +28,7 @@ export function filterAuditionTracks(tracks: readonly RekordboxTrack[], filters:
   });
 }
 
-function sortValue(track: RekordboxTrack, column: AuditionSortColumn): string | number | null {
+function sortValue(track: RekordboxTrack, column: AuditionSortColumn, playlistCounts?: ReadonlyMap<string, number>): string | number | null {
   switch (column) {
     case 'title': return track.title ?? '';
     case 'artist': return track.artist ?? '';
@@ -39,16 +39,18 @@ function sortValue(track: RekordboxTrack, column: AuditionSortColumn): string | 
     case 'format': return track.file_format ?? '';
     case 'sampleRate': return track.sample_rate_hz > 0 ? track.sample_rate_hz : null;
     case 'bitRate': return track.bitrate_kbps > 0 ? track.bitrate_kbps : null;
+    // Tracks whose count has not loaded yet have no value, so they sort last.
+    case 'playlists': return playlistCounts?.get(track.id) ?? null;
   }
 }
 
 /** Returns a new list. Tracks with no value for the column always sort last. */
-export function sortAuditionTracks(tracks: readonly RekordboxTrack[], sort: AuditionSort | null): RekordboxTrack[] {
+export function sortAuditionTracks(tracks: readonly RekordboxTrack[], sort: AuditionSort | null, playlistCounts?: ReadonlyMap<string, number>): RekordboxTrack[] {
   if (!sort) return [...tracks];
   const direction = sort.direction === 'asc' ? 1 : -1;
   return [...tracks].sort((a, b) => {
-    const av = sortValue(a, sort.column);
-    const bv = sortValue(b, sort.column);
+    const av = sortValue(a, sort.column, playlistCounts);
+    const bv = sortValue(b, sort.column, playlistCounts);
     const aMissing = av === null || av === '';
     const bMissing = bv === null || bv === '';
     if (aMissing && bMissing) return 0;
