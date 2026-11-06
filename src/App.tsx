@@ -1200,7 +1200,7 @@ export default function App() {
           currentView === 'flip-lab'
             ? 'flex min-h-0 flex-col overflow-hidden p-6'
             : 'overflow-y-auto px-6 pt-6 pb-32 md:pb-6',
-          (currentView === 'cues' || currentView === 'audition') && 'scrollbar-none',
+          (currentView === 'cues' || currentView === 'audition' || currentView === 'discovery') && 'scrollbar-none',
         )}>
           <ApplicationErrorBoundary level="feature" resetKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
           <RouteFailureProbe />

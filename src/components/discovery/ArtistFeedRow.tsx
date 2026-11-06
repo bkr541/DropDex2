@@ -1,9 +1,7 @@
-import { useState, useRef } from 'react';
-import { MusicNote01Icon } from 'hugeicons-react';
+import { ChevronRight } from '@carbon/icons-react';
 import { SetlistFeedCard } from './SetlistFeedCard';
+import { DiscoveryAvatar } from './DiscoveryAvatar';
 import type { FeedArtist, DiscoverySetlistResult } from '../../types';
-import { ChevronRight, User } from '@carbon/icons-react';
-import { ControlButton } from '../ui/controls';
 
 interface ArtistFeedRowProps {
   artist: FeedArtist;
@@ -13,105 +11,52 @@ interface ArtistFeedRowProps {
   onOpenSetlist: (setlist: DiscoverySetlistResult) => void;
 }
 
-function ArtistAvatar({ artist }: { artist: FeedArtist }) {
-  const [err, setErr] = useState(false);
-  const initials = artist.name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+const LATEST_COUNT = 3;
 
-  if (artist.profile_image_url && !err) {
-    return (
-      <img
-        src={artist.profile_image_url}
-        alt={artist.name}
-        className="w-12 h-12 rounded-full object-cover ring-2 ring-primary/20 shadow-md shrink-0"
-        onError={() => setErr(true)}
-      />
-    );
-  }
+/** One top artist as a table row: a large photo, their name over their genres, how many sets, and their latest setlists. */
+export function ArtistFeedRow({ artist, setlists, setlistsLoading, onSeeAll, onOpenSetlist }: ArtistFeedRowProps) {
+  const genres = artist.genres.slice(0, 3).map((genre) => genre.name).join(' · ');
   return (
-    <div className="w-12 h-12 rounded-full bg-primary/10 ring-2 ring-primary/20 shadow-md flex items-center justify-center shrink-0">
-      {initials ? (
-        <span className="text-sm font-black text-primary">{initials}</span>
-      ) : (
-        <User size={20} className="text-primary/60" />
-      )}
-    </div>
-  );
-}
-
-export function ArtistFeedRow({
-  artist,
-  setlists,
-  setlistsLoading,
-  onSeeAll,
-  onOpenSetlist,
-}: ArtistFeedRowProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  return (
-    <div className="space-y-3">
-      {/* Header row */}
-      <div className="flex items-center gap-3">
-        <ArtistAvatar artist={artist} />
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <h2 className="font-black text-base leading-tight truncate">{artist.name}</h2>
-          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            {artist.genres.slice(0, 3).map((g) => (
-              <span
-                key={g.id}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest bg-primary/10 text-primary border border-primary/15"
-              >
-                <MusicNote01Icon size={8} className="shrink-0" />
-                {g.name}
-              </span>
-            ))}
-            <span className="text-[10px] text-muted-foreground font-mono">
-              {artist.setlist_count.toLocaleString()} sets
-            </span>
+    <tr
+      className="discovery-feed-row"
+      tabIndex={0}
+      data-testid="discovery-feed-row"
+      aria-label={`Open ${artist.name}`}
+      onClick={onSeeAll}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSeeAll();
+        }
+      }}
+    >
+      <td>
+        <div className="discovery-feed-artist">
+          <DiscoveryAvatar name={artist.name} imageUrl={artist.profile_image_url} large />
+          <div>
+            <p className="discovery-feed-name">{artist.name}</p>
+            <p className="discovery-feed-genres">{genres || 'No genres yet'}</p>
           </div>
         </div>
-
-        {/* See All */}
-        <ControlButton variant="ghost" onClick={onSeeAll} className="shrink-0 text-[11px]">
-          See All <ChevronRight size={13} />
-        </ControlButton>
-      </div>
-
-      {/* Horizontal scroll row */}
-      {setlistsLoading ? (
-        <div className="flex gap-3 overflow-hidden">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div
-              key={i}
-              className="w-44 shrink-0 rounded-2xl overflow-hidden border border-[var(--color-border-subtle)] animate-pulse"
-            >
-              <div className="aspect-video bg-primary/10" />
-              <div className="p-3 space-y-2">
-                <div className="h-3 bg-primary/10 rounded w-3/4" />
-                <div className="h-2 bg-primary/10 rounded w-1/2" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : setlists.length === 0 ? (
-        <p className="text-xs text-muted-foreground italic">No setlists loaded yet.</p>
-      ) : (
-        <div
-          ref={scrollRef}
-          className="flex gap-3 overflow-x-auto pb-2"
-          style={{ scrollbarWidth: 'thin' }}
-        >
-          {setlists.map((setlist) => (
-            <SetlistFeedCard key={setlist.id} setlist={setlist} onOpen={onOpenSetlist} />
-          ))}
-        </div>
-      )}
-    </div>
+      </td>
+      <td className="discovery-feed-sets">{artist.setlist_count.toLocaleString()}</td>
+      <td>
+        {setlistsLoading ? (
+          <div className="discovery-feed-latest" aria-hidden="true">
+            {Array.from({ length: LATEST_COUNT }).map((_, index) => <span key={index} className="discovery-skeleton discovery-setlist-skeleton" />)}
+          </div>
+        ) : setlists.length === 0 ? (
+          <span className="studio-muted">No setlists loaded yet.</span>
+        ) : (
+          <div className="discovery-feed-latest">
+            {setlists.slice(0, LATEST_COUNT).map((setlist) => (
+              <SetlistFeedCard key={setlist.id} setlist={setlist} onOpen={onOpenSetlist} />
+            ))}
+          </div>
+        )}
+      </td>
+      <td className="discovery-feed-open" aria-hidden="true"><ChevronRight size={16} /></td>
+    </tr>
   );
 }

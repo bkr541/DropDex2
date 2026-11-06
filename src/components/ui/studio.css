@@ -1,0 +1,89 @@
+/* The "studio" look, taken from the Audition page: one large rounded panel with a soft dark gradient,
+   thin hairline dividers instead of cards, light type, and a single coral accent. Pages that adopt it
+   put `studio` on their outer panel and build from the pieces below. */
+.studio {
+  --color-background: #1b1f28;
+  --color-card: #252a36;
+  --color-foreground: #f6f7fa;
+  --color-muted-foreground: #a4adbd;
+  --color-text-subdued: #a4adbd;
+  --color-primary: #f56b70;
+  --color-primary-rgb: 245 107 112;
+  --color-ring: #f78361;
+  --color-border-subtle: #ffffff12;
+  --color-border-faint: #ffffff0d;
+  --color-panel: #252a36;
+  --color-surface: #2b313e;
+  --color-surface-hover: #333b4a;
+  --color-control-surface: #202530;
+  --color-control-surface-raised: #2a303d;
+  --color-control-surface-hover: #333b4a;
+  --color-control-border: #ffffff1a;
+  --color-control-border-soft: #ffffff0a;
+  --color-control-focus: #f78361;
+  --color-control-blue: #f56b70;
+  --color-control-blue-rgb: 245 107 112;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 3rem - var(--page-header-height, 0px));
+  min-height: 480px;
+  overflow: hidden;
+  color-scheme: dark;
+  color: var(--color-foreground);
+  font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+  background: linear-gradient(165deg, #292d37 0%, #20242e 36%, #191d25 100%);
+  border: 1px solid #ffffff13;
+  border-radius: 24px;
+  box-shadow: inset 0 1px 0 #ffffff06, 0 16px 40px #00000026;
+}
+.studio button:focus-visible, .studio input:focus-visible { outline: 2px solid #f78361; outline-offset: 3px; }
+
+/* Bands: full-width strips divided by hairlines. The body takes the rest of the height and scrolls on its own. */
+.studio-band { padding: 14px 16px; border-bottom: 1px solid #ffffff0d; }
+.studio-band--wash { background: #00000012; }
+.studio-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+
+/* Type. Primary: light 20px white. Supporting: 12px and 10-11px greys. Labels: 9px spaced capitals. */
+.studio-title { color: #fff; font-size: 20px; font-weight: 500; line-height: 1.2; letter-spacing: -.01em; }
+.studio-name { color: #edf0f6; font-size: 12px; font-weight: 400; line-height: 1.25; }
+.studio-sub { color: #a0aabd; font-size: 10px; }
+.studio-label { color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
+.studio-muted { color: #7b879c; font-size: 11px; }
+
+/* A figure over its label, with a hairline between neighbours. */
+.studio-stats { display: flex; align-items: center; }
+.studio-stat { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-inline: 12px; border-left: 1px solid #ffffff0d; }
+.studio-stat > span { color: #f6f7fa; font-size: 20px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -.04em; }
+.studio-stat > small { color: #9aa5b8; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; }
+
+/* Lists: sticky 9px headings, hairline rows, a faint wash on hover, no zebra stripes and no cards. */
+.studio-table { width: 100%; border-collapse: collapse; text-align: left; }
+.studio-table thead th { position: sticky; top: 0; z-index: 2; padding: 10px 12px; background: #1b1f28; border-bottom: 1px solid #ffffff0d; color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
+.studio-table tbody tr { border-bottom: 1px solid #ffffff0d; cursor: pointer; outline: none; transition: background 120ms; }
+.studio-table tbody tr:hover { background: #ffffff04; }
+.studio-table tbody tr:focus-visible { box-shadow: inset 0 0 0 2px #f7836180; }
+.studio-table tbody td { padding: 8px 12px; color: #b9c2d2; font-size: 11px; font-weight: 400; vertical-align: middle; }
+
+.studio-avatar { display: grid; place-items: center; flex: none; width: 32px; height: 32px; overflow: hidden; border: 1px solid #ffffff26; border-radius: 50%; background: #2b313e; box-shadow: 0 3px 10px #00000033; color: #b4bdcb; font-size: 11px; object-fit: cover; }
+
+.studio-back { display: inline-flex; align-items: center; gap: 8px; color: #bdc5d2; font-size: 11px; cursor: pointer; transition: color 120ms; }
+.studio-back > span:first-child { display: grid; place-items: center; width: 28px; height: 28px; color: #cdd3dd; border: 1px solid #ffffff1c; border-radius: 50%; transition: color 120ms, border-color 120ms; }
+.studio-back:hover { color: #f6f7fa; }
+.studio-back:hover > span:first-child { color: #f78361; border-color: #f7836180; }
+
+.studio-avatar--lg { width: 48px; height: 48px; font-size: 14px; }
+
+.studio-empty { display: grid; justify-items: center; gap: 4px; padding: 56px 16px; text-align: center; }
+.studio-empty > p:first-child { color: #d1d7e2; font-size: 12px; }
+.studio-empty > p + p { color: #7b879c; font-size: 11px; }
+.studio-link { color: #f78361; font-size: 11px; cursor: pointer; }
+.studio-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+@media (max-width: 700px) {
+  .studio { height: auto; min-height: 0; overflow: visible; border-radius: 16px; }
+  .studio-body { overflow: visible; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-table tbody tr { transition: none; }
+}

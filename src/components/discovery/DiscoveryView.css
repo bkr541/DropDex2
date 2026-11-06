@@ -1,0 +1,60 @@
+/* Artist Discovery, in the studio look: a header band (search and totals), a genre band, then a body that scrolls. */
+.discovery-header { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px; }
+.discovery-search { flex: 1 1 280px; min-width: 0; max-width: 480px; }
+.discovery-header .studio-stats { margin-left: auto; }
+
+.discovery-genres { display: flex; align-items: center; gap: 14px; padding: 0 16px; border-bottom: 1px solid #ffffff0d; background: #00000012; }
+.discovery-genres > .studio-label { flex: none; }
+.discovery-genre-scroll { position: relative; flex: 1; min-width: 0; }
+.discovery-genre-tabs { display: flex; align-items: center; overflow-x: auto; scrollbar-width: none; }
+.discovery-genre-tabs::-webkit-scrollbar { display: none; }
+.discovery-genre-tab { flex: none; display: inline-flex; align-items: baseline; gap: 6px; padding: 10px 12px; border-bottom: 2px solid transparent; color: #a4adbd; font-size: 11px; font-weight: 400; white-space: nowrap; transition: color 120ms, border-color 120ms; }
+.discovery-genre-tab:hover { color: #f6f7fa; }
+.discovery-genre-tab--highlight { color: #f78361; }
+.discovery-genre-tab[aria-pressed="true"] { color: #f6f7fa; border-bottom-color: #f56b70; }
+.discovery-genre-tab > small { color: #7b879c; font-size: 10px; font-variant-numeric: tabular-nums; }
+.discovery-genre-arrow { position: absolute; top: 0; bottom: 0; z-index: 1; display: grid; place-items: center; width: 32px; color: #cdd3dd; }
+.discovery-genre-arrow:hover { color: #f78361; }
+.discovery-genre-arrow--left { left: 0; background: linear-gradient(90deg, #1e222b 55%, transparent); justify-items: start; }
+.discovery-genre-arrow--right { right: 0; background: linear-gradient(270deg, #1e222b 55%, transparent); justify-items: end; }
+.discovery-genre-clear { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid #ffffff1c; border-radius: 999px; color: #cdd3dd; font-size: 11px; transition: color 120ms, border-color 120ms; }
+.discovery-genre-clear:hover { color: #f78361; border-color: #f7836180; }
+.discovery-genres-status { padding-block: 10px; color: #a4adbd; font-size: 11px; }
+
+.discovery-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 16px 10px; }
+.discovery-section-head > .studio-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.discovery-rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); padding: 0 8px 8px; }
+.discovery-row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 8px; border-bottom: 1px solid #ffffff0d; text-align: left; transition: background 120ms; }
+.discovery-row:hover { background: #ffffff04; }
+.discovery-row > div { min-width: 0; }
+.discovery-row .studio-name, .discovery-row .studio-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.discovery-feed-row > td { padding-block: 14px; }
+.discovery-feed-artist { display: flex; align-items: center; gap: 14px; min-width: 260px; }
+.discovery-feed-artist > div { min-width: 0; }
+.discovery-feed-name { overflow: hidden; color: #fff; font-size: 14px; font-weight: 500; letter-spacing: -.005em; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.discovery-feed-genres { margin-top: 3px; max-width: 260px; overflow: hidden; color: #a0aabd; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.studio-table td.discovery-feed-sets { color: #f6f7fa; font-size: 20px; font-weight: 300; font-variant-numeric: tabular-nums; letter-spacing: -.04em; white-space: nowrap; }
+.discovery-feed-latest { display: flex; align-items: center; gap: 8px; }
+.studio-table td.discovery-feed-open { width: 40px; padding-right: 16px; color: #7b879c; text-align: right; transition: color 120ms; }
+.studio-table .discovery-feed-row:hover td.discovery-feed-open, .studio-table .discovery-feed-row:focus-visible td.discovery-feed-open { color: #f78361; }
+
+.discovery-setlist { display: flex; align-items: center; gap: 10px; width: 216px; flex: none; padding: 6px; border: 1px solid #ffffff12; border-radius: 8px; background: #ffffff05; text-align: left; transition: background 120ms, border-color 120ms; }
+.discovery-setlist:hover { border-color: #f7836166; background: #ffffff09; }
+.discovery-setlist-thumb { display: grid; place-items: center; flex: none; width: 64px; height: 36px; overflow: hidden; border-radius: 4px; background: #2b313e; color: #7b879c; object-fit: cover; }
+.discovery-setlist > div { min-width: 0; }
+.discovery-setlist .studio-name, .discovery-setlist .studio-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.discovery-setlist .studio-name { font-size: 11px; }
+.discovery-setlist .studio-sub { margin-top: 2px; }
+.discovery-setlist-skeleton { width: 216px; height: 50px; border-radius: 8px; }
+
+.discovery-skeleton { display: block; height: 10px; border-radius: 4px; background: #ffffff0a; animation: discovery-pulse 1.4s ease-in-out infinite; }
+@keyframes discovery-pulse { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .discovery-skeleton { animation: none; } }
+
+@media (max-width: 700px) {
+  .discovery-header .studio-stats { margin-left: 0; width: 100%; justify-content: space-between; }
+  .discovery-genres { padding-inline: 12px; }
+  .discovery-feed-latest { display: none; }
+}

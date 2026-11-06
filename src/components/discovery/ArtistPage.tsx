@@ -5,7 +5,7 @@ import { type ArtistTabId } from './ArtistResultsTabs';
 import { ArtistResultsToolbar, type SortKey } from './ArtistResultsToolbar';
 import { ArtistSetlistCard } from './ArtistSetlistCard';
 import type { DiscoveryArtist, DiscoveryArtistDetail, DiscoverySetlistResult, DiscoveryScrapeJob } from '../../types';
-import { ChevronDown, CircleDash, Music, Search } from '@carbon/icons-react';
+import { ChevronDown, ChevronLeft, CircleDash, Music, Search } from '@carbon/icons-react';
 import { ControlButton } from '../ui/controls';
 
 function sortSetlists(
@@ -45,6 +45,8 @@ interface ArtistPageProps {
   onRefresh: () => void;
   onViewProgress: () => void;
   onLoadMore: () => void;
+  /** Go back to Artist Discovery (the top artists, or the genre list the artist was picked from). */
+  onBack: () => void;
 }
 
 export function ArtistPage({
@@ -65,6 +67,7 @@ export function ArtistPage({
   onRefresh,
   onViewProgress,
   onLoadMore,
+  onBack,
 }: ArtistPageProps) {
   const [activeTab, setActiveTab] = useState<ArtistTabId>('all');
   const [sortKey, setSortKey] = useState<SortKey>('date_desc');
@@ -88,6 +91,11 @@ export function ArtistPage({
 
   return (
     <div className="space-y-6">
+      <button type="button" className="studio-back" onClick={onBack} aria-label="Back to Artist Discovery" data-testid="artist-back">
+        <span><ChevronLeft size={16} /></span>
+        <span>Artist Discovery</span>
+      </button>
+
       {/* Hero */}
       <ArtistHero
         artist={artist}

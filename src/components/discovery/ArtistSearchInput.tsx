@@ -9,6 +9,7 @@ interface ArtistSearchInputProps {
   placeholder?: string;
 }
 
+/** The search field in the Discovery header band. */
 export function ArtistSearchInput({
   value,
   onChange,
@@ -19,7 +20,7 @@ export function ArtistSearchInput({
   return (
     // mx-[3px] my-[3px]: gives the focus ring (outset box-shadow) room to render
     // without being clipped by any ancestor overflow boundary.
-    <div className="relative mx-[3px] my-[3px]">
+    <div className="discovery-search relative mx-[3px] my-[3px]" data-testid="discovery-search">
       <SearchControl
         value={value}
         onChange={(e) => onChange(e.target.value)}

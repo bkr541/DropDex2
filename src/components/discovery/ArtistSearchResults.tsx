@@ -1,7 +1,5 @@
-import { useState } from 'react';
-import { motion } from 'motion/react';
 import type { DiscoveryArtist } from '../../types';
-import { User } from '@carbon/icons-react';
+import { DiscoveryAvatar } from './DiscoveryAvatar';
 
 interface ArtistSearchResultsProps {
   results: DiscoveryArtist[];
@@ -9,61 +7,33 @@ interface ArtistSearchResultsProps {
   query: string;
 }
 
-function ArtistThumb({ artist }: { artist: DiscoveryArtist }) {
-  const [imgError, setImgError] = useState(false);
-  if (artist.profile_image_url && !imgError) {
-    return (
-      <img
-        src={artist.profile_image_url}
-        alt={artist.name}
-        className="w-9 h-9 rounded-lg object-cover bg-primary/10 shrink-0"
-        onError={() => setImgError(true)}
-      />
-    );
-  }
-  return (
-    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-      <User size={16} className="text-primary" />
-    </div>
-  );
-}
-
 export function ArtistSearchResults({ results, onSelect, query }: ArtistSearchResultsProps) {
   if (results.length === 0) {
     return (
-      <div className="text-center py-8 border-2 border-dashed border-[var(--color-border-subtle)] rounded-2xl">
-        <p className="text-sm text-muted-foreground italic">
-          No artists found matching &ldquo;{query}&rdquo;
-        </p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Only artists already in the DropDex catalog can be searched.
-        </p>
+      <div className="studio-empty" data-testid="artist-search-results">
+        <p>No artists found matching &ldquo;{query}&rdquo;.</p>
+        <p>Only artists already in the DropDex catalog can be searched.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {results.map((artist) => (
-        <motion.button
-          key={artist.id}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => onSelect(artist)}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] hover:border-primary/30 transition-all text-left"
-        >
-          <ArtistThumb artist={artist} />
-          <div className="min-w-0">
-            <p className="font-bold text-sm text-foreground">{artist.name}</p>
-            {artist.matched_alias && (
-              <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter truncate">
-                aka {artist.matched_alias}
-              </p>
-            )}
-          </div>
-        </motion.button>
-      ))}
-    </div>
+    <section data-testid="artist-search-results" aria-label="Search results">
+      <div className="discovery-section-head">
+        <h3 className="studio-title">Results</h3>
+        <span className="studio-label">{results.length} {results.length === 1 ? 'artist' : 'artists'}</span>
+      </div>
+      <div className="discovery-rows">
+        {results.map((artist) => (
+          <button key={artist.id} type="button" className="discovery-row" onClick={() => onSelect(artist)}>
+            <DiscoveryAvatar name={artist.name} imageUrl={artist.profile_image_url} />
+            <div>
+              <p className="studio-name">{artist.name}</p>
+              {artist.matched_alias && <p className="studio-sub">aka {artist.matched_alias}</p>}
+            </div>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }

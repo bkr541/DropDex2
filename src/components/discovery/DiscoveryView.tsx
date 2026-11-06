@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
+import '../ui/studio.css';
+import './DiscoveryView.css';
 import { useArtistDiscoverySearch } from '../../hooks/useArtistDiscoverySearch';
 import { useArtistDetail } from '../../hooks/useArtistDetail';
 import { useArtistSetlists } from '../../hooks/useArtistSetlists';
@@ -15,6 +17,7 @@ import { DiscoveryHomeFeed } from './DiscoveryHomeFeed';
 import { GenreBrowser } from './GenreBrowser';
 import { GenreArtistGrid } from './GenreArtistGrid';
 import { useCatalogGenres } from '../../hooks/useCatalogGenres';
+import { useDiscoveryFeed } from '../../hooks/useDiscoveryFeed';
 import type { DiscoveryArtist, DiscoverySetlistResult } from '../../types';
 
 interface DiscoveryViewProps {
@@ -32,6 +35,8 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
   const [scrapeStarting, setScrapeStarting] = useState(false);
   const [showArtistPage, setShowArtistPage] = useState(false);
   const [selectedGenreId, setSelectedGenreId] = useState<string | null>(null);
+  // The genre list an artist was opened from, so Back returns to it.
+  const [genreBeforeArtist, setGenreBeforeArtist] = useState<string | null>(null);
   const scrapeStartControllerRef = useRef<AbortController | null>(null);
   const scrapeStartGenerationRef = useRef(0);
 
@@ -58,6 +63,8 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
     activeJobId,
     accessToken,
   );
+  const feed = useDiscoveryFeed();
+  const feedSetCount = feed.artists.reduce((total, artist) => total + artist.setlist_count, 0);
   const { genres: catalogGenres, loading: genresLoading, error: genresError, retry: retryGenres } = useCatalogGenres();
   const selectedGenre = catalogGenres.find((genre) => genre.id === selectedGenreId) ?? null;
   const { detail: artistDetail, loading: detailLoading } = useArtistDetail(
@@ -100,6 +107,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
 
   const handleArtistSelect = async (artist: DiscoveryArtist) => {
     setSelectedArtist(artist);
+    setGenreBeforeArtist(selectedGenreId);
     setSelectedGenreId(null);
     setQuery('');
     setActiveJobId(null);
@@ -146,6 +154,20 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
     }
   };
 
+  const handleBackFromArtist = () => {
+    // Ignore a scrape that is still starting for this artist, then return to where they were picked from.
+    scrapeStartControllerRef.current?.abort();
+    scrapeStartGenerationRef.current += 1;
+    setScrapeStarting(false);
+    setSelectedArtist(null);
+    setShowArtistPage(false);
+    setActiveJobId(null);
+    setShowScrapeModal(false);
+    setScrapeError(null);
+    setSelectedGenreId(genreBeforeArtist);
+    setGenreBeforeArtist(null);
+  };
+
   const handleOpenSetlist = (setlist: DiscoverySetlistResult) => {
     setSelectedSetlistForDetail(setlist);
   };
@@ -157,7 +179,7 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
   const showSearchResults = query.trim().length >= 2;
 
   return (
-    <div className="min-w-0">
+    <div className="studio discovery-studio min-w-0" data-testid="discovery-view">
       {/* Scrape progress modal */}
       <DiscoveryScrapeProgressModal
         isOpen={showScrapeModal}
@@ -166,30 +188,27 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
         pollingError={scrapePollingError}
       />
 
-      {/* Search input — hidden while viewing a set's track list */}
+      {/* Header and genre bands — hidden while viewing a set's track list */}
       {!selectedSetlistForDetail && (
-        <div className="space-y-4 mb-8">
-          <ArtistSearchInput
-            value={query}
-            onChange={setQuery}
-            onClear={() => setQuery('')}
-            loading={searchLoading}
-            placeholder={
-              selectedArtist && showArtistPage
-                ? `Search for a different artist…`
-                : 'Search DropDex artists…'
-            }
-          />
-          {searchError && showSearchResults && (
-            <p className="text-xs text-red-400 font-mono px-1">{searchError}</p>
-          )}
-          {showSearchResults && (
-            <ArtistSearchResults
-              results={searchResults}
-              onSelect={handleArtistSelect}
-              query={query.trim()}
+        <>
+          <header className="studio-band discovery-header" data-testid="discovery-header">
+            <ArtistSearchInput
+              value={query}
+              onChange={setQuery}
+              onClear={() => setQuery('')}
+              loading={searchLoading}
+              placeholder={
+                selectedArtist && showArtistPage
+                  ? `Search for a different artist…`
+                  : 'Search DropDex artists…'
+              }
             />
-          )}
+            <div className="studio-stats" data-testid="discovery-stats">
+              <div className="studio-stat"><span>{genresLoading ? '—' : catalogGenres.length.toLocaleString()}</span><small>Genres</small></div>
+              <div className="studio-stat"><span>{feed.loading ? '—' : feed.artists.length.toLocaleString()}</span><small>Top artists</small></div>
+              <div className="studio-stat"><span>{feed.loading ? '—' : feedSetCount.toLocaleString()}</span><small>Sets</small></div>
+            </div>
+          </header>
           <GenreBrowser
             genres={catalogGenres}
             loading={genresLoading}
@@ -198,59 +217,73 @@ export function DiscoveryView({ accessToken }: DiscoveryViewProps) {
             selectedGenreId={selectedGenreId}
             onSelectGenre={setSelectedGenreId}
           />
-        </div>
+        </>
       )}
 
-      {/* Main content area */}
-      {selectedSetlistForDetail ? (
-        <TrackListPage
-          setlist={selectedSetlistForDetail}
-          accessToken={accessToken}
-          onBack={handleBackFromTrackList}
-        />
-      ) : !showSearchResults && selectedGenre ? (
-        <GenreArtistGrid
-          key={selectedGenre.id}
-          genreId={selectedGenre.id}
-          genreName={selectedGenre.name}
-          onSelectArtist={handleArtistSelect}
-        />
-      ) : !showSearchResults ? (
-        <>
-          {selectedArtist && showArtistPage ? (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25 }}
-            >
-              <ArtistPage
-                artist={selectedArtist}
-                artistDetail={artistDetail}
-                detailLoading={detailLoading}
-                setlists={setlists}
-                total={total}
-                loading={setlistsLoading}
-                loadingMore={loadingMore}
-                error={setlistsError}
-                loadMoreError={loadMoreError}
-                hasMore={hasMore}
-                scrapeJob={scrapeJob}
-                scrapeStarting={scrapeStarting}
-                scrapeError={scrapeError}
-                onOpenSetlist={handleOpenSetlist}
-                onRefresh={handleStartScrape}
-                onViewProgress={() => setShowScrapeModal(true)}
-                onLoadMore={loadMore}
-              />
-            </motion.div>
-          ) : !selectedArtist ? (
-            <DiscoveryHomeFeed
-              onSelectArtist={handleArtistSelect}
-              onOpenSetlist={handleOpenSetlist}
+      {/* Body: scrolls on its own */}
+      <div className="studio-body scrollbar-none" data-testid="discovery-body">
+        {selectedSetlistForDetail ? (
+          <div className="p-4">
+            <TrackListPage
+              setlist={selectedSetlistForDetail}
+              accessToken={accessToken}
+              onBack={handleBackFromTrackList}
             />
-          ) : null}
-        </>
-      ) : null}
+          </div>
+        ) : showSearchResults ? (
+          <>
+            {searchError && (
+              <p className="px-4 pt-3 text-xs text-red-300" role="alert">{searchError}</p>
+            )}
+            <ArtistSearchResults
+              results={searchResults}
+              onSelect={handleArtistSelect}
+              query={query.trim()}
+            />
+          </>
+        ) : selectedGenre ? (
+          <GenreArtistGrid
+            key={selectedGenre.id}
+            genreId={selectedGenre.id}
+            genreName={selectedGenre.name}
+            onSelectArtist={handleArtistSelect}
+          />
+        ) : selectedArtist && showArtistPage ? (
+          <motion.div
+            className="p-4"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            <ArtistPage
+              artist={selectedArtist}
+              artistDetail={artistDetail}
+              detailLoading={detailLoading}
+              setlists={setlists}
+              total={total}
+              loading={setlistsLoading}
+              loadingMore={loadingMore}
+              error={setlistsError}
+              loadMoreError={loadMoreError}
+              hasMore={hasMore}
+              scrapeJob={scrapeJob}
+              scrapeStarting={scrapeStarting}
+              scrapeError={scrapeError}
+              onOpenSetlist={handleOpenSetlist}
+              onRefresh={handleStartScrape}
+              onViewProgress={() => setShowScrapeModal(true)}
+              onLoadMore={loadMore}
+              onBack={handleBackFromArtist}
+            />
+          </motion.div>
+        ) : !selectedArtist ? (
+          <DiscoveryHomeFeed
+            feed={feed}
+            onSelectArtist={handleArtistSelect}
+            onOpenSetlist={handleOpenSetlist}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
