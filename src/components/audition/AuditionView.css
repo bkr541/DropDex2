@@ -80,7 +80,7 @@
 /* The blank section uses the gray the other non-drop sections use, so its background and border come from the same rule. */
 .audition-section--blank { --audition-section-ink: #8997AE; }
 .audition-song-transport { margin-top: 8px; padding: 6px 16px; border-top: 1px solid #ffffff09; background: #ffffff02; }
-.audition-transport { display: grid; grid-template-columns: auto minmax(160px, 1fr) auto auto auto; align-items: center; gap: 14px; }
+.audition-transport { display: grid; grid-template-columns: auto minmax(160px, 1fr) auto auto auto auto; align-items: center; gap: 14px; }
 .audition-transport > .audition-decisions { padding-left: 14px; border-left: 1px solid #ffffff10; }
 .audition-transport > [role="alert"] { grid-column: 1 / -1; }
 .audition-studio .dd-media-transport-group { overflow: visible; min-height: 36px; border: 0; border-radius: 0; background: transparent; gap: 4px; }

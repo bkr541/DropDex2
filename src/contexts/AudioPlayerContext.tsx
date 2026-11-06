@@ -12,6 +12,9 @@ import { resolveUsbPath } from '../lib/rekordbox/usbPathResolver';
 import type { RekordboxImport, RekordboxTrack } from '../types';
 import type { UsbFileResolutionError } from '../lib/usb/resolveUsbFile';
 import { registerUsbPlaybackStopHandler } from '../lib/usb/usbPlaybackCoordinator';
+import { logger } from '../lib/logger';
+import { trackIdentityKey } from '../lib/preview/trackIdentity';
+import { fetchPreviewPlayback } from '../lib/queries/trackPreviews';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,8 +30,13 @@ export type PlayerStatus =
   | 'ended'
   | 'error';
 
+/** Where the playing audio comes from: the user's USB, or their DropDex Cloud preview. */
+export type PlaybackSource = 'usb' | 'cloud';
+
 interface PlayerState {
   activeTrack: RekordboxTrack | null;
+  /** Set once audio is attached; null while resolving, stopped or in error. */
+  source: PlaybackSource | null;
   status: PlayerStatus;
   /** User intent, kept separate from transient buffering/seeking states. */
   playIntent: boolean;
@@ -41,7 +49,7 @@ interface PlayerState {
 
 type PlayerAction =
   | { type: 'RESOLVING'; track: RekordboxTrack }
-  | { type: 'LOADED'; track: RekordboxTrack; objectUrl: string }
+  | { type: 'LOADED'; track: RekordboxTrack; objectUrl: string; source: PlaybackSource }
   | { type: 'READY' }
   | { type: 'PLAY_REQUESTED' }
   | { type: 'PLAYING' }
@@ -80,6 +88,7 @@ interface AudioPlayerProviderProps {
 
 const initial: PlayerState = {
   activeTrack: null,
+  source: null,
   status: 'idle',
   playIntent: false,
   volume: 1,
@@ -95,6 +104,7 @@ function reducer(state: PlayerState, action: PlayerAction): PlayerState {
       return {
         ...state,
         activeTrack: action.track,
+        source: null,
         status: 'resolving',
         playIntent: true,
         error: null,
@@ -105,6 +115,7 @@ function reducer(state: PlayerState, action: PlayerAction): PlayerState {
         ...state,
         activeTrack: action.track,
         objectUrl: action.objectUrl,
+        source: action.source,
         status: 'loading',
         playIntent: true,
         error: null,
@@ -129,6 +140,7 @@ function reducer(state: PlayerState, action: PlayerAction): PlayerState {
       return {
         ...state,
         activeTrack: action.track === undefined ? state.activeTrack : action.track,
+        source: null,
         status: 'error',
         playIntent: false,
         error: action.error,
@@ -212,6 +224,14 @@ export function audioMediaErrorMessage(err: MediaError | null): string {
     default:
       return `Playback error (code ${err.code}).`;
   }
+}
+
+/**
+ * Whether a track may be played from its DropDex Cloud preview. The USB always wins: while DropDex is reading the drive
+ * ('connected') or still checking it ('connecting') the track plays from the USB, and the preview is not used.
+ */
+export function shouldTryCloudPreview(status: UsbStatus): boolean {
+  return status !== 'connected' && status !== 'connecting';
 }
 
 export function usbStatusPlaybackMessage(status: UsbStatus): string {
@@ -320,6 +340,9 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
     const onError = () => {
       if (ignoreMediaEventsRef.current || !ownedUrlRef.current) return;
       const message = audioMediaErrorMessage(audio.error);
+      if (stateRef.current.source === 'cloud') {
+        logger.error('preview.playback.failed', { trackId: stateRef.current.activeTrack?.id, mediaErrorCode: audio.error?.code ?? null, message });
+      }
       playRequestIdRef.current += 1;
       pendingPlayRef.current = null;
       releaseCurrentSource();
@@ -360,6 +383,69 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
     };
   }, [releaseCurrentSource]);
 
+  /** Attach a source to the audio element and start it. `source` says whether it is the USB file or the cloud preview. */
+  const startAudio = useCallback(async (
+    track: RekordboxTrack,
+    requestId: number,
+    url: string,
+    revocable: boolean,
+    source: PlaybackSource,
+  ): Promise<void> => {
+    const audio = audioRef.current;
+    if (!audio || requestId !== playRequestIdRef.current) {
+      if (revocable) safeRevokeUrl(url);
+      if (!audio && requestId === playRequestIdRef.current) {
+        pendingPlayRef.current = null;
+        releaseCurrentSource();
+        dispatch({ type: 'ERROR', error: 'Audio engine not ready.', track });
+      }
+      return;
+    }
+
+    ownedUrlRef.current = url;
+    ownedUrlIsRevocableRef.current = revocable;
+    ownedSourceIsUsbRef.current = source === 'usb';
+    audio.src = url;
+    audio.volume = stateRef.current.volume;
+    audio.muted = stateRef.current.muted;
+    audio.loop = stateRef.current.repeat;
+    dispatch({ type: 'LOADED', track, objectUrl: url, source });
+    audio.load();
+
+    try {
+      await audio.play();
+    } catch (err) {
+      if (requestId !== playRequestIdRef.current) return;
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      const message = `Playback failed: ${err instanceof Error ? err.message : String(err)}`;
+      if (source === 'cloud') logger.error('preview.playback.failed', { trackId: track.id, message });
+      pendingPlayRef.current = null;
+      releaseCurrentSource();
+      dispatch({ type: 'ERROR', error: message, track });
+    }
+  }, [releaseCurrentSource]);
+
+  /**
+   * Play the track from its DropDex Cloud preview. Only used when DropDex is not reading the USB. Returns false when
+   * there is nothing to play it from (no synced preview, or the lookup failed), so the normal USB handling can go on.
+   */
+  const playCloudPreview = useCallback(async (track: RekordboxTrack, requestId: number): Promise<boolean> => {
+    let preview: Awaited<ReturnType<typeof fetchPreviewPlayback>>;
+    try {
+      preview = await fetchPreviewPlayback(trackIdentityKey(track));
+    } catch (error) {
+      logger.warn('preview.playback.lookup_failed', { trackId: track.id, title: track.title, message: error instanceof Error ? error.message : String(error) });
+      return false;
+    }
+    if (requestId !== playRequestIdRef.current) return true;
+    if (!preview) return false;
+    // The drive may have come back while the preview was being looked up. The USB always wins.
+    if (!shouldTryCloudPreview(usbRef.current.status)) return false;
+    logger.info('preview.playback.start', { trackId: track.id, title: track.title });
+    await startAudio(track, requestId, preview.url, false, 'cloud');
+    return true;
+  }, [startAudio]);
+
   const playTrack = useCallback(async (track: RekordboxTrack): Promise<void> => {
     const requestId = ++playRequestIdRef.current;
     pendingPlayRef.current = null;
@@ -375,6 +461,12 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
       releaseCurrentSource();
       dispatch({ type: 'ERROR', error: message, track });
     };
+
+    // Always play from the USB while DropDex is reading it. Only when it is not, use the track's cloud preview.
+    if (shouldTryCloudPreview(usbRef.current.status)) {
+      if (await playCloudPreview(track, requestId)) return;
+      if (requestId !== playRequestIdRef.current) return;
+    }
 
     if (!track.file_path) {
       failCurrent('This track has no file path. Re-import with a USB connected.');
@@ -436,39 +528,11 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
       return;
     }
 
-    const audio = audioRef.current;
-    if (!audio) {
-      failCurrent('Audio engine not ready.');
-      return;
-    }
-
     const newUrl = sourceResult.source.kind === 'file'
       ? URL.createObjectURL(sourceResult.source.file)
       : sourceResult.source.url;
-    const revokeNewUrl = sourceResult.source.kind === 'file';
-    if (requestId !== playRequestIdRef.current) {
-      if (revokeNewUrl) safeRevokeUrl(newUrl);
-      return;
-    }
-
-    ownedUrlRef.current = newUrl;
-    ownedUrlIsRevocableRef.current = revokeNewUrl;
-    ownedSourceIsUsbRef.current = true;
-    audio.src = newUrl;
-    audio.volume = stateRef.current.volume;
-    audio.muted = stateRef.current.muted;
-    audio.loop = stateRef.current.repeat;
-    dispatch({ type: 'LOADED', track, objectUrl: newUrl });
-    audio.load();
-
-    try {
-      await audio.play();
-    } catch (err) {
-      if (requestId !== playRequestIdRef.current) return;
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      failCurrent(`Playback failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }, [releaseCurrentSource]);
+    await startAudio(track, requestId, newUrl, sourceResult.source.kind === 'file', 'usb');
+  }, [releaseCurrentSource, playCloudPreview, startAudio]);
 
   // Auto-play a request queued while the USB picker or restore check was active,
   // and tear down playback whenever a connected drive becomes unusable.
@@ -493,8 +557,12 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
 
     const pending = pendingPlayRef.current;
     if (pending) {
+      // The drive did not come up. Play the track from its cloud preview if it has one.
       pendingPlayRef.current = null;
-      failPlayback(usbStatusPlaybackMessage(usbStatus), pending);
+      const requestId = playRequestIdRef.current;
+      void playCloudPreview(pending, requestId).then((played) => {
+        if (!played && requestId === playRequestIdRef.current) failPlayback(usbStatusPlaybackMessage(usbStatus), pending);
+      });
       return;
     }
 
@@ -502,7 +570,7 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
     const current = stateRef.current;
     if (current.status === 'idle' || current.status === 'error') return;
     failPlayback(usbStatusPlaybackMessage(usbStatus), current.activeTrack);
-  }, [usbCtx.status, failPlayback, playTrack]);
+  }, [usbCtx.status, failPlayback, playTrack, playCloudPreview]);
 
 
   useEffect(() => registerUsbPlaybackStopHandler(() => {

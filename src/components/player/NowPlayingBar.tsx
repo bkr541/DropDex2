@@ -5,6 +5,7 @@ import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { computeProgress } from '../../lib/rekordbox/waveformRenderer';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
+import { PlaybackSourceBadge } from './PlaybackSourceBadge';
 import { CircleDash, Close, Pause, Play, Stop, Usb, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
 
 // ── Time formatting ───────────────────────────────────────────────────────────
@@ -222,6 +223,9 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
               className="w-16 h-1 accent-primary cursor-pointer"
             />
           </div>
+
+          {/* Shown only while streaming the cloud preview instead of the USB file */}
+          <PlaybackSourceBadge className="hidden sm:inline-flex" />
 
           {/* USB indicator — subtle dot */}
           {usbStatus === 'connected' && (

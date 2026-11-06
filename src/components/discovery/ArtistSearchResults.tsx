@@ -1,5 +1,5 @@
 import type { DiscoveryArtist } from '../../types';
-import { DiscoveryAvatar } from './DiscoveryAvatar';
+import { ArtistCard } from './ArtistCard';
 
 interface ArtistSearchResultsProps {
   results: DiscoveryArtist[];
@@ -23,15 +23,15 @@ export function ArtistSearchResults({ results, onSelect, query }: ArtistSearchRe
         <h3 className="studio-title">Results</h3>
         <span className="studio-label">{results.length} {results.length === 1 ? 'artist' : 'artists'}</span>
       </div>
-      <div className="discovery-rows">
+      <div className="discovery-card-grid">
         {results.map((artist) => (
-          <button key={artist.id} type="button" className="discovery-row" onClick={() => onSelect(artist)}>
-            <DiscoveryAvatar name={artist.name} imageUrl={artist.profile_image_url} />
-            <div>
-              <p className="studio-name">{artist.name}</p>
-              {artist.matched_alias && <p className="studio-sub">aka {artist.matched_alias}</p>}
-            </div>
-          </button>
+          <ArtistCard
+            key={artist.id}
+            name={artist.name}
+            imageUrl={artist.profile_image_url}
+            subtitle={artist.matched_alias ? `aka ${artist.matched_alias}` : null}
+            onOpen={() => onSelect(artist)}
+          />
         ))}
       </div>
     </section>

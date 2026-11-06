@@ -72,7 +72,7 @@
 .studio-back:hover { color: #f6f7fa; }
 .studio-back:hover > span:first-child { color: #f78361; border-color: #f7836180; }
 
-.studio-avatar--lg { width: 48px; height: 48px; font-size: 14px; }
+.studio-avatar--xl { width: 64px; height: 64px; font-size: 18px; }
 
 .studio-empty { display: grid; justify-items: center; gap: 4px; padding: 56px 16px; text-align: center; }
 .studio-empty > p:first-child { color: #d1d7e2; font-size: 12px; }

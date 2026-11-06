@@ -5,6 +5,7 @@ import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import { logger } from '../../lib/logger';
 import { MediaTransportControlGroup, PlaybackSeekBar, TransportButton } from '../ui/media';
 import type { RekordboxTrack } from '../../types';
+import { PlaybackSourceBadge } from '../player/PlaybackSourceBadge';
 import { AuditionDecisions } from './AuditionDecisions';
 import { AuditionTrackNavigation } from './AuditionTrackNavigation';
 
@@ -101,6 +102,8 @@ export function AuditionTransport({ track, fallbackDurationMs, previousTrack, ne
         onSeek={seek}
         ariaLabel="Playback position"
       />
+
+      <PlaybackSourceBadge />
 
       <div className="audition-volume flex shrink-0 items-center gap-2">
         <TransportButton label={muted ? 'Unmute' : 'Mute'} tone="mute" size="compact" active={muted} onClick={toggleMute}>

@@ -51,6 +51,7 @@ import { TrackIdentity, TrackNameCell, TrackTable, TrackTableBody, TrackTableHea
 import { TabNavigation } from '../ui/display/TabNavigation';
 import { AudioDock, MediaTransportControlGroup, PlaybackSeekBar, TimelineBeatLane, TimelineSectionLane, TrackWaveformPreview, WaveformZoomControls, cueMarkersFromState } from '../ui/media';
 import { KeyBadge } from '../ui/display';
+import { PlaybackSourceBadge } from '../player/PlaybackSourceBadge';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import { clampCueTransportTime, cueAdjacentTrackIndex, cuePlaybackPlayheadPercent } from '../../lib/cues/cuePlaybackTransport';
@@ -458,6 +459,8 @@ function CuePointsAudioDock({
         onSeek={seek}
         ariaLabel={`${label} playback position`}
       />
+
+      <PlaybackSourceBadge />
 
       {audition && (
         <>

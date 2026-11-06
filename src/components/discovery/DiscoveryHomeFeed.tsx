@@ -51,31 +51,23 @@ export function DiscoveryHomeFeed({ feed, onSelectArtist, onOpenSetlist }: Disco
 
   return (
     <section data-testid="discovery-feed" aria-label="Top artists">
-      <table className="studio-table">
-        <thead>
-          <tr>
-            <th scope="col">Top artists</th>
-            <th scope="col">Sets</th>
-            <th scope="col">Latest setlists</th>
-            <th scope="col"><span className="sr-only">Open</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {artists.map((artist) => {
-            const setlists = setlistsByArtist.get(artist.id);
-            return (
-              <ArtistFeedRow
-                key={artist.id}
-                artist={artist}
-                setlists={setlists ?? []}
-                setlistsLoading={setlists === undefined}
-                onSeeAll={() => onSelectArtist(toDiscoveryArtist(artist))}
-                onOpenSetlist={onOpenSetlist}
-              />
-            );
-          })}
-        </tbody>
-      </table>
+      <div className="discovery-section-head">
+        <h3 className="studio-title">Top artists</h3>
+        <span className="studio-label">{artists.length} {artists.length === 1 ? 'artist' : 'artists'}</span>
+      </div>
+      {artists.map((artist) => {
+        const setlists = setlistsByArtist.get(artist.id);
+        return (
+          <ArtistFeedRow
+            key={artist.id}
+            artist={artist}
+            setlists={setlists ?? []}
+            setlistsLoading={setlists === undefined}
+            onSeeAll={() => onSelectArtist(toDiscoveryArtist(artist))}
+            onOpenSetlist={onOpenSetlist}
+          />
+        );
+      })}
     </section>
   );
 }

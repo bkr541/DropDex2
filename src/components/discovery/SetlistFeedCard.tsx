@@ -10,10 +10,10 @@ interface SetlistFeedCardProps {
 function SetlistThumb({ url }: { url: string | null }) {
   const [failed, setFailed] = useState(false);
   if (url && !failed) return <img src={url} alt="" onError={() => setFailed(true)} className="discovery-setlist-thumb" />;
-  return <span className="discovery-setlist-thumb" aria-hidden="true"><Music size={16} /></span>;
+  return <span className="discovery-setlist-thumb" aria-hidden="true"><Music size={24} /></span>;
 }
 
-/** One setlist in an artist's row: a thumbnail beside its title, then its date and the share of its tracks that are identified. */
+/** One setlist: a wide thumbnail, its title, then its date and the share of its tracks that are identified. */
 export function SetlistFeedCard({ setlist, onOpen }: SetlistFeedCardProps) {
   const title = setlist.title ?? 'Untitled Set';
   const completionPct = setlist.completion_pct != null ? Math.round(setlist.completion_pct) : null;
@@ -24,14 +24,11 @@ export function SetlistFeedCard({ setlist, onOpen }: SetlistFeedCardProps) {
       type="button"
       className="discovery-setlist"
       title={completionPct != null ? `${title} · ${completionPct}% of its tracks identified` : title}
-      onClick={(event) => { event.stopPropagation(); onOpen(setlist); }}
-      onKeyDown={(event) => event.stopPropagation()}
+      onClick={() => onOpen(setlist)}
     >
       <SetlistThumb url={setlist.artwork_url ?? null} />
-      <div>
-        <p className="studio-name">{title}</p>
-        {detail && <p className="studio-sub">{detail}</p>}
-      </div>
+      <span className="discovery-setlist-title">{title}</span>
+      {detail && <span className="discovery-setlist-detail">{detail}</span>}
     </button>
   );
 }

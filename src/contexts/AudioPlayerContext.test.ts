@@ -5,6 +5,7 @@ import {
   audioMediaErrorMessage,
   safeRevokeUrl,
   usbStatusPlaybackMessage,
+  shouldTryCloudPreview,
 } from './AudioPlayerContext';
 import type { UsbFileResolutionError } from '../lib/usb/resolveUsbFile';
 
@@ -326,5 +327,47 @@ describe('shared repeat ownership', () => {
     expect(contextSource).toContain('audio.loop = false;');
     expect(contextSource).toContain("const onEnded = () => {");
     expect(contextSource).toContain("dispatch({ type: 'ENDED' })");
+  });
+});
+
+// ── Cloud preview playback ────────────────────────────────────────────────────
+
+describe('playing from the cloud preview', () => {
+  it('uses the preview only when DropDex is not reading the USB; the USB always wins', () => {
+    expect(shouldTryCloudPreview('connected')).toBe(false);
+    expect(shouldTryCloudPreview('connecting')).toBe(false);
+    for (const status of ['disconnected', 'released', 'permission-required', 'unavailable', 'wrong_root', 'unsupported', 'error'] as const) {
+      expect(shouldTryCloudPreview(status), status).toBe(true);
+    }
+  });
+
+  it('tries the preview before any USB connection prompt, and goes on with the USB flow when there is none', () => {
+    const play = contextSource.slice(contextSource.indexOf('const playTrack = useCallback'));
+    const cloud = play.indexOf('if (shouldTryCloudPreview(usbRef.current.status))');
+    expect(cloud).toBeGreaterThan(-1);
+    expect(cloud).toBeLessThan(play.indexOf('void usb.connect()'));
+    expect(cloud).toBeLessThan(play.indexOf('usb.reconnect()'));
+    expect(cloud).toBeLessThan(play.indexOf('usb.ensurePermission()'));
+    expect(play).toContain('if (await playCloudPreview(track, requestId)) return;');
+    // A lost lookup is not an error; the drive may have come back while it ran.
+    expect(contextSource).toContain('if (!shouldTryCloudPreview(usbRef.current.status)) return false;');
+  });
+
+  it('marks cloud audio as not from the USB, so losing the drive does not stop it, and reports the source', () => {
+    expect(contextSource).toContain("ownedSourceIsUsbRef.current = source === 'usb';");
+    expect(contextSource).toContain("await startAudio(track, requestId, preview.url, false, 'cloud');");
+    expect(contextSource).toContain("await startAudio(track, requestId, newUrl, sourceResult.source.kind === 'file', 'usb');");
+    expect(contextSource).toContain("dispatch({ type: 'LOADED', track, objectUrl: url, source });");
+    expect(contextSource).toContain('source: PlaybackSource | null;');
+  });
+
+  it('logs the preview steps and failures under the preview prefix', () => {
+    for (const event of ['preview.playback.start', 'preview.playback.lookup_failed', 'preview.playback.failed']) {
+      expect(contextSource).toContain(`'${event}'`);
+    }
+  });
+
+  it('falls back to the preview when a queued track finds the drive did not come up', () => {
+    expect(contextSource).toContain('void playCloudPreview(pending, requestId).then((played) => {');
   });
 });

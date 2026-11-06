@@ -1,7 +1,7 @@
 import { CircleDash } from '@carbon/icons-react';
 import { useGenreArtists } from '../../hooks/useGenreArtists';
 import type { DiscoveryArtist, GenreBrowseArtist } from '../../types';
-import { DiscoveryAvatar } from './DiscoveryAvatar';
+import { ArtistCard } from './ArtistCard';
 
 interface GenreArtistGridProps {
   genreId: string;
@@ -40,12 +40,15 @@ export function GenreArtistGrid({ genreId, genreName, onSelectArtist }: GenreArt
       )}
 
       {!loading && !error && artists.length > 0 && (
-        <div className="discovery-rows">
+        <div className="discovery-card-grid">
           {artists.map((artist) => (
-            <button key={artist.id} type="button" className="discovery-row" onClick={() => onSelectArtist(toDiscoveryArtist(artist))}>
-              <DiscoveryAvatar name={artist.name} imageUrl={artist.profile_image_url} />
-              <div><p className="studio-name">{artist.name}</p></div>
-            </button>
+            <ArtistCard
+              key={artist.id}
+              name={artist.name}
+              imageUrl={artist.profile_image_url}
+              subtitle={genreName}
+              onOpen={() => onSelectArtist(toDiscoveryArtist(artist))}
+            />
           ))}
         </div>
       )}

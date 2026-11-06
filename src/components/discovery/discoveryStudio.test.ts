@@ -66,7 +66,7 @@ describe('Discovery uses the Audition look', () => {
 });
 
 describe('Discovery pieces', () => {
-  it('lists the top artists as a table with the Audition-style headings', async () => {
+  it('shows each top artist as a shelf: their card first, then their latest setlists, in one row that scrolls sideways', async () => {
     const { DiscoveryHomeFeed } = await import('./DiscoveryHomeFeed');
     const feed: DiscoveryFeed = {
       artists: [artist('a1', 'Alpha Artist'), artist('a2', 'Beta Artist')],
@@ -74,18 +74,44 @@ describe('Discovery pieces', () => {
       loading: false, error: null, retry: vi.fn(),
     };
     const markup = renderToStaticMarkup(createElement(DiscoveryHomeFeed, { feed, onSelectArtist: vi.fn(), onOpenSetlist: vi.fn() }));
-    expect(markup).toContain('class="studio-table"');
-    for (const heading of ['Top artists', 'Sets', 'Latest setlists']) expect(markup).toContain(`>${heading}</th>`);
-    // Genres sit under the artist's name, which is a large photo and a 14px name.
-    expect(markup).toContain('studio-avatar studio-avatar--lg');
-    expect(markup).toMatch(/class="discovery-feed-name">Alpha Artist<\/p><p class="discovery-feed-genres">Melodic Dubstep · Future Bass</);
+    expect(markup).not.toContain('<table');
     expect(markup.match(/data-testid="discovery-feed-row"/g)).toHaveLength(2);
+    expect(markup.match(/discovery-scroller-row/g)).toHaveLength(2);
+    expect(markup.match(/data-testid="artist-card"/g)).toHaveLength(2);
+    // The artist card comes before the setlists in the shelf.
+    expect(markup.indexOf('data-testid="artist-card"')).toBeLessThan(markup.indexOf('Main Stage 2025'));
     expect(markup).toContain('Melodic Dubstep · Future Bass');
-    expect(markup).toContain('1,234');
-    expect(markup).toContain('Main Stage 2025');
+    expect(markup).toContain('<span>1,234</span><small>Sets</small>');
     expect(markup).toContain('2025-06-01 · 80%');
+    expect(markup).toContain('80% of its tracks identified');
     // The second artist's setlists are still loading.
     expect(markup).toContain('discovery-skeleton');
+    const css = read('./DiscoveryView.css');
+    expect(css).toMatch(/\.discovery-scroller-row \{[^}]*overflow-x: auto/);
+    expect(css).toMatch(/\.discovery-artist-card \{[^}]*width: 216px/);
+  });
+
+  it('builds the artist cards from scratch: large photo, name over genres, and a footer with the set count', async () => {
+    const { ArtistCard } = await import('./ArtistCard');
+    const markup = renderToStaticMarkup(createElement(ArtistCard, { name: 'Zed', imageUrl: null, subtitle: 'Trap', setCount: 1, onOpen: vi.fn() }));
+    expect(markup).toContain('studio-avatar studio-avatar--xl');
+    expect(markup).toMatch(/discovery-artist-card-name">Zed<\/span><span class="discovery-artist-card-sub">Trap</);
+    expect(markup).toContain('<span>1</span><small>Set</small>');
+    const bare = renderToStaticMarkup(createElement(ArtistCard, { name: 'Zed', imageUrl: null, onOpen: vi.fn() }));
+    expect(bare).toContain('View artist');
+  });
+
+  it('shows genre and search results as grids of the same cards', async () => {
+    const { ArtistSearchResults } = await import('./ArtistSearchResults');
+    const markup = renderToStaticMarkup(createElement(ArtistSearchResults, {
+      results: [{ id: 'x', name: 'Xander', normalized_name: 'xander', matched_alias: 'X-Man', profile_image_url: null }, { id: 'y', name: 'Yara', normalized_name: 'yara', matched_alias: null, profile_image_url: null }],
+      onSelect: vi.fn(), query: 'xa',
+    }));
+    expect(markup).toContain('discovery-card-grid');
+    expect(markup.match(/data-testid="artist-card"/g)).toHaveLength(2);
+    expect(markup).toContain('aka X-Man');
+    expect(read('./GenreArtistGrid.tsx')).toContain('<ArtistCard');
+    expect(read('./DiscoveryView.css')).toMatch(/\.discovery-card-grid \{[^}]*display: grid/);
   });
 
   it('says plainly when the top artists could not be loaded, and offers to try again', async () => {
@@ -119,10 +145,12 @@ describe('Discovery pieces', () => {
     expect(picked).toContain('aria-label="Clear genre filter"');
     expect(picked).toMatch(/aria-pressed="false" class="discovery-genre-tab">All</);
     const source = read('./GenreBrowser.tsx');
-    expect(source).toContain("addEventListener('wheel'");
-    expect(source).toContain('Scroll genres right');
-    expect(discoveryCss).toMatch(/\.discovery-genre-tabs \{[^}]*overflow-x: auto/);
-    expect(discoveryCss).not.toContain('--wrap');
+    expect(source).toContain('<HorizontalScroller');
+    expect(source).toContain('wheel');
+    const scroller = read('./HorizontalScroller.tsx');
+    expect(scroller).toContain("addEventListener('wheel'");
+    expect(scroller).toContain('aria-label="Scroll right"');
+    expect(discoveryCss).toMatch(/\.discovery-scroller-row \{[^}]*overflow-x: auto/);
   });
 
   it('has a Back to Artist Discovery button on the artist page that returns to where the artist was picked', () => {
@@ -132,17 +160,6 @@ describe('Discovery pieces', () => {
     expect(view).toContain('onBack={handleBackFromArtist}');
     expect(view).toContain('setSelectedGenreId(genreBeforeArtist)');
     expect(view).toContain('setGenreBeforeArtist(selectedGenreId)');
-  });
-
-  it('shows search results as rows, with the alias as supporting text', async () => {
-    const { ArtistSearchResults } = await import('./ArtistSearchResults');
-    const markup = renderToStaticMarkup(createElement(ArtistSearchResults, {
-      results: [{ id: 'x', name: 'Xander', normalized_name: 'xander', matched_alias: 'X-Man', profile_image_url: null }],
-      onSelect: vi.fn(), query: 'xa',
-    }));
-    expect(markup).toContain('discovery-row');
-    expect(markup).toContain('aka X-Man');
-    expect(markup).toContain('1 artist');
   });
 
   it('logs the feed failures under the Discovery prefix', () => {
