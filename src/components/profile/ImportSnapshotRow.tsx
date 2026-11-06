@@ -3,7 +3,6 @@ import { getImportHistoryPresentation } from '../../lib/rekordbox/importHistoryP
 import { isPendingHardDelete, isUsableLibrarySnapshot } from '../../lib/rekordbox/libraryDeletion';
 import { getImportProgress, isImportInFlight, isImportStalled } from '../../lib/rekordbox/importLifecycle';
 import type { RekordboxImport } from '../../types';
-import { ControlButton } from '../ui/controls';
 
 interface ImportSnapshotRowProps {
   snapshot: RekordboxImport;
@@ -26,18 +25,17 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
   const resumable = imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted';
 
   return (
-    <div data-testid={`import-history-row-${imp.id}`} className="p-4 flex items-start justify-between gap-3">
+    <div data-testid={`import-history-row-${imp.id}`} className="flex items-center justify-between gap-3 px-4 py-2">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <ControlButton
+          <button
             type="button"
-            variant="ghost"
             onClick={() => onOpen(imp)}
             aria-label={`Open import ${imp.source_filename}`}
-            className="max-w-full text-left font-mono text-sm font-bold"
+            className="max-w-full truncate text-left font-mono text-xs font-bold transition-colors hover:text-primary"
           >
             {imp.source_filename}
-          </ControlButton>
+          </button>
           {isActive && (
             <span className="text-[9px] font-bold capitalize tracking-widest px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 rounded-full shrink-0">
               Active
@@ -54,7 +52,7 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
             </span>
           )}
         </div>
-        <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
+        <p className="text-[10px] text-muted-foreground font-mono">
           {new Date(imp.imported_at).toLocaleDateString()} · {imp.track_count.toLocaleString()} tracks · {imp.playlist_count} playlists
         </p>
         {importInFlight && (
@@ -72,7 +70,7 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
           <p className="text-[10px] text-red-400 mt-1">{imp.error_message}</p>
         )}
       </div>
-      <div className="flex items-center gap-3 shrink-0 pt-0.5">
+      <div className="flex items-center gap-3 shrink-0">
         {!isActive && !importInFlight && !importStalled && isUsableLibrarySnapshot(imp) && importPresentation.canActivate && (
           <button onClick={() => onMakeActive(imp)} className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors">
             Make Active

@@ -11,11 +11,12 @@ const group = readFileSync(new URL('./StreamingSyncGroup.tsx', import.meta.url),
 const selector = readFileSync(new URL('./TrackSyncSelector.tsx', import.meta.url), 'utf8');
 
 describe('Streaming group in the Library tab', () => {
-  it('is shown in the Library tab of the profile page, between the library stats and the snapshots', () => {
+  it('is shown in the Library tab of the profile page, after the library stats and the USBs (which hold the snapshots)', () => {
     const library = app.indexOf("settingsTab === 'library'");
     const at = app.indexOf('<StreamingSyncGroup');
     expect(at).toBeGreaterThan(library);
-    expect(at).toBeLessThan(app.indexOf('{/* Snapshots */}'));
+    expect(at).toBeGreaterThan(app.indexOf('<UsbCardsSection'));
+    expect(at).toBeLessThan(app.indexOf('Danger zone'));
   });
 
   it('starts with the switch off and no sync button', async () => {

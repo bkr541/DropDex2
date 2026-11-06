@@ -67,8 +67,8 @@ import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerConte
 import { NowPlayingBar } from './components/player/NowPlayingBar';
 import { buildPlaylistIdentityKey, playlistKeyOwner } from './lib/queries/userPlaylists';
 import { useUsbDevices } from './hooks/useUsbDevices';
-import { groupImportsByUsb } from './lib/usb/groupImportsByUsb';
-import { UsbCardsSection, UsbSnapshotGroups } from './components/profile/UsbLibrarySections';
+import { groupImportsByUsb, UNASSIGNED_KEY } from './lib/usb/groupImportsByUsb';
+import { UsbCardsSection } from './components/profile/UsbLibrarySections';
 import { useLibraryOverviewWidgets } from './hooks/useLibraryOverviewWidgets';
 import { DashboardWidgetsGroup } from './components/profile/DashboardWidgetsGroup';
 import type { PlaylistWithCount } from './lib/queries/rekordbox';
@@ -513,6 +513,8 @@ export default function App() {
     () => groupImportsByUsb(allImports, usbDevices, latestImport?.id ?? null),
     [allImports, usbDevices, latestImport?.id],
   );
+  // The USBs you use: every saved USB that is not retired, plus any with imports that is not in the list.
+  const usbCount = usbGroups.filter((group) => group.key !== UNASSIGNED_KEY && !group.retired).length;
   const inFlightImport = useMemo(() => getInFlightImport(allImports), [allImports]);
 
   const routeTrackId = route.name === 'track' ? route.trackId : null;
@@ -1629,7 +1631,20 @@ export default function App() {
                     <section className="space-y-3">
                       <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><DataBase size={11} />Library</h2>
                       {latestImport && (
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-3 gap-3">
+                        {/* USB */}
+                        <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
+                          <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="7" width="14" height="10" rx="1" transform="translate(20 24) rotate(180)" style={{fill: '#348dff', opacity: 0.35}} />
+                            <polyline points="8 12 10 13 10 11 12 12" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+                            <path d="M17,15V9h4v6ZM4,17H16a1,1,0,0,0,1-1V8a1,1,0,0,0-1-1H4A1,1,0,0,0,3,8v8A1,1,0,0,0,4,17Z" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
+                          </svg>
+                          <p className="mt-2 text-2xl font-black tabular-nums leading-none" data-testid="library-usb-count">
+                            {usbCount.toLocaleString()}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{usbCount === 1 ? 'USB' : 'USBs'}</p>
+                        </div>
+
                         {/* Tracks */}
                         <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
                           <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -1662,38 +1677,18 @@ export default function App() {
                     )}
                     </section>
 
-                    {/* USBs */}
+                    {/* USBs, each with the library snapshots that came from it */}
                     <section className="space-y-3" data-testid="profile-usbs">
                       <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><Usb size={11} />USBs</h2>
                       {usbDevicesLoading || importsListLoading ? (
                         <div className="flex items-center justify-center py-6"><CircleDash className="animate-spin text-muted-foreground" size={20} /></div>
-                      ) : (
-                        <UsbCardsSection groups={usbGroups} />
-                      )}
-                    </section>
-
-                    <StreamingSyncGroup importId={latestImport?.id ?? null} trackCount={latestImport?.track_count ?? null} sourceName={latestImport?.device_name ?? latestImport?.source_filename ?? null} deviceName={latestImport?.device_name ?? null} />
-
-                    <RekordboxXmlGroup userId={userId} />
-
-                    {/* Snapshots */}
-                    <section className="space-y-3">
-                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><Layers size={11} />Library Snapshots by USB</h2>
-                      {importsListLoading ? (
-                        <div className="flex items-center justify-center py-6">
-                          <CircleDash className="animate-spin text-muted-foreground" size={20} />
-                        </div>
                       ) : importsListError ? (
                         <div className="glass rounded-2xl p-4 text-center space-y-2">
                           <p className="text-sm text-red-400">{importsListError}</p>
                           <ControlButton variant="ghost" onClick={refetchImportList} className="text-xs"><Renew size={13} /> Retry</ControlButton>
                         </div>
-                      ) : allImports.length === 0 ? (
-                        <div className="glass rounded-2xl p-4 text-center">
-                          <p className="text-sm text-muted-foreground italic">No imports yet.</p>
-                        </div>
                       ) : (
-                        <UsbSnapshotGroups
+                        <UsbCardsSection
                           groups={usbGroups}
                           activeImportId={latestImport?.id ?? null}
                           onOpen={(imp) => navigate({ name: 'import', importId: imp.id, resume: false })}
@@ -1709,6 +1704,10 @@ export default function App() {
                         />
                       )}
                     </section>
+
+                    <StreamingSyncGroup importId={latestImport?.id ?? null} trackCount={latestImport?.track_count ?? null} sourceName={latestImport?.device_name ?? latestImport?.source_filename ?? null} deviceName={latestImport?.device_name ?? null} />
+
+                    <RekordboxXmlGroup userId={userId} />
 
                     {/* Danger zone */}
                     <section className="space-y-3">

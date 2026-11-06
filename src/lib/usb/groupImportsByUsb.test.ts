@@ -75,33 +75,68 @@ describe('Library tab in the profile', () => {
     'a',
   );
 
+  const props = { groups, activeImportId: 'a', onOpen: vi.fn(), onMakeActive: vi.fn(), onResumeOrRetry: vi.fn(), onDelete: vi.fn() };
+
   it('shows every USB as a card, not only the primary one', async () => {
     const { UsbCardsSection } = await import('../../components/profile/UsbLibrarySections');
-    const markup = renderToStaticMarkup(createElement(UsbCardsSection, { groups }));
+    const markup = renderToStaticMarkup(createElement(UsbCardsSection, props));
     expect(markup.match(/data-testid="usb-card"/g)).toHaveLength(3);
-    for (const text of ['LUMA', 'Festival stick', 'EMPTY STICK', 'Active library', 'Connected now', '2,283 tracks · 4 playlists'.replace('4', '4'), 'No library imported from this USB yet.']) expect(markup).toContain(text);
+    for (const text of ['LUMA', 'Festival stick', 'EMPTY STICK', 'Active library', 'Connected now', '2,283 tracks · 4 playlists', 'No library imported from this USB yet.']) expect(markup).toContain(text);
   });
 
-  it('groups the exportLibrary.db snapshots under each USB, and leaves out USBs with no snapshots', async () => {
-    const { UsbSnapshotGroups } = await import('../../components/profile/UsbLibrarySections');
-    const markup = renderToStaticMarkup(createElement(UsbSnapshotGroups, { groups, activeImportId: 'a', onOpen: vi.fn(), onMakeActive: vi.fn(), onResumeOrRetry: vi.fn(), onDelete: vi.fn() }));
-    expect(markup.match(/data-testid="usb-snapshot-group"/g)).toHaveLength(2);
-    expect(markup).toContain('exportLibrary.db');
-    expect(markup).toContain('second.db');
-    expect(markup.indexOf('Festival stick')).toBeGreaterThan(markup.indexOf('exportLibrary.db'));
-    expect(markup).not.toContain('EMPTY STICK');
-    expect(markup).toContain('data-testid="import-history-row-a"');
+  it('puts each USB\'s exportLibrary.db snapshots inside that USB\'s own card', async () => {
+    const { UsbCardsSection } = await import('../../components/profile/UsbLibrarySections');
+    const markup = renderToStaticMarkup(createElement(UsbCardsSection, props));
+    const cards = markup.split('data-testid="usb-card"').slice(1);
+    const luma = cards.find((card) => card.includes('LUMA') && !card.includes('Festival stick'));
+    const festival = cards.find((card) => card.includes('Festival stick'));
+    const empty = cards.find((card) => card.includes('EMPTY STICK'));
+    expect(luma).toContain('exportLibrary.db');
+    expect(luma).not.toContain('second.db');
+    expect(festival).toContain('second.db');
+    expect(festival).toContain('1 import');
+    expect(festival).toContain('data-testid="import-history-row-b"');
+    // A USB with no snapshots has no snapshot list.
+    expect(empty).not.toContain('usb-card-snapshots');
+    // The snapshot's own actions come with it.
     expect(markup).toContain('Make Active');
+    expect(markup).toContain('Delete');
+  });
+
+  it('keeps each USB card compact: the USB and its library summary share one line, and the rows are tight', async () => {
+    const { UsbCardsSection } = await import('../../components/profile/UsbLibrarySections');
+    const markup = renderToStaticMarkup(createElement(UsbCardsSection, props));
+    expect(markup).toContain('px-4 py-2.5');
+    expect(markup).toContain('data-testid="usb-card-summary"');
+    // Name, badges and the summary sit in one row, not stacked blocks.
+    const header = markup.slice(markup.indexOf('data-testid="usb-card"'), markup.indexOf('data-testid="usb-card-snapshots"'));
+    expect(header).toContain('ml-auto');
+    expect(header).not.toContain('flex-col gap-2 p-4');
+    expect(header).not.toContain('Library snapshots ·');
+    const row = readFileSync(resolve(__dirname, '../../components/profile/ImportSnapshotRow.tsx'), 'utf8');
+    expect(row).toContain('px-4 py-2');
+    expect(row).not.toContain('p-4 flex items-start');
+  });
+
+  it('has no separate Library Snapshots section any more', () => {
+    const app = readFileSync(resolve(__dirname, '../../App.tsx'), 'utf8');
+    expect(app).not.toContain('Library Snapshots by USB');
+    expect(app).not.toContain('<UsbSnapshotGroups');
+    expect(readFileSync(resolve(__dirname, '../../components/profile/UsbLibrarySections.tsx'), 'utf8')).not.toContain('export function UsbSnapshotGroups');
   });
 
   it('replaces the single-USB card, and is wired into the Library tab', () => {
     const app = readFileSync(resolve(__dirname, '../../App.tsx'), 'utf8');
     const tab = app.slice(app.indexOf("settingsTab === 'library'"), app.indexOf("settingsTab === 'about'"));
-    expect(tab).toContain('<UsbCardsSection groups={usbGroups} />');
-    expect(tab).toContain('<UsbSnapshotGroups');
+    expect(tab).toContain('<UsbCardsSection');
+    expect(tab).toContain('groups={usbGroups}');
     expect(tab).not.toContain('{latestImport.device_name ?? latestImport.source_filename}');
-    expect(tab).toContain('grid grid-cols-2 gap-3');
-    expect(tab.indexOf('<UsbCardsSection')).toBeLessThan(tab.indexOf('<UsbSnapshotGroups'));
+    // The Library group starts with a USB card (the count of USBs) to the left of Tracks and Playlists.
+    expect(tab).toContain('grid grid-cols-3 gap-3');
+    expect(tab).toContain('data-testid="library-usb-count"');
+    expect(tab.indexOf('library-usb-count')).toBeLessThan(tab.indexOf('>Tracks</p>'));
+    expect(tab.indexOf('>Tracks</p>')).toBeLessThan(tab.indexOf('>Playlists</p>'));
+    expect(app).toContain("group.key !== UNASSIGNED_KEY && !group.retired");
     expect(app).toContain('groupImportsByUsb(allImports, usbDevices, latestImport?.id ?? null)');
   });
 });
