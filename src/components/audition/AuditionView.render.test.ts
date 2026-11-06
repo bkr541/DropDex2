@@ -125,22 +125,31 @@ describe('Audition page', () => {
 });
 
 describe('Audition track header', () => {
-  it('shows the selected track with its real details and the position in the list', () => {
+  it('shows the selected track with its real details', () => {
     const markup = renderToStaticMarkup(createElement(AuditionTrackHeader, {
       track: track({ title: 'Real Track Name', artist: 'Real Artist', genre: 'Techno', bpm: 132.4 }),
       durationMs: 372_000,
-      positionLabel: '14 of 387',
-      onPrevious: () => undefined,
-      onNext: null,
     }));
     expect(markup).toContain('Real Track Name');
     expect(markup).toContain('Real Artist');
     expect(markup).toContain('Techno');
     expect(markup).toContain('<span>132</span><small>Tempo</small>');
     expect(markup).toContain('6:12');
+    expect(markup).not.toContain('Next track');
+    expect(markup).not.toContain('14 of 387');
+  });
+
+  it('puts the position and the previous and next arrows after Keep, Maybe and Remove, not in the header', async () => {
+    const { AuditionTrackNavigation } = await import('./AuditionTrackNavigation');
+    const markup = renderToStaticMarkup(createElement(AuditionTrackNavigation, { positionLabel: '14 of 387', onPrevious: () => undefined, onNext: null }));
     expect(markup).toContain('14 of 387');
     expect(markup).toMatch(/aria-label="Next track"[^>]*disabled=""/);
     expect(markup).not.toMatch(/aria-label="Previous track"[^>]*disabled=""/);
+    const transport = readFileSync(new URL('./AuditionTransport.tsx', import.meta.url), 'utf8');
+    expect(transport.indexOf('<AuditionDecisions />')).toBeGreaterThan(-1);
+    expect(transport.indexOf('<AuditionDecisions />')).toBeLessThan(transport.indexOf('<AuditionTrackNavigation'));
+    const css = readFileSync(new URL('./AuditionView.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.audition-transport \{[^}]*grid-template-columns: auto minmax\(160px, 1fr\) auto auto auto/);
   });
 
   it('styles tempo, key and genre exactly like the track length, and puts them to its left', () => {
@@ -149,7 +158,7 @@ describe('Audition track header', () => {
     expect(css).toContain('.audition-duration > span, .audition-stat > span {');
     expect(css).toContain('.audition-duration small, .audition-stat small {');
     const markup = renderToStaticMarkup(createElement(AuditionTrackHeader, {
-      track: track({}), durationMs: 372_000, positionLabel: null, onPrevious: null, onNext: null,
+      track: track({}), durationMs: 372_000,
     }));
     expect(markup.indexOf('audition-track-details')).toBeGreaterThan(markup.indexOf('Fixture Artist'));
     expect(markup.indexOf('audition-track-details')).toBeLessThan(markup.indexOf('audition-duration'));
@@ -157,7 +166,7 @@ describe('Audition track header', () => {
 
   it('no longer has Keep, Maybe and Remove in the header; they are in the transport row', () => {
     const markup = renderToStaticMarkup(createElement(AuditionTrackHeader, {
-      track: track({}), durationMs: null, positionLabel: null, onPrevious: null, onNext: null,
+      track: track({}), durationMs: null,
     }));
     expect(markup).not.toContain('audition-decision');
   });
@@ -179,7 +188,7 @@ describe('Audition track header', () => {
 
   it('asks the user to pick a track when nothing is selected', () => {
     const markup = renderToStaticMarkup(createElement(AuditionTrackHeader, {
-      track: null, durationMs: null, positionLabel: null, onPrevious: null, onNext: null,
+      track: null, durationMs: null,
     }));
     expect(markup).toContain('Select a track');
   });

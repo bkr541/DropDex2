@@ -33,7 +33,7 @@ describe('Audition is its own page', () => {
   });
 
   it('keeps the Keep / Maybe / Remove buttons switched off and does not store decisions yet', () => {
-    const header = read('./AuditionTrackHeader.tsx');
+    const header = read('./AuditionDecisions.tsx');
     expect(header).toContain('disabled');
     expect(header).not.toContain('onClick={() => onDecide');
     for (const file of auditionFiles) {

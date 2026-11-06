@@ -44,13 +44,13 @@
 .audition-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; min-width: 0; }
 .audition-artist { color: #b4bdcb; font-size: 12px; letter-spacing: .01em; }
 .audition-track-details { display: flex; align-items: center; flex: none; }
-.audition-track-details .audition-stat { border-right: 0; }
+.audition-track-details .audition-stat, .audition-header > .audition-duration { border-right: 0; }
 .audition-stat > span { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audition-duration, .audition-stat { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-inline: 12px; border-inline: 1px solid #ffffff0d; }
 .audition-duration > span, .audition-stat > span { color: #f6f7fa; font-size: 20px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -.04em; }
 .audition-duration small, .audition-stat small { color: #9aa5b8; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; }
-.audition-header-tools { display: flex; flex-direction: row; align-items: center; gap: 16px; }
 .audition-track-navigation { display: flex; align-items: center; gap: 8px; }
+.audition-transport > .audition-track-navigation { padding-left: 14px; border-left: 1px solid #ffffff10; }
 .audition-track-navigation > span { min-width: 64px; color: #bdc5d2; font-size: 11px; font-variant-numeric: tabular-nums; text-align: center; }
 .audition-track-step { display: grid; place-items: center; width: 28px; height: 28px; color: #cdd3dd; border: 1px solid #ffffff1c; border-radius: 50%; cursor: pointer; transition: color 120ms, border-color 120ms; }
 .audition-track-step:hover:not(:disabled) { color: #f78361; border-color: #f7836180; }
@@ -80,7 +80,7 @@
 /* The blank section uses the gray the other non-drop sections use, so its background and border come from the same rule. */
 .audition-section--blank { --audition-section-ink: #8997AE; }
 .audition-song-transport { margin-top: 8px; padding: 6px 16px; border-top: 1px solid #ffffff09; background: #ffffff02; }
-.audition-transport { display: grid; grid-template-columns: auto minmax(160px, 1fr) auto auto; align-items: center; gap: 14px; }
+.audition-transport { display: grid; grid-template-columns: auto minmax(160px, 1fr) auto auto auto; align-items: center; gap: 14px; }
 .audition-transport > .audition-decisions { padding-left: 14px; border-left: 1px solid #ffffff10; }
 .audition-transport > [role="alert"] { grid-column: 1 / -1; }
 .audition-studio .dd-media-transport-group { overflow: visible; min-height: 36px; border: 0; border-radius: 0; background: transparent; gap: 4px; }
@@ -125,8 +125,6 @@
 @media (max-width: 1100px) {
   .audition-header { flex-wrap: wrap; gap: 12px; }
   .audition-header-identity { flex-basis: calc(100% - 130px); }
-  .audition-header-tools { justify-content: space-between; width: 100%; padding-top: 10px; border-top: 1px solid #ffffff0d; }
-  .audition-header-tools .audition-decisions { order: -1; }
   .audition-duration { padding-right: 0; border-right: 0; }
   .audition-transport { gap: 14px; }
 }
@@ -137,9 +135,9 @@
   .audition-header h2 { font-size: 18px; }
   .audition-duration { display: none; }
   .audition-track-details { flex-wrap: wrap; flex-basis: 100%; }
-  .audition-header-tools { gap: 10px; }
   .audition-decisions { gap: 8px; }
   .audition-transport > .audition-decisions { grid-column: 1 / -1; padding-left: 0; border-left: 0; justify-content: space-between; }
+  .audition-transport > .audition-track-navigation { grid-column: 1 / -1; padding-left: 0; border-left: 0; justify-content: center; }
   .audition-track-navigation { gap: 5px; }
   .audition-track-navigation > span { min-width: 50px; font-size: 10px; }
   .audition-studio { --audition-lead: 24px; }

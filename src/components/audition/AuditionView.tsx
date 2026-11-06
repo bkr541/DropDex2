@@ -148,9 +148,6 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
       <AuditionTrackHeader
         track={selectedTrack}
         durationMs={durationMs}
-        positionLabel={positionLabel}
-        onPrevious={previousTrack ? () => stepTo(previousTrack) : null}
-        onNext={nextTrack ? () => stepTo(nextTrack) : null}
       />
 
       <AuditionFullSong
@@ -171,6 +168,9 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
           previousTrack={previousTrack}
           nextTrack={nextTrack}
           onSelectTrack={selectTrack}
+          positionLabel={positionLabel}
+          onStepPrevious={previousTrack ? () => stepTo(previousTrack) : null}
+          onStepNext={nextTrack ? () => stepTo(nextTrack) : null}
         />
       </AuditionFullSong>
 

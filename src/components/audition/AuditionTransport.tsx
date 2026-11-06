@@ -6,6 +6,7 @@ import { logger } from '../../lib/logger';
 import { MediaTransportControlGroup, PlaybackSeekBar, TransportButton } from '../ui/media';
 import type { RekordboxTrack } from '../../types';
 import { AuditionDecisions } from './AuditionDecisions';
+import { AuditionTrackNavigation } from './AuditionTrackNavigation';
 
 interface AuditionTransportProps {
   track: RekordboxTrack | null;
@@ -14,11 +15,16 @@ interface AuditionTransportProps {
   previousTrack: RekordboxTrack | null;
   nextTrack: RekordboxTrack | null;
   onSelectTrack: (track: RekordboxTrack) => void;
+  /** "14 of 387", or null when the track is not in the current list. */
+  positionLabel: string | null;
+  /** Step to the track before or after the selected one in the list; null when there is none. */
+  onStepPrevious: (() => void) | null;
+  onStepNext: (() => void) | null;
 }
 
 const SKIP_SECONDS = 10;
 
-export function AuditionTransport({ track, fallbackDurationMs, previousTrack, nextTrack, onSelectTrack }: AuditionTransportProps) {
+export function AuditionTransport({ track, fallbackDurationMs, previousTrack, nextTrack, onSelectTrack, positionLabel, onStepPrevious, onStepNext }: AuditionTransportProps) {
   const {
     activeTrack, status, playIntent, volume, muted, error,
     playTrack, toggleTrack, seek, setVolume, toggleMute, getAudioElement,
@@ -113,6 +119,8 @@ export function AuditionTransport({ track, fallbackDurationMs, previousTrack, ne
       </div>
 
       <AuditionDecisions />
+
+      <AuditionTrackNavigation positionLabel={positionLabel} onPrevious={onStepPrevious} onNext={onStepNext} />
 
       {playbackError ? (
         <p role="alert" className="basis-full text-xs text-red-300">{playbackError}</p>

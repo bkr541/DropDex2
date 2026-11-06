@@ -1,4 +1,3 @@
-import { ChevronLeft, ChevronRight } from '@carbon/icons-react';
 import { Artwork } from '../ui/display/Artwork';
 import { formatCamelotCode } from '../ui/display/camelotKey';
 import { formatClock } from './auditionTracks';
@@ -7,15 +6,9 @@ import type { RekordboxTrack } from '../../types';
 interface AuditionTrackHeaderProps {
   track: RekordboxTrack | null;
   durationMs: number | null;
-  /** "14 of 387", or null when the track is not in the current list. */
-  positionLabel: string | null;
-  onPrevious: (() => void) | null;
-  onNext: (() => void) | null;
 }
 
-const NAV_BUTTON = 'audition-track-step';
-
-export function AuditionTrackHeader({ track, durationMs, positionLabel, onPrevious, onNext }: AuditionTrackHeaderProps) {
+export function AuditionTrackHeader({ track, durationMs }: AuditionTrackHeaderProps) {
   return (
     <section data-testid="audition-track-header" aria-label="Selected track" className="audition-header">
       <div className="audition-header-identity">
@@ -38,13 +31,6 @@ export function AuditionTrackHeader({ track, durationMs, positionLabel, onPrevio
         <div className="audition-stat"><span title={track.genre ?? undefined}>{track.genre || '—'}</span><small>Genre</small></div>
       </div>}
       <div className="audition-duration"><span>{durationMs != null ? formatClock(durationMs) : '—:—'}</span><small>Track length</small></div>
-      <div className="audition-header-tools">
-        <div className="audition-track-navigation" role="group" aria-label="Move between tracks">
-          <button type="button" aria-label="Previous track" title="Previous track" className={NAV_BUTTON} disabled={!onPrevious} onClick={() => onPrevious?.()}><ChevronLeft size={18} /></button>
-          <span data-testid="audition-position">{positionLabel ?? '—'}</span>
-          <button type="button" aria-label="Next track" title="Next track" className={NAV_BUTTON} disabled={!onNext} onClick={() => onNext?.()}><ChevronRight size={18} /></button>
-        </div>
-      </div>
     </section>
   );
 }
