@@ -1,33 +1,20 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { Calendar, CheckmarkFilled, Upload, Usb } from '@carbon/icons-react';
+import { CheckmarkFilled, Upload, Usb } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
-import { CamelotWheel } from '../library/InsightCharts';
-import { GENRE_RANK_COLORS, camelotColor } from '../library/libraryInsights';
+import { ControlButton } from './controls/ControlButton';
 import { Socials } from './LayoutLabHeroParts';
-import { HERO, SAMPLE_BPM, SAMPLE_GENRES, SAMPLE_KEYS } from './layoutLabHeroSample';
+import { HERO } from './layoutLabHeroSample';
 
-// Ten hero directions. Every one is 218px tall (the production hero's height), shows the same information (profile, socials,
-// USB import, analysis, top genres, BPM distribution and a Camelot wheel big enough to read every key) and keeps each group
-// only as wide as its content needs.
-
-const NAMED_GENRES = SAMPLE_GENRES.filter(([name]) => name !== 'Other').slice(0, 5);
-const GENRE_TOTAL = SAMPLE_GENRES.reduce((sum, [, n]) => sum + n, 0);
-const BPM_MAX = Math.max(...SAMPLE_BPM.map(([, n]) => n));
-const BPM_TOTAL = SAMPLE_BPM.reduce((sum, [, n]) => sum + n, 0);
-const BPM_PEAK = SAMPLE_BPM.find(([, n]) => n === BPM_MAX)!;
-const BPM_PEAK_PCT = Math.round((BPM_PEAK[1] / BPM_TOTAL) * 100);
-const KEY_TOTAL = SAMPLE_KEYS.reduce((sum, [, n]) => sum + n, 0);
-const PEAK_RED = '#f43f5e';
+// Five hero directions. Every one is 218px tall (the production hero's height) and shows only who the artist is and what is in
+// their library: profile, socials, USB import and the library counts. There is no track analysis and none of the insight
+// groups (top genres, BPM distribution, Camelot key wheel).
 
 // Textures, as CSS backgrounds.
 const DOTS = 'radial-gradient(rgba(255,255,255,0.075) 1px, transparent 1px) 0 0 / 14px 14px';
-const HATCH = 'repeating-linear-gradient(135deg, rgba(255,255,255,0.028) 0 1px, transparent 1px 7px)';
-const RULES = 'repeating-linear-gradient(0deg, rgba(255,255,255,0.045) 0 1px, transparent 1px 24px)';
-const GRAPH = 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px) 0 0 / 20px 20px';
-const RINGS = 'repeating-radial-gradient(circle at 50% 50%, rgba(255,255,255,0.055) 0 1px, transparent 1px 24px)';
-const GRAIN = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.6'/></svg>")`;
+const HATCH = 'repeating-linear-gradient(135deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 7px)';
+const RULES = 'repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 24px)';
 
-const MONO = "'SF Mono','Menlo','Monaco',monospace";
+const LAST_IMPORT = HERO.lastImport.replace(', 2026', '');
 
 // ── Shared pieces ────────────────────────────────────────────────────────────
 
@@ -35,83 +22,12 @@ function HeroFrame({ className, style, children }: { className?: string; style?:
   return <div className={cn('relative h-[218px] overflow-hidden', className)} style={style}>{children}</div>;
 }
 
-function Texture({ background, opacity = 1, blend }: { background: string; opacity?: number; blend?: CSSProperties['mixBlendMode'] }) {
-  return <div className="pointer-events-none absolute inset-0" style={{ background, opacity, mixBlendMode: blend }} />;
+function Texture({ background, opacity = 1 }: { background: string; opacity?: number }) {
+  return <div className="pointer-events-none absolute inset-0" style={{ background, opacity }} />;
 }
 
 function Eyebrow({ children, className, style }: { children: ReactNode; className?: string; style?: CSSProperties }) {
   return <p className={cn('text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground', className)} style={style}>{children}</p>;
-}
-
-/** A titled group: only as wide as its content (`width`), never stretched. */
-function Group({ title, width, children, className, titleClassName }: { title?: string; width?: number; children: ReactNode; className?: string; titleClassName?: string }) {
-  return (
-    <div className={cn('flex shrink-0 flex-col justify-center', className)} style={width ? { width } : undefined}>
-      {title && <Eyebrow className={cn('mb-2.5', titleClassName)}>{title}</Eyebrow>}
-      {children}
-    </div>
-  );
-}
-
-/** Top genres: name and share, with a thin coloured bar. Coloured by rank, as in the production hero. */
-function GenreList({ width = 150, rows = 5, mono = false }: { width?: number; rows?: number; mono?: boolean }) {
-  return (
-    <div className="space-y-[9px]" style={{ width }}>
-      {NAMED_GENRES.slice(0, rows).map(([name, n], i) => {
-        const pct = Math.round((n / GENRE_TOTAL) * 100);
-        const color = mono ? (i === 0 ? '#ffffff' : '#8b929b') : GENRE_RANK_COLORS[i];
-        return (
-          <div key={name}>
-            <div className="flex items-baseline justify-between gap-2 text-[11px]">
-              <span className="truncate font-semibold" style={{ color, fontFamily: mono ? MONO : undefined }}>{name}</span>
-              <span className="font-mono font-black tabular-nums">{pct}%</span>
-            </div>
-            <div className="mt-[3px] h-[3px] w-full rounded-full bg-white/[0.07]">
-              <div className="h-full rounded-full" style={{ width: `${(n / NAMED_GENRES[0][1]) * 100}%`, background: color }} />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** BPM distribution: a bar for each 20-BPM range with the busiest range picked out. */
-function BpmChart({ width = 168, height = 92, mono = false }: { width?: number; height?: number; mono?: boolean }) {
-  return (
-    <div style={{ width }}>
-      <p className={cn('whitespace-nowrap text-[17px] font-black leading-none tabular-nums', mono && 'font-semibold')} style={{ color: mono ? '#ffffff' : PEAK_RED, fontFamily: mono ? MONO : undefined }}>
-        {BPM_PEAK[0]} <span className="text-[10px] font-semibold text-muted-foreground">BPM</span> · {BPM_PEAK_PCT}%
-      </p>
-      <div className="mt-3 flex items-end gap-[5px]" style={{ height }}>
-        {SAMPLE_BPM.map(([range, n]) => (
-          <div key={range} className="flex-1 rounded-[3px]" style={{ height: `${Math.max(6, (n / BPM_MAX) * 100)}%`, background: n === BPM_MAX ? (mono ? '#ffffff' : PEAK_RED) : mono ? '#4b5058' : '#243447' }} />
-        ))}
-      </div>
-      <div className="mt-1.5 flex gap-[5px] border-t border-white/[0.07] pt-1.5 text-[9px] tabular-nums text-muted-foreground">
-        {SAMPLE_BPM.map(([range]) => <span key={range} className="flex-1 text-center">{range.split('–')[0]}</span>)}
-      </div>
-    </div>
-  );
-}
-
-/** The Camelot wheel, sized so every key name inside a section can be read (9px or larger), with an optional key list. */
-function Wheel({ size = 162, keys = 0, className }: { size?: number; keys?: number; className?: string }) {
-  return (
-    <div className={cn('flex shrink-0 items-center gap-3', className)}>
-      <div className="shrink-0" style={{ width: size }}><CamelotWheel keyStats={SAMPLE_KEYS} labelSize={9} idleLabelColor="#8fa6bf" /></div>
-      {keys > 0 && (
-        <div className="space-y-1.5">
-          {SAMPLE_KEYS.slice(0, keys).map(([key, n]) => (
-            <div key={key} className="flex items-baseline gap-2 text-[11px] tabular-nums">
-              <span className="w-7 font-black" style={{ color: camelotColor(key) }}>{key}</span>
-              <span className="font-mono font-bold">{Math.round((n / KEY_TOTAL) * 100)}%</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function Avatar({ size = 64, ring = true }: { size?: number; ring?: boolean }) {
@@ -126,344 +42,185 @@ function Avatar({ size = 64, ring = true }: { size?: number; ring?: boolean }) {
   );
 }
 
+/** The one shared primary button, so the mockups match the app. */
 function ImportButton({ className }: { className?: string }) {
-  return (
-    <button type="button" className={cn('inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-blue-500 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-blue-400 transition-colors hover:bg-blue-500/10', className)}>
-      <Upload size={11} /> Import Library
-    </button>
-  );
+  return <ControlButton variant="primary" className={cn('!min-h-8 whitespace-nowrap text-[11px]', className)}><Upload size={12} /> Import Library</ControlButton>;
 }
 
 function Done({ label }: { label: string }) {
   return <span className="flex items-center gap-1.5 whitespace-nowrap text-[13px] font-black leading-none text-emerald-500"><CheckmarkFilled size={13} /> {label}</span>;
 }
 
-function ProgressBar() {
-  return <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]"><div className="h-full w-full rounded-full bg-emerald-500" /></div>;
+function UsbLine({ className }: { className?: string }) {
+  return <p className={cn('flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground', className)}><Usb size={11} /> {HERO.usb} · {LAST_IMPORT}</p>;
 }
 
-/** USB import and track analysis as two compact cards. */
-function StatusCards({ width = 176, className }: { width?: number; className?: string }) {
+/** A figure over a small label. */
+function Stat({ value, label, className, valueClassName }: { value: ReactNode; label: string; className?: string; valueClassName?: string }) {
   return (
-    <div className={cn('flex shrink-0 flex-col justify-center gap-2.5', className)} style={{ width }}>
-      <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
-        <Eyebrow className="mb-1.5">USB Import</Eyebrow>
-        <Done label="Import Complete" />
-        <p className="mt-1.5 flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground"><Usb size={11} /> {HERO.usb} · {HERO.lastImport.replace(', 2026', '')}</p>
-        <ImportButton className="mt-2 w-full" />
-      </div>
-      <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
-        <Eyebrow className="mb-1.5">Track Analysis</Eyebrow>
-        <Done label="Analysis Complete" />
-        <div className="mt-2 flex items-center gap-2"><ProgressBar /><span className="font-mono text-[10px] text-muted-foreground">{HERO.analyzed}/{HERO.tracks}</span></div>
-      </div>
+    <div className={cn('min-w-0', className)}>
+      <p className={cn('truncate text-[26px] font-black leading-none tabular-nums', valueClassName)}>{value}</p>
+      <Eyebrow className="mt-1.5">{label}</Eyebrow>
     </div>
   );
 }
 
-/** The same two statuses as plain lines, for the mockups without cards. */
-function StatusLines({ className, stacked = false }: { className?: string; stacked?: boolean }) {
-  const row = stacked ? 'flex flex-col gap-1' : 'flex items-center gap-2';
-  return (
-    <div className={cn('space-y-1.5 text-[11px]', className)}>
-      <div className={row}><Done label="Import Complete" /><span className="font-mono text-[10px] text-muted-foreground">{HERO.usb} · {HERO.lastImport.replace(', 2026', '')}</span></div>
-      <div className={row}><Done label="Analysis Complete" /><span className="font-mono text-[10px] text-muted-foreground">{HERO.analyzed}/{HERO.tracks} tracks</span></div>
-    </div>
-  );
-}
+// ── 1. Aurora Banner ─────────────────────────────────────────────────────────
+// A wide banner lit from the corners. The artist on the left, the library in three big figures, the USB import on the right.
 
-// ── 1. Spotlight Banner ──────────────────────────────────────────────────────
-// A blue-lit banner with a faint dot grid. Everything sits in one row, left to right, in the order you read it.
-
-export function HeroSpotlight() {
+export function HeroAurora() {
   return (
-    <HeroFrame className="rounded-2xl border border-[var(--color-border-subtle)] bg-[linear-gradient(105deg,rgba(2,12,25,0.98)_0%,rgba(3,25,52,0.95)_50%,rgba(2,11,24,0.98)_100%)]">
-      <Texture background="radial-gradient(circle at 16% 30%, rgba(16,103,220,0.4), transparent 38%), radial-gradient(circle at 84% 70%, rgba(24,94,190,0.2), transparent 32%)" />
+    <HeroFrame className="rounded-2xl border border-[var(--color-border-subtle)] bg-[linear-gradient(105deg,rgba(18,10,32,0.98)_0%,rgba(30,16,50,0.95)_50%,rgba(10,16,34,0.98)_100%)]">
+      <Texture background="radial-gradient(circle at 12% 25%, rgba(245,107,112,0.32), transparent 38%), radial-gradient(circle at 88% 80%, rgba(80,110,255,0.26), transparent 34%)" />
       <Texture background={DOTS} />
-      <div className="relative flex h-full items-center gap-5 px-6">
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <Avatar size={68} />
-          <div>
-            <h2 className="text-[28px] font-black uppercase leading-none tracking-tight">{HERO.name}</h2>
-            <p className="mt-1.5 whitespace-nowrap text-[11px] font-semibold text-muted-foreground">{HERO.tracks} tracks · {HERO.playlists} playlists</p>
-            <Socials size={14} className="mt-2.5" />
-          </div>
-        </div>
-        <StatusCards width={176} />
-        <Group title="Top Genres"><GenreList /></Group>
-        <Group title="BPM Distribution"><BpmChart /></Group>
-        <Group title="Camelot Wheel"><Wheel /></Group>
-      </div>
-    </HeroFrame>
-  );
-}
-
-// ── 2. Bento Grid ────────────────────────────────────────────────────────────
-// Separate glass tiles on a dark grid; each tile is sized to what it holds, with a colour edge on the chart tiles.
-
-function BentoTile({ children, accent, className, style }: { children: ReactNode; accent?: string; className?: string; style?: CSSProperties }) {
-  return (
-    <div className={cn('relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]', className)} style={style}>
-      {accent && <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: accent }} />}
-      {children}
-    </div>
-  );
-}
-
-export function HeroBento() {
-  return (
-    <HeroFrame className="w-fit max-w-full rounded-2xl bg-[#080b10]">
-      <Texture background={GRAPH} opacity={0.6} />
-      <div className="relative flex h-full items-stretch gap-3 p-3">
-        <BentoTile className="flex w-[150px] shrink-0 flex-col items-center justify-center px-3 text-center">
-          <Avatar size={56} />
-          <h2 className="mt-3 text-[19px] font-black uppercase leading-none tracking-tight">{HERO.name}</h2>
-          <Socials size={13} className="mt-2 justify-center" />
-          <ImportButton className="mt-3 w-full" />
-        </BentoTile>
-        <BentoTile className="flex w-[176px] shrink-0 flex-col justify-center gap-3 px-3.5">
-          <div><Eyebrow className="mb-1.5">USB Import</Eyebrow><Done label="Import Complete" />
-            <p className="mt-1.5 flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground"><Calendar size={11} /> {HERO.lastImport}</p></div>
-          <div className="border-t border-white/10 pt-3"><Eyebrow className="mb-1.5">Track Analysis</Eyebrow><Done label="Analysis Complete" />
-            <div className="mt-2 flex items-center gap-2"><ProgressBar /><span className="font-mono text-[10px] text-muted-foreground">{HERO.analyzed}/{HERO.tracks}</span></div></div>
-        </BentoTile>
-        <BentoTile accent={GENRE_RANK_COLORS[0]} className="flex shrink-0 flex-col justify-center px-4"><Eyebrow className="mb-2.5">Top Genres</Eyebrow><GenreList /></BentoTile>
-        <BentoTile accent={PEAK_RED} className="flex shrink-0 flex-col justify-center px-4"><Eyebrow className="mb-2.5">BPM Distribution</Eyebrow><BpmChart /></BentoTile>
-        <BentoTile accent="#a855f7" className="flex shrink-0 flex-col items-center justify-center px-2.5 pb-2 pt-3"><Eyebrow className="mb-1.5 self-start pl-1.5">Camelot Wheel</Eyebrow><Wheel /></BentoTile>
-      </div>
-    </HeroFrame>
-  );
-}
-
-// ── 3. Editorial Cover ───────────────────────────────────────────────────────
-// The wheel is the cover art, framed on the left. A big uppercase name, hatched paper texture, two charts to the right.
-
-function HeroEditorial() {
-  return (
-    <HeroFrame className="rounded-2xl border border-[var(--color-border-subtle)] bg-[#050b16]">
-      <Texture background={HATCH} />
-      <div className="absolute -left-16 -top-24 h-72 w-72 rounded-full bg-primary/25 blur-3xl pointer-events-none" />
-      <div className="relative flex h-full items-center gap-6 pr-7">
-        <div className="flex h-full shrink-0 items-center border-r border-white/10 bg-black/25 px-4"><Wheel size={186} /></div>
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <Eyebrow>Artist Library</Eyebrow>
-          <h2 className="text-[52px] font-black uppercase leading-[0.88] tracking-[-0.04em]">{HERO.name}</h2>
-          <div className="flex items-center gap-4 text-[11px] font-semibold text-muted-foreground"><span>{HERO.tracks} tracks</span><span>{HERO.playlists} playlists</span><Socials size={14} /></div>
-          <StatusLines />
-        </div>
-        <Group title="Top Genres"><GenreList /></Group>
-        <Group title="BPM Distribution"><BpmChart /></Group>
-      </div>
-    </HeroFrame>
-  );
-}
-
-// ── 4. Typographic Header ────────────────────────────────────────────────────
-// No box at all: just type, hairlines and one closing rule. The wheel closes the row on the right.
-
-export function HeroTypographic() {
-  return (
-    <HeroFrame className="border-b border-[var(--color-border-subtle)]">
-      <div className="flex h-full items-center gap-6 pb-5">
-        <div className="min-w-0 flex-1">
-          <p className="mb-3 flex items-center gap-2 text-[11px] text-muted-foreground"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Library up to date · {HERO.usb} · {HERO.lastImport}</p>
-          <h2 className="text-[46px] font-light leading-none tracking-[-0.025em]">{HERO.name}</h2>
-          <div className="mt-3 flex items-center gap-4 text-[12px] text-muted-foreground"><span>{HERO.tracks} tracks</span><span>{HERO.playlists} playlists</span><span>{HERO.analyzed} analyzed</span><Socials size={13} className="gap-2.5" /></div>
-          <ImportButton className="mt-4" />
-        </div>
-        <div className="flex shrink-0 items-center gap-8">
-          <Group title="Top Genres" className="border-l border-[var(--color-border-subtle)] pl-6"><GenreList /></Group>
-          <Group title="BPM Distribution" className="border-l border-[var(--color-border-subtle)] pl-6"><BpmChart /></Group>
-          <Group title="Camelot Wheel" className="border-l border-[var(--color-border-subtle)] pl-6"><Wheel /></Group>
-        </div>
-      </div>
-    </HeroFrame>
-  );
-}
-
-// ── 5. Gallery Plates ────────────────────────────────────────────────────────
-// Numbered plates on a grained dark mount, like a catalogue spread. Each plate is one thing.
-
-function Plate({ n, title, children, className }: { n: string; title: string; children: ReactNode; className?: string }) {
-  return (
-    <div className={cn('relative flex flex-col rounded-lg border border-white/12 bg-[#0d1117]/90 p-3', className)}>
-      <div className="mb-2 flex items-baseline justify-between"><Eyebrow>{title}</Eyebrow><span className="font-mono text-[9px] text-muted-foreground/60">{n}</span></div>
-      <div className="flex flex-1 items-center justify-center">{children}</div>
-    </div>
-  );
-}
-
-function HeroPlates() {
-  return (
-    <HeroFrame className="w-fit max-w-full rounded-2xl bg-[#07090d]">
-      <Texture background={GRAIN} opacity={0.12} blend="screen" />
-      <div className="relative flex h-full items-stretch gap-2.5 p-3">
-        <Plate n="01" title="Profile" className="w-[160px] shrink-0">
-          <div className="flex flex-col items-center text-center"><Avatar size={50} /><h2 className="mt-2.5 text-[17px] font-black uppercase tracking-tight">{HERO.name}</h2><p className="mt-1 text-[10px] text-muted-foreground">{HERO.tracks} tracks · {HERO.playlists} playlists</p><Socials size={13} className="mt-2" /></div>
-        </Plate>
-        <Plate n="02" title="Status" className="w-[168px] shrink-0"><StatusLines stacked className="space-y-3.5" /></Plate>
-        <Plate n="03" title="Top Genres" className="w-[172px] shrink-0"><GenreList width={146} /></Plate>
-        <Plate n="04" title="BPM Distribution" className="w-[192px] shrink-0"><BpmChart width={166} /></Plate>
-        <Plate n="05" title="Camelot Wheel" className="w-[186px] shrink-0"><Wheel size={162} /></Plate>
-      </div>
-    </HeroFrame>
-  );
-}
-
-// ── 6. Swiss Index ───────────────────────────────────────────────────────────
-// A strict grid with hairline cells, mono labels and a vertical index rail. The wheel cell gets graph paper.
-
-function IndexCell({ label, children, className, style }: { label: string; children: ReactNode; className?: string; style?: CSSProperties }) {
-  return (
-    <div className={cn('flex min-w-0 flex-col justify-between border-r border-white/[0.09] p-3.5 last:border-r-0', className)} style={style}>
-      <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
-      <div className="mt-2">{children}</div>
-    </div>
-  );
-}
-
-function HeroSwiss() {
-  return (
-    <HeroFrame className="w-fit max-w-full border border-white/[0.12] bg-[var(--color-panel)]">
-      <div className="flex h-full">
-        <div className="flex w-[38px] shrink-0 items-center justify-center border-r border-white/[0.09] bg-black/30"><span className="font-mono text-[9px] tracking-[0.26em] text-muted-foreground [writing-mode:vertical-rl]">DROPDEX / LIBRARY</span></div>
-        <IndexCell label="Profile" className="w-[190px] shrink-0">
-          <h2 className="text-[34px] font-semibold leading-[0.9] tracking-[-0.05em]">{HERO.name}</h2>
-          <p className="mt-2 font-mono text-[10px] text-muted-foreground">{HERO.tracks} TRACKS · {HERO.playlists} PLAYLISTS</p>
-          <Socials size={13} className="mt-3 gap-2.5" />
-        </IndexCell>
-        <IndexCell label="Source / Analysis" className="w-[176px] shrink-0">
-          <StatusLines stacked className="space-y-2.5" />
-          <ImportButton className="mt-3 w-full rounded-none" />
-        </IndexCell>
-        <IndexCell label="Genres" className="w-[176px] shrink-0"><GenreList width={146} /></IndexCell>
-        <IndexCell label="Tempo" className="w-[192px] shrink-0"><BpmChart width={164} height={82} /></IndexCell>
-        <IndexCell label="Key wheel" className="w-[190px] shrink-0" style={{ background: GRAPH }}><Wheel size={162} /></IndexCell>
-      </div>
-    </HeroFrame>
-  );
-}
-
-// ── 7. Radial Hub ────────────────────────────────────────────────────────────
-// The wheel sits in the middle on faint concentric rings. Who and what on its left, the two charts on its right.
-
-export function HeroHub() {
-  return (
-    <HeroFrame className="rounded-2xl border border-[var(--color-border-subtle)] bg-[#070d17]">
-      <div className="absolute left-1/2 top-1/2 h-[560px] w-[560px] -translate-x-1/2 -translate-y-1/2" style={{ background: RINGS, borderRadius: '50%', maskImage: 'radial-gradient(circle, #000 30%, transparent 70%)', WebkitMaskImage: 'radial-gradient(circle, #000 30%, transparent 70%)' }} />
       <div className="relative flex h-full items-center gap-6 px-6">
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <div className="flex items-center gap-3"><Avatar size={52} /><div><h2 className="text-[22px] font-black uppercase leading-none tracking-tight">{HERO.name}</h2><p className="mt-1 text-[10px] text-muted-foreground">{HERO.tracks} tracks · {HERO.playlists} playlists</p></div></div>
-          <StatusLines />
-          <div className="flex items-center gap-4"><ImportButton /><Socials size={13} className="gap-2.5" /></div>
-        </div>
-        <Wheel size={188} />
-        <Group title="Top Genres"><GenreList /></Group>
-        <Group title="BPM Distribution"><BpmChart /></Group>
-      </div>
-    </HeroFrame>
-  );
-}
-
-// ── 8. Split Ledger ──────────────────────────────────────────────────────────
-// Two halves: a lighter identity panel, and a ruled ledger sheet of readings on the right.
-
-function HeroLedger() {
-  return (
-    <HeroFrame className="grid w-fit max-w-full grid-cols-[330px_auto] rounded-2xl border border-[var(--color-border-subtle)]">
-      <div className="relative flex flex-col justify-between border-r border-white/10 bg-[#101722] p-5">
-        <Texture background={RULES} />
-        <div className="relative flex items-center justify-between"><Eyebrow>Collection owner</Eyebrow><span className="font-mono text-[9px] text-muted-foreground">{HERO.initials}—26</span></div>
-        <div className="relative"><h2 className="text-[40px] font-semibold leading-none tracking-[-0.04em]">{HERO.name}</h2>
-          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground"><span>{HERO.tracks} tracks · {HERO.playlists} playlists</span><Socials size={13} className="gap-2.5" /></div></div>
-        <div className="relative flex flex-col items-start gap-2.5"><StatusLines /><ImportButton /></div>
-      </div>
-      <div className="relative flex items-center gap-8 bg-[#080c13] px-6">
-        <Texture background={RULES} opacity={0.6} />
-        <Group title="Top Genres" className="relative"><GenreList /></Group>
-        <Group title="BPM Distribution" className="relative"><BpmChart /></Group>
-        <Group title="Camelot Wheel" className="relative"><Wheel /></Group>
-      </div>
-    </HeroFrame>
-  );
-}
-
-// ── 9. Studio Monograph ──────────────────────────────────────────────────────
-// A catalogue-number layout in mono type on a grained surface, with a big index figure on the left rail.
-
-function HeroMonograph() {
-  return (
-    <HeroFrame className="border border-white/[0.12] bg-[#0b0e13]">
-      <Texture background={GRAIN} opacity={0.1} blend="screen" />
-      <div className="relative flex h-full items-center gap-5 px-5">
-        <div className="flex h-[176px] shrink-0 flex-col justify-between border-r border-white/10 pr-5" style={{ fontFamily: MONO }}>
-          <span className="text-[9px] tracking-[0.22em] text-muted-foreground">CATALOG</span>
-          <span className="text-[44px] font-light leading-none tabular-nums">0{HERO.tracks}</span>
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="mb-2 flex items-center gap-2 text-[10px] text-muted-foreground" style={{ fontFamily: MONO }}><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> SYNCED {HERO.lastImport.toUpperCase()}</p>
-          <h2 className="text-[40px] font-medium leading-none tracking-[-0.05em]">{HERO.name}</h2>
-          <div className="mt-3 flex items-center gap-4 text-[10px] text-muted-foreground" style={{ fontFamily: MONO }}><span>{HERO.playlists} PLAYLISTS</span><span>{HERO.analyzed} ANALYZED</span><Socials size={13} className="gap-2.5" /></div>
-          <div className="mt-4 flex items-center gap-3"><ImportButton /><span className="text-[10px] text-muted-foreground" style={{ fontFamily: MONO }}>USB / {HERO.usb}</span></div>
-        </div>
-        <Group title="Genres" className="border-l border-white/10 pl-5"><GenreList width={146} /></Group>
-        <Group title="BPM" className="border-l border-white/10 pl-5"><BpmChart /></Group>
-        <Group title="Camelot" className="border-l border-white/10 pl-5"><Wheel /></Group>
-      </div>
-    </HeroFrame>
-  );
-}
-
-// ── 10. Instrument Panel ─────────────────────────────────────────────────────
-// Grey hardware: mono readouts, an LED-segment genre meter and stepped tempo columns, with the wheel as the main dial.
-
-function LedGenres() {
-  return (
-    <div className="space-y-2.5" style={{ width: 150, fontFamily: MONO }}>
-      {NAMED_GENRES.map(([name, n], i) => {
-        const lit = Math.max(1, Math.round((n / NAMED_GENRES[0][1]) * 12));
-        return (
-          <div key={name}>
-            <div className="flex justify-between text-[10px] uppercase" style={{ color: i === 0 ? '#fff' : '#8b929b' }}><span className="truncate">{name}</span><span className="tabular-nums">{Math.round((n / GENRE_TOTAL) * 100)}</span></div>
-            <div className="mt-[3px] flex gap-[2px]">{Array.from({ length: 12 }, (_, s) => <div key={s} className="h-[4px] flex-1" style={{ background: s < lit ? (i === 0 ? '#fff' : '#9aa1aa') : 'rgba(255,255,255,0.09)' }} />)}</div>
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          <Avatar size={72} />
+          <div className="min-w-0">
+            <h2 className="truncate text-[30px] font-black uppercase leading-none tracking-tight">{HERO.name}</h2>
+            <p className="mt-1.5 whitespace-nowrap text-[11px] font-semibold text-muted-foreground">Artist library</p>
+            <Socials size={14} className="mt-3" />
           </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function LedTempo() {
-  return (
-    <div style={{ width: 168, fontFamily: MONO }}>
-      <p className="whitespace-nowrap text-[15px] font-medium tabular-nums leading-none">{BPM_PEAK[0]} <span className="text-[9px] text-muted-foreground">BPM</span> {BPM_PEAK_PCT}%</p>
-      <div className="mt-3 flex items-end gap-[5px]" style={{ height: 88 }}>
-        {SAMPLE_BPM.map(([range, n]) => (
-          <div key={range} className="flex flex-1 flex-col-reverse gap-[2px]">
-            {Array.from({ length: Math.max(1, Math.round((n / BPM_MAX) * 9)) }, (_, i) => <div key={i} className="h-[6px]" style={{ background: n === BPM_MAX ? '#fff' : '#555b64' }} />)}
-          </div>
-        ))}
-      </div>
-      <div className="mt-1.5 flex gap-[5px] text-[9px] tabular-nums text-muted-foreground">{SAMPLE_BPM.map(([range]) => <span key={range} className="flex-1 text-center">{range.split('–')[0]}</span>)}</div>
-    </div>
-  );
-}
-
-export function HeroInstrument() {
-  const readouts: [string, string][] = [['TRK', String(HERO.tracks).padStart(3, '0')], ['PLY', String(HERO.playlists).padStart(2, '0')], ['ANL', `${HERO.progress}%`]];
-  return (
-    <HeroFrame className="rounded-xl border border-[#3a3e45] bg-[linear-gradient(160deg,#23262b,#121417)]">
-      <Texture background="repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 0 1px, transparent 1px 3px)" />
-      <div className="relative flex h-full items-center gap-5 px-5">
-        <div className="flex h-[176px] min-w-0 flex-1 flex-col justify-between" style={{ fontFamily: MONO }}>
-          <div className="flex items-center justify-between gap-6 text-[9px] uppercase tracking-[0.24em] text-muted-foreground"><span>Library / 01</span><span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Synced</span></div>
-          <h2 className="text-[36px] font-semibold uppercase leading-none tracking-[0.08em]">{HERO.name}</h2>
-          <div className="flex gap-5">{readouts.map(([k, v]) => <div key={k}><div className="text-[8px] tracking-[0.22em] text-muted-foreground">{k}</div><div className="text-[18px] leading-tight tabular-nums">{v}</div></div>)}</div>
-          <div className="flex items-center gap-3"><ImportButton className="rounded-md" /><Socials size={13} className="gap-2.5" /></div>
         </div>
-        <Group title="Genres" className="border-l border-white/10 pl-5"><LedGenres /></Group>
-        <Group title="Tempo" className="border-l border-white/10 pl-5"><LedTempo /></Group>
-        <Group title="Key dial" className="border-l border-white/10 pl-5"><Wheel /></Group>
+        <div className="hidden shrink-0 items-center gap-6 lg:flex">
+          <Stat value={HERO.tracks} label="Tracks" />
+          <div className="h-12 w-px bg-white/10" />
+          <Stat value={HERO.playlists} label="Playlists" />
+          <div className="h-12 w-px bg-white/10" />
+          <Stat value={HERO.largestPlaylist} label="Largest playlist" valueClassName="text-[18px] leading-[26px]" />
+        </div>
+        <div className="w-[190px] shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3">
+          <Eyebrow className="mb-1.5">USB Import</Eyebrow>
+          <Done label="Import Complete" />
+          <UsbLine className="mt-1.5" />
+          <ImportButton className="mt-2.5 w-full" />
+        </div>
+      </div>
+    </HeroFrame>
+  );
+}
+
+// ── 2. Glass Duo ─────────────────────────────────────────────────────────────
+// Two separate glass panels on a soft glow: who you are on the left, what is in your library on the right.
+
+export function HeroGlassDuo() {
+  return (
+    <HeroFrame className="rounded-2xl border border-[var(--color-border-subtle)] bg-[#0b0f17]">
+      <Texture background="radial-gradient(circle at 20% 20%, rgba(56,120,255,0.22), transparent 42%), radial-gradient(circle at 85% 85%, rgba(245,107,112,0.16), transparent 40%)" />
+      <div className="relative grid h-full grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-3 p-3.5">
+        <div className="flex min-w-0 items-center gap-4 rounded-xl border border-white/10 bg-white/[0.05] px-5 backdrop-blur-sm">
+          <Avatar size={66} />
+          <div className="min-w-0">
+            <h2 className="truncate text-[24px] font-black uppercase leading-none tracking-tight">{HERO.name}</h2>
+            <Socials size={14} className="mt-3" />
+          </div>
+        </div>
+        <div className="flex min-w-0 flex-col justify-between rounded-xl border border-white/10 bg-white/[0.05] px-5 py-3.5 backdrop-blur-sm">
+          <div className="flex items-center gap-8">
+            <Stat value={HERO.tracks} label="Tracks" />
+            <Stat value={HERO.playlists} label="Playlists" />
+            <Stat value={HERO.largestPlaylist} label="Largest playlist" valueClassName="text-[16px] leading-[26px]" />
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-white/[0.08] pt-3">
+            <div className="min-w-0 space-y-1.5"><Done label="Import Complete" /><UsbLine /></div>
+            <ImportButton />
+          </div>
+        </div>
+      </div>
+    </HeroFrame>
+  );
+}
+
+// ── 3. Centered Poster ───────────────────────────────────────────────────────
+// Everything on one centre line, like a poster: the avatar, the name, the socials, then the library figures. USB and import sit in the corners.
+
+export function HeroPoster() {
+  return (
+    <HeroFrame className="rounded-2xl border border-[var(--color-border-subtle)] bg-[linear-gradient(180deg,#141a26_0%,#0c1018_100%)]">
+      <Texture background={HATCH} />
+      <div className="absolute left-5 top-4"><Done label="Import Complete" /><UsbLine className="mt-1.5" /></div>
+      <div className="absolute right-5 top-4"><ImportButton /></div>
+      <div className="relative flex h-full flex-col items-center justify-center gap-2 px-6 pt-3">
+        <Avatar size={52} />
+        <h2 className="text-[26px] font-black uppercase leading-none tracking-[0.12em]">{HERO.name}</h2>
+        <Socials size={14} />
+        <div className="mt-2 flex items-center gap-6 border-t border-white/10 pt-3">
+          {[[HERO.tracks, 'Tracks'], [HERO.playlists, 'Playlists'], [HERO.largestPlaylist, 'Largest playlist']].map(([value, label], i) => (
+            <div key={label} className="flex items-center gap-6">
+              {i > 0 && <span className="h-6 w-px bg-white/10" />}
+              <div className="text-center"><p className="text-[16px] font-black leading-none tabular-nums">{value}</p><Eyebrow className="mt-1">{label}</Eyebrow></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </HeroFrame>
+  );
+}
+
+// ── 4. Studio Strip ──────────────────────────────────────────────────────────
+// The Audition look: one soft gradient panel, hairline dividers, light 20px figures over 9px spaced labels and a single coral accent.
+
+export function HeroStudioStrip() {
+  const coral = '#f56b70';
+  return (
+    <HeroFrame className="rounded-3xl border border-[#ffffff13] shadow-[inset_0_1px_0_#ffffff06,0_16px_40px_#00000026]" style={{ background: 'linear-gradient(165deg, #292d37 0%, #20242e 36%, #191d25 100%)', fontFamily: "'Helvetica Neue','Segoe UI',Arial,sans-serif" }}>
+      <div className="relative flex h-full flex-col">
+        <div className="flex flex-1 items-center gap-5 px-6">
+          <div className="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[18px] font-light tracking-wider" style={{ color: coral }}>{HERO.initials}</div>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-[22px] font-light uppercase tracking-[0.14em] text-[#f6f7fa]">{HERO.name}</h2>
+            <Socials size={13} className="mt-2" />
+          </div>
+          <div className="flex shrink-0 items-center gap-7">
+            {[[HERO.tracks, 'Tracks'], [HERO.playlists, 'Playlists'], [HERO.largestPlaylist, 'Largest playlist']].map(([value, label]) => (
+              <div key={label}><p className="text-[20px] font-light leading-none tracking-[-0.04em] text-[#f6f7fa] tabular-nums">{value}</p><p className="mt-1.5 text-[9px] uppercase tracking-[0.16em] text-[#9aa5b8]">{label}</p></div>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-4 border-t border-[#ffffff0d] bg-black/[0.07] px-6 py-3">
+          <div className="flex min-w-0 items-center gap-4">
+            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em]" style={{ color: coral }}><CheckmarkFilled size={12} /> Import complete</span>
+            <UsbLine />
+          </div>
+          <ImportButton />
+        </div>
+      </div>
+    </HeroFrame>
+  );
+}
+
+// ── 5. Split Cover ───────────────────────────────────────────────────────────
+// A cover panel on the left with the initials as a watermark, and a ruled sheet of facts on the right.
+
+export function HeroSplitCover() {
+  const rows: [string, ReactNode][] = [
+    ['USB', <UsbLine key="u" />],
+    ['Last import', LAST_IMPORT],
+    ['Tracks', HERO.tracks],
+    ['Playlists', HERO.playlists],
+    ['Largest playlist', HERO.largestPlaylist],
+  ];
+  return (
+    <HeroFrame className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] rounded-2xl border border-[var(--color-border-subtle)] bg-[#0d121b]">
+      <div className="relative overflow-hidden border-r border-white/[0.08] bg-[linear-gradient(150deg,rgba(245,107,112,0.3),rgba(70,90,200,0.22)_60%,rgba(10,14,22,0.2))]">
+        <span className="pointer-events-none absolute -bottom-6 -right-2 select-none text-[150px] font-black leading-none text-white/[0.08]">{HERO.initials}</span>
+        <div className="relative flex h-full flex-col justify-end gap-2.5 p-5">
+          <Done label="Import Complete" />
+          <h2 className="truncate text-[28px] font-black uppercase leading-none tracking-tight">{HERO.name}</h2>
+          <Socials size={14} />
+        </div>
+      </div>
+      <div className="relative flex flex-col justify-center px-6">
+        <Texture background={RULES} opacity={0.5} />
+        <dl className="relative">
+          {rows.map(([label, value]) => (
+            <div key={label} className="flex items-center justify-between gap-4 border-b border-white/[0.07] py-[7px]">
+              <dt><Eyebrow>{label}</Eyebrow></dt>
+              <dd className="font-mono text-[12px] font-bold tabular-nums">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        <ImportButton className="relative mt-3 w-full" />
       </div>
     </HeroFrame>
   );
@@ -490,19 +247,14 @@ export function HeroMockupsContent() {
       <div className="mb-7">
         <div className="mb-1 text-sm font-extrabold text-foreground">Library Hero Concepts</div>
         <div className="text-[11px] leading-relaxed text-muted-foreground">
-          Ten hero directions, all 218px tall like the production hero. Each shows the profile, socials, USB import, track analysis, top genres, BPM distribution and a Camelot wheel big enough to read every key.
+          Five hero directions, all 218px tall like the production hero. Each shows the profile, socials, USB import and the library counts. None of them show track analysis, top genres, BPM distribution or the Camelot key wheel.
         </div>
       </div>
-      <HeroMockupCard n={1} title="Spotlight Banner" concept="One blue-lit banner, a faint dot grid, everything in reading order"><HeroSpotlight /></HeroMockupCard>
-      <HeroMockupCard n={2} title="Bento Grid" concept="Separate glass tiles on graph paper, each sized to its content"><HeroBento /></HeroMockupCard>
-      <HeroMockupCard n={3} title="Editorial Cover" concept="The wheel framed as cover art, a big name, hatched texture"><HeroEditorial /></HeroMockupCard>
-      <HeroMockupCard n={4} title="Typographic Header" concept="No box: light type, hairline dividers, one closing rule"><HeroTypographic /></HeroMockupCard>
-      <HeroMockupCard n={5} title="Gallery Plates" concept="Numbered plates on a grained mount, one subject per plate"><HeroPlates /></HeroMockupCard>
-      <HeroMockupCard n={6} title="Swiss Index" concept="A strict hairline grid with mono labels and graph paper behind the wheel"><HeroSwiss /></HeroMockupCard>
-      <HeroMockupCard n={7} title="Radial Hub" concept="The wheel in the middle on faint rings, people left, charts right"><HeroHub /></HeroMockupCard>
-      <HeroMockupCard n={8} title="Split Ledger" concept="A lighter identity panel beside a ruled sheet of readings"><HeroLedger /></HeroMockupCard>
-      <HeroMockupCard n={9} title="Studio Monograph" concept="A catalogue-number layout in mono type on a grained surface"><HeroMonograph /></HeroMockupCard>
-      <HeroMockupCard n={10} title="Instrument Panel" concept="Grey hardware: mono readouts, LED meters, the wheel as the main dial"><HeroInstrument /></HeroMockupCard>
+      <HeroMockupCard n={1} title="Aurora Banner" concept="One banner lit from the corners: the artist, three big figures, the USB import"><HeroAurora /></HeroMockupCard>
+      <HeroMockupCard n={2} title="Glass Duo" concept="Two glass panels: who you are, and what is in your library"><HeroGlassDuo /></HeroMockupCard>
+      <HeroMockupCard n={3} title="Centered Poster" concept="Everything on one centre line, with USB and import in the corners"><HeroPoster /></HeroMockupCard>
+      <HeroMockupCard n={4} title="Studio Strip" concept="The Audition look: a soft gradient panel, hairlines, light figures and one coral accent"><HeroStudioStrip /></HeroMockupCard>
+      <HeroMockupCard n={5} title="Split Cover" concept="A cover panel with the initials as a watermark beside a ruled sheet of facts"><HeroSplitCover /></HeroMockupCard>
     </div>
   );
 }

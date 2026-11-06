@@ -4,7 +4,7 @@ import {
   Pause, Play, Search, Settings, SkipForward, Usb, User, Waveform,
 } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
-import { HeroBento, HeroHub, HeroInstrument, HeroSpotlight, HeroTypographic } from './LayoutLabHeroMockups';
+import { HeroAurora, HeroGlassDuo, HeroPoster, HeroSplitCover, HeroStudioStrip } from './LayoutLabHeroMockups';
 import { HERO } from './layoutLabHeroSample';
 import './layout-lab-nav-design.css';
 
@@ -25,14 +25,14 @@ const NAV = [
 const DIRECTIONS: {
   id: Direction; title: string; description: string; pairing: string; accent: string; hero: ElementType;
 }[] = [
-  { id: 'contour', title: 'Contour Dock', description: 'An organic black silhouette, open circular accents and a detached settings island.', pairing: 'Spotlight Banner', accent: '#ff754f', hero: HeroSpotlight },
-  { id: 'pods', title: 'Floating Pods', description: 'Three independent capsules separate browsing, creative tools and account controls.', pairing: 'Bento Grid', accent: '#2ce6aa', hero: HeroBento },
-  { id: 'inset', title: 'Inset Ribbon', description: 'A labeled rail with a curved active shelf that flows directly into the canvas.', pairing: 'Typographic Header', accent: '#d4f553', hero: HeroTypographic },
-  { id: 'spine', title: 'Studio Spine', description: 'Machined edges, connected dials and restrained white indicators, like a piece of studio hardware.', pairing: 'Instrument Panel', accent: '#c8d2df', hero: HeroInstrument },
-  { id: 'glass', title: 'Prism Glass', description: 'A translucent shell over soft spectral color, with a suspended black control capsule.', pairing: 'Radial Hub', accent: '#b59bff', hero: HeroHub },
-  { id: 'torn-cut', title: 'Torn Page · Soft Cut', description: 'The page peels away from the left edge to expose a black navigation recess, with a curled lower tip and a detached settings button.', pairing: 'Spotlight Banner', accent: '#ff754f', hero: HeroSpotlight },
-  { id: 'torn-fold', title: 'Torn Page · Folded Edge', description: 'A slanted paper edge, a lifted fold and a deep black cutout. The navigation lives underneath the page.', pairing: 'Typographic Header', accent: '#d4f553', hero: HeroTypographic },
-  { id: 'torn-layer', title: 'Torn Page · Double Layer', description: 'Two offset sheets reveal a black nav channel, with a soft spectral edge and a separate circular settings cutout.', pairing: 'Bento Grid', accent: '#b59bff', hero: HeroBento },
+  { id: 'contour', title: 'Contour Dock', description: 'An organic black silhouette, open circular accents and a detached settings island.', pairing: 'Aurora Banner', accent: '#ff754f', hero: HeroAurora },
+  { id: 'pods', title: 'Floating Pods', description: 'Three independent capsules separate browsing, creative tools and account controls.', pairing: 'Glass Duo', accent: '#2ce6aa', hero: HeroGlassDuo },
+  { id: 'inset', title: 'Inset Ribbon', description: 'A labeled rail with a curved active shelf that flows directly into the canvas.', pairing: 'Centered Poster', accent: '#d4f553', hero: HeroPoster },
+  { id: 'spine', title: 'Studio Spine', description: 'Machined edges, connected dials and restrained white indicators, like a piece of studio hardware.', pairing: 'Studio Strip', accent: '#c8d2df', hero: HeroStudioStrip },
+  { id: 'glass', title: 'Prism Glass', description: 'A translucent shell over soft spectral color, with a suspended black control capsule.', pairing: 'Split Cover', accent: '#b59bff', hero: HeroSplitCover },
+  { id: 'torn-cut', title: 'Torn Page · Soft Cut', description: 'The page peels away from the left edge to expose a black navigation recess, with a curled lower tip and a detached settings button.', pairing: 'Aurora Banner', accent: '#ff754f', hero: HeroAurora },
+  { id: 'torn-fold', title: 'Torn Page · Folded Edge', description: 'A slanted paper edge, a lifted fold and a deep black cutout. The navigation lives underneath the page.', pairing: 'Centered Poster', accent: '#d4f553', hero: HeroPoster },
+  { id: 'torn-layer', title: 'Torn Page · Double Layer', description: 'Two offset sheets reveal a black nav channel, with a soft spectral edge and a separate circular settings cutout.', pairing: 'Glass Duo', accent: '#b59bff', hero: HeroGlassDuo },
 ];
 
 function isTorn(direction: Direction): direction is TornDirection {

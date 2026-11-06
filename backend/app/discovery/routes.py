@@ -175,7 +175,22 @@ async def start_scrape(
                     ),
                 ) from exc
 
-    await run_in_threadpool(repo.subscribe_user_to_job, job_id, user_id)
+    try:
+        await run_in_threadpool(repo.subscribe_user_to_job, job_id, user_id)
+    except APIError as exc:
+        # A job nobody can follow must not stay "queued": it would block every later scrape for this artist.
+        log.error(
+            "[routes] Could not subscribe user to scrape job — job=%s artist=%s code=%s message=%s",
+            job_id, artist_id, getattr(exc, "code", "unknown"), getattr(exc, "message", str(exc)),
+        )
+        if not reused:
+            await run_in_threadpool(
+                repo.set_job_failed, job_id, "The scrape could not start. Please try again."
+            )
+        raise HTTPException(
+            status_code=503,
+            detail="Could not start the scrape. Please try again in a moment.",
+        ) from exc
 
     if reused:
         log.info(

@@ -934,3 +934,27 @@ class TestSecurityConstraints:
             "Frontend fetch modules must never reference 1001tracklists.com directly. "
             f"Violations found in: {violations}"
         )
+
+
+class TestStartScrapeSubscribeFailure:
+    """A scrape job the user cannot follow must be failed, not left queued to block the artist."""
+
+    def test_new_job_is_failed_and_a_plain_503_returned_when_subscribing_fails(self):
+        from fastapi import BackgroundTasks, HTTPException
+
+        from app.discovery import routes
+
+        repo = MagicMock()
+        repo.get_artist.return_value = ArtistRecord(id="a1", name="Artist", normalized_name="artist", source="1001tracklists", source_artist_url=None)
+        repo.get_active_scrape_job.return_value = None
+        repo.create_scrape_job.return_value = "job-1"
+        repo.subscribe_user_to_job.side_effect = APIError({"message": "relation does not exist", "code": "42P01"})
+
+        with patch.object(routes, "_make_repo", return_value=repo):
+            with pytest.raises(HTTPException) as caught:
+                asyncio.run(routes.start_scrape.__wrapped__("a1", BackgroundTasks(), "user-1") if hasattr(routes.start_scrape, "__wrapped__") else routes.start_scrape("a1", BackgroundTasks(), "user-1"))
+
+        assert caught.value.status_code == 503
+        assert "database" not in caught.value.detail.lower()
+        repo.set_job_failed.assert_called_once()
+        assert repo.set_job_failed.call_args.args[0] == "job-1"
