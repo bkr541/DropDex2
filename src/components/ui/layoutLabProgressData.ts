@@ -1,4 +1,4 @@
-import { CheckmarkFilled, CloudUpload, DataBase, Document, Search, Time, Usb, Waveform } from '@carbon/icons-react';
+import { Checkmark, CheckmarkFilled, CloudUpload, DataBase, Document, Save, Search, Time, Usb, Waveform } from '@carbon/icons-react';
 import type { ComponentType } from 'react';
 
 export interface ProgressStep { id: string; label: string; Icon: ComponentType<{ size?: number; className?: string }> }
@@ -48,9 +48,10 @@ export const PROCESSES: readonly ProgressProcess[] = [
       { id: 'queued', label: 'Queued', Icon: Time },
       { id: 'search', label: 'Searching', Icon: Search },
       { id: 'collect', label: 'Collecting', Icon: Document },
+      { id: 'save', label: 'Saving', Icon: Save },
       { id: 'complete', label: 'Complete', Icon: CheckmarkFilled },
     ],
-    headline: (p, i) => (p >= 100 ? 'Sets found' : ['Getting ready…', 'Searching for ILLENIUM’s sets…', `Collecting sets… ${count(p, 52)} found`][i]),
+    headline: (p, i) => (p >= 100 ? 'Sets found' : ['Getting ready…', 'Searching for ILLENIUM’s sets…', `Collecting sets… ${count(p, 52)} found`, 'Saving the sets to your library…'][i]),
     figures: (p) => [{ label: 'Pages', value: String(Math.ceil((p / 100) * 6)) }, { label: 'Sets found', value: String(count(p, 52)) }, { label: 'Total listed', value: '52' }],
   },
   {
@@ -59,9 +60,10 @@ export const PROCESSES: readonly ProgressProcess[] = [
     steps: [
       { id: 'prepare', label: 'Prepare', Icon: Document },
       { id: 'upload', label: 'Upload', Icon: CloudUpload },
+      { id: 'verify', label: 'Verify', Icon: Checkmark },
       { id: 'complete', label: 'Complete', Icon: CheckmarkFilled },
     ],
-    headline: (p, i) => (p >= 100 ? 'Your music is in the cloud' : ['Choosing previews…', `Uploading ${count(p, 120)} of 120`][i]),
+    headline: (p, i) => (p >= 100 ? 'Your music is in the cloud' : ['Choosing previews…', `Uploading ${count(p, 120)} of 120`, 'Checking your files…'][i]),
     figures: (p) => [{ label: 'Synced', value: String(count(p, 120)) }, { label: 'Left', value: String(120 - count(p, 120)) }, { label: 'Failed', value: '0' }],
   },
 ];

@@ -51,7 +51,7 @@ describe('Discovery uses the Audition look', () => {
   });
 
   it('fits the window like Audition and keeps the scrollbar inside the panel', () => {
-    expect(studioCss).toMatch(/\.studio \{[^}]*height: calc\(100vh - 3rem - var\(--page-header-height, 0px\)\)/);
+    expect(studioCss).toMatch(/\.studio \{[^}]*height: calc\(100vh - 3rem\)/);
     expect(read('../../App.tsx')).toContain("currentView === 'discovery') && 'scrollbar-none'");
   });
 

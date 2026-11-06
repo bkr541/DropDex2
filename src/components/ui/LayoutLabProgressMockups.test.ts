@@ -32,8 +32,23 @@ describe('Layout Lab Progress tab', () => {
     expect(progressModel(rekordbox, 62)).toMatchObject({ stageIndex: 2, done: false });
     expect(progressModel(rekordbox, 99.9).stageIndex).toBe(3);
     expect(progressModel(rekordbox, 100)).toMatchObject({ stageIndex: 4, done: true, headline: 'Book imported with analysis' });
-    expect(progressModel(PROCESSES[1], 100).stageIndex).toBe(3);
-    expect(progressModel(PROCESSES[2], 100).stageIndex).toBe(2);
+    expect(progressModel(PROCESSES[1], 100).stageIndex).toBe(4);
+    expect(progressModel(PROCESSES[2], 100).stageIndex).toBe(3);
     expect(progressModel(rekordbox, 250).percent).toBe(100);
+  });
+
+  it('Quiet Figure shows every phase of each job, numbered, with the current one marked', () => {
+    const markup = renderToStaticMarkup(createElement(ProgressMockupsContent));
+    const quiet = markup.slice(markup.indexOf('data-look="quiet"'), markup.indexOf('data-look="stage-bars"'));
+    expect(quiet.split('data-testid="quiet-phases"').length - 1).toBe(3);
+    for (const label of ['Source', 'Database', 'Analysis files', 'Analyze', 'Searching', 'Collecting', 'Saving', 'Upload', 'Verify']) expect(quiet).toContain(`>${label}</p>`);
+    expect(quiet.split('aria-current="step"').length - 1).toBe(3);
+    expect(quiet).toContain('>05</p>');
+    expect(quiet).toContain('Phase 3 of 5');
+  });
+
+  it('gives the artist set search five phases: queued, searching, collecting, saving, complete', () => {
+    expect(PROCESSES[1].steps.map((step) => step.id)).toEqual(['queued', 'search', 'collect', 'save', 'complete']);
+    expect(progressModel(PROCESSES[1], 90)).toMatchObject({ stageIndex: 3, headline: 'Saving the sets to your library…' });
   });
 });

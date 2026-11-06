@@ -217,8 +217,6 @@
 :root {
   --gradient-logo: linear-gradient(135deg, #fa2830 0%, #ff4e4f 50%, #fb7974 100%);
   --color-logo-red: #ff4e4f;
-  /* The full-width page name row at the top of every page. Pages that fill the window subtract it. */
-  --page-header-height: 2.75rem;
 }
 
 /* `html` in front outranks the per-theme `.glass` rules (for example the CDJ theme's), which come later. */

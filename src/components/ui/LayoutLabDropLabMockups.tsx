@@ -4,7 +4,7 @@ import {
   Search as SearchIcon, Star, StarFilled, Stop, WarningAlt,
 } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
-import { PageNameTab } from '../navigation/PageNameTab';
+import { FloatingPageHeader } from '../navigation/FloatingPageHeader';
 import { ControlButton, FilterDropdown } from './controls';
 import { Artwork, TabNavigation } from './display';
 import { camelotKeyColor } from './display/camelotKey';
@@ -380,7 +380,7 @@ function DropLabScreen({ initialPlaying = false }: { initialPlaying?: boolean })
     <Frame>
       <Rail items={NAV} active="Drop Lab" />
       <Main className="relative px-0">
-        <PageNameTab title="Drop Lab" icon={Chemistry} />
+        <FloatingPageHeader title="Drop Lab" icon={Chemistry} anchor="container" />
         <HeaderRow candidate={candidate} />
         <TransitionTimeline barCount={barCount} offset={offset} playing={playing} progress={progress} state={usable ? 'ready' : 'unavailable'} message="Active candidate has no waveform analysis." />
         <div className="pb-1">
@@ -402,7 +402,7 @@ function PickTrackScreen() {
     <Frame>
       <Rail items={NAV} active="Drop Lab" />
       <Main className="relative px-0">
-        <PageNameTab title="Drop Lab" icon={Chemistry} />
+        <FloatingPageHeader title="Drop Lab" icon={Chemistry} anchor="container" />
         <div className="flex shrink-0 items-start justify-between gap-4 px-4 py-2 lg:px-5">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[7px] border border-[var(--color-border-subtle)] bg-[var(--color-panel)] text-muted-foreground"><Chemistry size={20} /></div>

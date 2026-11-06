@@ -128,15 +128,34 @@ function Timeline({ m }: { m: ProgressModel }) {
   );
 }
 
-/** 6. Quiet Figure: a light 20px percentage over one hairline, in the Audition style. */
+/**
+ * 6. Quiet Figure: a light percentage and, underneath, the phases as hairline segments with numbered spaced-caps labels
+ * (the Audition style). Finished phases are filled, the current one fills as it goes, the rest are empty.
+ */
 function QuietFigure({ m }: { m: ProgressModel }) {
+  const steps = m.process.steps;
+  const accent = m.done ? GREEN : RED;
   return (
-    <div className="space-y-2" style={{ fontFamily: "'Helvetica Neue','Segoe UI',Arial,sans-serif" }}>
-      <div className="flex items-end justify-between">
+    <div className="space-y-3.5" style={{ fontFamily: "'Helvetica Neue','Segoe UI',Arial,sans-serif" }}>
+      <div className="flex items-end justify-between gap-3">
         <p className="text-[34px] font-light leading-none tracking-[-0.04em] tabular-nums">{Math.round(m.percent)}<span className="text-[16px] text-muted-foreground">%</span></p>
-        <p className="pb-1 text-[9px] uppercase tracking-[0.16em] text-[#9aa5b8]">{m.process.steps[m.stageIndex].label}</p>
+        <p className="pb-1 text-right text-[9px] uppercase tracking-[0.16em] text-[#9aa5b8]">
+          Phase {m.stageIndex + 1} of {steps.length}
+        </p>
       </div>
-      <div className="h-px w-full bg-white/10"><div className="h-px transition-all" style={{ width: `${m.percent}%`, background: m.done ? GREEN : RED }} /></div>
+      <ol aria-label={`${m.process.title} phases`} className="flex gap-1.5" data-testid="quiet-phases">
+        {steps.map((step, i) => {
+          const state = stateOf(m, i);
+          const fill = state === 'done' ? 100 : state === 'active' ? m.stagePercent : 0;
+          return (
+            <li key={step.id} className="min-w-0 flex-1" aria-current={state === 'active' && !m.done ? 'step' : undefined}>
+              <div className="h-px w-full bg-white/10"><div className="h-px transition-all" style={{ width: `${fill}%`, background: accent }} /></div>
+              <p className="mt-2 font-light tabular-nums leading-none" style={{ fontSize: 11, color: state === 'todo' ? '#566074' : '#f6f7fa' }}>{String(i + 1).padStart(2, '0')}</p>
+              <p className="mt-1 break-words text-[9px] uppercase leading-[1.3] tracking-[0.16em]" style={{ color: state === 'active' ? accent : state === 'done' ? '#9aa5b8' : '#566074' }}>{step.label}</p>
+            </li>
+          );
+        })}
+      </ol>
       <p className="text-[11px] text-[#a4adbd]">{m.headline}</p>
     </div>
   );
@@ -227,7 +246,7 @@ const PROGRESS_LOOKS: { id: string; title: string; concept: string; Look: (props
   { id: 'chevrons', title: 'Chevron Steps', concept: 'Arrow-shaped blocks pointing the way forward', Look: Chevrons, withFigures: true },
   { id: 'ring', title: 'Ring Gauge', concept: 'A ring with the percentage inside and the stage beside it', Look: Ring, withFigures: true },
   { id: 'timeline', title: 'Timeline', concept: 'A short list with a tick, a spinner or an empty circle for each stage', Look: Timeline },
-  { id: 'quiet', title: 'Quiet Figure', concept: 'A light percentage over one hairline, in the Audition style', Look: QuietFigure },
+  { id: 'quiet', title: 'Quiet Figure', concept: 'A light percentage over numbered phase hairlines, in the Audition style', Look: QuietFigure, withFigures: true },
   { id: 'stage-bars', title: 'Stage Bars', concept: 'Every stage gets its own bar and a status, like a checklist', Look: StageBars },
   { id: 'waveform', title: 'Waveform', concept: 'The progress fills a waveform like a track playing', Look: WaveBars },
   { id: 'pills', title: 'Pills', concept: 'A pill for each stage; the current one shows its percentage', Look: Pills, withFigures: true },

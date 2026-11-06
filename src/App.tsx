@@ -63,7 +63,7 @@ import { NAV_ICONS } from './components/navigation/NavIcons';
 import { StreamingSyncGroup } from './components/profile/StreamingSyncGroup';
 import { RekordboxXmlGroup } from './components/profile/RekordboxXmlGroup';
 import { FloatingLayoutLabButton } from './components/navigation/FloatingLayoutLabButton';
-import { PageNameTab, type PageHeading } from './components/navigation/PageNameTab';
+import { FloatingPageHeader, type PageHeading } from './components/navigation/FloatingPageHeader';
 import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerContext';
 import { NowPlayingBar } from './components/player/NowPlayingBar';
 import { buildPlaylistIdentityKey, playlistKeyOwner } from './lib/queries/userPlaylists';
@@ -1167,8 +1167,8 @@ export default function App() {
         <div className="ambience-blob absolute bottom-[10%] right-[-10%] w-[50%] h-[50%] bg-secondary/10 blur-[100px] rounded-full" />
       </div>
 
-      {/* ── Page name: a full-width row across the whole window, above the nav and the page ── */}
-      {pageHeading && <PageNameTab title={pageHeading.title} icon={pageIcon} />}
+      {/* ── Page name: a small floating group at the top middle; it takes no space, so the page fills the window ── */}
+      {pageHeading && <FloatingPageHeader title={pageHeading.title} icon={pageIcon} />}
 
       <div className="flex min-h-0 flex-1">
       {/* ── Desktop sidebar ── */}

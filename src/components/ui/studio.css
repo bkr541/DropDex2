@@ -26,7 +26,7 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 3rem - var(--page-header-height, 0px));
+  height: calc(100vh - 3rem);
   min-height: 480px;
   overflow: hidden;
   color-scheme: dark;

@@ -47,7 +47,7 @@ describe('compact Audition layout', () => {
   });
 
   it('lets the track list fill the rest of the window instead of a fixed height', () => {
-    expect(css).toMatch(/\.audition-studio \{[^}]*height: calc\(100vh - 3rem - var\(--page-header-height, 0px\)\)/);
+    expect(css).toMatch(/\.audition-studio \{[^}]*height: calc\(100vh - 3rem\)/);
     expect(css).toMatch(/\.audition-table-scroll \{[^}]*flex: 1 1 auto/);
     expect(library).not.toContain('max-h-[calc(100vh-18rem)]');
   });

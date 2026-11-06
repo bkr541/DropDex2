@@ -16,6 +16,7 @@ describe('FloatingSidebar wiring', () => {
   const src = read('./FloatingSidebar.tsx');
   it('is one slim capsule of round buttons holding every entry, with no separate group for the current page', () => {
     expect(src).toContain('data-testid="floating-sidebar"'.replace('floating-sidebar', 'sidebar-card'));
+    expect(src).toContain('sidebar-capsule');
     expect(src).toContain('rounded-[32px]');
     expect(src).toContain('entries.map(');
     expect(src).not.toContain('splitAtActive');
@@ -57,11 +58,6 @@ describe('FloatingSidebar wiring', () => {
     expect(src).toContain('bg-[rgb(255_78_79/0.14)]');
     expect(src).toContain("background: 'var(--gradient-logo)'");
   });
-  it('uses the same shadow as the page-name tab', () => {
-    const shadow = /PAGE_NAME_TAB_SHADOW = '([^']+)'/.exec(src)?.[1];
-    expect(shadow).toBeTruthy();
-    expect(read('./PageNameTab.tsx')).toContain(shadow!);
-  });
   it('is used by App', () => {
     expect(read('../../App.tsx')).toContain('<FloatingSidebar');
   });
@@ -102,5 +98,37 @@ describe('Left nav icons', () => {
     expect(markup).toContain('<path');
     const css = read('./navIcons.css');
     expect(css).toMatch(/\.nav-icon\.logo-gradient-icon \{ fill: none; color: var\(--color-logo-red\); \}/);
+  });
+});
+
+describe('Left nav capsule styling', () => {
+  const css = read('./FloatingSidebar.css');
+  const studio = read('../ui/studio.css');
+  it('is raised off the backdrop with layered shadows, a lit rim and an inner highlight and edge', () => {
+    expect(css).toMatch(/box-shadow:[^;]*inset 0 1px 0 #ffffff24[^;]*inset 0 -1px 0 #00000059[^;]*0 1px 2px #00000080[^;]*0 10px 24px -6px #0000008c[^;]*0 30px 64px -12px #000000a6;/);
+    expect(css).toContain('.sidebar-capsule::after');
+    expect(css).toContain('linear-gradient(155deg, #ffffff47 0%');
+  });
+  it('is a step lighter than the backdrop, brightest at the top, with a sheen and a fine grain', () => {
+    expect(css).toContain('linear-gradient(180deg, #ffffff12 0%, #ffffff00 26%)');
+    expect(css).toContain('linear-gradient(165deg, #363c49 0%, #2a2f3a 42%, #20242d 100%)');
+    expect(css).toContain('.sidebar-capsule::before');
+    expect(css).toContain('feTurbulence');
+    expect(css).toContain('mix-blend-mode: overlay');
+  });
+  it('lifts the current page into a glowing red disc and a hovered button into a raised pill', () => {
+    expect(css).toContain('.sidebar-capsule [data-active="true"]');
+    expect(css).toContain('0 6px 18px -4px #ff4e4f59');
+    expect(css).toMatch(/\[data-testid="sidebar-slot"\]:hover > button:not\(\[data-active="true"\]\)/);
+    expect(read('./FloatingSidebar.tsx')).toContain("data-active={active ? 'true' : undefined}");
+  });
+  it('keeps the Discovery and Audition panels\' greys and whites for text', () => {
+    expect(css).toContain('--color-muted-foreground: #a4adbd;');
+    expect(css).toContain('--color-foreground: #f6f7fa;');
+    expect(studio).toContain('--color-muted-foreground: #a4adbd;');
+  });
+  it('is no longer the old dark panel colour, and no longer just the panel gradient', () => {
+    expect(read('./FloatingSidebar.tsx')).not.toContain('bg-[var(--color-panel)]');
+    expect(css).not.toContain('linear-gradient(165deg, #292d37 0%, #20242e 36%, #191d25 100%)');
   });
 });

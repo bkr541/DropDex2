@@ -3,6 +3,7 @@ import { User } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
 import { UsbConnectionButton } from '../usb/UsbConnectionButton';
 import { activeSidebarKey } from './sidebarGroups';
+import './FloatingSidebar.css';
 
 // The same soft shadow as the page-name tab at the top middle.
 export const PAGE_NAME_TAB_SHADOW = '0 8px 16px -4px rgb(0 0 0 / 0.5), 0 2px 5px rgb(0 0 0 / 0.3)';
@@ -40,6 +41,7 @@ function NavSlot({ label, active, onClick, children }: { label: string; active: 
         onClick={onClick}
         aria-label={label}
         aria-current={active ? 'page' : undefined}
+        data-active={active ? 'true' : undefined}
         className={cn(
           'absolute left-0 top-0 z-10 flex h-12 items-center overflow-hidden rounded-full text-sm font-semibold transition-[background-color,box-shadow,color] duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
           active ? 'bg-[rgb(255_78_79/0.14)] text-foreground' : 'text-muted-foreground',
@@ -113,8 +115,7 @@ export function FloatingSidebar({ items, currentView, onSelectView, onOpenProfil
       <div className="absolute inset-y-0 left-0 flex flex-col justify-center py-3 pl-6">
         <div
           data-testid="sidebar-card"
-          className="pointer-events-auto flex flex-col gap-2 rounded-[32px] border border-[var(--color-border-subtle)] bg-[var(--color-panel)] p-2"
-          style={{ boxShadow: PAGE_NAME_TAB_SHADOW }}
+          className="sidebar-capsule pointer-events-auto flex flex-col gap-2 rounded-[32px] p-2"
         >
           {entries.map((entry) => (
             <div key={entry.key} className="flex flex-col justify-center">
