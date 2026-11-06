@@ -254,7 +254,7 @@ function DesktopLibraryInfoCard({
           <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
           <span className="font-black text-sm leading-none text-emerald-500">Import Complete</span>
         </div>
-        <ControlButton variant="neutral" onClick={onImport} className="mt-3 w-full text-[10px]">
+        <ControlButton variant="primary" onClick={onImport} className="mt-3 w-full text-[10px]">
           <Upload size={11} /> Import New Library
         </ControlButton>
       </div>
@@ -279,7 +279,7 @@ function DesktopLibraryInfoCard({
             </span>
           </div>
           {isActionable && onResumeAnalysis && (
-            <ControlButton variant="neutral" onClick={() => onResumeAnalysis(latestImport.id)} className="mt-3 w-full text-[10px]">
+            <ControlButton variant="primary" onClick={() => onResumeAnalysis(latestImport.id)} className="mt-3 w-full text-[10px]">
               <Renew size={11} /> Resume Analysis
             </ControlButton>
           )}

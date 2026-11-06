@@ -71,6 +71,10 @@
   --color-control-text: #f6f8fb;
   --color-control-muted: #9ba5b2;
   --color-control-blue: #1f7dff;
+  /* The primary button: a blue outline. Every primary action uses it. */
+  --color-control-primary: #1f7dff;
+  --color-control-primary-hover: #2c87ff;
+  --color-control-primary-rgb: 31 125 255;
   --color-control-cyan: #12bfe0;
   --color-control-teal: #14b89a;
   --color-control-purple: #9a42df;

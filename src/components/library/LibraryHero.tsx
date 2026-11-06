@@ -100,7 +100,7 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis,
             {/* Row 3: spacer aligns with stat labels row */}
             <div className="mt-0.5 h-3" aria-hidden="true" />
             {/* Row 4: Import Book button aligns with "Imported from" */}
-            <ControlButton variant="neutral" onClick={onImport} className="mt-1.5 text-xs">
+            <ControlButton variant="primary" onClick={onImport} className="mt-1.5 text-xs">
               <Upload size={12} /> Import New Book
             </ControlButton>
           </div>
@@ -128,7 +128,7 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis,
                 <div className="mt-0.5 h-3" aria-hidden="true" />
                 {/* Row 4: resume button aligns with "Imported from" */}
                 {isActionable && onResumeAnalysis ? (
-                  <ControlButton variant="neutral" onClick={() => onResumeAnalysis(latestImport.id)} className="mt-1.5 text-xs">
+                  <ControlButton variant="primary" onClick={() => onResumeAnalysis(latestImport.id)} className="mt-1.5 text-xs">
                     <Renew size={12} /> Resume Analysis
                   </ControlButton>
                 ) : (

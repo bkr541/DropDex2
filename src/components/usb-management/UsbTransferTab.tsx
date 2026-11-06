@@ -175,7 +175,7 @@ export function UsbTransferTab({ onFinished, onShowHistory }: UsbTransferTabProp
             {saveNote && <p className="mt-1 text-xs text-amber-400">{saveNote}</p>}
             <div className="mt-3 flex gap-2">
               <ControlButton variant="neutral" onClick={onShowHistory}>See in history</ControlButton>
-              <ControlButton variant="ghost" onClick={transfer.reset}>Done</ControlButton>
+              <ControlButton variant="primary" onClick={transfer.reset}>Done</ControlButton>
             </div>
           </div>
         )}

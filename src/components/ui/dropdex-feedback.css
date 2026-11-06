@@ -155,10 +155,10 @@
 .dd-progress-panel footer .dd-feedback-button { min-width: 94px; }
 
 .dd-upload-button { width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 1px solid var(--color-control-border); border-radius: 5px; background: var(--color-control-surface); color: #f0f3f7; box-shadow: none; font-size: 10px; font-weight: 700; letter-spacing: .025em; }
-.dd-upload-button--primary { border-color: var(--color-control-blue); background: var(--color-control-blue); }
+.dd-upload-button--primary { border-color: var(--color-control-primary); background: transparent; color: var(--color-control-primary); }
 .dd-upload-button--outline { border-style: dashed; }
 .dd-upload-button:hover { border-color: rgb(164 178 196 / .28); background: var(--color-control-surface-hover); }
-.dd-upload-button--primary:hover { border-color: #2c87ff; background: #2c87ff; }
+.dd-upload-button--primary:hover { border-color: var(--color-control-primary-hover); background: rgb(var(--color-control-primary-rgb) / .1); color: var(--color-control-primary-hover); }
 
 .dd-dropzone { min-height: 209px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 18px; border: 1px dashed #596675; border-radius: var(--radius-control); background: var(--color-feedback-surface); color: #edf1f5; text-align: center; box-shadow: none; cursor: pointer; transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease; }
 .dd-dropzone:hover, .dd-dropzone--dragging { border-color: var(--color-control-blue); background: rgb(var(--color-control-blue-rgb) / .055); box-shadow: 0 0 0 2px rgb(var(--color-control-blue-rgb) / .10); }

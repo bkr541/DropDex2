@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '../../lib/utils';
+import { ControlButton } from '../ui/controls/ControlButton';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
@@ -127,13 +128,10 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
             {error}
           </p>
           {usbStatus === 'disconnected' || usbStatus === 'unavailable' ? (
-            <button
-              onClick={() => void connectUsb()}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-xs font-bold text-primary hover:bg-primary/20 transition-all"
-            >
+            <ControlButton variant="primary" onClick={() => void connectUsb()} className="shrink-0 !min-h-8 text-xs">
               <Usb size={12} />
               Connect USB
-            </button>
+            </ControlButton>
           ) : null}
           <button
             onClick={clearError}

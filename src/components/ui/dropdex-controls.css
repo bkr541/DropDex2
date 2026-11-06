@@ -48,19 +48,21 @@
   outline: 2px solid var(--color-control-focus);
   outline-offset: 2px;
 }
-.dd-control-button--primary { border-color: var(--color-control-blue); background: var(--color-control-blue); box-shadow: none; color: #fff; width: fit-content; }
-.dd-control-button--primary:hover:not(:disabled) { background: #2c87ff; border-color: #2c87ff; color: #fff; }
+.dd-control-button--primary { border-color: var(--color-control-primary); background: transparent; box-shadow: none; color: var(--color-control-primary); width: fit-content; }
+.dd-control-button--primary:hover:not(:disabled) { background: rgb(var(--color-control-primary-rgb) / .1); border-color: var(--color-control-primary-hover); color: var(--color-control-primary-hover); }
 .dd-control-button.dd-control-button--primary:disabled { background: var(--color-control-surface); border-color: var(--color-control-border-soft); color: #596474; box-shadow: none; }
 .dd-control-button--primary.dd-control-button--ready { border-color: var(--color-control-green); background: rgb(var(--color-control-green-rgb) / .12); color: var(--color-control-green); }
 .dd-control-button--primary.dd-control-button--ready:hover:not(:disabled) { background: rgb(var(--color-control-green-rgb) / .18); border-color: var(--color-control-green); color: #6aefbb; }
 @keyframes dd-icon-pop { 0% { transform: scale(0.4); opacity: 0; } 65% { transform: scale(1.25); } 100% { transform: scale(1); opacity: 1; } }
 .dd-icon-pop { display: inline-flex; animation: dd-icon-pop 280ms cubic-bezier(.34,1.56,.64,1) forwards; }
-.dd-control-button--neutral { border-color: var(--color-control-border); background: var(--color-control-surface); box-shadow: none; color: var(--color-control-muted); width: fit-content; }
-.dd-control-button--neutral:hover:not(:disabled) { background: var(--color-control-surface-hover); border-color: rgb(164 178 196 / .26); color: var(--color-control-text); }
-.dd-control-button--secondary { background: rgb(var(--color-control-blue-rgb) / .06); box-shadow: none; color: var(--color-control-blue); border-color: rgb(var(--color-control-blue-rgb) / .46); }
-.dd-accent--orange.dd-control-button--secondary { color: #f46b09; }
-.dd-accent--purple.dd-control-button--secondary { color: #a332d0; }
-.dd-accent--green.dd-control-button--secondary { color: #0ea66d; }
+/* Secondary: the quiet partner of the blue primary. Same outline shape, but gray, so the primary is the one that stands out.
+   "neutral" and "surface" are the same look, so every non-primary action matches. */
+.dd-control-button--secondary,
+.dd-control-button--neutral,
+.dd-control-button--surface { border-color: #3a4655; background: transparent; box-shadow: none; color: #d8dee7; width: fit-content; }
+.dd-control-button--secondary:hover:not(:disabled),
+.dd-control-button--neutral:hover:not(:disabled),
+.dd-control-button--surface:hover:not(:disabled) { background: rgb(255 255 255 / .05); border-color: #566377; color: #fff; }
 .dd-control-button--danger { background: rgb(var(--color-control-red-rgb) / .14); border-color: rgb(var(--color-control-red-rgb) / .62); box-shadow: none; color: #ff7180; }
 .dd-control-button--danger:hover:not(:disabled) { background: rgb(var(--color-control-red-rgb) / .20); border-color: var(--color-control-red); }
 .dd-control-button--danger-outline { background: transparent; box-shadow: none; color: var(--color-control-red); border-color: rgb(var(--color-control-red-rgb) / .58); }

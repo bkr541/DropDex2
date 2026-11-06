@@ -189,7 +189,7 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
                     {sync.failures.length > 50 && <li className="text-muted-foreground">…and {(sync.failures.length - 50).toLocaleString()} more (see the Developer tab's log).</li>}
                   </ul>
                 )}
-                <ControlButton variant="neutral" onClick={() => previewSyncStore.reset()}>Done</ControlButton>
+                <ControlButton variant="primary" onClick={() => previewSyncStore.reset()}>Done</ControlButton>
               </>
             )}
             {sync.phase === 'error' && (

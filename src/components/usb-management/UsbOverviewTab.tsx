@@ -26,7 +26,7 @@ export function UsbOverviewTab({ desktopAvailable }: { desktopAvailable: boolean
         </div>
         <div className="flex flex-wrap justify-center gap-2">
           {usb.status === 'released' && <ControlButton variant="primary" onClick={() => void usb.reconnect()}><Renew size={14} /> Reconnect</ControlButton>}
-          <ControlButton variant={usb.status === 'released' ? 'neutral' : 'primary'} onClick={() => void usb.selectNewUsb()}><Usb size={14} /> Choose your USB</ControlButton>
+          <ControlButton variant={usb.status === 'released' ? 'secondary' : 'primary'} onClick={() => void usb.selectNewUsb()}><Usb size={14} /> Choose your USB</ControlButton>
         </div>
       </div>
     );

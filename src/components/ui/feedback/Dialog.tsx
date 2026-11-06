@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { Close, WarningAlt } from '@carbon/icons-react';
 import { cn } from '../../../lib/utils';
+import { ControlButton } from '../controls/ControlButton';
 import '../dropdex-feedback.css';
 
 export interface DialogAction {
@@ -70,7 +71,9 @@ export function Dialog({
         {onClose && <button type="button" className="dd-icon-dismiss" onClick={onClose} aria-label={`Close ${title}`}><Close size={15} /></button>}
       </header>
       <div className="dd-dialog__body">{children}</div>
-      {actions && actions.length > 0 && <footer>{actions.map((action) => <button key={action.label} type="button" disabled={action.disabled} className={cn('dd-feedback-button', action.variant === 'danger' ? 'dd-feedback-button--danger' : action.variant === 'primary' ? 'dd-feedback-button--primary' : 'dd-feedback-button--ghost')} onClick={action.onClick}>{action.label}</button>)}</footer>}
+      {actions && actions.length > 0 && <footer>{actions.map((action) => action.variant === 'primary'
+        ? <ControlButton key={action.label} variant="primary" disabled={action.disabled} onClick={action.onClick}>{action.label}</ControlButton>
+        : <button key={action.label} type="button" disabled={action.disabled} className={cn('dd-feedback-button', action.variant === 'danger' ? 'dd-feedback-button--danger' : 'dd-feedback-button--ghost')} onClick={action.onClick}>{action.label}</button>)}</footer>}
     </section>
   );
   if (inline) return surface;

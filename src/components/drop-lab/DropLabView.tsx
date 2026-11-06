@@ -16,7 +16,7 @@ import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { logger } from '../../lib/logger';
 import { ChevronLeft, CircleDash, Chemistry, Document, Search } from '@carbon/icons-react';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
-import { ToolbarIconButton, ToolbarIconGroup } from '../ui/controls';
+import { ControlButton, ToolbarIconButton, ToolbarIconGroup } from '../ui/controls';
 import { resolveDropLabLoad, type DropLabLoadMethod, type DropLabSide } from './dropLabDrag';
 
 interface DropLabViewProps {
@@ -273,7 +273,7 @@ export function DropLabView({
         {!stuck && <CircleDash size={20} className="animate-spin text-muted-foreground" aria-label="Loading" />}
         {stuck && (
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setPickerOpen(true)} className="rounded-md border border-primary/40 bg-primary/15 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/25">Choose a source track</button>
+            <ControlButton variant="primary" onClick={() => setPickerOpen(true)} className="!min-h-8 text-xs">Choose a source track</ControlButton>
             <button type="button" onClick={onBack} className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground">Back to library</button>
           </div>
         )}
