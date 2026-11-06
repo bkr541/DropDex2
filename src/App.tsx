@@ -66,7 +66,9 @@ import { PageNameTab, type PageHeading } from './components/navigation/PageNameT
 import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerContext';
 import { NowPlayingBar } from './components/player/NowPlayingBar';
 import { buildPlaylistIdentityKey, playlistKeyOwner } from './lib/queries/userPlaylists';
-import { useUsbDeviceNames } from './hooks/useUsbDeviceNames';
+import { useUsbDevices } from './hooks/useUsbDevices';
+import { groupImportsByUsb } from './lib/usb/groupImportsByUsb';
+import { UsbCardsSection, UsbSnapshotGroups } from './components/profile/UsbLibrarySections';
 import { useLibraryOverviewWidgets } from './hooks/useLibraryOverviewWidgets';
 import { DashboardWidgetsGroup } from './components/profile/DashboardWidgetsGroup';
 import type { PlaylistWithCount } from './lib/queries/rekordbox';
@@ -506,7 +508,11 @@ export default function App() {
     imports: allImports, loading: importsListLoading, error: importsListError,
     refetch: refetchImportList,
   } = useImportList(userId);
-  const usbDeviceNames = useUsbDeviceNames(userId, allImports.length);
+  const { devices: usbDevices, loading: usbDevicesLoading } = useUsbDevices(userId, allImports.length);
+  const usbGroups = useMemo(
+    () => groupImportsByUsb(allImports, usbDevices, latestImport?.id ?? null),
+    [allImports, usbDevices, latestImport?.id],
+  );
   const inFlightImport = useMemo(() => getInFlightImport(allImports), [allImports]);
 
   const routeTrackId = route.name === 'track' ? route.trackId : null;
@@ -1623,22 +1629,7 @@ export default function App() {
                     <section className="space-y-3">
                       <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><DataBase size={11} />Library</h2>
                       {latestImport && (
-                      <div className="grid grid-cols-3 gap-3">
-                        {/* USB */}
-                        <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
-                          <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <rect x="3" y="7" width="14" height="10" rx="1" transform="translate(20 24) rotate(180)" style={{fill: '#348dff', opacity: 0.35}} />
-                            <polyline points="8 12 10 13 10 11 12 12" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-                            <path d="M17,15V9h4v6ZM4,17H16a1,1,0,0,0,1-1V8a1,1,0,0,0-1-1H4A1,1,0,0,0,3,8v8A1,1,0,0,0,4,17Z" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-                          </svg>
-                          <p className="mt-2 text-2xl font-black leading-none truncate w-full text-center">
-                            {latestImport.device_name ?? latestImport.source_filename}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">
-                            {new Date(latestImport.imported_at).toLocaleDateString()}
-                          </p>
-                        </div>
-
+                      <div className="grid grid-cols-2 gap-3">
                         {/* Tracks */}
                         <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
                           <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -1671,13 +1662,23 @@ export default function App() {
                     )}
                     </section>
 
+                    {/* USBs */}
+                    <section className="space-y-3" data-testid="profile-usbs">
+                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><Usb size={11} />USBs</h2>
+                      {usbDevicesLoading || importsListLoading ? (
+                        <div className="flex items-center justify-center py-6"><CircleDash className="animate-spin text-muted-foreground" size={20} /></div>
+                      ) : (
+                        <UsbCardsSection groups={usbGroups} />
+                      )}
+                    </section>
+
                     <StreamingSyncGroup importId={latestImport?.id ?? null} trackCount={latestImport?.track_count ?? null} sourceName={latestImport?.device_name ?? latestImport?.source_filename ?? null} deviceName={latestImport?.device_name ?? null} />
 
                     <RekordboxXmlGroup userId={userId} />
 
                     {/* Snapshots */}
                     <section className="space-y-3">
-                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><Layers size={11} />USB Library Snapshots</h2>
+                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><Layers size={11} />Library Snapshots by USB</h2>
                       {importsListLoading ? (
                         <div className="flex items-center justify-center py-6">
                           <CircleDash className="animate-spin text-muted-foreground" size={20} />
@@ -1692,105 +1693,20 @@ export default function App() {
                           <p className="text-sm text-muted-foreground italic">No imports yet.</p>
                         </div>
                       ) : (
-                        <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
-                          {allImports.map((imp) => {
-                            const isActive = imp.id === latestImport?.id;
-                            const importPresentation = getImportHistoryPresentation(
-                              imp.status, Boolean(imp.retryable), imp.analysis_status,
-                            );
-                            const importProgress = getImportProgress(imp);
-                            const importInFlight = isImportInFlight(imp);
-                            const importStalled = isImportStalled(imp);
-                            const showStatusBadge = imp.status !== 'completed'
-                              || (imp.analysis_status !== 'completed' && imp.analysis_status !== 'not_requested');
-                            return (
-                              <div key={imp.id} data-testid={`import-history-row-${imp.id}`} className="p-4 flex items-start justify-between gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <ControlButton
-                                      type="button"
-                                      variant="ghost"
-                                      onClick={() => navigate({ name: 'import', importId: imp.id, resume: false })}
-                                      aria-label={`Open import ${imp.source_filename}`}
-                                      className="max-w-full text-left font-mono text-sm font-bold"
-                                    >
-                                      {imp.source_filename}
-                                    </ControlButton>
-                                    {isActive && (
-                                      <span className="text-[9px] font-bold capitalize tracking-widest px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 rounded-full shrink-0">
-                                        Active
-                                      </span>
-                                    )}
-                                    {showStatusBadge && (
-                                      <span className={cn(
-                                        "text-[9px] font-bold capitalize tracking-widest px-1.5 py-0.5 rounded-full shrink-0",
-                                        importPresentation.tone === 'error' ? "bg-red-500/10 text-red-400" :
-                                        (importPresentation.tone === 'warning' || importStalled) ? "bg-amber-500/10 text-amber-400" :
-                                        "bg-blue-500/10 text-blue-400",
-                                      )}>
-                                        {importStalled ? 'Interrupted' : importPresentation.label}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                                    {new Date(imp.imported_at).toLocaleDateString()} · {imp.track_count.toLocaleString()} tracks · {imp.playlist_count} playlists
-                                  </p>
-                                  {(imp.usb_device_id ? usbDeviceNames.get(imp.usb_device_id) : null) ?? imp.device_name ? (
-                                    <p className="text-[10px] text-muted-foreground font-mono" data-testid="import-usb-name">
-                                      USB: {(imp.usb_device_id ? usbDeviceNames.get(imp.usb_device_id) : null) ?? imp.device_name}
-                                    </p>
-                                  ) : null}
-                                  {importInFlight && (
-                                    <div className="mt-2 max-w-md">
-                                      <div className="flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
-                                        <span className="truncate">{importProgress.currentTrackLabel || 'Preparing current track…'}</span>
-                                        <span className="shrink-0 font-mono">{importProgress.percent}%</span>
-                                      </div>
-                                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface)]">
-                                        <div className="h-full rounded-full bg-primary" style={{ width: `${importProgress.percent}%` }} />
-                                      </div>
-                                    </div>
-                                  )}
-                                  {(imp.status === 'failed' || imp.status === 'cancelled') && imp.error_message && (
-                                    <p className="text-[10px] text-red-400 mt-1">{imp.error_message}</p>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-3 shrink-0 pt-0.5">
-                                  {!isActive && !importInFlight && !importStalled && isUsableLibrarySnapshot(imp) && importPresentation.canActivate && (
-                                    <button
-                                      onClick={() => handleSetActiveImport(imp.id)}
-                                      className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
-                                    >
-                                      Make Active
-                                    </button>
-                                  )}
-                                  {(importPresentation.canRetry || importStalled) && (
-                                    <button
-                                      onClick={() => {
-                                        if (imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted') {
-                                          navigate({ name: 'import', importId: imp.id, resume: true });
-                                        } else {
-                                          setIsImportModalOpen(true);
-                                        }
-                                      }}
-                                      className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
-                                    >
-                                      {imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted' ? 'Resume' : 'Retry'}
-                                    </button>
-                                  )}
-                                  {(!importInFlight || imp.retryable || isPendingHardDelete(imp)) && (
-                                    <button
-                                      onClick={() => handleDeleteImport(imp)}
-                                      className="text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors"
-                                    >
-                                      {isPendingHardDelete(imp) ? 'Retry Delete' : 'Delete'}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        <UsbSnapshotGroups
+                          groups={usbGroups}
+                          activeImportId={latestImport?.id ?? null}
+                          onOpen={(imp) => navigate({ name: 'import', importId: imp.id, resume: false })}
+                          onMakeActive={(imp) => handleSetActiveImport(imp.id)}
+                          onResumeOrRetry={(imp) => {
+                            if (imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted') {
+                              navigate({ name: 'import', importId: imp.id, resume: true });
+                            } else {
+                              setIsImportModalOpen(true);
+                            }
+                          }}
+                          onDelete={handleDeleteImport}
+                        />
                       )}
                     </section>
 

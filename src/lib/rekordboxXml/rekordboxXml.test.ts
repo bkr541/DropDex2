@@ -96,7 +96,7 @@ describe('Rekordbox group in the Library tab', () => {
   it('sits in the Library tab of the profile, after Streaming', () => {
     const app = read('../../App.tsx');
     expect(app.indexOf('<StreamingSyncGroup')).toBeLessThan(app.indexOf('<RekordboxXmlGroup'));
-    expect(app.indexOf('<RekordboxXmlGroup')).toBeLessThan(app.indexOf('USB Library Snapshots'));
+    expect(app.indexOf('<RekordboxXmlGroup')).toBeLessThan(app.indexOf('Library Snapshots by USB'));
   });
 });
 
