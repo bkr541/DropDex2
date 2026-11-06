@@ -17,8 +17,8 @@ export function themeColor(theme: ThemeId): string {
     case 'light':
       return '#0a0a0c';
     case 'cdj':
-      return '#0b0e12';
+      return '#1b1f28';
     case 'dark':
-      return '#080b10';
+      return '#1b1f28';
   }
 }

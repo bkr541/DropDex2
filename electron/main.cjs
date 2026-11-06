@@ -1032,7 +1032,7 @@ function openLayoutLabWindow() {
     minWidth: 720,
     minHeight: 480,
     show: false,
-    backgroundColor: '#080b10',
+    backgroundColor: '#1b1f28',
     title: 'DropDex · Layout Lab',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -1065,7 +1065,7 @@ function createMainWindow() {
     minWidth: 980,
     minHeight: 680,
     show: false,
-    backgroundColor: '#0a0a0c',
+    backgroundColor: '#1b1f28',
     title: 'DropDex',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

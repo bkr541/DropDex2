@@ -19,8 +19,8 @@ describe('theme resolution', () => {
   });
 
   it('returns the browser chrome color for each theme', () => {
-    expect(themeColor('dark')).toBe('#080b10');
+    expect(themeColor('dark')).toBe('#1b1f28');
     expect(themeColor('light')).toBe('#0a0a0c');
-    expect(themeColor('cdj')).toBe('#0b0e12');
+    expect(themeColor('cdj')).toBe('#1b1f28');
   });
 });

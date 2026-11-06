@@ -59,6 +59,7 @@ import { DeveloperTab } from './components/profile/DeveloperTab';
 import { SpotifyExternalAccount } from './components/profile/SpotifyExternalAccount';
 import { UsbConnectionProvider, useUsbConnection } from './contexts/UsbConnectionContext';
 import { FloatingSidebar } from './components/navigation/FloatingSidebar';
+import { NAV_ICONS } from './components/navigation/NavIcons';
 import { StreamingSyncGroup } from './components/profile/StreamingSyncGroup';
 import { RekordboxXmlGroup } from './components/profile/RekordboxXmlGroup';
 import { FloatingLayoutLabButton } from './components/navigation/FloatingLayoutLabButton';
@@ -75,7 +76,7 @@ import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
-import { CheckmarkFilled, Chemistry, CircleDash, Close, DataBase, Edit, Growth, Headphones, Layers, Logout, Moon, Music, Radio, RecordingFilled, Renew, Settings, Shuffle, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, CircleDash, Close, DataBase, Edit, Growth, Layers, Logout, Moon, Music, Radio, RecordingFilled, Renew, Settings, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
 import { openLayoutLab } from './components/ui/openLayoutLab';
 import { ControlButton } from './components/ui/controls';
 
@@ -91,15 +92,6 @@ const THEME_OPTIONS: ThemeOption[] = [
   { id: 'light', label: 'Light', description: 'High contrast', icon: Sun },
   { id: 'cdj', label: 'CDJ', description: 'Performance deck', icon: RecordingFilled },
 ];
-
-function CuePointsNavIcon({ size = 18, className }: { size?: number; className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" style={{ transform: 'rotate(180deg)' }} className={className} aria-hidden="true">
-      <path d="M18,22a1,1,0,0,1-1-1V19H15a1,1,0,0,1,0-2h2V15a1,1,0,0,1,2,0v2h2a1,1,0,0,1,0,2H19v2A1,1,0,0,1,18,22Z" />
-      <path d="M15,13h3a1,1,0,0,0,1-1V9a1,1,0,0,0-.29-.71l-6-6a1,1,0,0,0-1.42,0l-6,6A1,1,0,0,0,5,9V20a2,2,0,0,0,2,2h5a1,1,0,0,0,1-1V15A2,2,0,0,1,15,13Z" />
-    </svg>
-  );
-}
 
 type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'audition' | 'settings' | 'discovery' | 'drop-lab' | 'import' | 'flip-lab' | 'usb' | 'not-found';
 
@@ -465,9 +457,6 @@ export default function App() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [backgroundImport, setBackgroundImport] = useState<{ importId: string; usbReleased: boolean } | null>(null);
   const { theme, setTheme } = useTheme();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () => localStorage.getItem('dropdex-sidebar-collapsed') === 'true'
-  );
   const [importNotice, setImportNotice] = useState<ImportNotice | null>(null);
   const [deleteLibraryTarget, setDeleteLibraryTarget] = useState<RekordboxImport | null>(null);
   const [deleteLibraryRetryCount, setDeleteLibraryRetryCount] = useState(0);
@@ -1084,25 +1073,17 @@ export default function App() {
     navigate({ name: 'playlist-edit', playlistId: playlist.id });
   };
 
-  const toggleSidebar = () => {
-    setSidebarCollapsed((prev) => {
-      const next = !prev;
-      localStorage.setItem('dropdex-sidebar-collapsed', String(next));
-      return next;
-    });
-  };
-
   const libraryLabel = userProfile?.display_name ?? 'My Book';
 
   const sidebarNavItems: { view: View; icon: React.ElementType; label: string }[] = [
-    { view: 'home', icon: Music, label: libraryLabel },
-    { view: 'review', icon: Growth, label: 'Review' },
-    { view: 'cues', icon: CuePointsNavIcon, label: 'Cue Points' },
-    { view: 'audition', icon: Headphones, label: 'Audition' },
-    { view: 'discovery', icon: Radio, label: 'Discover' },
-    { view: 'drop-lab', icon: Chemistry, label: 'Drop Lab' },
-    { view: 'flip-lab', icon: Shuffle, label: 'Flip Lab' },
-    { view: 'usb', icon: Usb, label: 'USB Management' },
+    { view: 'home', icon: NAV_ICONS.home, label: libraryLabel },
+    { view: 'review', icon: NAV_ICONS.review, label: 'Review' },
+    { view: 'cues', icon: NAV_ICONS.cues, label: 'Cue Points' },
+    { view: 'audition', icon: NAV_ICONS.audition, label: 'Audition' },
+    { view: 'discovery', icon: NAV_ICONS.discovery, label: 'Discover' },
+    { view: 'drop-lab', icon: NAV_ICONS['drop-lab'], label: 'Drop Lab' },
+    { view: 'flip-lab', icon: NAV_ICONS['flip-lab'], label: 'Flip Lab' },
+    { view: 'usb', icon: NAV_ICONS.usb, label: 'USB Management' },
   ];
 
   const titledPage = (title: string, onBack: (() => void) | null = goBack): PageHeading => ({ title, onBack });
@@ -1181,7 +1162,7 @@ export default function App() {
         </defs>
       </svg>
       {/* Background ambience */}
-      <div className="fixed inset-0 -z-10 bg-background overflow-hidden">
+      <div className="app-backdrop fixed inset-0 -z-10 overflow-hidden" data-testid="app-backdrop">
         <div className="ambience-blob absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 blur-[120px] rounded-full" />
         <div className="ambience-blob absolute bottom-[10%] right-[-10%] w-[50%] h-[50%] bg-secondary/10 blur-[100px] rounded-full" />
       </div>
@@ -1192,8 +1173,6 @@ export default function App() {
       <div className="flex min-h-0 flex-1">
       {/* ── Desktop sidebar ── */}
       <FloatingSidebar
-        collapsed={sidebarCollapsed}
-        onToggleCollapsed={toggleSidebar}
         items={sidebarNavItems}
         currentView={currentView}
         onSelectView={(view) => setCurrentView(view as View)}

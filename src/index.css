@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #080b10;
+  /* The Discovery panel's surface: slate, with the gradient below as the window backdrop. */
+  --color-background: #1b1f28;
   --color-foreground: #eef3f8;
 
   --color-card: #0e141b;
@@ -34,6 +35,9 @@
 
 /* Dark-mode defaults for surface/panel tokens */
 :root {
+  /* The window backdrop in both dark themes (Dark and CDJ): the Discovery surface, lighter at the top left and darker toward
+     the bottom right. Matte, with no glow or texture. The light theme uses its own flat colour. */
+  --app-backdrop: linear-gradient(165deg, #292d37 0%, #20242e 36%, #191d25 100%);
   --color-panel: #0e141b;
   --color-panel-alt: #121a23;
   --color-surface: #121a23;
@@ -105,6 +109,7 @@
 
 /* ── Light mode ── */
 [data-theme="light"] {
+  --app-backdrop: #f2efed;
   --color-background: #f2efed;
   --color-foreground: #1a1c2e;
   --color-card: #ffffff;
@@ -390,6 +395,16 @@ html .glass.logo-gradient-border {
 [data-theme="cdj"] select,
 [data-theme="cdj"] textarea {
   caret-color: var(--color-primary);
+}
+
+/* The fixed layer behind the whole app. */
+.app-backdrop {
+  background: var(--app-backdrop, var(--color-background));
+}
+
+/* Both dark themes are matte like the Discovery surface, so they have no coloured glow (CDJ hides the blobs above). */
+:root:not([data-theme="light"]) .ambience-blob {
+  display: none;
 }
 
 /* Ambient background blobs — soften in light mode */

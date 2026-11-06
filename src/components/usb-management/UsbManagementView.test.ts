@@ -163,7 +163,7 @@ describe('routing and wiring', () => {
   });
 
   it('appears in the left nav with its own page name header and is shown on its route', () => {
-    expect(appSource).toContain("{ view: 'usb', icon: Usb, label: 'USB Management'");
+    expect(appSource).toContain("{ view: 'usb', icon: NAV_ICONS.usb, label: 'USB Management'");
     expect(appSource).toContain("case 'usb': return titledPage('USB Management');");
     expect(appSource).toContain("case 'usb': navigate({ name: 'usb' }); break;");
     expect(appSource).toContain("currentView === 'usb' && (");

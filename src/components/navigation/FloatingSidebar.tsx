@@ -14,8 +14,6 @@ export interface FloatingSidebarItem {
 }
 
 interface FloatingSidebarProps {
-  collapsed: boolean;
-  onToggleCollapsed: () => void;
   items: FloatingSidebarItem[];
   currentView: string;
   onSelectView: (view: string) => void;
@@ -29,16 +27,43 @@ type Entry =
   | { key: 'usb-connect'; kind: 'usb' }
   | { key: 'profile'; kind: 'profile' };
 
-const ROW = 'flex items-center rounded-xl font-bold text-sm transition-all w-full';
-const IDLE = 'text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface)]';
+/**
+ * One round button. On hover or keyboard focus it grows to the right into a pill that slides the page name open
+ * beside the icon. The current page has a tinted round background and a small colour tab on the card's edge.
+ */
+function NavSlot({ label, active, onClick, children }: { label: string; active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <div className="group relative h-12 w-12" data-testid="sidebar-slot">
+      {active && <span aria-hidden="true" className="absolute -left-2 top-3 h-6 w-1.5 rounded-r-full" style={{ background: 'var(--gradient-logo)' }} />}
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        aria-current={active ? 'page' : undefined}
+        className={cn(
+          'absolute left-0 top-0 z-10 flex h-12 items-center overflow-hidden rounded-full text-sm font-semibold transition-[background-color,box-shadow,color] duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
+          active ? 'bg-[rgb(255_78_79/0.14)] text-foreground' : 'text-muted-foreground',
+          'group-hover:bg-[var(--color-surface-hover)] group-hover:text-foreground group-hover:shadow-[0_8px_20px_rgb(0_0_0/0.45)]',
+          'group-focus-within:bg-[var(--color-surface-hover)] group-focus-within:text-foreground group-focus-within:shadow-[0_8px_20px_rgb(0_0_0/0.45)]',
+        )}
+      >
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center">{children}</span>
+        <span
+          data-testid="sidebar-label"
+          className="max-w-0 overflow-hidden whitespace-nowrap pr-0 opacity-0 transition-[max-width,padding,opacity] duration-200 ease-out group-hover:max-w-[200px] group-hover:pr-5 group-hover:opacity-100 group-focus-within:max-w-[200px] group-focus-within:pr-5 group-focus-within:opacity-100"
+        >
+          {label}
+        </span>
+      </button>
+    </div>
+  );
+}
 
 /**
- * The left nav: one floating rounded card with the logo-red gradient border and the soft shadow of the
- * page-name tab. Every entry sits in the same card; the current page is shown by a larger gradient icon.
+ * The left nav: a slim floating capsule of round icon buttons. The current page is a tinted circle with a tab on the
+ * edge; hovering any button slides its page name open beside it.
  */
-export function FloatingSidebar({
-  collapsed, onToggleCollapsed, items, currentView, onSelectView, onOpenProfile, profile,
-}: FloatingSidebarProps) {
+export function FloatingSidebar({ items, currentView, onSelectView, onOpenProfile, profile }: FloatingSidebarProps) {
   const entries: Entry[] = [
     { key: 'logo', kind: 'logo' },
     ...items.map((item) => ({ key: item.view, kind: 'nav', item }) as Entry),
@@ -46,99 +71,56 @@ export function FloatingSidebar({
     { key: 'profile', kind: 'profile' },
   ];
   const activeKey = activeSidebarKey(currentView, items.map((item) => item.view));
-  const padX = collapsed ? 'justify-center px-0' : 'gap-3 px-4 text-left';
 
   const render = (entry: Entry, isActive: boolean): ReactNode => {
     switch (entry.kind) {
       case 'logo':
         return (
-          <div className={cn('flex h-10 items-center', collapsed ? 'justify-center' : 'gap-3 px-3')}>
-            <button
-              type="button"
-              onClick={onToggleCollapsed}
-              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-            >
-              <img src="/logos/dropdexlogo.png" alt="DropDex" className="h-8 w-8 object-contain" />
-            </button>
-            {!collapsed && (
-              <span className="text-xl font-black uppercase leading-none tracking-tighter">
-                Drop<span className="text-[var(--color-brand-primary)]">Dex</span>
-              </span>
-            )}
+          <div className="flex h-12 w-12 items-center justify-center">
+            <img src="/logos/dropdexlogo.png" alt="DropDex" className="h-8 w-8 object-contain" />
           </div>
         );
       case 'nav': {
         const Icon = entry.item.icon;
         return (
-          <button
-            type="button"
-            onClick={() => onSelectView(entry.item.view)}
-            title={collapsed ? entry.item.label : undefined}
-            aria-current={isActive ? 'page' : undefined}
-            className={cn(ROW, 'py-2', padX, isActive ? 'text-foreground' : IDLE)}
-          >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center">
-              <Icon
-                size={27}
-                className={cn('shrink-0 origin-center transition-transform duration-300 ease-out', isActive ? 'logo-gradient-icon scale-[1.4]' : 'scale-100')}
-              />
-            </span>
-            {!collapsed && entry.item.label}
-          </button>
+          <NavSlot label={entry.item.label} active={isActive} onClick={() => onSelectView(entry.item.view)}>
+            <Icon
+              size={24}
+              className={cn('shrink-0 origin-center transition-transform duration-300 ease-out', isActive ? 'logo-gradient-icon scale-[1.15]' : 'scale-100')}
+            />
+          </NavSlot>
         );
       }
       case 'usb':
-        return <UsbConnectionButton collapsed={collapsed} />;
+        return <div className="flex h-12 w-12 items-center justify-center"><UsbConnectionButton collapsed /></div>;
       case 'profile':
         return (
-          <button
-            type="button"
-            onClick={onOpenProfile}
-            aria-label="Open profile"
-            aria-current={isActive ? 'page' : undefined}
-            title={collapsed ? 'Profile' : undefined}
-            className={cn(ROW, 'py-2', collapsed ? 'justify-center px-0' : 'gap-3 px-3 text-left', isActive ? 'text-foreground' : IDLE)}
-          >
-            <span
-              className={cn(
-                'flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] transition-transform duration-300 ease-out',
-                isActive && 'scale-[1.2]',
-              )}
-            >
+          <NavSlot label={profile?.display_name ?? 'Profile'} active={isActive} onClick={onOpenProfile}>
+            <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
               ) : (
-                <User size={24} className="shrink-0 text-muted-foreground" />
+                <User size={22} className="shrink-0 text-muted-foreground" />
               )}
             </span>
-            {!collapsed && <span className="truncate">{profile?.display_name ?? 'Profile'}</span>}
-          </button>
+          </NavSlot>
         );
     }
   };
 
   return (
     <aside className="pointer-events-none relative z-40 hidden w-[88px] shrink-0 md:block">
-      <div
-        className={cn(
-          'absolute inset-y-0 left-0 flex flex-col justify-center py-3 pl-6 pr-0 transition-[width] duration-200',
-          collapsed ? 'w-full' : 'w-[264px]',
-        )}
-      >
-        {/* Padding and a matching negative margin give the card's shadow room inside the scroll area. */}
-        <div data-testid="floating-sidebar" className="-m-4 flex max-h-[calc(100%+2rem)] flex-col overflow-y-auto p-4 scrollbar-none">
-          <div
-            data-testid="sidebar-card"
-            className="pointer-events-auto glass logo-gradient-border flex flex-col gap-1 rounded-3xl p-2"
-            style={{ boxShadow: PAGE_NAME_TAB_SHADOW }}
-          >
-            {entries.map((entry) => (
-              <div key={entry.key} className="flex flex-col justify-center">
-                {render(entry, entry.key === activeKey)}
-              </div>
-            ))}
-          </div>
+      <div className="absolute inset-y-0 left-0 flex flex-col justify-center py-3 pl-6">
+        <div
+          data-testid="sidebar-card"
+          className="pointer-events-auto flex flex-col gap-2 rounded-[32px] border border-[var(--color-border-subtle)] bg-[var(--color-panel)] p-2"
+          style={{ boxShadow: PAGE_NAME_TAB_SHADOW }}
+        >
+          {entries.map((entry) => (
+            <div key={entry.key} className="flex flex-col justify-center">
+              {render(entry, entry.key === activeKey)}
+            </div>
+          ))}
         </div>
       </div>
     </aside>
