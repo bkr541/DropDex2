@@ -1,3 +1,4 @@
+import { SLIDER_TRACK_HEIGHT, THUMB_SIZE, TRACK_BORDER, TRACK_PAD, sliderTravel } from './deleteAllSlider';
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowRight, CircleDash, Close, TrashCan, WarningAlt } from '@carbon/icons-react';
@@ -15,8 +16,6 @@ interface DeleteAllLibrariesModalProps {
   onConfirm: () => void;
 }
 
-const THUMB_SIZE = 44;
-const TRACK_PAD = 4;
 
 function formatSecondsRemaining(seconds: number): string {
   if (seconds < 5) return 'almost done';
@@ -78,9 +77,7 @@ export function DeleteAllLibrariesModal({
 
   const confirmed = progress >= 1;
 
-  const maxOffset = trackRef.current
-    ? trackRef.current.offsetWidth - THUMB_SIZE - TRACK_PAD * 2
-    : 0;
+  const maxOffset = trackRef.current ? sliderTravel(trackRef.current.offsetWidth) : 0;
   const thumbX = progress * maxOffset;
 
   const deletedCount = Math.max(0, initialCount - remainingCount);
@@ -95,8 +92,8 @@ export function DeleteAllLibrariesModal({
   function handleThumbPointerMove(e: React.PointerEvent<HTMLDivElement>) {
     if (!dragging || !trackRef.current) return;
     const rect = trackRef.current.getBoundingClientRect();
-    const max = trackRef.current.offsetWidth - THUMB_SIZE - TRACK_PAD * 2;
-    const raw = e.clientX - rect.left - THUMB_SIZE / 2 - TRACK_PAD;
+    const max = sliderTravel(trackRef.current.offsetWidth);
+    const raw = e.clientX - rect.left - TRACK_BORDER - THUMB_SIZE / 2 - TRACK_PAD;
     setProgress(Math.max(0, Math.min(1, max > 0 ? raw / max : 0)));
   }
 
@@ -205,7 +202,8 @@ export function DeleteAllLibrariesModal({
                 </p>
                 <div
                   ref={trackRef}
-                  className="relative h-[52px] overflow-hidden rounded-full border border-red-500/50 select-none"
+                  className="relative overflow-hidden rounded-full border border-red-500/50 select-none"
+                  style={{ height: SLIDER_TRACK_HEIGHT, borderWidth: TRACK_BORDER }}
                 >
                   {/* Fill — only visible when confirmed */}
                   {confirmed && (
