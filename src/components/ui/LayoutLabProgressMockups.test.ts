@@ -52,3 +52,78 @@ describe('Layout Lab Progress tab', () => {
     expect(progressModel(PROCESSES[1], 90)).toMatchObject({ stageIndex: 3, headline: 'Saving the sets to your library…' });
   });
 });
+
+describe('Layout Lab tabs with their mockups removed', () => {
+  const blank = ['scratch-pad', 'drop-lab', 'icons'];
+  it('keeps the Scratch Pad, Drop Lab and Icons tabs, which show the blank canvas', () => {
+    for (const [id, label] of [['scratch-pad', 'Scratch Pad'], ['drop-lab', 'Drop Lab'], ['icons', 'Icons']]) expect(windowSource).toContain(`{ id: '${id}'`), expect(windowSource).toContain(`label: '${label}'`);
+    for (const id of blank) expect(windowSource).not.toContain(`activeId === '${id}'`);
+    expect(windowSource).toContain('<BlankCanvas />');
+  });
+
+  it('no longer has the mockups, their parts or their data', () => {
+    for (const gone of ['ScratchPadContent', 'Mockup2', 'Mockup11', 'IconMockupsContent', 'DropLabMockupsContent']) expect(windowSource).not.toContain(gone);
+    for (const file of ['LayoutLabDropLabMockups.tsx', 'LayoutLabDropLabParts.tsx', 'LayoutLabIconMockups.tsx', 'layoutLabIconData.ts']) {
+      expect(() => readFileSync(resolve(__dirname, file))).toThrow();
+    }
+  });
+});
+
+describe('Every progress look names every phase of its job, in the graphite look', () => {
+  const markup = renderToStaticMarkup(createElement(ProgressMockupsContent));
+  const looks = [...markup.matchAll(/data-look="([a-z-]+)"/g)].map((m) => m[1]);
+  const lookSlice = (id: string) => {
+    const start = markup.indexOf(`data-look="${id}"`);
+    const next = markup.indexOf('data-testid="progress-look"', start + 10);
+    return markup.slice(start, next === -1 ? undefined : next);
+  };
+  const cardSlice = (look: string, process: string) => {
+    const row = lookSlice(look);
+    const start = row.indexOf(`data-process="${process}"`);
+    const next = row.indexOf('data-process="', start + 10);
+    return row.slice(start, next === -1 ? undefined : next);
+  };
+  const css = readFileSync(resolve(__dirname, './layout-lab-progress.css'), 'utf8');
+
+  it('shows every phase of the Rekordbox import, the artist set search and the cloud sync in all ten looks', () => {
+    expect(looks).toHaveLength(10);
+    for (const look of looks) {
+      for (const process of PROCESSES) {
+        const card = cardSlice(look, process.id);
+        for (const step of process.steps) expect(card, `${look} / ${process.id} / ${step.label}`).toContain(step.label);
+      }
+    }
+  });
+
+  it('tells finished, current and coming phases apart in every card, one current phase at a time', () => {
+    for (const look of looks) {
+      for (const [process, expected] of [['rekordbox', [2, 1, 2]], ['sets', [2, 1, 2]], ['cloud', [1, 1, 2]]] as const) {
+        const card = cardSlice(look, process);
+        const count = (state: string) => (card.match(new RegExp(`data-phase-state="${state}"`, 'g')) ?? []).length;
+        expect([count('done'), count('active'), count('todo')], `${look} / ${process}`).toEqual(expected);
+      }
+    }
+  });
+
+  it('numbers the phases in every look, so the order is clear', () => {
+    for (const look of looks) {
+      const rekordbox = cardSlice(look, 'rekordbox');
+      for (const n of ['01', '02', '03', '04', '05']) expect(rekordbox, `${look} ${n}`).toContain(`>${n}<`);
+    }
+  });
+
+  it('wears the graphite look: the Discovery backdrop, graphite cards, the coral accent and no leftover blues', () => {
+    expect(css).toContain('background: linear-gradient(165deg, #292d37 0%, #20242e 36%, #191d25 100%);');
+    expect(css).toMatch(/\.lp-card \{[^}]*linear-gradient\(165deg, #30353f 0%, #252931 45%, #1d2129 100%\)/);
+    expect(css).toMatch(/\.lp-label \{[^}]*font-size: 9px[^}]*letter-spacing: \.16em[^}]*text-transform: uppercase/);
+    const source = readFileSync(resolve(__dirname, './LayoutLabProgressMockups.tsx'), 'utf8');
+    for (const old of ['#168cff', "'#fbbf24'", 'StageStepper', 'bg-[var(--color-panel)]', 'font-mono text-[13px] font-black']) expect(source).not.toContain(old);
+    expect(markup).toContain('lp-stage');
+    expect(markup.match(/class="lp-card"/g)).toHaveLength(30);
+  });
+
+  it('keeps Quiet Figure as it was', () => {
+    expect(cardSlice('quiet', 'rekordbox')).toContain('data-testid="quiet-phases"');
+    expect(cardSlice('quiet', 'rekordbox')).toContain('Phase 3 of 5');
+  });
+});

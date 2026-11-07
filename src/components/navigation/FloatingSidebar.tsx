@@ -30,7 +30,8 @@ type Entry =
 
 /**
  * One round button. On hover or keyboard focus it grows to the right into a pill that slides the page name open
- * beside the icon. The current page has a tinted round background and a small colour tab on the card's edge.
+ * beside the icon. The current page has no circle: its icon is larger, bolder and lifted off the card by a shadow and a red glow,
+ * with a small colour tab on the card's edge.
  */
 function NavSlot({ label, active, onClick, children }: { label: string; active: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -44,7 +45,7 @@ function NavSlot({ label, active, onClick, children }: { label: string; active: 
         data-active={active ? 'true' : undefined}
         className={cn(
           'absolute left-0 top-0 z-10 flex h-12 items-center overflow-hidden rounded-full text-sm font-semibold transition-[background-color,box-shadow,color] duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
-          active ? 'bg-[rgb(255_78_79/0.14)] text-foreground' : 'text-muted-foreground',
+          active ? 'text-foreground' : 'text-muted-foreground',
           'group-hover:bg-[var(--color-surface-hover)] group-hover:text-foreground group-hover:shadow-[0_8px_20px_rgb(0_0_0/0.45)]',
           'group-focus-within:bg-[var(--color-surface-hover)] group-focus-within:text-foreground group-focus-within:shadow-[0_8px_20px_rgb(0_0_0/0.45)]',
         )}
@@ -88,7 +89,7 @@ export function FloatingSidebar({ items, currentView, onSelectView, onOpenProfil
           <NavSlot label={entry.item.label} active={isActive} onClick={() => onSelectView(entry.item.view)}>
             <Icon
               size={24}
-              className={cn('shrink-0 origin-center transition-transform duration-300 ease-out', isActive ? 'logo-gradient-icon scale-[1.15]' : 'scale-100')}
+              className={cn('shrink-0 origin-center transition-transform duration-300 ease-out', isActive ? 'logo-gradient-icon scale-[1.4]' : 'scale-100')}
             />
           </NavSlot>
         );
@@ -98,7 +99,7 @@ export function FloatingSidebar({ items, currentView, onSelectView, onOpenProfil
       case 'profile':
         return (
           <NavSlot label={profile?.display_name ?? 'Profile'} active={isActive} onClick={onOpenProfile}>
-            <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
+            <span className="sidebar-avatar flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] transition-transform duration-300 ease-out">
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
               ) : (
@@ -115,7 +116,7 @@ export function FloatingSidebar({ items, currentView, onSelectView, onOpenProfil
       <div className="absolute inset-y-0 left-0 flex flex-col justify-center py-3 pl-6">
         <div
           data-testid="sidebar-card"
-          className="sidebar-capsule pointer-events-auto flex flex-col gap-2 rounded-[32px] p-2"
+          className="sidebar-capsule pointer-events-auto flex flex-col gap-0.5 rounded-[32px] p-2"
         >
           {entries.map((entry) => (
             <div key={entry.key} className="flex flex-col justify-center">

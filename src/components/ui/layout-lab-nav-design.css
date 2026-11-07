@@ -89,7 +89,7 @@
 
 /* ── The production nav: a floating capsule, middle left ── */
 .nd-sidebar { position: relative; z-index: 5; flex: 0 0 88px; }
-.nd-preview .nd-capsule { position: absolute; left: 24px; top: 50%; transform: translateY(-50%); width: 64px; display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 32px; }
+.nd-preview .nd-capsule { position: absolute; left: 24px; top: 50%; transform: translateY(-50%); width: 64px; display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 32px; }
 .nd-logo { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; }
 .nd-logo img { width: 32px; height: 32px; object-fit: contain; }
 .nd-slot { position: relative; width: 48px; height: 48px; }

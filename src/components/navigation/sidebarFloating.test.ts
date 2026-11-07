@@ -52,10 +52,10 @@ describe('FloatingSidebar wiring', () => {
   it('spaces every entry evenly, with no divider lines between groups', () => {
     expect(src).not.toContain('divider');
   });
-  it('shows the current page as a tinted round button with a gradient icon and a tab on the edge', () => {
-    expect(src).toContain("'logo-gradient-icon scale-[1.15]'");
+  it('shows the current page as a larger, bolder icon with depth and a tab on the edge, and no circle', () => {
+    expect(src).toContain("'logo-gradient-icon scale-[1.4]'");
     expect(src).toContain("'scale-100'");
-    expect(src).toContain('bg-[rgb(255_78_79/0.14)]');
+    expect(src).not.toContain('bg-[rgb(255_78_79/0.14)]');
     expect(src).toContain("background: 'var(--gradient-logo)'");
   });
   it('is used by App', () => {
@@ -116,9 +116,9 @@ describe('Left nav capsule styling', () => {
     expect(css).toContain('feTurbulence');
     expect(css).toContain('mix-blend-mode: overlay');
   });
-  it('lifts the current page into a glowing red disc and a hovered button into a raised pill', () => {
+  it('lifts the current page icon with a shadow and a glow, and a hovered button into a raised pill', () => {
     expect(css).toContain('.sidebar-capsule [data-active="true"]');
-    expect(css).toContain('0 6px 18px -4px #ff4e4f59');
+    expect(css).not.toContain('0 6px 18px -4px #ff4e4f59');
     expect(css).toMatch(/\[data-testid="sidebar-slot"\]:hover > button:not\(\[data-active="true"\]\)/);
     expect(read('./FloatingSidebar.tsx')).toContain("data-active={active ? 'true' : undefined}");
   });
@@ -130,5 +130,38 @@ describe('Left nav capsule styling', () => {
   it('is no longer the old dark panel colour, and no longer just the panel gradient', () => {
     expect(read('./FloatingSidebar.tsx')).not.toContain('bg-[var(--color-panel)]');
     expect(css).not.toContain('linear-gradient(165deg, #292d37 0%, #20242e 36%, #191d25 100%)');
+  });
+});
+
+describe('Left nav spacing', () => {
+  const src = read('./FloatingSidebar.tsx');
+  it('keeps the icons close together: 2px between buttons, down from 8px, so the capsule is shorter', () => {
+    expect(src).toContain('sidebar-capsule pointer-events-auto flex flex-col gap-0.5 rounded-[32px] p-2');
+    expect(src).not.toContain('flex flex-col gap-2 rounded-[32px]');
+    // Ten entries (the logo, eight pages, the USB button and the profile): nine gaps, six pixels less each, 54px less in all.
+    const entries = (src.match(/kind: '(logo|nav|usb|profile)'/g) ?? []).length;
+    expect(entries).toBeGreaterThan(0);
+    expect(read('../ui/layout-lab-nav-design.css')).toMatch(/\.nd-preview \.nd-capsule \{[^}]*flex-direction: column; gap: 2px;/);
+  });
+});
+
+describe('Left nav current page icon', () => {
+  const css = read('./FloatingSidebar.css');
+  const src = read('./FloatingSidebar.tsx');
+  it('has no circle: no tinted disc, no ring around it, no fill', () => {
+    expect(css).toMatch(/\.sidebar-capsule \[data-active="true"\] \{ background: transparent; box-shadow: none; \}/);
+    expect(css).not.toMatch(/\[data-active="true"\] \{[^}]*(0 0 0 1px|ff4e4f4d|ff4e4f1f)/);
+    expect(src).not.toContain('bg-[rgb(255_78_79/0.14)]');
+  });
+  it('is larger and has a slightly thicker line', () => {
+    expect(src).toContain("'logo-gradient-icon scale-[1.4]'");
+    expect(css).toMatch(/\.sidebar-capsule \.nav-icon\.logo-gradient-icon \{[^}]*stroke-width: 1\.9;/);
+    // The idle icon is drawn at 1.5, so this is thicker, and it only applies inside the nav, not to the page header's icon.
+    expect(read('./NavIcons.tsx')).toContain('strokeWidth={1.5}');
+  });
+  it('has depth: a dark shadow underneath and a red glow around the icon, and the same lift on the profile picture', () => {
+    expect(css).toMatch(/filter: drop-shadow\(0 3px 3px #000000b3\) drop-shadow\(0 0 7px #ff4e4f80\);/);
+    expect(css).toContain('[data-active="true"] .sidebar-avatar { transform: scale(1.25);');
+    expect(src).toContain('sidebar-avatar');
   });
 });

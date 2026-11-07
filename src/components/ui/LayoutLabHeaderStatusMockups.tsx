@@ -4,6 +4,7 @@ import { Grip, Magnet, Ruler } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Artwork } from './display';
 import { camelotKeyColor } from './display/camelotKey';
+import './layout-lab-track-headers.css';
 
 // The Cue Points track header row (artwork, title, artist + stats, icon toolbar)
 // with five ways to show the draft state that is currently "Editing" + a boxed badge.
@@ -11,25 +12,25 @@ import { camelotKeyColor } from './display/camelotKey';
 type CueState = 'Original' | 'Unsaved' | 'Saved' | 'Needs Apply' | 'Applied' | 'Needs Verification';
 
 const STATES: Array<{ id: CueState; color: string; note: string }> = [
-  { id: 'Original', color: '#8e9aa8', note: 'Nothing saved yet' },
-  { id: 'Unsaved', color: '#fbbf24', note: 'Edits not saved' },
-  { id: 'Saved', color: '#3b91ff', note: 'Saved as a draft' },
-  { id: 'Needs Apply', color: '#38c3dc', note: 'Ready to apply to Rekordbox' },
-  { id: 'Applied', color: '#34d399', note: 'Written to Rekordbox' },
-  { id: 'Needs Verification', color: '#f87171', note: 'Could not confirm against Rekordbox' },
+  { id: 'Original', color: '#9aa5b8', note: 'Nothing saved yet' },
+  { id: 'Unsaved', color: '#f0b35a', note: 'Edits not saved' },
+  { id: 'Saved', color: '#5fb8e8', note: 'Saved as a draft' },
+  { id: 'Needs Apply', color: '#a99bff', note: 'Ready to apply to Rekordbox' },
+  { id: 'Applied', color: '#6fd9a4', note: 'Written to Rekordbox' },
+  { id: 'Needs Verification', color: '#f27d96', note: 'Could not confirm against Rekordbox' },
 ];
 
 const TRACK = { title: 'CID - Fancy. $hit (KALYP Remix) - Final 2026', artist: 'Artist Not Available', bpm: '140.00', key: '04A', duration: '2:31', cues: 3 };
 
 // ── Header pieces ────────────────────────────────────────────────────────────
 
-const ICON_BTN = 'relative flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground';
+const ICON_BTN = 'lt-icon-btn';
 
 function IconBtn({ children, active = false, dimmed = false, title, dot, color }: { children: ReactNode; active?: boolean; dimmed?: boolean; title?: string; dot?: string; color?: string }) {
   return (
-    <button type="button" title={title} aria-label={title} style={color ? { color } : undefined} className={cn(ICON_BTN, active && 'text-primary', dimmed && 'opacity-40')}>
+    <button type="button" title={title} aria-label={title} style={color ? { color } : undefined} className={cn(ICON_BTN, active && 'is-active', dimmed && 'opacity-40')}>
       {children}
-      {dot && <span className="absolute right-[6px] top-[6px] h-2 w-2 rounded-full ring-2 ring-[var(--color-background)]" style={{ background: dot }} />}
+      {dot && <span className="absolute right-[6px] top-[6px] h-2 w-2 rounded-full ring-2 ring-[#252a36]" style={{ background: dot }} />}
     </button>
   );
 }
@@ -37,11 +38,11 @@ function IconBtn({ children, active = false, dimmed = false, title, dot, color }
 /** Same icon-only row as production: Snap, Beat Count, grid, repeat, volume | Pending, Auto Cue, Apply All, menu. */
 function Toolbar({ applyDot, applyTitle, statusIcon }: { applyDot?: string; applyTitle?: string; statusIcon?: ReactNode }) {
   return (
-    <div className="-mt-[7px] flex shrink-0 items-center gap-0.5">
+    <div className="flex shrink-0 items-center gap-0.5">
       {statusIcon && (
         <>
           {statusIcon}
-          <span className="mx-1.5 h-5 w-px bg-white/10" aria-hidden="true" />
+          <span className="mx-1.5 h-5 w-px bg-[#ffffff1a]" aria-hidden="true" />
         </>
       )}
       <IconBtn title="Snap: 1 Beat" active><Magnet size={18} /></IconBtn>
@@ -49,7 +50,7 @@ function Toolbar({ applyDot, applyTitle, statusIcon }: { applyDot?: string; appl
       <IconBtn title="Hide grid" active><Grip size={18} /></IconBtn>
       <IconBtn title="Repeat current track"><Repeat size={20} /></IconBtn>
       <IconBtn title="Volume"><VolumeUp size={20} /></IconBtn>
-      <span className="mx-1.5 h-5 w-px bg-white/10" aria-hidden="true" />
+      <span className="mx-1.5 h-5 w-px bg-[#ffffff1a]" aria-hidden="true" />
       <IconBtn title="Pending changes"><Pending size={20} /></IconBtn>
       <IconBtn title="Auto Cue"><Idea size={20} /></IconBtn>
       <IconBtn title={applyTitle ?? 'Apply All'} dot={applyDot}><Export size={20} /></IconBtn>
@@ -58,7 +59,7 @@ function Toolbar({ applyDot, applyTitle, statusIcon }: { applyDot?: string; appl
   );
 }
 
-const LABEL = 'uppercase tracking-[0.08em] text-foreground/45';
+const LABEL = 'lt-label';
 
 function Stat({ label, children }: { label: string; children: ReactNode }) {
   return <span><span className={LABEL}>{label}</span> <strong className="ml-1 text-foreground/90">{children}</strong></span>;
@@ -93,7 +94,7 @@ function stateIcon(state: CueState, size: number): ReactNode {
 
 /** The header row itself. Each option fills different slots and styles the row differently. */
 function HeaderRow({
-  stats, toolbar, titleExtra, eyebrow, artworkOverlay, rightCaption, rowStyle, rowClassName, footer, rail,
+  stats, toolbar, titleExtra, eyebrow, artworkOverlay, rightCaption, rowStyle, rowClassName, footer, rail, surface = 'lt-s-panel',
 }: {
   stats: ReactNode;
   toolbar: ReactNode;
@@ -105,20 +106,22 @@ function HeaderRow({
   rowClassName?: string;
   footer?: ReactNode;
   rail?: string;
+  /** The strip's surface: one of the lt-s-* classes. */
+  surface?: string;
 }) {
   return (
-    <div className="relative bg-[var(--color-background)]" style={rowStyle}>
-      {rail && <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: rail }} />}
-      <div className={cn('flex flex-row items-start justify-between gap-3 px-5 py-2', rowClassName)}>
+    <div className={cn('relative overflow-hidden', surface)} style={rowStyle}>
+      {rail && <span className="lt-rail" style={{ '--lt-key': rail } as CSSProperties} />}
+      <div className={cn('flex flex-row items-center justify-between gap-3 px-5 py-2', rowClassName)}>
         <div className="flex min-w-0 flex-1 items-center gap-3.5">
           <div className="relative shrink-0">
-            <Artwork src={null} alt="" fallbackTitle="No artwork" className="h-9 w-9 rounded-[7px]" />
+            <div className="lt-art h-9 w-9 rounded-[10px]"><Artwork src={null} alt="" fallbackTitle="No artwork" className="h-full w-full rounded-[10px] bg-transparent" /></div>
             {artworkOverlay}
           </div>
           <div className="min-w-0 flex-1">
             {eyebrow}
             <div className="flex items-center gap-2">
-              <h1 className="truncate text-base font-bold leading-tight tracking-[-0.02em] text-foreground md:text-[17px]">{TRACK.title}</h1>
+              <h1 className="truncate text-base font-medium leading-tight tracking-[-0.02em] text-white md:text-[18px]">{TRACK.title}</h1>
               {titleExtra}
             </div>
             <div className="flex min-w-0 items-center gap-4">
@@ -148,8 +151,8 @@ function Current({ state }: { state: CueState }) {
       toolbar={<Toolbar />}
       stats={<BaseStats cuesExtra={(
         <>
-          <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-primary/75">Editing</span>
-          <span className="rounded-[4px] border border-[var(--color-border-faint)] bg-white/[0.015] px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">{state}</span>
+          <span className="lt-editing">Editing</span>
+          <span className="lt-chip">{state}</span>
         </>
       )}
       />}
@@ -161,6 +164,7 @@ function Current({ state }: { state: CueState }) {
 function ToolbarIcon({ state }: { state: CueState }) {
   return (
     <HeaderRow
+      surface="lt-s-raised"
       stats={<BaseStats />}
       toolbar={<Toolbar statusIcon={<IconBtn title={`Cue state: ${state}`} color={colorOf(state)}>{stateIcon(state, 20)}</IconBtn>} />}
     />
@@ -172,8 +176,9 @@ function RailAndEyebrow({ state }: { state: CueState }) {
   const color = colorOf(state);
   return (
     <HeaderRow
+      surface="lt-s-tinted"
       rail={color}
-      rowStyle={{ backgroundImage: `linear-gradient(90deg, ${color}14, transparent 45%)` }}
+      rowStyle={{ '--lt-key': color } as CSSProperties}
       eyebrow={<div className="mb-0.5 text-[9px] font-bold uppercase leading-none tracking-[0.22em]" style={{ color }}>{state}</div>}
       stats={<BaseStats />}
       toolbar={<Toolbar />}
@@ -194,10 +199,11 @@ function WorkflowStrip({ state }: { state: CueState }) {
   const current = STEPS.findIndex((step) => step.states.includes(state));
   return (
     <HeaderRow
+      surface="lt-s-tier"
       stats={<BaseStats />}
       toolbar={<Toolbar />}
       footer={(
-        <div className="grid grid-cols-4 gap-1.5 px-5 pb-1.5">
+        <div className="lt-tier-wash grid grid-cols-4 gap-1.5 px-5 pb-2 pt-2">
           {STEPS.map((step, i) => {
             const done = i < current;
             const active = i === current;
@@ -223,6 +229,7 @@ function ArtBadge({ state }: { state: CueState }) {
   const color = colorOf(state);
   return (
     <HeaderRow
+      surface="lt-s-well"
       stats={<BaseStats />}
       toolbar={<Toolbar />}
       artworkOverlay={(
@@ -231,7 +238,7 @@ function ArtBadge({ state }: { state: CueState }) {
           <span
             title={state}
             aria-label={`Cue state: ${state}`}
-            className="absolute -bottom-1.5 -right-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full text-[#0b0f16] ring-2 ring-[var(--color-background)]"
+            className="absolute -bottom-1.5 -right-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full text-[#14171d] ring-2 ring-[#1b1f28]"
             style={{ background: color }}
           >
             {stateIcon(state, 10)}
@@ -256,6 +263,7 @@ function ToolbarCaption({ state }: { state: CueState }) {
   const color = colorOf(state);
   return (
     <HeaderRow
+      surface="lt-s-brushed"
       stats={<BaseStats />}
       toolbar={<Toolbar />}
       rightCaption={(
@@ -283,28 +291,19 @@ export function HeaderStatusMockupsContent() {
   const [state, setState] = useState<CueState>('Unsaved');
   const info = STATES.find((s) => s.id === state)!;
   return (
-    <div className="h-full overflow-y-auto bg-[var(--color-background)] px-8 pb-16 pt-7">
+    <div className="lt-lab h-full overflow-y-auto bg-[var(--color-background)] px-8 pb-16 pt-7">
       <div className="mb-5">
-        <div className="mb-1 text-sm font-extrabold text-foreground">Track Header: Cue State</div>
+        <div className="mb-1 text-foreground" style={{ fontWeight: 300, fontSize: 24, letterSpacing: '-0.03em' }}>Track Header: Cue State</div>
         <div className="max-w-[900px] text-[11px] leading-relaxed text-muted-foreground">
           The full header row above the cue timeline, at production size, with the icon-only toolbar and the 36px artwork. Option 0 is today's header. Options 1 to 5 each show the cue state in a different place with a different look: an icon in the toolbar, a color rail with a label, a workflow strip, a badge on the album art, and a caption under the icons. Pick a state below and every header updates, so you can compare how each option handles each state. Hover the badge in 4 for its tooltip.
         </div>
       </div>
 
-      <div className="sticky top-0 z-10 -mx-8 mb-6 border-y border-[var(--color-border-faint)] bg-[var(--color-background)]/95 px-8 py-3 backdrop-blur-sm">
+      <div className="lt-sticky">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="mr-1 text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">State</span>
+          <span className="lt-label mr-1">State</span>
           {STATES.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setState(s.id)}
-              aria-pressed={state === s.id}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-colors',
-                state === s.id ? 'border-white/30 bg-white/[0.07] text-foreground' : 'border-[var(--color-border-subtle)] text-muted-foreground hover:text-foreground',
-              )}
-            >
+            <button key={s.id} type="button" onClick={() => setState(s.id)} aria-pressed={state === s.id} className="lt-state-btn">
               <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
               {s.id}
             </button>
@@ -316,12 +315,12 @@ export function HeaderStatusMockupsContent() {
       {OPTIONS.map((o) => (
         <section key={o.n} className="mb-9">
           <div className="mb-2 flex items-center gap-2.5">
-            <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-lg border border-primary/30 bg-primary/15 text-[11px] font-extrabold text-primary">{o.n}</div>
+            <div className="lt-number">{o.n}</div>
             <span className="text-[13px] font-bold text-foreground">{o.title}</span>
             <span className="text-[11px] text-muted-foreground">{o.where}</span>
           </div>
-          <div className="overflow-x-auto rounded-lg border border-[var(--color-border-faint)]">
-            <div style={{ minWidth: 1180 }}>{o.render(state)}</div>
+          <div className="lt-stage">
+            <div className="lt-inner">{o.render(state)}</div>
           </div>
         </section>
       ))}

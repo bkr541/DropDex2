@@ -1,0 +1,66 @@
+/* Layout Lab / Waveform Preview: five row waveform and cue marker styles, inside the Audition library look. */
+.wp-lab { height: 100%; overflow-y: auto; padding: 30px 32px 64px; background: var(--color-background); color: #f6f7fa; font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; }
+.wp-eyebrow { color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
+.wp-intro { max-width: 760px; margin-bottom: 30px; }
+.wp-intro h1 { margin: 8px 0; font-size: 26px; font-weight: 300; letter-spacing: -.035em; }
+.wp-intro p { color: #a4adbd; font-size: 12px; line-height: 1.6; }
+.wp-row { margin-bottom: 30px; }
+.wp-row-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 12px; }
+.wp-row-heading > span:last-child { color: #8c97aa; font-size: 11px; }
+.wp-row-heading > span:last-child b { margin-left: 6px; color: #f78361; font-weight: 500; }
+.wp-row-number { display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid #f56b704d; border-radius: 8px; background: #f56b7024; color: #f78361; font-size: 11px; font-weight: 700; }
+/* The Audition panel, sized to its five rows instead of the window. */
+.audition-studio.wp-stage { height: auto; min-height: 0; overflow-x: auto; }
+.wp-stage .audition-library { overflow: visible; border-top: 0; border-radius: 24px; }
+
+/* ── The waveform preview ── */
+.wp-wave { position: relative; display: flex; flex-direction: column; width: 100%; --wp-h: 18px; }
+.wp-body { position: relative; display: flex; align-items: center; gap: 1px; height: var(--wp-h); }
+.wp-cues { position: relative; height: 10px; margin-bottom: 2px; }
+.wp-cues > span { position: absolute; transform: translateX(-50%); }
+
+/* 1 · Bars + dots */
+.wp-bars .wp-body i { flex: 1; min-width: 1px; border-radius: 1px; }
+.wp-cues-dots > span { top: 1px; width: 6px; height: 6px; border-radius: 50%; background: var(--wp-cue); }
+
+/* 2 · Bars + cue bars: row 1's 120 bars at row 1's width and spacing, with rounded ends. */
+.wp-pill .wp-body { gap: 1px; }
+.wp-pill .wp-body i { flex: 1; min-width: 1px; border-radius: 999px; background: var(--wp-bar); }
+/* A cue: the one bar at its position takes the cue's own colour, so it is exactly the waveform's own height there. */
+.wp-pill .wp-body i.wp-cue-bar { background: var(--wp-bar); box-shadow: 0 0 6px -1px var(--wp-bar); }
+
+/* 3 · Mirrored bars + cue columns */
+.wp-mirror { --wp-h: 22px; }
+.wp-mirror .wp-body { gap: 1px; }
+.wp-mirror .wp-body > span { flex: 1; min-width: 1px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 1px; }
+.wp-mirror .wp-body i { display: block; width: 100%; border-radius: 1px; background: var(--wp-bar); }
+.wp-mirror .wp-body i.down { opacity: .42; }
+/* A cue column: both halves take the cue's colour (through --wp-bar), the lower half a little stronger so the marker reads. */
+.wp-mirror .wp-cue-col i.down { opacity: .6; }
+
+/* 4 · Two-tone bars + cue bars */
+.wp-twotone .wp-body { gap: 1px; }
+.wp-twotone .wp-body i { flex: 1; min-width: 1px; border-radius: 2px 2px 1px 1px; background: linear-gradient(180deg, #a9b6cb 0 50%, #66738c 50%); }
+.wp-twotone .wp-body i.wp-cue-two { background: linear-gradient(180deg, color-mix(in srgb, var(--wp-bar) 100%, #fff 12%) 0 50%, color-mix(in srgb, var(--wp-bar) 62%, #1b1f28) 50%); }
+
+/* 5 · Fade bars + cue bars */
+.wp-fade { --wp-h: 20px; }
+.wp-fade .wp-body { align-items: flex-end; gap: 1px; }
+.wp-fade .wp-body i { flex: 1; min-width: 1px; border-radius: 1px 1px 0 0; background: linear-gradient(180deg, #8997AE 0%, #8997AE2e 100%); }
+.wp-fade .wp-body i.wp-cue-fade { background: linear-gradient(180deg, var(--wp-bar) 0%, color-mix(in srgb, var(--wp-bar) 18%, transparent) 100%); }
+
+/* ── The selected track: a different treatment in each row (row 1 is the production one) ── */
+.wp-stage.wp-style-pill .cue-browser__row--selected, .wp-stage.wp-style-pill .cue-browser__row--selected:hover { background: linear-gradient(90deg, #f56b7033 0%, #f56b7000 60%); box-shadow: inset 4px 0 0 #f56b70, 0 0 24px -8px #f56b7066; }
+.wp-stage.wp-style-pill .cue-browser__row--selected td:first-child p:first-child { color: #fff; }
+
+.wp-stage.wp-style-mirror .cue-browser__row--selected, .wp-stage.wp-style-mirror .cue-browser__row--selected:hover { background: linear-gradient(180deg, #ffffff14 0%, #ffffff08 100%); box-shadow: inset 0 1px 0 #ffffff29, inset 0 -1px 0 #00000066; }
+.wp-stage.wp-style-mirror .cue-browser__row--selected td:first-child p:first-child { color: #fff; }
+
+.wp-stage.wp-style-twotone .cue-browser__row--selected, .wp-stage.wp-style-twotone .cue-browser__row--selected:hover { background: transparent; box-shadow: none; outline: 1px solid #f56b70b3; outline-offset: -2px; }
+.wp-stage.wp-style-twotone .cue-browser__row--selected td:first-child p:first-child { color: #f78361; }
+
+.wp-stage.wp-style-fade .cue-browser__row--selected, .wp-stage.wp-style-fade .cue-browser__row--selected:hover { background: linear-gradient(180deg, #ffffff0d, #ffffff05); box-shadow: inset 0 -2px 0 #f56b70; }
+.wp-stage.wp-style-fade .cue-browser__row--selected td:first-child p:first-child { color: #fff; }
+
+/* The same preview width in every row, so the columns line up from one style to the next. */
+.wp-stage .audition-row-wave { flex: 0 0 460px; }

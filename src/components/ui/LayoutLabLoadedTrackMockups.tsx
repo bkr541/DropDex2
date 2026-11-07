@@ -1,7 +1,9 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { ChevronDown, Export, Idea } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
 import { camelotKeyColor } from './display/camelotKey';
+import { ControlButton } from './controls/ControlButton';
+import './layout-lab-track-headers.css';
 import { KeyBadge } from './display/KeyBadge';
 
 // Sample data from the Cue Points loaded-track group.
@@ -18,20 +20,16 @@ const TRACK = {
 };
 
 const KEY_COLOR = camelotKeyColor(TRACK.key);
-const LINE = 'border-[var(--color-border-faint)]';
 
 // ── Shared pieces ────────────────────────────────────────────────────────────
 
 function Vinyl({ size }: { size: number }) {
   return (
-    <div
-      className="shrink-0 rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-panel)] flex items-center justify-center"
-      style={{ width: size, height: size }}
-    >
+    <div className="lt-art" style={{ width: size, height: size, borderRadius: Math.max(7, size * 0.24) }}>
       <svg viewBox="0 0 32 32" width={size * 0.66} height={size * 0.66} fill="none" stroke="currentColor" strokeWidth="1.4" className="text-foreground/85" aria-hidden="true">
         <circle cx="16" cy="16" r="13" />
         <circle cx="16" cy="16" r="8.5" opacity="0.5" />
-        <circle cx="16" cy="16" r="4" className="text-primary" stroke="var(--color-primary)" />
+        <circle cx="16" cy="16" r="4" stroke="var(--color-primary)" />
         <circle cx="16" cy="16" r="1" fill="currentColor" />
       </svg>
     </div>
@@ -42,30 +40,19 @@ function Btn({ children, variant = 'surface', disabled = false, icon, className 
   children?: ReactNode; variant?: 'surface' | 'primary' | 'ghost'; disabled?: boolean; icon?: ReactNode; className?: string;
 }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      className={cn(
-        'inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2.5 text-[11px] font-medium transition-colors whitespace-nowrap',
-        variant === 'surface' && 'border border-[var(--color-border-subtle)] bg-[var(--color-panel)] text-foreground hover:bg-white/[0.06]',
-        variant === 'ghost' && 'text-muted-foreground hover:text-foreground hover:bg-white/[0.06]',
-        variant === 'primary' && 'bg-primary text-white hover:brightness-110',
-        disabled && 'opacity-45 pointer-events-none',
-        className,
-      )}
-    >
+    <ControlButton variant={variant === 'surface' ? 'secondary' : variant} disabled={disabled} className={cn('!h-7 !min-h-7 !gap-1.5 !px-2.5 !text-[11px]', className)}>
       {icon}{children}
-    </button>
+    </ControlButton>
   );
 }
 
 function SplitApply({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex">
-      <Btn variant="primary" icon={<Export size={14} />} className={cn('rounded-r-none opacity-60', compact && 'px-2')}>
+      <Btn variant="primary" icon={<Export size={14} />} className={cn('!rounded-r-none opacity-60', compact && '!px-2')}>
         Apply All ({TRACK.applyAll})
       </Btn>
-      <Btn variant="primary" className="rounded-l-none border-l border-white/15 w-7 justify-center px-0">
+      <Btn variant="primary" className="!rounded-l-none -ml-px !w-7 justify-center !px-0">
         <ChevronDown size={14} />
       </Btn>
     </div>
@@ -83,31 +70,31 @@ function Actions({ iconOnly = false }: { iconOnly?: boolean }) {
 }
 
 function Label({ children }: { children: ReactNode }) {
-  return <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-foreground/45">{children}</span>;
+  return <span className="lt-label">{children}</span>;
 }
 
 function StatusChip() {
   return (
-    <span className="rounded-[4px] border border-[var(--color-border-faint)] bg-white/[0.015] px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
+    <span className="lt-chip">
       {TRACK.status}
     </span>
   );
 }
 
 function Editing() {
-  return <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-primary/75">Editing</span>;
+  return <span className="lt-editing">Editing</span>;
 }
 
 function MockupCard({ n, title, concept, height, children }: { n: number; title: string; concept: string; height: string; children: ReactNode }) {
   return (
     <section className="mb-10">
       <div className="flex items-center gap-2.5 mb-3">
-        <div className="w-[26px] h-[26px] rounded-lg bg-primary/15 border border-primary/30 flex items-center justify-center text-primary text-[11px] font-extrabold shrink-0">{n}</div>
+        <div className="lt-number">{n}</div>
         <span className="text-[13px] font-bold text-foreground">{title}</span>
         <span className="text-[11px] text-muted-foreground">{concept}</span>
-        <span className="ml-auto rounded-[4px] border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">{height}</span>
+        <span className="ml-auto rounded-full border border-[#ffffff1c] px-2.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-[#9aa5b8]">{height}</span>
       </div>
-      {children}
+      <div className="lt-stage"><div className="lt-inner">{children}</div></div>
     </section>
   );
 }
@@ -116,7 +103,7 @@ function MockupCard({ n, title, concept, height, children }: { n: number; title:
 
 function CurrentReference() {
   return (
-    <div className={cn('flex items-center justify-between gap-3 border-y px-5 py-3 bg-[var(--color-card)]', LINE)}>
+    <div className="lt-s-panel flex items-center justify-between gap-3 px-5 py-3">
       <div className="flex items-center gap-3.5 min-w-0">
         <Vinyl size={64} />
         <div className="min-w-0">
@@ -145,7 +132,7 @@ function CurrentReference() {
 
 function LoadedCompact() {
   return (
-    <div className={cn('flex items-center justify-between gap-3 border-y px-4 h-[60px] bg-[var(--color-card)]', LINE)}>
+    <div className="lt-s-raised flex items-center justify-between gap-3 px-5 h-[64px]">
       <div className="flex items-center gap-3 min-w-0">
         <Vinyl size={40} />
         <div className="min-w-0">
@@ -172,7 +159,7 @@ function LoadedCompact() {
 
 function LoadedOneLine() {
   return (
-    <div className={cn('flex items-center gap-4 border-y px-4 h-[44px] bg-[var(--color-card)]', LINE)}>
+    <div className="lt-s-well flex items-center gap-4 px-4 h-[44px]">
       <Vinyl size={28} />
       <div className="flex items-baseline gap-2 min-w-0 shrink">
         <span className="text-sm font-bold truncate">{TRACK.title}</span>
@@ -197,14 +184,14 @@ function LoadedOneLine() {
 
 function LoadedTwoTier() {
   return (
-    <div className={cn('border-y bg-[var(--color-card)]', LINE)}>
+    <div className="lt-s-tier">
       <div className="flex items-center gap-3 px-4 h-[40px]">
         <Vinyl size={26} />
         <span className="text-[15px] font-bold tracking-[-0.01em] truncate">{TRACK.title}</span>
         <span className="text-[11px] text-muted-foreground truncate">{TRACK.artist}</span>
         <div className="ml-auto"><Actions /></div>
       </div>
-      <div className={cn('flex items-center gap-5 px-4 h-[26px] border-t bg-black/20 text-[10px] font-semibold', LINE)}>
+      <div className="lt-tier-wash flex items-center gap-5 px-4 h-[28px] text-[10px] font-semibold">
         <span><Label>BPM</Label> <strong className="ml-1">{TRACK.bpm}</strong></span>
         <span><Label>Key</Label> <strong className="ml-1" style={{ color: KEY_COLOR }}>{TRACK.key}</strong></span>
         <span><Label>Duration</Label> <strong className="ml-1">{TRACK.duration}</strong></span>
@@ -221,7 +208,7 @@ function LoadedTwoTier() {
 
 function Cell({ label, children, last = false }: { label: string; children: ReactNode; last?: boolean }) {
   return (
-    <div className={cn('flex flex-col justify-center gap-0.5 px-4 h-full', !last && 'border-r', LINE)}>
+    <div className={cn('lt-cell flex flex-col justify-center gap-0.5 px-4 h-full', last && '!border-r-0')}>
       <Label>{label}</Label>
       <span className="text-[13px] font-semibold tabular-nums leading-none">{children}</span>
     </div>
@@ -230,8 +217,8 @@ function Cell({ label, children, last = false }: { label: string; children: Reac
 
 function LoadedCells() {
   return (
-    <div className={cn('flex items-stretch border-y h-[56px] bg-[var(--color-card)]', LINE)}>
-      <div className={cn('flex items-center gap-3 px-4 min-w-0 flex-1 border-r', LINE)}>
+    <div className="lt-s-brushed flex items-stretch h-[60px]">
+      <div className="lt-cell flex items-center gap-3 px-4 min-w-0 flex-1">
         <Vinyl size={36} />
         <div className="min-w-0">
           <div className="text-sm font-bold truncate leading-tight">{TRACK.title}</div>
@@ -243,7 +230,7 @@ function LoadedCells() {
       <Cell label="Duration">{TRACK.duration}</Cell>
       <Cell label="Cues">{TRACK.cues}</Cell>
       <Cell label="Mode" last><span className="flex items-center gap-1.5"><Editing /><StatusChip /></span></Cell>
-      <div className={cn('flex items-center px-4 border-l', LINE)}><Actions /></div>
+      <div className="flex items-center px-4"><Actions /></div>
     </div>
   );
 }
@@ -254,21 +241,18 @@ function LoadedCells() {
 
 function LoadedRibbon() {
   return (
-    <div
-      className={cn('relative flex items-center gap-4 border-y pl-5 pr-4 h-[50px] bg-[var(--color-card)] overflow-hidden', LINE)}
-      style={{ backgroundImage: `linear-gradient(90deg, ${KEY_COLOR}14, transparent 38%)` }}
-    >
-      <span className="absolute left-0 inset-y-0 w-[3px]" style={{ background: KEY_COLOR }} />
-      <Vinyl size={32} />
+    <div className="lt-s-tinted flex items-center gap-4 pl-5 pr-4 h-[54px]" style={{ '--lt-key': KEY_COLOR } as CSSProperties}>
+      <span className="lt-rail" />
+      <Vinyl size={34} />
       <div className="min-w-0 leading-tight">
         <div className="text-sm font-bold truncate">{TRACK.title}</div>
         <div className="text-[10px] text-muted-foreground truncate">{TRACK.artist}</div>
       </div>
       <div className="flex items-center gap-4 ml-4 font-mono text-[12px] tabular-nums">
-        <span className="font-bold">{TRACK.bpm}<span className="ml-1 text-[9px] font-sans font-semibold text-foreground/45">BPM</span></span>
+        <span className="font-bold">{TRACK.bpm}<span className="ml-1 text-[9px] font-sans font-medium text-[#9aa5b8]">BPM</span></span>
         <KeyBadge camelotKey={TRACK.key} className="!text-[12px] !py-0.5" />
         <span>{TRACK.duration}</span>
-        <span>{TRACK.cues}<span className="ml-1 text-[9px] font-sans font-semibold text-foreground/45">CUES</span></span>
+        <span>{TRACK.cues}<span className="ml-1 text-[9px] font-sans font-medium text-[#9aa5b8]">CUES</span></span>
         <span className="flex items-center gap-2 font-sans"><Editing /><StatusChip /></span>
       </div>
       <div className="ml-auto"><Actions iconOnly /></div>
@@ -280,9 +264,9 @@ function LoadedRibbon() {
 
 export function LoadedTrackMockupsContent() {
   return (
-    <div className="h-full overflow-y-auto px-8 pt-7 pb-12 bg-[var(--color-background)]">
+    <div className="lt-lab h-full overflow-y-auto px-8 pt-7 pb-12 bg-[var(--color-background)]">
       <div className="mb-7">
-        <div className="text-sm font-extrabold text-foreground mb-1">Loaded Track Header Concepts</div>
+        <div className="text-sm font-extrabold text-foreground mb-1" style={{ fontWeight: 300, fontSize: 24, letterSpacing: '-0.03em' }}>Loaded Track Header Concepts</div>
         <div className="text-[11px] text-muted-foreground leading-relaxed">
           Five restyles of the track group at the top of Cue Points. Each keeps the same content (artwork, title, artist, BPM, key, duration, cues, editing status, Pending, Auto Cue, Apply All) in less height than the current group.
         </div>
