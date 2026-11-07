@@ -155,7 +155,7 @@
 .dd-progress-panel footer .dd-feedback-button { min-width: 94px; }
 
 .dd-upload-button { width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 1px solid var(--color-control-border); border-radius: 5px; background: var(--color-control-surface); color: #f0f3f7; box-shadow: none; font-size: 10px; font-weight: 700; letter-spacing: .025em; }
-.dd-upload-button--primary { border-color: var(--color-control-primary); background: transparent; color: var(--color-control-primary); }
+.dd-upload-button--primary { border-width: 1.5px; border-color: var(--color-control-primary); background: transparent; box-shadow: 0 0 12px var(--color-control-primary-glow); color: var(--color-control-primary); font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; font-weight: 300; letter-spacing: .1em; text-transform: uppercase; }
 .dd-upload-button--outline { border-style: dashed; }
 .dd-upload-button:hover { border-color: rgb(164 178 196 / .28); background: var(--color-control-surface-hover); }
 .dd-upload-button--primary:hover { border-color: var(--color-control-primary-hover); background: rgb(var(--color-control-primary-rgb) / .1); color: var(--color-control-primary-hover); }

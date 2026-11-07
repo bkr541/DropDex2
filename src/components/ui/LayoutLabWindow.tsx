@@ -2,14 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Close, Subtract, Maximize, Add, Edit } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
 import { HeroMockupsContent } from './LayoutLabHeroMockups';
-import { LoadedTrackMockupsContent } from './LayoutLabLoadedTrackMockups';
 import { UiComponentsContent } from './LayoutLabUiComponents';
-import { HeaderStatusMockupsContent } from './LayoutLabHeaderStatusMockups';
 import { NavDesignMockupsContent } from './LayoutLabNavDesignMockups';
 import { AudioDockMockupsContent } from './LayoutLabAudioDockMockups';
-import { ProgressMockupsContent } from './LayoutLabProgressMockups';
 import { DiscoveryMockupsContent } from './LayoutLabDiscoveryMockups';
-import { WaveformPreviewMockupsContent } from './LayoutLabWaveformMockups';
 import { NoticeCardMockupsContent } from './LayoutLabNoticeCardMockups';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -36,13 +32,8 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'hero',          label: 'Hero'          },
   { id: 'nav-design',    label: 'Nav Design'    },
   { id: 'audio-dock',    label: 'Audio Dock'    },
-  { id: 'loaded-track',  label: 'Loaded Track'  },
-  { id: 'header-status', label: 'Header Status' },
-  { id: 'drop-lab', label: 'Drop Lab' },
   { id: 'icons', label: 'Icons' },
-  { id: 'progress', label: 'Progress' },
   { id: 'discovery', label: 'Discovery' },
-  { id: 'waveform-preview', label: 'Waveform Preview' },
   { id: 'notice-card', label: 'Notice Card' },
 ];
 
@@ -365,18 +356,10 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
             <NavDesignMockupsContent />
           ) : activeId === 'audio-dock' ? (
             <AudioDockMockupsContent />
-          ) : activeId === 'progress' ? (
-            <ProgressMockupsContent />
           ) : activeId === 'discovery' ? (
             <DiscoveryMockupsContent />
           ) : activeId === 'notice-card' ? (
             <NoticeCardMockupsContent />
-          ) : activeId === 'waveform-preview' ? (
-            <WaveformPreviewMockupsContent />
-          ) : activeId === 'loaded-track' ? (
-            <LoadedTrackMockupsContent />
-          ) : activeId === 'header-status' ? (
-            <HeaderStatusMockupsContent />
           ) : activeId === 'ui-components' ? (
             <UiComponentsContent />
           ) : (

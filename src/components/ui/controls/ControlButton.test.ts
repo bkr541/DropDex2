@@ -6,9 +6,20 @@ const controlsCss = read('../dropdex-controls.css');
 const feedbackCss = read('../dropdex-feedback.css');
 
 describe('The one primary button', () => {
-  it('is a blue outline on a clear background', () => {
-    expect(read('../../../index.css')).toContain('--color-control-primary: #1f7dff;');
+  it('is a coral outline on a clear background, the same outline as the profile icon ring in the Hero mockup', () => {
+    const hero = read('../layout-lab-hero.css');
+    const ring = hero.match(/\.lh-avatar-ring \{[^}]*border: 1\.5px solid (#[0-9a-f]{6}); border-radius: 50%; box-shadow: 0 0 12px (#[0-9a-f]{8});/)!;
+    expect(read('../../../index.css')).toContain(`--color-control-primary: ${ring[1]};`);
+    expect(read('../../../index.css')).toContain(`--color-control-primary-glow: ${ring[2]};`);
+    expect(controlsCss).toMatch(/\.dd-control-button--primary \{ border-width: 1\.5px;[^}]*box-shadow: 0 0 12px var\(--color-control-primary-glow\)/);
     expect(controlsCss).toMatch(/\.dd-control-button--primary \{[^}]*border-color: var\(--color-control-primary\)[^}]*background: transparent[^}]*color: var\(--color-control-primary\)/);
+  });
+
+  it('sets its text like the artist name in the Hero mockups (light, capitals, 0.1em spacing)', () => {
+    const mockup = read('../LayoutLabHeroMockups.tsx');
+    expect(mockup).toMatch(/<h2 className="truncate text-\[28px\] font-light uppercase leading-none tracking-\[0\.1em\]"[^>]*>\{HERO\.name\}<\/h2>/);
+    expect(controlsCss).toMatch(/\.dd-control-button--primary \{[^}]*font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; font-weight: 300; letter-spacing: \.1em; text-transform: uppercase;/);
+    expect(feedbackCss).toMatch(/\.dd-upload-button--primary \{[^}]*font-weight: 300; letter-spacing: \.1em; text-transform: uppercase;/);
   });
 
   it('needs no one-off colors at the sign-in button', () => {

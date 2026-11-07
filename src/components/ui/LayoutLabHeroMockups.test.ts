@@ -37,11 +37,67 @@ describe('Layout Lab hero mockups', () => {
     for (const key of ['SAMPLE_GENRES', 'SAMPLE_BPM', 'SAMPLE_KEYS', 'bpm:', 'genre:']) expect(sample).not.toContain(key);
   });
 
-  it('shows the profile, socials, USB import and library counts in every mockup', () => {
-    for (const fn of ORIGINAL) {
-      const b = block(fn);
-      expect({ fn, name: b.includes('HERO.name'), socials: b.includes('<Socials'), usb: /<UsbLine|Import Complete|<Done/.test(b), import: b.includes('<ImportButton'), counts: b.includes('HERO.tracks') }).toEqual({ fn, name: true, socials: true, usb: true, import: true, counts: true });
-    }
+  it('shows the profile, socials, USB import and library counts in the unchanged mockup', () => {
+    const b = block('HeroSplitCover');
+    expect({ name: b.includes('HERO.name'), socials: b.includes('<Socials'), usb: /<UsbLine|Import Complete|<Done/.test(b), import: b.includes('<ImportButton'), counts: b.includes('HERO.tracks') })
+      .toEqual({ name: true, socials: true, usb: true, import: true, counts: true });
+  });
+
+  describe('mockups one to four, redone in the style of mockup 7', () => {
+    const FOUR = ['HeroAurora', 'HeroGlassDuo', 'HeroPoster', 'HeroStudioStrip'];
+    const markup = markupOf();
+    const slice = (n: number) => {
+      const start = markup.indexOf('data-testid="hero-mockup"', markup.indexOf(`>${n}</div>`) - 200);
+      const end = markup.indexOf('data-testid="hero-mockup"', start + 10);
+      return markup.slice(start, end === -1 ? undefined : end);
+    };
+
+    it('use the Ghost Banner frame and the name rising from the bottom edge, like mockup 7', () => {
+      for (const fn of FOUR) {
+        const b = block(fn);
+        expect(b, fn).toContain('<HeroFrame className="lh-f-ghost">');
+        expect(b, fn).toContain('<Watermark className="lh-wm-up" />');
+      }
+    });
+
+    it('set the artist name like the left of Split Cover: 28px, light, capitals, 0.1em spacing', () => {
+      expect(block('HeroSplitCover')).toContain('text-[28px] font-light uppercase leading-none tracking-[0.1em]');
+      expect(src).toContain('<h2 className="truncate text-[28px] font-light uppercase leading-none tracking-[0.1em]" data-testid="hero-name">');
+      for (const n of [1, 2, 3, 4]) expect(slice(n).match(/data-testid="hero-name"/g), `mockup ${n}`).toHaveLength(1);
+    });
+
+    it('show the same seven values as mockup 7, in one line between hairlines', () => {
+      const values = (n: number) => [...slice(n).matchAll(/data-testid="hero-value"><p class="lh-figure[^"]*">([^<]*)<\/p><p class="lh-label[^"]*">([^<]*)</g)].map((m) => `${m[2]}:${m[1]}`);
+      const reference = values(7);
+      expect(reference).toHaveLength(7);
+      for (const n of [1, 2, 3, 4]) expect(values(n), `mockup ${n}`).toEqual(reference);
+    });
+
+    it('show the import status, the USB, the last import date and the primary Import Library button', () => {
+      for (const n of [1, 2, 3, 4]) {
+        const m = slice(n);
+        expect(m, `mockup ${n} status`).toMatch(/data-testid="hero-import-status"/);
+        expect(m, `mockup ${n} usb`).toContain('DVYDRMNG');
+        expect(m, `mockup ${n} date`).toContain('Last import Sep 29');
+        expect(m, `mockup ${n} button`).toContain('Import Library');
+        expect(m, `mockup ${n} primary`).toContain('dd-control-button--primary');
+      }
+    });
+
+    it('cover the import states, and note when no USB is loaded', () => {
+      expect(block('HeroAurora') + block('HeroGlassDuo') + block('HeroPoster') + block('HeroStudioStrip')).toMatch(/initial="paused"[\s\S]*initial="importing"[\s\S]*initial="failed"/);
+      expect(src).toContain("complete: { label: 'Import complete'");
+      for (const label of ['Import paused', 'Importing', 'Import failed']) expect(src).toContain(`label: '${label}'`);
+      expect(src).toContain("usb ?? 'No USB loaded'");
+    });
+  });
+
+  it('gives each of the other mockups its own finish on the same palette', () => {
+    const finishes = { HeroSplitCover: 'lh-f-cover', HeroNameWash: 'lh-f-wash', HeroGhostBanner: 'lh-f-ghost', HeroLedger: 'lh-f-ledger', HeroTileWall: 'lh-f-tiles', HeroSplitName: 'lh-f-two' };
+    for (const [fn, finish] of Object.entries(finishes)) expect(block(fn), fn).toContain(`<HeroFrame className="${finish}`);
+    const css = read('./layout-lab-hero.css');
+    for (const finish of Object.values(finishes)) expect(css).toContain(`.${finish} {`);
+    expect(css).toMatch(/\.lh-cover \{[^}]*inset 0 1px 0 #ffffff1f/);
   });
 
   it('uses the shared primary button for Import Library', () => {
@@ -61,19 +117,6 @@ describe('Layout Lab hero mockups', () => {
     expect(css).toMatch(/\.lh-done \{[^}]*color: #6fd9a4/);
     for (const old of ['rgba(18,10,32', 'rgba(30,16,50', '#0b0f17', '#141a26', '#0d121b', 'rgba(56,120,255', 'rgba(80,110,255', 'rgba(70,90,200', 'text-emerald-500', 'font-black']) expect(src, old).not.toContain(old);
     expect(markupOf()).toContain('lh-stage');
-  });
-
-  it('gives each mockup its own finish on the same palette', () => {
-    const finishes = { HeroAurora: 'lh-f-aurora', HeroGlassDuo: 'lh-f-glass', HeroPoster: 'lh-f-poster', HeroStudioStrip: 'lh-f-strip', HeroSplitCover: 'lh-f-cover', HeroNameWash: 'lh-f-wash', HeroGhostBanner: 'lh-f-ghost', HeroLedger: 'lh-f-ledger', HeroTileWall: 'lh-f-tiles', HeroSplitName: 'lh-f-two' };
-    for (const [fn, finish] of Object.entries(finishes)) expect(block(fn), fn).toContain(`<HeroFrame className="${finish}`);
-    expect(new Set(Object.values(finishes)).size).toBe(10);
-    const css = read('./layout-lab-hero.css');
-    for (const finish of Object.values(finishes)) expect(css).toContain(`.${finish} {`);
-    // Real differences in depth and texture: a vignette and frosted glass, brushed grain, a raised cover.
-    expect(css).toMatch(/\.lh-f-glass \{[^}]*radial-gradient\(ellipse at 50% 40%/);
-    expect(css).toMatch(/\.lh-glass \{[^}]*backdrop-filter: blur\(14px\)/);
-    expect(css).toMatch(/\.lh-f-poster \{[^}]*repeating-linear-gradient\(0deg, #ffffff06 0 1px/);
-    expect(css).toMatch(/\.lh-cover \{[^}]*inset 0 1px 0 #ffffff1f/);
   });
 
   describe('mockups six to ten', () => {

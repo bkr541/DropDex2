@@ -48,8 +48,9 @@
   outline: 2px solid var(--color-control-focus);
   outline-offset: 2px;
 }
-.dd-control-button--primary { border-color: var(--color-control-primary); background: transparent; box-shadow: none; color: var(--color-control-primary); width: fit-content; }
-.dd-control-button--primary:hover:not(:disabled) { background: rgb(var(--color-control-primary-rgb) / .1); border-color: var(--color-control-primary-hover); color: var(--color-control-primary-hover); }
+/* Primary: the outline of the profile icon ring in the Hero mockup (1.5px coral, soft glow), and the type of the artist name there: light, capitals, wide spacing. */
+.dd-control-button--primary { border-width: 1.5px; border-color: var(--color-control-primary); background: transparent; box-shadow: 0 0 12px var(--color-control-primary-glow); color: var(--color-control-primary); width: fit-content; font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; font-weight: 300; letter-spacing: .1em; text-transform: uppercase; }
+.dd-control-button--primary:hover:not(:disabled) { background: rgb(var(--color-control-primary-rgb) / .1); border-color: var(--color-control-primary-hover); box-shadow: 0 0 16px var(--color-control-primary-glow); color: var(--color-control-primary-hover); }
 .dd-control-button.dd-control-button--primary:disabled { background: var(--color-control-surface); border-color: var(--color-control-border-soft); color: #596474; box-shadow: none; }
 .dd-control-button--primary.dd-control-button--ready { border-color: var(--color-control-green); background: rgb(var(--color-control-green-rgb) / .12); color: var(--color-control-green); }
 .dd-control-button--primary.dd-control-button--ready:hover:not(:disabled) { background: rgb(var(--color-control-green-rgb) / .18); border-color: var(--color-control-green); color: #6aefbb; }

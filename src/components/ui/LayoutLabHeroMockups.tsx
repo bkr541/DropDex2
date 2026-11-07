@@ -1,5 +1,5 @@
-import type { CSSProperties, ElementType, ReactNode } from 'react';
-import { Cloud, CheckmarkFilled, Flag, Music, Playlist, Tag, Upload, Usb, Waveform } from '@carbon/icons-react';
+import { useState, type CSSProperties, type ElementType, type ReactNode } from 'react';
+import { Calendar, Cloud, CheckmarkFilled, Flag, Music, Pause, Playlist, Renew, Tag, Upload, Usb, WarningAlt, Waveform } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
 import { ControlButton } from './controls/ControlButton';
 import { Socials } from './LayoutLabHeroParts';
@@ -11,7 +11,6 @@ import './layout-lab-hero.css';
 // groups (top genres, BPM distribution, Camelot key wheel). All five are in the graphite look of Audition and Discovery.
 
 // Textures, as CSS backgrounds.
-const DOTS = 'radial-gradient(rgba(255,255,255,0.075) 1px, transparent 1px) 0 0 / 14px 14px';
 const RULES = 'repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 24px)';
 
 const LAST_IMPORT = HERO.lastImport.replace(', 2026', '');
@@ -55,74 +54,77 @@ function UsbLine({ className }: { className?: string }) {
   return <p className={cn('flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground', className)}><Usb size={11} /> {HERO.usb} · {LAST_IMPORT}</p>;
 }
 
-/** A figure over a small label. */
-function Stat({ value, label, className, valueClassName }: { value: ReactNode; label: string; className?: string; valueClassName?: string }) {
+// ── One to four: the Ghost Banner look, with the import status ──────────────
+// These four share the style of mockup 7 (Ghost Banner): the artist's name rises from the bottom edge as a huge faint word, the picture and
+// social icons are large, and the seven library values run in one line between hairlines. The artist name is set like the one on the
+// left of Split Cover (28px, light, capitals, 0.1em spacing). Each also shows where the import stands (complete, paused, importing or
+// failed: click it to see them all), the USB if one is loaded, the date of the last import, and the primary Import Library button.
+
+type ImportState = 'complete' | 'paused' | 'importing' | 'failed';
+const IMPORT_STATES: Record<ImportState, { label: string; Icon: ElementType; next: ImportState }> = {
+  complete: { label: 'Import complete', Icon: CheckmarkFilled, next: 'paused' },
+  paused: { label: 'Import paused', Icon: Pause, next: 'importing' },
+  importing: { label: 'Importing', Icon: Renew, next: 'failed' },
+  failed: { label: 'Import failed', Icon: WarningAlt, next: 'complete' },
+};
+
+/** Where the import stands. Click to step through the four states. */
+function ImportStatus({ initial = 'complete', className }: { initial?: ImportState; className?: string }) {
+  const [state, setState] = useState<ImportState>(initial);
+  const { label, Icon, next } = IMPORT_STATES[state];
   return (
-    <div className={cn('min-w-0', className)}>
-      <p className={cn('lh-figure truncate text-[26px]', valueClassName)}>{value}</p>
-      <Eyebrow className="mt-1.5">{label}</Eyebrow>
+    <button type="button" className={cn('lh-status', className)} data-state={state} data-testid="hero-import-status" onClick={() => setState(next)} title="Click to see the other import states">
+      <Icon size={12} /> {label}
+    </button>
+  );
+}
+
+/** The USB that is loaded, or a plain note when none is. */
+function UsbName({ usb = HERO.usb, className }: { usb?: string | null; className?: string }) {
+  return <p className={cn('flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground', className)} data-testid="hero-usb"><Usb size={11} /> {usb ?? 'No USB loaded'}</p>;
+}
+
+function LastImport({ className }: { className?: string }) {
+  return <p className={cn('flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground', className)} data-testid="hero-last-import"><Calendar size={11} /> Last import {LAST_IMPORT}</p>;
+}
+
+/** The artist as mockup 7 draws them, with the name set like the left of Split Cover. */
+function GhostIdentity({ avatar = 150, socials = 26, className }: { avatar?: number; socials?: number; className?: string }) {
+  return (
+    <div className={cn('flex min-w-0 items-center gap-6', className)} data-testid="hero-identity">
+      <Avatar size={avatar} />
+      <div className="flex min-w-0 flex-col justify-center gap-3">
+        <p className="lh-label">Artist library</p>
+        <h2 className="truncate text-[28px] font-light uppercase leading-none tracking-[0.1em]" data-testid="hero-name">{HERO.name}</h2>
+        <Socials size={socials} className="gap-5" />
+      </div>
     </div>
   );
 }
 
-// ── 1. Aurora Banner ─────────────────────────────────────────────────────────
-// A wide banner lit from the corners. The artist on the left, the library in three big figures, the USB import on the right.
-
-export function HeroAurora() {
+/** The seven values of mockup 7, in one line between hairlines. */
+function SevenLine({ figureClass = 'text-[24px]', cellClass = 'px-4', className }: { figureClass?: string; cellClass?: string; className?: string }) {
   return (
-    <HeroFrame className="lh-f-aurora">
-      <Texture background="radial-gradient(circle at 10% 20%, rgba(255,255,255,0.10), transparent 40%), radial-gradient(circle at 92% 90%, rgba(255,255,255,0.05), transparent 36%)" />
-      <Texture background={DOTS} />
-      <div className="relative flex h-full items-center gap-6 px-6">
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <Avatar size={72} />
-          <div className="min-w-0">
-            <h2 className="truncate text-[30px] font-light uppercase leading-none tracking-[0.1em]">{HERO.name}</h2>
-            <p className="lh-label mt-2 whitespace-nowrap">Artist library</p>
-            <Socials size={14} className="mt-3" />
-          </div>
-        </div>
-        <div className="hidden shrink-0 items-center gap-6 lg:flex">
-          <Stat value={HERO.tracks} label="Tracks" />
-          <div className="h-12 w-px bg-[#ffffff14]" />
-          <Stat value={HERO.playlists} label="Playlists" />
-          <div className="h-12 w-px bg-[#ffffff14]" />
-          <Stat value={HERO.largestPlaylist} label="Largest playlist" valueClassName="text-[18px] leading-[26px]" />
-        </div>
-        <div className="lh-card w-[190px] shrink-0 px-3.5 py-3">
-          <Eyebrow className="mb-1.5">USB Import</Eyebrow>
-          <Done label="Import Complete" />
-          <UsbLine className="mt-1.5" />
-          <ImportButton className="mt-2.5 w-full" />
-        </div>
-      </div>
-    </HeroFrame>
+    <div className={cn('flex items-center', className)}>
+      {SEVEN.map(({ label, value }, i) => (
+        <div key={label} className={cn('min-w-0', cellClass, i > 0 && 'border-l border-[#ffffff14]')} data-testid="hero-value"><p className={cn('lh-figure', figureClass)}>{value}</p><Eyebrow className="mt-1.5 whitespace-nowrap">{label}</Eyebrow></div>
+      ))}
+    </div>
   );
 }
 
-// ── 2. Glass Duo ─────────────────────────────────────────────────────────────
-// Two separate glass panels on a soft glow: who you are on the left, what is in your library on the right.
+// 1. Ghost Stacked: the picture and name on the left; on the right the seven values, and under them the import row.
 
-export function HeroGlassDuo() {
+export function HeroAurora() {
   return (
-    <HeroFrame className="lh-f-glass">
-      <Texture background="radial-gradient(circle at 18% 18%, rgba(255,255,255,0.10), transparent 42%), radial-gradient(circle at 86% 88%, rgba(255,255,255,0.05), transparent 40%)" />
-      <div className="relative grid h-full grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-3 p-3.5">
-        <div className="lh-glass flex min-w-0 items-center gap-4 px-5">
-          <Avatar size={66} />
-          <div className="min-w-0">
-            <h2 className="truncate text-[24px] font-light uppercase leading-none tracking-[0.1em]">{HERO.name}</h2>
-            <Socials size={14} className="mt-3" />
-          </div>
-        </div>
-        <div className="lh-glass flex min-w-0 flex-col justify-between px-5 py-3.5">
-          <div className="flex items-center gap-8">
-            <Stat value={HERO.tracks} label="Tracks" />
-            <Stat value={HERO.playlists} label="Playlists" />
-            <Stat value={HERO.largestPlaylist} label="Largest playlist" valueClassName="text-[16px] leading-[26px]" />
-          </div>
-          <div className="flex items-center justify-between gap-3 border-t border-[#ffffff14] pt-3">
-            <div className="min-w-0 space-y-1.5"><Done label="Import Complete" /><UsbLine /></div>
+    <HeroFrame className="lh-f-ghost">
+      <Watermark className="lh-wm-up" />
+      <div className="relative flex h-full items-center gap-8 px-7" style={{ minWidth: 1180 }}>
+        <GhostIdentity avatar={150} />
+        <div className="ml-auto flex shrink-0 flex-col gap-4">
+          <SevenLine />
+          <div className="flex items-center justify-between gap-6 border-t border-[#ffffff14] pt-3.5">
+            <div className="flex items-center gap-5"><ImportStatus /><UsbName /><LastImport /></div>
             <ImportButton />
           </div>
         </div>
@@ -131,24 +133,23 @@ export function HeroGlassDuo() {
   );
 }
 
-// ── 3. Centered Poster ───────────────────────────────────────────────────────
-// Everything on one centre line, like a poster: the avatar, the name, the socials, then the library figures. USB and import sit in the corners.
+// 2. Ghost Two Rows: identity and the import block on top, the seven values as a band across the whole width underneath.
 
-export function HeroPoster() {
+export function HeroGlassDuo() {
   return (
-    <HeroFrame className="lh-f-poster">
-      <div className="absolute left-5 top-4"><Done label="Import Complete" /><UsbLine className="mt-1.5" /></div>
-      <div className="absolute right-5 top-4"><ImportButton /></div>
-      <div className="relative flex h-full flex-col items-center justify-center gap-2 px-6 pt-3">
-        <Avatar size={52} />
-        <h2 className="text-[26px] font-light uppercase leading-none tracking-[0.2em]">{HERO.name}</h2>
-        <Socials size={14} />
-        <div className="mt-2 flex items-center gap-6 border-t border-[#ffffff14] pt-3">
-          {[[HERO.tracks, 'Tracks'], [HERO.playlists, 'Playlists'], [HERO.largestPlaylist, 'Largest playlist']].map(([value, label], i) => (
-            <div key={label} className="flex items-center gap-6">
-              {i > 0 && <span className="h-6 w-px bg-[#ffffff14]" />}
-              <div className="text-center"><p className="lh-figure text-[20px]">{value}</p><Eyebrow className="mt-1.5">{label}</Eyebrow></div>
-            </div>
+    <HeroFrame className="lh-f-ghost">
+      <Watermark className="lh-wm-up" />
+      <div className="relative flex h-full flex-col" style={{ minWidth: 1180 }}>
+        <div className="flex flex-1 items-center gap-8 px-7">
+          <GhostIdentity avatar={92} socials={22} />
+          <div className="ml-auto flex shrink-0 items-center gap-7">
+            <div className="space-y-1.5"><ImportStatus initial="paused" /><UsbName /><LastImport /></div>
+            <ImportButton />
+          </div>
+        </div>
+        <div className="grid grid-cols-7 border-t border-[#ffffff14] bg-[#00000026] py-3">
+          {SEVEN.map(({ label, value }, i) => (
+            <div key={label} className={cn('min-w-0 px-6', i > 0 && 'border-l border-[#ffffff14]')} data-testid="hero-value"><p className="lh-figure text-[22px]">{value}</p><Eyebrow className="mt-1.5 whitespace-nowrap">{label}</Eyebrow></div>
           ))}
         </div>
       </div>
@@ -156,31 +157,37 @@ export function HeroPoster() {
   );
 }
 
-// ── 4. Studio Strip ──────────────────────────────────────────────────────────
-// The Audition look: one soft gradient panel, hairline dividers, light 20px figures over 9px spaced labels and a single coral accent.
+// 3. Ghost Centered: picture, name and socials on the centre line, the seven values under them; the import status sits in the top left and the button in the top right.
+
+export function HeroPoster() {
+  return (
+    <HeroFrame className="lh-f-ghost">
+      <Watermark className="lh-wm-up" />
+      <div className="relative h-full" style={{ minWidth: 1180 }}>
+        <div className="absolute left-6 top-4 space-y-1.5"><ImportStatus initial="importing" /><UsbName /><LastImport /></div>
+        <div className="absolute right-6 top-4"><ImportButton /></div>
+        <div className="flex h-full flex-col items-center justify-end gap-4 pb-4">
+          <GhostIdentity avatar={78} socials={22} className="justify-center" />
+          <SevenLine className="border-t border-[#ffffff14] pt-3.5" figureClass="text-[22px]" cellClass="px-5" />
+        </div>
+      </div>
+    </HeroFrame>
+  );
+}
+
+// 4. Ghost Footer: identity and the seven values above, and a footer band for the import status, the USB, the last import date and the button.
 
 export function HeroStudioStrip() {
-  const coral = '#f56b70';
   return (
-    <HeroFrame className="lh-f-strip">
-      <div className="relative flex h-full flex-col">
-        <div className="flex flex-1 items-center gap-5 px-6">
-          <div className="lh-avatar h-[60px] w-[60px] shrink-0 text-[18px] font-light tracking-wider" style={{ color: coral }}>{HERO.initials}</div>
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-[22px] font-light uppercase tracking-[0.14em] text-[#f6f7fa]">{HERO.name}</h2>
-            <Socials size={13} className="mt-2" />
-          </div>
-          <div className="flex shrink-0 items-center gap-7">
-            {[[HERO.tracks, 'Tracks'], [HERO.playlists, 'Playlists'], [HERO.largestPlaylist, 'Largest playlist']].map(([value, label]) => (
-              <div key={label}><p className="text-[20px] font-light leading-none tracking-[-0.04em] text-[#f6f7fa] tabular-nums">{value}</p><p className="mt-1.5 text-[9px] uppercase tracking-[0.16em] text-[#9aa5b8]">{label}</p></div>
-            ))}
-          </div>
+    <HeroFrame className="lh-f-ghost">
+      <Watermark className="lh-wm-up" />
+      <div className="relative flex h-full flex-col" style={{ minWidth: 1180 }}>
+        <div className="flex flex-1 items-center gap-8 px-7">
+          <GhostIdentity avatar={104} socials={24} />
+          <SevenLine className="ml-auto shrink-0" />
         </div>
-        <div className="flex items-center justify-between gap-4 border-t border-[#ffffff0d] bg-[#00000026] px-6 py-3">
-          <div className="flex min-w-0 items-center gap-4">
-            <span className="lh-done"><CheckmarkFilled size={12} /> Import complete</span>
-            <UsbLine />
-          </div>
+        <div className="flex items-center justify-between gap-4 border-t border-[#ffffff0d] bg-[#00000026] px-7 py-3">
+          <div className="flex min-w-0 items-center gap-6"><ImportStatus initial="failed" /><UsbName /><LastImport /></div>
           <ImportButton />
         </div>
       </div>
@@ -390,13 +397,13 @@ export function HeroMockupsContent() {
       <div className="mb-7">
         <div className="mb-1 text-foreground" style={{ fontWeight: 300, fontSize: 24, letterSpacing: '-0.03em' }}>Library Hero Concepts</div>
         <div className="text-[11px] leading-relaxed text-muted-foreground">
-          Ten hero directions, all 218px tall like the production hero and all in the graphite look of Audition and Discovery. The first five show the profile, socials, USB import and three library counts. Six to ten put the artist's name in the background, faded into the surface, make the picture, name and social icons fill the height of the strip, and show seven values from the user's data: tracks, playlists, USBs, cue points, genres, how much is analysed and how much is in the cloud. None of them show the genre, BPM or Camelot key charts.
+          Ten hero directions, all 218px tall like the production hero and all in the graphite look of Audition and Discovery. The first four are redone in the style of mockup 7 with the artist name from Split Cover, the seven values, the import status (click it to step through complete, paused, importing and failed), the USB, the last import date and the Import Library button. Five shows the profile, socials, USB import and three library counts. Six to ten put the artist's name in the background, faded into the surface, make the picture, name and social icons fill the height of the strip, and show seven values from the user's data: tracks, playlists, USBs, cue points, genres, how much is analysed and how much is in the cloud. None of them show the genre, BPM or Camelot key charts.
         </div>
       </div>
-      <HeroMockupCard n={1} title="Aurora Banner" concept="One banner lit from the corners: the artist, three big figures, the USB import"><HeroAurora /></HeroMockupCard>
-      <HeroMockupCard n={2} title="Glass Duo" concept="Two glass panels: who you are, and what is in your library"><HeroGlassDuo /></HeroMockupCard>
-      <HeroMockupCard n={3} title="Centered Poster" concept="Everything on one centre line, with USB and import in the corners"><HeroPoster /></HeroMockupCard>
-      <HeroMockupCard n={4} title="Studio Strip" concept="The Audition look: a soft gradient panel, hairlines, light figures and one coral accent"><HeroStudioStrip /></HeroMockupCard>
+      <HeroMockupCard n={1} title="Ghost Stacked" concept="Mockup 7's look: the picture and name left; the seven values over the import row on the right"><HeroAurora /></HeroMockupCard>
+      <HeroMockupCard n={2} title="Ghost Two Rows" concept="Identity and the import block on top; the seven values as a band across the width"><HeroGlassDuo /></HeroMockupCard>
+      <HeroMockupCard n={3} title="Ghost Centered" concept="Picture, name and socials on the centre line, the values below; import status and button in the corners"><HeroPoster /></HeroMockupCard>
+      <HeroMockupCard n={4} title="Ghost Footer" concept="Identity and the seven values above; a footer band for import status, USB, last import and the button"><HeroStudioStrip /></HeroMockupCard>
       <HeroMockupCard n={5} title="Split Cover" concept="A cover panel with the initials as a watermark beside a ruled sheet of facts"><HeroSplitCover /></HeroMockupCard>
       <HeroMockupCard n={6} title="Name Wash" concept="The name fades in from the right edge behind a big picture; seven values in a four-over-three grid"><HeroNameWash /></HeroMockupCard>
       <HeroMockupCard n={7} title="Ghost Banner" concept="The name rises from the bottom edge and fades upward; seven values in one line between hairlines"><HeroGhostBanner /></HeroMockupCard>
