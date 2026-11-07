@@ -1,0 +1,30 @@
+/* The track listing in the graphite look: the second Waveform Preview mockup, as one reusable table. It carries its own palette so it looks the same on any page. */
+.track-listing {
+  --color-background: #1b1f28; --color-foreground: #f6f7fa; --color-muted-foreground: #a4adbd; --color-primary: #f56b70; --color-primary-rgb: 245 107 112;
+  --color-ring: #f78361; --color-border-subtle: #ffffff12; --color-border-faint: #ffffff0d; --color-surface: #2b313e; --color-surface-hover: #333b4a;
+  --color-control-blue: #f56b70; --color-control-blue-rgb: 245 107 112;
+  color: var(--color-foreground); font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+}
+.track-listing button:focus-visible { outline: 2px solid #f78361; outline-offset: 3px; }
+.track-listing .cue-browser__table.track-listing__table { background: transparent; }
+/* Column names: capitals, 11px. */
+.track-listing .cue-browser__table.track-listing__table thead { color: #a2aec2; font-size: 11px; font-weight: 500; letter-spacing: .12em; }
+.track-listing .cue-browser__table.track-listing__table thead th { padding-block: 9px; background: #20242e; box-shadow: inset 0 -1px #ffffff10; }
+.track-listing .cue-browser__table.track-listing__table tbody { background: transparent; }
+.track-listing .cue-browser__table.track-listing__table tbody tr { border-color: #ffffff08; }
+.track-listing .cue-browser__table.track-listing__table tbody td { height: 40px; padding-block: 3px; color: #b9c2d2; font-size: 11px; font-weight: 400; }
+.track-listing .cue-browser__table.track-listing__table tbody td:first-child p:first-child { color: #edf0f6; font-size: 12px; font-weight: 400; line-height: 1.25; }
+.track-listing .cue-browser__table.track-listing__table tbody td:first-child p:last-child { color: #a0aabd; font-size: 10px; }
+.track-listing .cue-browser__row:hover { background: #ffffff04; }
+/* The selected track: a coral edge, and a coral wash that fades out slowly and is gone just past a quarter of the waveform (measured in pixels so it ends in the same place on any width). */
+.track-listing .cue-browser__row--selected, .track-listing .cue-browser__row--selected:hover { background: linear-gradient(90deg, #f56b7033 0, #f56b7026 220px, #f56b7014 400px, #f56b700a 480px, #f56b7000 560px); box-shadow: inset 4px 0 0 #f56b70; }
+.track-listing .cue-browser__table.track-listing__table tbody .cue-browser__row--selected td:first-child p:first-child { color: #fff; }
+/* The waveform: 460px wide when there is room, with 6px above for the cue triangles. */
+.track-listing__wave { flex: 1 1 140px; min-width: 140px; max-width: 460px; padding-top: 6px; }
+.track-listing__cue { position: absolute; top: 0; bottom: 0; width: 1.5px; transform: translateX(-50%); background: var(--cue-ink); pointer-events: none; }
+.track-listing__cue::before { content: ''; position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); border-left: 3.5px solid transparent; border-right: 3.5px solid transparent; border-top: 5px solid var(--cue-ink); }
+/* Actions: three dots, floating in the middle of the row. */
+.track-listing .track-listing__actions { text-align: center; vertical-align: middle; }
+.track-listing__actions-button { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: #b4bdcb; cursor: default; transition: color 120ms, background 120ms; }
+.track-listing__actions-button:hover { background: #ffffff0d; color: #f6f7fa; }
+@media (prefers-reduced-motion: reduce) { .track-listing__actions-button { transition: none; } }

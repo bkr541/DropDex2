@@ -23,17 +23,12 @@
 .wp-bars .wp-body i { flex: 1; min-width: 1px; border-radius: 1px; }
 .wp-cues-dots > span { top: 1px; width: 6px; height: 6px; border-radius: 50%; background: var(--wp-cue); }
 
-/* 2 · Mirrored bars + cue columns topped with a triangle: row 3's mirrored bars, and an upside-down triangle on top of each cue column. */
-.wp-pill { --wp-h: 22px; padding-top: 6px; }
-.wp-pill .wp-body { gap: 1px; }
-.wp-pill .wp-body > span { flex: 1; min-width: 1px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 1px; }
-.wp-pill .wp-body i { display: block; width: 100%; border-radius: 1px; background: var(--wp-bar); }
-.wp-pill .wp-body i.down { opacity: .42; }
-/* A cue column: both halves take the cue's colour, the lower half a little stronger so the marker reads. */
-.wp-pill .wp-cue-bar i.down { opacity: .6; }
-/* The triangle points down and sits right on the top end of the column's upper half. */
-.wp-pill .wp-cue-bar i.up { position: relative; }
-.wp-pill .wp-cue-bar i.up::before { content: ''; position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); border-left: 3.5px solid transparent; border-right: 3.5px solid transparent; border-top: 5px solid var(--wp-bar); }
+/* 2 · Bars + triangle cues: row 1's thin gray bars, and an upside-down triangle on top of each cue bar. */
+.wp-pill { --wp-h: 18px; }
+.wp-pill .wp-body i { flex: 1; min-width: 1px; border-radius: 1px; }
+/* A cue: the bar at its position takes the cue's colour, and a triangle that points down sits right on its top end. */
+.wp-pill .wp-cue-bar { position: relative; }
+.wp-pill .wp-cue-bar::before { content: ''; position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); border-left: 3.5px solid transparent; border-right: 3.5px solid transparent; border-top: 5px solid var(--wp-bar); }
 
 /* 3 · Mirrored bars + cue columns */
 .wp-mirror { --wp-h: 22px; }
@@ -56,8 +51,6 @@
 .wp-fade .wp-body i.wp-cue-fade { background: linear-gradient(180deg, var(--wp-bar) 0%, color-mix(in srgb, var(--wp-bar) 18%, transparent) 100%); }
 
 /* ── The selected track: a different treatment in each row (row 1 is the production one) ── */
-.wp-stage.wp-style-pill .cue-browser__row--selected, .wp-stage.wp-style-pill .cue-browser__row--selected:hover { background: linear-gradient(90deg, #f56b7033 0%, #f56b7000 60%); box-shadow: inset 4px 0 0 #f56b70, 0 0 24px -8px #f56b7066; }
-.wp-stage.wp-style-pill .cue-browser__row--selected td:first-child p:first-child { color: #fff; }
 
 .wp-stage.wp-style-mirror .cue-browser__row--selected, .wp-stage.wp-style-mirror .cue-browser__row--selected:hover { background: linear-gradient(180deg, #ffffff14 0%, #ffffff08 100%); box-shadow: inset 0 1px 0 #ffffff29, inset 0 -1px 0 #00000066; }
 .wp-stage.wp-style-mirror .cue-browser__row--selected td:first-child p:first-child { color: #fff; }
@@ -70,3 +63,23 @@
 
 /* The same preview width in every row, so the columns line up from one style to the next. */
 .wp-stage .audition-row-wave { flex: 0 0 460px; }
+
+/* ── The status mark (the green dot), drawn like the rest of the app: no fills, no glow. A state is a hairline, a light figure, a 9px spaced word or a thin arc,
+   and "ready" is quiet. Colour comes from --wp-status: green done, amber partial, rose failed, slate not yet. ── */
+.wp-row-heading em { margin-left: 6px; color: #9aa5b8; font-style: normal; }
+/* 3 · A word after the artist, 9px spaced capitals. Quiet when ready, coloured only for a problem. */
+.wp-status-word { margin-left: 8px; padding-left: 8px; border-left: 1px solid #ffffff1a; color: #7b879c; font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
+.wp-status-word[data-status="warning"], .wp-status-word[data-status="error"] { color: var(--wp-status); }
+.wp-status-word[data-status="none"] { color: #566074; }
+/* 4 · A one-pixel rule on the row's bottom line, under the title. */
+.wp-stage.wp-style-twotone tbody td:first-child { position: relative; }
+.wp-status-rule { position: absolute; bottom: 0; left: 12px; width: 32px; height: 1px; background: var(--wp-status); }
+.wp-status-rule[data-status="ready"] { opacity: .6; }
+.wp-status-rule[data-status="none"] { background: repeating-linear-gradient(90deg, #566074 0 3px, transparent 3px 6px); }
+/* 5 · A thin arc after the duration, a third for each step done. */
+.wp-duration-status { display: inline-flex; align-items: center; gap: 12px; }
+.wp-status-arc { flex: none; }
+.wp-arc-track { fill: none; stroke: #ffffff1f; stroke-width: 1; }
+.wp-status-arc[data-status="none"] .wp-arc-track { stroke: #566074; }
+.wp-arc-fill { fill: none; stroke: var(--wp-status); stroke-width: 1.5; stroke-linecap: round; }
+.wp-status-arc[data-status="ready"] .wp-arc-fill { opacity: .75; }

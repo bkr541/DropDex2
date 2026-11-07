@@ -1,12 +1,11 @@
-import { useCallback } from 'react';
-import { cn, formatKey } from '../../lib/utils';
-import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
-import { useUsbConnection } from '../../contexts/UsbConnectionContext';
-import { useWaveformProgress } from '../../hooks/useWaveformProgress';
-import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
+import { formatKey } from '../../lib/utils';
+import { cueAnalysisReady } from '../../lib/cues/cueReadiness';
+import { TrackListing, type TrackListingColumn } from '../ui/display';
+import { TrackRowPlayButton } from '../player/TrackRowPlayButton';
+import { TrackRowWaveform } from '../player/TrackRowWaveform';
 import type { RekordboxTrack } from '../../types';
 import { waveformStateForTrack, type WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { CircleDash, Pause, Play, Search } from '@carbon/icons-react';
+import { CircleDash, Search } from '@carbon/icons-react';
 import { ControlButton } from '../ui/controls';
 
 interface LibrarySearchResultsProps {
@@ -23,164 +22,6 @@ interface LibrarySearchResultsProps {
   onRetryWaveform: (trackId: string) => void;
 }
 
-const HEADERS = ['', 'Title', 'Artist', 'BPM', 'Key'] as const;
-
-function TrackRowSearch({
-  track,
-  waveformState,
-  onRetryWaveform,
-  onOpen,
-}: {
-  track: RekordboxTrack;
-  waveformState: WaveformLoadState;
-  onRetryWaveform: () => void;
-  onOpen: (track: RekordboxTrack) => void;
-}) {
-  const { activeTrack, status: playerStatus, playIntent, toggleTrack, seek, getAudioElement } = useAudioPlayer();
-  const { status: usbStatus } = useUsbConnection();
-  const usbConnected = usbStatus === 'connected';
-
-  const isActiveTrack = activeTrack?.id === track.id;
-  const isPlaying = isActiveTrack && playIntent;
-  const isLoadingThis = isActiveTrack && (playerStatus === 'resolving' || playerStatus === 'loading');
-  const isActiveRow = isActiveTrack && !['idle', 'resolving', 'loading', 'error'].includes(playerStatus);
-  const canSeek = isActiveTrack && !['idle', 'resolving', 'loading', 'error'].includes(playerStatus);
-
-  const progress = useWaveformProgress(track.id);
-
-  const handlePlayClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      void toggleTrack(track);
-    },
-    [toggleTrack, track],
-  );
-
-  const handleWaveformSeek = useCallback(
-    (fraction: number) => {
-      const audio = getAudioElement();
-      if (!audio || !isFinite(audio.duration) || audio.duration <= 0) return;
-      seek(fraction * audio.duration);
-    },
-    [seek, getAudioElement],
-  );
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen(track)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(track); } }}
-      aria-label={`Open ${track.title}${track.artist ? ` by ${track.artist}` : ''}`}
-      className={cn(
-        'group w-full px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset',
-        isActiveRow && 'border-l-2 border-l-primary bg-primary/5 hover:bg-primary/10',
-      )}
-    >
-      {/* Desktop */}
-      <div className="hidden sm:grid grid-cols-[36px_1fr_1fr_56px_56px] items-center gap-x-2 gap-y-2">
-        {/* Play button */}
-        <div className="flex items-center justify-center">
-          <button
-            onClick={handlePlayClick}
-            aria-label={isPlaying ? `Pause ${track.title}` : `Play ${track.title}`}
-            title={!usbConnected ? 'Connect a USB drive to play' : undefined}
-            className={cn(
-              'w-7 h-7 rounded-full flex items-center justify-center transition-all shrink-0',
-              'opacity-0 group-hover:opacity-100 focus:opacity-100',
-              isActiveRow && 'opacity-100',
-              isLoadingThis && 'opacity-100 cursor-wait',
-              isPlaying
-                ? 'bg-primary text-white hover:bg-primary/90'
-                : 'bg-[var(--color-surface)] text-foreground hover:bg-primary hover:text-white',
-            )}
-          >
-            {isLoadingThis ? (
-              <CircleDash size={13} className="animate-spin" />
-            ) : isPlaying ? (
-              <Pause size={13} />
-            ) : (
-              <Play size={13} />
-            )}
-          </button>
-        </div>
-
-        {/* Title */}
-        <div className="min-w-0 pr-2">
-          <p className={cn(
-            'text-sm font-semibold truncate transition-colors leading-tight',
-            isActiveRow ? 'text-primary' : 'group-hover:text-primary',
-          )}>
-            {track.title}
-          </p>
-        </div>
-
-        <p className="text-xs text-muted-foreground truncate pr-4">{track.artist ?? '—'}</p>
-        <p className="text-xs font-mono text-primary text-center tabular-nums">
-          {track.bpm != null ? track.bpm.toFixed(1) : '—'}
-        </p>
-        <p className="text-xs font-mono text-secondary text-center">{formatKey(track.musical_key)}</p>
-
-        <div className="col-span-full">
-          <RekordboxPreviewWaveform
-            state={waveformState}
-            height={30}
-            variant="compact"
-            onRetry={onRetryWaveform}
-            activeProgress={progress}
-            onSeek={canSeek ? handleWaveformSeek : undefined}
-            ariaLabel=""
-          />
-        </div>
-      </div>
-
-      {/* Mobile */}
-      <div className="sm:hidden">
-        <div className="flex items-start gap-2">
-          <button
-            onClick={handlePlayClick}
-            aria-label={isPlaying ? `Pause ${track.title}` : `Play ${track.title}`}
-            className={cn(
-              'mt-0.5 shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-all',
-              isPlaying
-                ? 'bg-primary text-white'
-                : 'bg-[var(--color-surface)] text-foreground hover:bg-primary hover:text-white',
-            )}
-          >
-            {isLoadingThis ? <CircleDash size={11} className="animate-spin" /> : isPlaying ? <Pause size={11} /> : <Play size={11} />}
-          </button>
-          <div className="flex-1 min-w-0">
-            <p className={cn(
-              'text-sm font-semibold truncate transition-colors leading-tight',
-              isActiveRow ? 'text-primary' : 'group-hover:text-primary',
-            )}>
-              {track.title}
-            </p>
-            <div className="flex items-center gap-3 mt-0.5">
-              <p className="text-[11px] text-muted-foreground truncate flex-1 leading-tight">{track.artist ?? '—'}</p>
-              {track.bpm != null && (
-                <p className="text-[10px] font-mono text-primary shrink-0 tabular-nums">{track.bpm.toFixed(1)}</p>
-              )}
-              <p className="text-[10px] font-mono text-secondary shrink-0">{formatKey(track.musical_key)}</p>
-            </div>
-          </div>
-        </div>
-        <div className="mt-1.5">
-          <RekordboxPreviewWaveform
-            state={waveformState}
-            height={26}
-            variant="compact"
-            onRetry={onRetryWaveform}
-            activeProgress={progress}
-            onSeek={canSeek ? handleWaveformSeek : undefined}
-            ariaLabel=""
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function LibrarySearchResults({
   query,
   results,
@@ -194,6 +35,11 @@ export function LibrarySearchResults({
   waveformStates,
   onRetryWaveform,
 }: LibrarySearchResultsProps) {
+  const columns: TrackListingColumn<RekordboxTrack>[] = [
+    { id: 'bpm', label: 'BPM', cellClassName: 'font-mono text-[13px] font-bold tabular-nums', render: (track) => (track.bpm != null ? track.bpm.toFixed(1) : '—') },
+    { id: 'key', label: 'Key', render: (track) => formatKey(track.musical_key) || '—' },
+  ];
+
   const label = loading
     ? 'Searching…'
     : results.length > 0
@@ -228,31 +74,18 @@ export function LibrarySearchResults({
 
       {!loading && results.length > 0 && (
         <div className="lib-panel">
-          <div className="hidden sm:grid grid-cols-[36px_1fr_1fr_56px_56px] px-4 py-2.5 border-b border-[var(--color-border-faint)] gap-x-2">
-            {HEADERS.map((col, i) => (
-              <p
-                key={i}
-                className={cn(
-                  'text-[9px] uppercase tracking-widest text-muted-foreground font-bold',
-                  i >= 3 && 'text-center',
-                )}
-              >
-                {col}
-              </p>
-            ))}
-          </div>
-
-          <div className="divide-y divide-[var(--color-border-faint)]">
-            {results.map((track) => (
-              <TrackRowSearch
-                key={track.id}
-                track={track}
-                waveformState={waveformStateForTrack(waveformStates, track.id)}
-                onRetryWaveform={() => onRetryWaveform(track.id)}
-                onOpen={onTrackClick}
-              />
-            ))}
-          </div>
+          <TrackListing<RekordboxTrack>
+            tracks={results}
+            columns={columns}
+            onSelect={onTrackClick}
+            getTitle={(track) => track.title}
+            getArtist={(track) => track.artist}
+            getStatus={(track) => (cueAnalysisReady(track) ? 'ready' : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required' ? 'error' : track.analysis_parse_status == null ? 'none' : 'warning')}
+            renderLeading={(track) => <TrackRowPlayButton track={track} />}
+            renderWaveform={(track) => <TrackRowWaveform track={track} waveformState={waveformStateForTrack(waveformStates, track.id)} onRetry={() => onRetryWaveform(track.id)} />}
+            rowProps={(track) => ({ 'aria-label': `Open ${track.title}${track.artist ? ` by ${track.artist}` : ''}` })}
+            ariaLabel="Search results"
+          />
           {hasMore && (
             <div className="border-t border-[var(--color-border-faint)] pt-2 flex justify-center">
               <ControlButton variant="neutral" onClick={onLoadMore} disabled={loadingMore}>

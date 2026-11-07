@@ -25,3 +25,7 @@ export { TrackIdentity } from './TrackIdentity';
 export type { TrackIdentityProps, TrackIdentityStat } from './TrackIdentity';
 export { TrackNameCell, TrackTable, TrackTableBody, TrackTableHead, TrackTableHeadCell, TrackTableRow } from './TrackTable';
 export type { TrackTableSort, TrackTableStatus } from './TrackTable';
+export { TrackListing } from './TrackListing';
+export type { TrackListingColumn, TrackListingProps } from './TrackListing';
+export { TrackListingWaveform } from './TrackListingWaveform';
+export type { TrackListingCue } from './TrackListingWaveform';

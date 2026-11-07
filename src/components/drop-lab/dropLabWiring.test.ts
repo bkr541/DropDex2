@@ -4,16 +4,15 @@ import { describe, expect, it } from 'vitest';
 const read = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8');
 const view = read('./DropLabView.tsx');
 const rotation = read('./CandidateRotation.tsx');
-const row = read('./CandidateRow.tsx');
 const waveform = read('./DropLabWaveform.tsx');
 const controls = read('./DropLabControls.tsx');
 const header = read('./DropLabTrackHeader.tsx');
 
 describe('Drop Lab loads tracks by drag and by right-click', () => {
   it('rows can be dragged and carry the track', () => {
-    expect(row).toContain('draggable');
-    expect(row).toContain('DROP_LAB_TRACK_MIME');
-    expect(row).toContain('onContextMenu');
+    expect(rotation).toContain('draggable: true');
+    expect(rotation).toContain('DROP_LAB_TRACK_MIME');
+    expect(rotation).toContain('onContextMenu');
   });
 
   it('the right-click menu offers Load As Build and Load As Drop', () => {
@@ -37,8 +36,8 @@ describe('Drop Lab loads tracks by drag and by right-click', () => {
   });
 
   it('has no radio circle on the candidate rows', () => {
-    expect(row).not.toContain('CheckmarkFilled size={16}');
-    expect(row).not.toContain('border-white/25');
+    expect(rotation).not.toContain('CheckmarkFilled size={16}');
+    expect(rotation).not.toContain('border-white/25');
   });
 });
 
@@ -72,10 +71,9 @@ describe('Drop Lab uses the shared Cue Points components', () => {
     expect(controls).toContain('<AudioDock');
     expect(controls).toContain('<PlaybackSeekBar');
     expect(controls).toContain('<MediaTransportControlGroup');
-    expect(rotation).toContain('<TrackTable');
-    expect(row).toContain('<TrackNameCell');
-    expect(row).toContain('<StatusBadge');
-    expect(row).toContain('<TrackWaveformPreview');
+    expect(rotation).toContain('<TrackListing<CandidateListingRow>');
+    expect(rotation).toContain('<StatusBadge');
+    expect(rotation).toContain('<TrackListingWaveform');
     expect(view).toContain('<ToolbarIconGroup');
   });
 

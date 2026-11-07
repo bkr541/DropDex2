@@ -33,7 +33,7 @@ describe('Layout Lab Waveform Preview tab', () => {
       const row = rowSlice(style);
       expect(row.match(/cue-browser__row /g), style).toHaveLength(5);
       expect(row).toContain('studio audition-studio wp-stage');
-      expect(row).toContain('audition-library cue-browser');
+      expect(row).toContain(style === 'pill' ? 'track-listing' : 'audition-library cue-browser');
       expect(row).toContain('cue-browser__table');
       for (const heading of ['Track', 'BPM', 'Key', 'Genre', 'Format', 'Playlists', 'Duration']) expect(row).toContain(heading);
       expect(row).toContain('CID - Fancy. $hit (KALYP Remix) - Final 2026');
@@ -77,95 +77,113 @@ describe('Layout Lab Waveform Preview tab', () => {
   it('gives each row a different selected track, and leaves row 1 as the production one', () => {
     const selected = (style: string) => css.match(new RegExp(`\\.wp-stage\\.wp-style-${style} \\.cue-browser__row--selected, [^{]*\\{([^}]*)\\}`))?.[1];
     expect(selected('bars')).toBeUndefined();
-    const treatments = ['pill', 'mirror', 'twotone', 'fade'].map((style) => selected(style));
+    // Row 2's selected state lives in the reusable listing's own stylesheet; rows 3 to 5 keep theirs here.
+    expect(selected('pill')).toBeUndefined();
+    expect(read('./display/track-listing.css')).toContain('inset 4px 0 0 #f56b70');
+    const treatments = ['mirror', 'twotone', 'fade'].map((style) => selected(style));
     for (const t of treatments) expect(t).toBeTruthy();
-    expect(new Set(treatments).size).toBe(4);
-    expect(treatments[0]).toContain('inset 4px 0 0 #f56b70');
-    expect(treatments[1]).toContain('inset 0 1px 0 #ffffff29');
-    expect(treatments[2]).toContain('outline: 1px solid #f56b70b3');
-    expect(treatments[3]).toContain('inset 0 -2px 0 #f56b70');
+    expect(new Set(treatments).size).toBe(3);
+    expect(treatments[0]).toContain('inset 0 1px 0 #ffffff29');
+    expect(treatments[1]).toContain('outline: 1px solid #f56b70b3');
+    expect(treatments[2]).toContain('inset 0 -2px 0 #f56b70');
     for (const style of ['bars', 'pill', 'mirror', 'twotone', 'fade']) expect(rowSlice(style)).toContain('cue-browser__row--selected');
     expect(rowSlice('bars')).toContain('Selected: coral title');
   });
 
-  it('gives row 2 the same mirrored bars as row 3: 120 columns per track, each with an upper and a fainter lower half', () => {
-    const columns = (style: string) => (rowSlice(style).match(/<span [^>]*style="--wp-bar:[^"]*"><i class="up" style="height:[\d.]+%"><\/i><i class="down" style="height:[\d.]+%"><\/i><\/span>/g) ?? []).length / PREVIEW_TRACKS.length;
-    expect(columns('mirror')).toBe(120);
-    expect(columns('pill')).toBe(120);
+  it('gives row 2 the same bars as row 1: one bar per amplitude, no mirrored halves, and no dots above', () => {
+    const bars = (style: string) => [...rowSlice(style).matchAll(/<i [^>]*style="height:([\d.]+)%/g)].map((m) => m[1]);
+    expect(bars('pill')).toHaveLength(120 * PREVIEW_TRACKS.length);
+    expect(bars('pill')).toEqual(bars('bars'));
     expect(rowSlice('pill')).toContain('wp-wave wp-pill');
-    expect(css).toMatch(/\.wp-pill \.wp-body > span \{ flex: 1; min-width: 1px; display: flex; flex-direction: column;/);
-    expect(css).toMatch(/\.wp-pill \.wp-body i\.down \{ opacity: \.42; \}/);
-    expect(css).toMatch(/\.wp-mirror \.wp-body i\.down \{ opacity: \.42; \}/);
-    // The same heights as row 3 for the same track: upper half 50%, lower half 34% of each bar.
-    const heights = (style: string) => [...rowSlice(style).matchAll(/<i class="(up|down)" style="height:([\d.]+)%"/g)].slice(0, 240).map((m) => `${m[1]}${m[2]}`);
-    expect(heights('pill')).toEqual(heights('mirror'));
-    expect(read('./LayoutLabWaveformMockups.tsx')).not.toContain('amps.flatMap');
-    expect(rowSlice('pill')).toContain('#8997AE');
+    const pill = rowSlice('pill');
+    for (const gone of ['class="up"', 'class="down"', 'wp-cues', 'wp-cue-col']) expect(pill).not.toContain(gone);
+    expect(css).toMatch(/\.wp-pill \.wp-body i \{ flex: 1; min-width: 1px; border-radius: 1px; \}/);
+    expect(css).not.toMatch(/\.wp-pill[^{]*(i\.down|i\.up|> span)/);
+    expect(pill).toContain('#8997AE');
   });
 
-  it('marks the cue columns in row 2 in their own soft colours, each topped with an upside-down triangle', () => {
+  it('marks the cues in row 2 as bars in their own soft colours, each topped with an upside-down triangle', () => {
     const row = rowSlice('pill');
     const cueTotal = PREVIEW_TRACKS.reduce((sum, t) => sum + t.cues.length, 0);
-    expect(row.match(/<span class="wp-cue-bar" title="Cue [A-D]"/g)).toHaveLength(cueTotal);
+    expect(row.match(/<i class="wp-cue-bar" title="Cue [A-D]"/g)).toHaveLength(cueTotal);
     const byLetter = new Map<string, Set<string>>();
-    for (const m of row.matchAll(/<span class="wp-cue-bar" title="Cue ([A-D])" style="--wp-bar:(#[0-9a-fA-F]+)"/g)) byLetter.set(m[1], (byLetter.get(m[1]) ?? new Set()).add(m[2].toLowerCase()));
+    for (const m of row.matchAll(/<i class="wp-cue-bar" title="Cue ([A-D])" style="[^"]*--wp-bar:(#[0-9a-fA-F]+)/g)) byLetter.set(m[1], (byLetter.get(m[1]) ?? new Set()).add(m[2].toLowerCase()));
     expect([...byLetter.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, set]) => [...set][0])).toEqual(['#f27d96', '#5fb8e8', '#6fd9a4', '#a99bff']);
     for (const set of byLetter.values()) expect(set.size).toBe(1);
-    // The vivid, wider, glowing treatment is gone.
-    expect(css).not.toMatch(/drop-shadow|flex: 0 0 4px|i\.up \{ opacity: \.8/);
-    // A downward triangle on the top end of the column's upper half, in the cue's colour.
-    expect(css).toMatch(/\.wp-pill \.wp-cue-bar i\.up::before \{[^}]*bottom: 100%;[^}]*border-top: 5px solid var\(--wp-bar\);/);
-    // Still the waveform's own columns, never a separate marker over or beyond it.
-    for (const gone of ['<u ', 'wp-cue-line', 'wp-cues-rings', 'wp-cues ']) expect(row).not.toContain(gone);
-    // Each cue sits on the column at its own position along the 120.
+    expect(css).not.toMatch(/drop-shadow|flex: 0 0 4px/);
+    expect(css).toMatch(/\.wp-pill \.wp-cue-bar::before \{[^}]*bottom: 100%;[^}]*border-top: 5px solid var\(--wp-bar\);/);
+    // Each cue sits on the bar at its own position along the 120.
     const first = row.slice(row.indexOf('wp-wave wp-pill'), row.indexOf('</div></div>', row.indexOf('wp-wave wp-pill')));
-    const columns = [...first.matchAll(/<span [^>]*><i class="up"[^>]*><\/i><i class="down"[^>]*><\/i><\/span>/g)].map((m) => m[0]);
-    expect(columns).toHaveLength(120);
-    PREVIEW_TRACKS[0].cues.forEach((cue) => expect(columns[Math.floor((cue.pct / 100) * 120)]).toContain(`title="Cue ${cue.letter}"`));
+    const bars = [...first.matchAll(/<i [^>]*><\/i>/g)].map((m) => m[0]);
+    expect(bars).toHaveLength(120);
+    PREVIEW_TRACKS[0].cues.forEach((cue) => expect(bars[Math.floor((cue.pct / 100) * 120)]).toContain(`title="Cue ${cue.letter}"`));
   });
 
-
-  it('has no orange in rows 2 to 5: every bar is the one gray except the cue bars, and only row 1 keeps the coral drop', () => {
-    const soft = ['#5fb8e8', '#6fd9a4', '#a99bff', '#f27d96'];
-    for (const style of ['pill', 'mirror', 'twotone', 'fade']) {
-      const row = rowSlice(style).toLowerCase();
-      const colours = new Set([...row.matchAll(/--wp-bar:(#[0-9a-f]+)/g)].map((m) => m[1]));
-      // Rows 2 and 3 set every bar's colour inline (gray, or a cue colour); rows 4 and 5 draw the gray in CSS, so only the cue bars set one.
-      const expected = style === 'pill' || style === 'mirror' ? ['#8997ae', ...soft] : soft;
-      expect([...colours].sort(), style).toEqual([...expected].sort());
-      for (const orange of ['#f78361', '#ffa07f', '#d96a4a', '#f783612e', 'is-drop']) expect(row, `${style} ${orange}`).not.toContain(orange);
-    }
-    expect(css).not.toMatch(/is-drop/);
-    expect(css).not.toMatch(/\.wp-(pill|mirror|twotone|fade)[^{]*\{[^}]*(#f78361|#f56b70|#ffa07f|#d96a4a)/i);
-    // Row 1 is the production reference and keeps its coral drop.
-    expect(rowSlice('bars').toLowerCase()).toContain('#f78361');
+  it('draws row 2 with the reusable TrackListing: coral edge, a wash gone by 560px, capital headings, an Actions column and larger headings', () => {
+    const listing = read('./display/track-listing.css');
+    const rule = listing.match(/\.track-listing \.cue-browser__row--selected, [^{]*\{([^}]*)\}/)?.[1] ?? '';
+    expect(rule).toContain('inset 4px 0 0 #f56b70');
+    expect(rule).not.toMatch(/0 0 24px/);
+    const stops = [...rule.matchAll(/#f56b70([0-9a-f]{2}) (\d+)px/g)].map((m) => [m[1], Number(m[2])] as const);
+    expect(stops[stops.length - 1]).toEqual(['00', 560]);
+    expect(stops.map(([alpha]) => parseInt(alpha, 16))).toEqual([...stops.map(([alpha]) => parseInt(alpha, 16))].sort((a, b) => b - a));
+    expect(listing).toMatch(/thead \{[^}]*font-size: 11px;/);
+    const pill = rowSlice('pill');
+    expect(pill).toContain('>Actions<');
+    expect(pill.match(/aria-label="Actions for /g)).toHaveLength(PREVIEW_TRACKS.length);
+    expect(pill.indexOf('>Actions<')).toBeGreaterThan(pill.indexOf('>Duration<'));
+    for (const style of ['bars', 'mirror', 'twotone', 'fade']) expect(rowSlice(style), style).not.toContain('Actions');
+    expect(read('./LayoutLabWaveformMockups.tsx')).toContain('<TrackListing');
   });
 
-  it('marks every cue in rows 3 to 5 inside the waveform too, at its position, with no dot above', () => {
-    const cueTotal = PREVIEW_TRACKS.reduce((sum, t) => sum + t.cues.length, 0);
-    const forms = { mirror: /<span class="wp-cue-col" title="Cue ([A-D])"/g, twotone: /<i class="wp-cue-two" title="Cue ([A-D])"/g, fade: /<i class="wp-cue-fade" title="Cue ([A-D])"/g };
-    for (const [style, pattern] of Object.entries(forms)) {
+  it('shows the analysis status in a different place and form in every row', () => {
+    expect(PREVIEW_TRACKS.map((t) => t.status)).toEqual(['ready', 'ready', 'warning', 'error', 'none']);
+    // Row 1: the production dot, left of the play button, and none of the other forms.
+    const bars = rowSlice('bars');
+    expect(bars).toContain('bg-emerald-400');
+    for (const gone of ['wp-status-word', 'wp-status-rule', 'wp-status-arc']) expect(bars, gone).not.toContain(gone);
+    // Row 2 has the same dot as row 1. Rows 3 to 5: no dot, and one form each.
+    const pillRow = rowSlice('pill');
+    expect(pillRow).toContain('bg-emerald-400');
+    for (const gone of ['wp-status-word', 'wp-status-rule', 'wp-status-arc']) expect(pillRow, gone).not.toContain(gone);
+    const forms = {  mirror: 'wp-status-word', twotone: 'wp-status-rule', fade: 'wp-status-arc' } as const;
+    for (const [style, form] of Object.entries(forms)) {
       const row = rowSlice(style);
-      expect([...row.matchAll(pattern)], style).toHaveLength(cueTotal);
-      expect(row, style).not.toContain('wp-cues ');
-      for (const gone of ['wp-cues-glow', 'wp-cues-stems', 'wp-cues-outlined', '<u ']) expect(row, `${style} ${gone}`).not.toContain(gone);
+      expect(row.match(new RegExp(`class="${form}`, 'g')), style).toHaveLength(PREVIEW_TRACKS.length);
+      expect(row, style).not.toContain('h-1.5 w-1.5 shrink-0 rounded-full');
+      for (const [other, otherForm] of Object.entries(forms)) if (other !== style) expect(row, `${style} vs ${other}`).not.toContain(otherForm);
     }
-    // Only row 1 keeps the dots above.
-    expect(rowSlice('bars')).toContain('wp-cues wp-cues-dots');
-    for (const gone of ['.wp-cues-glow', '.wp-cues-stems', '.wp-cues-outlined']) expect(css).not.toContain(gone);
+    // Where each one sits.
+    expect(rowSlice('mirror')).toMatch(/Artist Not Available<span class="wp-status-word"/);
+    expect(rowSlice('fade').indexOf('wp-status-arc')).toBeGreaterThan(rowSlice('fade').indexOf('2:31'));
   });
 
-  it('puts each cue in rows 3 to 5 on the bar at its own position, in the same soft colours as row 2', () => {
-    for (const [style, tag] of [['mirror', 'span'], ['twotone', 'i'], ['fade', 'i']] as const) {
-      const row = rowSlice(style);
-      const start = row.indexOf(`wp-wave wp-${style}`);
-      const body = row.slice(start, row.indexOf('</div></div>', start));
-      const bars = [...body.matchAll(tag === 'span' ? /<span[^>]*>(?:<i[^>]*><\/i>){2}<\/span>/g : /<i[^>]*><\/i>/g)].map((m) => m[0]);
-      expect(bars, style).toHaveLength(120);
-      PREVIEW_TRACKS[0].cues.forEach((cue) => expect(bars[Math.floor((cue.pct / 100) * 120)], `${style} ${cue.letter}`).toContain(`title="Cue ${cue.letter}"`));
-    }
-    const colours = (style: string) => [...rowSlice(style).matchAll(/title="Cue ([A-D])" style="[^"]*--wp-bar:(#[0-9a-fA-F]+)/g)].map((m) => `${m[1]}${m[2].toLowerCase()}`);
-    const expected = new Set(['A#f27d96', 'B#5fb8e8', 'C#6fd9a4', 'D#a99bff']);
-    for (const style of ['mirror', 'twotone', 'fade']) expect(new Set(colours(style)), style).toEqual(expected);
+  it('counts analysis as three steps in the arcs: ready 3, partial 2, failed 1, pending 0', () => {
+    const arcs = rowSlice('fade');
+    expect(arcs).toContain('Analysis partial: 2 of 3 steps done, still needs cues');
+    expect(arcs).toContain('Analysis failed: 1 of 3 steps done, still needs beat grid and cues');
+    expect(arcs.match(/class="wp-arc-fill"/g)).toHaveLength(4);
+    expect(arcs.match(/stroke-dasharray="1\.5 2\.6"/g)).toHaveLength(1);
+  });
+
+  it('writes the column names of row 2 in capitals, and leaves the other rows as they were', () => {
+    const head = (style: string) => rowSlice(style).match(/<th[\s\S]*?<\/thead>/)?.[0] ?? '';
+    expect(head('pill')).not.toContain('normal-case');
+    expect(head('bars')).toContain('normal-case');
+  });
+
+  it('draws the status in the app\'s own language: hairlines, light figures, 9px caps and thin arcs, nothing filled or glowing, and ready kept quiet', () => {
+    const block = css.slice(css.indexOf('The status mark (the green dot)'));
+    for (const loud of ['box-shadow', 'drop-shadow', 'text-shadow', 'filter:', 'border-radius: 999px', 'background: color-mix']) expect(block, loud).not.toContain(loud);
+    expect(block).toMatch(/\.wp-status-word \{[^}]*font-size: 9px;[^}]*letter-spacing: \.16em;[^}]*text-transform: uppercase;/);
+    expect(block).toMatch(/\.wp-status-rule \{[^}]*height: 1px;/);
+    expect(block).toMatch(/\.wp-arc-fill \{[^}]*stroke-width: 1\.5;/);
+    // Ready is the quiet one: grey word, a dimmed rule and arc. Only partial and failed words take their colour.
+    expect(block).toMatch(/\.wp-status-word \{[^}]*color: #7b879c;/);
+    expect(block).toMatch(/\.wp-status-word\[data-status="warning"\], \.wp-status-word\[data-status="error"\] \{ color: var\(--wp-status\); \}/);
+    expect(block).toMatch(/\.wp-status-rule\[data-status="ready"\] \{ opacity: \.6; \}/);
+    const source = read('./LayoutLabWaveformMockups.tsx');
+    expect(source).toContain("ready: '#34d399', warning: '#f0b35a', error: '#f27d96', none: '#566074'");
+    for (const gone of ['StatusMark', 'wp-status-badge', 'wp-status-strip', 'wp-status-ring', 'wp-status-glyph', 'Checkmark', 'WarningAlt']) expect(source, gone).not.toContain(gone);
   });
 });

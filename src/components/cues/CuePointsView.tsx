@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { ChartLine, ChevronDown, CircleDash, Cloud, Close, ColorPalette, DocumentAudio, Edit, Export, Idea, Key, Meter, Music, Pause, Pending, Pin, Play, Playlist, Repeat, Save, Tag, Time, Timer, Upload, VolumeMute, VolumeUp, WarningAlt, Waveform } from '@carbon/icons-react';
+import { ChevronDown, CircleDash, Close, ColorPalette, Edit, Export, Idea, Music, Pause, Pending, Play, Repeat, Save, Tag, Time, Timer, Upload, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
@@ -47,9 +47,10 @@ import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/
 import { CueEditorToolbar, CueStateIcon } from './CueEditorToolbar';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { ControlButton, DualRangeSlider, FilterDropdown, SearchControl, SelectControl, TextControl } from '../ui/controls';
-import { TrackIdentity, TrackNameCell, TrackTable, TrackTableBody, TrackTableHead, TrackTableHeadCell, TrackTableRow } from '../ui/display';
+import { TrackIdentity, TrackListing, TrackListingWaveform, type TrackListingColumn } from '../ui/display';
+import { TrackRowPlayButton } from '../player/TrackRowPlayButton';
 import { TabNavigation } from '../ui/display/TabNavigation';
-import { AudioDock, MediaTransportControlGroup, PlaybackSeekBar, TimelineBeatLane, TimelineSectionLane, TrackWaveformPreview, WaveformZoomControls, cueMarkersFromState } from '../ui/media';
+import { AudioDock, MediaTransportControlGroup, PlaybackSeekBar, TimelineBeatLane, TimelineSectionLane, WaveformZoomControls, cueMarkersFromState } from '../ui/media';
 import { KeyBadge } from '../ui/display';
 import { PlaybackSourceBadge } from '../player/PlaybackSourceBadge';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
@@ -180,15 +181,6 @@ interface CueRebaseRecoveryState {
   summary: Record<string, unknown>;
   items: CueRebaseRecoveryItem[];
 }
-
-/**
- * The Library page's column headings stay at the normal size with no icons for now. Switching
- * this on gives them 12px text and an icon beside each, which makes the columns wider.
- */
-const LIBRARY_LARGE_ICON_HEADINGS = false;
-
-/** The Library page's column headings: 13px, extra bold, in capitals. */
-const LIBRARY_HEADING = 'text-[13px] font-extrabold';
 
 /** The Library page's Format, rate and bit rate badges: 12px, medium weight and the normal text colour, exactly like every other value in the table; text as written. */
 const LIBRARY_PROPERTY_BADGE = { fontSize: 12, fontWeight: 500, letterSpacing: 'normal', textTransform: 'none', color: 'var(--color-foreground)' } as const;
@@ -3948,6 +3940,242 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
     );
   }
 
+  // The green dot: ready, the problem it had, or not analysed yet.
+  const listingStatus = (track: RekordboxTrack) => (analysisReady(track)
+    ? 'ready' as const
+    : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required'
+      ? 'error' as const
+      : track.analysis_parse_status == null ? 'none' as const : 'warning' as const);
+
+  const renderGenreCell = (track: RekordboxTrack) => {
+    const genreDraft = genreDraftsByTrackId.get(track.id) ?? null;
+    const effectiveGenre = genreDraft ? genreDraft.pendingValue : track.genre;
+    const genreEditingDirty = editingGenreTrackId === track.id
+      && normalizeGenreMetadataDraftValue(editingGenreValue) !== normalizeGenreMetadataDraftValue(effectiveGenre);
+    const genreSaving = savingGenreTrackIds.has(track.id);
+    const genreRecoveryLocked = Boolean(genreDraft && isTrackMetadataDraftRecoveryLocked(genreDraft));
+    const genreRuntimeBlocked = Boolean(metadataCloudOutcome && metadataCloudOutcome.state !== 'finalized');
+    const genreEditingAvailable = metadataDraftLoadStatus === 'loaded' && !genreRecoveryLocked && !genreRuntimeBlocked;
+    return (
+      <>
+{audition ? (
+                            <span className="block min-w-0 truncate">{effectiveGenre ?? '—'}</span>
+                          ) : editingGenreTrackId === track.id ? (
+                            <div className="space-y-1.5" onClick={(event) => event.stopPropagation()}>
+                              <div className="flex items-center gap-1.5">
+                                <div className="flex-1">
+                                  <TextControl
+                                    icon={<Tag size={15} />}
+                                    type="text"
+                                    autoFocus
+                                    maxLength={REKORDBOX_GENRE_MAX_LENGTH}
+                                    value={editingGenreValue}
+                                    onChange={(event) => {
+                                      setEditingGenreValue(event.target.value);
+                                      setGenreSaveError((current) => current?.trackId === track.id ? null : current);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      event.stopPropagation();
+                                      if (event.key === 'Escape') {
+                                        event.preventDefault();
+                                        setEditingGenreTrackId(null);
+                                        setGenreSaveError((current) => current?.trackId === track.id ? null : current);
+                                      } else if (event.key === 'Enter' && !event.repeat && genreEditingDirty && !genreSaving && genreEditingAvailable) {
+                                        event.preventDefault();
+                                        void saveInlineGenreDraft(track);
+                                      }
+                                    }}
+                                    disabled={genreSaving || !genreEditingAvailable}
+                                    aria-label={`Genre for ${track.title}`}
+                                    className="disabled:opacity-60"
+                                    placeholder="Genre…"
+                                  />
+                                </div>
+                                {genreEditingDirty && (
+                                  <button
+                                    type="button"
+                                    className="shrink-0 text-primary hover:text-primary/80 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                                    title="Save pending Genre change"
+                                    aria-label={`Save pending Genre change for ${track.title}`}
+                                    disabled={genreSaving || !genreEditingAvailable}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void saveInlineGenreDraft(track);
+                                    }}
+                                  >
+                                    {genreSaving ? <CircleDash className="animate-spin" size={13} /> : <Save size={13} />}
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="shrink-0 text-muted-foreground hover:text-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                                  title="Cancel genre edit"
+                                  aria-label={`Cancel genre edit for ${track.title}`}
+                                  disabled={genreSaving}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setEditingGenreTrackId(null);
+                                    setGenreSaveError((current) => current?.trackId === track.id ? null : current);
+                                  }}
+                                >
+                                  <Close size={13} />
+                                </button>
+                              </div>
+                              {genreSaveError?.trackId === track.id && (
+                                <div className="flex items-center justify-between gap-2 text-[10px] text-red-300" role="alert">
+                                  <span>{genreSaveError.message}</span>
+                                  {genreSaveError.revisionConflict && (
+                                    <button
+                                      type="button"
+                                      className="shrink-0 font-bold text-red-200 underline underline-offset-2 hover:text-red-100"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setMetadataDraftRetryNonce((value) => value + 1);
+                                      }}
+                                    >
+                                      Reload pending Genre
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div
+                              className="group flex items-center gap-1.5"
+                              onMouseLeave={() => {}}
+                            >
+                              <span className="block min-w-0 truncate">{effectiveGenre ?? '—'}</span>
+                              {genreDraft && (
+                                <span
+                                  className="shrink-0 rounded-full border border-amber-300/25 bg-amber-300/[0.08] px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-amber-200"
+                                  title={genreRecoveryLocked
+                                    ? 'Rekordbox Genre is already locally verified; cloud finalization recovery is required.'
+                                    : 'Pending Genre change. Not yet applied to Rekordbox.'}
+                                  aria-label={genreRecoveryLocked
+                                    ? 'Genre cloud finalization recovery required'
+                                    : 'Pending Genre change, not yet applied to Rekordbox'}
+                                >
+                                  {genreRecoveryLocked ? 'Recovery' : 'Pending'}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all disabled:cursor-not-allowed disabled:opacity-20 group-hover:disabled:opacity-20"
+                                title={genreEditingAvailable
+                                  ? 'Edit Genre'
+                                  : genreRecoveryLocked
+                                    ? 'Genre editing is locked until metadata cloud recovery completes'
+                                    : genreRuntimeBlocked
+                                      ? 'Genre editing is blocked while the current metadata Apply outcome is unresolved'
+                                      : 'Pending Genre changes must finish loading before editing'}
+                                aria-label={`Edit Genre for ${track.title}`}
+                                disabled={!genreEditingAvailable}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!genreEditingAvailable) return;
+                                  setEditingGenreTrackId(track.id);
+                                  setEditingGenreValue(effectiveGenre ?? '');
+                                  setGenreSaveError(null);
+                                }}
+                              >
+                                <Edit size={12} />
+                              </button>
+                            </div>
+                          )}
+
+      </>
+    );
+  };
+
+  const listingColumns: TrackListingColumn<RekordboxTrack>[] = [
+    { id: 'bpm', label: 'BPM', sort: 'bpm', cellClassName: artistLibrary ? cn('whitespace-nowrap', LIBRARY_VALUE) : 'font-mono text-[13px] font-bold tabular-nums', render: (track) => (track.bpm != null ? track.bpm.toFixed(1) : '—') },
+    {
+      id: 'key', label: 'Key', sort: 'key', cellClassName: artistLibrary ? cn('whitespace-nowrap', LIBRARY_VALUE) : undefined,
+      render: (track) => (artistLibrary
+        ? (track.musical_key ? formatCamelotKey(track.musical_key) : '—')
+        : <KeyBadge camelotKey={formatCamelotKey(track.musical_key)} variant={mode === 'audition' ? 'text' : 'badge'} />),
+    },
+    {
+      id: 'genre', label: 'Genre', sort: 'genre',
+      headClassName: mode === 'audition' ? 'w-[112px]' : artistLibrary ? 'w-[71px]' : 'w-[178px]',
+      cellClassName: cn(artistLibrary ? LIBRARY_VALUE : 'text-xs text-muted-foreground', mode === 'audition' ? 'w-[112px] max-w-[112px]' : artistLibrary ? 'w-[71px] max-w-[71px]' : 'w-[178px]'),
+      render: renderGenreCell,
+    },
+    {
+      id: 'cues', label: 'Cues', sort: 'cues', headClassName: artistLibrary ? undefined : 'text-center', cellClassName: artistLibrary ? undefined : 'text-center',
+      render: (track) => {
+        const cueState = cueSummaryStates.get(track.id);
+        const cueCount = cueLoadCount(cueState);
+        return (
+          <span className={cn(
+            artistLibrary
+              ? cn('whitespace-nowrap', LIBRARY_VALUE)
+              : mode === 'audition'
+              ? 'font-mono text-[12px] font-black text-primary'
+              : cn('inline-flex min-w-8 justify-center rounded-md border px-2 py-1 font-mono text-[12px] font-black',
+                cueState?.status === 'failed'
+                  ? 'border-red-400/25 bg-red-400/10 text-red-300'
+                  : (cueCount ?? 0) > 0
+                  ? 'border-secondary/25 bg-secondary/10 text-secondary'
+                  : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-muted-foreground'),
+          )} title={cueState?.status === 'failed' ? cueState.error : undefined}>
+            {cueState?.status === 'loading' || !cueState ? '…' : cueState.status === 'failed' ? '!' : cueCount}
+          </span>
+        );
+      },
+    },
+    ...(artistLibrary ? [{
+      id: 'playlists', label: 'Playlists', sort: 'playlists', cellClassName: cn('whitespace-nowrap', LIBRARY_VALUE), cellProps: () => ({ 'data-testid': 'playlist-count' }),
+      render: (track: RekordboxTrack) => (playlistCounts.counts.has(track.id)
+        ? <span title={`In ${playlistCounts.counts.get(track.id)} ${playlistCounts.counts.get(track.id) === 1 ? 'playlist' : 'playlists'}`}>{playlistCounts.counts.get(track.id)}</span>
+        : playlistCounts.error
+          ? (
+            <button
+              type="button"
+              className="text-red-300 hover:text-red-200"
+              title="Playlist counts could not be loaded. Click to try again."
+              aria-label="Playlist counts could not be loaded. Try again."
+              onClick={(event) => { event.stopPropagation(); playlistCounts.retry(); }}
+            >!</button>
+          )
+          : '…'),
+    }] : []),
+    ...(artistLibrary ? [{
+      id: 'properties', label: 'Properties', headClassName: 'whitespace-nowrap', cellClassName: 'whitespace-nowrap', cellProps: () => ({ 'data-testid': 'properties-cell' }),
+      render: (track: RekordboxTrack) => (
+        <span className="inline-flex items-center gap-1.5">
+          {[
+            track.file_format ? `.${track.file_format.toLowerCase()}` : null,
+            track.sample_rate_hz != null && track.sample_rate_hz > 0 ? `${track.sample_rate_hz / 1000} kHz` : null,
+            track.bitrate_kbps != null && track.bitrate_kbps > 0 ? `${track.bitrate_kbps} kbps` : null,
+          ].filter((value): value is string => Boolean(value)).map((value) => (
+            <StatusBadge key={value} tone="neutral" style={LIBRARY_PROPERTY_BADGE}>{value}</StatusBadge>
+          ))}
+          {!track.file_format && !(track.sample_rate_hz && track.sample_rate_hz > 0) && !(track.bitrate_kbps && track.bitrate_kbps > 0) && <span className={LIBRARY_VALUE}>—</span>}
+        </span>
+      ),
+    }] : [
+      { id: 'format', label: 'Format', sort: 'format', headClassName: 'whitespace-nowrap', cellClassName: 'whitespace-nowrap text-xs text-muted-foreground', render: (track: RekordboxTrack) => track.file_format ?? '—' },
+      {
+        id: 'sampleRate', label: 'Sample Rate', sort: 'sampleRate', headClassName: 'whitespace-nowrap', cellClassName: cn('whitespace-nowrap text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]'),
+        render: (track: RekordboxTrack) => (track.sample_rate_hz != null && track.sample_rate_hz > 0 ? `${track.sample_rate_hz / 1000} kHz` : '—'),
+      },
+      {
+        id: 'bitRate', label: 'Bit Rate', sort: 'bitRate', headClassName: 'whitespace-nowrap', cellClassName: cn('whitespace-nowrap text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]'),
+        render: (track: RekordboxTrack) => (track.bitrate_kbps != null && track.bitrate_kbps > 0 ? `${track.bitrate_kbps} kbps` : '—'),
+      },
+    ]),
+    {
+      id: 'duration', label: 'Duration', sort: 'duration', headClassName: 'text-left w-[80px]',
+      cellClassName: cn('w-[80px] text-left', artistLibrary ? LIBRARY_VALUE : cn('text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]')),
+      render: (track) => formatTime(durationMsForTrack(track, null)),
+    },
+    ...(artistLibrary ? [{
+      id: 'cloud', label: 'Cloud', headClassName: 'w-[64px]', cellClassName: 'w-[64px]', cellProps: () => ({ 'data-testid': 'cloud-cell' }),
+      render: (track: RekordboxTrack) => <CloudSyncIcon synced={cloudSynced.keys.has(trackIdentityKey(track))} unknown={cloudSynced.failed} />,
+    }] : []),
+  ];
+
   return (
     <div className={cn('flex w-full flex-col pb-10', mode === 'audition' ? 'gap-1' : 'gap-4', mode === 'cues' && 'cue-studio')} data-testid={mode === 'cues' ? 'cue-studio' : undefined}>
       {!audition && <PendingMetadataChangesReview
@@ -4314,288 +4542,44 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
           </div>
         ) : (
           <>
-            <div className="overflow-auto scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
-              <TrackTable className={cn('min-w-[900px]', artistLibrary && 'cue-browser__table--tight')} data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
-                <TrackTableHead large={artistLibrary && LIBRARY_LARGE_ICON_HEADINGS} className={artistLibrary ? LIBRARY_HEADING : undefined}>
-                  <TrackTableHeadCell label="Track" column="title" uppercase={artistLibrary} icon={artistLibrary && LIBRARY_LARGE_ICON_HEADINGS ? Music : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
-                  {([
-                    { col: 'bpm', label: 'BPM', cls: 'px-3 py-2', icon: Meter, sortable: true },
-                    { col: 'key', label: 'Key', cls: 'px-3 py-2', icon: Key, sortable: true },
-                    { col: 'genre', label: 'Genre', cls: mode === 'audition' ? 'px-3 py-2 w-[112px]' : artistLibrary ? 'px-3 py-2 w-[71px]' : 'px-3 py-2 w-[178px]', icon: Tag, sortable: true },
-                    { col: 'cues', label: 'Cues', cls: artistLibrary ? 'px-3 py-2' : 'px-3 py-2 text-center', icon: Pin, sortable: true },
-                    ...(artistLibrary ? [{ col: 'playlists', label: 'Playlists', cls: 'px-3 py-2', icon: Playlist, sortable: true }] : []),
-                    ...(artistLibrary
-                      ? [{ col: 'properties', label: 'Properties', cls: 'px-3 py-2 whitespace-nowrap', icon: DocumentAudio, sortable: false }]
-                      : [
-                        { col: 'format', label: 'Format', cls: 'px-3 py-2 whitespace-nowrap', icon: DocumentAudio, sortable: true },
-                        { col: 'sampleRate', label: 'Sample Rate', cls: 'px-3 py-2 whitespace-nowrap', icon: Waveform, sortable: true },
-                        { col: 'bitRate', label: 'Bit Rate', cls: 'px-3 py-2 whitespace-nowrap', icon: ChartLine, sortable: true },
-                      ]),
-                    { col: 'duration', label: 'Duration', cls: 'px-3 py-2 text-left w-[80px]', icon: Time, sortable: true },
-                    ...(artistLibrary ? [{ col: 'cloud', label: 'Cloud', cls: 'px-3 py-2 w-[64px]', icon: Cloud, sortable: false }] : []),
-                  ]).map(({ col, label, cls, icon, sortable }) => (
-                    <TrackTableHeadCell key={col} label={label} column={sortable ? col : undefined} uppercase={artistLibrary} className={cls} icon={artistLibrary && LIBRARY_LARGE_ICON_HEADINGS ? icon : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
-                  ))}
-                </TrackTableHead>
-                <TrackTableBody>
-                  {orderedVisibleTracks.map((track, rowIndex) => {
-                    const cueState = cueSummaryStates.get(track.id);
-                    const cueCount = cueLoadCount(cueState);
-                    const selected = track.id === selectedTrackId;
-                    const genreDraft = genreDraftsByTrackId.get(track.id) ?? null;
-                    const effectiveGenre = genreDraft ? genreDraft.pendingValue : track.genre;
-                    const genreEditingDirty = editingGenreTrackId === track.id
-                      && normalizeGenreMetadataDraftValue(editingGenreValue) !== normalizeGenreMetadataDraftValue(effectiveGenre);
-                    const genreSaving = savingGenreTrackIds.has(track.id);
-                    const genreRecoveryLocked = Boolean(genreDraft && isTrackMetadataDraftRecoveryLocked(genreDraft));
-                    const genreRuntimeBlocked = Boolean(metadataCloudOutcome && metadataCloudOutcome.state !== 'finalized');
-                    const genreEditingAvailable = metadataDraftLoadStatus === 'loaded' && !genreRecoveryLocked && !genreRuntimeBlocked;
-                    return (
-                      <TrackTableRow
-                        key={`${browserSource}:${selectedPlaylistId ?? 'library'}:${track.id}:${rowIndex}`}
-                        selected={selected}
-                        onClick={() => setSelectedTrack(track)}
-                        // On the Library page a click selects the track (its waveform shows above), and a double-click or Enter opens it.
-                        onDoubleClick={artistLibrary ? () => onTrackOpen?.(track) : undefined}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            if (artistLibrary && event.key === 'Enter') onTrackOpen?.(track);
-                            else setSelectedTrack(track);
-                          }
-                        }}
-                      >
-                        <TrackNameCell
-                          title={track.title}
-                          artist={track.artist}
-                          artworkSrc={track.artwork_path}
-                          selected={selected}
-                          dense={artistLibrary}
-                          nameClassName={artistLibrary ? 'w-[334px] shrink-0' : undefined}
-                          status={
-                            analysisReady(track)
-                              ? 'ready'
-                              : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required'
-                                ? 'error'
-                                : track.analysis_parse_status == null
-                                  ? 'none'
-                                  : 'warning'
-                          }
-                        >
-                          <TrackWaveformPreview
-                            className={cn(artistLibrary ? 'w-[152px] shrink-0' : 'w-[128px] shrink-0', mode === 'audition' && 'grow')}
-                            waveformState={getWaveformState(track.id)}
-                            durationMs={durationMsForTrack(track, null)}
-                            cues={cueMarkersFromState(cueState)}
-                            height={26}
-                            ariaLabel={`Waveform for ${track.title}`}
-                          />
-                        </TrackNameCell>
-                        <td className={artistLibrary ? cn('px-3 py-1.5 whitespace-nowrap', LIBRARY_VALUE) : 'px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums'}>{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
-                        <td className={artistLibrary ? cn('px-3 py-1.5 whitespace-nowrap', LIBRARY_VALUE) : 'px-3 py-1.5'}>
-                          {artistLibrary
-                            ? (track.musical_key ? formatCamelotKey(track.musical_key) : '—')
-                            : <KeyBadge camelotKey={formatCamelotKey(track.musical_key)} variant={mode === 'audition' ? 'text' : 'badge'} />}
-                        </td>
-                        <td className={cn('px-3 py-1.5', artistLibrary ? LIBRARY_VALUE : 'text-xs text-muted-foreground', mode === 'audition' ? 'w-[112px] max-w-[112px]' : artistLibrary ? 'w-[71px] max-w-[71px]' : 'w-[178px]')}>
-                          {audition ? (
-                            <span className="block min-w-0 truncate">{effectiveGenre ?? '—'}</span>
-                          ) : editingGenreTrackId === track.id ? (
-                            <div className="space-y-1.5" onClick={(event) => event.stopPropagation()}>
-                              <div className="flex items-center gap-1.5">
-                                <div className="flex-1">
-                                  <TextControl
-                                    icon={<Tag size={15} />}
-                                    type="text"
-                                    autoFocus
-                                    maxLength={REKORDBOX_GENRE_MAX_LENGTH}
-                                    value={editingGenreValue}
-                                    onChange={(event) => {
-                                      setEditingGenreValue(event.target.value);
-                                      setGenreSaveError((current) => current?.trackId === track.id ? null : current);
-                                    }}
-                                    onKeyDown={(event) => {
-                                      event.stopPropagation();
-                                      if (event.key === 'Escape') {
-                                        event.preventDefault();
-                                        setEditingGenreTrackId(null);
-                                        setGenreSaveError((current) => current?.trackId === track.id ? null : current);
-                                      } else if (event.key === 'Enter' && !event.repeat && genreEditingDirty && !genreSaving && genreEditingAvailable) {
-                                        event.preventDefault();
-                                        void saveInlineGenreDraft(track);
-                                      }
-                                    }}
-                                    disabled={genreSaving || !genreEditingAvailable}
-                                    aria-label={`Genre for ${track.title}`}
-                                    className="disabled:opacity-60"
-                                    placeholder="Genre…"
-                                  />
-                                </div>
-                                {genreEditingDirty && (
-                                  <button
-                                    type="button"
-                                    className="shrink-0 text-primary hover:text-primary/80 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                                    title="Save pending Genre change"
-                                    aria-label={`Save pending Genre change for ${track.title}`}
-                                    disabled={genreSaving || !genreEditingAvailable}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      void saveInlineGenreDraft(track);
-                                    }}
-                                  >
-                                    {genreSaving ? <CircleDash className="animate-spin" size={13} /> : <Save size={13} />}
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  className="shrink-0 text-muted-foreground hover:text-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                                  title="Cancel genre edit"
-                                  aria-label={`Cancel genre edit for ${track.title}`}
-                                  disabled={genreSaving}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setEditingGenreTrackId(null);
-                                    setGenreSaveError((current) => current?.trackId === track.id ? null : current);
-                                  }}
-                                >
-                                  <Close size={13} />
-                                </button>
-                              </div>
-                              {genreSaveError?.trackId === track.id && (
-                                <div className="flex items-center justify-between gap-2 text-[10px] text-red-300" role="alert">
-                                  <span>{genreSaveError.message}</span>
-                                  {genreSaveError.revisionConflict && (
-                                    <button
-                                      type="button"
-                                      className="shrink-0 font-bold text-red-200 underline underline-offset-2 hover:text-red-100"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        setMetadataDraftRetryNonce((value) => value + 1);
-                                      }}
-                                    >
-                                      Reload pending Genre
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div
-                              className="group flex items-center gap-1.5"
-                              onMouseLeave={() => {}}
-                            >
-                              <span className="block min-w-0 truncate">{effectiveGenre ?? '—'}</span>
-                              {genreDraft && (
-                                <span
-                                  className="shrink-0 rounded-full border border-amber-300/25 bg-amber-300/[0.08] px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-amber-200"
-                                  title={genreRecoveryLocked
-                                    ? 'Rekordbox Genre is already locally verified; cloud finalization recovery is required.'
-                                    : 'Pending Genre change. Not yet applied to Rekordbox.'}
-                                  aria-label={genreRecoveryLocked
-                                    ? 'Genre cloud finalization recovery required'
-                                    : 'Pending Genre change, not yet applied to Rekordbox'}
-                                >
-                                  {genreRecoveryLocked ? 'Recovery' : 'Pending'}
-                                </span>
-                              )}
-                              <button
-                                type="button"
-                                className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all disabled:cursor-not-allowed disabled:opacity-20 group-hover:disabled:opacity-20"
-                                title={genreEditingAvailable
-                                  ? 'Edit Genre'
-                                  : genreRecoveryLocked
-                                    ? 'Genre editing is locked until metadata cloud recovery completes'
-                                    : genreRuntimeBlocked
-                                      ? 'Genre editing is blocked while the current metadata Apply outcome is unresolved'
-                                      : 'Pending Genre changes must finish loading before editing'}
-                                aria-label={`Edit Genre for ${track.title}`}
-                                disabled={!genreEditingAvailable}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!genreEditingAvailable) return;
-                                  setEditingGenreTrackId(track.id);
-                                  setEditingGenreValue(effectiveGenre ?? '');
-                                  setGenreSaveError(null);
-                                }}
-                              >
-                                <Edit size={12} />
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                        <td className={artistLibrary ? 'px-3 py-1.5' : 'px-3 py-1.5 text-center'}>
-                          <span className={cn(
-                            artistLibrary
-                              ? cn('whitespace-nowrap', LIBRARY_VALUE)
-                              : mode === 'audition'
-                              ? 'font-mono text-[12px] font-black text-primary'
-                              : cn('inline-flex min-w-8 justify-center rounded-md border px-2 py-1 font-mono text-[12px] font-black',
-                            cueState?.status === 'failed'
-                              ? 'border-red-400/25 bg-red-400/10 text-red-300'
-                              : (cueCount ?? 0) > 0
-                              ? 'border-secondary/25 bg-secondary/10 text-secondary'
-                              : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-muted-foreground'),
-                          )} title={cueState?.status === 'failed' ? cueState.error : undefined}>
-                            {cueState?.status === 'loading' || !cueState ? '…' : cueState.status === 'failed' ? '!' : cueCount}
-                          </span>
-                        </td>
-                        {artistLibrary && (
-                          <td className={cn('px-3 py-1.5 whitespace-nowrap', LIBRARY_VALUE)} data-testid="playlist-count">
-                            {playlistCounts.counts.has(track.id)
-                              ? <span title={`In ${playlistCounts.counts.get(track.id)} ${playlistCounts.counts.get(track.id) === 1 ? 'playlist' : 'playlists'}`}>{playlistCounts.counts.get(track.id)}</span>
-                              : playlistCounts.error
-                                ? (
-                                  <button
-                                    type="button"
-                                    className="text-red-300 hover:text-red-200"
-                                    title="Playlist counts could not be loaded. Click to try again."
-                                    aria-label="Playlist counts could not be loaded. Try again."
-                                    onClick={(event) => { event.stopPropagation(); playlistCounts.retry(); }}
-                                  >!</button>
-                                )
-                                : '…'}
-                          </td>
-                        )}
-                        {artistLibrary ? (
-                          <td className="px-3 py-1.5 whitespace-nowrap" data-testid="properties-cell">
-                            <span className="inline-flex items-center gap-1.5">
-                              {[
-                                track.file_format ? `.${track.file_format.toLowerCase()}` : null,
-                                track.sample_rate_hz != null && track.sample_rate_hz > 0 ? `${track.sample_rate_hz / 1000} kHz` : null,
-                                track.bitrate_kbps != null && track.bitrate_kbps > 0 ? `${track.bitrate_kbps} kbps` : null,
-                              ].filter((value): value is string => Boolean(value)).map((value) => (
-                                <StatusBadge key={value} tone="neutral" style={LIBRARY_PROPERTY_BADGE}>{value}</StatusBadge>
-                              ))}
-                              {!track.file_format && !(track.sample_rate_hz && track.sample_rate_hz > 0) && !(track.bitrate_kbps && track.bitrate_kbps > 0) && <span className={LIBRARY_VALUE}>—</span>}
-                            </span>
-                          </td>
-                        ) : (
-                          <>
-                            <td className="px-3 py-1.5 whitespace-nowrap text-xs text-muted-foreground">
-                              {track.file_format ?? '—'}
-                            </td>
-                            <td className={cn('px-3 py-1.5 whitespace-nowrap text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]')}>
-                              {track.sample_rate_hz != null && track.sample_rate_hz > 0 ? `${track.sample_rate_hz / 1000} kHz` : '—'}
-                            </td>
-                            <td className={cn('px-3 py-1.5 whitespace-nowrap text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]')}>
-                              {track.bitrate_kbps != null && track.bitrate_kbps > 0 ? `${track.bitrate_kbps} kbps` : '—'}
-                            </td>
-                          </>
-                        )}
-                        <td className={cn('w-[80px] px-3 py-1.5 text-left', artistLibrary ? LIBRARY_VALUE : cn('text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]'))}>
-                          {formatTime(durationMsForTrack(track, null))}
-                        </td>
-                        {artistLibrary && (
-                          <td className="w-[64px] px-3 py-1.5" data-testid="cloud-cell">
-                            <CloudSyncIcon synced={cloudSynced.keys.has(trackIdentityKey(track))} unknown={cloudSynced.failed} />
-                          </td>
-                        )}
-                      </TrackTableRow>
-                    );
-                  })}
-                </TrackTableBody>
-              </TrackTable>
-            </div>
+            <TrackListing<RekordboxTrack>
+              tracks={orderedVisibleTracks}
+              columns={listingColumns}
+              selectedId={selectedTrackId}
+              onSelect={setSelectedTrack}
+              getTitle={(track) => track.title}
+              getArtist={(track) => track.artist}
+              getStatus={listingStatus}
+              renderLeading={(track) => <TrackRowPlayButton track={track} />}
+              renderWaveform={(track) => (
+                <TrackListingWaveform
+                  waveformState={getWaveformState(track.id)}
+                  durationMs={durationMsForTrack(track, null)}
+                  cues={cueMarkersFromState(cueSummaryStates.get(track.id))}
+                  height={18}
+                  ariaLabel={`Waveform for ${track.title}`}
+                />
+              )}
+              rowKey={(track, rowIndex) => `${browserSource}:${selectedPlaylistId ?? 'library'}:${track.id}:${rowIndex}`}
+              rowProps={(track) => ({
+                // On the Artist Library page a click selects the track (its waveform shows above), and a double-click or Enter opens it.
+                onDoubleClick: artistLibrary ? () => onTrackOpen?.(track) : undefined,
+                onKeyDown: (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    if (artistLibrary && event.key === 'Enter') onTrackOpen?.(track);
+                    else setSelectedTrack(track);
+                  }
+                },
+              })}
+              trackSort="title"
+              sort={sortCol ? { column: sortCol, direction: sortDir } : null}
+              onSort={(column) => handleColClick(column as typeof sortCol & string)}
+              tableClassName={artistLibrary ? 'cue-browser__table--tight' : undefined}
+              scrollStyle={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}
+              tableTestId="cue-browser-track-table"
+              ariaLabel="Cue Points browser tracks"
+            />
 
             <div className="flex flex-col gap-3 border-t border-[var(--color-border-subtle)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-5">
               <div className="space-y-0.5 text-xs text-muted-foreground">

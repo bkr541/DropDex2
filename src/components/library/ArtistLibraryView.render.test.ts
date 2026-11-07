@@ -99,8 +99,8 @@ describe('Artist Library page', () => {
   it('selects the first track by default, a click selects, and a double-click or Enter opens the track', () => {
     const view = readFileSync(new URL('../cues/CuePointsView.tsx', import.meta.url), 'utf8');
     expect(view).toContain('if (selectedTrackId == null && orderedVisibleTracks.length > 0) {\n      setSelectedTrack(orderedVisibleTracks[0]);');
-    expect(view).toContain('onClick={() => setSelectedTrack(track)}');
-    expect(view).toContain('onDoubleClick={artistLibrary ? () => onTrackOpen?.(track) : undefined}');
+    expect(view).toContain('onSelect={setSelectedTrack}');
+    expect(view).toContain('onDoubleClick: artistLibrary ? () => onTrackOpen?.(track) : undefined');
     expect(view).toContain("if (artistLibrary && event.key === 'Enter') onTrackOpen?.(track);");
   });
 });

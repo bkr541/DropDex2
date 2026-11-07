@@ -1,15 +1,13 @@
-import { CircleDash, Pause, Play, WarningAlt } from '@carbon/icons-react';
-import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
+import { CircleDash, WarningAlt } from '@carbon/icons-react';
+import { TrackRowPlayButton } from '../player/TrackRowPlayButton';
 import { cueAnalysisReady } from '../../lib/cues/cueReadiness';
 import { durationMsForTrack, formatTime } from '../../lib/music/trackTiming';
-import { cn } from '../../lib/utils';
 import { ControlButton, DualRangeSlider, FilterDropdown, SearchControl } from '../ui/controls';
 import type { FilterDropdownOption } from '../ui/controls';
-import { AuditionRowWaveform } from './AuditionRowWaveform';
 import { auditionCueMarkersFromState } from './auditionCueMarkers';
 import type { CueLoadState } from '../../lib/queries/analysisData';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { TrackNameCell, TrackTable, TrackTableBody, TrackTableHead, TrackTableHeadCell, TrackTableRow } from '../ui/display';
+import { TrackListing, TrackListingWaveform, type TrackListingColumn } from '../ui/display';
 import { formatCamelotCode } from '../ui/display/camelotKey';
 import { nextAuditionSort, type AuditionSort, type AuditionSortColumn } from './auditionTracks';
 import type { RekordboxTrack } from '../../types';
@@ -48,41 +46,11 @@ interface AuditionLibraryProps {
   onSortChange: (sort: AuditionSort | null) => void;
 }
 
-const COLUMNS: Array<{ column: AuditionSortColumn; label: string; className?: string }> = [
-  { column: 'title', label: 'Track' },
-  { column: 'bpm', label: 'BPM' },
-  { column: 'key', label: 'Key' },
-  { column: 'genre', label: 'Genre', className: 'w-[178px]' },
-  { column: 'format', label: 'Format', className: 'whitespace-nowrap' },
-  { column: 'playlists', label: 'Playlists', className: 'whitespace-nowrap' },
-  { column: 'length', label: 'Duration', className: 'w-[80px] text-left' },
-];
-
-function RowPlayButton({ track }: { track: RekordboxTrack }) {
-  const { activeTrack, status, playIntent, toggleTrack } = useAudioPlayer();
-  const isActive = activeTrack?.id === track.id;
-  const isPlaying = isActive && playIntent && status !== 'error';
-  const isLoading = isActive && (status === 'resolving' || status === 'loading' || status === 'buffering' || status === 'seeking');
-  const label = `${isPlaying ? 'Pause' : 'Play'} ${track.title}`;
-
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      className={cn(
-        'flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
-        isActive ? 'text-primary' : 'text-muted-foreground hover:text-primary',
-      )}
-      onClick={(event) => {
-        event.stopPropagation();
-        void toggleTrack(track);
-      }}
-      onKeyDown={(event) => event.stopPropagation()}
-    >
-      {isLoading ? <CircleDash size={14} className="animate-spin" /> : isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
-    </button>
-  );
+/** Audition's status dot: ready, the problem it had, or not analysed yet. */
+function trackStatus(track: RekordboxTrack): 'ready' | 'error' | 'none' | 'warning' {
+  return cueAnalysisReady(track) ? 'ready'
+    : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required' ? 'error'
+      : track.analysis_parse_status == null ? 'none' : 'warning';
 }
 
 export function AuditionLibrary({
@@ -91,6 +59,32 @@ export function AuditionLibrary({
   search, onSearchChange, genre, onGenreChange, genreOptions, keyFilter, onKeyFilterChange, keyOptions,
   bpmBounds, bpmRange, onBpmRangeChange, sort, onSortChange,
 }: AuditionLibraryProps) {
+  const columns: TrackListingColumn<RekordboxTrack>[] = [
+    { id: 'bpm', label: 'BPM', sort: 'bpm', cellClassName: 'font-mono text-[13px] font-bold tabular-nums', render: (track) => (track.bpm != null ? track.bpm.toFixed(1) : '—') },
+    { id: 'key', label: 'Key', sort: 'key', render: (track) => formatCamelotCode(track.musical_key) ?? '—' },
+    { id: 'genre', label: 'Genre', sort: 'genre', headClassName: 'w-[178px]', cellClassName: 'w-[178px] text-xs text-muted-foreground', render: (track) => <span className="block truncate">{track.genre ?? '—'}</span> },
+    { id: 'format', label: 'Format', sort: 'format', headClassName: 'whitespace-nowrap', cellClassName: 'whitespace-nowrap text-xs text-muted-foreground', render: (track) => track.file_format ?? '—' },
+    {
+      id: 'playlists', label: 'Playlists', sort: 'playlists', headClassName: 'whitespace-nowrap', cellClassName: 'whitespace-nowrap tabular-nums',
+      cellProps: () => ({ 'data-testid': 'audition-playlist-count' }),
+      render: (track) => (playlistCounts?.counts.has(track.id)
+        ? <span title={`In ${playlistCounts.counts.get(track.id)} ${playlistCounts.counts.get(track.id) === 1 ? 'playlist' : 'playlists'}`}>{playlistCounts.counts.get(track.id)}</span>
+        : playlistCounts?.error
+          ? (
+            <button
+              type="button"
+              className="text-red-300 hover:text-red-200"
+              title="Playlist counts could not be loaded. Click to try again."
+              aria-label="Playlist counts could not be loaded. Try again."
+              onClick={(event) => { event.stopPropagation(); playlistCounts.retry(); }}
+              onKeyDown={(event) => event.stopPropagation()}
+            >!</button>
+          )
+          : '…'),
+    },
+    { id: 'length', label: 'Duration', sort: 'length', headClassName: 'w-[80px] text-left', cellClassName: 'w-[80px] whitespace-nowrap text-left font-mono text-[13px] text-muted-foreground', render: (track) => formatTime(durationMsForTrack(track, null)) },
+  ];
+
   return (
     <section
       data-testid="audition-library"
@@ -152,74 +146,31 @@ export function AuditionLibrary({
       ) : (
         <>
           <div className="audition-table-scroll overflow-auto scrollbar-none">
-            <TrackTable className="min-w-[900px]" data-testid="audition-library-table" aria-label="Library tracks">
-              <TrackTableHead>
-                {COLUMNS.map(({ column, label, className }) => (
-                  <TrackTableHeadCell
-                    key={column}
-                    label={label}
-                    column={column}
-                    className={className}
-                    sort={sort}
-                    onSort={(column) => onSortChange(nextAuditionSort(sort, column))}
-                  />
-                ))}
-              </TrackTableHead>
-              <TrackTableBody>
-                {tracks.map((track) => {
-                  const selected = track.id === selectedTrackId;
-                  return (
-                    <TrackTableRow
-                      key={track.id}
-                      data-testid="audition-library-row"
-                      selected={selected}
-                      onClick={() => onSelectTrack(track)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          onSelectTrack(track);
-                        }
-                      }}
-                    >
-                      <TrackNameCell title={track.title} artist={track.artist} artworkSrc={track.artwork_path} selected={selected} dense hideArtwork hideSelectionBar leading={<RowPlayButton track={track} />} nameClassName="w-[340px] shrink-0"
-                        status={cueAnalysisReady(track) ? 'ready'
-                          : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required' ? 'error'
-                          : track.analysis_parse_status == null ? 'none' : 'warning'}>
-                        <AuditionRowWaveform
-                          className="min-w-[140px] grow"
-                          waveformState={getWaveformState?.(track.id) ?? { status: 'idle', trackId: track.id }}
-                          durationMs={durationMsForTrack(track, null)}
-                          cues={auditionCueMarkersFromState(cueStates?.get(track.id))}
-                          height={18}
-                          ariaLabel={`Waveform for ${track.title}`}
-                        />
-                      </TrackNameCell>
-                      <td className="px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums">{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
-                      <td className="px-3 py-1.5">{formatCamelotCode(track.musical_key) ?? '—'}</td>
-                      <td className="w-[178px] px-3 py-1.5 text-xs text-muted-foreground"><span className="block truncate">{track.genre ?? '—'}</span></td>
-                      <td className="whitespace-nowrap px-3 py-1.5 text-xs text-muted-foreground">{track.file_format ?? '—'}</td>
-                      <td className="whitespace-nowrap px-3 py-1.5 tabular-nums" data-testid="audition-playlist-count">
-                        {playlistCounts?.counts.has(track.id)
-                          ? <span title={`In ${playlistCounts.counts.get(track.id)} ${playlistCounts.counts.get(track.id) === 1 ? 'playlist' : 'playlists'}`}>{playlistCounts.counts.get(track.id)}</span>
-                          : playlistCounts?.error
-                            ? (
-                              <button
-                                type="button"
-                                className="text-red-300 hover:text-red-200"
-                                title="Playlist counts could not be loaded. Click to try again."
-                                aria-label="Playlist counts could not be loaded. Try again."
-                                onClick={(event) => { event.stopPropagation(); playlistCounts.retry(); }}
-                                onKeyDown={(event) => event.stopPropagation()}
-                              >!</button>
-                            )
-                            : '…'}
-                      </td>
-                      <td className="w-[80px] whitespace-nowrap px-3 py-1.5 text-left font-mono text-[13px] text-muted-foreground">{formatTime(durationMsForTrack(track, null))}</td>
-                    </TrackTableRow>
-                  );
-                })}
-              </TrackTableBody>
-            </TrackTable>
+            <TrackListing<RekordboxTrack>
+              tracks={tracks}
+              columns={columns}
+              selectedId={selectedTrackId}
+              onSelect={onSelectTrack}
+              getTitle={(track) => track.title}
+              getArtist={(track) => track.artist}
+              getStatus={trackStatus}
+              renderLeading={(track) => <TrackRowPlayButton track={track} />}
+              renderWaveform={(track) => (
+                <TrackListingWaveform
+                  waveformState={getWaveformState?.(track.id) ?? { status: 'idle', trackId: track.id }}
+                  durationMs={durationMsForTrack(track, null)}
+                  cues={auditionCueMarkersFromState(cueStates?.get(track.id))}
+                  height={18}
+                  ariaLabel={`Waveform for ${track.title}`}
+                />
+              )}
+              trackSort="title"
+              sort={sort}
+              onSort={(column) => onSortChange(nextAuditionSort(sort, column as AuditionSortColumn))}
+              rowProps={() => ({ 'data-testid': 'audition-library-row' })}
+              tableTestId="audition-library-table"
+              ariaLabel="Library tracks"
+            />
           </div>
 
           {hasMore ? (

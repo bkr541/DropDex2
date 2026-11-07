@@ -1,9 +1,8 @@
 import './library-studio.css';
 import { SpotifyTabIcon } from './SpotifyTabIcon';
-import { useState, useMemo, memo, useCallback, useRef, useEffect, type ElementType, type ReactNode } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, type ElementType, type ReactNode } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
-import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 
 const ANALYSIS_TITLES: Record<string, string> = {
   partial: 'Analysis Incomplete',
@@ -15,14 +14,13 @@ const ANALYSIS_TITLES: Record<string, string> = {
 
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatKey } from '../../lib/utils';
-import { bpmRangeStatsFrom, camelotColor, keyStatsFrom } from './libraryInsights';
+import { bpmRangeStatsFrom, keyStatsFrom } from './libraryInsights';
 import { InsightBpmDistribution, InsightKeyProfile, InsightTopGenres } from './InsightCharts';
 import {
   useLibraryStats,
   useRekordboxSearch,
 } from '../../hooks/useRekordboxTracks';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
-import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import { LibraryHero } from './LibraryHero';
 import type { LibraryOverviewWidgetId } from '../../lib/dashboard/libraryOverviewWidgets';
 import { RecentlyAddedTracksTable } from './RecentlyAddedTracksTable';
@@ -38,9 +36,12 @@ import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { supabase } from '../../lib/supabase';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
-import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronLeft, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, Pause, Play, RecordingFilled, Renew, Tag, Undo, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
+import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronLeft, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, RecordingFilled, Renew, Tag, Undo, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
 import { Dashboard, Playlist, Time, UserMultiple } from '@carbon/icons-react';
-import { Artwork } from '../ui/display/Artwork';
+import { TrackListing, type TrackListingColumn } from '../ui/display';
+import { TrackRowPlayButton } from '../player/TrackRowPlayButton';
+import { TrackRowWaveform } from '../player/TrackRowWaveform';
+import { cueAnalysisReady } from '../../lib/cues/cueReadiness';
 import { ControlButton, SearchControl } from '../ui/controls';
 import { HeroActionButton } from './HeroActionButton';
 import { SpotifyLibraryTab } from './SpotifyLibraryTab';
@@ -354,11 +355,7 @@ export function LibraryTrackTable({
   getWaveformState,
   retryWaveform,
   activeTrack,
-  playerStatus,
-  playIntent,
-  usbConnected,
   onTrackClick,
-  onPlay,
   footer,
 }: LibraryTrackTableProps) {
   const [sortCol, setSortCol] = useState<LibrarySortCol | null>(null);
@@ -404,56 +401,31 @@ export function LibraryTrackTable({
     return <p className="text-center py-12 text-muted-foreground text-sm">{emptyText ?? 'No tracks.'}</p>;
   }
 
-  const SORT_COLS = [
-    { col: 'title' as const, label: 'Track', cls: '' },
-    { col: 'bpm' as const, label: 'BPM', cls: 'w-[80px]' },
-    { col: 'key' as const, label: 'Key', cls: 'w-[90px]' },
-    { col: 'genre' as const, label: 'Genre', cls: 'w-[178px]' },
-    { col: null, label: 'Cues', cls: 'w-[60px] text-center' },
-    { col: 'duration' as const, label: 'Duration', cls: 'w-[80px]' },
-  ] as const;
+  const columns: TrackListingColumn<RekordboxTrack>[] = [
+    { id: 'bpm', label: 'BPM', sort: 'bpm', cellClassName: 'font-mono text-[13px] font-bold tabular-nums', render: (t) => (t.bpm != null ? t.bpm.toFixed(1) : '—') },
+    { id: 'key', label: 'Key', sort: 'key', render: (t) => formatCamelotKey(t.musical_key) || '—' },
+    { id: 'genre', label: 'Genre', sort: 'genre', headClassName: 'w-[178px]', cellClassName: 'w-[178px] text-xs text-muted-foreground', render: (t) => <span className="block truncate max-w-[160px]">{t.genre ?? '—'}</span> },
+    { id: 'duration', label: 'Duration', sort: 'duration', headClassName: 'w-[80px] text-left', cellClassName: 'w-[80px] text-left font-mono text-[13px] text-muted-foreground', render: (t) => formatLibraryTime(t.duration_ms ?? (t.duration_seconds != null ? t.duration_seconds * 1000 : null)) },
+  ];
 
   return (
     <div className="lib-panel">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[700px] border-collapse text-left" aria-label="Track listing">
-          <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground border-b border-[var(--color-border-faint)]">
-            <tr>
-              {SORT_COLS.map(({ col, label, cls }) => (
-                <th key={label} className={cn('sticky top-0 z-10 px-3 py-2.5 select-none', cls)}>
-                  {col !== null ? (
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-                      aria-label={`Sort by ${label}`}
-                      onClick={() => handleColClick(col)}
-                    >
-                      {label}
-                      <span className={cn('text-primary', sortCol !== col && 'invisible')}>{sortDir === 'asc' ? '↑' : '↓'}</span>
-                    </button>
-                  ) : label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--color-border-faint)]">
-            {sortedTracks.map((track) => (
-              <LibraryTrackRow
-                key={track.id}
-                track={track}
-                waveformState={getWaveformState(track.id)}
-                onRetryWaveform={() => retryWaveform([track.id])}
-                isActiveTrack={activeTrack?.id === track.id}
-                playerStatus={playerStatus}
-                playIntent={playIntent}
-                usbConnected={usbConnected}
-                onOpen={onTrackClick}
-                onPlay={onPlay}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <TrackListing<RekordboxTrack>
+        tracks={sortedTracks}
+        columns={columns}
+        selectedId={activeTrack?.id ?? null}
+        onSelect={onTrackClick}
+        getTitle={(t) => t.title}
+        getArtist={(t) => t.artist}
+        getStatus={(t) => (cueAnalysisReady(t) ? 'ready' : t.analysis_parse_status === 'failed' || t.analysis_parse_status === 'missing_required' ? 'error' : t.analysis_parse_status == null ? 'none' : 'warning')}
+        renderLeading={(t) => <TrackRowPlayButton track={t} />}
+        renderWaveform={(t) => <TrackRowWaveform track={t} waveformState={getWaveformState(t.id)} onRetry={() => retryWaveform([t.id])} />}
+        rowProps={(t) => ({ 'aria-label': `Open ${t.title}${t.artist ? ` by ${t.artist}` : ''}` })}
+        trackSort="title"
+        sort={sortCol ? { column: sortCol, direction: sortDir } : null}
+        onSort={(column) => handleColClick(column as LibrarySortCol)}
+        ariaLabel="Track listing"
+      />
       {footer}
     </div>
   );
@@ -470,155 +442,6 @@ export function RecentlyAddedPanel({ tracks, loading, ...tableProps }: Omit<Libr
     </div>
   );
 }
-
-interface TrackRowProps {
-  track: RekordboxTrack;
-  waveformState: WaveformLoadState;
-  onRetryWaveform: () => void;
-  isActiveTrack: boolean;
-  playerStatus: string;
-  playIntent: boolean;
-  usbConnected: boolean;
-  onOpen: (t: RekordboxTrack) => void;
-  onPlay: (t: RekordboxTrack, e: React.MouseEvent | React.KeyboardEvent) => void;
-}
-
-const LibraryTrackRow = memo(function LibraryTrackRow({
-  track: t,
-  waveformState,
-  onRetryWaveform,
-  isActiveTrack,
-  playerStatus,
-  playIntent,
-  usbConnected,
-  onOpen,
-  onPlay,
-}: TrackRowProps) {
-  const handleRowClick = useCallback(() => onOpen(t), [onOpen, t]);
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(t); }
-  }, [onOpen, t]);
-  const handlePlayClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    onPlay(t, e);
-  }, [onPlay, t]);
-  const handlePlayKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onPlay(t, e); }
-  }, [onPlay, t]);
-
-  const isPlaying = isActiveTrack && playIntent;
-  const isLoadingThis = isActiveTrack && (playerStatus === 'resolving' || playerStatus === 'loading');
-  const isActiveRow = isActiveTrack && !['idle', 'resolving', 'loading', 'error'].includes(playerStatus);
-
-  const progress = useWaveformProgress(t.id);
-  const { seek, getAudioElement } = useAudioPlayer();
-  const canSeek = isActiveTrack && !['idle', 'resolving', 'loading', 'error'].includes(playerStatus);
-  const handleWaveformSeek = useCallback((fraction: number) => {
-    const audio = getAudioElement();
-    if (!audio || !isFinite(audio.duration) || audio.duration <= 0) return;
-    seek(fraction * audio.duration);
-  }, [seek, getAudioElement]);
-
-  const keyDisplay = formatCamelotKey(t.musical_key);
-  const kc = keyDisplay ? camelotColor(t.musical_key!) : null;
-  const durationMs = t.duration_ms ?? (t.duration_seconds != null ? t.duration_seconds * 1000 : null);
-  const analysisStatus = t.analysis_parse_status;
-  const dotClass = analysisStatus === 'completed' || analysisStatus === 'reused'
-    ? 'bg-emerald-400'
-    : analysisStatus === 'failed' || analysisStatus === 'missing_required'
-      ? 'bg-red-400'
-      : analysisStatus == null
-        ? 'bg-muted-foreground/40'
-        : 'bg-amber-400';
-
-  return (
-    <tr
-      tabIndex={0}
-      onClick={handleRowClick}
-      onKeyDown={handleKeyDown}
-      aria-label={`Open ${t.title}${t.artist ? ` by ${t.artist}` : ''}`}
-      className={cn(
-        'group cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50',
-        isActiveRow ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-[var(--color-surface-hover)]',
-      )}
-    >
-      {/* Track cell: dot + active bar + artwork/play + title/artist + waveform */}
-      <td className="px-3 py-1.5">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dotClass)} aria-hidden="true" />
-          <span className={cn('h-8 w-0.5 shrink-0 rounded-full transition-colors', isActiveRow ? 'bg-primary' : 'bg-transparent')} aria-hidden="true" />
-          {/* Artwork with play button overlay */}
-          <div className="relative h-9 w-9 shrink-0">
-            <Artwork
-              src={t.artwork_path}
-              alt={`Artwork for ${t.title}`}
-              fallbackTitle="No artwork"
-              className="h-9 w-9 rounded-[6px]"
-            />
-            <button
-              onClick={handlePlayClick}
-              onKeyDown={handlePlayKeyDown}
-              aria-label={isPlaying ? `Pause ${t.title}` : `Play ${t.title}`}
-              title={!usbConnected ? 'Connect a USB drive to play' : undefined}
-              className={cn(
-                'absolute inset-0 rounded-[6px] flex items-center justify-center transition-all bg-black/60 text-white',
-                'opacity-0 group-hover:opacity-100 focus:opacity-100',
-                (isActiveRow || isLoadingThis) && 'opacity-100',
-                isLoadingThis && 'cursor-wait',
-              )}
-            >
-              {isLoadingThis ? <CircleDash size={14} className="animate-spin" /> : isPlaying ? <Pause size={14} /> : <Play size={14} />}
-            </button>
-          </div>
-          {/* Title + artist + waveform */}
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="w-[280px] shrink-0 min-w-0">
-              <p className={cn('truncate text-sm font-bold leading-tight', isActiveRow ? 'text-primary' : 'group-hover:text-primary')}>{t.title}</p>
-              <p className="truncate text-[10px] text-muted-foreground">{t.artist ?? 'Artist Not Available'}</p>
-            </div>
-            <div className="flex-1 min-w-[80px] flex flex-col gap-1">
-              <RekordboxPreviewWaveform
-                state={waveformState}
-                height={26}
-                variant="compact"
-                appearance="dropdex"
-                showCenterLine={false}
-                onRetry={onRetryWaveform}
-                activeProgress={progress}
-                onSeek={canSeek ? handleWaveformSeek : undefined}
-                ariaLabel={`Waveform for ${t.title}`}
-                surface={false}
-              />
-            </div>
-          </div>
-        </div>
-      </td>
-      {/* BPM */}
-      <td className="px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums">{t.bpm != null ? t.bpm.toFixed(1) : '—'}</td>
-      {/* Key */}
-      <td className="px-3 py-1.5">
-        {keyDisplay ? (
-          <span className="inline-flex items-center rounded-[5px] bg-white/[0.05] pl-[3px] pr-2 py-1 font-mono text-[13px] font-bold" style={{ color: kc ?? 'rgba(255,255,255,0.5)' }}>
-            <span className="mr-1.5 h-[14px] w-[3px] shrink-0 rounded-full" style={{ backgroundColor: kc ?? 'rgba(255,255,255,0.2)' }} />
-            {keyDisplay}
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
-        )}
-      </td>
-      {/* Genre */}
-      <td className="w-[178px] px-3 py-1.5 text-xs text-muted-foreground">
-        <span className="block truncate max-w-[160px]">{t.genre ?? '—'}</span>
-      </td>
-      {/* Cues */}
-      <td className="px-3 py-1.5 text-center">
-        <span className="inline-flex min-w-8 justify-center rounded-md border px-2 py-1 font-mono text-[12px] font-black border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-muted-foreground">—</span>
-      </td>
-      {/* Duration */}
-      <td className="w-[80px] px-3 py-1.5 font-mono text-[13px] text-muted-foreground">{formatLibraryTime(durationMs)}</td>
-    </tr>
-  );
-});
 
 // ── Sidebar section wrapper ───────────────────────────────────────────────────
 

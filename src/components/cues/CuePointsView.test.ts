@@ -155,7 +155,7 @@ describe('Cue Points production editor wiring', () => {
   });
 
   it('keeps track loading scoped to explicit row selection instead of table filters', () => {
-    expect(source).toContain('onClick={() => setSelectedTrack(track)}');
+    expect(source).toContain('onSelect={setSelectedTrack}');
     expect(source).not.toContain('setSelectedTrack(filteredTracks[0])');
     expect(source).not.toMatch(/useEffect\([\s\S]{0,600}\[filteredTracks\]/);
   });
@@ -479,9 +479,9 @@ describe('Cue Points Stage 2 browser workspace', () => {
   });
 
   it('keeps row selection playback-free and exposes the deterministic Stage 3 ordered-track extension point', () => {
-    expect(source).toContain('onClick={() => setSelectedTrack(track)}');
+    expect(source).toContain('onSelect={setSelectedTrack}');
     expect(source).toContain('const orderedVisibleTracks = sortedTracks;');
-    expect(source).toContain('orderedVisibleTracks.map((track, rowIndex) => {');
+    expect(source).toContain('tracks={orderedVisibleTracks}');
     expect(source).toContain('orderedVisibleTracks.map((track) => track.id)');
     expect(source).not.toContain('onClick={() => playTrack(track)}');
   });

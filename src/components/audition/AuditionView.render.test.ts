@@ -336,20 +336,20 @@ describe('Audition library rows', () => {
     expect(markup.indexOf('Row Artist')).toBeLessThan(markup.indexOf('aria-label="Waveform for Row Fixture"'));
     expect(markup).toContain('left:25%');
     expect(markup).toContain('left:50%');
-    // Each cue is just a dot in the cue's own colour (grey when it has none), with no letter.
-    expect(markup.match(/data-testid="audition-row-cue"/g)).toHaveLength(2);
-    expect(markup).toContain('--audition-cue-ink:#2997ff');
-    expect(markup).toContain('--audition-cue-ink:#9aa5b8');
+    // Each cue is a line with a triangle on top, in the cue's own colour (grey when it has none), with no letter.
+    expect(markup.match(/data-testid="track-listing-cue"/g)).toHaveLength(2);
+    expect(markup).toContain('--cue-ink:#2997ff');
+    expect(markup).toContain('--cue-ink:#9aa5b8');
     expect(markup).not.toContain('audition-cue-marker');
     expect(markup).not.toContain('<polygon');
   });
 
   it('draws the row waveform as bars in the same gray as the full-song waveform', () => {
-    const rowWave = readFileSync(new URL('./AuditionRowWaveform.tsx', import.meta.url), 'utf8');
+    const rowWave = readFileSync(new URL('../ui/display/TrackListingWaveform.tsx', import.meta.url), 'utf8');
     const fullSong = readFileSync(new URL('./AuditionFullSong.tsx', import.meta.url), 'utf8');
     expect(rowWave).toContain('appearance="dropdex"');
     expect(rowWave).not.toContain('renderMode="area"');
-    const gray = /const ROW_WAVEFORM_GRAY = '(#[0-9A-Fa-f]{6})'/.exec(rowWave)?.[1];
+    const gray = /const WAVEFORM_GRAY = '(#[0-9A-Fa-f]{6})'/.exec(rowWave)?.[1];
     expect(fullSong).toContain(`: '${gray}'`);
   });
 

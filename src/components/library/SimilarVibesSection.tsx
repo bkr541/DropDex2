@@ -1,6 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { cn, formatKey } from '../../lib/utils';
+import { cueAnalysisReady } from '../../lib/cues/cueReadiness';
 import type { RekordboxTrack, SimilarTrackResult } from '../../types';
+import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
+import { TrackListing, type TrackListingColumn } from '../ui/display';
+import { TrackRowPlayButton } from '../player/TrackRowPlayButton';
+import { TrackRowWaveform } from '../player/TrackRowWaveform';
 import { useSimilarTracks } from '../../hooks/useSimilarTracks';
 import {
   useSimilarTrackSettings,
@@ -21,6 +26,21 @@ export function SimilarVibesSection({ track, importId, onTrackClick }: SimilarVi
   const { options, preset, setPreset, customTolerance, setCustomTolerance } =
     useSimilarTrackSettings();
   const { similarTracks, loading } = useSimilarTracks(track, importId, options);
+  const trackIds = useMemo(() => similarTracks.map((result) => result.track.id), [similarTracks]);
+  const { getState, retry } = useTrackPreviewWaveforms(importId, trackIds);
+  const columns: TrackListingColumn<SimilarTrackResult & { id: string }>[] = [
+    { id: 'bpm', label: 'BPM', cellClassName: 'font-mono text-[13px] font-bold tabular-nums', render: ({ track: t }) => (t.bpm != null ? t.bpm.toFixed(1) : '—') },
+    { id: 'key', label: 'Key', render: ({ track: t }) => formatKey(t.musical_key) || '—' },
+    {
+      id: 'why', label: 'Why it fits',
+      render: ({ reasons }) => (
+        <span className="flex flex-wrap gap-1">
+          {reasons.slice(0, 3).map((r) => <span key={r.label} className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground">{r.label}</span>)}
+        </span>
+      ),
+    },
+  ];
+  const rows = useMemo(() => similarTracks.map((result) => ({ ...result, id: result.track.id })), [similarTracks]);
 
   // Local display state for the custom number input — only committed on blur/Enter
   const [customInput, setCustomInput] = useState<string>(String(customTolerance));
@@ -96,15 +116,17 @@ export function SimilarVibesSection({ track, importId, onTrackClick }: SimilarVi
           ))}
         </div>
       ) : similarTracks.length > 0 ? (
-        <div>
-          {similarTracks.map((result) => (
-            <SimilarTrackRow
-              key={result.track.id}
-              result={result}
-              onClick={() => onTrackClick(result.track)}
-            />
-          ))}
-        </div>
+        <TrackListing<SimilarTrackResult & { id: string }>
+          tracks={rows}
+          columns={columns}
+          onSelect={(result) => onTrackClick(result.track)}
+          getTitle={(result) => result.track.title}
+          getArtist={(result) => result.track.artist}
+          getStatus={(result) => (cueAnalysisReady(result.track) ? 'ready' : result.track.analysis_parse_status === 'failed' || result.track.analysis_parse_status === 'missing_required' ? 'error' : result.track.analysis_parse_status == null ? 'none' : 'warning')}
+          renderLeading={(result) => <TrackRowPlayButton track={result.track} />}
+          renderWaveform={(result) => <TrackRowWaveform track={result.track} waveformState={getState(result.track.id)} onRetry={() => retry([result.track.id])} />}
+          ariaLabel="Similar tracks"
+        />
       ) : (
         <p className="text-xs text-muted-foreground italic text-center py-4">
           No similar tracks found. Try widening the BPM range.
@@ -135,48 +157,5 @@ function PresetButton({
     >
       {label}
     </button>
-  );
-}
-
-function SimilarTrackRow({ result, onClick }: { result: SimilarTrackResult; onClick: () => void }) {
-  const { track, reasons } = result;
-  const bpmDisplay = track.bpm != null ? track.bpm.toFixed(1) : '—';
-  const keyDisplay = formatKey(track.musical_key);
-  const initial1 = (track.artist?.[0] ?? track.title?.[0] ?? '?').toUpperCase();
-  const initial2 = (track.title?.[0] ?? '?').toUpperCase();
-
-  return (
-    <div
-      onClick={onClick}
-      className="grid grid-cols-[44px_1fr_60px_60px] gap-3 items-center p-3 rounded-xl transition-all cursor-pointer mb-2 bg-[var(--color-surface)] border border-[var(--color-border-faint)] hover:bg-[var(--color-surface-hover)]"
-    >
-      <div className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm bg-[var(--color-avatar-bg)] text-slate-500 shadow-sm">
-        {initial1}{initial2}
-      </div>
-      <div className="min-w-0 pr-2">
-        <h4 className="text-sm font-bold truncate">{track.title}</h4>
-        <p className="text-[10px] text-muted-foreground uppercase tracking-tighter truncate">
-          {track.artist ?? 'Artist not stored'}
-        </p>
-        {reasons.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-0.5">
-            {reasons.slice(0, 3).map((r, i) => (
-              <span
-                key={i}
-                className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary/80 border border-primary/20"
-              >
-                {r.label}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="text-center">
-        <p className="text-xs font-mono font-bold text-[var(--color-text-subdued)]">{bpmDisplay}</p>
-      </div>
-      <div className="text-right">
-        <p className="text-xs font-mono font-bold text-[var(--color-text-subdued)]">{keyDisplay}</p>
-      </div>
-    </div>
   );
 }

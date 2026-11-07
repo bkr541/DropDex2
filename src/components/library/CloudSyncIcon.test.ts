@@ -25,9 +25,9 @@ describe('cloud icon on the Library page track list', () => {
   });
 
   it('is a Cloud column in the Library page track table only, after Duration', () => {
-    expect(view).toContain("...(artistLibrary ? [{ col: 'cloud', label: 'Cloud'");
-    expect(view.indexOf("col: 'duration'")).toBeLessThan(view.indexOf("col: 'cloud'"));
-    expect(view).toContain('{artistLibrary && (\n                          <td className="w-[64px] px-3 py-1.5" data-testid="cloud-cell">');
+    expect(view).toContain("...(artistLibrary ? [{\n      id: 'cloud', label: 'Cloud'");
+    expect(view.indexOf("id: 'duration'")).toBeLessThan(view.indexOf("id: 'cloud'"));
+    expect(view).toContain("cellProps: () => ({ 'data-testid': 'cloud-cell' })");
     expect(view).toContain('synced={cloudSynced.keys.has(trackIdentityKey(track))}');
     expect(view).toContain('useSyncedPreviewKeys(artistLibrary)');
   });

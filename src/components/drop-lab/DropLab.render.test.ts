@@ -216,11 +216,10 @@ describe('Drop Lab candidate list', () => {
     expect(markup).not.toContain('Why it fits');
   });
 
-  it('shows each row with a status dot, mini waveform, 36px artwork, key badge and the app-wide missing-artist text', () => {
+  it('shows each row with a status dot, mini waveform, key badge and the app-wide missing-artist text', () => {
     const markup = render();
     expect(markup.match(/data-testid="drop-lab-candidate-row"/g)).toHaveLength(2);
     expect(markup).toContain('Artist Not Available');
-    expect(markup).toContain('h-9 w-9');
     expect(markup).toContain('data-waveform-variant="compact"');
     expect(markup).toContain('>05B<');
     expect(markup).toContain('>10A<');
@@ -232,7 +231,8 @@ describe('Drop Lab candidate list', () => {
   it('combines match and why-it-fits in one column: a badge with the reasons underneath', () => {
     const markup = render();
     const headers = markup.match(/<th [^>]*>/g) ?? [];
-    expect(headers).toHaveLength(5);
+    // Candidate, BPM, Key, Match, Status, and the Actions column every listing has.
+    expect(headers).toHaveLength(6);
     const firstRow = markup.split('data-testid="drop-lab-candidate-row"')[1];
     const badge = firstRow.indexOf('dd-status-badge');
     expect(badge).toBeGreaterThan(-1);
