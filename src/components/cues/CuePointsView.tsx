@@ -119,7 +119,7 @@ import type {
 } from '../../types/dropdex-desktop';
 
 interface CuePointsViewProps {
-  mode?: 'cues' | 'audition' | 'review';
+  mode?: 'cues' | 'audition' | 'artist-library';
   onTrackOpen?: (track: RekordboxTrack) => void;
   /** Library page only: told whenever the selected track changes, so the page can show that track's waveform. */
   onSelectedTrackChange?: (track: RekordboxTrack | null) => void;
@@ -1847,7 +1847,7 @@ export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform }: {
 }
 
 export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, onSelectedTrackChange }: CuePointsViewProps) {
-  const review = mode === 'review';
+  const artistLibrary = mode === 'artist-library';
   const audition = mode !== 'cues';
   const auth = useAuthSession();
   const userId = auth.status === 'authenticated' ? auth.session.user.id : null;
@@ -2901,11 +2901,11 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
     };
   }, [cueSummaryRetryNonce, importId, trackIdsKey]);
 
-  // Review shows how many playlists each track is in.
+  // The Artist Library shows how many playlists each track is in.
   const activeSourceTrackIds = useMemo(() => activeSourceTracks.map((track) => track.id), [activeSourceTracks]);
-  const playlistCounts = useTrackPlaylistCounts(activeSourceTrackIds, review);
+  const playlistCounts = useTrackPlaylistCounts(activeSourceTrackIds, artistLibrary);
   // Which tracks have a DropDex Cloud preview, for the cloud column on the Library page.
-  const cloudSynced = useSyncedPreviewKeys(review);
+  const cloudSynced = useSyncedPreviewKeys(artistLibrary);
 
   const sourceSearchFilteredTracks = useMemo(() => {
     if (browserSource === 'library') return activeSourceTracks;
@@ -3040,8 +3040,8 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
   const selectedTrackChangeRef = useRef(onSelectedTrackChange);
   selectedTrackChangeRef.current = onSelectedTrackChange;
   useEffect(() => {
-    if (review) selectedTrackChangeRef.current?.(selectedTrack);
-  }, [review, selectedTrack]);
+    if (artistLibrary) selectedTrackChangeRef.current?.(selectedTrack);
+  }, [artistLibrary, selectedTrack]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3975,7 +3975,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
         onApplyAll={() => { void handleMetadataApplyAll(); }}
       />}
 
-      {!review && <div ref={waveformPanelWrapperRef} className="sticky top-0 z-30 bg-[var(--color-background)]">
+      {!artistLibrary && <div ref={waveformPanelWrapperRef} className="sticky top-0 z-30 bg-[var(--color-background)]">
       <CueWaveformPanel
         compact={mode === 'audition'}
         audition={audition}
@@ -4140,10 +4140,10 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
         </div>
       )}
 
-      <section className={cn('cue-browser', review ? 'review-browser glass rounded-2xl border border-[var(--color-border-subtle)]' : 'border-y border-[var(--color-border-faint)]')} style={{ overflow: 'clip' }}>
+      <section className={cn('cue-browser', artistLibrary ? 'artist-library-browser glass rounded-2xl border border-[var(--color-border-subtle)]' : 'border-y border-[var(--color-border-faint)]')} style={{ overflow: 'clip' }}>
         <div ref={filterRowRef} className="cue-browser__chrome sticky z-20 border-b border-[var(--color-border-faint)]" style={{ top: waveformPanelHeight }}>
           <div className="flex flex-col">
-            {!review && <div className="cue-browser__transport-row w-full">
+            {!artistLibrary && <div className="cue-browser__transport-row w-full">
               <CuePointsAudioDock
                 showBrowserSource={mode !== 'audition'}
                 audition={audition}
@@ -4164,7 +4164,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search title, artist, or genre…"
-                  aria-label={review ? 'Search review tracks' : audition ? 'Search audition tracks' : 'Search cue point tracks'}
+                  aria-label={artistLibrary ? 'Search artist library tracks' : audition ? 'Search audition tracks' : 'Search cue point tracks'}
                 />
               </div>
               <FilterDropdown
@@ -4310,16 +4310,16 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
         ) : (
           <>
             <div className="overflow-auto scrollbar-none" style={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}>
-              <TrackTable className={cn('min-w-[900px]', review && 'cue-browser__table--tight')} data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
-                <TrackTableHead large={review && LIBRARY_LARGE_ICON_HEADINGS} className={review ? LIBRARY_HEADING : undefined}>
-                  <TrackTableHeadCell label="Track" column="title" uppercase={review} icon={review && LIBRARY_LARGE_ICON_HEADINGS ? Music : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
+              <TrackTable className={cn('min-w-[900px]', artistLibrary && 'cue-browser__table--tight')} data-testid="cue-browser-track-table" aria-label="Cue Points browser tracks">
+                <TrackTableHead large={artistLibrary && LIBRARY_LARGE_ICON_HEADINGS} className={artistLibrary ? LIBRARY_HEADING : undefined}>
+                  <TrackTableHeadCell label="Track" column="title" uppercase={artistLibrary} icon={artistLibrary && LIBRARY_LARGE_ICON_HEADINGS ? Music : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
                   {([
                     { col: 'bpm', label: 'BPM', cls: 'px-3 py-2', icon: Meter, sortable: true },
                     { col: 'key', label: 'Key', cls: 'px-3 py-2', icon: Key, sortable: true },
-                    { col: 'genre', label: 'Genre', cls: mode === 'audition' ? 'px-3 py-2 w-[112px]' : review ? 'px-3 py-2 w-[71px]' : 'px-3 py-2 w-[178px]', icon: Tag, sortable: true },
-                    { col: 'cues', label: 'Cues', cls: review ? 'px-3 py-2' : 'px-3 py-2 text-center', icon: Pin, sortable: true },
-                    ...(review ? [{ col: 'playlists', label: 'Playlists', cls: 'px-3 py-2', icon: Playlist, sortable: true }] : []),
-                    ...(review
+                    { col: 'genre', label: 'Genre', cls: mode === 'audition' ? 'px-3 py-2 w-[112px]' : artistLibrary ? 'px-3 py-2 w-[71px]' : 'px-3 py-2 w-[178px]', icon: Tag, sortable: true },
+                    { col: 'cues', label: 'Cues', cls: artistLibrary ? 'px-3 py-2' : 'px-3 py-2 text-center', icon: Pin, sortable: true },
+                    ...(artistLibrary ? [{ col: 'playlists', label: 'Playlists', cls: 'px-3 py-2', icon: Playlist, sortable: true }] : []),
+                    ...(artistLibrary
                       ? [{ col: 'properties', label: 'Properties', cls: 'px-3 py-2 whitespace-nowrap', icon: DocumentAudio, sortable: false }]
                       : [
                         { col: 'format', label: 'Format', cls: 'px-3 py-2 whitespace-nowrap', icon: DocumentAudio, sortable: true },
@@ -4327,9 +4327,9 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                         { col: 'bitRate', label: 'Bit Rate', cls: 'px-3 py-2 whitespace-nowrap', icon: ChartLine, sortable: true },
                       ]),
                     { col: 'duration', label: 'Duration', cls: 'px-3 py-2 text-left w-[80px]', icon: Time, sortable: true },
-                    ...(review ? [{ col: 'cloud', label: 'Cloud', cls: 'px-3 py-2 w-[64px]', icon: Cloud, sortable: false }] : []),
+                    ...(artistLibrary ? [{ col: 'cloud', label: 'Cloud', cls: 'px-3 py-2 w-[64px]', icon: Cloud, sortable: false }] : []),
                   ]).map(({ col, label, cls, icon, sortable }) => (
-                    <TrackTableHeadCell key={col} label={label} column={sortable ? col : undefined} uppercase={review} className={cls} icon={review && LIBRARY_LARGE_ICON_HEADINGS ? icon : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
+                    <TrackTableHeadCell key={col} label={label} column={sortable ? col : undefined} uppercase={artistLibrary} className={cls} icon={artistLibrary && LIBRARY_LARGE_ICON_HEADINGS ? icon : undefined} sort={sortCol ? { column: sortCol, direction: sortDir } : null} onSort={handleColClick} />
                   ))}
                 </TrackTableHead>
                 <TrackTableBody>
@@ -4351,11 +4351,11 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                         selected={selected}
                         onClick={() => setSelectedTrack(track)}
                         // On the Library page a click selects the track (its waveform shows above), and a double-click or Enter opens it.
-                        onDoubleClick={review ? () => onTrackOpen?.(track) : undefined}
+                        onDoubleClick={artistLibrary ? () => onTrackOpen?.(track) : undefined}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            if (review && event.key === 'Enter') onTrackOpen?.(track);
+                            if (artistLibrary && event.key === 'Enter') onTrackOpen?.(track);
                             else setSelectedTrack(track);
                           }
                         }}
@@ -4365,8 +4365,8 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                           artist={track.artist}
                           artworkSrc={track.artwork_path}
                           selected={selected}
-                          dense={review}
-                          nameClassName={review ? 'w-[334px] shrink-0' : undefined}
+                          dense={artistLibrary}
+                          nameClassName={artistLibrary ? 'w-[334px] shrink-0' : undefined}
                           status={
                             analysisReady(track)
                               ? 'ready'
@@ -4378,7 +4378,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                           }
                         >
                           <TrackWaveformPreview
-                            className={cn(review ? 'w-[152px] shrink-0' : 'w-[128px] shrink-0', mode === 'audition' && 'grow')}
+                            className={cn(artistLibrary ? 'w-[152px] shrink-0' : 'w-[128px] shrink-0', mode === 'audition' && 'grow')}
                             waveformState={getWaveformState(track.id)}
                             durationMs={durationMsForTrack(track, null)}
                             cues={cueMarkersFromState(cueState)}
@@ -4386,13 +4386,13 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                             ariaLabel={`Waveform for ${track.title}`}
                           />
                         </TrackNameCell>
-                        <td className={review ? cn('px-3 py-1.5 whitespace-nowrap', LIBRARY_VALUE) : 'px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums'}>{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
-                        <td className={review ? cn('px-3 py-1.5 whitespace-nowrap', LIBRARY_VALUE) : 'px-3 py-1.5'}>
-                          {review
+                        <td className={artistLibrary ? cn('px-3 py-1.5 whitespace-nowrap', LIBRARY_VALUE) : 'px-3 py-1.5 font-mono text-[13px] font-bold tabular-nums'}>{track.bpm != null ? track.bpm.toFixed(1) : '—'}</td>
+                        <td className={artistLibrary ? cn('px-3 py-1.5 whitespace-nowrap', LIBRARY_VALUE) : 'px-3 py-1.5'}>
+                          {artistLibrary
                             ? (track.musical_key ? formatCamelotKey(track.musical_key) : '—')
                             : <KeyBadge camelotKey={formatCamelotKey(track.musical_key)} variant={mode === 'audition' ? 'text' : 'badge'} />}
                         </td>
-                        <td className={cn('px-3 py-1.5', review ? LIBRARY_VALUE : 'text-xs text-muted-foreground', mode === 'audition' ? 'w-[112px] max-w-[112px]' : review ? 'w-[71px] max-w-[71px]' : 'w-[178px]')}>
+                        <td className={cn('px-3 py-1.5', artistLibrary ? LIBRARY_VALUE : 'text-xs text-muted-foreground', mode === 'audition' ? 'w-[112px] max-w-[112px]' : artistLibrary ? 'w-[71px] max-w-[71px]' : 'w-[178px]')}>
                           {audition ? (
                             <span className="block min-w-0 truncate">{effectiveGenre ?? '—'}</span>
                           ) : editingGenreTrackId === track.id ? (
@@ -4518,9 +4518,9 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                             </div>
                           )}
                         </td>
-                        <td className={review ? 'px-3 py-1.5' : 'px-3 py-1.5 text-center'}>
+                        <td className={artistLibrary ? 'px-3 py-1.5' : 'px-3 py-1.5 text-center'}>
                           <span className={cn(
-                            review
+                            artistLibrary
                               ? cn('whitespace-nowrap', LIBRARY_VALUE)
                               : mode === 'audition'
                               ? 'font-mono text-[12px] font-black text-primary'
@@ -4534,7 +4534,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                             {cueState?.status === 'loading' || !cueState ? '…' : cueState.status === 'failed' ? '!' : cueCount}
                           </span>
                         </td>
-                        {review && (
+                        {artistLibrary && (
                           <td className={cn('px-3 py-1.5 whitespace-nowrap', LIBRARY_VALUE)} data-testid="playlist-count">
                             {playlistCounts.counts.has(track.id)
                               ? <span title={`In ${playlistCounts.counts.get(track.id)} ${playlistCounts.counts.get(track.id) === 1 ? 'playlist' : 'playlists'}`}>{playlistCounts.counts.get(track.id)}</span>
@@ -4551,7 +4551,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                                 : '…'}
                           </td>
                         )}
-                        {review ? (
+                        {artistLibrary ? (
                           <td className="px-3 py-1.5 whitespace-nowrap" data-testid="properties-cell">
                             <span className="inline-flex items-center gap-1.5">
                               {[
@@ -4577,10 +4577,10 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                             </td>
                           </>
                         )}
-                        <td className={cn('w-[80px] px-3 py-1.5 text-left', review ? LIBRARY_VALUE : cn('text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]'))}>
+                        <td className={cn('w-[80px] px-3 py-1.5 text-left', artistLibrary ? LIBRARY_VALUE : cn('text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]'))}>
                           {formatTime(durationMsForTrack(track, null))}
                         </td>
-                        {review && (
+                        {artistLibrary && (
                           <td className="w-[64px] px-3 py-1.5" data-testid="cloud-cell">
                             <CloudSyncIcon synced={cloudSynced.keys.has(trackIdentityKey(track))} unknown={cloudSynced.failed} />
                           </td>

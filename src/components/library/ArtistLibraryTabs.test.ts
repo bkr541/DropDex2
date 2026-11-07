@@ -9,61 +9,61 @@ import { ArtistsPanel, GenresPanel, PlaylistsPanel } from './LibraryTabPanels';
 vi.mock('../../lib/supabase', () => ({ supabase: {} }));
 
 const read = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8');
-const reviewSource = read('./ReviewView.tsx');
+const artistLibrarySource = read('./ArtistLibraryView.tsx');
 const libraryViewSource = read('./LibraryView.tsx');
 const appSource = read('../../App.tsx');
 const cueSource = read('../cues/CuePointsView.tsx');
 
-describe('Review tabs', () => {
+describe('Artist Library tabs', () => {
   it('offers the Library tabs in the same order, without Overview and Analysis Incomplete', async () => {
-    const { reviewTabs } = await import('./reviewTabs');
-    expect(reviewTabs(false).map((tab) => tab.label)).toEqual(['Playlists', 'Recently Added', 'Tracks', 'Genres', 'Artists']);
+    const { artistLibraryTabs } = await import('./artistLibraryTabs');
+    expect(artistLibraryTabs(false).map((tab) => tab.label)).toEqual(['Playlists', 'Recently Added', 'Tracks', 'Genres', 'Artists']);
   });
 
   it('adds Spotify after Artists only when the account can show playlists', async () => {
-    const { reviewTabs } = await import('./reviewTabs');
-    expect(reviewTabs(true).map((tab) => tab.label)).toEqual(['Playlists', 'Recently Added', 'Tracks', 'Genres', 'Artists', 'Spotify']);
-    expect(reviewTabs(null).map((tab) => tab.id)).not.toContain('spotify');
+    const { artistLibraryTabs } = await import('./artistLibraryTabs');
+    expect(artistLibraryTabs(true).map((tab) => tab.label)).toEqual(['Playlists', 'Recently Added', 'Tracks', 'Genres', 'Artists', 'Spotify']);
+    expect(artistLibraryTabs(null).map((tab) => tab.id)).not.toContain('spotify');
   });
 
   it('starts on Tracks, and keeps the Tracks table mounted so its filters survive a tab change', () => {
-    expect(reviewSource).toContain("useState<ReviewTab>('tracks')");
-    expect(reviewSource).toContain('data-testid="review-tracks-panel"');
-    expect(reviewSource).toContain("activeTab === 'tracks' ? undefined : 'hidden'");
+    expect(artistLibrarySource).toContain("useState<ArtistLibraryTab>('tracks')");
+    expect(artistLibrarySource).toContain('data-testid="artist-library-tracks-panel"');
+    expect(artistLibrarySource).toContain("activeTab === 'tracks' ? undefined : 'hidden'");
   });
 
   it('shows each tab with its own panel; the Library page no longer has these tabs', () => {
-    expect(reviewSource).toContain('<PlaylistsPanel');
-    expect(reviewSource).toContain('<GenresPanel');
-    expect(reviewSource).toContain('<ArtistsPanel');
-    expect(reviewSource).toContain('<RecentlyAddedPanel');
-    expect(reviewSource).toContain('<SpotifyLibraryTab');
+    expect(artistLibrarySource).toContain('<PlaylistsPanel');
+    expect(artistLibrarySource).toContain('<GenresPanel');
+    expect(artistLibrarySource).toContain('<ArtistsPanel');
+    expect(artistLibrarySource).toContain('<RecentlyAddedPanel');
+    expect(artistLibrarySource).toContain('<SpotifyLibraryTab');
     expect(libraryViewSource).not.toContain('<PlaylistsPanel');
     expect(libraryViewSource).not.toContain('<GenresPanel');
     expect(libraryViewSource).not.toContain('<ArtistsPanel');
     expect(libraryViewSource).not.toContain('<RecentlyAddedPanel');
     expect(libraryViewSource).not.toContain('<LibraryTabBar');
-    expect(reviewSource).toContain('<LibraryTabBar');
+    expect(artistLibrarySource).toContain('<LibraryTabBar');
   });
 
   it('falls back to Tracks if the Spotify tab disappears while it is open', () => {
-    expect(reviewSource).toContain("if (spotifyAvailable === false && activeTab === 'spotify') setActiveTab('tracks')");
+    expect(artistLibrarySource).toContain("if (spotifyAvailable === false && activeTab === 'spotify') setActiveTab('tracks')");
   });
 });
 
-describe('Review page name and header row', () => {
+describe('Artist Library page name and header row', () => {
   it('is named after the artist, with a plain fallback', () => {
-    expect(appSource).toContain("case 'review': return titledPage(`${userProfile?.display_name?.trim() || 'My'} Library`);");
+    expect(appSource).toContain("case 'artist-library': return titledPage(`${userProfile?.display_name?.trim() || 'My'} Library`);");
     expect(appSource).not.toContain("titledPage('Review')");
   });
 
-  it('no longer has the Tracks heading and count row inside the Review table', () => {
+  it('no longer has the Tracks heading and count row inside the Artist Library table', () => {
     expect(cueSource).not.toContain('<Music size={13} /> Tracks</h2>');
   });
 
   it('passes the Library data the new tabs need', () => {
     for (const prop of ['playlistsLoading', 'playlistProfilesByRbId', 'recentTracks', 'recentTracksLoading', 'spotifyAccessToken', 'onPlaylistClick', 'onEditPlaylist']) {
-      expect(appSource).toMatch(new RegExp(`<ReviewView[\\s\\S]*?${prop}=\\{`));
+      expect(appSource).toMatch(new RegExp(`<ArtistLibraryView[\\s\\S]*?${prop}=\\{`));
     }
   });
 });
@@ -103,12 +103,12 @@ describe('Library tab icons', () => {
     expect(markup).toContain('class="lib-tab"');
   });
 
-  it('gives every Library and Review tab its own icon', async () => {
+  it('gives every Library and Artist Library tab its own icon', async () => {
     const { LIBRARY_TABS, SPOTIFY_TAB } = await import('./LibraryView');
-    const { reviewTabs } = await import('./reviewTabs');
+    const { artistLibraryTabs } = await import('./artistLibraryTabs');
     for (const tab of [...LIBRARY_TABS, SPOTIFY_TAB]) expect(tab.icon, tab.id).toBeTruthy();
     expect(new Set([...LIBRARY_TABS, SPOTIFY_TAB].map((tab) => tab.icon)).size).toBe(LIBRARY_TABS.length + 1);
-    for (const tab of reviewTabs(true)) expect(tab.icon, tab.id).toBeTruthy();
+    for (const tab of artistLibraryTabs(true)) expect(tab.icon, tab.id).toBeTruthy();
   });
 });
 

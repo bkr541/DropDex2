@@ -17,12 +17,12 @@ describe('Library pages in the graphite look', () => {
 
   it('puts both pages in that look and drops the old blue glass', () => {
     const home = read('LibraryView.tsx');
-    const review = read('ReviewView.tsx');
+    const artistLibrary = read('ArtistLibraryView.tsx');
     expect(home).toContain("import './library-studio.css'");
     expect(home).toContain('lib-scope');
     expect(home).toContain('lib-hero');
-    expect(review).toContain('lib-scope');
-    for (const file of ['LibraryView.tsx', 'LibraryTabPanels.tsx', 'ReviewView.tsx']) {
+    expect(artistLibrary).toContain('lib-scope');
+    for (const file of ['LibraryView.tsx', 'LibraryTabPanels.tsx', 'ArtistLibraryView.tsx']) {
       expect(read(file), file).not.toContain('glass rounded');
     }
     expect(home).not.toContain('rgba(16,103,220');

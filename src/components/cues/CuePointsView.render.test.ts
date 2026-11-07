@@ -161,11 +161,11 @@ describe('Review shared browser and focused track timeline', () => {
     try {
       const markup = renderToStaticMarkup(createElement(AudioPlayerProvider, {
         imports: [], children: createElement(CuePointsView, {
-          mode: 'review', importId: 'import-test', onImport: vi.fn(), onTrackOpen: vi.fn(),
+          mode: 'artist-library', importId: 'import-test', onImport: vi.fn(), onTrackOpen: vi.fn(),
         }),
       }));
-      expect(markup).toContain('review-browser glass rounded-2xl');
-      expect(markup).toContain('aria-label="Search review tracks"');
+      expect(markup).toContain('artist-library-browser glass rounded-2xl');
+      expect(markup).toContain('aria-label="Search artist library tracks"');
       expect(markup).toContain('data-testid="cue-browser-filters"');
       expect(markup).toContain('Review Track');
       expect(markup).toContain('Properties');
@@ -180,7 +180,7 @@ describe('Review shared browser and focused track timeline', () => {
     }
   });
 
-  const renderRows = (mode: 'review' | 'cues') => {
+  const renderRows = (mode: 'artist-library' | 'cues') => {
     vi.stubGlobal('window', { devicePixelRatio: 1 });
     libraryFixture.tracks = [track];
     try {
@@ -197,8 +197,8 @@ describe('Review shared browser and focused track timeline', () => {
   const cell = (rows: string, text: string) => rows.match(new RegExp(`<td class="([^"]*)"[^>]*>(?:<span[^>]*>)?${text}(?:</span>)?</td>`))?.[1] ?? '';
 
   it('Review: every data value is 12px, the same size as the track title, in the normal text colour, medium weight, with no key badge, colours or boxes', () => {
-    const rows = renderRows('review');
-    expect(renderRows('review')).toContain('truncate font-bold text-xs leading-tight');
+    const rows = renderRows('artist-library');
+    expect(renderRows('artist-library')).toContain('truncate font-bold text-xs leading-tight');
     for (const value of ['128.0', '08A', '3:00']) {
       expect(cell(rows, value), value).toContain(valueClass);
             expect(cell(rows, value), value).not.toContain('text-muted-foreground');
@@ -209,7 +209,7 @@ describe('Review shared browser and focused track timeline', () => {
   });
 
   it('Review: Format, rate and bit rate share one Properties column, each value in its own 12px badge, the same size as the other values', () => {
-    const rows = renderRows('review');
+    const rows = renderRows('artist-library');
     const cell = rows.match(/<td class="px-3 py-1.5 whitespace-nowrap" data-testid="properties-cell">([\s\S]*?)<\/td>/)?.[1] ?? '';
     const badges = cell.match(/<span class="dd-status-badge dd-tone-neutral"[^>]*>[\s\S]*?<\/span><\/span>/g) ?? [];
     expect(badges).toHaveLength(3);
@@ -225,7 +225,7 @@ describe('Review shared browser and focused track timeline', () => {
     libraryFixture.tracks = [{ ...track, file_format: null, sample_rate_hz: null, bitrate_kbps: null } as RekordboxTrack];
     try {
       const markup = renderToStaticMarkup(createElement(AudioPlayerProvider, {
-        imports: [], children: createElement(CuePointsView, { mode: 'review', importId: 'import-test', onImport: vi.fn(), onTrackOpen: vi.fn() }),
+        imports: [], children: createElement(CuePointsView, { mode: 'artist-library', importId: 'import-test', onImport: vi.fn(), onTrackOpen: vi.fn() }),
       }));
       const cell = markup.match(/data-testid="properties-cell">([\s\S]*?)<\/td>/)?.[1] ?? '';
       expect(cell).toContain('—');
@@ -237,7 +237,7 @@ describe('Review shared browser and focused track timeline', () => {
   });
 
   it('Review: the genre, cues and playlists values look the same as the rest', () => {
-    const rows = renderRows('review');
+    const rows = renderRows('artist-library');
     expect(rows).toMatch(new RegExp(`<td class="[^"]*${valueClass}[^"]*w-\\[71px\\][^"]*"><span class="block min-w-0 truncate">House</span></td>`));
     expect(rows).toMatch(new RegExp(`<td class="px-3 py-1.5"><span class="[^"]*${valueClass}[^"]*">…</span></td>`));
     expect(rows).toMatch(new RegExp(`data-testid="playlist-count"`));
@@ -245,7 +245,7 @@ describe('Review shared browser and focused track timeline', () => {
   });
 
   it('Review: the cues count has no box around it and starts at the left of its column like the others', () => {
-    const rows = renderRows('review');
+    const rows = renderRows('artist-library');
     expect(rows).not.toContain('inline-flex min-w-8 justify-center rounded-md border');
     expect(rows).not.toContain('<td class="px-3 py-1.5 text-center">');
     expect(rows).toContain('<td class="px-3 py-1.5"><span class="whitespace-nowrap text-xs font-medium text-foreground">');
@@ -264,7 +264,7 @@ describe('Review shared browser and focused track timeline', () => {
   it('Review: adds a Playlists column showing how many playlists each track is in', () => {
     playlistCountFixture.counts = new Map([['review-track', 3]]);
     try {
-      const markup = renderRows('review');
+      const markup = renderRows('artist-library');
       expect(markup).toContain('data-testid="playlist-count"');
       expect(markup).toMatch(/data-testid="playlist-count"><span title="In 3 playlists">3<\/span>/);
     } finally {
@@ -274,12 +274,12 @@ describe('Review shared browser and focused track timeline', () => {
 
   it('Review: says "playlist" for one, shows … while loading, and a retry when the counts failed', () => {
     playlistCountFixture.counts = new Map([['review-track', 1]]);
-    expect(renderRows('review')).toContain('title="In 1 playlist">1</span>');
+    expect(renderRows('artist-library')).toContain('title="In 1 playlist">1</span>');
     playlistCountFixture.counts = new Map();
-    expect(renderRows('review')).toMatch(/data-testid="playlist-count">…<\/td>/);
+    expect(renderRows('artist-library')).toMatch(/data-testid="playlist-count">…<\/td>/);
     playlistCountFixture.error = 'Playlist counts could not be loaded.';
     try {
-      const failed = renderRows('review');
+      const failed = renderRows('artist-library');
       expect(failed).toContain('aria-label="Playlist counts could not be loaded. Try again."');
     } finally {
       playlistCountFixture.error = null;
@@ -291,7 +291,7 @@ describe('Review shared browser and focused track timeline', () => {
   });
 
   it('Review: all nine column headings are 13px, extra bold and in capitals, with no icons; Properties replaces Format, Rate and Bit Rate', () => {
-    const table = (mode: 'review' | 'cues') => {
+    const table = (mode: 'artist-library' | 'cues') => {
       vi.stubGlobal('window', { devicePixelRatio: 1 });
       libraryFixture.tracks = [track];
       try {
@@ -304,7 +304,7 @@ describe('Review shared browser and focused track timeline', () => {
         vi.unstubAllGlobals();
       }
     };
-    const review = table('review');
+    const review = table('artist-library');
     const head = review.slice(review.indexOf('<thead'), review.indexOf('</thead>'));
     expect(head.match(/<th /g)).toHaveLength(9);
     for (const label of ['Track', 'BPM', 'Key', 'Genre', 'Cues', 'Playlists', 'Properties', 'Duration', 'Cloud']) {
@@ -333,13 +333,13 @@ describe('Review shared browser and focused track timeline', () => {
     const { readFileSync } = await import('node:fs');
     const source = readFileSync(new URL('./CuePointsView.tsx', import.meta.url), 'utf8');
     expect(source).toContain('const LIBRARY_LARGE_ICON_HEADINGS = false;');
-    expect(source).toContain('<TrackTableHead large={review && LIBRARY_LARGE_ICON_HEADINGS} className={review ? LIBRARY_HEADING : undefined}>');
+    expect(source).toContain('<TrackTableHead large={artistLibrary && LIBRARY_LARGE_ICON_HEADINGS} className={artistLibrary ? LIBRARY_HEADING : undefined}>');
     expect(source).toContain("const LIBRARY_HEADING = 'text-[13px] font-extrabold';");
-    expect(source).toContain("icon={review && LIBRARY_LARGE_ICON_HEADINGS ? icon : undefined}");
+    expect(source).toContain("icon={artistLibrary && LIBRARY_LARGE_ICON_HEADINGS ? icon : undefined}");
   });
 
   it('Review: the genre column is 60% narrower, and the track name sits closer to its status dot at 12px', () => {
-    const markup = renderRows('review');
+    const markup = renderRows('artist-library');
     expect(markup).toContain('w-[71px] max-w-[71px]');
     expect(markup).not.toContain('w-[178px]');
     expect(markup).toContain('group flex min-w-0 items-center gap-1.5');
@@ -347,7 +347,7 @@ describe('Review shared browser and focused track timeline', () => {
   });
 
   it('Review: the artwork is 30px, the height of the 15px title line and the 15px artist line together; Cue Points keeps 36px', () => {
-    const review = renderRows('review');
+    const review = renderRows('artist-library');
     expect(review).toContain('h-[30px] w-[30px]');
     expect(review).not.toContain('h-9 w-9');
     expect(review).toContain('truncate font-bold text-xs leading-tight');
@@ -358,7 +358,7 @@ describe('Review shared browser and focused track timeline', () => {
   });
 
   it('Review: the track name is 12px narrower (334px) and the waveform 24px wider (152px) than the 346px and 128px on other pages', () => {
-    const review = renderRows('review');
+    const review = renderRows('artist-library');
     expect(review).toContain('min-w-0 w-[334px] shrink-0');
     expect(review).toContain('w-[152px] shrink-0');
     expect(review).not.toContain('w-[140px]');
@@ -376,7 +376,7 @@ describe('Review shared browser and focused track timeline', () => {
     const { readFileSync } = await import('node:fs');
     const css = readFileSync(new URL('../ui/dropdex-display.css', import.meta.url), 'utf8');
     expect(css).toMatch(/\.cue-browser__table--tight th,\s*\.cue-browser__table--tight td \{\s*padding-inline: 10px;/);
-    const tableOf = (mode: 'review' | 'cues') => {
+    const tableOf = (mode: 'artist-library' | 'cues') => {
       vi.stubGlobal('window', { devicePixelRatio: 1 });
       libraryFixture.tracks = [track];
       try {
@@ -388,7 +388,7 @@ describe('Review shared browser and focused track timeline', () => {
         vi.unstubAllGlobals();
       }
     };
-    expect(tableOf('review')).toContain('cue-browser__table--tight');
+    expect(tableOf('artist-library')).toContain('cue-browser__table--tight');
     expect(tableOf('cues')).not.toContain('cue-browser__table--tight');
   });
 

@@ -33,7 +33,7 @@ describe('Layout Lab Nav Design tab', () => {
 
   it('uses the production nav icons and page names', () => {
     expect(tsx).toContain("import { NAV_ICONS } from '../navigation/NavIcons';");
-    for (const label of ['Library', 'Review', 'Cue Points', 'Audition', 'Discover', 'Drop Lab', 'Flip Lab', 'USB Management']) expect(markup).toContain(`<b>${label}</b>`);
+    for (const label of ['Library', 'Artist Library', 'Cue Points', 'Audition', 'Discover', 'Drop Lab', 'Flip Lab', 'USB Management']) expect(markup).toContain(`<b>${label}</b>`);
   });
 
   it('gives every study its own active icon, its own hover name and its own graphite finish', () => {

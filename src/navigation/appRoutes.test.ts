@@ -77,3 +77,11 @@ describe('app routes', () => {
       .toEqual({ name: 'playlist', playlistId: 'p1' });
   });
 });
+
+describe('Artist Library route', () => {
+  it('lives at /artist-library, and the old /review link still opens it', () => {
+    expect(routeToUrl({ name: 'artist-library' })).toBe('/artist-library');
+    expect(parseAppRoute('/artist-library', '')).toEqual({ name: 'artist-library' });
+    expect(parseAppRoute('/review', '')).toEqual({ name: 'artist-library' });
+  });
+});

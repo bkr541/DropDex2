@@ -1,4 +1,4 @@
-/* The Library pages (Home overview and Review) in the graphite look from Audition, Discovery and the Layout Lab mockups.
+/* The Library pages (Home overview and Artist Library) in the graphite look from Audition, Discovery and the Layout Lab mockups.
    The recipe:
    - a matte slate gradient (#292d37 > #20242e > #191d25) with a fine horizontal grain and a lit top rim
    - hairline edges (#ffffff0d to #ffffff1a), never a bright border
@@ -76,7 +76,7 @@
 /* The sticky header on the overview: frosted graphite, so tracks scrolling under it stay out of the way. */
 .lib-sticky { background: linear-gradient(180deg, #20242eF2 0%, #20242ee6 100%); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
 
-/* The underlined tab row (Review, and the Library overview's tabs). */
+/* The underlined tab row (Artist Library, and the Library overview's tabs). */
 .lib-tabs { display: flex; align-items: center; gap: 2px; overflow-x: auto; border-bottom: 1px solid #ffffff0d; scrollbar-width: none; }
 .lib-tabs::-webkit-scrollbar { display: none; }
 .lib-tab { display: inline-flex; flex: none; align-items: center; gap: 8px; margin-bottom: -1px; padding: 11px 14px; border-bottom: 2px solid transparent; color: #a4adbd; font-size: 11px; font-weight: 400; letter-spacing: .02em; white-space: nowrap; transition: color 120ms, border-color 120ms; }

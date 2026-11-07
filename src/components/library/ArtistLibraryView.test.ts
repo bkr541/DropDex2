@@ -20,7 +20,7 @@ const loadedA: WaveformLoadState = {
   },
 };
 
-describe('Review waveform state contract', () => {
+describe('Artist Library waveform state contract', () => {
   it('keeps each card scoped to its own track ID', () => {
     const states = new Map<string, WaveformLoadState>([['track-a', loadedA]]);
     expect(waveformStateForTrack(states, 'track-a')).toBe(loadedA);

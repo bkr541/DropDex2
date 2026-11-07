@@ -22,7 +22,7 @@ export type AppRoute =
       candidateDropId: string | null;
     }
   | { name: 'import'; importId: string; resume: boolean }
-  | { name: 'review' }
+  | { name: 'artist-library' }
   | { name: 'cues' }
   | { name: 'audition' }
   | { name: 'discovery' }
@@ -135,7 +135,9 @@ export function parseAppRoute(pathname: string, search = ''): AppRoute {
   }
 
   switch (normalizedPath) {
-    case '/review': return { name: 'review' };
+    case '/artist-library': return { name: 'artist-library' };
+    // The page used to be called Review; keep old links and bookmarks working.
+    case '/review': return { name: 'artist-library' };
     case '/cues': return { name: 'cues' };
     case '/audition': return { name: 'audition' };
     case '/discovery': return { name: 'discovery' };
@@ -173,7 +175,7 @@ export function routeToUrl(route: AppRoute): string {
     }
     case 'import':
       return `/imports/${encodeURIComponent(route.importId)}${route.resume ? '?resume=1' : ''}`;
-    case 'review': return '/review';
+    case 'artist-library': return '/artist-library';
     case 'cues': return '/cues';
     case 'audition': return '/audition';
     case 'discovery': return '/discovery';
@@ -197,7 +199,7 @@ export function routeBackFallback(route: AppRoute): AppRoute {
       : { name: 'library', tab: 'overview', search: '' };
     case 'track':
     case 'playlist':
-    case 'review':
+    case 'artist-library':
     case 'cues':
     case 'audition':
     case 'discovery':

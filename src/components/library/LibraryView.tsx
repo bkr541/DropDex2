@@ -48,7 +48,7 @@ import { useSpotifyAvailability } from '../../hooks/useSpotifyAvailability';
 
 
 const TABS: { id: LibraryTab; label: string; icon: ElementType }[] = [
-  { id: 'overview', label: 'Overview', icon: Dashboard },
+  { id: 'overview', label: 'Home', icon: Dashboard },
   { id: 'playlists', label: 'Playlists', icon: Playlist },
   { id: 'recently-added', label: 'Recently Added', icon: Time },
   { id: 'tracks', label: 'Tracks', icon: Music },
@@ -459,7 +459,7 @@ export function LibraryTrackTable({
   );
 }
 
-/** The Recently Added tab: the newest tracks in a table. Shared by the Library and Review pages. */
+/** The Recently Added tab: the newest tracks in a table. Shared by the Library and Artist Library pages. */
 export function RecentlyAddedPanel({ tracks, loading, ...tableProps }: Omit<LibraryTrackTableProps, 'emptyText' | 'footer'>) {
   return (
     <div className="space-y-3">
@@ -1279,7 +1279,7 @@ export function LibraryView({
                       {isIncompleteView && (
                         <div className="space-y-3">
                           <ControlButton variant="ghost" onClick={() => onActiveTabChange('overview')} data-testid="incomplete-back">
-                            <ChevronLeft size={14} /> Back to overview
+                            <ChevronLeft size={14} /> Back to home
                           </ControlButton>
                           <p className="text-xs text-muted-foreground font-mono">
                             {incompleteFetching

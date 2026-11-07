@@ -4,7 +4,7 @@ import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { UserPlaylistProfile } from '../../types';
 import { PlaylistOverviewCard } from './PlaylistOverviewCard';
 
-/** The Playlists tab: a card for every playlist. Shared by the Library and Review pages. */
+/** The Playlists tab: a card for every playlist. Shared by the Library and Artist Library pages. */
 export function PlaylistsPanel({
   playlists, loading, profilesByRbId, onPlaylistClick, onEditPlaylist,
 }: {

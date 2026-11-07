@@ -13,7 +13,7 @@ import './layout-lab-nav-design.css';
 
 const NAV = [
   { id: 'library', label: 'Library', icon: 'home' },
-  { id: 'review', label: 'Review', icon: 'review' },
+  { id: 'artist-library', label: 'Artist Library', icon: 'artist-library' },
   { id: 'cues', label: 'Cue Points', icon: 'cues' },
   { id: 'audition', label: 'Audition', icon: 'audition' },
   { id: 'discovery', label: 'Discover', icon: 'discovery' },

@@ -13,10 +13,10 @@ import { ControlButton } from '../ui/controls';
 import { RecentlyAddedPanel } from './LibraryView';
 import { LibraryTabBar } from './LibraryTabBar';
 import { ArtistsPanel, GenresPanel, PlaylistsPanel } from './LibraryTabPanels';
-import { reviewTabs, type ReviewTab } from './reviewTabs';
+import { artistLibraryTabs, type ArtistLibraryTab } from './artistLibraryTabs';
 import { SpotifyLibraryTab } from './SpotifyLibraryTab';
 
-export interface ReviewViewProps {
+export interface ArtistLibraryViewProps {
   importId: string;
   playlists: PlaylistWithCount[];
   playlistsLoading: boolean;
@@ -30,7 +30,7 @@ export interface ReviewViewProps {
   onTrackClick: (track: RekordboxTrack) => void;
 }
 
-/** Recently Added with its own waveform loading and playback, since Review has no shared table state. */
+/** Recently Added with its own waveform loading and playback, since the Artist Library has no shared table state. */
 function ReviewRecentlyAdded({
   importId, tracks, loading, onTrackClick,
 }: { importId: string; tracks: RekordboxTrack[]; loading: boolean; onTrackClick: (track: RekordboxTrack) => void }) {
@@ -54,18 +54,18 @@ function ReviewRecentlyAdded({
   );
 }
 
-export function ReviewView({
+export function ArtistLibraryView({
   importId, playlists, playlistsLoading, playlistProfilesByRbId, recentTracks, recentTracksLoading,
   spotifyAccessToken, onPlaylistClick, onEditPlaylist, onImport, onTrackClick,
-}: ReviewViewProps) {
+}: ArtistLibraryViewProps) {
   const { stats, loading: statsLoading } = useLibraryStats(importId);
-  const [activeTab, setActiveTab] = useState<ReviewTab>('tracks');
+  const [activeTab, setActiveTab] = useState<ArtistLibraryTab>('tracks');
   const spotifyAvailable = useSpotifyAvailability(spotifyAccessToken);
   // The track picked in the Tracks table. The table selects the first track on load.
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
   const panelTrackIds = useMemo(() => (selectedTrack ? [selectedTrack.id] : []), [selectedTrack]);
   const panelWaveforms = useTrackPreviewWaveforms(importId, panelTrackIds);
-  const tabs = useMemo(() => reviewTabs(spotifyAvailable), [spotifyAvailable]);
+  const tabs = useMemo(() => artistLibraryTabs(spotifyAvailable), [spotifyAvailable]);
 
   useEffect(() => {
     if (spotifyAvailable === false && activeTab === 'spotify') setActiveTab('tracks');
@@ -75,7 +75,7 @@ export function ReviewView({
   const artistStats = useMemo(() => (stats?.artistTotals ?? []).map(({ name, count }) => [name, count] as const), [stats?.artistTotals]);
 
   return (
-    <div className="lib-scope min-w-0 space-y-5" data-testid="review-library">
+    <div className="lib-scope min-w-0 space-y-5" data-testid="artist-library">
       {/* The selected track's waveform, cue points and beat grid: the same panel as Track Intelligence. */}
       {selectedTrack && (
         <CuePointsTrackPanel
@@ -86,7 +86,7 @@ export function ReviewView({
         />
       )}
 
-      <LibraryTabBar<ReviewTab> tabs={tabs} activeTab={activeTab} onChange={setActiveTab} ariaLabel="Library sections" />
+      <LibraryTabBar<ArtistLibraryTab> tabs={tabs} activeTab={activeTab} onChange={setActiveTab} ariaLabel="Library sections" />
 
       {activeTab === 'playlists' && (
         <PlaylistsPanel
@@ -101,8 +101,8 @@ export function ReviewView({
         <ReviewRecentlyAdded importId={importId} tracks={recentTracks} loading={recentTracksLoading} onTrackClick={onTrackClick} />
       )}
       {/* Kept mounted so its search and filters are still there when you come back to Tracks. */}
-      <div className={activeTab === 'tracks' ? undefined : 'hidden'} data-testid="review-tracks-panel">
-        <CuePointsView mode="review" importId={importId} onImport={onImport} onTrackOpen={onTrackClick} onSelectedTrackChange={setSelectedTrack} />
+      <div className={activeTab === 'tracks' ? undefined : 'hidden'} data-testid="artist-library-tracks-panel">
+        <CuePointsView mode="artist-library" importId={importId} onImport={onImport} onTrackOpen={onTrackClick} onSelectedTrackChange={setSelectedTrack} />
       </div>
       {activeTab === 'genres' && <GenresPanel genreStats={genreStats} loading={statsLoading} />}
       {activeTab === 'artists' && <ArtistsPanel artistStats={artistStats} loading={statsLoading} />}
@@ -111,11 +111,11 @@ export function ReviewView({
   );
 }
 
-export function ReviewEmptyState({ onImport }: { onImport?: () => void }) {
+export function ArtistLibraryEmptyState({ onImport }: { onImport?: () => void }) {
   return (
     <div className="lib-scope lib-card p-8 text-center">
       <Music size={40} className="mx-auto mb-4 text-primary" />
-      <h2 className="text-[26px] font-light tracking-[-0.035em]">Review your library</h2>
+      <h2 className="text-[26px] font-light tracking-[-0.035em]">Artist Library</h2>
       <p className="mt-2 text-sm text-muted-foreground">Import a library to start reviewing your collection.</p>
       {onImport && <ControlButton variant="primary" onClick={onImport} className="mt-5"><Upload size={16} /> Import library</ControlButton>}
     </div>

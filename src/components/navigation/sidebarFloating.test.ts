@@ -6,7 +6,7 @@ import { activeSidebarKey } from './sidebarGroups';
 const read = (p: string) => readFileSync(resolve(__dirname, p), 'utf8');
 describe('activeSidebarKey', () => {
   it('maps pages to entries', () => {
-    expect(activeSidebarKey('home', ['home', 'review'])).toBe('home');
+    expect(activeSidebarKey('home', ['home', 'artist-library'])).toBe('home');
     expect(activeSidebarKey('settings', ['home'])).toBe('profile');
     expect(activeSidebarKey('other', ['home'])).toBeNull();
   });
@@ -68,7 +68,7 @@ describe('Left nav icons', () => {
   const data = read('./navIconData.ts');
   const wanted: [string, string, string][] = [
     ['home', 'Shelf divider', 'Library'],
-    ['review', 'Clip listening', 'Review'],
+    ['artist-library', 'Clip listening', 'Artist Library'],
     ['cues', 'Marker on wave', 'Cue Points'],
     ['audition', 'Listening booth', 'Audition'],
     ['discovery', 'Globe pin', 'Discover'],

@@ -9,7 +9,7 @@ export interface LibraryTabBarItem<T extends string = string> {
   disabled?: boolean;
 }
 
-/** The underlined tab row from the artist Library page. Review uses the same one. */
+/** The underlined tab row from the artist Library page. The Artist Library uses the same one. */
 export function LibraryTabBar<T extends string>({
   tabs, activeTab, onChange, ariaLabel = 'Library sections',
 }: {

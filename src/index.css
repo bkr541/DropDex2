@@ -49,7 +49,7 @@
   --color-primary-rgb: 59 145 255;
   --color-secondary-rgb: 56 195 220;
   --color-brand-primary-rgb: 207 107 101;
-  --color-review-glow-rgb: 56 195 220;
+  --color-artist-library-glow-rgb: 56 195 220;
   --color-waveform-mono: #cf6b65;
   --color-waveform-secondary: #e8937e;
   --color-waveform-playhead: #f7fbff;
@@ -172,7 +172,7 @@
 
   --color-primary-rgb: 22 140 255;
   --color-secondary-rgb: 56 175 255;
-  --color-review-glow-rgb: 56 175 255;
+  --color-artist-library-glow-rgb: 56 175 255;
   --color-waveform-mono: #5bc4ff;
   --color-waveform-secondary: #90dcff;
   --color-waveform-playhead: #f8fbff;
@@ -329,7 +329,7 @@ html .glass.logo-gradient-border {
 }
 
 .shadow-secondary-selection {
-  box-shadow: 0 4px 14px rgb(var(--color-review-glow-rgb) / 0.09);
+  box-shadow: 0 4px 14px rgb(var(--color-artist-library-glow-rgb) / 0.09);
 }
 
 .shadow-brand-icon {

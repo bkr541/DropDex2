@@ -29,18 +29,18 @@ vi.mock('../../hooks/useTrackPreviewWaveforms', () => ({
 vi.mock('../../hooks/useSpotifyAvailability', () => ({ useSpotifyAvailability: () => false }));
 vi.mock('../../lib/supabase', () => ({ supabase: {} }));
 
-let ReviewView: typeof import('./ReviewView').ReviewView;
+let ArtistLibraryView: typeof import('./ArtistLibraryView').ArtistLibraryView;
 let AudioPlayerProvider: typeof import('../../contexts/AudioPlayerContext').AudioPlayerProvider;
 
 beforeAll(async () => {
   vi.stubGlobal('window', { devicePixelRatio: 1 });
-  ({ ReviewView } = await import('./ReviewView'));
+  ({ ArtistLibraryView } = await import('./ArtistLibraryView'));
   ({ AudioPlayerProvider } = await import('../../contexts/AudioPlayerContext'));
 });
 
 const render = () => renderToStaticMarkup(createElement(AudioPlayerProvider, {
   imports: [],
-  children: createElement(ReviewView, {
+  children: createElement(ArtistLibraryView, {
     importId: 'import-1',
     playlists: [],
     playlistsLoading: false,
@@ -55,7 +55,7 @@ const render = () => renderToStaticMarkup(createElement(AudioPlayerProvider, {
   }),
 }));
 
-describe('Review page', () => {
+describe('Artist Library page', () => {
   it('shows the Library tab row above the table, with Tracks selected', () => {
     const markup = render();
     const tabs = markup.indexOf('role="tablist"');
@@ -78,19 +78,19 @@ describe('Review page', () => {
 
   it('keeps the search and filters of the Tracks table', () => {
     const markup = render();
-    expect(markup).toContain('aria-label="Search review tracks"');
+    expect(markup).toContain('aria-label="Search artist library tracks"');
     expect(markup).toContain('data-testid="cue-browser-filters"');
   });
 
   it('no longer has the profile card or the USB, analysis, genre, BPM and Camelot hero, which are on the Overview page', () => {
     const markup = render();
     for (const text of ['USB Import', 'Track Analysis', 'Top Genres', 'BPM Distribution', 'Camelot Wheel', 'Import Library']) expect(markup).not.toContain(text);
-    const source = readFileSync(new URL('./ReviewView.tsx', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('./ArtistLibraryView.tsx', import.meta.url), 'utf8');
     for (const name of ['DesktopLibraryHero', 'ArtistProfileCard', 'LibraryHero']) expect(source).not.toContain(name);
   });
 
   it('shows the selected track\'s waveform panel (the Track Intelligence one) where the hero was, above the tabs', () => {
-    const source = readFileSync(new URL('./ReviewView.tsx', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('./ArtistLibraryView.tsx', import.meta.url), 'utf8');
     expect(source).toContain('<CuePointsTrackPanel');
     expect(source.indexOf('<CuePointsTrackPanel')).toBeLessThan(source.indexOf('<LibraryTabBar'));
     expect(source).toContain('onSelectedTrackChange={setSelectedTrack}');
@@ -100,7 +100,7 @@ describe('Review page', () => {
     const view = readFileSync(new URL('../cues/CuePointsView.tsx', import.meta.url), 'utf8');
     expect(view).toContain('if (selectedTrackId == null && orderedVisibleTracks.length > 0) {\n      setSelectedTrack(orderedVisibleTracks[0]);');
     expect(view).toContain('onClick={() => setSelectedTrack(track)}');
-    expect(view).toContain('onDoubleClick={review ? () => onTrackOpen?.(track) : undefined}');
-    expect(view).toContain("if (review && event.key === 'Enter') onTrackOpen?.(track);");
+    expect(view).toContain('onDoubleClick={artistLibrary ? () => onTrackOpen?.(track) : undefined}');
+    expect(view).toContain("if (artistLibrary && event.key === 'Enter') onTrackOpen?.(track);");
   });
 });

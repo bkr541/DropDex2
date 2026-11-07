@@ -44,8 +44,8 @@ import { useRouteImport, useRoutePlaylist, useRouteTracks } from './hooks/useRou
 
 const DiscoveryView = lazyWithRecovery('discovery', () => import('./components/discovery/DiscoveryView').then(m => ({ default: m.DiscoveryView })));
 const FlipLabView = lazyWithRecovery('flip-lab', () => import('./components/flip-lab/FlipLabView').then(m => ({ default: m.FlipLabView })));
-const ReviewView = lazyWithRecovery('review', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewView })));
-const ReviewEmptyState = lazyWithRecovery('review-empty', () => import('./components/library/ReviewView').then(m => ({ default: m.ReviewEmptyState })));
+const ArtistLibraryView = lazyWithRecovery('artist-library', () => import('./components/library/ArtistLibraryView').then(m => ({ default: m.ArtistLibraryView })));
+const ArtistLibraryEmptyState = lazyWithRecovery('artist-library-empty', () => import('./components/library/ArtistLibraryView').then(m => ({ default: m.ArtistLibraryEmptyState })));
 const CuePointsView = lazyWithRecovery('cue-points', () => import('./components/cues/CuePointsView').then(m => ({ default: m.CuePointsView })));
 const AuditionView = lazyWithRecovery('audition', () => import('./components/audition/AuditionView').then(m => ({ default: m.AuditionView })));
 const UsbManagementView = lazyWithRecovery('usb-management', () => import('./components/usb-management/UsbManagementView').then(m => ({ default: m.UsbManagementView })));
@@ -93,7 +93,7 @@ const THEME_OPTIONS: ThemeOption[] = [
   { id: 'cdj', label: 'CDJ', description: 'Performance deck', icon: RecordingFilled },
 ];
 
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'review' | 'cues' | 'audition' | 'settings' | 'discovery' | 'drop-lab' | 'import' | 'flip-lab' | 'usb' | 'not-found';
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'artist-library' | 'cues' | 'audition' | 'settings' | 'discovery' | 'drop-lab' | 'import' | 'flip-lab' | 'usb' | 'not-found';
 
 type ImportNotice = {
   kind: 'success' | 'warning';
@@ -109,7 +109,7 @@ function viewForRoute(route: AppRoute): View {
     case 'track': return 'track';
     case 'drop-lab': return 'drop-lab';
     case 'import': return 'import';
-    case 'review': return 'review';
+    case 'artist-library': return 'artist-library';
     case 'cues': return 'cues';
     case 'audition': return 'audition';
     case 'discovery': return 'discovery';
@@ -160,11 +160,11 @@ function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavPr
         <span className="text-[8px] font-bold uppercase tracking-widest truncate max-w-[48px]">{libraryLabel}</span>
       </button>
       <button
-        onClick={() => setCurrentView('review')}
-        className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'review' ? 'text-secondary neon-text-purple' : 'text-muted-foreground')}
+        onClick={() => setCurrentView('artist-library')}
+        className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'artist-library' ? 'text-secondary neon-text-purple' : 'text-muted-foreground')}
       >
         <Growth size={20} />
-        <span className="text-[8px] font-bold uppercase tracking-widest">Review</span>
+        <span className="text-[8px] font-bold uppercase tracking-widest">Artist Library</span>
       </button>
 
       {/* USB connection — center of mobile nav */}
@@ -774,7 +774,7 @@ export default function App() {
   const setCurrentView = (view: View) => {
     switch (view) {
       case 'home': navigate(libraryRoute()); break;
-      case 'review': navigate({ name: 'review' }); break;
+      case 'artist-library': navigate({ name: 'artist-library' }); break;
       case 'cues': navigate({ name: 'cues' }); break;
       case 'audition': navigate({ name: 'audition' }); break;
       case 'settings': navigate({ name: 'settings' }); break;
@@ -1077,7 +1077,7 @@ export default function App() {
 
   const sidebarNavItems: { view: View; icon: React.ElementType; label: string }[] = [
     { view: 'home', icon: NAV_ICONS.home, label: libraryLabel },
-    { view: 'review', icon: NAV_ICONS.review, label: 'Review' },
+    { view: 'artist-library', icon: NAV_ICONS['artist-library'], label: 'Artist Library' },
     { view: 'cues', icon: NAV_ICONS.cues, label: 'Cue Points' },
     { view: 'audition', icon: NAV_ICONS.audition, label: 'Audition' },
     { view: 'discovery', icon: NAV_ICONS.discovery, label: 'Discover' },
@@ -1127,7 +1127,7 @@ export default function App() {
           ),
         };
       case 'track': return titledPage('Track Intelligence');
-      case 'review': return titledPage(`${userProfile?.display_name?.trim() || 'My'} Library`);
+      case 'artist-library': return titledPage(`${userProfile?.display_name?.trim() || 'My'} Library`);
       case 'settings': return titledPage('Profile');
       case 'discovery': return titledPage('Discovery');
       case 'flip-lab': return titledPage('Flip Lab');
@@ -1474,20 +1474,20 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* ── Review ── */}
-            {!routeBlocked && currentView === 'review' && (
+            {/* ── Artist Library ── */}
+            {!routeBlocked && currentView === 'artist-library' && (
               <motion.div
-                key="review"
+                key="artist-library"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
                 className="space-y-6"
               >
-                <LazyFeature label="Loading Review…" boundaryKey={`${routeKey(route)}:review`} onReturnToLibrary={returnToLibrary}>
+                <LazyFeature label="Loading Artist Library…" boundaryKey={`${routeKey(route)}:artist-library`} onReturnToLibrary={returnToLibrary}>
                   {!importId || !latestImport ? (
-                    <ReviewEmptyState onImport={() => setIsImportModalOpen(true)} />
+                    <ArtistLibraryEmptyState onImport={() => setIsImportModalOpen(true)} />
                   ) : (
-                    <ReviewView
+                    <ArtistLibraryView
                       importId={importId}
                       playlists={playlists}
                       playlistsLoading={playlistsLoading}

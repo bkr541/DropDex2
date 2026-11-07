@@ -76,7 +76,7 @@ test.describe('durable navigation and recovery', () => {
     await expect(page).toHaveURL('/roulette');
     await expect(page.getByTestId('roulette-screen')).toBeVisible();
 
-    await page.goto('/review');
+    await page.goto('/artist-library');
     await expect(page.getByRole('heading', { name: 'Set Review Mode' })).toBeVisible();
     await page.goto('/roulette');
     await expect(page.getByTestId('roulette-screen')).toBeVisible();
@@ -87,8 +87,8 @@ test.describe('durable navigation and recovery', () => {
     await page.goto('/library');
     await expect(page.getByText('Night Drive', { exact: true }).first()).toBeVisible();
 
-    await page.getByRole('button', { name: 'Review', exact: true }).first().click();
-    await expect(page).toHaveURL('/review');
+    await page.getByRole('button', { name: 'Artist Library', exact: true }).first().click();
+    await expect(page).toHaveURL('/artist-library');
     await expect(page.getByRole('heading', { name: 'Set Review Mode' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Discover', exact: true }).first().click();
@@ -96,7 +96,7 @@ test.describe('durable navigation and recovery', () => {
     await expect(page.getByRole('heading', { name: 'Artist Discovery' })).toBeVisible();
 
     await page.goBack();
-    await expect(page).toHaveURL('/review');
+    await expect(page).toHaveURL('/artist-library');
     await expect(page.getByRole('heading', { name: 'Set Review Mode' })).toBeVisible();
 
     await page.goBack();
@@ -104,7 +104,7 @@ test.describe('durable navigation and recovery', () => {
     await expect(page.getByText('Night Drive', { exact: true }).first()).toBeVisible();
 
     await page.goForward();
-    await expect(page).toHaveURL('/review');
+    await expect(page).toHaveURL('/artist-library');
     await page.goForward();
     await expect(page).toHaveURL('/discovery');
     await expect(page.getByRole('heading', { name: 'Artist Discovery' })).toBeVisible();
@@ -135,7 +135,7 @@ test.describe('durable navigation and recovery', () => {
 
   test('route render failures are contained and can return to the Library', async ({ page }) => {
     await prepare(page);
-    await page.goto('/review?__testRouteError=1');
+    await page.goto('/artist-library?__testRouteError=1');
 
     await expect(page.getByRole('heading', { name: 'DropDex hit an unexpected error' })).toBeVisible();
     await page.getByRole('button', { name: 'Return to Library' }).click();
