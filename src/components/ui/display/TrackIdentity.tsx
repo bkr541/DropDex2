@@ -32,11 +32,11 @@ const STAT_LABEL = 'uppercase tracking-[0.08em] text-foreground/45';
 function Stats({ stats, compact }: { stats: TrackIdentityStat[]; compact: boolean }) {
   if (stats.length === 0) return null;
   return (
-    <div className={cn('flex items-center font-semibold text-muted-foreground', compact ? 'mt-0.5 flex-wrap gap-x-3 gap-y-0.5 text-[9px]' : 'shrink-0 gap-x-4 text-[10px]')}>
+    <div className={cn('track-identity__stats flex items-center font-semibold text-muted-foreground', compact ? 'mt-0.5 flex-wrap gap-x-3 gap-y-0.5 text-[9px]' : 'shrink-0 gap-x-4 text-[10px]')}>
       {stats.map((stat) => (
-        <span key={stat.label} className="flex items-center">
-          <span className={STAT_LABEL}>{stat.label}</span>
-          <strong className="ml-1 text-foreground/90" style={stat.color ? { color: stat.color } : undefined}>{stat.value}</strong>
+        <span key={stat.label} className="track-identity__stat flex items-center">
+          <span className={cn(STAT_LABEL, 'track-identity__stat-label')}>{stat.label}</span>
+          <strong className="track-identity__stat-value ml-1 text-foreground/90" style={stat.color ? { color: stat.color } : undefined}>{stat.value}</strong>
         </span>
       ))}
     </div>
@@ -87,12 +87,12 @@ export function TrackIdentity({
   }
 
   return (
-    <div className={cn('flex min-w-0 flex-1 items-center', compact ? 'gap-2.5' : 'gap-3.5', className)}>
+    <div className={cn('track-identity flex min-w-0 flex-1 items-center', compact ? 'gap-2.5' : 'gap-3.5', className)}>
       {artwork}
-      <div className="min-w-0 flex-1">
+      <div className="track-identity__text min-w-0 flex-1">
         {captionNode}
         {titleNode}
-        <div className={compact ? undefined : 'flex min-w-0 items-center gap-4'}>
+        <div className={compact ? undefined : 'track-identity__meta flex min-w-0 items-center gap-4'}>
           <p className={cn('truncate font-medium leading-tight text-muted-foreground', compact ? 'text-[10px]' : 'min-w-0 text-xs')}>{artist}</p>
           <Stats stats={stats} compact={compact} />
         </div>

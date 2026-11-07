@@ -10,6 +10,7 @@ import { AudioDockMockupsContent } from './LayoutLabAudioDockMockups';
 import { ProgressMockupsContent } from './LayoutLabProgressMockups';
 import { DiscoveryMockupsContent } from './LayoutLabDiscoveryMockups';
 import { WaveformPreviewMockupsContent } from './LayoutLabWaveformMockups';
+import { NoticeCardMockupsContent } from './LayoutLabNoticeCardMockups';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,7 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'progress', label: 'Progress' },
   { id: 'discovery', label: 'Discovery' },
   { id: 'waveform-preview', label: 'Waveform Preview' },
+  { id: 'notice-card', label: 'Notice Card' },
 ];
 
 let tabCounter = 0;
@@ -367,6 +369,8 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
             <ProgressMockupsContent />
           ) : activeId === 'discovery' ? (
             <DiscoveryMockupsContent />
+          ) : activeId === 'notice-card' ? (
+            <NoticeCardMockupsContent />
           ) : activeId === 'waveform-preview' ? (
             <WaveformPreviewMockupsContent />
           ) : activeId === 'loaded-track' ? (

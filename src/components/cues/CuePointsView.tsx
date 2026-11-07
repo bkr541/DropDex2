@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { ChartLine, ChevronDown, CircleDash, Cloud, Close, ColorPalette, DocumentAudio, Edit, Export, Idea, Key, Meter, Music, Pause, Pending, Pin, Play, Playlist, Repeat, Save, Tag, Time, Timer, Upload, VolumeMute, VolumeUp, WarningAlt, Waveform } from '@carbon/icons-react';
 import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
 import { cn, formatKey } from '../../lib/utils';
@@ -108,6 +108,7 @@ import {
   validateVerifiedMetadataApplyResult,
 } from '../../lib/metadata/metadataApplyOrchestration';
 import { PendingMetadataChangesReview } from './PendingMetadataChangesReview';
+import './cue-studio.css';
 import type {
   DesktopCueApplyPreflightResult,
   DesktopCueApplyResult,
@@ -1263,6 +1264,7 @@ function CueWaveformPanel({
           <span className="mx-1.5 h-5 w-px bg-white/10" aria-hidden="true" />
           <ControlButton
             className="cue-action-icon"
+            data-label="Pending"
             variant="ghost"
             onClick={onOpenPendingChanges}
             aria-label={metadataDraftLoadStatus === 'loaded' ? `Open Pending Changes, ${pendingMetadataCount} pending` : 'Open Pending Changes'}
@@ -1274,6 +1276,7 @@ function CueWaveformPanel({
           </ControlButton>
           <ControlButton
             className="cue-action-icon"
+            data-label="Auto Cue"
             variant="ghost"
             aria-label="Auto Cue"
             disabled={!autoCueReady}
@@ -1285,6 +1288,7 @@ function CueWaveformPanel({
           <div ref={applyMenuRef} className="relative flex" data-testid="cue-apply-menu">
             <ControlButton
               className="cue-action-icon cue-action-icon--accent"
+              data-label="Apply"
               variant="ghost"
               aria-label={`Apply All, ${applyAllCount} to apply`}
               disabled={applyAllDisabled}
@@ -1457,7 +1461,7 @@ function CueWaveformPanel({
                             cueEditingAllowed ? 'cursor-ew-resize' : 'cursor-pointer',
                             selected && 'bg-white/[0.05]',
                           )}
-                          style={{ left: `${left}%` }}
+                          style={{ left: `${left}%`, '--cue-ink': markerColor } as CSSProperties}
                           title={`${cueDisplayName(cue)} · ${formatTime(cue.startMs)}${cue.pointType === 'loop' ? `–${formatTime(cue.endMs)}` : ''} · ${cue.comment || 'No comment'} · ${displayColor.label} · ${summarizeCueProvenance(cue).sources}`}
                           aria-label={`${cueDisplayName(cue)} at ${formatTime(cue.startMs)}${cue.pointType === 'loop' ? ` through ${formatTime(cue.endMs)}` : ''}. ${audition ? 'Seek to cue point during playback.' : cueEditingAllowed ? 'Drag to reposition, click to edit, or press Delete to remove.' : 'Read-only because cue integrity is blocked.'}`}
                           disabled={audition && panelActiveTrack?.id !== track.id}
@@ -1633,12 +1637,13 @@ function CueWaveformPanel({
                             </span>
                           )}
                           <span
-                            className="absolute bottom-0 top-0 w-[2px] opacity-75"
+                            className="cue-wave-line absolute bottom-0 top-0 w-[2px] opacity-75"
                             style={{
                               left: `${percentageAt(cue.startMs ?? 0, viewStart, effectiveViewEnd)}%`,
+                              '--cue-ink': markerColor,
                               backgroundColor: markerColor,
                               boxShadow: `0 0 5px ${markerColor}55`,
-                            }}
+                            } as CSSProperties}
                           />
                         </span>
                       );
@@ -3944,7 +3949,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
   }
 
   return (
-    <div className={cn('flex w-full flex-col pb-10', mode === 'audition' ? 'gap-1' : 'gap-4')}>
+    <div className={cn('flex w-full flex-col pb-10', mode === 'audition' ? 'gap-1' : 'gap-4', mode === 'cues' && 'cue-studio')} data-testid={mode === 'cues' ? 'cue-studio' : undefined}>
       {!audition && <PendingMetadataChangesReview
         open={pendingMetadataReviewOpen}
         pendingCount={pendingMetadataCount}
@@ -3975,7 +3980,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
         onApplyAll={() => { void handleMetadataApplyAll(); }}
       />}
 
-      {!artistLibrary && <div ref={waveformPanelWrapperRef} className="sticky top-0 z-30 bg-[var(--color-background)]">
+      {!artistLibrary && <div ref={waveformPanelWrapperRef} className="cue-studio__sticky sticky top-0 z-30 bg-[var(--color-background)]">
       <CueWaveformPanel
         compact={mode === 'audition'}
         audition={audition}

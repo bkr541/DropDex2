@@ -10,6 +10,8 @@ export type { UploadButtonVariant } from './FileUploadButton';
 export { FloatingActivityPanel } from './FloatingActivityPanel';
 export type { ActivityRow } from './FloatingActivityPanel';
 export { ImportActivityBanner } from './ImportActivityBanner';
+export { NoticeCard } from './NoticeCard';
+export type { NoticeCardProps, NoticeTone } from './NoticeCard';
 export { NotificationCard, NotificationCenter } from './NotificationCenter';
 export type { AppNotification, NotificationTone } from './NotificationCenter';
 export { ProgressBar } from './ProgressBar';

@@ -26,6 +26,7 @@ export function CueStateIcon({ state }: { state: CueDraftState }) {
   return (
     <span
       data-testid="cue-state-icon"
+      data-label="State"
       role="img"
       aria-label={`Cue state: ${state}`}
       title={`Cue state: ${state}`}
@@ -108,6 +109,7 @@ function IconOptionMenu<T extends string>({
         ref={triggerRef}
         type="button"
         className="cue-action-icon"
+        data-label={label}
         aria-label={`${label}: ${current}`}
         title={`${label}: ${current}`}
         aria-haspopup="listbox"
@@ -225,6 +227,7 @@ export function CueEditorToolbar({
       <button
         type="button"
         className="cue-action-icon"
+        data-label="Grid"
         aria-label={gridVisible ? 'Hide grid' : 'Show grid'}
         title={gridVisible ? 'Hide grid' : 'Show grid'}
         aria-pressed={gridVisible}
@@ -235,6 +238,7 @@ export function CueEditorToolbar({
       <button
         type="button"
         className="cue-action-icon"
+        data-label="Repeat"
         aria-label={repeat ? 'Disable repeat' : 'Repeat current track'}
         title={repeat ? 'Disable repeat' : 'Repeat current track'}
         aria-pressed={repeat}
@@ -247,6 +251,7 @@ export function CueEditorToolbar({
         <button
           type="button"
           className="cue-action-icon"
+          data-label="Volume"
           aria-label="Volume"
           title="Volume"
           aria-haspopup="dialog"

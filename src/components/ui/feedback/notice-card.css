@@ -1,0 +1,22 @@
+/* The notice card in the graphite look: a raised card (slate gradient, fine grain, lit top rim, hairline edge, three shadows),
+   an icon sunk into a well, 9px spaced-caps eyebrow, light title, grey message, and a thin tinted edge on the left. */
+.nc { --nc-ink: #9aa5b8; position: relative; display: flex; align-items: center; gap: 14px; min-width: 0; padding: 14px 16px 14px 18px; overflow: hidden;
+  border: 1px solid #ffffff13; border-radius: 16px; color: #f6f7fa; font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+  background: radial-gradient(ellipse at 0% 50%, color-mix(in srgb, var(--nc-ink) 12%, transparent), transparent 55%), repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px), linear-gradient(165deg, #2c303b 0%, #232731 40%, #1c2029 100%);
+  box-shadow: inset 0 1px 0 #ffffff12, inset 0 -1px 0 #00000040, inset 2px 0 0 var(--nc-ink), 0 1px 2px #00000059, 0 10px 24px -8px #0000008c, 0 22px 44px -22px #00000066; }
+.nc[data-tone="error"] { --nc-ink: #f27d96; }
+.nc[data-tone="warning"] { --nc-ink: #f0b35a; }
+.nc[data-tone="info"] { --nc-ink: #5fb8e8; }
+.nc[data-tone="success"] { --nc-ink: #34d399; }
+.nc-icon { display: grid; flex: none; place-items: center; width: 34px; height: 34px; border: 1px solid #00000040; border-radius: 50%; background: linear-gradient(180deg, #14171d, #191d25); box-shadow: inset 0 2px 6px #000000a6, 0 1px 0 #ffffff0f; color: var(--nc-ink); }
+.nc-body { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.nc-eyebrow { margin: 0; color: var(--nc-ink); font-size: 9px; font-weight: 500; letter-spacing: .16em; line-height: 1.2; text-transform: uppercase; }
+.nc-title { margin: 0; color: #edf0f6; font-size: 13px; font-weight: 500; line-height: 1.25; }
+.nc-message { margin: 0; color: #a4adbd; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.nc-title + .nc-message { color: #a0aabd; font-size: 11px; }
+.nc-action { display: flex; flex: none; align-items: center; gap: 8px; }
+.nc-dismiss { display: grid; flex: none; place-items: center; width: 28px; height: 28px; border: 1px solid #ffffff1c; border-radius: 50%; color: #cdd3dd; cursor: pointer; transition: color 120ms, border-color 120ms; }
+.nc-dismiss:hover { color: #f78361; border-color: #f7836180; }
+.nc-dismiss:focus-visible { outline: 2px solid #f78361; outline-offset: 3px; }
+@media (max-width: 560px) { .nc { flex-wrap: wrap; } .nc-action { flex-basis: 100%; padding-left: 48px; } }
+@media (prefers-reduced-motion: reduce) { .nc-dismiss { transition: none; } }

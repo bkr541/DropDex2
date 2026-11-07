@@ -1,0 +1,134 @@
+/* The Cue Points page in the graphite look from Audition. Everything is scoped to .cue-studio (Cue Points mode only), so Drop Lab,
+   Audition and the Artist Library keep their own looks while sharing the same components.
+   Same recipe as Audition: matte slate gradient, hairline edges, 9px spaced-caps labels, light tabular figures, one coral accent. */
+.cue-studio {
+  --color-background: #1b1f28;
+  --color-card: #252a36;
+  --color-foreground: #f6f7fa;
+  --color-muted-foreground: #a4adbd;
+  --color-text-subdued: #a4adbd;
+  --color-primary: #f56b70;
+  --color-primary-rgb: 245 107 112;
+  --color-ring: #f78361;
+  --color-border-subtle: #ffffff12;
+  --color-border-faint: #ffffff0d;
+  --color-panel: #252a36;
+  --color-surface: #2b313e;
+  --color-surface-hover: #333b4a;
+  --color-control-surface: #202530;
+  --color-control-surface-raised: #2a303d;
+  --color-control-surface-hover: #333b4a;
+  --color-control-border: #ffffff1a;
+  --color-control-border-soft: #ffffff0a;
+  --color-control-focus: #f78361;
+  --color-control-blue: #f56b70;
+  --color-control-blue-rgb: 245 107 112;
+  gap: 0;
+  padding-bottom: 0;
+  color: var(--color-foreground);
+  font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+  background: linear-gradient(165deg, #292d37 0%, #20242e 36%, #191d25 100%);
+  border: 1px solid #ffffff13;
+  border-radius: 24px;
+  box-shadow: inset 0 1px 0 #ffffff06, 0 16px 40px #00000026;
+}
+/* The waveform panel stays pinned at the top while the list scrolls; it needs a solid ground for that. */
+.cue-studio__sticky { overflow: visible; border-radius: 24px 24px 0 0; background: #20242e; }
+.cue-studio .cue-workstation { border-radius: 24px 24px 0 0; }
+.cue-studio .cue-workstation__header { gap: 16px; padding: 14px 16px; }
+
+/* Header: the title is 20px, the artist 12px, and the figures sit to the right, as in Audition. */
+.cue-studio .track-identity { gap: 14px; }
+.cue-studio .track-identity img, .cue-studio .track-identity .dd-artwork { width: 48px; height: 48px; border-radius: 50%; border: 1px solid #ffffff26; box-shadow: 0 3px 10px #00000033; }
+.cue-studio .track-identity__text { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: center; }
+.cue-studio .track-identity__text h1 { grid-column: 1; overflow: hidden; color: #fff; font-size: 20px; font-weight: 500; line-height: 1.2; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
+.cue-studio .track-identity__meta { display: contents; }
+.cue-studio .track-identity__meta > p { grid-column: 1; margin-top: 3px; color: #b4bdcb; font-size: 12px; font-weight: 400; letter-spacing: .01em; }
+.cue-studio .track-identity__stats { grid-column: 2; grid-row: 1 / span 2; gap: 0; }
+.cue-studio .track-identity__stat { flex-direction: column-reverse; align-items: center; gap: 3px; padding-inline: 12px; border-left: 1px solid #ffffff0d; }
+.cue-studio .track-identity__stat:first-child { border-left: 0; }
+.cue-studio .track-identity__stat-value { margin: 0; color: #f6f7fa; font-size: 20px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -.04em; }
+.cue-studio .track-identity__stat-label { color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; }
+
+/* Top-right buttons: styled like Audition's figures. An icon where the figure is, a 9px caps label under it, a hairline between neighbours and
+   12px each side, so they are spaced exactly like Tempo, Key and Genre. */
+.cue-studio .cue-workstation__actions { margin-top: 0; gap: 0; align-items: center; }
+.cue-studio .cue-workstation__actions > span[aria-hidden="true"] { display: none; }
+.cue-studio .cue-workstation__actions button.cue-action-icon,
+.cue-studio .cue-workstation__actions [data-testid="cue-state-icon"] {
+  position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  width: auto; height: auto; min-height: 0; padding: 0 12px; border: 0; border-left: 1px solid #ffffff0d; border-radius: 0; background: transparent; box-shadow: none;
+  color: #f6f7fa; cursor: pointer;
+}
+.cue-studio .cue-workstation__actions [data-testid="cue-state-icon"] { cursor: default; border-left: 0; }
+.cue-studio .cue-workstation__actions [data-label]::after { content: attr(data-label); color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; line-height: 1; text-transform: uppercase; white-space: nowrap; }
+.cue-studio .cue-workstation__actions button.cue-action-icon svg { color: inherit; }
+.cue-studio .cue-workstation__actions button.cue-action-icon:hover:not(:disabled) { background: transparent; color: #f78361; }
+.cue-studio .cue-workstation__actions button.cue-action-icon[aria-pressed="true"]:not(:disabled) { color: #f78361; }
+.cue-studio .cue-workstation__actions button.cue-action-icon--accent:not(:disabled) { color: #f78361; }
+.cue-studio .cue-workstation__actions button.cue-action-icon:disabled { opacity: .3; }
+.cue-studio .cue-workstation__actions button.cue-action-icon--narrow { width: auto; padding: 0 4px; border-left: 0; }
+.cue-studio .cue-workstation__actions button.cue-action-icon--narrow + * { margin-left: 0; }
+.cue-studio .cue-action-icon__badge { top: -4px; right: 4px; background: #f56b70; }
+.cue-studio [role="menu"] { border-color: #465166; border-radius: 10px; background: #252b38; }
+
+/* The timeline: a dark ground, a lane for cues, sections, the waveform and the beat grid. */
+.cue-studio .cue-timeline { background: #00000012; border-top: 1px solid #ffffff0d; }
+.cue-studio .cue-timeline__rail { background: transparent; }
+/* Cue points: the Audition pill, a small flag in the cue's colour with its letter. */
+.cue-studio [data-testid="cue-point-marker"] > span:first-child,
+.cue-studio [data-testid="cue-loop-start-marker"] > span:first-child {
+  top: 2px !important; width: auto !important; min-width: 14px; height: 17px !important; padding-inline: 3px;
+  border: 1px solid var(--cue-ink); border-radius: 3px 3px 7px 7px; background: color-mix(in srgb, var(--cue-ink) 22%, #1b1f28);
+}
+.cue-studio [data-testid="cue-point-marker"] > span:first-child svg,
+.cue-studio [data-testid="cue-loop-start-marker"] > span:first-child svg { display: none; }
+.cue-studio [data-testid="cue-point-marker"] > span:first-child > span,
+.cue-studio [data-testid="cue-loop-start-marker"] > span:first-child > span { position: static !important; transform: none !important; font-size: 10px !important; font-weight: 700; }
+/* The line through the waveform: one pixel, the cue's colour, no glow. */
+.cue-studio .cue-wave-line { width: 1px; background: var(--cue-ink) !important; box-shadow: none !important; opacity: .7; }
+/* Sections: Audition's tinted band with a hairline underline in the section's colour, set in 10px type. */
+.cue-studio .timeline-section { height: 22px; border-bottom: 1px solid var(--section-ink) !important; background: color-mix(in srgb, var(--section-ink) 7%, transparent) !important; }
+.cue-studio .timeline-section > span { color: #cad2df !important; font-family: inherit; font-size: 10px; font-weight: 400; letter-spacing: .03em; text-shadow: none !important; }
+/* Beat grid: Audition's quiet slate ticks, a taller one on each bar, and 10px numbers. */
+.cue-studio .timeline-beat-tick { width: 1px !important; height: 6px !important; border-radius: 0; background: #8997ae59 !important; opacity: 1; }
+.cue-studio .timeline-beat-tick--bar { height: 11px !important; background: #c3ccdb99 !important; }
+.cue-studio .timeline-beat-label { color: #9ba5b6; font-family: inherit; font-size: 10px; font-weight: 400; }
+
+/* The audio dock row: a faint wash and hairlines, like Audition's transport. */
+.cue-studio .cue-audio-dock { border-color: #ffffff09; background: #ffffff02; }
+
+/* The list: the same filter row, table and rows as Audition. */
+.cue-studio .cue-browser { border: 0; border-top: 1px solid #ffffff0d; border-radius: 0 0 24px 24px; background: transparent; }
+.cue-studio .cue-browser__chrome { border: 0; background: #20242eF2; box-shadow: none; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.cue-studio .dd-media-transport-group { overflow: visible; min-height: 36px; border: 0; border-radius: 0; background: transparent; gap: 4px; }
+.cue-studio .dd-media-transport-group > .dd-media-button { width: 28px; flex-basis: 28px; height: 36px; border: 0; background: transparent; color: #c7ceda; }
+.cue-studio .dd-media-transport-group > .dd-media-button:hover:not(:disabled) { color: #fff; }
+.cue-studio .dd-media-transport-group > .dd-media-button--play { width: 44px; flex-basis: 44px; height: 44px; margin-inline: 5px; border-radius: 50%; background: linear-gradient(135deg, #f54b64, #f78361); color: #fff; box-shadow: 0 3px 10px #00000026; }
+.cue-studio .dd-media-button--play .dd-media-button__content { width: auto; height: auto; border: 0; border-radius: 0; background: transparent; color: #fff; }
+.cue-studio .dd-media-button:disabled { opacity: .25; }
+.cue-studio .cue-browser__filters { gap: 16px; padding: 8px 16px; border-top: 0; }
+.cue-studio .cue-browser__filters > [data-testid="cue-browser-search"] { max-width: 420px; }
+.cue-studio .cue-browser__filters p { color: #a5aec0; font-size: 9px; font-weight: 500; letter-spacing: .14em; }
+.cue-studio .cue-browser__filters button > span { font-size: 12px; font-weight: 400; }
+.cue-studio .dd-text-control { min-height: 32px; color: #e0e4ed; font-family: inherit; font-size: 12px; border-bottom-color: #ffffff26; }
+.cue-studio .dd-text-control::placeholder { color: #a1aabc; font-weight: 300; letter-spacing: .025em; }
+.cue-studio .dd-control-start-icon { color: #c4cbd7; }
+.cue-studio [role="listbox"] { border-color: #465166; border-radius: 10px; background: #252b38; }
+.cue-studio .cue-browser__table { background: transparent; }
+.cue-studio .cue-browser__table thead { color: #a2aec2; font-size: 9px; font-weight: 500; letter-spacing: .12em; }
+.cue-studio .cue-browser__table thead th { padding-block: 7px; background: #20242e; box-shadow: inset 0 -1px #ffffff10; }
+.cue-studio .cue-browser__table tbody { background: transparent; }
+.cue-studio .cue-browser__table tbody tr { border-color: #ffffff08; }
+.cue-studio .cue-browser__table tbody td { height: 40px; padding-block: 3px; color: #b9c2d2; font-size: 11px; font-weight: 400; }
+.cue-studio .cue-browser__table tbody td:first-child p:first-child { color: #edf0f6; font-size: 12px; font-weight: 400; line-height: 1.25; }
+.cue-studio .cue-browser__table tbody td:first-child p:last-child { color: #a0aabd; font-size: 10px; }
+.cue-studio .cue-browser__table tbody td:first-child .dd-artwork { width: 28px; height: 28px; border-radius: 50%; border-color: #ffffff1a; }
+.cue-studio .cue-browser__row:hover { background: #ffffff04; }
+.cue-studio .cue-browser__row--selected, .cue-studio .cue-browser__row--selected:hover { background: #f54b6409; box-shadow: inset 2px 0 #f5746b; }
+.cue-studio .cue-browser__row--selected td:first-child p:first-child { color: #ffbdad; }
+.cue-studio button:focus-visible, .cue-studio input:focus-visible { outline: 2px solid #f78361; outline-offset: 3px; }
+.cue-studio .cue-browser__table--tight th, .cue-studio .cue-browser__table--tight td { padding-inline: 10px; }
+.cue-studio .cue-browser__table tbody tr:last-child td:first-child { border-bottom-left-radius: 24px; }
+@media (max-width: 1100px) { .cue-studio .track-identity__text { grid-template-columns: minmax(0, 1fr); } .cue-studio .track-identity__stats { grid-column: 1; grid-row: auto; margin-top: 6px; } }
+@media (max-width: 700px) { .cue-studio { border-radius: 16px; } .cue-studio .cue-workstation__header { flex-wrap: wrap; padding: 12px; } }

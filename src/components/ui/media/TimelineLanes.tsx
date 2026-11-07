@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from 'react';
+import type { CSSProperties, ReactNode, Ref } from 'react';
 import { cn } from '../../../lib/utils';
 import '../dropdex-media.css';
 
@@ -51,13 +51,14 @@ export function TimelineSectionLane({
             <div
               key={section.id}
               data-testid="timeline-section"
-              className="absolute top-0 flex h-[22px] items-center justify-center overflow-hidden"
+              className="timeline-section absolute top-0 flex h-[22px] items-center justify-center overflow-hidden"
               style={{
+                '--section-ink': section.color,
                 left: `${section.leftPercent}%`,
                 width: `${section.widthPercent}%`,
                 backgroundColor: 'transparent',
                 borderBottom: `2px solid ${section.color}`,
-              }}
+              } as CSSProperties}
               title={section.title}
             >
               <span
@@ -111,7 +112,7 @@ export function TimelineBeatLane({
               key={tick.key}
               className={cn(
                 'absolute -translate-x-1/2 rounded-full',
-                tick.downbeat ? 'top-[2px] h-[14px] w-[2px] bg-[#f87171]' : 'top-[3px] h-[8px] w-[1.5px] bg-[#4ade80] opacity-90',
+                tick.downbeat ? 'timeline-beat-tick timeline-beat-tick--bar top-[2px] h-[14px] w-[2px] bg-[#f87171]' : 'timeline-beat-tick top-[3px] h-[8px] w-[1.5px] bg-[#4ade80] opacity-90',
               )}
               style={{ left: `${tick.leftPercent}%` }}
               title={tick.title}
@@ -121,7 +122,7 @@ export function TimelineBeatLane({
             <span
               key={label.key}
               className={cn(
-                'absolute bottom-[3px] font-mono text-[10px] font-medium tabular-nums text-[#9ca5ae]',
+                'timeline-beat-label absolute bottom-[3px] font-mono text-[10px] font-medium tabular-nums text-[#9ca5ae]',
                 // Keep the first and last numbers inside the lane instead of half cut off.
                 label.leftPercent <= 0.01 ? '' : label.leftPercent >= 99.99 ? '-translate-x-full' : '-translate-x-1/2',
               )}

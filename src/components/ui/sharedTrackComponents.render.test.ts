@@ -28,7 +28,7 @@ describe('TrackIdentity', () => {
     expect(markup).toContain('Some Artist');
     expect(markup).toContain('h-9 w-9');
     expect(markup).toContain('rounded-[7px]');
-    expect(markup).toMatch(/<span class="uppercase tracking-\[0\.08em\] text-foreground\/45">BPM<\/span><strong class="ml-1 text-foreground\/90">140\.00<\/strong>/);
+    expect(markup).toMatch(/<span class="uppercase tracking-\[0\.08em\] text-foreground\/45 track-identity__stat-label">BPM<\/span><strong class="track-identity__stat-value ml-1 text-foreground\/90">140\.00<\/strong>/);
     expect(markup).toContain('style="color:#f59e0b"');
   });
 
@@ -167,7 +167,7 @@ describe('Timeline lanes', () => {
     expect(markup).toContain('cue-timeline__data-lane h-[34px]');
     expect(markup).toContain('h-[14px] w-[2px] bg-[#f87171]');
     expect(markup).toContain('h-[8px] w-[1.5px] bg-[#4ade80]');
-    expect(markup).toMatch(/<span class="absolute bottom-\[3px\] font-mono text-\[10px\][^"]*-translate-x-1\/2" style="left:25%">1<\/span>/);
+    expect(markup).toMatch(/<span class="timeline-beat-label absolute bottom-\[3px\] font-mono text-\[10px\][^"]*-translate-x-1\/2" style="left:25%">1<\/span>/);
   });
 
   it('keeps the first and last numbers inside the lane', () => {
