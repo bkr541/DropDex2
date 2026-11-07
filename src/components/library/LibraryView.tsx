@@ -1,3 +1,4 @@
+import './library-studio.css';
 import { SpotifyTabIcon } from './SpotifyTabIcon';
 import { useState, useMemo, memo, useCallback, useRef, useEffect, type ElementType, type ReactNode } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
@@ -95,7 +96,7 @@ function EmptyLibrary({ onImport, profile }: { onImport: () => void; profile: Us
     <div className="flex flex-col items-center justify-center py-24 text-center space-y-4">
       {/* Profile */}
       <div className="relative inline-block">
-        <div className="absolute inset-[-5px] rounded-full border-2 border-primary shadow-[0_0_24px_rgba(10,145,255,0.34)] pointer-events-none" />
+        <div className="lib-avatar-ring" />
         {avatarUrl && !imgError ? (
           <img
             src={avatarUrl}
@@ -104,16 +105,16 @@ function EmptyLibrary({ onImport, profile }: { onImport: () => void; profile: Us
             className="w-24 h-24 rounded-full object-cover"
           />
         ) : (
-          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border border-primary/30 flex items-center justify-center shadow-lg">
+          <div className="w-24 h-24 lib-avatar-fallback">
             {initials ? (
-              <span className="text-2xl font-black text-primary">{initials}</span>
+              <span className="text-[28px] font-light tracking-[-0.04em]">{initials}</span>
             ) : (
               <User size={34} className="text-primary/70" />
             )}
           </div>
         )}
       </div>
-      <h1 className="text-2xl font-black uppercase leading-tight tracking-tight">{libraryName}</h1>
+      <h1 className="text-[22px] font-light uppercase leading-tight tracking-[0.04em]">{libraryName}</h1>
 
       {/* Divider */}
       <div className="w-16 h-px bg-[var(--color-border-subtle)]" />
@@ -162,9 +163,9 @@ export function ArtistProfileCard({
     : null;
 
   return (
-    <div className="glass rounded-2xl border border-[var(--color-border-subtle)] px-5 py-6 text-center flex flex-col items-center justify-center min-h-[218px]">
+    <div className="lib-card px-5 py-6 text-center flex flex-col items-center justify-center min-h-[218px]">
       <div className="relative inline-block mb-4">
-        <div className="absolute inset-[-5px] rounded-full border-2 border-primary shadow-[0_0_24px_rgba(10,145,255,0.34)] pointer-events-none" />
+        <div className="lib-avatar-ring" />
         {avatarUrl && !imgError ? (
           <img
             src={avatarUrl}
@@ -173,9 +174,9 @@ export function ArtistProfileCard({
             className="w-24 h-24 rounded-full object-cover"
           />
         ) : (
-          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/25 to-primary/5 border border-primary/30 flex items-center justify-center shadow-lg">
+          <div className="w-24 h-24 lib-avatar-fallback">
             {initials ? (
-              <span className="text-2xl font-black text-primary">{initials}</span>
+              <span className="text-[28px] font-light tracking-[-0.04em]">{initials}</span>
             ) : (
               <User size={34} className="text-primary/70" />
             )}
@@ -184,7 +185,7 @@ export function ArtistProfileCard({
         <span className="absolute right-0 bottom-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-[var(--color-background)] shadow-[0_0_10px_rgba(16,185,129,0.6)]" />
       </div>
 
-      <h1 className="text-2xl font-black uppercase leading-tight tracking-tight">{libraryName}</h1>
+      <h1 className="text-[22px] font-light uppercase leading-tight tracking-[0.04em]">{libraryName}</h1>
 
       {(() => {
         const links = [
@@ -241,13 +242,13 @@ function DesktopLibraryInfoCard({
   });
 
   return (
-    <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-4 space-y-4">
-      <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold flex items-center gap-1.5">
+    <div className="lib-card p-4 space-y-4">
+      <p className="lib-label flex items-center gap-1.5">
         <ChartBar size={11} /> Library Health
       </p>
 
-      <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 px-3 py-3">
-        <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">
+      <div className="lib-well px-3 py-3">
+        <p className="lib-label mb-2">
           USB Import
         </p>
         <div className="flex items-center gap-2">
@@ -260,8 +261,8 @@ function DesktopLibraryInfoCard({
       </div>
 
       {showAnalysis && (
-        <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60 px-3 py-3">
-          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-2">
+        <div className="lib-well px-3 py-3">
+          <p className="lib-label mb-2">
             Track Analysis
           </p>
           <div className="flex items-center gap-2">
@@ -413,13 +414,13 @@ export function LibraryTrackTable({
   ] as const;
 
   return (
-    <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
+    <div className="lib-panel">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[700px] border-collapse text-left" aria-label="Track listing">
           <thead className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground border-b border-[var(--color-border-faint)]">
             <tr>
               {SORT_COLS.map(({ col, label, cls }) => (
-                <th key={label} className={cn('sticky top-0 z-10 bg-[var(--color-background)] px-3 py-2.5 select-none', cls)}>
+                <th key={label} className={cn('sticky top-0 z-10 px-3 py-2.5 select-none', cls)}>
                   {col !== null ? (
                     <button
                       type="button"
@@ -627,8 +628,8 @@ function SidebarSection({ icon: Icon, title, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="glass rounded-2xl p-4 border border-[var(--color-border-subtle)]">
-      <p className="flex items-center gap-1.5 text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-3">
+    <div className="lib-card p-4">
+      <p className="flex items-center gap-1.5 lib-label mb-3">
         <Icon size={11} />
         {title}
       </p>
@@ -775,13 +776,11 @@ export function DesktopLibraryHero({
   return (
     <section
       className={cn(
-        'group relative overflow-hidden rounded-2xl border border-[var(--color-border-subtle)] min-h-[218px]',
-        !heroBg && 'bg-[linear-gradient(105deg,rgba(2,12,25,0.98)_0%,rgba(3,25,52,0.95)_50%,rgba(2,11,24,0.98)_100%)]',
+        'group lib-hero min-h-[218px]',
       )}
       style={heroBg ? { backgroundImage: `url(${heroBg})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
     >
-      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_58%_20%,rgba(16,103,220,0.42),transparent_34%),radial-gradient(circle_at_82%_38%,rgba(24,94,190,0.20),transparent_30%),linear-gradient(to_top,rgba(1,7,17,0.92),transparent_58%)]" />
-      <div className="absolute -bottom-12 left-[35%] h-36 w-[52%] rounded-[50%] bg-black/30 blur-2xl pointer-events-none" />
+      {heroBg && <div className="lib-hero-wash" />}
 
       {/* Hover-reveal controls */}
       <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -819,8 +818,8 @@ export function DesktopLibraryHero({
 
         {/* USB Import */}
         {!hiddenWidgets.has('usbImport') && (
-        <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-3 py-3 w-[200px] shrink-0">
-          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1.5">USB Import</p>
+        <div className="lib-well px-3 py-3 w-[200px] shrink-0">
+          <p className="lib-label mb-1.5">USB Import</p>
           <div className="flex items-center gap-2">
             <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
             <span className="font-black text-sm leading-none text-emerald-500">Import Complete</span>
@@ -855,7 +854,7 @@ export function DesktopLibraryHero({
           onClick={showAnalysisWarning && onShowIncompleteAnalysis ? onShowIncompleteAnalysis : undefined}
           role={showAnalysisWarning && onShowIncompleteAnalysis ? 'button' : undefined}
         >
-          <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1.5">Track Analysis</p>
+          <p className="lib-label mb-1.5">Track Analysis</p>
           {showAnalysisWarning ? (
             <>
               <div className="flex items-center gap-2 mb-1.5">
@@ -939,7 +938,7 @@ function OverviewSummaryCards({
     <div>
 
       {/* ── Library Stats ── */}
-      <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
+      <div className="lib-card p-4 flex flex-col items-center text-center">
         <div className="relative w-[68px] h-[68px] shrink-0">
           <svg viewBox="0 0 100 100" width={68} height={68}>
             <circle cx="50" cy="50" r={ringR} fill="none" stroke="#27272a" strokeWidth="9" />
@@ -1092,7 +1091,7 @@ export function LibraryView({
   } = useTrackPreviewWaveforms(importId, waveformIds);
 
   return (
-    <div className="min-w-0">
+    <div className="lib-scope min-w-0" data-testid="library-overview">
       <AnimatePresence mode="wait">
         {showSearch ? (
           <motion.div
@@ -1156,18 +1155,15 @@ export function LibraryView({
 
                 {!latestImport && spotifyAvailable && spotifyAccessToken && (
                   <div className="space-y-4">
-                    <div className="sticky top-0 z-20 -mx-4 flex items-center gap-1 overflow-x-auto border-b border-[var(--color-border-subtle)] bg-background px-4 md:-mx-8 md:px-8">
+                    <div className="lib-tabs lib-sticky sticky top-0 z-20 -mx-4 px-4 md:-mx-8 md:px-8">
                       {[TABS[0], SPOTIFY_TAB].map((tab) => (
                         <button
                           key={tab.id}
                           type="button"
                           onClick={() => onActiveTabChange(tab.id)}
-                          className={cn(
-                            'shrink-0 border-b-2 px-4 py-2.5 text-sm font-bold transition-all -mb-px',
-                            activeTab === tab.id
-                              ? 'border-primary text-primary'
-                              : 'border-transparent text-muted-foreground hover:text-foreground',
-                          )}
+                          role="tab"
+                          aria-selected={activeTab === tab.id}
+                          className="lib-tab"
                         >
                           {tab.label}
                         </button>
@@ -1182,7 +1178,7 @@ export function LibraryView({
                 {latestImport && (
                   <>
                     {/* ── Sticky header: top row + tabs ── */}
-                    <div className="sticky top-0 z-20 bg-background -mx-4 md:-mx-8 px-4 md:px-8 space-y-4 pb-0">
+                    <div className="sticky top-0 z-20 lib-sticky -mx-4 md:-mx-8 px-4 md:px-8 space-y-4 pb-3">
 
                       {/* Top row: artist card + hero */}
                       <div className="flex gap-5 items-start">
@@ -1235,13 +1231,13 @@ export function LibraryView({
                           {/* Insights */}
                           {insightCount > 0 && (
                             <section className="space-y-3" data-testid="library-insights">
-                              <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                              <h2 className="lib-heading">
                                 <ChartBar size={13} /> Insights
                               </h2>
                               <div className={cn('grid grid-cols-1 gap-3', INSIGHT_COLUMNS[insightCount])}>
                                 {showTopGenres && (
-                                  <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-5 flex flex-col h-[280px] overflow-hidden">
-                                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1.5 flex items-center gap-1.5 shrink-0">
+                                  <div className="lib-card p-5 flex flex-col h-[280px] overflow-hidden">
+                                    <p className="lib-label mb-1.5 flex items-center gap-1.5 shrink-0">
                                       <svg viewBox="0 0 398.508 398.508" className="w-3 h-3 shrink-0" fill="currentColor" aria-hidden="true">
                                         <path d="M314.38,157.492c-23.028,0-41.763,18.734-41.763,41.762c0,23.028,18.734,41.762,41.763,41.762c23.027,0,41.762-18.734,41.762-41.762C356.142,176.227,337.408,157.492,314.38,157.492z M314.38,222.016c-12.552,0-22.763-10.211-22.763-22.762s10.211-22.762,22.763-22.762c12.551,0,22.762,10.211,22.762,22.762S326.931,222.016,314.38,222.016z"/><path d="M314.38,314.984c-23.028,0-41.763,18.734-41.763,41.762s18.734,41.762,41.763,41.762c23.027,0,41.762-18.734,41.762-41.762S337.408,314.984,314.38,314.984z M314.38,379.508c-12.552,0-22.763-10.211-22.763-22.762s10.211-22.762,22.763-22.762c12.551,0,22.762,10.211,22.762,22.762S326.931,379.508,314.38,379.508z"/><path d="M314.38,83.524c23.027,0,41.762-18.734,41.762-41.762C356.142,18.734,337.408,0,314.38,0c-23.028,0-41.763,18.734-41.763,41.762C272.618,64.79,291.352,83.524,314.38,83.524z M314.38,19c12.551,0,22.762,10.211,22.762,22.762s-10.211,22.762-22.762,22.762c-12.552,0-22.763-10.211-22.763-22.762S301.829,19,314.38,19z"/><path d="M255.517,51.262c5.247,0,9.5-4.253,9.5-9.5s-4.253-9.5-9.5-9.5h-35.998c-5.247,0-9.5,4.253-9.5,9.5v147.992h-24.999c-5.247,0-9.5,4.253-9.5,9.5s4.253,9.5,9.5,9.5h24.999v147.992c0,5.247,4.253,9.5,9.5,9.5h35.998c5.247,0,9.5-4.253,9.5-9.5s-4.253-9.5-9.5-9.5h-26.498V208.754h26.498c5.247,0,9.5-4.253,9.5-9.5s-4.253-9.5-9.5-9.5h-26.498V51.262H255.517z"/><path d="M125.989,142.508c8.234-7.633,13.4-18.531,13.4-30.617c0-23.028-18.734-41.762-41.762-41.762S55.865,88.863,55.865,111.89c0,12.086,5.166,22.984,13.4,30.617c-16.1,9.669-26.899,27.297-26.899,47.406v41.971c0,9.296,5.544,17.322,13.5,20.944v56.76c0,10.361,8.43,18.791,18.791,18.791h45.942c10.361,0,18.791-8.43,18.791-18.791v-56.76c7.955-3.623,13.499-11.648,13.499-20.944v-41.971C152.889,169.805,142.089,152.176,125.989,142.508z M74.865,111.89c0-12.551,10.211-22.762,22.762-22.762s22.762,10.211,22.762,22.762s-10.211,22.762-22.762,22.762S74.865,124.441,74.865,111.89z M133.889,231.885c0,2.205-1.794,3.999-3.999,3.999c-5.247,0-9.5,4.253-9.5,9.5v63.997h-13.262v-54.932c0-5.247-4.253-9.5-9.5-9.5s-9.5,4.253-9.5,9.5v54.932H74.866l0-63.997c0-5.247-4.253-9.5-9.5-9.5c-2.205,0-3.999-1.794-3.999-3.999v-41.971c0-19.994,16.267-36.261,36.261-36.261s36.261,16.267,36.261,36.261V231.885z"/>
                                       </svg>
@@ -1251,8 +1247,8 @@ export function LibraryView({
                                   </div>
                                 )}
                                 {showBpmDistribution && (
-                                  <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-5 flex flex-col h-[280px] overflow-hidden">
-                                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1.5 flex items-center gap-1.5 shrink-0">
+                                  <div className="lib-card p-5 flex flex-col h-[280px] overflow-hidden">
+                                    <p className="lib-label mb-1.5 flex items-center gap-1.5 shrink-0">
                                       <svg viewBox="0 0 256 256" className="w-3 h-3 shrink-0" fill="currentColor" aria-hidden="true">
                                         <path fillRule="evenodd" d="M64.458 228.867c-.428 2.167 1.007 3.91 3.226 3.893l121.557-.938c2.21-.017 3.68-1.794 3.284-3.97l-11.838-64.913c-.397-2.175-1.626-2.393-2.747-.487l-9.156 15.582c-1.12 1.907-1.71 5.207-1.313 7.388l4.915 27.03c.395 2.175-1.072 3.937-3.288 3.937H88.611c-2.211 0-3.659-1.755-3.233-3.92L114.85 62.533l28.44-.49 11.786 44.43c.567 2.139 2.01 2.386 3.236.535l8.392-12.67c1.22-1.843 1.73-5.058 1.139-7.185l-9.596-34.5c-1.184-4.257-5.735-7.677-10.138-7.638l-39.391.349c-4.415.039-8.688 3.584-9.544 7.912L64.458 228.867z"/><path fillRule="evenodd" d="M118.116 198.935c-1.182 1.865-.347 3.377 1.867 3.377h12.392c2.214 0 4.968-1.524 6.143-3.39l64.55-102.463c1.18-1.871 3.906-3.697 6.076-4.074l9.581-1.667c2.177-.379 4.492-2.38 5.178-4.496l4.772-14.69c.683-2.104-.063-5.034-1.677-6.555L215.53 54.173c-1.609-1.517-4.482-1.862-6.4-.78l-11.799 6.655c-1.925 1.086-3.626 3.754-3.799 5.954l-.938 11.967c-.173 2.202-1.27 5.498-2.453 7.363l-72.026 113.603z"/>
                                       </svg>
@@ -1262,8 +1258,8 @@ export function LibraryView({
                                   </div>
                                 )}
                                 {showKeyProfile && (
-                                  <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-5 flex flex-col h-[280px] overflow-hidden">
-                                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1.5 flex items-center gap-1.5 shrink-0">
+                                  <div className="lib-card p-5 flex flex-col h-[280px] overflow-hidden">
+                                    <p className="lib-label mb-1.5 flex items-center gap-1.5 shrink-0">
                                       <svg viewBox="0 0 47 47" className="w-3 h-3 shrink-0" fill="currentColor" aria-hidden="true">
                                         <path d="M40.975,1.968c-0.706-0.706-1.851-0.706-2.558,0c-0.706,0.706-0.706,1.85,0,2.557c5.81,5.813,5.81,15.27,0,21.081c-0.706,0.707-0.706,1.852,0,2.558c0.354,0.353,0.816,0.528,1.278,0.528s0.926-0.176,1.279-0.528C48.191,20.94,48.192,9.19,40.975,1.968z"/><path d="M36.539,6.399c-0.707-0.707-1.85-0.707-2.556,0c-0.707,0.706-0.707,1.851,0,2.556c3.368,3.368,3.368,8.848-0.001,12.216c-0.706,0.706-0.706,1.851,0.001,2.558c0.353,0.352,0.814,0.528,1.278,0.528c0.463,0,0.926-0.177,1.278-0.53C41.316,18.95,41.316,11.176,36.539,6.399z"/><path d="M8.583,4.524c0.706-0.707,0.706-1.851,0-2.557c-0.707-0.705-1.851-0.706-2.557,0c-7.218,7.223-7.217,18.973,0,26.193c0.353,0.354,0.816,0.529,1.279,0.529c0.463,0,0.925-0.176,1.278-0.529c0.706-0.706,0.706-1.852,0-2.557C2.772,19.793,2.772,10.336,8.583,4.524z"/><path d="M13.016,8.955c0.707-0.706,0.707-1.851,0-2.556c-0.706-0.707-1.85-0.707-2.556,0c-4.777,4.777-4.777,12.551,0,17.33c0.353,0.353,0.816,0.529,1.279,0.529c0.463,0,0.925-0.177,1.278-0.529c0.707-0.707,0.707-1.851,0.001-2.557C9.647,17.803,9.647,12.323,13.016,8.955z"/><path d="M29.525,0c-1.331,0-2.411,1.079-2.411,2.41v18.077c0,1.994-1.622,3.615-3.615,3.615c-1.993,0-3.615-1.622-3.615-3.615V2.41c0-1.331-1.08-2.41-2.411-2.41s-2.41,1.079-2.41,2.41v18.077c0,3.813,2.546,7.041,6.026,8.082V44.59c0,1.331,1.079,2.41,2.41,2.41c1.331,0,2.41-1.079,2.41-2.41V28.568c3.48-1.041,6.026-4.268,6.026-8.082V2.41C31.936,1.079,30.856,0,29.525,0z"/>
                                       </svg>

@@ -1,3 +1,4 @@
+import './library-studio.css';
 import { useEffect, useMemo, useState } from 'react';
 import { Music, Upload } from '@carbon/icons-react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
@@ -74,7 +75,7 @@ export function ReviewView({
   const artistStats = useMemo(() => (stats?.artistTotals ?? []).map(({ name, count }) => [name, count] as const), [stats?.artistTotals]);
 
   return (
-    <div className="min-w-0 space-y-5">
+    <div className="lib-scope min-w-0 space-y-5" data-testid="review-library">
       {/* The selected track's waveform, cue points and beat grid: the same panel as Track Intelligence. */}
       {selectedTrack && (
         <CuePointsTrackPanel
@@ -112,9 +113,9 @@ export function ReviewView({
 
 export function ReviewEmptyState({ onImport }: { onImport?: () => void }) {
   return (
-    <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-8 text-center">
+    <div className="lib-scope lib-card p-8 text-center">
       <Music size={40} className="mx-auto mb-4 text-primary" />
-      <h2 className="text-2xl font-black uppercase tracking-tight">Review your library</h2>
+      <h2 className="text-[26px] font-light tracking-[-0.035em]">Review your library</h2>
       <p className="mt-2 text-sm text-muted-foreground">Import a library to start reviewing your collection.</p>
       {onImport && <ControlButton variant="primary" onClick={onImport} className="mt-5"><Upload size={16} /> Import library</ControlButton>}
     </div>

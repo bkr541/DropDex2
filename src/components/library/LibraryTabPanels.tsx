@@ -17,7 +17,7 @@ export function PlaylistsPanel({
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground font-mono">
+        <p className="lib-label">
           {loading ? '…' : `${playlists.length} items`}
         </p>
       </div>
@@ -26,7 +26,7 @@ export function PlaylistsPanel({
           <CircleDash className="animate-spin text-muted-foreground" size={20} />
         </div>
       ) : playlists.length === 0 ? (
-        <div className="text-center py-10 border-2 border-dashed border-[var(--color-border-subtle)] rounded-3xl">
+        <div className="text-center py-10 border border-dashed border-[#ffffff1a] rounded-[20px]">
           <p className="text-muted-foreground text-sm">No playlists in this import.</p>
         </div>
       ) : (
@@ -55,7 +55,7 @@ export function PlaylistsPanel({
 export function GenresPanel({ genreStats, loading }: { genreStats: ReadonlyArray<readonly [string, number]>; loading: boolean }) {
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground font-mono">
+      <p className="lib-label">
         {loading ? 'Loading…' : `${genreStats.length} genres`}
       </p>
       {loading ? (
@@ -69,21 +69,16 @@ export function GenresPanel({ genreStats, loading }: { genreStats: ReadonlyArray
           {genreStats.map(([genre, count]) => (
             <div
               key={genre}
-              className="glass rounded-2xl p-4 border border-[var(--color-border-subtle)] hover:border-primary/25 transition-all"
+              className="lib-card lib-card--hover p-4"
             >
               <div className="flex items-start justify-between gap-2 mb-2">
-                <p className="font-bold text-sm leading-snug">{genre}</p>
-                <span className="text-[10px] font-mono text-muted-foreground shrink-0 mt-0.5">
+                <p className="text-[13px] font-medium leading-snug text-[#edf0f6]">{genre}</p>
+                <span className="lib-figure shrink-0 text-[20px]">
                   {count.toLocaleString()}
                 </span>
               </div>
-              <div className="h-1 rounded-full bg-[var(--color-border-subtle)] overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${(count / genreStats[0][1]) * 100}%` }}
-                />
-              </div>
-              <p className="text-[9px] text-muted-foreground mt-1.5 font-mono">tracks</p>
+              <div className="lib-bar"><span style={{ width: `${(count / genreStats[0][1]) * 100}%` }} /></div>
+              <p className="lib-label mt-2">tracks</p>
             </div>
           ))}
         </div>
@@ -96,7 +91,7 @@ export function GenresPanel({ genreStats, loading }: { genreStats: ReadonlyArray
 export function ArtistsPanel({ artistStats, loading }: { artistStats: ReadonlyArray<readonly [string, number]>; loading: boolean }) {
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground font-mono">
+      <p className="lib-label">
         {loading ? 'Loading…' : `${artistStats.length.toLocaleString()} artists`}
       </p>
       {loading ? (
@@ -106,27 +101,23 @@ export function ArtistsPanel({ artistStats, loading }: { artistStats: ReadonlyAr
       ) : artistStats.length === 0 ? (
         <p className="text-center py-12 text-muted-foreground italic text-sm">No artist data in this library.</p>
       ) : (
-        <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
-          <div className="hidden sm:grid grid-cols-[auto_1fr_80px] px-4 py-2.5 border-b border-[var(--color-border-faint)]">
+        <div className="lib-panel">
+          <div className="lib-list-head hidden sm:grid grid-cols-[auto_1fr_80px]">
             {['', 'Artist', 'Tracks'].map((col, i) => (
-              <p key={i} className={cn('text-[9px] uppercase tracking-widest text-muted-foreground font-bold', i === 2 && 'text-right')}>
+              <p key={i} className={cn('lib-label', i === 2 && 'text-right')}>
                 {col}
               </p>
             ))}
           </div>
-          <div className="divide-y divide-[var(--color-border-faint)]">
+          <div>
             {artistStats.map(([artist, count]) => (
               <div
                 key={artist}
-                className="grid grid-cols-[auto_1fr_80px] items-center px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
+                className="lib-list-row grid-cols-[auto_1fr_80px]"
               >
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center mr-3 shrink-0">
-                  <span className="text-xs font-black text-primary">
-                    {artist[0]?.toUpperCase() ?? '?'}
-                  </span>
-                </div>
-                <span className="text-sm font-semibold truncate">{artist}</span>
-                <span className="text-[10px] font-mono text-muted-foreground text-right">
+                <div className="lib-avatar mr-3">{artist[0]?.toUpperCase() ?? '?'}</div>
+                <span className="truncate text-[13px] font-normal text-[#edf0f6]">{artist}</span>
+                <span className="lib-figure text-right text-[16px]">
                   {count.toLocaleString()}
                 </span>
               </div>

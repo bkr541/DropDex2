@@ -227,7 +227,7 @@ export function LibrarySearchResults({
       )}
 
       {!loading && results.length > 0 && (
-        <div className="glass rounded-2xl overflow-hidden border border-[var(--color-border-subtle)]">
+        <div className="lib-panel">
           <div className="hidden sm:grid grid-cols-[36px_1fr_1fr_56px_56px] px-4 py-2.5 border-b border-[var(--color-border-faint)] gap-x-2">
             {HEADERS.map((col, i) => (
               <p

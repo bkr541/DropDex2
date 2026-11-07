@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -75,19 +76,19 @@ describe('LibraryTabBar', () => {
   ];
   const render = () => renderToStaticMarkup(createElement(LibraryTabBar<string>, { tabs, activeTab: 'b', onChange: vi.fn() }));
 
-  it('renders the underlined tab row with the active tab in the primary color', () => {
+  it('renders the underlined tab row with a coral underline on the active tab', () => {
     const markup = render();
     expect(markup).toContain('role="tablist"');
-    expect(markup).toContain('border-b border-[var(--color-border-subtle)]');
+    expect(markup).toContain('class="lib-tabs"');
     expect(markup.match(/role="tab"/g)).toHaveLength(3);
     expect(markup).toMatch(/aria-selected="true"[^>]*>Bravo/);
-    expect(markup).toMatch(/class="[^"]*text-primary border-primary[^"]*"[^>]*>Bravo/);
+    expect(markup).toMatch(/class="lib-tab"[^>]*aria-selected="true"[^>]*>Bravo|aria-selected="true"[^>]*class="lib-tab"[^>]*>Bravo/);
     expect(markup).toMatch(/aria-selected="false"[^>]*>Alpha/);
   });
 
   it('dims and disables a tab that cannot be opened', () => {
     expect(render()).toMatch(/disabled=""[^>]*>Charlie/);
-    expect(render()).toContain('cursor-not-allowed');
+    expect(readFileSync(resolve(__dirname, 'library-studio.css'), 'utf8')).toMatch(/\.lib-tab:disabled \{[^}]*cursor: not-allowed/);
   });
 });
 
@@ -99,7 +100,7 @@ describe('Library tab icons', () => {
     }));
     expect(markup.indexOf('data-testid="icon-a"')).toBeGreaterThan(-1);
     expect(markup.indexOf('data-testid="icon-a"')).toBeLessThan(markup.indexOf('Alpha'));
-    expect(markup).toContain('flex shrink-0 items-center gap-2');
+    expect(markup).toContain('class="lib-tab"');
   });
 
   it('gives every Library and Review tab its own icon', async () => {
