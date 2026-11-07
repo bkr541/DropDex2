@@ -38,9 +38,9 @@ function WaveBars({ track, amps }: WaveProps) {
 }
 
 /**
- * 2 · Cue bars: the same waveform as row 1, with the same number of bars (120), all in the one gray (no coral drop). A cue is not drawn on top: the one bar of the
- * waveform at the cue's position is coloured in that cue's own colour, so the marker is exactly as tall as the waveform is there
- * and never extends past it.
+ * 2 · Mirrored bars with cue columns and a triangle: the same mirrored bars as row 3 (they grow up and down from a centre line, the lower
+ * half fainter like a reflection), all in one gray. A cue is the one column of the waveform at its position, in the cue's colour, exactly as
+ * tall as the waveform there, with a small upside-down triangle sitting right on top of it.
  */
 function WavePill({ track, amps }: WaveProps) {
   const cueAt = cueBars(track, amps.length);
@@ -50,12 +50,9 @@ function WavePill({ track, amps }: WaveProps) {
         {amps.map((a, i) => {
           const cue = cueAt.get(i);
           return (
-            <i
-              key={i}
-              className={cue ? 'wp-cue-bar' : undefined}
-              title={cue ? cueTitle(cue) : undefined}
-              style={{ height: `${a * 100}%`, '--wp-bar': cue ? cueColor(cue) : GRAY } as CSSProperties}
-            />
+            <span key={i} className={cue ? 'wp-cue-bar' : undefined} title={cue ? cueTitle(cue) : undefined} style={{ '--wp-bar': cue ? cueColor(cue) : GRAY } as CSSProperties}>
+              <i className="up" style={{ height: `${a * 50}%` }} /><i className="down" style={{ height: `${a * 34}%` }} />
+            </span>
           );
         })}
       </div>
@@ -138,7 +135,7 @@ function WaveFade({ track, amps }: WaveProps) {
 
 const STYLES = [
   { id: 'bars', title: 'Bars + Dots', concept: 'The Audition look: thin gray bars, the drop in coral, a dot in each cue’s colour above.', selected: 'Selected: coral title, a coral edge on the left and a faint coral wash (production).', Wave: WaveBars },
-  { id: 'pill', title: 'Bars + Cue Bars', concept: 'The row 1 waveform with the same number of bars; the bars are rounded and all one gray, and the bar at each cue is that cue’s own soft colour (rose, sky, mint, lavender), exactly as tall as the waveform there.', selected: 'Selected: a coral glow that fades out to the right, with a thicker coral edge.', Wave: WavePill },
+  { id: 'pill', title: 'Mirrored Bars + Triangle Cue Columns', concept: 'The mirrored bars of row 3, all one gray; each cue is the column at its position in its own colour, exactly as tall as the waveform there, with an upside-down triangle sitting on top of it.', selected: 'Selected: a coral glow that fades out to the right, with a thicker coral edge.', Wave: WavePill },
   { id: 'mirror', title: 'Mirrored Bars + Cue Columns', concept: 'Bars grow up and down from a centre line, the lower half fainter; each cue is the mirrored column at its position, in its own colour.', selected: 'Selected: the row lifts, a lighter graphite with a bright top line and a dark bottom line.', Wave: WaveMirror },
   { id: 'twotone', title: 'Two-tone Bars + Cue Bars', concept: 'Each bar is two shades of gray with a rounded cap; each cue is the bar at its position, two-tone in its own colour.', selected: 'Selected: a thin coral outline around the whole row, with the title in coral.', Wave: WaveTwoTone },
   { id: 'fade', title: 'Fade Bars + Cue Bars', concept: 'Bars on a baseline that fade toward the foot; each cue is the bar at its position, fading in its own colour.', selected: 'Selected: a lit row with a coral line along the bottom and a coral play icon.', Wave: WaveFade },

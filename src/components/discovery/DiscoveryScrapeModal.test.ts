@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { DiscoveryScrapeJob } from '../../types';
-import { SCRAPE_STEPS, scrapeStageIndex } from './scrapeStages';
+import { SCRAPE_PHASES, scrapeStageIndex } from './scrapeStages';
 import { DiscoveryScrapeProgressModal } from './DiscoveryScrapeProgressModal';
 
 vi.mock('../../lib/supabase', () => ({ supabase: {} }));
@@ -18,20 +18,20 @@ const render = (j: DiscoveryScrapeJob | null, pollingError: string | null = null
   renderToStaticMarkup(createElement(DiscoveryScrapeProgressModal, { isOpen: true, onClose: vi.fn(), job: j, pollingError }));
 
 describe('Discovery set search popover', () => {
-  it('has the Rekordbox import look: same shell, header tile, stage row, figure cards and a shared stepper', () => {
+  it('uses the shared Quiet Figure display inside the Rekordbox import shell', () => {
     const markup = render(job());
     expect(markup).toContain('max-w-[624px]');
     expect(markup).toContain('bg-primary/10 rounded-xl');
-    expect(markup).toContain('aria-label="Set search progress"');
-    expect(markup).toContain('QUEUED');
-    expect(markup).toContain('COMPLETE');
-    expect(markup).toContain('grid grid-cols-3 gap-2');
-    expect(read('../ImportStageProgress.tsx')).toContain('<StageStepper');
-    expect(read('./DiscoveryScrapeProgressModal.tsx')).toContain('<StageStepper');
+    expect(markup).toContain('data-testid="quiet-progress"');
+    expect(markup).toContain('data-testid="quiet-phases"');
+    for (const label of ['Queued', 'Searching', 'Collecting', 'Complete']) expect(markup).toContain(label);
+    for (const label of ['Pages searched', 'Sets found', 'Total listed']) expect(markup).toContain(label);
+    expect(read('./DiscoveryScrapeProgressModal.tsx')).toContain('<QuietProgress');
+    expect(read('./DiscoveryScrapeProgressModal.tsx')).not.toContain('StageStepper');
   });
 
   it('moves through queued, searching, collecting and complete', () => {
-    expect(SCRAPE_STEPS.map((step) => step.id)).toEqual(['queued', 'search', 'collect', 'complete']);
+    expect(SCRAPE_PHASES.map((phase) => phase.id)).toEqual(['queued', 'search', 'collect', 'complete']);
     expect(scrapeStageIndex(null)).toBe(0);
     expect(scrapeStageIndex(job({ status: 'queued', started_at: null }))).toBe(0);
     expect(scrapeStageIndex(job())).toBe(1);
@@ -41,15 +41,14 @@ describe('Discovery set search popover', () => {
   });
 
   it('says plainly what is happening at each point', () => {
-    expect(render(job({ status: 'queued', started_at: null }))).toContain('Getting ready…');
-    expect(render(job())).toContain('Searching for ILLENIUM’s sets…');
+    expect(render(job({ status: 'queued', started_at: null }))).toContain('Your search is waiting to start.');
+    expect(render(job())).toContain('Searching for ILLENIUM’s sets.');
     expect(render(job({ pages_scraped: 1, results_found: 9 }))).toContain('9 found so far.');
     expect(render(job())).toContain('Run in Background');
   });
 
   it('finishes with a tick, a count, the figures and a Done button', () => {
     const markup = render(job({ status: 'completed', pages_scraped: 3, results_found: 41, total_results_reported: 52 }));
-    expect(markup).toContain('Sets Found!');
     expect(markup).toContain('41 sets collected.');
     expect(markup).toContain('>52<');
     expect(markup).toContain('Done');
@@ -57,14 +56,14 @@ describe('Discovery set search popover', () => {
 
   it('shows a failure in red with the reason and a Close button', () => {
     const markup = render(job({ status: 'failed', error_message: 'The site did not answer.' }));
-    expect(markup).toContain('Search failed');
+    expect(markup).toContain('The search stopped before it finished.');
     expect(markup).toContain('The site did not answer.');
     expect(markup).toContain('text-red-400');
     expect(render(job({ status: 'failed' }))).toContain('The search could not finish. Please try again.');
   });
 
   it('says so when progress cannot be checked, instead of rendering nothing', () => {
-    expect(render(null, 'boom')).toContain('Can’t check progress');
+    expect(render(null, 'boom')).toContain('Can’t check progress right now');
     expect(renderToStaticMarkup(createElement(DiscoveryScrapeProgressModal, { isOpen: true, onClose: vi.fn(), job: null, pollingError: null }))).toBe('');
   });
 });

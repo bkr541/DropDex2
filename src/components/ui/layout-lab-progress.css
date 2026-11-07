@@ -17,6 +17,8 @@
 .lp-figures > div:first-child { padding-left: 0; border-left: 0; }
 .lp-figures p { margin: 0; font-size: 20px; font-weight: 300; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .lp-figures small { display: block; margin-top: 4px; color: #9aa5b8; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; }
+.lp-figures-centered > div, .lp-figures-centered > div:first-child { padding-inline: 12px; text-align: center; }
+.lp-figures-centered > div:first-child { border-left: 0; }
 .lp-tick { position: absolute; right: -5px; bottom: -3px; display: grid; place-items: center; width: 11px; height: 11px; border-radius: 50%; background: #6fd9a4; color: #14171d; }
 
 /* Chevron steps: raised graphite arrows. */

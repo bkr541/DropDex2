@@ -1723,6 +1723,8 @@ export function ImportLibraryModal({
           {/* Single persistent modal shell — same dimensions on every phase */}
           <ImportProgressModal
             currentStep={currentStep}
+            stagePercent={currentStep === 'analyze' ? parseProgress.percent : currentStep === 'database' || currentStep === 'analysis-files' ? uploadPct : 0}
+            status={phase === 'failed' ? 'failed' : undefined}
             onClose={handleClose}
             abortOverlay={abortDialogContent}
           >

@@ -23,11 +23,17 @@
 .wp-bars .wp-body i { flex: 1; min-width: 1px; border-radius: 1px; }
 .wp-cues-dots > span { top: 1px; width: 6px; height: 6px; border-radius: 50%; background: var(--wp-cue); }
 
-/* 2 · Bars + cue bars: row 1's 120 bars at row 1's width and spacing, with rounded ends. */
+/* 2 · Mirrored bars + cue columns topped with a triangle: row 3's mirrored bars, and an upside-down triangle on top of each cue column. */
+.wp-pill { --wp-h: 22px; padding-top: 6px; }
 .wp-pill .wp-body { gap: 1px; }
-.wp-pill .wp-body i { flex: 1; min-width: 1px; border-radius: 999px; background: var(--wp-bar); }
-/* A cue: the one bar at its position takes the cue's own colour, so it is exactly the waveform's own height there. */
-.wp-pill .wp-body i.wp-cue-bar { background: var(--wp-bar); box-shadow: 0 0 6px -1px var(--wp-bar); }
+.wp-pill .wp-body > span { flex: 1; min-width: 1px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 1px; }
+.wp-pill .wp-body i { display: block; width: 100%; border-radius: 1px; background: var(--wp-bar); }
+.wp-pill .wp-body i.down { opacity: .42; }
+/* A cue column: both halves take the cue's colour, the lower half a little stronger so the marker reads. */
+.wp-pill .wp-cue-bar i.down { opacity: .6; }
+/* The triangle points down and sits right on the top end of the column's upper half. */
+.wp-pill .wp-cue-bar i.up { position: relative; }
+.wp-pill .wp-cue-bar i.up::before { content: ''; position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); border-left: 3.5px solid transparent; border-right: 3.5px solid transparent; border-top: 5px solid var(--wp-bar); }
 
 /* 3 · Mirrored bars + cue columns */
 .wp-mirror { --wp-h: 22px; }

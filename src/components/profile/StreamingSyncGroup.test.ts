@@ -30,7 +30,7 @@ describe('Streaming group in the Library tab', () => {
   it('opens a dialog with Cancel, Select Tracks and Sync All, in that order', () => {
     const labels = [...group.matchAll(/\{ label: '([^']+)', variant/g)].map((m) => m[1]);
     expect(labels).toEqual(['Cancel', 'Select Tracks', 'Sync All']);
-    expect(group).toContain("import { Dialog } from '../ui/feedback';");
+    expect(group).toContain("import { Dialog, QuietProgress, quietOverallPercent, type QuietPhase } from '../ui/feedback';");
   });
 
   it('Sync All closes the dialog and starts the sync with every track in the library', () => {

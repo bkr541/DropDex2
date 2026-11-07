@@ -27,10 +27,10 @@ function Headline({ m, className }: { m: ProgressModel; className?: string }) {
   return <p className={cn('text-[12px] leading-tight text-[#cdd3dd]', className)}>{m.headline}</p>;
 }
 
-/** The three figures of a job: light 20px numbers over 9px spaced labels, with hairlines between (the Audition header stats). */
-function Figures({ m, className }: { m: ProgressModel; className?: string }) {
+/** The three figures of a job: light 20px numbers over 9px spaced labels, with hairlines between (the Audition header stats). `centered` puts each value and its label in the middle of its own cell. */
+function Figures({ m, className, centered = false }: { m: ProgressModel; className?: string; centered?: boolean }) {
   return (
-    <div className={cn('lp-figures', className)}>
+    <div className={cn('lp-figures', centered && 'lp-figures-centered', className)}>
       {m.figures.map(({ label, value }) => (
         <div key={label}><p>{value}</p><small>{label}</small></div>
       ))}
@@ -342,13 +342,13 @@ function LedMeter({ m }: { m: ProgressModel }) {
   );
 }
 
-const PROGRESS_LOOKS: { id: string; title: string; concept: string; Look: (props: { m: ProgressModel }) => ReactNode; withFigures?: boolean }[] = [
+const PROGRESS_LOOKS: { id: string; title: string; concept: string; Look: (props: { m: ProgressModel }) => ReactNode; withFigures?: boolean; centerFigures?: boolean }[] = [
   { id: 'stage-rail', title: 'Stage Rail', concept: 'An icon and name for every phase over one hairline rail with a dot per phase', Look: StageRail, withFigures: true },
   { id: 'segmented', title: 'Segmented Bar', concept: 'A sunken segment for each phase, filling in coral, with its number and name', Look: Segmented, withFigures: true },
   { id: 'chevrons', title: 'Chevron Steps', concept: 'Raised graphite arrows: finished ones lit, the current one warmed with coral', Look: Chevrons, withFigures: true },
   { id: 'ring', title: 'Ring Gauge', concept: 'A thin coral ring with the percentage inside and every phase listed beside it', Look: Ring, withFigures: true },
   { id: 'timeline', title: 'Timeline', concept: 'A numbered list, one row per phase, with a status on the right', Look: Timeline },
-  { id: 'quiet', title: 'Quiet Figure', concept: 'A light percentage over numbered phase hairlines, in the Audition style', Look: QuietFigure, withFigures: true },
+  { id: 'quiet', title: 'Quiet Figure', concept: 'A light percentage over numbered phase hairlines, in the Audition style', Look: QuietFigure, withFigures: true, centerFigures: true },
   { id: 'stage-bars', title: 'Stage Bars', concept: 'Every phase gets its own sunken bar and a status, like a checklist', Look: StageBars },
   { id: 'waveform', title: 'Waveform', concept: 'A gray waveform that fills like a track playing, with each phase named along it', Look: WaveBars },
   { id: 'pills', title: 'Pills', concept: 'A raised capsule for every phase; the current one glows coral', Look: Pills, withFigures: true },
@@ -385,7 +385,7 @@ export function ProgressMockupsContent() {
         <button type="button" onClick={() => { setPlaying(false); setPercent(100); }} className="flex items-center gap-1.5 text-[11px]" style={{ color: MINT }}><CheckmarkFilled size={13} /> Finish</button>
       </div>
 
-      {PROGRESS_LOOKS.map(({ id, title, concept, Look, withFigures }, index) => (
+      {PROGRESS_LOOKS.map(({ id, title, concept, Look, withFigures, centerFigures }, index) => (
         <section key={id} className="mb-10" data-testid="progress-look" data-look={id}>
           <div className="mb-3 flex items-center gap-2.5">
             <div className="lp-number">{index + 1}</div>
@@ -399,7 +399,7 @@ export function ProgressMockupsContent() {
                 <div key={process.id} data-process={process.id} className="lp-card">
                   <p className="lp-label mb-3">{process.title}</p>
                   <Look m={m} />
-                  {withFigures && <Figures m={m} className="mt-4" />}
+                  {withFigures && <Figures m={m} className="mt-4" centered={centerFigures} />}
                 </div>
               );
             })}

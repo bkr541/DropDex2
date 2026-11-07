@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Cloud, CloudUpload, Information, StopFilled, WarningAlt, CheckmarkFilled, CircleDash } from '@carbon/icons-react';
+import { Cloud, CloudUpload, Information, StopFilled, WarningAlt, CircleDash } from '@carbon/icons-react';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { logger } from '../../lib/logger';
 import { fetchAllImportTracks, previewSyncStore, usePreviewSync } from '../../lib/preview/previewSync';
@@ -7,8 +7,15 @@ import { fetchPreviewStates } from '../../lib/queries/trackPreviews';
 import { cn } from '../../lib/utils';
 import type { RekordboxTrack } from '../../types';
 import { ControlButton } from '../ui/controls';
-import { Dialog } from '../ui/feedback';
+import { Dialog, QuietProgress, quietOverallPercent, type QuietPhase } from '../ui/feedback';
 import { TrackSyncSelector } from './TrackSyncSelector';
+
+/** The phases of a cloud sync: getting ready, uploading the previews, and done. */
+const SYNC_PHASES: readonly QuietPhase[] = [
+  { id: 'prepare', label: 'Prepare' },
+  { id: 'upload', label: 'Upload' },
+  { id: 'complete', label: 'Complete' },
+];
 
 const STORAGE_KEY = 'dropdex:streaming:cloud-sync-allowed';
 /** A 160 kbps preview of a 4-minute track is about 5 MB. Only used for the rough size shown on the page. */
@@ -160,44 +167,52 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
         )}
 
         {sync.phase !== 'idle' && (
-          <div className="space-y-3 p-4" data-testid="streaming-sync-progress">
-            {running && (
-              <>
-                <div className="flex items-baseline justify-between gap-3 text-xs">
-                  <span className="min-w-0 truncate font-bold">{sync.phase === 'preparing' ? 'Getting ready…' : sync.current ?? 'Working…'}</span>
-                  <span className="shrink-0 font-mono text-muted-foreground">{sync.processed.toLocaleString()} of {sync.total.toLocaleString()}</span>
-                </div>
-                <div className="h-2.5 overflow-hidden rounded-full bg-white/[0.08]"><div className="h-full rounded-full bg-primary transition-[width] duration-200" style={{ width: `${sync.total ? Math.round((sync.processed / sync.total) * 100) : 0}%` }} /></div>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">{sync.synced.toLocaleString()} synced · {sync.skipped.toLocaleString()} already up to date{sync.failed > 0 ? ` · ${sync.failed.toLocaleString()} could not be synced` : ''}</p>
+          <div className="p-4" data-testid="streaming-sync-progress">
+            <QuietProgress
+              title="Cloud sync"
+              phases={SYNC_PHASES}
+              activeIndex={sync.phase === 'preparing' ? 0 : sync.phase === 'running' || sync.phase === 'error' ? 1 : 2}
+              percent={sync.phase === 'done' ? 100 : quietOverallPercent(sync.phase === 'preparing' ? 0 : 1, SYNC_PHASES.length, sync.total ? Math.round((sync.processed / sync.total) * 100) : 0)}
+              stagePercent={sync.phase === 'preparing' ? 0 : sync.total ? Math.round((sync.processed / sync.total) * 100) : 0}
+              status={sync.phase === 'done' ? 'done' : sync.phase === 'error' ? 'failed' : 'running'}
+              caption={sync.phase === 'error' ? 'Stopped' : sync.phase === 'done' && sync.cancelled ? 'Stopped' : undefined}
+              headline={
+                sync.phase === 'preparing' ? 'Getting ready…'
+                : sync.phase === 'running' ? `${sync.current ?? 'Working…'} · ${sync.processed.toLocaleString()} of ${sync.total.toLocaleString()}`
+                : sync.phase === 'done' ? (sync.cancelled ? 'Sync stopped' : sync.failed === 0 ? 'Sync complete' : 'Sync finished with some problems')
+                : null
+              }
+              figures={sync.phase === 'error' ? undefined : [
+                { label: 'Synced', value: sync.synced.toLocaleString() },
+                { label: 'Up to date', value: sync.skipped.toLocaleString() },
+                { label: 'Could not sync', value: sync.failed.toLocaleString() },
+              ]}
+            >
+              {running && (
+                <div className="flex justify-center">
                   <ControlButton variant="danger-outline" onClick={() => previewSyncStore.cancel()}><StopFilled size={14} /> Stop</ControlButton>
                 </div>
-              </>
-            )}
-            {sync.phase === 'done' && (
-              <>
-                <p className="flex items-center gap-2 text-sm font-black">
-                  {sync.failed === 0 && !sync.cancelled ? <CheckmarkFilled size={16} className="text-emerald-500" /> : <WarningAlt size={16} className="text-amber-400" />}
-                  {sync.cancelled ? 'Sync stopped' : sync.failed === 0 ? 'Sync complete' : 'Sync finished with some problems'}
-                </p>
-                <p className="text-xs text-muted-foreground">{sync.synced.toLocaleString()} synced · {sync.skipped.toLocaleString()} already up to date · {sync.failed.toLocaleString()} could not be synced</p>
-                {sync.failures.length > 0 && (
-                  <ul className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-black/20 p-3 text-[11px]">
-                    {sync.failures.slice(0, 50).map((failure) => (
-                      <li key={failure.trackId}><span className="font-bold">{failure.title}</span> <span className="text-muted-foreground">— {failure.message}</span></li>
-                    ))}
-                    {sync.failures.length > 50 && <li className="text-muted-foreground">…and {(sync.failures.length - 50).toLocaleString()} more (see the Developer tab's log).</li>}
-                  </ul>
-                )}
-                <ControlButton variant="primary" onClick={() => previewSyncStore.reset()}>Done</ControlButton>
-              </>
-            )}
-            {sync.phase === 'error' && (
-              <>
-                <p className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300" role="alert"><WarningAlt size={16} className="mt-0.5 shrink-0" /> {sync.message}</p>
-                <ControlButton variant="neutral" onClick={() => previewSyncStore.reset()}>Close</ControlButton>
-              </>
-            )}
+              )}
+              {sync.phase === 'done' && (
+                <>
+                  {sync.failures.length > 0 && (
+                    <ul className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-black/20 p-3 text-[11px]">
+                      {sync.failures.slice(0, 50).map((failure) => (
+                        <li key={failure.trackId}><span className="font-bold">{failure.title}</span> <span className="text-muted-foreground">— {failure.message}</span></li>
+                      ))}
+                      {sync.failures.length > 50 && <li className="text-muted-foreground">…and {(sync.failures.length - 50).toLocaleString()} more (see the Developer tab's log).</li>}
+                    </ul>
+                  )}
+                  <div className="flex justify-center"><ControlButton variant="primary" onClick={() => previewSyncStore.reset()}>Done</ControlButton></div>
+                </>
+              )}
+              {sync.phase === 'error' && (
+                <>
+                  <p className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300" role="alert"><WarningAlt size={16} className="mt-0.5 shrink-0" /> {sync.message}</p>
+                  <div className="flex justify-center"><ControlButton variant="secondary" onClick={() => previewSyncStore.reset()}>Close</ControlButton></div>
+                </>
+              )}
+            </QuietProgress>
           </div>
         )}
       </div>

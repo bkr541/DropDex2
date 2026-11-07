@@ -126,4 +126,17 @@ describe('Every progress look names every phase of its job, in the graphite look
     expect(cardSlice('quiet', 'rekordbox')).toContain('data-testid="quiet-phases"');
     expect(cardSlice('quiet', 'rekordbox')).toContain('Phase 3 of 5');
   });
+
+  it('centres each value and its label in its own cell in Quiet Figure, and leaves the other rows as they were', () => {
+    for (const process of ['rekordbox', 'sets', 'cloud']) {
+      const card = cardSlice('quiet', process);
+      expect(card, process).toContain('class="lp-figures lp-figures-centered mt-4"');
+      expect(card.match(/<div><p>/g), process).toHaveLength(3);
+    }
+    for (const look of looks.filter((id) => id !== 'quiet')) {
+      for (const process of ['rekordbox', 'sets', 'cloud']) expect(cardSlice(look, process), `${look} ${process}`).not.toContain('lp-figures-centered');
+    }
+    expect(css).toMatch(/\.lp-figures-centered > div, \.lp-figures-centered > div:first-child \{ padding-inline: 12px; text-align: center; \}/);
+    expect(css).toMatch(/\.lp-figures-centered > div:first-child \{ border-left: 0; \}/);
+  });
 });

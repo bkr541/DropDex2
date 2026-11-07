@@ -4,6 +4,7 @@ import type React from 'react';
 import { ControlButton } from './ui/controls';
 import { ImportStageProgress } from './ImportStageProgress';
 import type { ImportUiStep } from './ImportStageProgress';
+import type { QuietProgressStatus } from './ui/feedback';
 
 export type { ImportUiStep };
 
@@ -11,8 +12,8 @@ export type { ImportUiStep };
  * Persistent modal shell for the entire Rekordbox import workflow.
  *
  * Fixed outer geometry (h-[600px] max-w-xl) so the modal frame never moves
- * or resizes as phases advance.  The shared header and five-stage stepper
- * remain visible on every screen.  Only the scrollable body region changes.
+ * or resizes as phases advance.  The shared header and the Quiet Figure progress display
+ * (percentage and five numbered phases) remain visible on every screen.  Only the scrollable body region changes.
  *
  * The abortOverlay, when provided, is rendered absolutely above the entire
  * modal — header, stepper, and body — so confirmation dialogs always block
@@ -20,11 +21,17 @@ export type { ImportUiStep };
  */
 export function ImportProgressModal({
   currentStep,
+  stagePercent,
+  status,
   onClose,
   abortOverlay,
   children,
 }: {
   currentStep: ImportUiStep;
+  /** How far through the current phase the import is (0 to 100), which gives the overall percentage. */
+  stagePercent?: number;
+  /** `failed` turns the progress display red. */
+  status?: QuietProgressStatus;
   /** Safety-aware close handler — must be handleClose from ImportLibraryModal. */
   onClose: () => void;
   /** When truthy, rendered as a full-modal blocking overlay. */
@@ -72,9 +79,9 @@ export function ImportProgressModal({
         </ControlButton>
       </div>
 
-      {/* Five-stage progress indicator — fixed width centered in the wider modal */}
-      <div className="px-[52px] pt-6 pb-0 shrink-0">
-        <ImportStageProgress currentStep={currentStep} />
+      {/* The shared progress display: percentage, five numbered phases, one sentence */}
+      <div className="px-7 pt-5 pb-1 shrink-0" data-testid="import-progress">
+        <ImportStageProgress currentStep={currentStep} stagePercent={stagePercent} status={status} />
       </div>
 
       {/* Scrollable phase body — overflow-hidden clips x so the slide is visible */}

@@ -65,11 +65,11 @@ describe('ImportProgressModal', () => {
     const html = renderToStaticMarkup(
       createElement(ImportProgressModal, { currentStep: 'source', onClose: noop, children: child }),
     );
-    expect(html).toContain('SOURCE');
-    expect(html).toContain('DATABASE');
-    expect(html).toContain('ANALYSIS FILES');
-    expect(html).toContain('ANALYZE');
-    expect(html).toContain('COMPLETE');
+    expect(html).toContain('Source');
+    expect(html).toContain('Database');
+    expect(html).toContain('Analysis files');
+    expect(html).toContain('Analyze');
+    expect(html).toContain('Complete');
   });
 
   it('has stable outer geometry classes', () => {

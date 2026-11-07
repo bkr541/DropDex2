@@ -88,69 +88,50 @@ describe('Layout Lab Waveform Preview tab', () => {
     expect(rowSlice('bars')).toContain('Selected: coral title');
   });
 
-  it('draws row 2 with the same number of bars as row 1', () => {
-    const count = (style: string) => (rowSlice(style).match(/<i [^>]*style="height:[^"]*"[^>]*><\/i>/g) ?? []).length;
-    const per = (style: string) => count(style) / PREVIEW_TRACKS.length;
-    expect(per('bars')).toBe(120);
-    expect(per('pill')).toBe(120);
-    expect(per('pill')).toBe(per('bars'));
-    expect(css).toMatch(/\.wp-pill \.wp-body \{ gap: 1px; \}/);
-    expect(css).toMatch(/\.wp-pill \.wp-body i \{ flex: 1; min-width: 1px; border-radius: 999px; background: var\(--wp-bar\); \}/);
+  it('gives row 2 the same mirrored bars as row 3: 120 columns per track, each with an upper and a fainter lower half', () => {
+    const columns = (style: string) => (rowSlice(style).match(/<span [^>]*style="--wp-bar:[^"]*"><i class="up" style="height:[\d.]+%"><\/i><i class="down" style="height:[\d.]+%"><\/i><\/span>/g) ?? []).length / PREVIEW_TRACKS.length;
+    expect(columns('mirror')).toBe(120);
+    expect(columns('pill')).toBe(120);
+    expect(rowSlice('pill')).toContain('wp-wave wp-pill');
+    expect(css).toMatch(/\.wp-pill \.wp-body > span \{ flex: 1; min-width: 1px; display: flex; flex-direction: column;/);
+    expect(css).toMatch(/\.wp-pill \.wp-body i\.down \{ opacity: \.42; \}/);
+    expect(css).toMatch(/\.wp-mirror \.wp-body i\.down \{ opacity: \.42; \}/);
+    // The same heights as row 3 for the same track: upper half 50%, lower half 34% of each bar.
+    const heights = (style: string) => [...rowSlice(style).matchAll(/<i class="(up|down)" style="height:([\d.]+)%"/g)].slice(0, 240).map((m) => `${m[1]}${m[2]}`);
+    expect(heights('pill')).toEqual(heights('mirror'));
     expect(read('./LayoutLabWaveformMockups.tsx')).not.toContain('amps.flatMap');
-    // The same gray and coral drop as row 1.
     expect(rowSlice('pill')).toContain('#8997AE');
-    expect(rowSlice('pill')).toContain('wp-cue-bar');
   });
 
-  it('marks each cue in row 2 by colouring the one bar of the waveform at its position, so it never extends past the waveform', () => {
+  it('marks the cue columns in row 2 in their own soft colours, each topped with an upside-down triangle', () => {
     const row = rowSlice('pill');
     const cueTotal = PREVIEW_TRACKS.reduce((sum, t) => sum + t.cues.length, 0);
-    expect(row.match(/<i class="wp-cue-bar"/g)).toHaveLength(cueTotal);
-    // Nothing is drawn on top of or beyond the waveform: no separate marker elements, no dots, no rings.
-    expect(row).not.toContain('<u ');
-    expect(row).not.toContain('wp-cue-line');
-    expect(row).not.toContain('wp-cues-rings');
-    expect(row).not.toContain('wp-cues ');
-    expect(css).not.toContain('.wp-cue-line');
-    // Each cue bar is a bar of the waveform itself, with the waveform's own height there.
-    const first = row.slice(row.indexOf('data-style="pill"'));
-    const bars = [...first.slice(0, first.indexOf('movement 67')).matchAll(/<i class="wp-cue-bar" title="Cue ([A-D])" style="height:([\d.]+)%;--wp-bar:(#[0-9a-fA-F]+)"/g)];
-    expect(bars.length).toBe(PREVIEW_TRACKS.slice(0, 4).reduce((sum, t) => sum + t.cues.length, 0));
-    for (const [, , height] of bars) { expect(Number(height)).toBeGreaterThanOrEqual(12); expect(Number(height)).toBeLessThanOrEqual(100); }
-    // The bar for a cue sits at the cue's own place: cue pct / 100 of the way along 120 bars.
-    const firstTrack = row.slice(row.indexOf('wp-wave wp-pill'), row.indexOf('</div>', row.indexOf('wp-wave wp-pill')));
-    const bar = [...firstTrack.matchAll(/<i[^>]*>/g)].map((m) => m[0]);
-    expect(bar).toHaveLength(120);
-    PREVIEW_TRACKS[0].cues.forEach((cue) => expect(bar[Math.floor((cue.pct / 100) * 120)]).toContain(`title="Cue ${cue.letter}"`));
-    expect(css).toMatch(/\.wp-pill \.wp-body i\.wp-cue-bar \{ background: var\(--wp-bar\);/);
+    expect(row.match(/<span class="wp-cue-bar" title="Cue [A-D]"/g)).toHaveLength(cueTotal);
+    const byLetter = new Map<string, Set<string>>();
+    for (const m of row.matchAll(/<span class="wp-cue-bar" title="Cue ([A-D])" style="--wp-bar:(#[0-9a-fA-F]+)"/g)) byLetter.set(m[1], (byLetter.get(m[1]) ?? new Set()).add(m[2].toLowerCase()));
+    expect([...byLetter.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, set]) => [...set][0])).toEqual(['#f27d96', '#5fb8e8', '#6fd9a4', '#a99bff']);
+    for (const set of byLetter.values()) expect(set.size).toBe(1);
+    // The vivid, wider, glowing treatment is gone.
+    expect(css).not.toMatch(/drop-shadow|flex: 0 0 4px|i\.up \{ opacity: \.8/);
+    // A downward triangle on the top end of the column's upper half, in the cue's colour.
+    expect(css).toMatch(/\.wp-pill \.wp-cue-bar i\.up::before \{[^}]*bottom: 100%;[^}]*border-top: 5px solid var\(--wp-bar\);/);
+    // Still the waveform's own columns, never a separate marker over or beyond it.
+    for (const gone of ['<u ', 'wp-cue-line', 'wp-cues-rings', 'wp-cues ']) expect(row).not.toContain(gone);
+    // Each cue sits on the column at its own position along the 120.
+    const first = row.slice(row.indexOf('wp-wave wp-pill'), row.indexOf('</div></div>', row.indexOf('wp-wave wp-pill')));
+    const columns = [...first.matchAll(/<span [^>]*><i class="up"[^>]*><\/i><i class="down"[^>]*><\/i><\/span>/g)].map((m) => m[0]);
+    expect(columns).toHaveLength(120);
+    PREVIEW_TRACKS[0].cues.forEach((cue) => expect(columns[Math.floor((cue.pct / 100) * 120)]).toContain(`title="Cue ${cue.letter}"`));
   });
 
-  it('rounds the ends of row 2\'s bars and gives each cue its own soft colour, not one for all', () => {
-    expect(css).toMatch(/\.wp-pill \.wp-body i \{[^}]*border-radius: 999px/);
-    const row = rowSlice('pill');
-    const byLetter = new Map<string, Set<string>>();
-    for (const m of row.matchAll(/<i class="wp-cue-bar" title="Cue ([A-D])"[^>]*--wp-bar:(#[0-9a-fA-F]+)/g)) {
-      byLetter.set(m[1], (byLetter.get(m[1]) ?? new Set()).add(m[2].toLowerCase()));
-    }
-    // Each of the four cues has its own colour, the same every time it appears.
-    expect([...byLetter.keys()].sort()).toEqual(['A', 'B', 'C', 'D']);
-    for (const set of byLetter.values()) expect(set.size).toBe(1);
-    const colours = [...byLetter.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, set]) => [...set][0]);
-    expect(colours).toEqual(['#f27d96', '#5fb8e8', '#6fd9a4', '#a99bff']);
-    expect(new Set(colours).size).toBe(4);
-    // Not the production cue colours, and not all one colour.
-    for (const old of ['#ff4e4f', '#2aa8ff', '#35e04a', '#7a4dff']) expect(row.toLowerCase()).not.toContain(`--wp-bar:${old}`);
-    // The other rows keep the production cue colours.
-    expect(rowSlice('bars')).toContain('--wp-cue:#2aa8ff');
-  });
 
   it('has no orange in rows 2 to 5: every bar is the one gray except the cue bars, and only row 1 keeps the coral drop', () => {
-    const cueColours = ['#5fb8e8', '#6fd9a4', '#a99bff', '#f27d96'];
+    const soft = ['#5fb8e8', '#6fd9a4', '#a99bff', '#f27d96'];
     for (const style of ['pill', 'mirror', 'twotone', 'fade']) {
       const row = rowSlice(style).toLowerCase();
       const colours = new Set([...row.matchAll(/--wp-bar:(#[0-9a-f]+)/g)].map((m) => m[1]));
       // Rows 2 and 3 set every bar's colour inline (gray, or a cue colour); rows 4 and 5 draw the gray in CSS, so only the cue bars set one.
-      const expected = style === 'pill' || style === 'mirror' ? ['#8997ae', ...cueColours] : cueColours;
+      const expected = style === 'pill' || style === 'mirror' ? ['#8997ae', ...soft] : soft;
       expect([...colours].sort(), style).toEqual([...expected].sort());
       for (const orange of ['#f78361', '#ffa07f', '#d96a4a', '#f783612e', 'is-drop']) expect(row, `${style} ${orange}`).not.toContain(orange);
     }
@@ -185,6 +166,6 @@ describe('Layout Lab Waveform Preview tab', () => {
     }
     const colours = (style: string) => [...rowSlice(style).matchAll(/title="Cue ([A-D])" style="[^"]*--wp-bar:(#[0-9a-fA-F]+)/g)].map((m) => `${m[1]}${m[2].toLowerCase()}`);
     const expected = new Set(['A#f27d96', 'B#5fb8e8', 'C#6fd9a4', 'D#a99bff']);
-    for (const style of ['pill', 'mirror', 'twotone', 'fade']) expect(new Set(colours(style)), style).toEqual(expected);
+    for (const style of ['mirror', 'twotone', 'fade']) expect(new Set(colours(style)), style).toEqual(expected);
   });
 });

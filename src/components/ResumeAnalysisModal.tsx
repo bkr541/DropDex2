@@ -27,13 +27,22 @@ import { UploadAccumulator } from '../lib/rekordbox/analysisUploadResults';
 import { isAbortError, uploadBatchWithRetry } from '../lib/rekordbox/uploadBatch';
 import { AbortableTimerRegistry, waitForAbortableDelay } from '../lib/rekordbox/abortableRetry';
 import { isFreshImportResponse } from '../lib/rekordbox/importRequestFreshness';
+import { QuietProgress, quietOverallPercent, type QuietPhase } from './ui/feedback';
 import { runCancellableUploadQueue, UploadQueueRuntime } from '../lib/rekordbox/cancellableUploadQueue';
 import { IdempotentUsbCleanup, verifyUsbReleased } from '../lib/rekordbox/localUsbLifecycle';
-import { CheckmarkFilled, CircleDash, Close, FolderOpen, Renew, WarningAlt } from '@carbon/icons-react';
+import { CheckmarkFilled, Close, FolderOpen, Renew, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from './ui/controls';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+
+const RESUME_PHASES: QuietPhase[] = [
+  { id: 'check', label: 'Check' },
+  { id: 'upload', label: 'Upload' },
+  { id: 'release', label: 'Release USB' },
+  { id: 'parse', label: 'Parse' },
+  { id: 'done', label: 'Complete' },
+];
 type ResumePhase =
   | 'fetching_status'
   | 'scan_prompt'
@@ -544,13 +553,13 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
             {/* ── Fetching status ── */}
             {phase === 'fetching_status' && (
-              <div className="flex items-center gap-5 py-3">
-                <CircleDash className="animate-spin text-primary shrink-0" size={32} />
-                <div>
-                  <h2 className="text-lg font-bold">Checking Analysis Status</h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">Loading missing file list…</p>
-                </div>
-              </div>
+              <QuietProgress
+                title="Resume analysis"
+                phases={RESUME_PHASES}
+                activeIndex={0}
+                percent={quietOverallPercent(0, RESUME_PHASES.length)}
+                headline="Checking which analysis files are missing…"
+              />
             )}
 
             {/* ── Scan prompt ── */}
@@ -645,65 +654,46 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
             {/* ── Uploading ── */}
             {phase === 'uploading' && (
-              <div className="flex items-start gap-5 py-2">
-                <div className="relative w-12 h-12 shrink-0">
-                  <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-                  <div className="relative w-12 h-12 bg-primary/15 rounded-full flex items-center justify-center">
-                    <CircleDash className="animate-spin text-primary" size={22} />
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-lg font-bold">Uploading Missing Files</h2>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {progress.filesUploaded.toLocaleString()} / {progress.filesTotal.toLocaleString()} files
-                    {progress.bytesTotal > 0 && (
-                      <> · {fmtBytes(progress.bytesUploaded)} / {fmtBytes(progress.bytesTotal)}</>
-                    )}
-                  </p>
-                  {retryingCount > 0 && (
-                    <p className="text-xs text-amber-400 mt-1">
-                      Retrying {retryingCount} failed file{retryingCount !== 1 ? 's' : ''}…
-                    </p>
-                  )}
-                  <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
-                    <WarningAlt size={14} className="mt-0.5 shrink-0 text-amber-400" />
-                    <p className="text-xs leading-relaxed text-amber-100">
-                      Keep Rekordbox closed and do not eject the drive until upload completes.
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <QuietProgress
+                title="Resume analysis"
+                phases={RESUME_PHASES}
+                activeIndex={1}
+                stagePercent={progress.filesTotal > 0 ? (progress.filesUploaded / progress.filesTotal) * 100 : 0}
+                percent={quietOverallPercent(1, RESUME_PHASES.length, progress.filesTotal > 0 ? (progress.filesUploaded / progress.filesTotal) * 100 : 0)}
+                headline="Uploading missing files. Keep Rekordbox closed and do not eject the drive."
+                figures={[
+                  { label: 'Files', value: `${progress.filesUploaded.toLocaleString()} / ${progress.filesTotal.toLocaleString()}` },
+                  ...(progress.bytesTotal > 0 ? [{ label: 'Data', value: `${fmtBytes(progress.bytesUploaded)} / ${fmtBytes(progress.bytesTotal)}` }] : []),
+                  ...(retryingCount > 0 ? [{ label: 'Retrying', value: retryingCount.toLocaleString() }] : []),
+                ]}
+              />
             )}
 
             {/* ── Stopping local USB reads ── */}
             {phase === 'stopping_usb_reads' && (
-              <div className="flex items-center gap-5 py-3">
-                <CircleDash className="animate-spin text-amber-400 shrink-0" size={30} />
-                <div>
-                  <h2 className="text-lg font-bold">Stopping USB Reads</h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">Keep Rekordbox closed until this window closes.</p>
-                </div>
-              </div>
+              <QuietProgress
+                title="Resume analysis"
+                phases={RESUME_PHASES}
+                activeIndex={2}
+                percent={quietOverallPercent(2, RESUME_PHASES.length)}
+                headline="Stopping USB reads. Keep Rekordbox closed until this window closes."
+              />
             )}
 
             {/* ── Parsing ── */}
             {phase === 'parsing' && (
-              <div className="flex items-start gap-5 py-2">
-                <div className="relative w-12 h-12 shrink-0">
-                  <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-                  <div className="relative w-12 h-12 bg-primary/15 rounded-full flex items-center justify-center">
-                    <CircleDash className="animate-spin text-primary" size={22} />
-                  </div>
+              <QuietProgress
+                title="Resume analysis"
+                phases={RESUME_PHASES}
+                activeIndex={3}
+                percent={quietOverallPercent(3, RESUME_PHASES.length)}
+                headline="Reprocessing waveform, cue, and beat data for affected tracks."
+              >
+                <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                  <CheckmarkFilled size={14} className="shrink-0 text-emerald-400" />
+                  <p className="text-xs text-emerald-100">USB released — reprocessing uses uploaded copies only.</p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-lg font-bold">Reprocessing Analysis</h2>
-                  <p className="text-xs text-muted-foreground mt-1">Parsing waveform, cue, and beat data for affected tracks…</p>
-                  <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
-                    <CheckmarkFilled size={14} className="shrink-0 text-emerald-400" />
-                    <p className="text-xs text-emerald-100">USB released — reprocessing uses uploaded copies only.</p>
-                  </div>
-                </div>
-              </div>
+              </QuietProgress>
             )}
 
             {/* ── Done (completed) ── */}

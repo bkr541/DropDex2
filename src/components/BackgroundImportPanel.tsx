@@ -7,11 +7,18 @@ import {
   type AnalysisStatusResponse,
 } from '../lib/api/rekordboxImport';
 import { announceRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
-import { ProgressBar } from './ui/feedback';
+import { QuietProgress, quietOverallPercent, type QuietPhase } from './ui/feedback';
 import { CheckmarkFilled, CircleDash, Close, Pause, Play, TrashCan, Upload, WarningAlt } from '@carbon/icons-react';
 import { ControlButton } from './ui/controls';
 
 const POLL_MS = 2500;
+
+const IMPORT_PHASES: QuietPhase[] = [
+  { id: 'library', label: 'Library' },
+  { id: 'files', label: 'Read files' },
+  { id: 'analysis', label: 'Analyze' },
+  { id: 'complete', label: 'Complete' },
+];
 
 function estimateLabel(seconds: number | null | undefined): string {
   if (seconds == null) return 'Measuring throughput…';
@@ -110,6 +117,7 @@ export function BackgroundImportPanel({
   const resumable = paused || interrupted;
   const terminal = status ? ['completed', 'partial', 'failed'].includes(status.analysis_status) : false;
   const progress = status?.progress_percent ?? 0;
+  const activeIndex = terminal ? IMPORT_PHASES.length - 1 : usbReleased ? 2 : 1;
 
   const runAction = async (nextAction: 'pause' | 'resume') => {
     setAction(nextAction);
@@ -169,25 +177,22 @@ export function BackgroundImportPanel({
         </div>
       )}
 
-      <ProgressBar className="mt-4" value={progress} tone="active" label="Rekordbox import progress" />
-      <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded-lg bg-[var(--color-surface)] p-2">
-          <p className="text-muted-foreground">Tracks ready</p>
-          <p className="mt-0.5 font-bold">{(status?.tracks_ready_count ?? status?.parsed_track_count ?? 0).toLocaleString()}</p>
-        </div>
-        <div className="rounded-lg bg-[var(--color-surface)] p-2">
-          <p className="text-muted-foreground">Tracks remaining</p>
-          <p className="mt-0.5 font-bold">{(status?.tracks_remaining_count ?? 0).toLocaleString()}</p>
-        </div>
-        <div className="rounded-lg bg-[var(--color-surface)] p-2">
-          <p className="text-muted-foreground">Estimate</p>
-          <p className="mt-0.5 font-bold">{estimateLabel(status?.estimated_seconds_remaining)}</p>
-        </div>
-        <div className="rounded-lg bg-[var(--color-surface)] p-2">
-          <p className="text-muted-foreground">Raw DAT/EXT archive</p>
-          <p className="mt-0.5 font-bold capitalize">{status?.raw_archival_status ?? 'skipped'}</p>
-        </div>
-      </div>
+      <QuietProgress
+        className="mt-4"
+        title="Rekordbox import"
+        phases={IMPORT_PHASES}
+        activeIndex={activeIndex}
+        stagePercent={progress}
+        percent={quietOverallPercent(activeIndex, IMPORT_PHASES.length, progress, terminal && status?.analysis_status === 'completed')}
+        status={status?.analysis_status === 'failed' ? 'failed' : terminal ? 'done' : 'running'}
+        headline={paused ? 'Paused. Resume to keep analyzing tracks.' : interrupted ? 'Interrupted. Resume to pick up where it stopped.' : undefined}
+        figures={[
+          { label: 'Tracks ready', value: (status?.tracks_ready_count ?? status?.parsed_track_count ?? 0).toLocaleString() },
+          { label: 'Remaining', value: (status?.tracks_remaining_count ?? 0).toLocaleString() },
+          { label: 'Estimate', value: estimateLabel(status?.estimated_seconds_remaining) },
+          { label: 'Raw archive', value: <span className="capitalize">{status?.raw_archival_status ?? 'skipped'}</span> },
+        ]}
+      />
 
       {status?.optional_archival_status && status.optional_archival_status !== 'skipped' && (
         <p className="mt-3 text-xs text-muted-foreground">
