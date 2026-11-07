@@ -43,10 +43,14 @@ export async function fetchTopArtistsForFeed(limit = 10): Promise<FeedArtist[]> 
   }));
 }
 
-export async function fetchSetlistsForArtistFeed(
-  artistId: string,
-  limit = 10,
-): Promise<DiscoverySetlistResult[]> {
+export interface ArtistSetlistSummary {
+  /** Every set the catalog has for the artist. */
+  total: number;
+  /** The newest sets, up to the requested limit. */
+  items: DiscoverySetlistResult[];
+}
+
+export async function fetchArtistSetlistSummary(artistId: string, limit = 10): Promise<ArtistSetlistSummary> {
   const { data, error } = await supabase.rpc('get_discovery_artist_setlists_page', {
     p_artist_id: artistId,
     p_offset: 0,
@@ -59,7 +63,7 @@ export async function fetchSetlistsForArtistFeed(
     : {};
   const rows = Array.isArray(payload.items) ? payload.items : [];
 
-  return rows.map((value) => {
+  const items = rows.map((value) => {
     const row = value as Record<string, unknown>;
     return {
       id: String(row.id),
@@ -82,4 +86,12 @@ export async function fetchSetlistsForArtistFeed(
       updated_at: row.updated_at as string | null,
     };
   });
+  return { total: Number(payload.total ?? items.length), items };
+}
+
+export async function fetchSetlistsForArtistFeed(
+  artistId: string,
+  limit = 10,
+): Promise<DiscoverySetlistResult[]> {
+  return (await fetchArtistSetlistSummary(artistId, limit)).items;
 }

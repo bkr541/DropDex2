@@ -176,16 +176,4 @@
 .ld-h-picks > button > svg { margin-left: auto; flex: none; }
 .ld-h-mini { width: 36px; height: 36px; font-size: 11px; }
 
-/* Spotlight */
-.ld-h-spot { align-items: center; }
-.ld-h-big-avatar { width: 132px; height: 132px; font-size: 38px; box-shadow: 0 0 0 6px #ffffff0a, 0 14px 30px -8px #000000b3; }
-.ld-h-spot ul { display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 0; list-style: none; color: #b9c2d2; font-size: 12px; }
-.ld-h-spot li { display: flex; align-items: center; gap: 8px; }
-.ld-h-spot li svg { flex: none; color: #f78361; }
-.ld-h-set { display: flex; flex: none; flex-direction: column; gap: 6px; width: 250px; padding: 14px; border: 1px solid #ffffff12; border-radius: 18px; background: #ffffff06; }
-.ld-h-set b { font-size: 13px; font-weight: 500; }
-.ld-h-set > span:not(.ld-h-set-art):not(.ld-h-wave) { color: #9aa5b8; font-size: 11px; }
-.ld-h-set-art { display: grid; place-items: center; height: 92px; border-radius: 12px; background: radial-gradient(circle at 25% 20%, var(--ld-h1), var(--ld-h2) 80%); color: #ffffffd9; }
-.ld-h-wave { display: flex; align-items: center; gap: 2px; height: 26px; margin-top: 4px; }
-.ld-h-wave i { width: 3px; border-radius: 2px; background: #56627a; }
-.ld-h-wave i:nth-child(-n+11) { background: #f78361; }
+/* Picked for You uses the Fresh This Week look (HeroGroup), so it needs no styles of its own. */

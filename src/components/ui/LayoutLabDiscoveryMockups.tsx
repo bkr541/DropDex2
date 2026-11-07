@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 import { ArrowRight, Add, Checkmark, ChevronRight, Close, Play, Search, Shuffle } from '@carbon/icons-react';
 import { cn } from '../../lib/utils';
 import { ControlButton } from './controls/ControlButton';
-import { CARD_KINDS, COMPATIBLE_KEYS, GENRES, RECENT_SEARCHES, SAMPLE, SEARCH_SCOPES, WEEK_DAYS, WEEK_SETS, type CardKind } from './layoutLabDiscoveryData';
+import { CARD_KINDS, COMPATIBLE_KEYS, GENRES, RECENT_SEARCHES, SAMPLE, SEARCH_SCOPES, PICK_YEAR_SETS, PICK_YEARS, WEEK_DAYS, WEEK_SETS, type CardKind } from './layoutLabDiscoveryData';
 import './layout-lab-discovery.css';
 
 // Three groups of mockups for the Discovery page, all in the premium graphite look: genre filter rows, rows of five cards
@@ -184,29 +184,60 @@ function HeroSetBuilder() {
   );
 }
 
-/** Fresh This Week: what changed since the DJ last looked, as three figures and a week of activity. */
-function HeroFresh() {
-  const max = Math.max(...WEEK_SETS);
+/**
+ * The header group look, shared by every group that cycles through the production Discovery header: a small label, a light title,
+ * three figures with hairline dividers, two buttons, and a panel on the right with a small bar chart. "Fresh This Week" set the look;
+ * "Picked for You" (and any group after it) is the same component with different content.
+ */
+interface HeroGroupProps {
+  className: string;
+  label: string;
+  title: string;
+  figures: readonly (readonly [string, string])[];
+  actions: ReactNode;
+  chartTitle: string;
+  chartLabel: string;
+  values: readonly number[];
+  ticks: readonly string[];
+}
+
+function HeroGroup({ className, label, title, figures, actions, chartTitle, chartLabel, values, ticks }: HeroGroupProps) {
+  const max = Math.max(...values);
   return (
-    <div className="ld-hero ld-h-fresh">
+    <div className={`ld-hero ${className}`}>
       <div className="ld-h-main">
-        <span className="ld-label">Since your last visit</span>
-        <h3>Fresh this week</h3>
+        <span className="ld-label">{label}</span>
+        <h3>{title}</h3>
         <div className="ld-h-figures">
-          <span><em>47</em><small>New sets</small></span>
-          <span><em>12</em><small>New artists</small></span>
-          <span><em>Riddim</em><small>Trending genre · +18%</small></span>
+          {figures.map(([value, caption]) => <span key={caption}><em>{value}</em><small>{caption}</small></span>)}
         </div>
-        <div className="ld-h-actions">
-          <ControlButton variant="primary"><ArrowRight size={14} /> See what’s new</ControlButton>
-          <ControlButton variant="secondary"><Shuffle size={14} /> Surprise me</ControlButton>
-        </div>
+        <div className="ld-h-actions">{actions}</div>
       </div>
-      <div className="ld-h-week" aria-label="Sets added each day this week">
-        <small>Sets added per day</small>
-        <div>{WEEK_SETS.map((n, i) => <span key={i} style={{ '--ld-bar': `${(n / max) * 100}%` } as CSSProperties}><i /><b>{WEEK_DAYS[i]}</b></span>)}</div>
+      <div className="ld-h-week" aria-label={chartLabel}>
+        <small>{chartTitle}</small>
+        <div>{values.map((n, i) => <span key={i} style={{ '--ld-bar': `${(n / max) * 100}%` } as CSSProperties}><i /><b>{ticks[i]}</b></span>)}</div>
       </div>
     </div>
+  );
+}
+
+/** Fresh This Week: what changed since the DJ last looked, as three figures and a week of activity. */
+function HeroFresh() {
+  return (
+    <HeroGroup
+      className="ld-h-fresh"
+      label="Since your last visit"
+      title="Fresh this week"
+      figures={[['47', 'New sets'], ['12', 'New artists'], ['Riddim', 'Trending genre · +18%']]}
+      actions={<>
+        <ControlButton variant="primary"><ArrowRight size={14} /> See what’s new</ControlButton>
+        <ControlButton variant="secondary"><Shuffle size={14} /> Surprise me</ControlButton>
+      </>}
+      chartTitle="Sets added per day"
+      chartLabel="Sets added each day this week"
+      values={WEEK_SETS}
+      ticks={WEEK_DAYS}
+    />
   );
 }
 
@@ -230,33 +261,24 @@ function HeroDigger() {
   );
 }
 
-/** Spotlight: one artist picked for you, with the reasons, the set to start with and a way to keep it for later. */
+/** Picked for You: one artist chosen from the DJ's favorites, in exactly the Fresh This Week look. */
 function HeroSpotlight() {
   const [saved, setSaved] = useState(false);
   return (
-    <div className="ld-hero ld-h-spot">
-      <span className="ld-avatar ld-h-big-avatar" style={hue(['#5fd0b8', '#1e3a3c'])}>AU</span>
-      <div className="ld-h-main">
-        <span className="ld-label">Picked for you today</span>
-        <h3>Au5</h3>
-        <ul>
-          <li><Checkmark size={13} /> Shares Melodic Dubstep and Future Bass with your favorite ILLENIUM</li>
-          <li><Checkmark size={13} /> 18 of 63 sets sit in your 136–144 BPM range</li>
-          <li><Checkmark size={13} /> Often plays 7A and 8A, keys that mix with your set</li>
-        </ul>
-        <div className="ld-h-actions">
-          <ControlButton variant="primary"><ArrowRight size={14} /> Open artist</ControlButton>
-          <ControlButton variant="secondary" onClick={() => setSaved(!saved)}>{saved ? <Checkmark size={14} /> : <Add size={14} />} {saved ? 'In your crate' : 'Add to crate'}</ControlButton>
-        </div>
-      </div>
-      <div className="ld-h-set">
-        <small>Start with this set</small>
-        <span className="ld-h-set-art" style={hue(['#f0b35a', '#4a2a2a'])}><Play size={20} /></span>
-        <b>Ultra Miami 2025 · Live</b>
-        <span>2025-03-28 · 91% identified</span>
-        <span className="ld-h-wave" aria-hidden="true">{Array.from({ length: 30 }, (_, i) => <i key={i} style={{ height: `${6 + ((i * 11 + i * i) % 18)}px` }} />)}</span>
-      </div>
-    </div>
+    <HeroGroup
+      className="ld-h-spot"
+      label="Because you like ILLENIUM"
+      title="Picked for you"
+      figures={[['Au5', 'Artist · 63 sets'], ['18', 'Sets in your BPM range'], ['Melodic Dubstep', 'Top genre · 4 in common']]}
+      actions={<>
+        <ControlButton variant="primary"><ArrowRight size={14} /> Open artist</ControlButton>
+        <ControlButton variant="secondary" onClick={() => setSaved(!saved)}>{saved ? <Checkmark size={14} /> : <Add size={14} />} {saved ? 'In your crate' : 'Add to crate'}</ControlButton>
+      </>}
+      chartTitle="Au5 sets per year"
+      chartLabel="Sets by Au5 each year"
+      values={PICK_YEAR_SETS}
+      ticks={PICK_YEARS}
+    />
   );
 }
 
@@ -280,7 +302,7 @@ const HEROES = [
   { id: 'builder', title: 'Set Builder', concept: 'For the DJ in the middle of a set: what fits next, by tempo, key and genre.', Hero: HeroSetBuilder },
   { id: 'fresh', title: 'Fresh This Week', concept: 'What is new since the last visit: new sets, new artists, the trending genre.', Hero: HeroFresh },
   { id: 'digger', title: 'Crate Digger', concept: 'One big search, recent searches, and picks from the genres you play.', Hero: HeroDigger },
-  { id: 'spotlight', title: 'Spotlight', concept: 'One artist picked for you, with the reasons and a set to start with.', Hero: HeroSpotlight },
+  { id: 'spotlight', title: 'Picked for You', concept: 'One artist chosen from your favorites, in the same look as Fresh This Week, so every group that cycles in the header matches.', Hero: HeroSpotlight },
 ];
 
 export function DiscoveryMockupsContent() {

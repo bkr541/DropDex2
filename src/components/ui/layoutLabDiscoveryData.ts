@@ -34,3 +34,6 @@ export const COMPATIBLE_KEYS: { key: string; color: string; note: string }[] = [
 ];
 export const WEEK_SETS = [4, 7, 5, 9, 6, 11, 5];
 export const WEEK_DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+/** Au5's sets by year, for the Picked for You header's chart. */
+export const PICK_YEAR_SETS = [3, 6, 9, 14, 18, 13];
+export const PICK_YEARS = ['21', '22', '23', '24', '25', '26'];

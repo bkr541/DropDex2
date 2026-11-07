@@ -72,7 +72,11 @@ describe('Layout Lab Discovery tab', () => {
     expect(slice('hero-row', 'builder')).toContain('7A');
     expect(slice('hero-row', 'fresh')).toContain('Fresh this week');
     expect(slice('hero-row', 'digger')).toContain('Because you play Melodic Dubstep');
-    expect(slice('hero-row', 'spotlight')).toContain('Picked for you today');
+    expect(slice('hero-row', 'spotlight')).toContain('Picked for you');
+    // The fourth group is styled exactly like Fresh This Week: both are the one shared header group component.
+    expect(slice('hero-row', 'spotlight').replace(/<(\w+)[^>]*>/g, '<$1>').split('<em>').length).toBe(slice('hero-row', 'fresh').replace(/<(\w+)[^>]*>/g, '<$1>').split('<em>').length);
+    expect(slice('hero-row', 'spotlight')).toContain('ld-h-week');
+    expect(read('./LayoutLabDiscoveryMockups.tsx').match(/<HeroGroup/g)).toHaveLength(2);
     for (const cls of ['ld-h-builder', 'ld-h-fresh', 'ld-h-digger', 'ld-h-spot']) expect(markup).toContain(`ld-hero ${cls}`);
   });
 

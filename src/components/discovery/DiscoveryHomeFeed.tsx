@@ -4,6 +4,7 @@ import type { DiscoveryFeed } from '../../hooks/useDiscoveryFeed';
 import type { DiscoveryForYou } from '../../hooks/useDiscoveryForYou';
 import { ArtistCard } from './ArtistCard';
 import { ArtistFeedRow } from './ArtistFeedRow';
+import { DiscoveryHero } from './DiscoveryHero';
 import { DiscoveryShelf } from './DiscoveryShelf';
 import { GenreTile } from './GenreTile';
 import { SetlistFeedCard } from './SetlistFeedCard';
@@ -55,6 +56,8 @@ export function DiscoveryHomeFeed({ feed, forYou, genres, onSelectArtist, onOpen
 
   return (
     <div data-testid="discovery-feed">
+      <DiscoveryHero feed={feed} forYou={forYou} genres={genres} onSelectArtist={onSelectArtist} onOpenSetlist={onOpenSetlist} />
+
       {forYou.error && (
         <div className="discovery-notice" role="alert">
           <span className="text-red-300">{forYou.error}</span>

@@ -84,3 +84,30 @@
   .discovery-header .studio-stats { margin-left: 0; width: 100%; justify-content: space-between; }
   .discovery-genres { padding-inline: 12px; }
 }
+
+/* Home header: groups that cycle, all in the one look. A label, a light title, three figures, two buttons and a small chart. */
+.discovery-hero { position: relative; padding: 22px 24px 18px; border-bottom: 1px solid #ffffff0d; background: linear-gradient(165deg, #ffffff07, transparent 70%); }
+.discovery-hero-group { display: flex; align-items: stretch; gap: 28px; min-height: 196px; }
+.discovery-hero-main { display: flex; flex: 1; flex-direction: column; justify-content: center; gap: 14px; min-width: 0; }
+.discovery-hero-main h2 { margin: 0; color: #f6f7fa; font-size: 30px; font-weight: 300; line-height: 1.1; letter-spacing: -.035em; }
+.discovery-hero small { color: #9aa5b8; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; }
+.discovery-hero-figures { display: flex; align-items: flex-end; }
+.discovery-hero-figures > span { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 0 28px; border-left: 1px solid #ffffff12; }
+.discovery-hero-figures > span:first-child { padding-left: 0; border-left: 0; }
+.discovery-hero-figures em { overflow: hidden; max-width: 220px; color: #f6f7fa; font-size: 40px; font-style: normal; font-weight: 200; line-height: 1; letter-spacing: -.05em; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.discovery-hero-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.discovery-hero-chart { display: flex; flex: none; flex-direction: column; justify-content: center; gap: 12px; width: 300px; padding-left: 28px; border-left: 1px solid #ffffff12; }
+.discovery-hero-chart > div { display: flex; align-items: flex-end; gap: 10px; height: 110px; }
+.discovery-hero-chart > div > span { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%; }
+.discovery-hero-chart i { display: block; width: 100%; height: var(--bar); min-height: 2px; border-radius: 6px 6px 3px 3px; background: linear-gradient(180deg, #f78361, #f56b7033); box-shadow: 0 0 14px -4px #f56b7080; }
+.discovery-hero-chart b { color: #7b879c; font-size: 10px; font-weight: 500; }
+.discovery-hero-tabs { position: absolute; top: 14px; right: 24px; display: flex; gap: 6px; }
+.discovery-hero-tabs button { width: 18px; height: 4px; border-radius: 2px; background: #ffffff24; transition: background 140ms, width 140ms; }
+.discovery-hero-tabs button:hover { background: #ffffff4d; }
+.discovery-hero-tabs button[aria-selected="true"] { width: 28px; background: #f56b70; }
+@media (max-width: 900px) {
+  .discovery-hero-group { flex-direction: column; gap: 18px; }
+  .discovery-hero-chart { width: auto; padding: 18px 0 0; border-top: 1px solid #ffffff12; border-left: 0; }
+  .discovery-hero-figures > span { padding: 0 16px; }
+  .discovery-hero-main h2 { font-size: 24px; }
+}
