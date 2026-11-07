@@ -20,7 +20,7 @@ describe('Library pages in the graphite look', () => {
     const artistLibrary = read('ArtistLibraryView.tsx');
     expect(home).toContain("import './library-studio.css'");
     expect(home).toContain('lib-scope');
-    expect(home).toContain('lib-hero');
+    expect(home).toContain('<LibraryGhostHero');
     expect(artistLibrary).toContain('lib-scope');
     for (const file of ['LibraryView.tsx', 'LibraryTabPanels.tsx', 'ArtistLibraryView.tsx']) {
       expect(read(file), file).not.toContain('glass rounded');

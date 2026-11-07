@@ -43,6 +43,51 @@ describe('Layout Lab hero mockups', () => {
       .toEqual({ name: true, socials: true, usb: true, import: true, counts: true });
   });
 
+  describe('mockup 1', () => {
+    const one = src.slice(src.indexOf('export function HeroAurora'), src.indexOf('// 2. Ghost Two Rows'));
+    const css = read('./layout-lab-hero.css');
+
+    it('is one surface: the cover gradient across the whole row, with no separate panel, edge line or second gradient', () => {
+      const cover = css.match(/\.lh-cover \{[^}]*(linear-gradient\(180deg, #ffffff10 0%, #ffffff00 40%\), linear-gradient\(165deg, #3a4150 0%, #2a2f3a 50%, #20242d 100%\))/)?.[1];
+      expect(cover).toBeTruthy();
+      expect(css).toContain(`.lh-f-stacked { border: 1px solid #ffffff13; border-radius: 24px; background: ${cover};`);
+      expect(one).toContain('<HeroFrame className="lh-f-stacked">');
+      for (const gone of ['lh-cover', 'border-r', 'lh-f-ghost', 'initials']) expect(one).not.toContain(gone);
+      expect(one).not.toContain('HERO.initials');
+    });
+
+    it('keeps the status, name and socials stacked at the bottom left, like Split Cover', () => {
+      expect(one).toContain('relative flex w-[360px] shrink-0 flex-col justify-end gap-2.5 p-5');
+      expect(one.indexOf('<ImportStatus />')).toBeLessThan(one.indexOf('HERO.name'));
+      expect(one.indexOf('HERO.name')).toBeLessThan(one.indexOf('<Socials size={14} />'));
+      expect(one).toContain('text-[28px] font-light uppercase leading-none tracking-[0.1em]');
+    });
+
+    it('has no Import Library button, and still shows the USB and the last import date', () => {
+      expect(one).not.toContain('<ImportButton');
+      expect(markupOf().slice(markupOf().indexOf('data-testid="hero-mockup"'), markupOf().indexOf('data-testid="hero-mockup"', markupOf().indexOf('data-testid="hero-mockup"') + 10))).not.toContain('Import Library');
+      expect(one).toContain('<UsbName />');
+      expect(one).toContain('<LastImport />');
+    });
+
+    it('floats the seven values in the middle of the rest of the row, each value centred over its label', () => {
+      expect(one).toContain('flex min-w-0 flex-1 items-center justify-center px-7');
+      expect(one).toContain('<SevenLine centered />');
+      expect(src).toContain("centered && 'text-center'");
+    });
+
+    it('draws the name in the background like mockup 7, larger and a little heavier', () => {
+      const wm = (name: string) => css.match(new RegExp(`\\.${name} \\{([^}]*)\\}`))?.[1] ?? '';
+      expect(one).toContain('<Watermark className="lh-wm-stacked" />');
+      const up = Number(wm('lh-wm-up').match(/font-size: (\d+)px/)?.[1]);
+      const stacked = Number(wm('lh-wm-stacked').match(/font-size: (\d+)px/)?.[1]);
+      expect(stacked).toBeGreaterThan(up);
+      expect(wm('lh-wm-stacked')).toMatch(/font-weight: 400/);
+      expect(css.match(/\.lh-watermark \{[^}]*font-weight: (\d+)/)?.[1]).toBe('300');
+      expect(wm('lh-wm-stacked')).toContain('mask-image: linear-gradient(0deg, #000 0%, transparent 78%)');
+    });
+  });
+
   describe('mockups one to four, redone in the style of mockup 7', () => {
     const FOUR = ['HeroAurora', 'HeroGlassDuo', 'HeroPoster', 'HeroStudioStrip'];
     const markup = markupOf();
@@ -52,8 +97,8 @@ describe('Layout Lab hero mockups', () => {
       return markup.slice(start, end === -1 ? undefined : end);
     };
 
-    it('use the Ghost Banner frame and the name rising from the bottom edge, like mockup 7', () => {
-      for (const fn of FOUR) {
+    it('use the Ghost Banner frame and the name rising from the bottom edge, like mockup 7 (mockup 1 has its own one-gradient frame, checked above)', () => {
+      for (const fn of FOUR.slice(1)) {
         const b = block(fn);
         expect(b, fn).toContain('<HeroFrame className="lh-f-ghost">');
         expect(b, fn).toContain('<Watermark className="lh-wm-up" />');
@@ -76,6 +121,7 @@ describe('Layout Lab hero mockups', () => {
     it('show the import status, the USB, the last import date and the primary Import Library button', () => {
       for (const n of [1, 2, 3, 4]) {
         const m = slice(n);
+        if (n === 1) { expect(m).toMatch(/data-testid="hero-import-status"/); expect(m).toContain('DVYDRMNG'); expect(m).toContain('Last import Sep 29'); continue; }
         expect(m, `mockup ${n} status`).toMatch(/data-testid="hero-import-status"/);
         expect(m, `mockup ${n} usb`).toContain('DVYDRMNG');
         expect(m, `mockup ${n} date`).toContain('Last import Sep 29');

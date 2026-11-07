@@ -1,0 +1,27 @@
+/* The Home hero, in the Ghost Banner look from the Hero mockups: the name rises from the bottom edge as a huge faint word, a big picture and name,
+   and seven values between hairlines. Graphite gradient, grain, light type, 9px spaced labels, one coral accent. */
+.lgh { position: relative; height: 218px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; border: 1px solid #ffffff12; border-radius: 24px; color: #f6f7fa; font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+  --color-primary: #f56b70; --color-foreground: #f6f7fa; --color-muted-foreground: #a4adbd;
+  background: radial-gradient(ellipse at 50% 120%, #00000066, transparent 60%), repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px), linear-gradient(165deg, #2a2e38 0%, #1f2229 55%, #16191f 100%);
+  box-shadow: inset 0 1px 0 #ffffff0a, 0 14px 32px -10px #00000099; }
+.lgh::-webkit-scrollbar { display: none; }
+.lgh-inner { position: relative; z-index: 1; display: flex; align-items: center; gap: 32px; height: 100%; min-width: 1080px; padding: 0 28px; }
+.lgh-wash { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(165deg, #2a2e38d9, #16191ff2); }
+/* The name in the background. */
+.lgh-watermark { position: absolute; left: 50%; bottom: -58px; z-index: 0; transform: translateX(-50%); pointer-events: none; user-select: none; color: #fff; font-size: 280px; font-weight: 300; line-height: .8; letter-spacing: -.05em; text-transform: uppercase; white-space: nowrap; opacity: .085; -webkit-mask-image: linear-gradient(0deg, #000 0%, transparent 78%); mask-image: linear-gradient(0deg, #000 0%, transparent 78%); }
+.lgh-label { margin: 0; color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
+.lgh-figure { margin: 0; font-weight: 300; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+/* The picture: a coral ring, as on the Hero mockups. */
+.lgh-ring { pointer-events: none; position: absolute; inset: -4px; border: 1.5px solid #f56b70; border-radius: 50%; box-shadow: 0 0 12px #f56b7059; }
+.lgh-avatar { display: block; border: 1px solid #ffffff26; border-radius: 50%; background: radial-gradient(circle at 30% 25%, #4a5262, #20242d 85%); box-shadow: inset 0 1px 0 #ffffff29, 0 6px 14px -4px #000000b3; }
+/* Where the import stands: an icon and a 10px spaced word in the colour of the state. */
+.lgh-status { display: inline-flex; align-items: center; gap: 6px; padding: 0; white-space: nowrap; color: #6fd9a4; font-size: 10px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
+button.lgh-status { cursor: pointer; }
+button.lgh-status:hover { text-decoration: underline; text-underline-offset: 3px; }
+.lgh-status[data-tone="paused"], .lgh-status[data-tone="incomplete"] { color: #f0b35a; }
+.lgh-status[data-tone="working"] { color: #5fb8e8; }
+.lgh-status[data-tone="failed"] { color: #f27d96; }
+.lgh-status:focus-visible { outline: 2px solid #f78361; outline-offset: 3px; }
+.lgh-meta { display: flex; align-items: center; gap: 6px; margin: 0; white-space: nowrap; color: #a4adbd; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; }
+.lgh-bg-button { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #00000099; color: #fff; transition: background 120ms; }
+.lgh-bg-button:hover { background: #000000cc; }

@@ -1,6 +1,6 @@
 import './library-studio.css';
 import { SpotifyTabIcon } from './SpotifyTabIcon';
-import { useState, useMemo, useCallback, useRef, useEffect, type ElementType, type ReactNode } from 'react';
+import { useState, useMemo, useCallback, useEffect, type ElementType, type ReactNode } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 
@@ -36,14 +36,15 @@ import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { supabase } from '../../lib/supabase';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
-import { ArrowUpRight, Calendar, ChartBar, CheckmarkFilled, ChevronLeft, ChevronRight, CircleDash, FolderOpen, Globe, LogoInstagram, LogoYoutube, Music, RecordingFilled, Renew, Tag, Undo, Upload, Usb, User, WarningAlt, Waveform } from '@carbon/icons-react';
+import { ChartBar, CheckmarkFilled, ChevronLeft, CircleDash, FolderOpen, Music, RecordingFilled, Renew, Tag, Upload, User, WarningAlt, Waveform } from '@carbon/icons-react';
 import { Dashboard, Playlist, Time, UserMultiple } from '@carbon/icons-react';
 import { TrackListing, type TrackListingColumn } from '../ui/display';
+import { ProfileSocialLinks } from './ProfileSocialLinks';
+import { LibraryGhostHero } from './LibraryGhostHero';
 import { TrackRowPlayButton } from '../player/TrackRowPlayButton';
 import { TrackRowWaveform } from '../player/TrackRowWaveform';
 import { cueAnalysisReady } from '../../lib/cues/cueReadiness';
 import { ControlButton, SearchControl } from '../ui/controls';
-import { HeroActionButton } from './HeroActionButton';
 import { SpotifyLibraryTab } from './SpotifyLibraryTab';
 import { useSpotifyAvailability } from '../../hooks/useSpotifyAvailability';
 
@@ -135,14 +136,6 @@ function EmptyLibrary({ onImport, profile }: { onImport: () => void; profile: Us
 
 // ── Artist profile card (left column, desktop) ─────────────────────────────
 
-function TikTokIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M14.2 3.5v10.1a4.7 4.7 0 1 1-4-4.65v2.8a2 2 0 1 0 1.2 1.85V3.5h2.8Z" fill="currentColor" />
-      <path d="M14.2 3.5c.45 2.35 1.8 3.75 4.3 4.1v2.75c-1.75-.05-3.15-.55-4.3-1.5V3.5Z" fill="currentColor" />
-    </svg>
-  );
-}
 
 export function ArtistProfileCard({
   profile,
@@ -188,25 +181,7 @@ export function ArtistProfileCard({
 
       <h1 className="text-[22px] font-light uppercase leading-tight tracking-[0.04em]">{libraryName}</h1>
 
-      {(() => {
-        const links = [
-          profile?.spotify_url ? { href: profile.spotify_url, label: 'Spotify', icon: <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.516 17.313a.748.748 0 0 1-1.031.25c-2.822-1.724-6.375-2.114-10.561-1.158a.749.749 0 1 1-.333-1.462c4.579-1.045 8.507-.596 11.675 1.339a.75.75 0 0 1 .25 1.031zm1.472-3.274a.937.937 0 0 1-1.288.308c-3.226-1.983-8.143-2.558-11.963-1.4a.937.937 0 1 1-.544-1.791c4.361-1.323 9.782-.682 13.487 1.596a.937.937 0 0 1 .308 1.287zm.126-3.409c-3.868-2.297-10.249-2.509-13.944-1.388a1.124 1.124 0 1 1-.652-2.15c4.243-1.288 11.298-1.039 15.749 1.607a1.125 1.125 0 0 1-1.153 1.931z"/></svg> } : null,
-          profile?.soundcloud_url ? { href: profile.soundcloud_url, label: 'SoundCloud', icon: <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M1.175 12.225c-.015.132-.024.265-.024.4 0 .135.009.268.024.4l-.024-.4.024.4c.133 1.162 1.11 2.063 2.3 2.063 1.276 0 2.312-1.036 2.312-2.312V8.1a.387.387 0 0 0-.387-.387.387.387 0 0 0-.387.387v4.275a1.538 1.538 0 0 1-1.538 1.538 1.538 1.538 0 0 1-1.538-1.538 1.538 1.538 0 0 1 1.538-1.538c.283 0 .549.077.775.213V8.1A2.887 2.887 0 0 0 1.364 9.9c-.13.382-.189.78-.189 1.187v1.138zm5.1 2.463V7.762a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v6.926a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55.387V8.475a.387.387 0 0 1 .387-.388.387.387 0 0 1 .388.388v6.6a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55 0V8.1a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v6.975a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55.225V7.762a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v7.538a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm1.55-.225V8.1a.387.387 0 0 1 .387-.387.387.387 0 0 1 .388.387v6.975a.387.387 0 0 1-.388.387.387.387 0 0 1-.387-.387zm2.1-.3c0 .98.795 1.775 1.775 1.775a1.776 1.776 0 0 0 1.725-1.375 3.526 3.526 0 0 0 .3.013 3.525 3.525 0 0 0 3.525-3.525A3.525 3.525 0 0 0 18.375 8.1a3.51 3.51 0 0 0-1.85.525 5.026 5.026 0 0 0-4.6-3.05 5.025 5.025 0 0 0-4.3 2.437v6.763c0 .98.795 1.775 1.775 1.775s1.775-.795 1.775-1.775V8.1a.387.387 0 0 1 .775 0v6.675z"/></svg> } : null,
-          profile?.instagram_url ? { href: profile.instagram_url, label: 'Instagram', icon: <LogoInstagram size={16} /> } : null,
-          profile?.tiktok_url ? { href: profile.tiktok_url, label: 'TikTok', icon: <TikTokIcon /> } : null,
-          profile?.youtube_url ? { href: profile.youtube_url, label: 'YouTube', icon: <LogoYoutube size={16} /> } : null,
-          profile?.website_url ? { href: profile.website_url, label: 'Website', icon: <Globe size={16} /> } : null,
-        ].filter(Boolean) as { href: string; label: string; icon: ReactNode }[];
-        return links.length > 0 ? (
-          <div className="mt-3 flex items-center justify-center gap-3">
-            {links.map(({ href, label, icon }) => (
-              <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label} title={label} className="text-muted-foreground hover:text-foreground transition-colors">
-                {icon}
-              </a>
-            ))}
-          </div>
-        ) : null;
-      })()}
+      <ProfileSocialLinks profile={profile} size={16} className="mt-3 justify-center" />
 
     </div>
   );
@@ -534,204 +509,6 @@ function OverviewPlaylistCard({
 
 const RECENT_BARS = [18, 30, 24, 42, 34, 58, 48, 72, 54, 82, 66, 92, 76, 64, 88, 98];
 
-/** One insight column in the hero: a small heading and its chart, with a divider on the left. */
-function HeroInsight({ title, first = false, children }: { title: string; first?: boolean; children: ReactNode }) {
-  return (
-    <div className={cn('flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-white/[0.07] px-3', first && 'border-l-0')}>
-      <p className="mb-1.5 shrink-0 truncate text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{title}</p>
-      {children}
-    </div>
-  );
-}
-
-export function DesktopLibraryHero({
-  latestImport,
-  profile,
-  topGenres,
-  bpmRangeStats,
-  keyStats,
-  onImport,
-  onResumeAnalysis,
-  onShowIncompleteAnalysis,
-  hiddenWidgets,
-}: {
-  /** Groups the user has turned off in Personalization. */
-  hiddenWidgets: ReadonlySet<LibraryOverviewWidgetId>;
-  latestImport: RekordboxImport;
-  profile: UserProfile | null;
-  topGenres: readonly (readonly [string, number])[];
-  bpmRangeStats: readonly (readonly [string, number])[];
-  keyStats: readonly (readonly [string, number])[];
-  onImport: () => void;
-  onResumeAnalysis?: (importId: string) => void;
-  onShowIncompleteAnalysis?: () => void;
-}) {
-  const { volumeName } = useUsbConnection();
-  const [heroBg, setHeroBg] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleBgUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (heroBg) URL.revokeObjectURL(heroBg);
-    setHeroBg(URL.createObjectURL(file));
-    e.target.value = '';
-  }, [heroBg]);
-
-  const lastImport = new Date(latestImport.imported_at).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
-
-  const analysisStatus = latestImport.analysis_status;
-  const analysisTotal = latestImport.analysis_expected_track_count || latestImport.track_count;
-  const analysisParsed = latestImport.analysis_parsed_track_count ?? 0;
-  const analysisPercent = analysisStatus === 'completed' ? 100
-    : analysisTotal > 0 ? Math.round((analysisParsed / analysisTotal) * 100) : 0;
-  const showAnalysisWarning = analysisStatus && analysisStatus !== 'not_requested' && analysisStatus !== 'completed';
-  const isAmber = analysisStatus === 'partial' || analysisStatus === 'awaiting_upload' || analysisStatus === 'uploading';
-  const isActionable = analysisStatus === 'partial' || analysisStatus === 'failed' || analysisStatus === 'awaiting_upload' || analysisStatus === 'uploading';
-  const analyzedCount = analysisStatus === 'completed' ? analysisTotal : analysisParsed;
-  const heroInsights: Array<{ id: string; title: string; content: ReactNode }> = [];
-  if (!hiddenWidgets.has('topGenres') && topGenres.length > 0) heroInsights.push({ id: 'topGenres', title: 'Top Genres', content: <InsightTopGenres genres={topGenres} compact /> });
-  if (!hiddenWidgets.has('bpmDistribution') && bpmRangeStats.length > 0) heroInsights.push({ id: 'bpmDistribution', title: 'BPM Distribution', content: <InsightBpmDistribution bpmRangeStats={bpmRangeStats} compact /> });
-  if (!hiddenWidgets.has('keyProfile') && keyStats.length > 0) heroInsights.push({ id: 'keyProfile', title: 'Camelot Wheel', content: <InsightKeyProfile keyStats={keyStats} compact /> });
-
-  return (
-    <section
-      className={cn(
-        'group lib-hero min-h-[218px]',
-      )}
-      style={heroBg ? { backgroundImage: `url(${heroBg})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
-    >
-      {heroBg && <div className="lib-hero-wash" />}
-
-      {/* Hover-reveal controls */}
-      <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        {heroBg && (
-          <button
-            onClick={() => { URL.revokeObjectURL(heroBg); setHeroBg(null); }}
-            className="rounded-full bg-black/60 backdrop-blur-sm p-2 text-white hover:bg-black/80 transition-colors"
-            aria-label="Remove background image"
-          >
-            <Undo size={16} />
-          </button>
-        )}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="rounded-full bg-black/60 backdrop-blur-sm p-2 text-white hover:bg-black/80 transition-colors"
-          aria-label="Change background image"
-        >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M15 13H9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          <path d="M12 10L12 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          <path d="M19 10H18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          <path d="M2 13.3636C2 10.2994 2 8.76721 2.74902 7.6666C3.07328 7.19014 3.48995 6.78104 3.97524 6.46268C4.69555 5.99013 5.59733 5.82123 6.978 5.76086C7.63685 5.76086 8.20412 5.27068 8.33333 4.63636C8.52715 3.68489 9.37805 3 10.3663 3H13.6337C14.6219 3 15.4728 3.68489 15.6667 4.63636C15.7959 5.27068 16.3631 5.76086 17.022 5.76086C18.4027 5.82123 19.3044 5.99013 20.0248 6.46268C20.51 6.78104 20.9267 7.19014 21.251 7.6666C22 8.76721 22 10.2994 22 13.3636C22 16.4279 22 17.9601 21.251 19.0607C20.9267 19.5371 20.51 19.9462 20.0248 20.2646C18.9038 21 17.3433 21 14.2222 21H9.77778C6.65675 21 5.09624 21 3.97524 20.2646C3.48995 19.9462 3.07328 19.5371 2.74902 19.0607C2.53746 18.7498 2.38566 18.4045 2.27673 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-        </svg>
-        </button>
-      </div>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/avif"
-        className="hidden"
-        onChange={handleBgUpload}
-      />
-
-      <div className="relative z-10 flex h-[218px] items-stretch px-5 py-4 gap-4">
-
-        {/* USB Import */}
-        {!hiddenWidgets.has('usbImport') && (
-        <div className="lib-well px-3 py-3 w-[200px] shrink-0">
-          <p className="lib-label mb-1.5">USB Import</p>
-          <div className="flex items-center gap-2">
-            <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
-            <span className="font-black text-sm leading-none text-emerald-500">Import Complete</span>
-          </div>
-          <HeroActionButton variant="import" onClick={onImport} className="mt-2">
-            <Upload size={11} /> Import Library
-          </HeroActionButton>
-          <div className="grid grid-cols-1 gap-y-1.5 mt-2">
-            {latestImport.device_name && (
-              <div className="flex items-center gap-1.5 min-w-0">
-                <Usb size={11} className="text-muted-foreground shrink-0" />
-                <span className="text-[10px] text-muted-foreground truncate">USB</span>
-                <span className="text-[10px] font-bold font-mono ml-auto shrink-0">{latestImport.device_name}</span>
-              </div>
-            )}
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Calendar size={11} className="text-muted-foreground shrink-0" />
-              <span className="text-[10px] text-muted-foreground truncate">Last Import</span>
-              <span className="text-[10px] font-bold font-mono ml-auto shrink-0">{lastImport}</span>
-            </div>
-          </div>
-        </div>
-        )}
-
-        {/* Track Analysis */}
-        {!hiddenWidgets.has('trackAnalysis') && (
-        <div
-          className={cn(
-            'rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.04] px-3 py-3 w-[200px] shrink-0',
-            showAnalysisWarning && onShowIncompleteAnalysis && 'cursor-pointer hover:bg-white/[0.07] transition-colors',
-          )}
-          onClick={showAnalysisWarning && onShowIncompleteAnalysis ? onShowIncompleteAnalysis : undefined}
-          role={showAnalysisWarning && onShowIncompleteAnalysis ? 'button' : undefined}
-        >
-          <p className="lib-label mb-1.5">Track Analysis</p>
-          {showAnalysisWarning ? (
-            <>
-              <div className="flex items-center gap-2 mb-1.5">
-                <WarningAlt size={13} className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'} />
-                <span className={cn('font-black text-sm leading-none', isAmber ? 'text-amber-400' : 'text-red-400')}>
-                  {ANALYSIS_TITLES[analysisStatus ?? ''] ?? 'Analysis Issue'}
-                </span>
-              </div>
-              {isActionable && onResumeAnalysis && (
-                <HeroActionButton variant="resume" onClick={(e) => { e.stopPropagation(); onResumeAnalysis(latestImport.id); }} className="mt-1">
-                  <Renew size={11} /> Resume Analysis
-                </HeroActionButton>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="flex items-center gap-2">
-                <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
-                <span className="font-black text-sm leading-none text-emerald-500">Analysis Complete</span>
-              </div>
-              <div className="mt-2 h-7" aria-hidden="true" />
-            </>
-          )}
-          <div className="grid grid-cols-1 gap-y-1 mt-2">
-            {[
-              { icon: RecordingFilled, label: 'Status', value: { completed: 'Completed', partial: 'Partial', failed: 'Failed', in_progress: 'In Progress', awaiting_upload: 'Awaiting Upload', uploading: 'Uploading', not_requested: 'Not Started' }[analysisStatus ?? ''] ?? '—' },
-              { icon: Waveform, label: 'Analyzed', value: analyzedCount.toLocaleString() },
-              { icon: Music, label: 'Tracks', value: analysisTotal.toLocaleString() },
-              { icon: ChartBar, label: 'Progress', value: `${analysisPercent}%` },
-            ].map(({ icon: Icon, label, value }) => (
-              <div key={label} className="flex items-center gap-1.5 min-w-0">
-                <Icon size={11} className="text-muted-foreground shrink-0" />
-                <span className="text-[10px] text-muted-foreground truncate">{label}</span>
-                <span className="text-[10px] font-bold font-mono ml-auto shrink-0">{value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        )}
-
-        {/* Insights: main genre, BPM distribution, Camelot wheel. Each follows its own switch in Personalization. */}
-        {heroInsights.length > 0 && (
-          <div className="grid min-w-0 flex-1 self-stretch" style={{ gridTemplateColumns: `repeat(${heroInsights.length}, minmax(0, 1fr))` }} data-testid="hero-insights">
-            {heroInsights.map(({ id, title, content }, index) => (
-              <HeroInsight key={id} title={title} first={index === 0}>{content}</HeroInsight>
-            ))}
-          </div>
-        )}
-
-      </div>
-    </section>
-  );
-}
-
 function OverviewSummaryCards({
   latestImport,
   mostCommonBpm,
@@ -1003,35 +780,26 @@ export function LibraryView({
                     {/* ── Sticky header: top row + tabs ── */}
                     <div className="sticky top-0 z-20 lib-sticky -mx-4 md:-mx-8 px-4 md:px-8 space-y-4 pb-3">
 
-                      {/* Top row: artist card + hero */}
-                      <div className="flex gap-5 items-start">
-                        <div className="hidden lg:flex flex-col gap-4 w-[250px] xl:w-[268px] shrink-0">
-                          <ArtistProfileCard profile={profile} latestImport={latestImport} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="hidden lg:block">
-                            <DesktopLibraryHero
-                              latestImport={latestImport}
-                              profile={profile}
-                              topGenres={topGenres}
-                              bpmRangeStats={bpmRangeStats}
-                              keyStats={keyStats}
-                              hiddenWidgets={hiddenWidgets}
-                              onImport={onImport}
-                              onResumeAnalysis={onResumeAnalysis}
-                              onShowIncompleteAnalysis={() => onActiveTabChange('incomplete-analysis')}
-                            />
-                          </div>
-                          <div className="lg:hidden">
-                            <LibraryHero
-                              latestImport={latestImport}
-                              profile={profile}
-                              hiddenWidgets={hiddenWidgets}
-                              onImport={onImport}
-                              onResumeAnalysis={onResumeAnalysis}
-                            />
-                          </div>
-                        </div>
+                      {/* The hero: the Ghost Banner on desktop, the compact hero below it */}
+                      <div className="hidden lg:block">
+                        <LibraryGhostHero
+                          latestImport={latestImport}
+                          profile={profile}
+                          hiddenWidgets={hiddenWidgets}
+                          genreCount={libraryStats ? libraryStats.genreTotals.length : null}
+                          onImport={onImport}
+                          onResumeAnalysis={onResumeAnalysis}
+                          onShowIncompleteAnalysis={() => onActiveTabChange('incomplete-analysis')}
+                        />
+                      </div>
+                      <div className="lg:hidden">
+                        <LibraryHero
+                          latestImport={latestImport}
+                          profile={profile}
+                          hiddenWidgets={hiddenWidgets}
+                          onImport={onImport}
+                          onResumeAnalysis={onResumeAnalysis}
+                        />
                       </div>
 
                     </div>

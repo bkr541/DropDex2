@@ -49,12 +49,11 @@ describe('Library page', () => {
 
   it('shows each group only when it is switched on, and the three insight cards share the row evenly', () => {
     for (const widget of ['topGenres', 'bpmDistribution', 'keyProfile']) expect(library).toContain(`!hiddenWidgets.has('${widget}')`);
-    expect(library).toContain("!hiddenWidgets.has('usbImport')");
-    expect(library).toContain("!hiddenWidgets.has('trackAnalysis')");
+    const ghost = read('./LibraryGhostHero.tsx');
+    expect(ghost).toContain("!hiddenWidgets.has('usbImport')");
+    expect(ghost).toContain("!hiddenWidgets.has('trackAnalysis')");
     expect(library).toContain("INSIGHT_COLUMNS[insightCount]");
     expect(library).toContain('{insightCount > 0 && (');
-    // The small versions of the three insights in the top banner follow the same switches.
-    expect(library).toContain('heroInsights.length > 0');
     const mobile = read('./LibraryHero.tsx');
     expect(mobile).toContain("hiddenWidgets?.has('usbImport')");
     expect(mobile).toContain("hiddenWidgets?.has('trackAnalysis')");

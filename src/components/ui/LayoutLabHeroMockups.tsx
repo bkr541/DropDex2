@@ -103,29 +103,34 @@ function GhostIdentity({ avatar = 150, socials = 26, className }: { avatar?: num
 }
 
 /** The seven values of mockup 7, in one line between hairlines. */
-function SevenLine({ figureClass = 'text-[24px]', cellClass = 'px-4', className }: { figureClass?: string; cellClass?: string; className?: string }) {
+function SevenLine({ figureClass = 'text-[24px]', cellClass = 'px-4', className, centered = false }: { figureClass?: string; cellClass?: string; className?: string; centered?: boolean }) {
   return (
     <div className={cn('flex items-center', className)}>
       {SEVEN.map(({ label, value }, i) => (
-        <div key={label} className={cn('min-w-0', cellClass, i > 0 && 'border-l border-[#ffffff14]')} data-testid="hero-value"><p className={cn('lh-figure', figureClass)}>{value}</p><Eyebrow className="mt-1.5 whitespace-nowrap">{label}</Eyebrow></div>
+        <div key={label} className={cn('min-w-0', cellClass, centered && 'text-center', i > 0 && 'border-l border-[#ffffff14]')} data-testid="hero-value"><p className={cn('lh-figure', figureClass)}>{value}</p><Eyebrow className="mt-1.5 whitespace-nowrap">{label}</Eyebrow></div>
       ))}
     </div>
   );
 }
 
-// 1. Ghost Stacked: the picture and name on the left; on the right the seven values, and under them the import row.
+// 1. Ghost Stacked: one surface, one gradient. On the left the import status, the name and the socials are stacked at the bottom left, as on Split Cover's cover;
+// the seven values float in the middle of the rest, each value centred over its label, with the USB and the last import date under them. The artist name
+// is the background, drawn like mockup 7's but larger and a little heavier.
 
 export function HeroAurora() {
   return (
-    <HeroFrame className="lh-f-ghost">
-      <Watermark className="lh-wm-up" />
-      <div className="relative flex h-full items-center gap-8 px-7" style={{ minWidth: 1180 }}>
-        <GhostIdentity avatar={150} />
-        <div className="ml-auto flex shrink-0 flex-col gap-4">
-          <SevenLine />
-          <div className="flex items-center justify-between gap-6 border-t border-[#ffffff14] pt-3.5">
-            <div className="flex items-center gap-5"><ImportStatus /><UsbName /><LastImport /></div>
-            <ImportButton />
+    <HeroFrame className="lh-f-stacked">
+      <Watermark className="lh-wm-stacked" />
+      <div className="relative flex h-full" style={{ minWidth: 1180 }}>
+        <div className="relative flex w-[360px] shrink-0 flex-col justify-end gap-2.5 p-5" data-testid="hero-identity">
+          <ImportStatus />
+          <h2 className="truncate text-[28px] font-light uppercase leading-none tracking-[0.1em]" data-testid="hero-name">{HERO.name}</h2>
+          <Socials size={14} />
+        </div>
+        <div className="flex min-w-0 flex-1 items-center justify-center px-7">
+          <div className="flex shrink-0 flex-col items-center gap-4">
+            <SevenLine centered />
+            <div className="flex items-center justify-center gap-6"><UsbName /><LastImport /></div>
           </div>
         </div>
       </div>
@@ -400,7 +405,7 @@ export function HeroMockupsContent() {
           Ten hero directions, all 218px tall like the production hero and all in the graphite look of Audition and Discovery. The first four are redone in the style of mockup 7 with the artist name from Split Cover, the seven values, the import status (click it to step through complete, paused, importing and failed), the USB, the last import date and the Import Library button. Five shows the profile, socials, USB import and three library counts. Six to ten put the artist's name in the background, faded into the surface, make the picture, name and social icons fill the height of the strip, and show seven values from the user's data: tracks, playlists, USBs, cue points, genres, how much is analysed and how much is in the cloud. None of them show the genre, BPM or Camelot key charts.
         </div>
       </div>
-      <HeroMockupCard n={1} title="Ghost Stacked" concept="Mockup 7's look: the picture and name left; the seven values over the import row on the right"><HeroAurora /></HeroMockupCard>
+      <HeroMockupCard n={1} title="Ghost Stacked" concept="One gradient surface: status, name and socials at the bottom left; the seven values centred in the middle with the USB and last import under them"><HeroAurora /></HeroMockupCard>
       <HeroMockupCard n={2} title="Ghost Two Rows" concept="Identity and the import block on top; the seven values as a band across the width"><HeroGlassDuo /></HeroMockupCard>
       <HeroMockupCard n={3} title="Ghost Centered" concept="Picture, name and socials on the centre line, the values below; import status and button in the corners"><HeroPoster /></HeroMockupCard>
       <HeroMockupCard n={4} title="Ghost Footer" concept="Identity and the seven values above; a footer band for import status, USB, last import and the button"><HeroStudioStrip /></HeroMockupCard>

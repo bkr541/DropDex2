@@ -14,19 +14,47 @@ describe('library insights helpers', () => {
   });
 });
 
-describe('artist library hero', () => {
-  it('shows genres, BPM distribution and the Camelot wheel instead of the main BPM, key and genre', () => {
-    expect(hero).toContain('data-testid="hero-insights"');
-    expect(hero).toContain('<InsightTopGenres genres={topGenres} compact />');
-    expect(hero).toContain('<InsightBpmDistribution bpmRangeStats={bpmRangeStats} compact />');
-    expect(hero).toContain('<InsightKeyProfile keyStats={keyStats} compact />');
-    expect(hero).not.toContain("label: 'Main BPM'");
+describe('the Home hero is the Ghost Banner (the seventh Layout Lab hero mockup)', () => {
+  const ghost = readFileSync(resolve(__dirname, './LibraryGhostHero.tsx'), 'utf8');
+  const css = readFileSync(resolve(__dirname, './library-ghost-hero.css'), 'utf8');
+  const mockupCss = readFileSync(resolve(__dirname, '../ui/layout-lab-hero.css'), 'utf8');
+
+  it('replaces the old profile card and hero on desktop, and keeps the compact hero below it', () => {
+    expect(hero).toContain('<LibraryGhostHero');
+    expect(hero).not.toContain('<DesktopLibraryHero');
+    expect(hero).not.toContain('<ArtistProfileCard');
+    expect(hero).toContain('<LibraryHero');
+    expect(hero).toContain('genreCount={libraryStats ? libraryStats.genreTotals.length : null}');
   });
-  it('uses narrower USB import and track analysis cards', () => {
-    expect(hero.match(/px-3 py-3 w-\[200px\] shrink-0/g)).toHaveLength(2);
-    expect(hero).not.toContain('w-[264px]');
+
+  it('is the mockup\'s look: the same frame, the name rising from the bottom edge, and a 218px height', () => {
+    const frame = mockupCss.match(/\.lh-f-ghost \{([^}]*)\}/)![1];
+    for (const part of ['radial-gradient(ellipse at 50% 120%, #00000066, transparent 60%)', 'repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px)', 'linear-gradient(165deg, #2a2e38 0%, #1f2229 55%, #16191f 100%)']) {
+      expect(frame).toContain(part);
+      expect(css).toContain(part);
+    }
+    const mark = mockupCss.match(/\.lh-wm-up \{([^}]*)\}/)![1];
+    for (const part of ['bottom: -58px', 'font-size: 280px', 'mask-image: linear-gradient(0deg, #000 0%, transparent 78%)']) {
+      expect(mark).toContain(part);
+      expect(css).toContain(part);
+    }
+    expect(css).toMatch(/\.lgh \{ position: relative; height: 218px;/);
+    expect(ghost).toContain('text-[40px] font-light uppercase leading-none tracking-[0.06em]');
+    expect(ghost).toContain('<ProfileSocialLinks profile={profile} size={26} className="gap-5" />');
   });
-  it('keeps the hero at its original 218px height', () => {
-    expect(hero).toContain('relative z-10 flex h-[218px] items-stretch');
+
+  it('shows the same seven values as the mockup, in one line between hairlines', () => {
+    for (const label of ['Tracks', 'Playlists', 'USBs', 'Cue points', 'Genres', 'Analysed', 'In the cloud']) expect(ghost).toContain(`label: '${label}'`);
+    expect(ghost).toContain("i > 0 && 'border-l border-[#ffffff14]'");
+  });
+
+  it('puts the import row under the values, exactly as wide as them, with status, USB, last import, Resume Analysis and Import Library', () => {
+    expect(ghost).toContain('style={{ width: 0, minWidth: \'100%\' }} data-testid="hero-import-row"');
+    expect(ghost.indexOf('hero-value')).toBeLessThan(ghost.indexOf('hero-import-row'));
+    expect(ghost).toContain('<ControlButton variant="primary"');
+    expect(ghost).toContain('Import Library');
+    expect(ghost).toContain('Resume Analysis');
+    expect(ghost).toContain("usbLoaded ?? 'No USB loaded'");
+    expect(ghost).toContain('Last import {lastImport}');
   });
 });

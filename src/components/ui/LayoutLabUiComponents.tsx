@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { DualRangeSlider, FilterDropdown, type DualRangeVariant } from './controls';
+import { ButtonStylesRows } from './LayoutLabButtonStyles';
 
 // UI Components: candidate replacements for the Cue Points BPM range slider.
 // All of them are the same component with the same behavior (drag either thumb,
@@ -47,6 +48,7 @@ export function UiComponentsContent() {
       <div className="grid max-w-[1000px] grid-cols-2 gap-4">
         {OPTIONS.map((o, i) => <SliderCard key={o.variant} n={i} {...o} />)}
       </div>
+      <ButtonStylesRows />
     </div>
   );
 }
