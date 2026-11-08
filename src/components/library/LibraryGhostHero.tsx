@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { CheckmarkFilled, Calendar, Pause, Renew, Undo, Upload, Usb, WarningAlt, Image as ImageIcon } from '@carbon/icons-react';
+import { Calendar, CheckCircle, MediaImage, Pause, Refresh, Undo, Upload, Usb, WarningTriangle } from 'iconoir-react/regular';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useLibraryHeroCounts } from '../../hooks/useLibraryHeroCounts';
 import type { LibraryOverviewWidgetId } from '../../lib/dashboard/libraryOverviewWidgets';
@@ -10,7 +10,7 @@ import { heroFigure, heroImportState, type HeroImportTone } from './libraryHeroS
 import { ProfileSocialLinks } from './ProfileSocialLinks';
 import './library-ghost-hero.css';
 
-const TONE_ICON: Record<HeroImportTone, typeof CheckmarkFilled> = { complete: CheckmarkFilled, paused: Pause, working: Renew, incomplete: WarningAlt, failed: WarningAlt };
+const TONE_ICON: Record<HeroImportTone, typeof CheckCircle> = { complete: CheckCircle, paused: Pause, working: Refresh, incomplete: WarningTriangle, failed: WarningTriangle };
 
 interface LibraryGhostHeroProps {
   latestImport: RekordboxImport;
@@ -71,7 +71,7 @@ export function LibraryGhostHero({ latestImport, profile, hiddenWidgets, genreCo
 
   const statusWord = (
     <>
-      <StateIcon size={12} /> {state.label}
+      <StateIcon width={12} height={12} aria-hidden="true" /> {state.label}
     </>
   );
 
@@ -83,24 +83,24 @@ export function LibraryGhostHero({ latestImport, profile, hiddenWidgets, genreCo
       {/* Hover-reveal controls for the background picture */}
       <div className="absolute right-3 top-3 z-20 flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
         {heroBg && (
-          <button type="button" className="lgh-bg-button" aria-label="Remove background image" onClick={() => { URL.revokeObjectURL(heroBg); setHeroBg(null); }}><Undo size={16} /></button>
+          <button type="button" className="lgh-bg-button" aria-label="Remove background image" onClick={() => { URL.revokeObjectURL(heroBg); setHeroBg(null); }}><Undo width={16} height={16} aria-hidden="true" /></button>
         )}
-        <button type="button" className="lgh-bg-button" aria-label="Change background image" onClick={() => fileInputRef.current?.click()}><ImageIcon size={16} /></button>
+        <button type="button" className="lgh-bg-button" aria-label="Change background image" onClick={() => fileInputRef.current?.click()}><MediaImage width={16} height={16} aria-hidden="true" /></button>
       </div>
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleBgUpload} aria-hidden="true" tabIndex={-1} />
 
       <div className="lgh-inner">
         <div className="flex min-w-0 items-center gap-7" data-testid="hero-identity">
-          <div className="relative h-[164px] w-[164px] shrink-0">
+          <div className="lgh-profile">
             <div className="lgh-ring" />
             {avatarUrl && !imgError ? (
               <img src={avatarUrl} alt={name} onError={() => setImgError(true)} className="lgh-avatar h-full w-full object-cover" />
             ) : (
-              <div className="lgh-avatar grid h-full w-full place-items-center" style={{ fontSize: 49 }}>
+              <div className="lgh-avatar lgh-avatar-initials h-full w-full">
                 <span className="font-light tracking-[0.06em] text-primary">{initials ?? '?'}</span>
               </div>
             )}
-            <span className="absolute rounded-full border-2 border-[#20242d] bg-[#6fd9a4]" style={{ width: 12, height: 12, right: 0, bottom: 2 }} />
+            <span className="lgh-active-dot" />
           </div>
           <div className="flex min-w-0 flex-col justify-center gap-3.5">
             <p className="lgh-label">Artist library</p>
@@ -124,14 +124,14 @@ export function LibraryGhostHero({ latestImport, profile, hiddenWidgets, genreCo
               ) : (
                 <span className="lgh-status" data-tone={state.tone} data-testid="hero-import-status">{statusWord}</span>
               )}
-              {showUsbImport && <p className="lgh-meta" data-testid="hero-usb"><Usb size={11} /> {usbLoaded ?? 'No USB loaded'}</p>}
-              {showUsbImport && <p className="lgh-meta" data-testid="hero-last-import"><Calendar size={11} /> Last import {lastImport}</p>}
+              {showUsbImport && <p className="lgh-meta" data-testid="hero-usb"><Usb width={11} height={11} aria-hidden="true" /> {usbLoaded ?? 'No USB loaded'}</p>}
+              {showUsbImport && <p className="lgh-meta" data-testid="hero-last-import"><Calendar width={11} height={11} aria-hidden="true" /> Last import {lastImport}</p>}
             </div>
             <div className="flex items-center gap-3">
               {showAnalysis && canResume && (
-                <ControlButton variant="secondary" className="!min-h-8 whitespace-nowrap" onClick={() => onResumeAnalysis(latestImport.id)}><Renew size={12} /> Resume Analysis</ControlButton>
+                <ControlButton variant="secondary" className="!min-h-8 whitespace-nowrap" onClick={() => onResumeAnalysis(latestImport.id)}><Refresh width={12} height={12} aria-hidden="true" /> Resume Analysis</ControlButton>
               )}
-              {showUsbImport && <ControlButton variant="primary" className="!min-h-8 whitespace-nowrap" onClick={onImport}><Upload size={12} /> Import Library</ControlButton>}
+              {showUsbImport && <ControlButton variant="primary" className="!min-h-8 whitespace-nowrap" onClick={onImport}><Upload width={12} height={12} aria-hidden="true" /> Import Library</ControlButton>}
             </div>
           </div>
         </div>

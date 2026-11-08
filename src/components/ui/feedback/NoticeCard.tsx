@@ -1,16 +1,16 @@
 import type { ReactNode } from 'react';
-import { CheckmarkFilled, Close, CloseFilled, Information, WarningAlt } from '@carbon/icons-react';
+import { CheckCircle, InfoCircle, WarningTriangle, Xmark, XmarkCircle } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import './notice-card.css';
 
 export type NoticeTone = 'error' | 'warning' | 'info' | 'success' | 'neutral';
 
 const TONE_ICONS: Record<NoticeTone, ReactNode> = {
-  error: <CloseFilled size={16} aria-hidden="true" />,
-  warning: <WarningAlt size={16} aria-hidden="true" />,
-  info: <Information size={16} aria-hidden="true" />,
-  success: <CheckmarkFilled size={16} aria-hidden="true" />,
-  neutral: <Information size={16} aria-hidden="true" />,
+  error: <XmarkCircle width={16} height={16} aria-hidden="true" />,
+  warning: <WarningTriangle width={16} height={16} aria-hidden="true" />,
+  info: <InfoCircle width={16} height={16} aria-hidden="true" />,
+  success: <CheckCircle width={16} height={16} aria-hidden="true" />,
+  neutral: <InfoCircle width={16} height={16} aria-hidden="true" />,
 };
 
 export interface NoticeCardProps {
@@ -47,7 +47,7 @@ export function NoticeCard({ tone = 'neutral', eyebrow, title, children, icon, a
       </div>
       {action ? <div className="nc-action">{action}</div> : null}
       {onDismiss ? (
-        <button type="button" className="nc-dismiss" onClick={onDismiss} aria-label={dismissLabel}><Close size={16} aria-hidden="true" /></button>
+        <button type="button" className="nc-dismiss" onClick={onDismiss} aria-label={dismissLabel}><Xmark width={16} height={16} aria-hidden="true" /></button>
       ) : null}
     </div>
   );

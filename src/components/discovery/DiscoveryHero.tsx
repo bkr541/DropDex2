@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { ArrowRight, Renew, Shuffle } from '@carbon/icons-react';
+import { ArrowRight, Refresh, Shuffle } from 'iconoir-react/regular';
 import type { DiscoveryFeed } from '../../hooks/useDiscoveryFeed';
 import type { DiscoveryForYou } from '../../hooks/useDiscoveryForYou';
 import { useDiscoveryPick } from '../../hooks/useDiscoveryPick';
@@ -114,8 +114,8 @@ export function DiscoveryHero({ feed, forYou, genres, onSelectArtist, onOpenSetl
             [fresh.trendingGenre?.name ?? '—', fresh.trendingGenre ? `Trending genre · ${fresh.trendingGenre.artists} ${fresh.trendingGenre.artists === 1 ? 'artist' : 'artists'}` : 'Trending genre'],
           ]}
           actions={<>
-            <ControlButton variant="primary" onClick={seeWhatsNew}><ArrowRight size={14} /> See what’s new</ControlButton>
-            <ControlButton variant="secondary" onClick={surprise}><Shuffle size={14} /> Surprise me</ControlButton>
+            <ControlButton variant="primary" onClick={seeWhatsNew}><ArrowRight width={14} height={14} aria-hidden="true" /> See what’s new</ControlButton>
+            <ControlButton variant="secondary" onClick={surprise}><Shuffle width={14} height={14} aria-hidden="true" /> Surprise me</ControlButton>
           </>}
           chartTitle="Sets added per day"
           chartLabel="Sets added each day over the last seven days"
@@ -138,9 +138,9 @@ export function DiscoveryHero({ feed, forYou, genres, onSelectArtist, onOpenSetl
               variant="primary"
               onClick={() => onSelectArtist({ id: pick.artist.id, name: pick.artist.name, normalized_name: pick.artist.normalized_name, matched_alias: null, profile_image_url: pick.artist.profile_image_url })}
             >
-              <ArrowRight size={14} /> Open artist
+              <ArrowRight width={14} height={14} aria-hidden="true" /> Open artist
             </ControlButton>
-            {candidates.length > 1 && <ControlButton variant="secondary" onClick={() => setPickIndex((n) => n + 1)}><Renew size={14} /> Another pick</ControlButton>}
+            {candidates.length > 1 && <ControlButton variant="secondary" onClick={() => setPickIndex((n) => n + 1)}><Refresh width={14} height={14} aria-hidden="true" /> Another pick</ControlButton>}
           </>}
           chartTitle={`${pick.artist.name} sets per year`}
           chartLabel={`Sets by ${pick.artist.name} each year`}

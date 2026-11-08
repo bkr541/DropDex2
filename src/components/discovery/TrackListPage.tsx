@@ -5,7 +5,7 @@ import { useSetlistTracks } from '../../hooks/useSetlistTracks';
 import { SetTrackRow } from './SetTrackRow';
 import { SetTrackTimeline } from './SetTrackTimeline';
 import type { DiscoverySetlistResult } from '../../types';
-import { Branch, Calendar, ChevronLeft, CircleDash, Close, Document, Launch, Music, Playlist, Renew, RotateCounterclockwise, Time, Timer, Upload, WarningAlt } from '@carbon/icons-react';
+import { Calendar, Clock, GitBranch, MusicNote, NavArrowLeft, OpenNewWindow, Page, Playlist, Refresh, Timer, Upload, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { ControlButton, TextareaControl } from '../ui/controls';
 
 type ViewMode = 'list' | 'timeline';
@@ -34,7 +34,7 @@ function ArtworkImage({ url, title }: { url: string; title: string }) {
       />
     );
   }
-  return <Music size={28} className="text-primary/20" />;
+  return <MusicNote width={28} height={28} aria-hidden="true" className="text-primary/20" />;
 }
 
 function SkeletonRow({ wide = false }: { wide?: boolean }) {
@@ -141,7 +141,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
         {/* Back nav + Refresh */}
         <div className="px-5 pt-4 pb-3 border-b border-[var(--color-border-faint)] flex items-center justify-between gap-4">
           <ControlButton variant="ghost" onClick={onBack} className="text-xs">
-            <ChevronLeft size={15} /> Back to Artist
+            <NavArrowLeft width={15} height={15} aria-hidden="true" /> Back to Artist
           </ControlButton>
           <ControlButton
             variant="neutral"
@@ -151,12 +151,12 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
           >
             {scraping && hasTracks ? (
               <>
-                <CircleDash size={10} className="animate-spin" />
+                <Refresh width={10} height={10} aria-hidden="true" className="animate-spin" />
                 Refreshing…
               </>
             ) : (
               <>
-                <Renew size={10} />
+                <Refresh width={10} height={10} aria-hidden="true" />
                 Refresh
               </>
             )}
@@ -170,7 +170,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
             {headerArtwork ? (
               <ArtworkImage url={headerArtwork} title={headerTitle} />
             ) : (
-              <Music size={28} className="text-primary/20" />
+              <MusicNote width={28} height={28} aria-hidden="true" className="text-primary/20" />
             )}
           </div>
 
@@ -181,19 +181,19 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5">
               {headerDate && (
                 <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                  <Calendar size={9} />
+                  <Calendar width={9} height={9} aria-hidden="true" />
                   {headerDate}
                 </span>
               )}
               {headerDuration && (
                 <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                  <Time size={9} />
+                  <Clock width={9} height={9} aria-hidden="true" />
                   {headerDuration}
                 </span>
               )}
               {hasTracks && (
                 <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                  <Music size={9} />
+                  <MusicNote width={9} height={9} aria-hidden="true" />
                   {tracks.length} tracks
                 </span>
               )}
@@ -210,7 +210,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
                       : 'bg-[var(--color-surface)] text-muted-foreground border-[var(--color-border-subtle)]',
                   )}
                 >
-                  <Timer size={8} />
+                  <Timer width={8} height={8} aria-hidden="true" />
                   {isTimed ? 'Timed Tracklist' : 'Track Order Only'}
                 </span>
               )}
@@ -234,7 +234,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
       {showSkeleton && (
         <div className="glass rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden">
           <div className="px-5 py-4 border-b border-[var(--color-border-faint)] flex items-center gap-2">
-            <CircleDash size={14} className="animate-spin text-primary" />
+            <Refresh width={14} height={14} aria-hidden="true" className="animate-spin text-primary" />
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
               {loading || waitingForAuth ? 'Loading tracks…' : 'Extracting tracks from this set…'}
             </span>
@@ -251,7 +251,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
       {error && !loading && !showSkeleton && (
         <div className="glass rounded-2xl border border-red-500/20 p-6 space-y-3">
           <div className="flex items-center gap-2 text-red-400">
-            <WarningAlt size={16} />
+            <WarningTriangle width={16} height={16} aria-hidden="true" />
             <p className="text-sm font-bold">Scrape Failed</p>
           </div>
           <p className="text-xs text-muted-foreground font-mono leading-relaxed">{error}</p>
@@ -262,7 +262,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
           )}
           <div className="flex flex-wrap gap-2">
             <ControlButton variant="danger-outline" onClick={retry} disabled={scraping} className="text-xs">
-              <RotateCounterclockwise size={12} /> Retry Scrape
+              <Refresh width={12} height={12} aria-hidden="true" /> Retry Scrape
             </ControlButton>
             {isChallengeMsg(error) && sourceUrl && (
               <>
@@ -272,11 +272,11 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
                   rel="noopener noreferrer"
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-foreground hover:bg-[var(--color-surface-hover)] transition-all active:scale-95"
                 >
-                  <Launch size={12} />
+                  <OpenNewWindow width={12} height={12} aria-hidden="true" />
                   Open Source Page
                 </a>
                 <ControlButton variant="neutral" onClick={() => { setShowImportPanel(true); setImportError(null); }} disabled={scraping} className="text-xs">
-                  <Document size={12} /> Import HTML
+                  <Page width={12} height={12} aria-hidden="true" /> Import HTML
                 </ControlButton>
               </>
             )}
@@ -304,7 +304,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  {mode === 'list' ? <Playlist size={10} /> : <Branch size={10} />}
+                  {mode === 'list' ? <Playlist width={10} height={10} aria-hidden="true" /> : <GitBranch width={10} height={10} aria-hidden="true" />}
                   {mode === 'list' ? 'List' : 'Timeline'}
                 </button>
               ))}
@@ -353,11 +353,11 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
         <div className="glass rounded-2xl border border-[var(--color-border-subtle)] p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Document size={14} className="text-primary" />
+              <Page width={14} height={14} aria-hidden="true" className="text-primary" />
               <p className="text-sm font-bold">Import Tracklist HTML</p>
             </div>
             <ControlButton variant="ghost" onClick={() => { setShowImportPanel(false); setImportError(null); setImportHtmlText(''); }}>
-              <Close size={14} />
+              <Xmark width={14} height={14} aria-hidden="true" />
             </ControlButton>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
@@ -366,7 +366,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
             full HTML here so DropDex can parse the tracks.
           </p>
           <TextareaControl
-            icon={<Document size={17} />}
+            icon={<Page width={17} height={17} aria-hidden="true" />}
             value={importHtmlText}
             onChange={(e) => setImportHtmlText(e.target.value)}
             disabled={scraping}
@@ -378,13 +378,13 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
           )}
           <div className="flex gap-2 justify-end">
             <ControlButton variant="neutral" onClick={() => { setShowImportPanel(false); setImportError(null); setImportHtmlText(''); }} disabled={scraping} className="text-xs">
-              <Close size={12} /> Cancel
+              <Xmark width={12} height={12} aria-hidden="true" /> Cancel
             </ControlButton>
             <ControlButton variant="primary" onClick={handleImport} disabled={!importHtmlText.trim() || scraping} className="text-xs">
               {scraping ? (
-                <><CircleDash size={10} className="animate-spin" /> Importing…</>
+                <><Refresh width={10} height={10} aria-hidden="true" className="animate-spin" /> Importing…</>
               ) : (
-                <><Upload size={10} /> Import Tracklist</>
+                <><Upload width={10} height={10} aria-hidden="true" /> Import Tracklist</>
               )}
             </ControlButton>
           </div>
@@ -394,7 +394,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
       {/* ── Empty state (scrape completed, zero tracks returned) ──────────── */}
       {!loading && !scraping && !error && !hasTracks && status === 'completed' && (
         <div className="glass rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] p-12 text-center space-y-3">
-          <Music size={32} className="mx-auto text-muted-foreground opacity-25" />
+          <MusicNote width={32} height={32} aria-hidden="true" className="mx-auto text-muted-foreground opacity-25" />
           <div>
             <p className="text-sm font-bold text-muted-foreground">No tracks extracted</p>
             <p className="text-xs text-muted-foreground mt-1 opacity-70">
@@ -404,7 +404,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
             </p>
           </div>
           <ControlButton variant="neutral" onClick={retry} className="mx-auto text-xs">
-            <Renew size={12} /> Try Again
+            <Refresh width={12} height={12} aria-hidden="true" /> Try Again
           </ControlButton>
         </div>
       )}
@@ -412,7 +412,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
       {/* ── Failed state without tracks ───────────────────────────────────── */}
       {!loading && !scraping && !error && !hasTracks && status === 'failed' && (
         <div className="glass rounded-2xl border border-red-500/20 p-8 text-center space-y-3">
-          <WarningAlt size={28} className="mx-auto text-red-400 opacity-60" />
+          <WarningTriangle width={28} height={28} aria-hidden="true" className="mx-auto text-red-400 opacity-60" />
           <div>
             <p className="text-sm font-bold text-red-400">Previous scrape failed</p>
             <p className="text-xs text-muted-foreground mt-1">
@@ -421,7 +421,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
           </div>
           <div className="flex flex-wrap gap-2 justify-center">
             <ControlButton variant="danger-outline" onClick={retry} disabled={scraping} className="text-xs">
-              <RotateCounterclockwise size={12} /> Retry Scrape
+              <Refresh width={12} height={12} aria-hidden="true" /> Retry Scrape
             </ControlButton>
             {isChallengeMsg(detail?.setlist.detail_scrape_error) && sourceUrl && (
               <>
@@ -431,11 +431,11 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
                   rel="noopener noreferrer"
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-foreground hover:bg-[var(--color-surface-hover)] transition-all active:scale-95"
                 >
-                  <Launch size={12} />
+                  <OpenNewWindow width={12} height={12} aria-hidden="true" />
                   Open Source Page
                 </a>
                 <ControlButton variant="neutral" onClick={() => { setShowImportPanel(true); setImportError(null); }} disabled={scraping} className="text-xs">
-                  <Document size={12} /> Import HTML
+                  <Page width={12} height={12} aria-hidden="true" /> Import HTML
                 </ControlButton>
               </>
             )}

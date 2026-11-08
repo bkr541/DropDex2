@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ChevronDown, Close } from '@carbon/icons-react';
+import { NavArrowDown, Xmark } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import { SearchControl } from './SearchControl';
 
@@ -113,7 +113,7 @@ export function FilterDropdown({
               onClick={() => { onChange(options[0].value); closeAndRestoreFocus(); }}
               className="shrink-0 text-red-400 hover:text-red-300 transition-colors focus-visible:outline-none"
             >
-              <Close size={12} />
+              <Xmark aria-hidden="true" width={12} height={12} />
             </button>
           )}
           <button
@@ -123,8 +123,8 @@ export function FilterDropdown({
             onClick={() => setOpen((v) => !v)}
             className="shrink-0 text-muted-foreground focus-visible:outline-none"
           >
-            <ChevronDown
-              size={14}
+            <NavArrowDown aria-hidden="true"
+              width={14} height={14}
               className={cn('transition-transform duration-200', open && 'rotate-180')}
             />
           </button>

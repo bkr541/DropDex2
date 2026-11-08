@@ -6,7 +6,8 @@ export interface ContextMenuItem {
   /** Small right-aligned hint, e.g. a shortcut or the side it affects. */
   hint?: ReactNode;
   disabled?: boolean;
-  onSelect: () => void;
+  /** Omit for contextual information displayed in the menu. */
+  onSelect?: () => void;
 }
 
 const EDGE_GAP = 8;
@@ -38,7 +39,8 @@ export function ContextMenu({
   }, [x, y, items.length]);
 
   useEffect(() => {
-    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus();
+    const menu = menuRef.current;
+    (menu?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? menu)?.focus();
   }, []);
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -65,20 +67,26 @@ export function ContextMenu({
       <div
         ref={menuRef}
         role="menu"
+        tabIndex={-1}
         aria-label={ariaLabel}
         className="fixed min-w-[190px] overflow-hidden rounded-lg border border-[#34414b] bg-[#11181e] p-1.5 shadow-2xl"
         style={position}
         onPointerDown={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        {items.map((item, index) => (
+        {items.map((item, index) => !item.onSelect ? (
+          <div key={item.id} className="flex justify-between gap-4 px-3 py-2 text-xs text-[#a4adbd]">
+            <span>{item.label}</span>
+            {item.hint ? <span>{item.hint}</span> : null}
+          </div>
+        ) : (
           <button
             key={item.id}
             type="button"
             role="menuitem"
             disabled={item.disabled}
             className={`flex w-full items-center justify-between gap-4 rounded-md px-3 py-2 text-left text-xs font-semibold text-[#e5e9ed] hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40${index > 0 ? ' mt-0.5' : ''}`}
-            onClick={() => { onClose(); item.onSelect(); }}
+            onClick={() => { onClose(); item.onSelect?.(); }}
           >
             <span>{item.label}</span>
             {item.hint ? <span className="font-mono text-[10px] text-[#8e99a4]">{item.hint}</span> : null}

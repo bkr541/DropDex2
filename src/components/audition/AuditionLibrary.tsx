@@ -1,14 +1,9 @@
-import { CircleDash, WarningAlt } from '@carbon/icons-react';
-import { TrackRowPlayButton } from '../player/TrackRowPlayButton';
-import { cueAnalysisReady } from '../../lib/cues/cueReadiness';
-import { durationMsForTrack, formatTime } from '../../lib/music/trackTiming';
+import { RecordTrackListing } from '../ui/display/RecordTrackListing';
+import { Refresh, WarningTriangle } from 'iconoir-react/regular';
 import { ControlButton, DualRangeSlider, FilterDropdown, SearchControl } from '../ui/controls';
 import type { FilterDropdownOption } from '../ui/controls';
-import { auditionCueMarkersFromState } from './auditionCueMarkers';
 import type { CueLoadState } from '../../lib/queries/analysisData';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { TrackListing, TrackListingWaveform, type TrackListingColumn } from '../ui/display';
-import { formatCamelotCode } from '../ui/display/camelotKey';
 import { nextAuditionSort, type AuditionSort, type AuditionSortColumn } from './auditionTracks';
 import type { RekordboxTrack } from '../../types';
 
@@ -46,45 +41,12 @@ interface AuditionLibraryProps {
   onSortChange: (sort: AuditionSort | null) => void;
 }
 
-/** Audition's status dot: ready, the problem it had, or not analysed yet. */
-function trackStatus(track: RekordboxTrack): 'ready' | 'error' | 'none' | 'warning' {
-  return cueAnalysisReady(track) ? 'ready'
-    : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required' ? 'error'
-      : track.analysis_parse_status == null ? 'none' : 'warning';
-}
-
 export function AuditionLibrary({
   tracks, selectedTrackId, onSelectTrack, getWaveformState, cueStates, playlistCounts,
   loading, loadingMore, error, hasMore, onLoadMore, onRetry,
   search, onSearchChange, genre, onGenreChange, genreOptions, keyFilter, onKeyFilterChange, keyOptions,
   bpmBounds, bpmRange, onBpmRangeChange, sort, onSortChange,
 }: AuditionLibraryProps) {
-  const columns: TrackListingColumn<RekordboxTrack>[] = [
-    { id: 'bpm', label: 'BPM', sort: 'bpm', cellClassName: 'font-mono text-[13px] font-bold tabular-nums', render: (track) => (track.bpm != null ? track.bpm.toFixed(1) : '—') },
-    { id: 'key', label: 'Key', sort: 'key', render: (track) => formatCamelotCode(track.musical_key) ?? '—' },
-    { id: 'genre', label: 'Genre', sort: 'genre', headClassName: 'w-[178px]', cellClassName: 'w-[178px] text-xs text-muted-foreground', render: (track) => <span className="block truncate">{track.genre ?? '—'}</span> },
-    { id: 'format', label: 'Format', sort: 'format', headClassName: 'whitespace-nowrap', cellClassName: 'whitespace-nowrap text-xs text-muted-foreground', render: (track) => track.file_format ?? '—' },
-    {
-      id: 'playlists', label: 'Playlists', sort: 'playlists', headClassName: 'whitespace-nowrap', cellClassName: 'whitespace-nowrap tabular-nums',
-      cellProps: () => ({ 'data-testid': 'audition-playlist-count' }),
-      render: (track) => (playlistCounts?.counts.has(track.id)
-        ? <span title={`In ${playlistCounts.counts.get(track.id)} ${playlistCounts.counts.get(track.id) === 1 ? 'playlist' : 'playlists'}`}>{playlistCounts.counts.get(track.id)}</span>
-        : playlistCounts?.error
-          ? (
-            <button
-              type="button"
-              className="text-red-300 hover:text-red-200"
-              title="Playlist counts could not be loaded. Click to try again."
-              aria-label="Playlist counts could not be loaded. Try again."
-              onClick={(event) => { event.stopPropagation(); playlistCounts.retry(); }}
-              onKeyDown={(event) => event.stopPropagation()}
-            >!</button>
-          )
-          : '…'),
-    },
-    { id: 'length', label: 'Duration', sort: 'length', headClassName: 'w-[80px] text-left', cellClassName: 'w-[80px] whitespace-nowrap text-left font-mono text-[13px] text-muted-foreground', render: (track) => formatTime(durationMsForTrack(track, null)) },
-  ];
-
   return (
     <section
       data-testid="audition-library"
@@ -129,13 +91,13 @@ export function AuditionLibrary({
 
       {error ? (
         <div className="flex flex-wrap items-center gap-3 border-t border-[var(--color-border-faint)] px-4 py-6 text-sm text-red-300" role="alert">
-          <WarningAlt size={20} />
+          <WarningTriangle width={20} height={20} aria-hidden="true" />
           <span>Your library could not be loaded.</span>
           <ControlButton variant="ghost" onClick={onRetry}>Try again</ControlButton>
         </div>
       ) : loading ? (
         <div className="flex items-center justify-center gap-3 border-t border-[var(--color-border-faint)] py-14 text-sm text-muted-foreground" role="status">
-          <CircleDash className="animate-spin text-primary" size={22} />
+          <Refresh className="animate-spin text-primary" width={22} height={22} aria-hidden="true" />
           Loading your library…
         </div>
       ) : tracks.length === 0 ? (
@@ -146,25 +108,13 @@ export function AuditionLibrary({
       ) : (
         <>
           <div className="audition-table-scroll overflow-auto scrollbar-none">
-            <TrackListing<RekordboxTrack>
+            <RecordTrackListing
               tracks={tracks}
-              columns={columns}
               selectedId={selectedTrackId}
               onSelect={onSelectTrack}
-              getTitle={(track) => track.title}
-              getArtist={(track) => track.artist}
-              getStatus={trackStatus}
-              renderLeading={(track) => <TrackRowPlayButton track={track} />}
-              renderWaveform={(track) => (
-                <TrackListingWaveform
-                  waveformState={getWaveformState?.(track.id) ?? { status: 'idle', trackId: track.id }}
-                  durationMs={durationMsForTrack(track, null)}
-                  cues={auditionCueMarkersFromState(cueStates?.get(track.id))}
-                  height={18}
-                  ariaLabel={`Waveform for ${track.title}`}
-                />
-              )}
-              trackSort="title"
+              getWaveformState={getWaveformState}
+              cueStates={cueStates}
+              playlistCounts={playlistCounts}
               sort={sort}
               onSort={(column) => onSortChange(nextAuditionSort(sort, column as AuditionSortColumn))}
               rowProps={() => ({ 'data-testid': 'audition-library-row' })}

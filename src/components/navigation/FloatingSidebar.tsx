@@ -1,5 +1,5 @@
 import type { ElementType, ReactNode } from 'react';
-import { User } from '@carbon/icons-react';
+import { User } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import { UsbConnectionButton } from '../usb/UsbConnectionButton';
 import { activeSidebarKey } from './sidebarGroups';
@@ -47,13 +47,13 @@ function NavSlot({ label, active, onClick, children }: { label: string; active: 
           'absolute left-0 top-0 z-10 flex h-12 items-center overflow-hidden rounded-full text-sm font-semibold transition-[background-color,box-shadow,color] duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
           active ? 'text-foreground' : 'text-muted-foreground',
           'group-hover:bg-[var(--color-surface-hover)] group-hover:text-foreground group-hover:shadow-[0_8px_20px_rgb(0_0_0/0.45)]',
-          'group-focus-within:bg-[var(--color-surface-hover)] group-focus-within:text-foreground group-focus-within:shadow-[0_8px_20px_rgb(0_0_0/0.45)]',
+          'group-has-[:focus-visible]:bg-[var(--color-surface-hover)] group-has-[:focus-visible]:text-foreground group-has-[:focus-visible]:shadow-[0_8px_20px_rgb(0_0_0/0.45)]',
         )}
       >
         <span className="flex h-12 w-12 shrink-0 items-center justify-center">{children}</span>
         <span
           data-testid="sidebar-label"
-          className="max-w-0 overflow-hidden whitespace-nowrap pr-0 opacity-0 transition-[max-width,padding,opacity] duration-200 ease-out group-hover:max-w-[200px] group-hover:pr-5 group-hover:opacity-100 group-focus-within:max-w-[200px] group-focus-within:pr-5 group-focus-within:opacity-100"
+          className="max-w-0 overflow-hidden whitespace-nowrap pr-0 opacity-0 transition-[max-width,padding,opacity] duration-200 ease-out group-hover:max-w-[200px] group-hover:pr-5 group-hover:opacity-100 group-has-[:focus-visible]:max-w-[200px] group-has-[:focus-visible]:pr-5 group-has-[:focus-visible]:opacity-100"
         >
           {label}
         </span>
@@ -88,8 +88,8 @@ export function FloatingSidebar({ items, currentView, onSelectView, onOpenProfil
         return (
           <NavSlot label={entry.item.label} active={isActive} onClick={() => onSelectView(entry.item.view)}>
             <Icon
-              size={24}
-              className={cn('shrink-0 origin-center transition-transform duration-300 ease-out', isActive ? 'logo-gradient-icon scale-[1.4]' : 'scale-100')}
+              width={24} height={24} aria-hidden="true"
+              className={cn('nav-icon shrink-0 origin-center transition-transform duration-300 ease-out', isActive ? 'logo-gradient-icon scale-[1.4]' : 'scale-100')}
             />
           </NavSlot>
         );
@@ -103,7 +103,7 @@ export function FloatingSidebar({ items, currentView, onSelectView, onOpenProfil
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
               ) : (
-                <User size={22} className="shrink-0 text-muted-foreground" />
+                <User width={22} height={22} aria-hidden="true" className="shrink-0 text-muted-foreground" />
               )}
             </span>
           </NavSlot>

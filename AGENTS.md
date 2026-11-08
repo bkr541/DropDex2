@@ -14,3 +14,11 @@
 - Do not repeatedly launch Electron, reconnect UI automation, or retry optional visual checks after the relevant tests and build pass.
 - If an optional visual check is unavailable or fails, report the limitation and finish. Retry only if the user requests it or a concrete unresolved issue makes the check necessary.
 - Acknowledge and persist explicit workflow preferences instead of merely promising to remember them.
+
+## Audio record lists
+
+Use RecordTrackListing for production lists of user audio records. The Audition table is the visual reference. Its shared columns, in order, are Track, BPM, Key, Genre, Format, Playlists, Duration and Actions. Use its built-in waveform and cue dots. Put workflow details and actions in the shared Actions slot. Use a dash for unavailable metadata and keep the same column layout. Scope screen styles to the surrounding workspace.
+
+## Discovery retrieval
+
+Use the existing Playwright/Chromium and Selectolax browser-scraping workflow for SoundCloud Discovery, as used for 1001Tracklists. Do not replace this with a credentialed SoundCloud API integration unless the user explicitly requests it.

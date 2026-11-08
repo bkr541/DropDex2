@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { VolumeMute, VolumeUp } from '@carbon/icons-react';
+import { SoundHigh, SoundOff } from 'iconoir-react/regular';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import { logger } from '../../lib/logger';
@@ -107,7 +107,7 @@ export function AuditionTransport({ track, fallbackDurationMs, previousTrack, ne
 
       <div className="audition-volume flex shrink-0 items-center gap-2">
         <TransportButton label={muted ? 'Unmute' : 'Mute'} tone="mute" size="compact" active={muted} onClick={toggleMute}>
-          {muted || volume === 0 ? <VolumeMute size={16} /> : <VolumeUp size={16} />}
+          {muted || volume === 0 ? <SoundOff width={16} height={16} aria-hidden="true" /> : <SoundHigh width={16} height={16} aria-hidden="true" />}
         </TransportButton>
         <input
           type="range"

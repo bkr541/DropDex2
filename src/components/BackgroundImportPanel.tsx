@@ -8,7 +8,7 @@ import {
 } from '../lib/api/rekordboxImport';
 import { announceRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
 import { QuietProgress, quietOverallPercent, type QuietPhase } from './ui/feedback';
-import { CheckmarkFilled, CircleDash, Close, Pause, Play, TrashCan, Upload, WarningAlt } from '@carbon/icons-react';
+import { CheckCircle, Pause, Play, Refresh, Trash, Upload, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { ControlButton } from './ui/controls';
 
 const POLL_MS = 2500;
@@ -147,7 +147,7 @@ export function BackgroundImportPanel({
         </div>
         {usbReleased ? (
           <ControlButton type="button" variant="ghost" onClick={onClose} aria-label="Hide import panel">
-            <Close size={16} />
+            <Xmark width={16} height={16} aria-hidden="true" />
           </ControlButton>
         ) : (
           <span
@@ -162,17 +162,17 @@ export function BackgroundImportPanel({
 
       {usbReleased ? (
         <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-2.5 text-xs text-emerald-100">
-          <CheckmarkFilled size={15} className="shrink-0 text-emerald-400" />
+          <CheckCircle width={15} height={15} aria-hidden="true" className="shrink-0 text-emerald-400" />
           USB released. The library is ready to browse.
         </div>
       ) : (
         <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
           <div className="flex items-start gap-2">
-            <WarningAlt size={15} className="mt-0.5 shrink-0 text-amber-400" />
+            <WarningTriangle width={15} height={15} aria-hidden="true" className="mt-0.5 shrink-0 text-amber-400" />
             <p>Book metadata is ready. DropDex is still reading required DAT/EXT files, so keep the USB connected and Rekordbox closed.</p>
           </div>
           <ControlButton type="button" variant="neutral" onClick={onManageLocalUpload} className="mt-3 w-full">
-            <Upload size={14} /> Manage USB Upload
+            <Upload width={14} height={14} aria-hidden="true" /> Manage USB Upload
           </ControlButton>
         </div>
       )}
@@ -211,16 +211,16 @@ export function BackgroundImportPanel({
         <div className="mt-4 grid grid-cols-2 gap-2">
           {!terminal && !resumable && (
             <ControlButton type="button" variant="neutral" disabled={action !== null} onClick={() => void runAction('pause')}>
-              {action === 'pause' ? <CircleDash size={13} className="animate-spin" /> : <Pause size={13} />} Pause
+              {action === 'pause' ? <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> : <Pause width={13} height={13} aria-hidden="true" />} Pause
             </ControlButton>
           )}
           {resumable && (
             <ControlButton type="button" variant="primary" disabled={action !== null} onClick={() => void runAction('resume')} className="w-auto px-3 py-2 text-xs min-h-0">
-              {action === 'resume' ? <CircleDash size={13} className="animate-spin" /> : <Play size={13} />} Resume
+              {action === 'resume' ? <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> : <Play width={13} height={13} aria-hidden="true" />} Resume
             </ControlButton>
           )}
           <ControlButton type="button" variant="danger-outline" disabled={action !== null || deletionPending} onClick={onRequestDelete}>
-            {deletionPending ? <CircleDash size={13} className="animate-spin" /> : <TrashCan size={13} />} {deletionPending ? 'Deleting…' : 'Delete Import'}
+            {deletionPending ? <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> : <Trash width={13} height={13} aria-hidden="true" />} {deletionPending ? 'Deleting…' : 'Delete Import'}
           </ControlButton>
         </div>
       )}

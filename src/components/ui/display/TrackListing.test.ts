@@ -49,18 +49,19 @@ describe('TrackListing', () => {
     expect(render({ trackLabel: 'Candidate' })).toContain('>Candidate<');
   });
 
-  it('is the second Waveform Preview mockup: capitals at 11px, a coral edge and a wash gone by 560px, floating dots', () => {
+  it('uses compact cue flags above the waveform and a fine coral edge on the selected row', () => {
     const css = read('./track-listing.css');
     expect(css).toMatch(/thead \{[^}]*font-size: 11px;/);
-    expect(css).toMatch(/cue-browser__row--selected, [^{]*\{[^}]*inset 4px 0 0 #f56b70[^}]*\}/);
-    expect(css).toContain('#f56b7000 560px');
+    expect(css).toMatch(/cue-browser__row--selected, [^{]*\{[^}]*inset 2px 0 #f5746b[^}]*\}/);
+    expect(css).toContain('background: #f54b6409;');
     expect(css).not.toMatch(/0 0 24px/);
-    expect(css).toMatch(/\.track-listing__cue::before \{[^}]*border-top: 5px solid var\(--cue-ink\)/);
+    expect(css).toMatch(/\.track-listing__cues \{ position: relative; height: 11px; margin-bottom: 2px;/);
+    expect(read('../media/waveform-cue-marker.css')).toMatch(/\.waveform-cue-marker--compact \.cue-flag \{ width: 9px; height: 11px;/);
     expect(css).toMatch(/\.track-listing \.track-listing__actions \{[^}]*vertical-align: middle;/);
   });
 });
 
-describe('every library track listing uses the shared TrackListing', () => {
+describe('production record screens use the Audition table', () => {
   const src = (p: string) => readFileSync(resolve(__dirname, '../../', p), 'utf8');
   it.each([
     'audition/AuditionLibrary.tsx',
@@ -69,9 +70,15 @@ describe('every library track listing uses the shared TrackListing', () => {
     'library/LibrarySearchResults.tsx',
     'library/SimilarVibesSection.tsx',
     'drop-lab/CandidateRotation.tsx',
+    'drop-lab/DropLabSourcePicker.tsx',
+    'flip-lab/FlipLabView.tsx',
+    'profile/TrackSyncSelector.tsx',
+    'usb-management/UsbDeviceLibrary.tsx',
+    'library/SpotifyLibraryTab.tsx',
+    '../features/set-lab/SetLabTrackBrowser.tsx',
   ])('%s', (file) => {
     const source = src(file);
-    expect(source).toContain('<TrackListing');
+    expect(source).toContain('<RecordTrackListing');
     expect(source).not.toMatch(/<TrackTable[ >\n]/);
     expect(source).not.toContain('<TrackNameCell');
   });

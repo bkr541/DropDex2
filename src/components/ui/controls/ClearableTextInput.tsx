@@ -1,5 +1,5 @@
 import type { InputHTMLAttributes, ReactNode } from 'react';
-import { Close } from '@carbon/icons-react';
+import { Xmark } from 'iconoir-react/regular';
 import '../dropdex-controls.css';
 import { TextControl } from './TextControl';
 
@@ -22,7 +22,7 @@ export function ClearableTextInput({
       onChange={(event) => onValueChange(event.target.value)}
       endAdornment={value ? (
         <button type="button" aria-label={clearLabel} className="dd-control-end-action" onClick={() => onValueChange('')}>
-          <Close size={16} />
+          <Xmark aria-hidden="true" width={16} height={16} />
         </button>
       ) : null}
       {...props}

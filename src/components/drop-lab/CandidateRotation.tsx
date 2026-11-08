@@ -1,14 +1,12 @@
+import { useTrackPlaylistCounts } from '../../hooks/useTrackPlaylistCounts';
+import { RecordTrackListing } from '../ui/display/RecordTrackListing';
+import type { TrackTableSort } from '../ui/display';
 import { useMemo, useState, type MouseEvent } from 'react';
-import { CircleDash } from '@carbon/icons-react';
+import { Refresh } from 'iconoir-react/regular';
 import type { DropLabCandidate } from '../../hooks/useDropLabFlipPicks';
 import type { DropLabTrackAnalysis } from '../../hooks/useDropLabAnalysis';
 import { ContextMenu, SearchControl } from '../ui/controls';
-import { KeyBadge, TrackListing, TrackListingWaveform, type TrackListingColumn, type TrackTableSort } from '../ui/display';
-import { CheckmarkFilled, WarningAlt } from '@carbon/icons-react';
-import { dropLabKeyLabel } from '../../hooks/useDropLabFlipPicks';
-import { durationMsForTrack } from '../../lib/music/trackTiming';
-import { StatusBadge } from '../ui/feedback';
-import { candidateStatus, matchTone } from './candidateStatus';
+import { candidateStatus } from './candidateStatus';
 import { DROP_LAB_TRACK_MIME } from './dropLabDrag';
 import { arrangeCandidates, type CandidateSortColumn } from './arrangeCandidates';
 import type { DropLabLoadMethod, DropLabSide } from './dropLabDrag';
@@ -22,44 +20,18 @@ interface CandidateRotationProps {
   onLoadTrack: (trackId: string, side: DropLabSide, method: DropLabLoadMethod) => void;
 }
 
-interface CandidateListingRow { id: string; candidate: DropLabCandidate }
 
 /** The candidate list: the shared track listing. Rows drag onto the timeline or load from a right-click menu. */
 export function CandidateRotation({ candidates, analyses, activeCandidateId, loading, usbReady, onLoadTrack }: CandidateRotationProps) {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<TrackTableSort<CandidateSortColumn> | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; trackId: string; title: string } | null>(null);
-  const rows = useMemo(() => arrangeCandidates(candidates, search, sort), [candidates, search, sort]);
+  const candidateIds = useMemo(() => candidates.map(({ track }) => track.id), [candidates]);
+  const playlistCounts = useTrackPlaylistCounts(candidateIds);
+  const rows = useMemo(() => arrangeCandidates(candidates, search, sort, playlistCounts.counts), [candidates, search, sort, playlistCounts.counts]);
 
-  const listingRows = useMemo<CandidateListingRow[]>(() => rows.map((candidate) => ({ id: candidate.track.id, candidate })), [rows]);
-  const columns: TrackListingColumn<CandidateListingRow>[] = [
-    { id: 'bpm', label: 'BPM', sort: 'bpm', headClassName: 'w-[80px]', cellClassName: 'font-mono text-[13px] font-bold tabular-nums', render: ({ candidate }) => (candidate.track.bpm != null ? candidate.track.bpm.toFixed(1) : '—') },
-    { id: 'key', label: 'Key', sort: 'key', headClassName: 'w-[90px]', render: ({ candidate }) => <KeyBadge camelotKey={dropLabKeyLabel(candidate.track)} variant="badge" /> },
-    {
-      id: 'match', label: 'Match', sort: 'match', headClassName: 'w-[230px]',
-      render: ({ candidate }) => (
-        <>
-          <StatusBadge tone={matchTone(candidate.matchLabel)}>{candidate.matchLabel}</StatusBadge>
-          {candidate.reasons.length > 0 && (
-            <span className="mt-1 flex flex-wrap gap-1">
-              {candidate.reasons.slice(0, 2).map((reason) => (
-                <span key={reason.label} className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground">{reason.label}</span>
-              ))}
-            </span>
-          )}
-        </>
-      ),
-    },
-    {
-      id: 'status', label: 'Status', headClassName: 'w-[190px]',
-      render: (row) => {
-        const status = candidateStatus(analyses.get(row.id), usbReady);
-        return status.tone === 'ready'
-          ? <span className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-emerald-400"><CheckmarkFilled size={12} /> {status.text}</span>
-          : <span className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-amber-400"><WarningAlt size={12} /> {status.text}</span>;
-      },
-    },
-  ];
+  const listingRows = useMemo(() => rows.map(({ track }) => track), [rows]);
+  const candidatesById = useMemo(() => new Map(rows.map((candidate) => [candidate.track.id, candidate])), [rows]);
 
   function handleSort(column: CandidateSortColumn) {
     setSort((current) => {
@@ -68,9 +40,9 @@ export function CandidateRotation({ candidates, analyses, activeCandidateId, loa
     });
   }
 
-  function openMenu(event: MouseEvent<HTMLTableRowElement>, candidate: DropLabCandidate) {
+  function openMenu(event: MouseEvent<HTMLTableRowElement>, track: DropLabCandidate['track']) {
     event.preventDefault();
-    setMenu({ x: event.clientX, y: event.clientY, trackId: candidate.track.id, title: candidate.track.title });
+    setMenu({ x: event.clientX, y: event.clientY, trackId: track.id, title: track.title });
   }
 
   const countLabel = search.trim() ? `${rows.length} of ${candidates.length} candidates` : `${candidates.length} candidates`;
@@ -88,14 +60,14 @@ export function CandidateRotation({ candidates, analyses, activeCandidateId, loa
           />
         </div>
         <span className="ml-auto flex items-center gap-2 self-center font-mono text-[11px] tabular-nums text-muted-foreground">
-          {loading && <CircleDash size={13} className="animate-spin" aria-label="Loading candidates" />}
+          {loading && <Refresh width={13} height={13} className="animate-spin" aria-label="Loading candidates" />}
           {countLabel}
         </span>
       </div>
 
       {loading && candidates.length === 0 ? (
         <div className="flex items-center justify-center gap-3 py-12 text-sm text-muted-foreground" role="status">
-          <CircleDash className="animate-spin text-primary" size={22} />
+          <Refresh className="animate-spin text-primary" width={22} height={22} aria-hidden="true" />
           Finding candidates…
         </div>
       ) : rows.length === 0 ? (
@@ -104,39 +76,34 @@ export function CandidateRotation({ candidates, analyses, activeCandidateId, loa
           {candidates.length > 0 && <p className="mt-1 text-sm text-muted-foreground">Clear the search to see every candidate.</p>}
         </div>
       ) : (
-        <TrackListing<CandidateListingRow>
+        <RecordTrackListing
           tracks={listingRows}
-          columns={columns}
           selectedId={activeCandidateId}
-          onSelect={(row) => onLoadTrack(row.id, 'drop', 'click')}
-          getTitle={(row) => row.candidate.track.title}
-          getArtist={(row) => row.candidate.track.artist}
-          getStatus={(row) => candidateStatus(analyses.get(row.id), usbReady).tone}
-          nameClassName="w-[260px] shrink-0"
-          renderWaveform={(row) => (
-            <TrackListingWaveform
-              waveformState={analyses.get(row.id)?.waveformState ?? { status: 'idle', trackId: row.id }}
-              durationMs={analyses.get(row.id)?.durationMs ?? durationMsForTrack(row.candidate.track, null)}
-              height={18}
-              ariaLabel={`Waveform for ${row.candidate.track.title}`}
-            />
-          )}
-          trackSort="title"
-          trackLabel="Candidate"
+          onSelect={(track) => onLoadTrack(track.id, 'drop', 'click')}
+          getWaveformState={(id) => analyses.get(id)?.waveformState ?? { status: 'idle', trackId: id }}
+          getActions={(track) => {
+            const candidate = candidatesById.get(track.id);
+            return [
+              { id: 'build', label: 'Load As Build', hint: 'Left', onSelect: () => onLoadTrack(track.id, 'build', 'menu') },
+              { id: 'drop', label: 'Load As Drop', hint: 'Right', onSelect: () => onLoadTrack(track.id, 'drop', 'menu') },
+              { id: 'status', label: candidateStatus(analyses.get(track.id), usbReady).text },
+              ...(candidate ? [{ id: 'match', label: candidate.matchLabel, hint: candidate.reasons.slice(0, 2).map(({ label }) => label).join(' · ') }] : []),
+            ];
+          }}
+          playlistCounts={playlistCounts}
           sort={sort}
           onSort={(column) => handleSort(column as CandidateSortColumn)}
           rowProps={(row) => ({
             'data-testid': 'drop-lab-candidate-row',
             draggable: true,
-            title: 'Drag onto the timeline, or right-click to load this track',
+            title: candidateStatus(analyses.get(row.id), usbReady).text + '. Drag onto the timeline, or open Actions to load this track.',
             onDragStart: (event) => {
               event.dataTransfer.setData(DROP_LAB_TRACK_MIME, row.id);
-              event.dataTransfer.setData('text/plain', row.candidate.track.title);
+              event.dataTransfer.setData('text/plain', row.title);
               event.dataTransfer.effectAllowed = 'copy';
             },
-            onContextMenu: (event) => openMenu(event as MouseEvent<HTMLTableRowElement>, row.candidate),
+            onContextMenu: (event) => openMenu(event as MouseEvent<HTMLTableRowElement>, row),
           })}
-          tableClassName="min-w-[980px]"
           tableTestId="drop-lab-candidate-table"
           ariaLabel="Drop Lab candidates"
         />

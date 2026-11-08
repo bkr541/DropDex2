@@ -1,0 +1,20 @@
+/* Audition's phrase framing is shared by every waveform with a section row. */
+.waveform-section-frame {
+  --waveform-timeline-lead: 32px;
+  min-width: 0;
+  padding-left: var(--waveform-timeline-lead);
+  overflow: hidden;
+}
+.waveform-section-row { font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; }
+.waveform-section {
+  color: #cad2df;
+  border-bottom: 1px solid var(--section-ink);
+  background: color-mix(in srgb, var(--section-ink) 7%, transparent);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: .03em;
+}
+.waveform-section--blank { --section-ink: #8997AE; }
+@media (max-width: 700px) {
+  .waveform-section-frame { --waveform-timeline-lead: 24px; }
+}

@@ -6,6 +6,8 @@ import type { DropLabTrackAnalysis } from '../../hooks/useDropLabAnalysis';
 import type { WaveformSegment } from '../../lib/music/waveformSegments';
 import type { RekordboxTrack } from '../../types';
 
+vi.mock('../../contexts/AudioPlayerContext', () => ({ useAudioPlayer: () => ({ status: 'idle', playIntent: false, toggleTrack: vi.fn() }) }));
+
 vi.mock('../../theme/ThemeProvider', () => ({
   useTheme: () => ({ theme: 'dropdex', setTheme: vi.fn() }),
 }));
@@ -25,7 +27,7 @@ beforeAll(async () => {
 });
 
 const track = (overrides: Partial<RekordboxTrack> = {}): RekordboxTrack => ({
-  id: 't1', title: 'Fixture Track', artist: 'Fixture Artist', bpm: 150, camelot_key: '5B', rating: 0, duration_ms: 240_000, ...overrides,
+  id: 't1', rekordbox_content_id: '1', title: 'Fixture Track', artist: 'Fixture Artist', bpm: 150, camelot_key: '5B', rating: 0, duration_ms: 240_000, ...overrides,
 } as RekordboxTrack);
 
 const segment = (): WaveformSegment => {
@@ -85,8 +87,8 @@ describe('Drop Lab timeline', () => {
     expect(markup).toContain('cue-timeline__data-lane h-[28px]');
     expect(markup).toContain('h-[68px] group/waveform');
     expect(markup).toContain('cue-timeline__data-lane h-[34px]');
-    expect(markup).toContain('>SELECTED BUILD<');
-    expect(markup).toContain('>CANDIDATE DROP<');
+    expect(markup).toContain('>Selected build<');
+    expect(markup).toContain('>Candidate drop<');
   });
 
   it('draws the waveform with the shared filled Rekordbox renderer, one half per track', () => {
@@ -98,8 +100,8 @@ describe('Drop Lab timeline', () => {
 
   it('takes its colors from the shared section colors for Build and Drop', () => {
     const markup = render();
-    expect(markup).toContain('border-bottom:2px solid #ff8614');
-    expect(markup).toContain('border-bottom:2px solid #ff514b');
+    expect(markup).toContain('--section-ink:#ff8614');
+    expect(markup).toContain('--section-ink:#ff514b');
   });
 
   it('draws dashed bar and beat lines over the waveform and a beat ruler under it', () => {
@@ -211,35 +213,26 @@ describe('Drop Lab candidate list', () => {
     expect(markup).toContain('aria-label="Search candidates"');
     expect(markup).toContain('data-testid="drop-lab-candidate-filters"');
     expect(markup).toContain('2 candidates');
-    expect(markup).toContain('aria-label="Sort by Candidate"');
-    expect(markup).toContain('aria-label="Sort by Match"');
+    expect(markup).toContain('aria-label="Sort by Track"');
+    expect(markup).toContain('aria-label="Sort by Format"');
     expect(markup).not.toContain('Why it fits');
   });
 
-  it('shows each row with a status dot, mini waveform, key badge and the app-wide missing-artist text', () => {
+  it('shows each row with a status dot, mini waveform, plain key and the app-wide missing-artist text', () => {
     const markup = render();
     expect(markup.match(/data-testid="drop-lab-candidate-row"/g)).toHaveLength(2);
     expect(markup).toContain('Artist Not Available');
     expect(markup).toContain('data-waveform-variant="compact"');
     expect(markup).toContain('>05B<');
     expect(markup).toContain('>10A<');
-    expect(markup).toContain('bg-emerald-400');
-    expect(markup).toContain('Same BPM');
-    expect(markup).toContain('Strong Match');
+    expect(markup).toContain('aria-label="Play First Candidate"');
+    expect(markup).toContain('aria-label="Actions for First Candidate"');
   });
 
-  it('combines match and why-it-fits in one column: a badge with the reasons underneath', () => {
+  it('uses all eight record columns and provides the row Actions menu', () => {
     const markup = render();
-    const headers = markup.match(/<th [^>]*>/g) ?? [];
-    // Candidate, BPM, Key, Match, Status, and the Actions column every listing has.
-    expect(headers).toHaveLength(6);
-    const firstRow = markup.split('data-testid="drop-lab-candidate-row"')[1];
-    const badge = firstRow.indexOf('dd-status-badge');
-    expect(badge).toBeGreaterThan(-1);
-    expect(firstRow).toContain('dd-tone-success');
-    expect(firstRow.indexOf('Strong Match')).toBeGreaterThan(badge);
-    expect(firstRow.indexOf('Same BPM')).toBeGreaterThan(firstRow.indexOf('Strong Match'));
-    expect(markup).toContain('dd-tone-amber');
+    expect(markup.match(/<th [^>]*>/g)).toHaveLength(8);
+    expect(markup).toContain('aria-label="Actions for First Candidate" aria-haspopup="menu"');
   });
 
   it('highlights the active row and has no radio circle', () => {

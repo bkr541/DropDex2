@@ -50,6 +50,3 @@
   opacity: .42;
   pointer-events: none;
 }
-
-/* `logo-gradient-icon` fills shapes with the logo gradient; the nav icons are strokes, so they stay unfilled in solid red
-   (rule in navigation/navIcons.css). Keep any other icon (carbon) on the gradient. */

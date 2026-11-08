@@ -5,7 +5,7 @@ import { type ArtistTabId } from './ArtistResultsTabs';
 import { ArtistResultsToolbar, type SortKey } from './ArtistResultsToolbar';
 import { ArtistSetlistCard } from './ArtistSetlistCard';
 import type { DiscoveryArtist, DiscoveryArtistDetail, DiscoverySetlistResult, DiscoveryScrapeJob } from '../../types';
-import { ChevronDown, ChevronLeft, CircleDash, Music, Search } from '@carbon/icons-react';
+import { MusicNote, NavArrowDown, NavArrowLeft, Refresh, Search } from 'iconoir-react/regular';
 import { ControlButton } from '../ui/controls';
 
 function sortSetlists(
@@ -92,7 +92,7 @@ export function ArtistPage({
   return (
     <div className="space-y-6">
       <button type="button" className="studio-back" onClick={onBack} aria-label="Back to Discovery" data-testid="artist-back">
-        <span><ChevronLeft size={16} /></span>
+        <span><NavArrowLeft width={16} height={16} aria-hidden="true" /></span>
         <span>Discovery</span>
       </button>
 
@@ -125,7 +125,7 @@ export function ArtistPage({
         <div className="flex-1 min-w-0 space-y-4">
           {loading ? (
             <div className="flex items-center justify-center py-20">
-              <CircleDash className="animate-spin text-primary" size={28} />
+              <Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" />
             </div>
           ) : error ? (
             <div className="text-center py-12 space-y-2">
@@ -136,12 +136,12 @@ export function ArtistPage({
             <div className="text-center py-20 border-2 border-dashed border-[var(--color-border-subtle)] rounded-3xl space-y-3">
               {isScrapeActive ? (
                 <>
-                  <Search size={36} className="mx-auto text-primary opacity-40" />
+                  <Search width={36} height={36} aria-hidden="true" className="mx-auto text-primary opacity-40" />
                   <p className="text-sm font-bold text-muted-foreground">Searching for setlists…</p>
                 </>
               ) : (
                 <>
-                  <Music size={36} className="mx-auto text-muted-foreground opacity-30" />
+                  <MusicNote width={36} height={36} aria-hidden="true" className="mx-auto text-muted-foreground opacity-30" />
                   <div>
                     <p className="text-sm font-bold text-muted-foreground">No setlists found yet</p>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -183,9 +183,9 @@ export function ArtistPage({
                   )}
                   <ControlButton variant="neutral" onClick={onLoadMore} disabled={loadingMore}>
                     {loadingMore ? (
-                      <><CircleDash size={14} className="animate-spin" /> Loading…</>
+                      <><Refresh width={14} height={14} aria-hidden="true" className="animate-spin" /> Loading…</>
                     ) : (
-                      <><ChevronDown size={14} /> {loadMoreError ? 'Retry Load More' : 'Load More'}</>
+                      <><NavArrowDown width={14} height={14} aria-hidden="true" /> {loadMoreError ? 'Retry Load More' : 'Load More'}</>
                     )}
                   </ControlButton>
                 </div>

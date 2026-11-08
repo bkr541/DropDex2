@@ -1,4 +1,5 @@
 import type { ElementType, HTMLAttributes, ReactNode, TableHTMLAttributes, ThHTMLAttributes } from 'react';
+import { ArrowDown, ArrowUp } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import '../dropdex-display.css';
 import { Artwork } from './Artwork';
@@ -55,6 +56,7 @@ export function TrackTableHeadCell<K extends string>({
   onSort?: (column: K) => void;
 }) {
   const active = column !== undefined && sort?.column === column;
+  const SortIcon = sort?.direction === 'desc' ? ArrowDown : ArrowUp;
   return (
     <th
       aria-sort={active ? (sort?.direction === 'asc' ? 'ascending' : 'descending') : undefined}
@@ -73,7 +75,7 @@ export function TrackTableHeadCell<K extends string>({
             onClick={() => onSort(column)}
           >
             {content}
-            <span className={cn('text-primary', !active && 'invisible')} aria-hidden="true">{sort?.direction === 'desc' ? '↓' : '↑'}</span>
+            <SortIcon width={12} height={12} className={cn('shrink-0 text-primary', !active && 'invisible')} aria-hidden="true" />
           </button>
         ) : content;
       })()}

@@ -24,7 +24,7 @@ export function FloatingPageHeader({ title, icon: Icon, anchor = 'window' }: { t
         anchor === 'window' ? 'fixed top-1.5' : 'absolute top-1.5',
       )}
     >
-      {Icon && <Icon size={16} className="logo-gradient-icon shrink-0" />}
+      {Icon && <Icon width={16} height={16} className="nav-icon logo-gradient-icon shrink-0" aria-hidden="true" />}
       <span className="truncate text-[12px] font-medium uppercase leading-4 tracking-[0.2em]">{title}</span>
     </header>
   );

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { UserAvatar } from '@carbon/icons-react';
+import { UserCircle } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import '../dropdex-display.css';
 
@@ -46,7 +46,7 @@ export function Avatar({
           <span className="dd-avatar__fallback" role="img" aria-label={fallbackLabel}>
             {initials
               ? <strong>{initials}</strong>
-              : <span aria-hidden="true">{icon ?? <UserAvatar />}</span>}
+              : <span aria-hidden="true">{icon ?? <UserCircle aria-hidden="true" />}</span>}
           </span>
         )}
       </span>

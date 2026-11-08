@@ -41,19 +41,29 @@ export interface DirectedEdge {
 export async function fetchRekordboxRecommendationEdges(
   importId: string,
   trackId: string,
+  options?: { signal?: AbortSignal; allPages?: boolean },
 ): Promise<DirectedEdge[]> {
-  const { data, error } = await supabase
-    .from('rekordbox_recommendation_edges')
-    .select(
-      'id, import_id, source_track_id, target_track_id, rating, ' +
-      'source_created_at, relationship_source, direction_preserved'
-    )
-    .eq('import_id', importId)
-    .or(`source_track_id.eq.${trackId},target_track_id.eq.${trackId}`)
-
-  if (error) throw new Error(error.message)
-
-  const rows = (data ?? []) as unknown as RecommendationEdgeRow[]
+  const rows: RecommendationEdgeRow[] = []
+  const size = 500
+  const { signal, allPages } = options ?? {}
+  for (let offset = 0; ; offset += size) {
+    signal?.throwIfAborted()
+    let query = supabase
+      .from('rekordbox_recommendation_edges')
+      .select(
+        'id, import_id, source_track_id, target_track_id, rating, ' +
+        'source_created_at, relationship_source, direction_preserved'
+      )
+      .eq('import_id', importId)
+      .or(`source_track_id.eq.${trackId},target_track_id.eq.${trackId}`)
+    if (allPages) query = query.order('id').range(offset, offset + size - 1)
+    if (signal) query = query.abortSignal(signal)
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+    const page = (data ?? []) as unknown as RecommendationEdgeRow[]
+    rows.push(...page)
+    if (!allPages || page.length < size) break
+  }
 
   // Build a set of pair keys where we have outgoing edges from trackId
   // so we can detect reciprocal pairs.

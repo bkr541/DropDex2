@@ -1,4 +1,4 @@
-import { CircleDash, WarningAlt } from '@carbon/icons-react';
+import { ArrowRight, Refresh, WarningTriangle } from 'iconoir-react/regular';
 import type { RekordboxTrack } from '../../types';
 import { isTrackMetadataDraftRecoveryLocked, type TrackMetadataDraftRow } from '../../lib/queries/trackMetadataDrafts';
 import type { DesktopMetadataApplyResult, DesktopMetadataPreflightResult } from '../../types/dropdex-desktop';
@@ -93,7 +93,7 @@ export function PendingMetadataChangesReview({
 
         {(draftLoadStatus === 'idle' || draftLoadStatus === 'loading') && (
           <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-white/[0.02] p-3 text-[11px] text-muted-foreground" role="status">
-            <CircleDash className="animate-spin" size={15} />
+            <Refresh className="animate-spin" width={15} height={15} aria-hidden="true" />
             Loading pending metadata changes…
           </div>
         )}
@@ -101,7 +101,7 @@ export function PendingMetadataChangesReview({
         {draftLoadStatus === 'failed' && (
           <div className="rounded-lg border border-red-400/25 bg-red-400/[0.05] p-3 text-[11px] text-red-200" role="alert">
             <div className="flex items-start gap-2">
-              <WarningAlt className="mt-0.5 shrink-0" size={15} />
+              <WarningTriangle className="mt-0.5 shrink-0" width={15} height={15} aria-hidden="true" />
               <p className="min-w-0 break-words">{draftLoadError ?? 'Pending metadata changes could not be loaded.'}</p>
             </div>
             <ControlButton variant="surface" className="mt-3" onClick={onRetryDrafts}>
@@ -119,7 +119,7 @@ export function PendingMetadataChangesReview({
 
         {draftLoadStatus === 'loaded' && pendingCount > 0 && (identityLoadStatus === 'idle' || identityLoadStatus === 'loading') && (
           <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-white/[0.02] p-3 text-[11px] text-muted-foreground" role="status">
-            <CircleDash className="animate-spin" size={15} />
+            <Refresh className="animate-spin" width={15} height={15} aria-hidden="true" />
             Loading track details for all pending changes…
           </div>
         )}
@@ -127,7 +127,7 @@ export function PendingMetadataChangesReview({
         {draftLoadStatus === 'loaded' && pendingCount > 0 && identityLoadStatus === 'failed' && (
           <div className="rounded-lg border border-red-400/25 bg-red-400/[0.05] p-3 text-[11px] text-red-200" role="alert">
             <div className="flex items-start gap-2">
-              <WarningAlt className="mt-0.5 shrink-0" size={15} />
+              <WarningTriangle className="mt-0.5 shrink-0" width={15} height={15} aria-hidden="true" />
               <p className="min-w-0 break-words">{identityLoadError ?? 'Track details for pending changes could not be loaded.'}</p>
             </div>
             <ControlButton variant="surface" className="mt-3" onClick={onRetryIdentities}>
@@ -174,7 +174,9 @@ export function PendingMetadataChangesReview({
                       <p className="text-[8px] font-black uppercase tracking-[0.12em] text-muted-foreground">Current</p>
                       <p className="mt-1 break-words text-[11px] font-semibold text-foreground [overflow-wrap:anywhere]">{currentGenreLabel(draft.currentBaselineValue)}</p>
                     </div>
-                    <div className="flex items-center text-sm font-black text-muted-foreground" aria-hidden="true">→</div>
+                    <div className="flex items-center text-muted-foreground">
+                      <ArrowRight width={14} height={14} aria-hidden="true" />
+                    </div>
                     <div className="min-w-0 rounded-lg border border-amber-300/20 bg-amber-300/[0.04] p-2.5">
                       <p className="text-[8px] font-black uppercase tracking-[0.12em] text-amber-200">Pending</p>
                       <p className="mt-1 break-words text-[11px] font-semibold text-foreground [overflow-wrap:anywhere]">{pendingGenreLabel(draft.pendingValue)}</p>

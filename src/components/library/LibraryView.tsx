@@ -1,5 +1,6 @@
+import { RecordTrackListing } from '../ui/display/RecordTrackListing';
+import { useTrackPlaylistCounts } from '../../hooks/useTrackPlaylistCounts';
 import './library-studio.css';
-import { SpotifyTabIcon } from './SpotifyTabIcon';
 import { useState, useMemo, useCallback, useEffect, type ElementType, type ReactNode } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
@@ -23,7 +24,6 @@ import {
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { LibraryHero } from './LibraryHero';
 import type { LibraryOverviewWidgetId } from '../../lib/dashboard/libraryOverviewWidgets';
-import { RecentlyAddedTracksTable } from './RecentlyAddedTracksTable';
 import { LibrarySearchResults } from './LibrarySearchResults';
 import type {
   RekordboxImport,
@@ -36,14 +36,9 @@ import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { supabase } from '../../lib/supabase';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
-import { ChartBar, CheckmarkFilled, ChevronLeft, CircleDash, FolderOpen, Music, RecordingFilled, Renew, Tag, Upload, User, WarningAlt, Waveform } from '@carbon/icons-react';
-import { Dashboard, Playlist, Time, UserMultiple } from '@carbon/icons-react';
-import { TrackListing, type TrackListingColumn } from '../ui/display';
+import { Activity, CheckCircle, Circle, Clock, ControlSlider, Dashboard, Folder, Group, Key, Label, MusicNote, NavArrowLeft, Playlist, Refresh, Reports, SineWave, Spotify, Upload, User, WarningTriangle } from 'iconoir-react/regular';
 import { ProfileSocialLinks } from './ProfileSocialLinks';
 import { LibraryGhostHero } from './LibraryGhostHero';
-import { TrackRowPlayButton } from '../player/TrackRowPlayButton';
-import { TrackRowWaveform } from '../player/TrackRowWaveform';
-import { cueAnalysisReady } from '../../lib/cues/cueReadiness';
 import { ControlButton, SearchControl } from '../ui/controls';
 import { SpotifyLibraryTab } from './SpotifyLibraryTab';
 import { useSpotifyAvailability } from '../../hooks/useSpotifyAvailability';
@@ -52,14 +47,14 @@ import { useSpotifyAvailability } from '../../hooks/useSpotifyAvailability';
 const TABS: { id: LibraryTab; label: string; icon: ElementType }[] = [
   { id: 'overview', label: 'Home', icon: Dashboard },
   { id: 'playlists', label: 'Playlists', icon: Playlist },
-  { id: 'recently-added', label: 'Recently Added', icon: Time },
-  { id: 'tracks', label: 'Tracks', icon: Music },
-  { id: 'genres', label: 'Genres', icon: Tag },
-  { id: 'artists', label: 'Artists', icon: UserMultiple },
-  { id: 'incomplete-analysis', label: 'Analysis Incomplete', icon: WarningAlt },
+  { id: 'recently-added', label: 'Recently Added', icon: Clock },
+  { id: 'tracks', label: 'Tracks', icon: MusicNote },
+  { id: 'genres', label: 'Genres', icon: Label },
+  { id: 'artists', label: 'Artists', icon: Group },
+  { id: 'incomplete-analysis', label: 'Analysis Incomplete', icon: WarningTriangle },
 ];
 
-const SPOTIFY_TAB: { id: LibraryTab; label: string; icon: ElementType } = { id: 'spotify', label: 'Spotify', icon: SpotifyTabIcon };
+const SPOTIFY_TAB: { id: LibraryTab; label: string; icon: ElementType } = { id: 'spotify', label: 'Spotify', icon: Spotify };
 
 export { TABS as LIBRARY_TABS, SPOTIFY_TAB };
 
@@ -111,7 +106,7 @@ function EmptyLibrary({ onImport, profile }: { onImport: () => void; profile: Us
             {initials ? (
               <span className="text-[28px] font-light tracking-[-0.04em]">{initials}</span>
             ) : (
-              <User size={34} className="text-primary/70" />
+              <User width={34} height={34} aria-hidden="true" className="text-primary/70" />
             )}
           </div>
         )}
@@ -127,7 +122,7 @@ function EmptyLibrary({ onImport, profile }: { onImport: () => void; profile: Us
         Connect your rekordbox USB drive, then import your library to get started.
       </p>
       <ControlButton variant="primary" onClick={onImport} className="w-auto">
-        <Upload size={16} />
+        <Upload width={16} height={16} aria-hidden="true" />
         Import Rekordbox Library
       </ControlButton>
     </div>
@@ -172,7 +167,7 @@ export function ArtistProfileCard({
             {initials ? (
               <span className="text-[28px] font-light tracking-[-0.04em]">{initials}</span>
             ) : (
-              <User size={34} className="text-primary/70" />
+              <User width={34} height={34} aria-hidden="true" className="text-primary/70" />
             )}
           </div>
         )}
@@ -220,7 +215,7 @@ function DesktopLibraryInfoCard({
   return (
     <div className="lib-card p-4 space-y-4">
       <p className="lib-label flex items-center gap-1.5">
-        <ChartBar size={11} /> Library Health
+        <Reports width={11} height={11} aria-hidden="true" /> Library Health
       </p>
 
       <div className="lib-well px-3 py-3">
@@ -228,11 +223,11 @@ function DesktopLibraryInfoCard({
           USB Import
         </p>
         <div className="flex items-center gap-2">
-          <CheckmarkFilled size={14} className="text-emerald-500 shrink-0" />
+          <CheckCircle width={14} height={14} aria-hidden="true" className="text-emerald-500 shrink-0" />
           <span className="font-black text-sm leading-none text-emerald-500">Import Complete</span>
         </div>
         <ControlButton variant="primary" onClick={onImport} className="mt-3 w-full text-[10px]">
-          <Upload size={11} /> Import New Library
+          <Upload width={11} height={11} aria-hidden="true" /> Import New Library
         </ControlButton>
       </div>
 
@@ -242,8 +237,8 @@ function DesktopLibraryInfoCard({
             Track Analysis
           </p>
           <div className="flex items-center gap-2">
-            <WarningAlt
-              size={13}
+            <WarningTriangle
+              width={13} height={13} aria-hidden="true"
               className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'}
             />
             <span
@@ -257,7 +252,7 @@ function DesktopLibraryInfoCard({
           </div>
           {isActionable && onResumeAnalysis && (
             <ControlButton variant="primary" onClick={() => onResumeAnalysis(latestImport.id)} className="mt-3 w-full text-[10px]">
-              <Renew size={11} /> Resume Analysis
+              <Refresh width={11} height={11} aria-hidden="true" /> Resume Analysis
             </ControlButton>
           )}
         </div>
@@ -281,14 +276,14 @@ function DesktopLibraryInfoCard({
           };
           const analyzed = latestImport.analysis_status === 'completed' ? total : parsed;
           return [
-            { icon: RecordingFilled, label: 'Status', value: statusLabel[latestImport.analysis_status ?? ''] ?? '—' },
-            { icon: Waveform, label: 'Analyzed', value: analyzed.toLocaleString() },
-            { icon: Music, label: 'Total Tracks', value: total.toLocaleString() },
-            { icon: ChartBar, label: 'Progress', value: `${percent}%` },
+            { icon: Circle, label: 'Status', value: statusLabel[latestImport.analysis_status ?? ''] ?? '—' },
+            { icon: Activity, label: 'Analyzed', value: analyzed.toLocaleString() },
+            { icon: MusicNote, label: 'Total Tracks', value: total.toLocaleString() },
+            { icon: Reports, label: 'Progress', value: `${percent}%` },
           ].map(({ icon: Icon, label, value }) => (
             <div key={label} className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
-                <Icon size={13} className="text-muted-foreground shrink-0" />
+                <Icon width={13} height={13} aria-hidden="true" className="text-muted-foreground shrink-0" />
                 <span className="text-[11px] text-muted-foreground truncate">{label}</span>
               </div>
               <span className="text-[11px] font-bold font-mono shrink-0 max-w-[45%] truncate" title={value}>
@@ -306,7 +301,7 @@ function DesktopLibraryInfoCard({
 
 // ── Library track table (shared by Tracks, Recently Added, Analysis Incomplete tabs) ──
 
-type LibrarySortCol = 'title' | 'bpm' | 'key' | 'genre' | 'duration';
+type LibrarySortCol = 'title' | 'bpm' | 'key' | 'genre' | 'format' | 'playlists' | 'length';
 
 export interface LibraryTrackTableProps {
   tracks: RekordboxTrack[];
@@ -346,6 +341,8 @@ export function LibraryTrackTable({
     }
   }
 
+  const ids = useMemo(() => tracks.map((track) => track.id), [tracks]);
+  const playlistCounts = useTrackPlaylistCounts(ids);
   const sortedTracks = useMemo(() => {
     if (!sortCol) return tracks;
     return [...tracks].sort((a, b) => {
@@ -353,9 +350,16 @@ export function LibraryTrackTable({
       let bv: string | number | null = null;
       if (sortCol === 'title') { av = a.title ?? ''; bv = b.title ?? ''; }
       else if (sortCol === 'bpm') { av = a.bpm ?? -1; bv = b.bpm ?? -1; }
-      else if (sortCol === 'key') { av = formatCamelotKey(a.musical_key); bv = formatCamelotKey(b.musical_key); }
+      else if (sortCol === 'key') { av = formatCamelotKey(a.camelot_key || a.musical_key); bv = formatCamelotKey(b.camelot_key || b.musical_key); }
       else if (sortCol === 'genre') { av = a.genre ?? ''; bv = b.genre ?? ''; }
-      else if (sortCol === 'duration') {
+      else if (sortCol === 'format') { av = a.file_format ?? ''; bv = b.file_format ?? ''; }
+      else if (sortCol === 'playlists') {
+        const ac = playlistCounts.counts.get(a.id);
+        const bc = playlistCounts.counts.get(b.id);
+        if (ac == null || bc == null) return ac == null ? Number(bc != null) : -1;
+        av = ac; bv = bc;
+      }
+      else if (sortCol === 'length') {
         av = a.duration_ms ?? (a.duration_seconds != null ? a.duration_seconds * 1000 : -1);
         bv = b.duration_ms ?? (b.duration_seconds != null ? b.duration_seconds * 1000 : -1);
       }
@@ -363,12 +367,12 @@ export function LibraryTrackTable({
       const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [tracks, sortCol, sortDir]);
+  }, [tracks, sortCol, sortDir, playlistCounts.counts]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <CircleDash className="animate-spin text-primary" size={28} />
+        <Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" />
       </div>
     );
   }
@@ -376,27 +380,17 @@ export function LibraryTrackTable({
     return <p className="text-center py-12 text-muted-foreground text-sm">{emptyText ?? 'No tracks.'}</p>;
   }
 
-  const columns: TrackListingColumn<RekordboxTrack>[] = [
-    { id: 'bpm', label: 'BPM', sort: 'bpm', cellClassName: 'font-mono text-[13px] font-bold tabular-nums', render: (t) => (t.bpm != null ? t.bpm.toFixed(1) : '—') },
-    { id: 'key', label: 'Key', sort: 'key', render: (t) => formatCamelotKey(t.musical_key) || '—' },
-    { id: 'genre', label: 'Genre', sort: 'genre', headClassName: 'w-[178px]', cellClassName: 'w-[178px] text-xs text-muted-foreground', render: (t) => <span className="block truncate max-w-[160px]">{t.genre ?? '—'}</span> },
-    { id: 'duration', label: 'Duration', sort: 'duration', headClassName: 'w-[80px] text-left', cellClassName: 'w-[80px] text-left font-mono text-[13px] text-muted-foreground', render: (t) => formatLibraryTime(t.duration_ms ?? (t.duration_seconds != null ? t.duration_seconds * 1000 : null)) },
-  ];
-
   return (
     <div className="lib-panel">
-      <TrackListing<RekordboxTrack>
+      <RecordTrackListing
         tracks={sortedTracks}
-        columns={columns}
         selectedId={activeTrack?.id ?? null}
         onSelect={onTrackClick}
-        getTitle={(t) => t.title}
-        getArtist={(t) => t.artist}
-        getStatus={(t) => (cueAnalysisReady(t) ? 'ready' : t.analysis_parse_status === 'failed' || t.analysis_parse_status === 'missing_required' ? 'error' : t.analysis_parse_status == null ? 'none' : 'warning')}
-        renderLeading={(t) => <TrackRowPlayButton track={t} />}
-        renderWaveform={(t) => <TrackRowWaveform track={t} waveformState={getWaveformState(t.id)} onRetry={() => retryWaveform([t.id])} />}
+        getWaveformState={getWaveformState}
+        onRetryWaveform={(id) => retryWaveform([id])}
+        playlistCounts={playlistCounts}
+        followPlayback
         rowProps={(t) => ({ 'aria-label': `Open ${t.title}${t.artist ? ` by ${t.artist}` : ''}` })}
-        trackSort="title"
         sort={sortCol ? { column: sortCol, direction: sortDir } : null}
         onSort={(column) => handleColClick(column as LibrarySortCol)}
         ariaLabel="Track listing"
@@ -428,7 +422,7 @@ function SidebarSection({ icon: Icon, title, children }: {
   return (
     <div className="lib-card p-4">
       <p className="flex items-center gap-1.5 lib-label mb-3">
-        <Icon size={11} />
+        <Icon width={11} height={11} aria-hidden="true" />
         {title}
       </p>
       {children}
@@ -442,13 +436,6 @@ function formatCamelotKey(key: string | null | undefined): string {
   const raw = formatKey(key);
   if (!raw || raw === '—') return '';
   return raw.replace(/^(\d)([AB])$/i, (_, n, l) => `0${n}${l.toUpperCase()}`);
-}
-
-function formatLibraryTime(ms: number | null | undefined): string {
-  if (ms == null || !isFinite(ms) || ms < 0) return '—';
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  return `${m}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
 // ── Compact playlist card for Overview reference grid ─────────────────────────
@@ -475,7 +462,7 @@ function OverviewPlaylistCard({
             playlist.is_folder ? 'bg-primary/15 text-primary' : 'bg-primary/10 text-primary',
           )}
         >
-          {playlist.is_folder ? <FolderOpen size={26} /> : <Music size={26} />}
+          {playlist.is_folder ? <Folder width={26} height={26} aria-hidden="true" /> : <MusicNote width={26} height={26} aria-hidden="true" />}
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-bold text-base leading-snug truncate group-hover:text-primary transition-colors">
@@ -560,13 +547,13 @@ function OverviewSummaryCards({
         <div className="mt-3 w-full h-px" style={DIVIDER} />
         <div className="mt-3 w-full space-y-2">
           {([
-            { label: 'Total Tracks', value: latestImport.track_count.toLocaleString(), Icon: Music },
-            { label: 'Most Common BPM', value: mostCommonBpm != null ? `${mostCommonBpm} BPM` : '—', Icon: Waveform },
-            { label: 'Most Common Key', value: mostCommonKey ? formatKey(mostCommonKey) : '—', Icon: Tag },
+            { label: 'Total Tracks', value: latestImport.track_count.toLocaleString(), Icon: MusicNote },
+            { label: 'Most Common BPM', value: mostCommonBpm != null ? `${mostCommonBpm} BPM` : '—', Icon: Activity },
+            { label: 'Most Common Key', value: mostCommonKey ? formatKey(mostCommonKey) : '—', Icon: Label },
           ] as const).map(({ label, value, Icon }) => (
             <div key={label} className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0">
-                <Icon size={11} className="text-muted-foreground shrink-0" />
+                <Icon width={11} height={11} aria-hidden="true" className="text-muted-foreground shrink-0" />
                 <p className="text-[10px] text-muted-foreground truncate">{label}</p>
               </div>
               <p className="text-[11px] font-black leading-none shrink-0">{value}</p>
@@ -736,7 +723,7 @@ export function LibraryView({
           >
             {importLoading && (
               <div className="flex items-center justify-center py-24">
-                <CircleDash className="animate-spin text-primary" size={32} />
+                <Refresh className="animate-spin text-primary" width={32} height={32} aria-hidden="true" />
               </div>
             )}
 
@@ -778,7 +765,7 @@ export function LibraryView({
                 {latestImport && (
                   <>
                     {/* ── Sticky header: top row + tabs ── */}
-                    <div className="sticky top-0 z-20 lib-sticky -mx-4 md:-mx-8 px-4 md:px-8 space-y-4 pb-3">
+                    <div className="sticky top-0 z-20 space-y-4 pb-3">
 
                       {/* The hero: the Ghost Banner on desktop, the compact hero below it */}
                       <div className="hidden lg:block">
@@ -823,15 +810,13 @@ export function LibraryView({
                           {insightCount > 0 && (
                             <section className="space-y-3" data-testid="library-insights">
                               <h2 className="lib-heading">
-                                <ChartBar size={13} /> Insights
+                                <Reports width={13} height={13} aria-hidden="true" /> Insights
                               </h2>
                               <div className={cn('grid grid-cols-1 gap-3', INSIGHT_COLUMNS[insightCount])}>
                                 {showTopGenres && (
                                   <div className="lib-card p-5 flex flex-col h-[280px] overflow-hidden">
                                     <p className="lib-label mb-1.5 flex items-center gap-1.5 shrink-0">
-                                      <svg viewBox="0 0 398.508 398.508" className="w-3 h-3 shrink-0" fill="currentColor" aria-hidden="true">
-                                        <path d="M314.38,157.492c-23.028,0-41.763,18.734-41.763,41.762c0,23.028,18.734,41.762,41.763,41.762c23.027,0,41.762-18.734,41.762-41.762C356.142,176.227,337.408,157.492,314.38,157.492z M314.38,222.016c-12.552,0-22.763-10.211-22.763-22.762s10.211-22.762,22.763-22.762c12.551,0,22.762,10.211,22.762,22.762S326.931,222.016,314.38,222.016z"/><path d="M314.38,314.984c-23.028,0-41.763,18.734-41.763,41.762s18.734,41.762,41.763,41.762c23.027,0,41.762-18.734,41.762-41.762S337.408,314.984,314.38,314.984z M314.38,379.508c-12.552,0-22.763-10.211-22.763-22.762s10.211-22.762,22.763-22.762c12.551,0,22.762,10.211,22.762,22.762S326.931,379.508,314.38,379.508z"/><path d="M314.38,83.524c23.027,0,41.762-18.734,41.762-41.762C356.142,18.734,337.408,0,314.38,0c-23.028,0-41.763,18.734-41.763,41.762C272.618,64.79,291.352,83.524,314.38,83.524z M314.38,19c12.551,0,22.762,10.211,22.762,22.762s-10.211,22.762-22.762,22.762c-12.552,0-22.763-10.211-22.763-22.762S301.829,19,314.38,19z"/><path d="M255.517,51.262c5.247,0,9.5-4.253,9.5-9.5s-4.253-9.5-9.5-9.5h-35.998c-5.247,0-9.5,4.253-9.5,9.5v147.992h-24.999c-5.247,0-9.5,4.253-9.5,9.5s4.253,9.5,9.5,9.5h24.999v147.992c0,5.247,4.253,9.5,9.5,9.5h35.998c5.247,0,9.5-4.253,9.5-9.5s-4.253-9.5-9.5-9.5h-26.498V208.754h26.498c5.247,0,9.5-4.253,9.5-9.5s-4.253-9.5-9.5-9.5h-26.498V51.262H255.517z"/><path d="M125.989,142.508c8.234-7.633,13.4-18.531,13.4-30.617c0-23.028-18.734-41.762-41.762-41.762S55.865,88.863,55.865,111.89c0,12.086,5.166,22.984,13.4,30.617c-16.1,9.669-26.899,27.297-26.899,47.406v41.971c0,9.296,5.544,17.322,13.5,20.944v56.76c0,10.361,8.43,18.791,18.791,18.791h45.942c10.361,0,18.791-8.43,18.791-18.791v-56.76c7.955-3.623,13.499-11.648,13.499-20.944v-41.971C152.889,169.805,142.089,152.176,125.989,142.508z M74.865,111.89c0-12.551,10.211-22.762,22.762-22.762s22.762,10.211,22.762,22.762s-10.211,22.762-22.762,22.762S74.865,124.441,74.865,111.89z M133.889,231.885c0,2.205-1.794,3.999-3.999,3.999c-5.247,0-9.5,4.253-9.5,9.5v63.997h-13.262v-54.932c0-5.247-4.253-9.5-9.5-9.5s-9.5,4.253-9.5,9.5v54.932H74.866l0-63.997c0-5.247-4.253-9.5-9.5-9.5c-2.205,0-3.999-1.794-3.999-3.999v-41.971c0-19.994,16.267-36.261,36.261-36.261s36.261,16.267,36.261,36.261V231.885z"/>
-                                      </svg>
+                                      <ControlSlider width={12} height={12} className="shrink-0" aria-hidden="true" />
                                       Top Genres
                                     </p>
                                     <InsightTopGenres genres={topGenres} />
@@ -840,9 +825,7 @@ export function LibraryView({
                                 {showBpmDistribution && (
                                   <div className="lib-card p-5 flex flex-col h-[280px] overflow-hidden">
                                     <p className="lib-label mb-1.5 flex items-center gap-1.5 shrink-0">
-                                      <svg viewBox="0 0 256 256" className="w-3 h-3 shrink-0" fill="currentColor" aria-hidden="true">
-                                        <path fillRule="evenodd" d="M64.458 228.867c-.428 2.167 1.007 3.91 3.226 3.893l121.557-.938c2.21-.017 3.68-1.794 3.284-3.97l-11.838-64.913c-.397-2.175-1.626-2.393-2.747-.487l-9.156 15.582c-1.12 1.907-1.71 5.207-1.313 7.388l4.915 27.03c.395 2.175-1.072 3.937-3.288 3.937H88.611c-2.211 0-3.659-1.755-3.233-3.92L114.85 62.533l28.44-.49 11.786 44.43c.567 2.139 2.01 2.386 3.236.535l8.392-12.67c1.22-1.843 1.73-5.058 1.139-7.185l-9.596-34.5c-1.184-4.257-5.735-7.677-10.138-7.638l-39.391.349c-4.415.039-8.688 3.584-9.544 7.912L64.458 228.867z"/><path fillRule="evenodd" d="M118.116 198.935c-1.182 1.865-.347 3.377 1.867 3.377h12.392c2.214 0 4.968-1.524 6.143-3.39l64.55-102.463c1.18-1.871 3.906-3.697 6.076-4.074l9.581-1.667c2.177-.379 4.492-2.38 5.178-4.496l4.772-14.69c.683-2.104-.063-5.034-1.677-6.555L215.53 54.173c-1.609-1.517-4.482-1.862-6.4-.78l-11.799 6.655c-1.925 1.086-3.626 3.754-3.799 5.954l-.938 11.967c-.173 2.202-1.27 5.498-2.453 7.363l-72.026 113.603z"/>
-                                      </svg>
+                                      <SineWave width={12} height={12} className="shrink-0" aria-hidden="true" />
                                       BPM Distribution
                                     </p>
                                     <InsightBpmDistribution bpmRangeStats={bpmRangeStats} />
@@ -851,9 +834,7 @@ export function LibraryView({
                                 {showKeyProfile && (
                                   <div className="lib-card p-5 flex flex-col h-[280px] overflow-hidden">
                                     <p className="lib-label mb-1.5 flex items-center gap-1.5 shrink-0">
-                                      <svg viewBox="0 0 47 47" className="w-3 h-3 shrink-0" fill="currentColor" aria-hidden="true">
-                                        <path d="M40.975,1.968c-0.706-0.706-1.851-0.706-2.558,0c-0.706,0.706-0.706,1.85,0,2.557c5.81,5.813,5.81,15.27,0,21.081c-0.706,0.707-0.706,1.852,0,2.558c0.354,0.353,0.816,0.528,1.278,0.528s0.926-0.176,1.279-0.528C48.191,20.94,48.192,9.19,40.975,1.968z"/><path d="M36.539,6.399c-0.707-0.707-1.85-0.707-2.556,0c-0.707,0.706-0.707,1.851,0,2.556c3.368,3.368,3.368,8.848-0.001,12.216c-0.706,0.706-0.706,1.851,0.001,2.558c0.353,0.352,0.814,0.528,1.278,0.528c0.463,0,0.926-0.177,1.278-0.53C41.316,18.95,41.316,11.176,36.539,6.399z"/><path d="M8.583,4.524c0.706-0.707,0.706-1.851,0-2.557c-0.707-0.705-1.851-0.706-2.557,0c-7.218,7.223-7.217,18.973,0,26.193c0.353,0.354,0.816,0.529,1.279,0.529c0.463,0,0.925-0.176,1.278-0.529c0.706-0.706,0.706-1.852,0-2.557C2.772,19.793,2.772,10.336,8.583,4.524z"/><path d="M13.016,8.955c0.707-0.706,0.707-1.851,0-2.556c-0.706-0.707-1.85-0.707-2.556,0c-4.777,4.777-4.777,12.551,0,17.33c0.353,0.353,0.816,0.529,1.279,0.529c0.463,0,0.925-0.177,1.278-0.529c0.707-0.707,0.707-1.851,0.001-2.557C9.647,17.803,9.647,12.323,13.016,8.955z"/><path d="M29.525,0c-1.331,0-2.411,1.079-2.411,2.41v18.077c0,1.994-1.622,3.615-3.615,3.615c-1.993,0-3.615-1.622-3.615-3.615V2.41c0-1.331-1.08-2.41-2.411-2.41s-2.41,1.079-2.41,2.41v18.077c0,3.813,2.546,7.041,6.026,8.082V44.59c0,1.331,1.079,2.41,2.41,2.41c1.331,0,2.41-1.079,2.41-2.41V28.568c3.48-1.041,6.026-4.268,6.026-8.082V2.41C31.936,1.079,30.856,0,29.525,0z"/>
-                                      </svg>
+                                      <Key width={12} height={12} className="shrink-0" aria-hidden="true" />
                                       Key Profile (Camelot Wheel)
                                     </p>
                                     <InsightKeyProfile keyStats={keyStats} />
@@ -870,7 +851,7 @@ export function LibraryView({
                       {isIncompleteView && (
                         <div className="space-y-3">
                           <ControlButton variant="ghost" onClick={() => onActiveTabChange('overview')} data-testid="incomplete-back">
-                            <ChevronLeft size={14} /> Back to home
+                            <NavArrowLeft width={14} height={14} aria-hidden="true" /> Back to home
                           </ControlButton>
                           <p className="text-xs text-muted-foreground font-mono">
                             {incompleteFetching

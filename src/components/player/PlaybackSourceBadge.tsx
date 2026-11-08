@@ -1,4 +1,4 @@
-import { Cloud } from '@carbon/icons-react';
+import { Cloud } from 'iconoir-react/regular';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { cn } from '../../lib/utils';
 
@@ -19,7 +19,7 @@ export function PlaybackSourceBadge({ className }: { className?: string }) {
         className,
       )}
     >
-      <Cloud size={12} aria-hidden="true" />
+      <Cloud width={12} height={12} aria-hidden="true" />
       Streaming preview
     </span>
   );

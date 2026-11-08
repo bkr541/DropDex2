@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../lib/utils';
 import { useUsbConnection, type UsbStatus } from '../../contexts/UsbConnectionContext';
-import { CircleDash, CloseFilled, FolderOff, Renew, Usb, WarningAlt, WifiOff } from '@carbon/icons-react';
+import { FolderWarning, Refresh, Usb, WarningTriangle, WifiOff, XmarkCircle } from 'iconoir-react/regular';
 import { ControlButton } from '../ui/controls';
 import ejectIcon from './eject.svg';
 
@@ -30,12 +30,12 @@ function StatusDot({ status }: { status: UsbStatus }) {
 }
 
 function StatusIcon({ status, size = 18 }: { status: UsbStatus; size?: number }) {
-  if (status === 'connecting') return <CircleDash size={size} className="animate-spin" />;
-  if (status === 'error') return <CloseFilled size={size} />;
-  if (status === 'unavailable') return <WifiOff size={size} />;
-  if (status === 'wrong_root') return <FolderOff size={size} />;
-  if (status === 'connected') return <Usb size={size} className="text-green-400" />;
-  return <Usb size={size} />;
+  if (status === 'connecting') return <Refresh width={size} height={size} aria-hidden="true" className="animate-spin" />;
+  if (status === 'error') return <XmarkCircle width={size} height={size} aria-hidden="true" />;
+  if (status === 'unavailable') return <WifiOff width={size} height={size} aria-hidden="true" />;
+  if (status === 'wrong_root') return <FolderWarning width={size} height={size} aria-hidden="true" />;
+  if (status === 'connected') return <Usb width={size} height={size} aria-hidden="true" className="text-green-400" />;
+  return <Usb width={size} height={size} aria-hidden="true" />;
 }
 
 function statusLabel(status: UsbStatus, volumeName: string | null): string {
@@ -166,7 +166,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
       {/* Structure warning badge (partial Rekordbox folders found) */}
       {!collapsed && structureWarning && status === 'connected' && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[10px] text-amber-400 leading-tight">
-          <WarningAlt size={10} className="mt-0.5 shrink-0" />
+          <WarningTriangle width={10} height={10} aria-hidden="true" className="mt-0.5 shrink-0" />
           <span>{structureWarning}</span>
         </div>
       )}
@@ -174,7 +174,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
       {/* Wrong-root warning with explicit Select Again action */}
       {!collapsed && status === 'wrong_root' && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[10px] text-amber-400 leading-tight">
-          <FolderOff size={10} className="mt-0.5 shrink-0" />
+          <FolderWarning width={10} height={10} aria-hidden="true" className="mt-0.5 shrink-0" />
           <span>Select the USB root folder, not PIONEER or a subfolder.</span>
         </div>
       )}
@@ -182,7 +182,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
       {/* Error badge */}
       {!collapsed && error && status === 'error' && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 leading-tight break-all">
-          <CloseFilled size={10} className="mt-0.5 shrink-0" />
+          <XmarkCircle width={10} height={10} aria-hidden="true" className="mt-0.5 shrink-0" />
           <span className="truncate">{error}</span>
         </div>
       )}
@@ -234,7 +234,7 @@ export function UsbConnectionButton({ collapsed = false }: UsbConnectionButtonPr
             aria-label="Select a different USB drive"
             className="shrink-0 text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20"
           >
-            <Renew size={16} className="scale-150" />
+            <Refresh width={16} height={16} aria-hidden="true" className="scale-150" />
           </ControlButton>
         )}
 

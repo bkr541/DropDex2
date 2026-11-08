@@ -48,8 +48,7 @@
 .adl-identity strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; letter-spacing: -.005em; color: #fff; }
 .adl-identity-text > span { display: block; margin-top: 3px; color: #a0aabd; font-size: 10px; }
 .adl-art { display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; border: 1px solid #ffffff26; border-radius: 10px; background: radial-gradient(circle at 25% 20%, #f56b7066, transparent 60%), linear-gradient(145deg, #3a4150, #20242d); box-shadow: inset 0 1px 0 #ffffff1f, 0 4px 10px #00000055; }
-.adl-art svg { width: 29px; height: 29px; stroke: #cdd3dd; stroke-width: .7; }
-.adl-art svg circle:last-child { fill: var(--adl-accent); stroke: none; }
+.adl-art svg { width: 29px; height: 29px; color: #cdd3dd; stroke-width: 1.2; }
 .adl-transport, .adl-output { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 
 /* Buttons: plain light icons that turn coral on hover, with hairline rings on the track step buttons, and the coral play disc. */
@@ -60,8 +59,8 @@
 .adl-icon-button.adl-play { width: 40px; height: 40px; flex-basis: 40px; margin-inline: 6px; color: #fff; border-color: transparent; background: linear-gradient(145deg, #f78361 0%, #f56b70 100%); box-shadow: inset 0 1px 0 #ffffff4d, 0 8px 18px -6px #f56b70b3; }
 .adl-play:hover:not(:disabled) { color: #fff; border-color: transparent; filter: brightness(1.08); }
 .adl-play:disabled { box-shadow: none; background: #ffffff14; }
-.adl-jump { position: relative; font: 21px/1 'Helvetica Neue', Arial, sans-serif; width: 23px; height: 27px; }
-.adl-jump small { position: absolute; left: 7px; top: 11px; font: 600 7px/1 'Helvetica Neue', Arial, sans-serif; }
+.adl-jump { display: grid; justify-items: center; }
+.adl-jump small { margin-top: -4px; font: 600 7px/1 'Helvetica Neue', Arial, sans-serif; }
 
 .adl-timeline { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 150px; }
 .adl-time { color: #bdc5d2; font: 11px ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; flex-shrink: 0; width: 34px; text-align: center; }
@@ -271,8 +270,7 @@
    controls, artwork and scrubber so the rows can close up. */
 .adl-style-compact .adl-icon-button, .adl-style-fshelf .adl-icon-button, .adl-style-frail .adl-icon-button { width: 26px; height: 26px; flex: 0 0 26px; }
 .adl-style-compact .adl-icon-button.adl-play, .adl-style-fshelf .adl-icon-button.adl-play, .adl-style-frail .adl-icon-button.adl-play { width: 32px; height: 32px; flex-basis: 32px; margin-inline: 3px; }
-.adl-style-compact .adl-jump, .adl-style-fshelf .adl-jump, .adl-style-frail .adl-jump { font-size: 17px; width: 19px; height: 22px; }
-.adl-style-compact .adl-jump small, .adl-style-fshelf .adl-jump small, .adl-style-frail .adl-jump small { left: 5px; top: 9px; }
+.adl-style-compact .adl-jump svg, .adl-style-fshelf .adl-jump svg, .adl-style-frail .adl-jump svg { width: 17px; height: 17px; }
 .adl-style-compact .adl-art, .adl-style-fshelf .adl-art, .adl-style-frail .adl-art { width: 28px; height: 28px; border-radius: 9px; }
 .adl-style-compact .adl-art svg, .adl-style-fshelf .adl-art svg, .adl-style-frail .adl-art svg { width: 21px; height: 21px; }
 .adl-style-compact .adl-seek, .adl-style-fshelf .adl-seek, .adl-style-frail .adl-seek { height: 18px; }

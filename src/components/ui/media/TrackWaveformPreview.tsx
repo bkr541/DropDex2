@@ -2,6 +2,7 @@ import { cn } from '../../../lib/utils';
 import type { TrackCueMarker } from './trackCueMarkers';
 import type { WaveformLoadState } from '../../../lib/queries/waveformValidation';
 import { RekordboxPreviewWaveform } from '../../library/RekordboxPreviewWaveform';
+import { WaveformCueMarker } from './WaveformCueMarker';
 
 /**
  * Compact track-row waveform with cue markers above it, matching the Cue
@@ -27,15 +28,13 @@ export function TrackWaveformPreview({
     <div className={cn('flex min-w-0 flex-col gap-1', className)}>
       <div className="relative h-3" aria-hidden="true">
         {durationMs != null && durationMs > 0 && cues.map((cue) => (
-          <span
+          <WaveformCueMarker
             key={cue.id}
-            className="absolute top-0 -translate-x-1/2"
+            label={cue.label ?? ''}
+            color={cue.color}
+            compact
             style={{ left: `${Math.min(100, Math.max(0, (cue.startMs / durationMs) * 100))}%` }}
-          >
-            <svg viewBox="0 0 8 10" width={6} height={8} style={{ display: 'block' }}>
-              <polygon points="0,0 8,0 8,6 4,10 0,6" fill={cue.color} />
-            </svg>
-          </span>
+          />
         ))}
       </div>
       <RekordboxPreviewWaveform

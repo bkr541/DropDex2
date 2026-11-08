@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Checkmark, CircleDash, Edit, Renew, TrashCan, Usb } from '@carbon/icons-react';
+import { Check, EditPencil, Refresh, Trash, Usb } from 'iconoir-react/regular';
 import { formatBytes } from '../../lib/usb/usbFormat';
 import type { UsbDeviceRecord } from '../../lib/queries/usbDevices';
 import { StatusBadge } from '../ui/feedback';
@@ -48,7 +48,7 @@ function DeviceCard({ device, connected, onRename, onSetRetired, library, onMake
         {editing ? (
           <form className="flex items-center gap-2" onSubmit={(event) => { event.preventDefault(); void save(); }}>
             <input autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={60} placeholder={device.label} aria-label="USB nickname" className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-bold focus:border-primary focus:outline-none" />
-            <ControlButton variant="primary" type="submit" disabled={saving}>{saving ? <CircleDash className="animate-spin" size={14} /> : <Checkmark size={14} />} Save</ControlButton>
+            <ControlButton variant="primary" type="submit" disabled={saving}>{saving ? <Refresh className="animate-spin" width={14} height={14} aria-hidden="true" /> : <Check width={14} height={14} aria-hidden="true" />} Save</ControlButton>
             <ControlButton variant="ghost" type="button" onClick={() => { setEditing(false); setName(device.nickname ?? ''); }}>Cancel</ControlButton>
           </form>
         ) : (
@@ -66,10 +66,10 @@ function DeviceCard({ device, connected, onRename, onSetRetired, library, onMake
         {!editing && <UsbDeviceLibrary summary={library} onMakeActive={onMakeLibraryActive} />}
         {!editing && (
           <div className="mt-3 flex flex-wrap gap-2">
-            <ControlButton variant="neutral" onClick={() => setEditing(true)}><Edit size={14} /> Rename</ControlButton>
+            <ControlButton variant="neutral" onClick={() => setEditing(true)}><EditPencil width={14} height={14} aria-hidden="true" /> Rename</ControlButton>
             {retired
-              ? <ControlButton variant="neutral" onClick={() => void onSetRetired(device.id, false)}><Renew size={14} /> Use again</ControlButton>
-              : <ControlButton variant="ghost" onClick={() => void onSetRetired(device.id, true)}><TrashCan size={14} /> I don&apos;t use this one anymore</ControlButton>}
+              ? <ControlButton variant="neutral" onClick={() => void onSetRetired(device.id, false)}><Refresh width={14} height={14} aria-hidden="true" /> Use again</ControlButton>
+              : <ControlButton variant="ghost" onClick={() => void onSetRetired(device.id, true)}><Trash width={14} height={14} aria-hidden="true" /> I don&apos;t use this one anymore</ControlButton>}
           </div>
         )}
       </div>
@@ -79,19 +79,19 @@ function DeviceCard({ device, connected, onRename, onSetRetired, library, onMake
 
 /** Every USB the user plays from. A drive is added here automatically the first time it is connected or transferred to. */
 export function UsbDevicesTab({ devices, loading, error, connectedLabels, onRetry, onRename, onSetRetired, libraries, onMakeLibraryActive }: DevicesTabProps) {
-  if (loading) return <div className="flex items-center justify-center py-24"><CircleDash className="animate-spin text-primary" size={28} /></div>;
+  if (loading) return <div className="flex items-center justify-center py-24"><Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" /></div>;
   if (error) {
     return (
       <div className="space-y-3 py-16 text-center">
         <p className="text-sm font-bold text-red-400">{error}</p>
-        <ControlButton variant="neutral" onClick={onRetry}><Renew size={14} /> Try again</ControlButton>
+        <ControlButton variant="neutral" onClick={onRetry}><Refresh width={14} height={14} aria-hidden="true" /> Try again</ControlButton>
       </div>
     );
   }
   if (devices.length === 0) {
     return (
       <div className="glass flex flex-col items-center gap-3 rounded-3xl border border-dashed border-[var(--color-border-subtle)] px-8 py-16 text-center" data-testid="usb-devices-empty">
-        <Usb size={32} className="text-muted-foreground" />
+        <Usb width={32} height={32} aria-hidden="true" className="text-muted-foreground" />
         <h2 className="text-lg font-black">No USBs yet</h2>
         <p className="max-w-sm text-sm text-muted-foreground">Connect a USB on the My USB tab, or choose one to copy to, and it is added here so you can keep track of every drive you DJ with.</p>
       </div>

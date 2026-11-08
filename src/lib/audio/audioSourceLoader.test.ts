@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DecodedAudioCache } from './decodedAudioCache';
-import { loadDecodedAudioSources } from './audioSourceLoader';
+import { loadDecodedAudioSources, readBoundedAudioBytes } from './audioSourceLoader';
 
 function buffer(id: string): AudioBuffer {
   return { id } as unknown as AudioBuffer;
@@ -66,5 +66,36 @@ describe('loadDecodedAudioSources', () => {
 
     await expect(load).rejects.toMatchObject({ name: 'AbortError' });
     expect(cache.get('cancelled')).toBeUndefined();
+  });
+});
+
+describe('bounded audio reads', () => {
+  it('enforces the actual response size when Content-Length is missing', async () => {
+    const signal = new AbortController().signal;
+    const source = { kind: 'url', url: 'https://dropdex.example/preview' } as const;
+    const fetchImpl = vi.fn(async () => new Response(new Uint8Array([1, 2, 3])));
+    const bytes = await readBoundedAudioBytes(source, { maxBytes: 3, signal, fetchImpl });
+    expect(Array.from(new Uint8Array(bytes))).toEqual([1, 2, 3]);
+    await expect(readBoundedAudioBytes(source, { maxBytes: 2, signal, fetchImpl })).rejects.toThrow('preparation limit');
+    expect(fetchImpl).toHaveBeenCalledWith(source.url, { cache: 'no-store', signal });
+  });
+
+  it('cancels a pending stream read and skips known oversized files', async () => {
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream({ cancel }));
+    const fetchImpl = vi.fn(async () => response);
+    const load = readBoundedAudioBytes({ kind: 'url', url: 'dropdex-media://track/fixture' }, {
+      maxBytes: 10, signal: controller.signal, fetchImpl,
+    });
+    await Promise.resolve();
+    controller.abort();
+    await expect(load).rejects.toMatchObject({ name: 'AbortError' });
+    expect(cancel).toHaveBeenCalledOnce();
+    const file = { size: 3, stream: vi.fn() };
+    await expect(readBoundedAudioBytes({ kind: 'file', file }, {
+      maxBytes: 2, signal: new AbortController().signal,
+    })).rejects.toThrow('preparation limit');
+    expect(file.stream).not.toHaveBeenCalled();
   });
 });

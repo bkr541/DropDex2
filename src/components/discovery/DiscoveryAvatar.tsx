@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User } from '@carbon/icons-react';
+import { User } from 'iconoir-react/regular';
 
 /** A round artist photo with a hairline ring, or their initials when there is no photo. */
 export function DiscoveryAvatar({ name, imageUrl, size = 'md' }: { name: string; imageUrl: string | null; size?: 'md' | 'xl' }) {
@@ -9,5 +9,5 @@ export function DiscoveryAvatar({ name, imageUrl, size = 'md' }: { name: string;
     return <img src={imageUrl} alt="" onError={() => setFailed(true)} className={className} />;
   }
   const initials = name.split(/\s+/).slice(0, 2).map((word) => word[0]?.toUpperCase() ?? '').join('');
-  return <span className={className} aria-hidden="true">{initials || <User size={size === 'xl' ? 24 : 16} />}</span>;
+  return <span className={className} aria-hidden="true">{initials || <User width={size === 'xl' ? 24 : 16} height={size === 'xl' ? 24 : 16} aria-hidden="true" />}</span>;
 }

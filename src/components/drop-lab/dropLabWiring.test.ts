@@ -71,9 +71,8 @@ describe('Drop Lab uses the shared Cue Points components', () => {
     expect(controls).toContain('<AudioDock');
     expect(controls).toContain('<PlaybackSeekBar');
     expect(controls).toContain('<MediaTransportControlGroup');
-    expect(rotation).toContain('<TrackListing<CandidateListingRow>');
-    expect(rotation).toContain('<StatusBadge');
-    expect(rotation).toContain('<TrackListingWaveform');
+    expect(rotation).toContain('<RecordTrackListing');
+    expect(rotation).toContain('getActions={(track)');
     expect(view).toContain('<ToolbarIconGroup');
   });
 

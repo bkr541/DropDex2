@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import { cn, getDeterministicBars } from '../../lib/utils';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
-import { Edit, FolderOpen, Music } from '@carbon/icons-react';
+import { Folder, MusicNote } from 'iconoir-react/regular';
 import { ControlButton } from '../ui/controls';
 
 function PlaylistFallbackArt({ isFolder, seed }: { isFolder: boolean; seed: string }) {
@@ -34,7 +34,7 @@ function PlaylistFallbackArt({ isFolder, seed }: { isFolder: boolean; seed: stri
           isFolder ? 'bg-primary/25 text-primary' : 'bg-secondary/25 text-secondary',
         )}
       >
-        {isFolder ? <FolderOpen size={20} /> : <Music size={20} />}
+        {isFolder ? <Folder width={20} height={20} aria-hidden="true" /> : <MusicNote width={20} height={20} aria-hidden="true" />}
       </div>
     </div>
   );

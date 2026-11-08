@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { NavArrowRight } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import '../dropdex-display.css';
 import { SurfaceCard } from './SurfaceCard';
@@ -62,7 +63,7 @@ export function PlaylistCard({
         aria-label={actionLabel}
       >
         <span>{actionLabel}</span>
-        <span aria-hidden="true">›</span>
+        <NavArrowRight width={14} height={14} aria-hidden="true" />
       </button>
     </SurfaceCard>
   );

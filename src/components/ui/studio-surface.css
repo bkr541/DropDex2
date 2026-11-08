@@ -1,0 +1,63 @@
+/* Audition is the reference surface for production audio workspaces.
+   Layout and scrolling stay with each screen. Clip painted children to the
+   rounded edge without creating a scroll container for sticky headers. */
+.studio-surface,
+.lib-scope.studio-surface {
+  --color-background: #232832;
+  --color-card: #2c323e;
+  --color-foreground: #f6f7fa;
+  --color-muted-foreground: #a4adbd;
+  --color-text-subdued: #a4adbd;
+  --color-primary: #f56b70;
+  --color-primary-rgb: 245 107 112;
+  --color-ring: #f78361;
+  --color-border-subtle: #ffffff12;
+  --color-border-faint: #ffffff0d;
+  --color-panel: #2c323e;
+  --color-surface: #323946;
+  --color-surface-hover: #3a4352;
+  --color-control-surface: #202530;
+  --color-control-surface-raised: #2a303d;
+  --color-control-surface-hover: #333b4a;
+  --color-control-border: #ffffff1a;
+  --color-control-border-soft: #ffffff0a;
+  --color-control-focus: #f78361;
+  --color-control-blue: #f56b70;
+  --color-control-blue-rgb: 245 107 112;
+  color-scheme: dark;
+  color: var(--color-foreground);
+  font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+  background: linear-gradient(165deg, #303540 0%, #272c36 36%, #212630 100%);
+  border: 1px solid #ffffff13;
+  border-radius: 24px;
+  box-shadow: inset 0 1px 0 #ffffff08, 0 0 16px #0000001f, 0 12px 28px #00000033;
+  min-width: 0;
+  overflow: clip;
+}
+
+/* These screens form one continuous parent group, separated by hairlines. */
+.artist-library-studio > .cue-track-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.artist-library-studio > .lib-tabs { padding-inline: 16px; }
+.artist-library-studio .artist-library-browser {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.drop-lab-studio > [data-testid="drop-lab-selected-header"] { padding: 14px 16px; }
+.set-lab-studio > section {
+  border: 0;
+  border-top: 1px solid #ffffff0d;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+@media (max-width: 700px) {
+  .studio-surface,
+  .lib-scope.studio-surface { border-radius: 16px; }
+}

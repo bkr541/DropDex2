@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from '@carbon/icons-react';
+import { NavArrowLeft, NavArrowRight } from 'iconoir-react/regular';
 
 interface AuditionTrackNavigationProps {
   /** "14 of 387", or null when the track is not in the current list. */
@@ -11,9 +11,9 @@ interface AuditionTrackNavigationProps {
 export function AuditionTrackNavigation({ positionLabel, onPrevious, onNext }: AuditionTrackNavigationProps) {
   return (
     <div className="audition-track-navigation" role="group" aria-label="Move between tracks">
-      <button type="button" aria-label="Previous track" title="Previous track" className="audition-track-step" disabled={!onPrevious} onClick={() => onPrevious?.()}><ChevronLeft size={18} /></button>
+      <button type="button" aria-label="Previous track" title="Previous track" className="audition-track-step" disabled={!onPrevious} onClick={() => onPrevious?.()}><NavArrowLeft width={18} height={18} aria-hidden="true" /></button>
       <span data-testid="audition-position">{positionLabel ?? '—'}</span>
-      <button type="button" aria-label="Next track" title="Next track" className="audition-track-step" disabled={!onNext} onClick={() => onNext?.()}><ChevronRight size={18} /></button>
+      <button type="button" aria-label="Next track" title="Next track" className="audition-track-step" disabled={!onNext} onClick={() => onNext?.()}><NavArrowRight width={18} height={18} aria-hidden="true" /></button>
     </div>
   );
 }

@@ -100,9 +100,11 @@ export function hasSimilarVibesSignal(
 
 // ── Scoring ────────────────────────────────────────────────────────────────────
 
-export interface ScoreInput {
-  selected: RekordboxTrack;
-  candidate: RekordboxTrack;
+type ScoringTrack = Pick<RekordboxTrack, 'camelot_key' | 'bpm' | 'genre' | 'label'>
+
+export interface ScoreInput<T extends ScoringTrack = RekordboxTrack> {
+  selected: ScoringTrack;
+  candidate: T;
   bpmTolerance: number;
   edge?: { direction: EdgeDirection; rating: number | null; createdAt: string | null } | null;
 }
@@ -118,7 +120,9 @@ export interface ScoreInput {
  *   same genre
  *   same label
  */
-export function scoreCandidate(input: ScoreInput): SimilarTrackResult {
+export function scoreCandidate<T extends ScoringTrack>(
+  input: ScoreInput<T>,
+): Omit<SimilarTrackResult, 'track'> & { track: T } {
   const { selected, candidate, bpmTolerance, edge } = input
   let score = 0
   const reasons: RecommendationReason[] = []

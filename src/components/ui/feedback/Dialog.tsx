@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
-import { Close, WarningAlt } from '@carbon/icons-react';
+import { WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import { ControlButton } from '../controls/ControlButton';
 import '../dropdex-feedback.css';
@@ -66,9 +66,9 @@ export function Dialog({
       } : undefined}
     >
       <header>
-        {destructive && <WarningAlt size={29} aria-hidden="true" />}
+        {destructive && <WarningTriangle width={29} height={29} aria-hidden="true" />}
         <strong id={titleId}>{title}</strong>
-        {onClose && <button type="button" className="dd-icon-dismiss" onClick={onClose} aria-label={`Close ${title}`}><Close size={15} /></button>}
+        {onClose && <button type="button" className="dd-icon-dismiss" onClick={onClose} aria-label={`Close ${title}`}><Xmark aria-hidden="true" width={15} height={15} /></button>}
       </header>
       <div className="dd-dialog__body">{children}</div>
       {actions && actions.length > 0 && <footer>{actions.map((action) => action.variant === 'primary'

@@ -35,6 +35,10 @@ export interface UsbTrackRow {
   artist: string | null;
   bpm: number | null;
   musicalKey: string | null;
+  genre: string | null;
+  file_format: string | null;
+  duration_seconds: number | null;
+  duration_ms: number | null;
 }
 
 type SnapshotRow = Pick<RekordboxImport, 'id' | 'source_filename' | 'track_count' | 'playlist_count' | 'imported_at' | 'status' | 'library_ready_at'> & { usb_device_id: string };
@@ -102,16 +106,14 @@ export async function fetchUsbPlaylists(importId: string): Promise<UsbPlaylistRo
 export async function fetchUsbTracks(importId: string, limit = 100): Promise<UsbTrackRow[]> {
   const { data, error } = await supabase
     .from('rekordbox_tracks')
-    .select('id, title, artist, bpm, musical_key')
+    .select('id, title, artist, bpm, musical_key, genre, file_format, duration_seconds, duration_ms')
     .eq('import_id', importId)
     .order('title', { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
-  return ((data ?? []) as Array<{ id: string; title: string; artist: string | null; bpm: number | string | null; musical_key: string | null }>).map((row) => ({
-    id: row.id,
-    title: row.title,
-    artist: row.artist,
+  return ((data ?? []) as Array<Omit<UsbTrackRow, 'bpm' | 'musicalKey'> & { bpm: number | string | null; musical_key: string | null }>).map(({ musical_key, ...row }) => ({
+    ...row,
+    musicalKey: musical_key,
     bpm: row.bpm == null ? null : Number(row.bpm),
-    musicalKey: row.musical_key,
   }));
 }

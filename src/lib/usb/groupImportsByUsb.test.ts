@@ -132,10 +132,10 @@ describe('Library tab in the profile', () => {
     expect(tab).toContain('groups={usbGroups}');
     expect(tab).not.toContain('{latestImport.device_name ?? latestImport.source_filename}');
     // The Library group starts with a USB card (the count of USBs) to the left of Tracks and Playlists.
-    expect(tab).toContain('grid grid-cols-3 gap-3');
+    expect(tab).toContain('className="profile-stats"');
     expect(tab).toContain('data-testid="library-usb-count"');
-    expect(tab.indexOf('library-usb-count')).toBeLessThan(tab.indexOf('>Tracks</p>'));
-    expect(tab.indexOf('>Tracks</p>')).toBeLessThan(tab.indexOf('>Playlists</p>'));
+    expect(tab.indexOf('library-usb-count')).toBeLessThan(tab.indexOf('label="Tracks"'));
+    expect(tab.indexOf('label="Tracks"')).toBeLessThan(tab.indexOf('label="Playlists"'));
     expect(app).toContain("group.key !== UNASSIGNED_KEY && !group.retired");
     expect(app).toContain('groupImportsByUsb(allImports, usbDevices, latestImport?.id ?? null)');
   });

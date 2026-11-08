@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, CheckmarkFilled, CircleDash, FolderAdd, StopFilled, TrashCan, Usb, WarningAlt } from '@carbon/icons-react';
+import { ArrowRight, CheckCircle, FolderPlus, Refresh, Square, Trash, Usb, WarningTriangle } from 'iconoir-react/regular';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useTransferDestination, usePrimaryUsbDetails, useTransferScan, useUsbTransfer } from '../../hooks/useDesktopUsb';
 import { describeCategories, formatBytes, TRANSFER_CATEGORY_LABELS } from '../../lib/usb/usbFormat';
@@ -29,7 +29,7 @@ function EmptyDestination({ onChoose, choosing, error }: { onChoose: () => void;
       <div className="relative">
         <UsbStickArt lit={false} size={112} className="opacity-60 transition-opacity group-hover:opacity-100" />
         <span className="absolute -bottom-1 -right-3 flex h-9 w-9 items-center justify-center rounded-full bg-primary text-[var(--color-background)] shadow-lg">
-          {choosing ? <CircleDash className="animate-spin" size={18} /> : <FolderAdd size={18} />}
+          {choosing ? <Refresh className="animate-spin" width={18} height={18} aria-hidden="true" /> : <FolderPlus width={18} height={18} aria-hidden="true" />}
         </span>
       </div>
       <div>
@@ -89,10 +89,10 @@ export function UsbTransferTab({ onFinished, onShowHistory }: UsbTransferTabProp
           <div className="glass flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-[var(--color-border-subtle)] p-8 text-center">
             <UsbStickArt lit={false} size={104} />
             <p className="text-lg font-black">Connect the USB to copy from</p>
-            <ControlButton variant="primary" onClick={() => void usb.selectNewUsb()}><Usb size={14} /> Choose your USB</ControlButton>
+            <ControlButton variant="primary" onClick={() => void usb.selectNewUsb()}><Usb width={14} height={14} aria-hidden="true" /> Choose your USB</ControlButton>
           </div>
         )}
-        <div className="hidden h-full items-center justify-center xl:flex"><ArrowRight size={28} className="text-muted-foreground" aria-hidden="true" /></div>
+        <div className="hidden h-full items-center justify-center xl:flex"><ArrowRight width={28} height={28} className="text-muted-foreground" aria-hidden="true" /></div>
         {destination ? (
           <UsbDriveCard
             details={destination}
@@ -101,8 +101,8 @@ export function UsbTransferTab({ onFinished, onShowHistory }: UsbTransferTabProp
             className="h-full"
             actions={!running && (
               <>
-                <ControlButton variant="neutral" onClick={() => void choose()} disabled={choosing}><FolderAdd size={14} /> Choose another</ControlButton>
-                <ControlButton variant="ghost" onClick={() => void clear()}><TrashCan size={14} /> Remove</ControlButton>
+                <ControlButton variant="neutral" onClick={() => void choose()} disabled={choosing}><FolderPlus width={14} height={14} aria-hidden="true" /> Choose another</ControlButton>
+                <ControlButton variant="ghost" onClick={() => void clear()}><Trash width={14} height={14} aria-hidden="true" /> Remove</ControlButton>
               </>
             )}
             footer={destinationError ? <p className="text-xs font-semibold text-red-400" role="alert">{destinationError}</p> : undefined}
@@ -142,9 +142,9 @@ export function UsbTransferTab({ onFinished, onShowHistory }: UsbTransferTabProp
             <p className="mt-1 text-xs text-muted-foreground">Files are only added. Nothing is deleted or replaced on either drive.</p>
           </div>
           {running ? (
-            <ControlButton variant="danger-outline" onClick={transfer.cancel}><StopFilled size={14} /> Stop transfer</ControlButton>
+            <ControlButton variant="danger-outline" onClick={transfer.cancel}><Square width={14} height={14} aria-hidden="true" /> Stop transfer</ControlButton>
           ) : (
-            <ControlButton variant="primary" disabled={!ready} onClick={() => { setSaveNote(null); void transfer.start(chosen); }}><ArrowRight size={14} /> Start transfer</ControlButton>
+            <ControlButton variant="primary" disabled={!ready} onClick={() => { setSaveNote(null); void transfer.start(chosen); }}><ArrowRight width={14} height={14} aria-hidden="true" /> Start transfer</ControlButton>
           )}
         </div>
 
@@ -152,18 +152,18 @@ export function UsbTransferTab({ onFinished, onShowHistory }: UsbTransferTabProp
           <div className="mt-5">
             {transfer.state.progress
               ? <Progress copied={transfer.state.progress.copied} skipped={transfer.state.progress.skipped} failed={transfer.state.progress.failed} bytes={transfer.state.progress.bytes} needed={transfer.state.progress.neededBytes || neededBytes} />
-              : <p className="flex items-center gap-2 text-sm text-muted-foreground"><CircleDash className="animate-spin text-primary" size={16} /> Getting ready…</p>}
+              : <p className="flex items-center gap-2 text-sm text-muted-foreground"><Refresh className="animate-spin text-primary" width={16} height={16} aria-hidden="true" /> Getting ready…</p>}
           </div>
         )}
 
         {transfer.state.phase === 'error' && (
-          <p className="mt-5 flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300" role="alert"><WarningAlt size={16} className="mt-0.5 shrink-0" /> {transfer.state.message}</p>
+          <p className="mt-5 flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300" role="alert"><WarningTriangle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0" /> {transfer.state.message}</p>
         )}
 
         {transfer.state.phase === 'done' && (
           <div className="mt-5 rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.03] p-4" data-testid="usb-transfer-result">
             <p className="flex items-center gap-2 text-sm font-black">
-              {transfer.state.outcome.status === 'completed' ? <CheckmarkFilled size={16} className="text-emerald-500" /> : <WarningAlt size={16} className="text-amber-400" />}
+              {transfer.state.outcome.status === 'completed' ? <CheckCircle width={16} height={16} aria-hidden="true" className="text-emerald-500" /> : <WarningTriangle width={16} height={16} aria-hidden="true" className="text-amber-400" />}
               {transfer.state.outcome.status === 'completed' ? 'Transfer complete' : transfer.state.outcome.status === 'cancelled' ? 'Transfer stopped' : transfer.state.outcome.status === 'partial' ? 'Transfer finished with some problems' : 'Transfer failed'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">

@@ -1,11 +1,2 @@
-/* The nav icons are stroked drawings: outline, a soft fill and an accent. They take their colour from the button, so they
-   brighten on hover; the current page (and the page-name row) shows them in the logo red. */
-.nav-icon .ic-wash { fill: currentColor; }
-.nav-icon .ic-accent { opacity: .75; }
-.nav-icon [data-tone="accent"] { opacity: .75; }
-
-/* `logo-gradient-icon` fills shapes with the logo gradient; these icons are strokes, so keep them unfilled and use solid red. */
+/* Active navigation and page header icons use the logo red for their outlines. */
 .nav-icon.logo-gradient-icon { fill: none; color: var(--color-logo-red); }
-.nav-icon.logo-gradient-icon .ic-wash { fill: var(--color-logo-red); }
-.nav-icon.logo-gradient-icon .ic-accent,
-.nav-icon.logo-gradient-icon [data-tone="accent"] { opacity: 1; }

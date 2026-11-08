@@ -8,7 +8,7 @@ export function registerUsbPlaybackStopHandler(handler: UsbPlaybackStopHandler):
 }
 
 export async function stopUsbBackedPlayback(): Promise<Error[]> {
-  const results = await Promise.allSettled([...handlers].map((handler) => handler()));
+  const results = await Promise.allSettled([...handlers].map(async (handler) => handler()));
   return results.flatMap((result) => {
     if (result.status === 'fulfilled') return [];
     return [

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Close, Subtract, Maximize, Add, Edit } from '@carbon/icons-react';
+import { EditPencil, Maximize, Minus, Plus, Xmark } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import { HeroMockupsContent } from './LayoutLabHeroMockups';
 import { UiComponentsContent } from './LayoutLabUiComponents';
@@ -7,6 +7,8 @@ import { NavDesignMockupsContent } from './LayoutLabNavDesignMockups';
 import { AudioDockMockupsContent } from './LayoutLabAudioDockMockups';
 import { DiscoveryMockupsContent } from './LayoutLabDiscoveryMockups';
 import { NoticeCardMockupsContent } from './LayoutLabNoticeCardMockups';
+import { NoticeComponentMockupsContent } from './LayoutLabNoticeComponentMockups';
+import { CueMarkerMockupsContent } from './LayoutLabCueMarkerMockups';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +37,8 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'icons', label: 'Icons' },
   { id: 'discovery', label: 'Discovery' },
   { id: 'notice-card', label: 'Notice Card' },
+  { id: 'notice-component', label: 'Notice Component' },
+  { id: 'cue-markers', label: 'Cue Markers' },
 ];
 
 let tabCounter = 0;
@@ -86,7 +90,7 @@ function TabBar({
           >
             {isEditing ? (
               <span className="relative block">
-                <Edit size={11} className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <EditPencil width={11} height={11} className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                 <input
                   ref={editInputRef}
                   value={editingValue}
@@ -109,7 +113,7 @@ function TabBar({
         aria-label="New tab"
         className="flex items-center justify-center w-7 h-7 mb-0.5 ml-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-colors shrink-0"
       >
-        <Add size={14} />
+        <Plus width={14} height={14} aria-hidden="true" />
       </button>
     </div>
   );
@@ -311,17 +315,17 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
         <div className="flex items-center gap-1.5 mr-3">
           <button onClick={onClose} aria-label="Close Layout Lab"
             className="w-3 h-3 rounded-full bg-red-500 hover:bg-red-400 transition-colors flex items-center justify-center group">
-            <Close size={8} className="opacity-0 group-hover:opacity-100 text-red-900" />
+            <Xmark width={8} height={8} aria-hidden="true" className="opacity-0 group-hover:opacity-100 text-red-900" />
           </button>
           {!standalone && (
             <>
           <button onClick={() => setMinimized((v) => !v)} aria-label={minimized ? 'Restore' : 'Minimize'}
             className="w-3 h-3 rounded-full bg-amber-400 hover:bg-amber-300 transition-colors flex items-center justify-center group">
-            <Subtract size={8} className="opacity-0 group-hover:opacity-100 text-amber-900" />
+            <Minus width={8} height={8} aria-hidden="true" className="opacity-0 group-hover:opacity-100 text-amber-900" />
           </button>
           <button onClick={restoreFullscreen} aria-label="Full screen"
             className="w-3 h-3 rounded-full bg-emerald-500 hover:bg-emerald-400 transition-colors flex items-center justify-center group">
-            <Maximize size={8} className="opacity-0 group-hover:opacity-100 text-emerald-900" />
+            <Maximize width={8} height={8} aria-hidden="true" className="opacity-0 group-hover:opacity-100 text-emerald-900" />
           </button>
             </>
           )}
@@ -360,6 +364,10 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
             <DiscoveryMockupsContent />
           ) : activeId === 'notice-card' ? (
             <NoticeCardMockupsContent />
+          ) : activeId === 'notice-component' ? (
+            <NoticeComponentMockupsContent />
+          ) : activeId === 'cue-markers' ? (
+            <CueMarkerMockupsContent />
           ) : activeId === 'ui-components' ? (
             <UiComponentsContent />
           ) : (

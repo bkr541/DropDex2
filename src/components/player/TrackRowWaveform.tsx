@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { TrackListingWaveform, type TrackListingCue } from '../ui/display';
+import { TrackListingWaveform, type TrackListingCue } from '../ui/display/TrackListingWaveform';
 import type { RekordboxTrack } from '../../types';
 import { durationMsForTrack } from '../../lib/music/trackTiming';
 

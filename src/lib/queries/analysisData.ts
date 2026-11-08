@@ -321,14 +321,14 @@ export async function fetchTrackBeatGrid(
 }
 
 /** Fetch beat grids for multiple tracks, keyed by track ID. */
-export async function fetchTrackBeatGrids(trackIds: string[]): Promise<Map<string, BeatGridRow>> {
+export async function fetchTrackBeatGrids(trackIds: string[], signal?: AbortSignal): Promise<Map<string, BeatGridRow>> {
   const uniqueIds = [...new Set(trackIds)].filter(Boolean);
   const result = new Map<string, BeatGridRow>();
   if (uniqueIds.length === 0) return result;
 
   const chunks = chunkIds(uniqueIds, WAVEFORM_CHUNK_SIZE);
   await Promise.all(chunks.map(async (chunk) => {
-    const { data, error } = await supabase
+    const query = supabase
       .from('rekordbox_track_beat_grids')
       .select(
         'id, import_id, track_id, source_tag, beats, beat_count, downbeat_count, ' +
@@ -336,6 +336,7 @@ export async function fetchTrackBeatGrids(trackIds: string[]): Promise<Map<strin
         'is_variable_tempo, parser_version'
       )
       .in('track_id', chunk);
+    const { data, error } = await (signal ? query.abortSignal(signal) : query);
 
     if (error) throw new Error(error.message);
     for (const row of data ?? []) {
@@ -396,8 +397,8 @@ export async function fetchTrackPreviewWaveform(
 }
 
 /** Fetch all cue points for a single track, ordered by start time. */
-export async function fetchTrackCues(trackId: string): Promise<CueRow[]> {
-  const state = await fetchTrackCueState(trackId);
+export async function fetchTrackCues(trackId: string, signal?: AbortSignal): Promise<CueRow[]> {
+  const state = await fetchTrackCueState(trackId, signal);
   if (state.status === 'failed') throw new Error(state.error);
   return state.cues;
 }
@@ -422,8 +423,8 @@ function cueFailureState(trackId: string, error: string, retryable: boolean): Ex
  * Request/schema failures remain explicit failures and are never represented as
  * an empty cue collection.
  */
-export async function fetchTrackCueState(trackId: string): Promise<Exclude<CueLoadState, { status: 'loading' }>> {
-  const result = await fetchTracksCueStates([trackId]);
+export async function fetchTrackCueState(trackId: string, signal?: AbortSignal): Promise<Exclude<CueLoadState, { status: 'loading' }>> {
+  const result = await fetchTracksCueStates([trackId], signal);
   return result.states.get(trackId) ?? cueFailureState(
     trackId,
     'Cue request completed without a track-scoped result.',
@@ -436,7 +437,7 @@ export async function fetchTrackCueState(trackId: string): Promise<Exclude<CueLo
  * Failed chunks do not erase successful siblings and cannot masquerade as zero
  * cues in filters or counts.
  */
-export async function fetchTracksCueStates(trackIds: string[]): Promise<CueFetchResult> {
+export async function fetchTracksCueStates(trackIds: string[], signal?: AbortSignal): Promise<CueFetchResult> {
   const chunks = chunkIds(trackIds, WAVEFORM_CHUNK_SIZE);
   const result: CueFetchResult = { states: new Map(), errors: [] };
   if (chunks.length === 0) return result;
@@ -449,7 +450,8 @@ export async function fetchTracksCueStates(trackIds: string[]): Promise<CueFetch
       let offset = 0;
 
       for (;;) {
-        const page = await supabase
+        signal?.throwIfAborted();
+        const query = supabase
           .from('rekordbox_cues')
           .select(CUE_SELECT, { count: 'exact' })
           .in('track_id', chunk)
@@ -457,6 +459,7 @@ export async function fetchTracksCueStates(trackIds: string[]): Promise<CueFetch
           .order('start_ms', { ascending: true })
           .order('id', { ascending: true })
           .range(offset, offset + CUE_FETCH_PAGE_SIZE - 1);
+        const page = await (signal ? query.abortSignal(signal) : query);
 
         if (page.error) throw new Error(page.error.message || 'Failed to load cue points.');
         if (!Array.isArray(page.data)) throw new Error('Cue response schema is invalid: expected an array of rows.');
@@ -517,6 +520,7 @@ export async function fetchTracksCueStates(trackIds: string[]): Promise<CueFetch
           : { status: 'loaded-with-cues', trackId, cues });
       }
     } catch (err) {
+      signal?.throwIfAborted();
       const message = err instanceof Error ? err.message : 'Unknown cue request error.';
       const retryable = !message.startsWith('Cue response schema is invalid')
         && !message.startsWith('Cue response contains a row without a stable ID.');

@@ -1,0 +1,124 @@
+/* Layout Lab previews of the shared notice and toast components. */
+.ncl-lab { --ncl-well: linear-gradient(180deg, #14171d, #191d25); }
+.ncl-group { max-width: 1180px; margin-bottom: 32px; }
+.ncl-group h2 {
+  margin: 0 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ffffff13;
+  color: #edf0f6;
+  font-size: 18px;
+  font-weight: 500;
+}
+.ncl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr)); gap: 12px; }
+.ncl-study {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #ffffff13;
+  border-radius: 16px;
+  background: linear-gradient(165deg, #292d37, #1c2029);
+  box-shadow: inset 0 1px 0 #ffffff0a, 0 12px 24px -16px #0009;
+}
+.ncl-study-head { display: flex; align-items: flex-start; gap: 10px; }
+.ncl-study-head h3 { margin: 0 0 3px; color: #edf0f6; font-size: 13px; font-weight: 500; }
+.ncl-study-head p { margin: 0; color: #a4adbd; font-size: 11px; line-height: 1.45; }
+.ncl-stage {
+  display: grid;
+  flex: 1;
+  align-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 140px;
+  padding: 12px;
+  border: 1px solid #ffffff0d;
+  border-radius: 12px;
+  background: var(--ncl-well);
+  box-shadow: inset 0 2px 6px #0008;
+}
+.ncl-stage > .dd-control-button { justify-self: center; }
+.ncl-stage[data-kind="toast"] { align-content: end; min-height: 114px; }
+.ncl-preview-feedback { margin: 0; color: #a4adbd; font-size: 11px; }
+
+.ncl-lab .ncl-top-rail {
+  border-top: 2px solid var(--nc-ink);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #292d37, #20242e);
+  box-shadow: inset 0 1px 0 #ffffff12;
+}
+.ncl-top-rail .nc-icon { border-radius: 9px; }
+.ncl-lab .ncl-action-footer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; }
+.ncl-action-footer .nc-action {
+  grid-area: 2 / 1 / 3 / -1;
+  justify-content: flex-end;
+  padding: 10px 0 0;
+  border-top: 1px solid #ffffff13;
+}
+.ncl-action-footer .nc-dismiss { grid-area: 1 / 3; }
+.ncl-lab .ncl-inline-strip {
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #222630;
+  box-shadow: none;
+}
+.ncl-inline-strip .nc-icon { width: 20px; height: 20px; border: 0; background: transparent; box-shadow: none; }
+.ncl-inline-strip .nc-dismiss { width: 24px; height: 24px; border-color: transparent; }
+.ncl-lab .ncl-centered-callout {
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 38px;
+  text-align: center;
+  background: radial-gradient(ellipse at top, #5fb8e81a, transparent 65%), linear-gradient(165deg, #2c303b, #1c2029);
+  box-shadow: inset 0 1px 0 #ffffff12, 0 12px 20px -12px #0009;
+}
+.ncl-centered-callout .nc-icon { width: 40px; height: 40px; }
+.ncl-centered-callout .nc-action { flex-basis: auto; padding: 0; }
+.ncl-centered-callout .nc-dismiss { position: absolute; top: 10px; right: 10px; }
+
+.ncl-stage .dd-toast { width: min(100%, 340px); justify-self: end; font-family: inherit; }
+.ncl-stage .dd-toast__copy strong { font-size: 12px; font-weight: 500; }
+.ncl-stage .dd-toast__copy span { font-size: 11px; line-height: 1.4; white-space: normal; }
+.ncl-stage .dd-toast__meta { font-size: 9px; }
+.ncl-stage .dd-toast__close { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; }
+.ncl-stage .dd-toast__close:hover { background: #ffffff0f; }
+.ncl-lab .ncl-floating-plate {
+  padding-block: 12px;
+  border-color: #ffffff24;
+  border-radius: 14px;
+  background: repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px), linear-gradient(165deg, #303540, #20242e);
+  box-shadow: inset 0 1px 0 #ffffff17, 0 10px 22px -6px #000a;
+}
+.ncl-floating-plate .dd-toast__icon,
+.ncl-capsule-toast .dd-toast__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--ncl-well);
+  box-shadow: inset 0 2px 5px #0008;
+}
+.ncl-lab .ncl-status-rail {
+  border-color: #ffffff1c;
+  border-bottom: 2px solid var(--color-control-amber);
+  background: #222630;
+}
+.ncl-lab .ncl-stacked-toast {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  row-gap: 6px;
+  border-radius: 12px;
+}
+.ncl-stacked-toast .dd-toast__meta {
+  grid-area: 2 / 2;
+  justify-self: start;
+  padding: 3px 6px;
+  border: 1px solid #ffffff14;
+  border-radius: 5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.ncl-stacked-toast .dd-toast__close { grid-area: 1 / 3; }
+.ncl-lab .ncl-capsule-toast { padding: 7px 10px; border-radius: 999px; background: #252a34; }

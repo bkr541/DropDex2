@@ -30,7 +30,7 @@ export function LibraryTabBar<T extends string>({
           onClick={() => { if (!tab.disabled) onChange(tab.id); }}
           className="lib-tab"
         >
-          {tab.icon && <tab.icon size={16} className="shrink-0" aria-hidden="true" />}
+          {tab.icon && <tab.icon className="size-4 shrink-0" aria-hidden="true" />}
           {tab.label}
         </button>
       ))}

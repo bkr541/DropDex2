@@ -95,6 +95,28 @@
   padding-inline: var(--cue-timeline-inline-inset);
 }
 
+.timeline-beat-lane--extend { container-type: inline-size; }
+.timeline-beat-lead {
+  position: absolute;
+  top: 2px;
+  left: calc(-1 * var(--waveform-timeline-lead, 32px));
+  width: var(--waveform-timeline-lead, 32px);
+  height: 11px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.timeline-beat-lead__ticks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 6px;
+  background: repeating-linear-gradient(to left, #8997ae59 0 1px, transparent 1px var(--beat-lead-gap));
+}
+.timeline-beat-lead__ticks--bar {
+  height: 11px;
+  background: repeating-linear-gradient(to left, #c3ccdb99 0 2px, transparent 2px var(--beat-lead-gap));
+}
+
 .cue-timeline__rail {
   background: color-mix(in srgb, var(--color-background) 86%, var(--color-surface));
 }

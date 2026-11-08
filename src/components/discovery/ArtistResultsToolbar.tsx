@@ -1,6 +1,6 @@
 import { cn } from '../../lib/utils';
 import type { ArtistTabId } from './ArtistResultsTabs';
-import { ChevronDown } from '@carbon/icons-react';
+import { NavArrowDown } from 'iconoir-react/regular';
 import { SearchControl } from '../ui/controls';
 
 export type SortKey = 'date_desc' | 'date_asc' | 'most_viewed' | 'highest_completion';
@@ -91,8 +91,8 @@ export function ArtistResultsToolbar({
             </option>
           ))}
         </select>
-        <ChevronDown
-          size={12}
+        <NavArrowDown
+          width={12} height={12} aria-hidden="true"
           className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
         />
       </div>

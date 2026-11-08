@@ -269,8 +269,9 @@ export async function fetchLibraryTracksPage(
   offset = 0,
   limit = LIBRARY_TRACK_PAGE_SIZE,
   filters: LibraryTrackFilters = {},
+  signal?: AbortSignal,
 ): Promise<PaginatedResult<RekordboxTrack>> {
-  const { data, error } = await supabase.rpc('get_rekordbox_library_track_page', {
+  const query = supabase.rpc('get_rekordbox_library_track_page', {
     p_import_id: importId,
     p_offset: offset,
     p_limit: limit,
@@ -278,12 +279,13 @@ export async function fetchLibraryTracksPage(
     p_genre: filters.genre?.trim() || null,
     p_artist: filters.artist?.trim() || null,
   });
+  const { data, error } = await (signal ? query.abortSignal(signal) : query);
   if (error) throw new Error(error.message);
   return parsePage<RekordboxTrack>(data);
 }
 
 
-export async function fetchTracksByIds(trackIds: string[]): Promise<RekordboxTrack[]> {
+export async function fetchTracksByIds(trackIds: string[], signal?: AbortSignal): Promise<RekordboxTrack[]> {
   const uniqueIds = [...new Set(trackIds.filter(Boolean))];
   if (uniqueIds.length === 0) return [];
 
@@ -291,10 +293,12 @@ export async function fetchTracksByIds(trackIds: string[]): Promise<RekordboxTra
   const byId = new Map<string, RekordboxTrack>();
   for (let start = 0; start < uniqueIds.length; start += chunkSize) {
     const chunk = uniqueIds.slice(start, start + chunkSize);
-    const { data, error } = await supabase
+    signal?.throwIfAborted();
+    const query = supabase
       .from('rekordbox_tracks')
       .select('*')
       .in('id', chunk);
+    const { data, error } = await (signal ? query.abortSignal(signal) : query);
 
     if (error) throw new Error(error.message);
     for (const track of (data ?? []) as RekordboxTrack[]) {

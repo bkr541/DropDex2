@@ -1,6 +1,6 @@
 import { cn } from '../../lib/utils';
 import type { DiscoverySetTrack } from '../../types';
-import { Launch } from '@carbon/icons-react';
+import { OpenNewWindow } from 'iconoir-react/regular';
 
 interface SetTrackRowProps {
   track: DiscoverySetTrack;
@@ -78,7 +78,7 @@ export function SetTrackRow({ track, isTimedSet, displayNumber }: SetTrackRowPro
           className="shrink-0 p-1 rounded text-muted-foreground hover:text-primary transition-colors"
           title="View on source"
         >
-          <Launch size={11} />
+          <OpenNewWindow width={11} height={11} aria-hidden="true" />
         </a>
       ) : (
         <div className="shrink-0 w-5" />

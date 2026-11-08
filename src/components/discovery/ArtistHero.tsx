@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { MusicNote01Icon } from 'hugeicons-react';
+import { Activity, MusicNote, OpenNewWindow, Refresh, Search, User } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import { formatRelativeTime } from '../../lib/utils';
 import type { DiscoveryArtist, DiscoveryArtistDetail, DiscoveryScrapeJob } from '../../types';
-import { Activity, CircleDash, Launch, Renew, Search, User } from '@carbon/icons-react';
 import { ControlButton } from '../ui/controls';
 
 interface ArtistHeroProps {
@@ -55,13 +54,13 @@ export function ArtistHero({
           variant={isJobActive ? 'secondary' : hasSetlists ? 'neutral' : 'primary'}
         >
           {scrapeStarting ? (
-            <><CircleDash size={11} className="animate-spin" /> Starting…</>
+            <><Refresh width={11} height={11} aria-hidden="true" className="animate-spin" /> Starting…</>
           ) : isJobActive ? (
-            <><Activity size={11} className="animate-pulse" /> View Progress</>
+            <><Activity width={11} height={11} aria-hidden="true" className="animate-pulse" /> View Progress</>
           ) : hasSetlists ? (
-            <><Renew size={11} /> Refresh Results</>
+            <><Refresh width={11} height={11} aria-hidden="true" /> Refresh Results</>
           ) : (
-            <><Search size={11} /> Retry Search</>
+            <><Search width={11} height={11} aria-hidden="true" /> Retry Search</>
           )}
         </ControlButton>
       </div>
@@ -81,7 +80,7 @@ export function ArtistHero({
               {initials ? (
                 <span className="text-2xl md:text-3xl font-black text-primary">{initials}</span>
               ) : (
-                <User size={40} className="text-primary/60" />
+                <User width={40} height={40} aria-hidden="true" className="text-primary/60" />
               )}
             </div>
           )}
@@ -110,7 +109,7 @@ export function ArtistHero({
                   key={g.id}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest bg-primary/10 text-primary border border-primary/15"
                 >
-                  <MusicNote01Icon size={9} className="shrink-0" />
+                  <MusicNote width={9} height={9} aria-hidden="true" className="shrink-0" />
                   {g.name}
                 </span>
               ))
@@ -144,7 +143,7 @@ export function ArtistHero({
                     className="flex items-center gap-0.5 text-primary hover:underline font-semibold"
                   >
                     1001Tracklists
-                    <Launch size={9} className="ml-0.5" />
+                    <OpenNewWindow width={9} height={9} aria-hidden="true" className="ml-0.5" />
                   </a>
                 </>
               )}

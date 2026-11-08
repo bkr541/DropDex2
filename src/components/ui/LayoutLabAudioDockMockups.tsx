@@ -1,8 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ElementType, type ReactNode } from 'react';
-import {
-  CheckmarkFilled, ChevronDown, ChevronUp, CircleDash, Headphones, Music,
-  Pause, Play, Repeat, SkipBack, SkipForward, Stop, Usb, VolumeMute, VolumeUp, WarningAlt,
-} from '@carbon/icons-react';
+import { CheckCircle, CompactDisc, Redo, Undo, Headset, MusicNote, NavArrowDown, NavArrowUp, Pause, Play, Refresh, Repeat, SkipNext, SkipPrev, SoundHigh, SoundOff, Square, Usb, WarningTriangle } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import './layout-lab-audio-dock.css';
 
@@ -40,20 +37,20 @@ function time(seconds: number) {
 function IconButton({ icon: Icon, label, onClick, disabled, active, className, children }: {
   icon?: ElementType; label: string; onClick: () => void; disabled?: boolean; active?: boolean; className?: string; children?: ReactNode;
 }) {
-  return <button type="button" aria-label={label} aria-pressed={active} title={label} disabled={disabled} onClick={onClick} className={cn('adl-icon-button', className, active && 'adl-active')}>{Icon && <Icon size={17} aria-hidden="true" />}{children}</button>;
+  return <button type="button" aria-label={label} aria-pressed={active} title={label} disabled={disabled} onClick={onClick} className={cn('adl-icon-button', className, active && 'adl-active')}>{Icon && <Icon width={17} height={17} aria-hidden="true" />}{children}</button>;
 }
 
 function Artwork({ vinyl = false }: { vinyl?: boolean }) {
-  return <div className={cn('adl-art', vinyl && 'adl-art-vinyl')} aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="19" /><circle cx="24" cy="24" r="14" /><circle cx="24" cy="24" r="8" /><circle cx="24" cy="24" r="2" /></svg></div>;
+  return <div className={cn('adl-art', vinyl && 'adl-art-vinyl')} aria-hidden="true"><CompactDisc width={29} height={29} /></div>;
 }
 
 function Workspace({ trackIndex, context, disconnected }: { trackIndex: number; context: string; disconnected: boolean }) {
   return <div className="adl-workspace" aria-hidden="true">
-    <div className="adl-context-nav"><img src="/logos/dropdexlogo.png" alt="" /><Music size={17} /><Headphones size={17} /><Usb size={17} /></div>
+    <div className="adl-context-nav"><img src="/logos/dropdexlogo.png" alt="" /><MusicNote width={17} height={17} aria-hidden="true" /><Headset width={17} height={17} aria-hidden="true" /><Usb width={17} height={17} aria-hidden="true" /></div>
     <div className="adl-context-body">
       <div className="adl-context-heading"><span>WORKSPACE / {context.toUpperCase()}</span><span><span className={cn('adl-status-dot', disconnected && 'adl-disconnected-dot')} /> DVYDRMNG {disconnected ? 'disconnected' : 'connected'}</span></div>
       <div className="adl-context-title"><h4>{context === 'Library' ? 'Your collection.' : context === 'Cue Points' ? 'Find the moment.' : context === 'Audition' ? 'Listen a little closer.' : 'Build the next transition.'}</h4><span>45 tracks · 8 playlists</span></div>
-      <div className="adl-context-table">{TRACKS.slice(0, 2).map((track, index) => <div key={track.title} className={index === trackIndex ? 'adl-context-selected' : ''}><Music size={13} /><span>{track.title}</span><span>{track.artist}</span><span>{track.bpm} BPM</span><span>{track.key}</span></div>)}</div>
+      <div className="adl-context-table">{TRACKS.slice(0, 2).map((track, index) => <div key={track.title} className={index === trackIndex ? 'adl-context-selected' : ''}><MusicNote width={13} height={13} aria-hidden="true" /><span>{track.title}</span><span>{track.artist}</span><span>{track.bpm} BPM</span><span>{track.key}</span></div>)}</div>
     </div>
   </div>;
 }
@@ -104,11 +101,11 @@ function DockPreview({ concept, state, context }: { concept: typeof CONCEPTS[num
   const stats = () => <><span>{hasTrack ? track.bpm : '—'} <small>BPM</small></span><span className="adl-key">{hasTrack ? track.key : '—'}</span><span className="adl-genre">{hasTrack ? track.genre : 'No track'}</span></>;
 
   const transport = (primary = true) => <div className="adl-transport" role="group" aria-label="Playback controls">
-    <IconButton icon={SkipBack} label="Previous track" disabled={!available} onClick={() => changeTrack(-1)} />
-    <IconButton label="Rewind 10 seconds" disabled={!available} onClick={() => setPosition((current) => Math.max(0, current - 10))}><span className="adl-jump">↶<small>10</small></span></IconButton>
-    {primary && <IconButton icon={state === 'loading' ? CircleDash : playing && available ? Pause : Play} label={playing && available ? 'Pause preview' : 'Play preview'} className={cn('adl-play', state === 'loading' && 'adl-loading')} disabled={!available} onClick={() => { if(position >= track.duration) setPosition(0); setPlaying(!playing); }} active={playing && available} />}
-    <IconButton label="Forward 10 seconds" disabled={!available} onClick={() => setPosition((current) => Math.min(track.duration, current + 10))}><span className="adl-jump">↷<small>10</small></span></IconButton>
-    <IconButton icon={SkipForward} label="Next track" disabled={!available} onClick={() => changeTrack(1)} />
+    <IconButton icon={SkipPrev} label="Previous track" disabled={!available} onClick={() => changeTrack(-1)} />
+    <IconButton label="Rewind 10 seconds" disabled={!available} onClick={() => setPosition((current) => Math.max(0, current - 10))}><span className="adl-jump" aria-hidden="true"><Undo width={21} height={21} /><small>10</small></span></IconButton>
+    {primary && <IconButton icon={state === 'loading' ? Refresh : playing && available ? Pause : Play} label={playing && available ? 'Pause preview' : 'Play preview'} className={cn('adl-play', state === 'loading' && 'adl-loading')} disabled={!available} onClick={() => { if(position >= track.duration) setPosition(0); setPlaying(!playing); }} active={playing && available} />}
+    <IconButton label="Forward 10 seconds" disabled={!available} onClick={() => setPosition((current) => Math.min(track.duration, current + 10))}><span className="adl-jump" aria-hidden="true"><Redo width={21} height={21} /><small>10</small></span></IconButton>
+    <IconButton icon={SkipNext} label="Next track" disabled={!available} onClick={() => changeTrack(1)} />
   </div>;
 
   const timeline = (wave = false) => <div className={cn('adl-timeline', wave && 'adl-timeline-wave')}>
@@ -128,12 +125,12 @@ function DockPreview({ concept, state, context }: { concept: typeof CONCEPTS[num
 
   const output = (showStop = true) => <div className="adl-output" role="group" aria-label="Output controls">
     <IconButton icon={Repeat} label="Repeat track" active={repeat} disabled={!available} onClick={() => setRepeat(!repeat)} />
-    <IconButton icon={muted || volume === 0 ? VolumeMute : VolumeUp} label={muted ? 'Unmute' : 'Mute'} active={muted} onClick={() => setMuted(!muted)} />
+    <IconButton icon={muted || volume === 0 ? SoundOff : SoundHigh} label={muted ? 'Unmute' : 'Mute'} active={muted} onClick={() => setMuted(!muted)} />
     <input type="range" min={0} max={100} value={muted ? 0 : volume} aria-label="Volume" onChange={(event) => { setVolume(Number(event.target.value)); setMuted(false); }} />
-    {showStop && <IconButton icon={Stop} label="Stop playback" disabled={!available} onClick={() => { setPlaying(false); setPosition(0); }} />}
+    {showStop && <IconButton icon={Square} label="Stop playback" disabled={!available} onClick={() => { setPlaying(false); setPosition(0); }} />}
   </div>;
 
-  const source = () => <span className="adl-source"><Usb size={12} /> DVYDRMNG <span className={cn('adl-source-dot', disconnected && 'adl-disconnected-dot')} /></span>;
+  const source = () => <span className="adl-source"><Usb width={12} height={12} aria-hidden="true" /> DVYDRMNG <span className={cn('adl-source-dot', disconnected && 'adl-disconnected-dot')} /></span>;
 
   function dockContent() {
     switch (concept.kind) {
@@ -144,13 +141,13 @@ function DockPreview({ concept, state, context }: { concept: typeof CONCEPTS[num
       case 'islands': return <><div className="adl-island adl-track-island">{transport()}{identity(true, true)}</div><div className="adl-island adl-transport-island">{timeline()}</div><div className="adl-island adl-output-island">{source()}{output()}</div></>;
       case 'console': return <><div className="adl-console-identity">{transport()}<div className="adl-console-info">{identity(false)}<div className="adl-metadata">{stats()}</div></div></div><div className="adl-console-readout"><span>ELAPSED / TOTAL</span><strong>{time(hasTrack ? position : 0)}<small> / {time(hasTrack ? track.duration : 0)}</small></strong></div><div className="adl-console-center">{timeline()}</div><div className="adl-console-output"><div className={cn('adl-meter', playing && available && 'adl-meter-running')} aria-hidden="true">{Array.from({length: 14}, (_, i) => <i key={i} style={{ animationDelay: `${i * -.13}s`, opacity: i < (muted ? 0 : Math.round(volume / 8)) ? 1 : .15 }} />)}</div>{output()}</div></>;
       case 'editorial': return <><div className="adl-editorial-controls">{transport()}</div><div className="adl-editorial-main">{identity(false, true)}{timeline()}</div><div className="adl-editorial-output">{output()}</div></>;
-      case 'vinyl': return <><div className="adl-vinyl-controls" role="group" aria-label="Playback controls"><IconButton icon={SkipBack} label="Previous track" disabled={!available} onClick={() => changeTrack(-1)} /><IconButton label="Rewind 10 seconds" disabled={!available} onClick={() => setPosition((current) => Math.max(0, current - 10))}><span className="adl-jump">↶<small>10</small></span></IconButton><div className={cn('adl-vinyl', playing && available && 'adl-vinyl-playing')}><Artwork vinyl /><IconButton icon={state === 'loading' ? CircleDash : playing && available ? Pause : Play} label={playing && available ? 'Pause preview' : 'Play preview'} disabled={!available} active={playing && available} className={cn('adl-play', state === 'loading' && 'adl-loading')} onClick={() => { if(position >= track.duration) setPosition(0); setPlaying(!playing); }} /></div><IconButton label="Forward 10 seconds" disabled={!available} onClick={() => setPosition((current) => Math.min(track.duration, current + 10))}><span className="adl-jump">↷<small>10</small></span></IconButton><IconButton icon={SkipForward} label="Next track" disabled={!available} onClick={() => changeTrack(1)} /></div><div className="adl-vinyl-track"><div className="adl-vinyl-heading">{identity(false)}<div className="adl-metadata">{stats()}</div></div>{timeline(true)}</div>{output()}</>;
+      case 'vinyl': return <><div className="adl-vinyl-controls" role="group" aria-label="Playback controls"><IconButton icon={SkipPrev} label="Previous track" disabled={!available} onClick={() => changeTrack(-1)} /><IconButton label="Rewind 10 seconds" disabled={!available} onClick={() => setPosition((current) => Math.max(0, current - 10))}><span className="adl-jump" aria-hidden="true"><Undo width={21} height={21} /><small>10</small></span></IconButton><div className={cn('adl-vinyl', playing && available && 'adl-vinyl-playing')}><Artwork vinyl /><IconButton icon={state === 'loading' ? Refresh : playing && available ? Pause : Play} label={playing && available ? 'Pause preview' : 'Play preview'} disabled={!available} active={playing && available} className={cn('adl-play', state === 'loading' && 'adl-loading')} onClick={() => { if(position >= track.duration) setPosition(0); setPlaying(!playing); }} /></div><IconButton label="Forward 10 seconds" disabled={!available} onClick={() => setPosition((current) => Math.min(track.duration, current + 10))}><span className="adl-jump" aria-hidden="true"><Redo width={21} height={21} /><small>10</small></span></IconButton><IconButton icon={SkipNext} label="Next track" disabled={!available} onClick={() => changeTrack(1)} /></div><div className="adl-vinyl-track"><div className="adl-vinyl-heading">{identity(false)}<div className="adl-metadata">{stats()}</div></div>{timeline(true)}</div>{output()}</>;
       case 'shelf': return <><div className="adl-shelf-top">{transport()}{identity(false)}<div className="adl-metadata">{stats()}</div><span className="adl-context-source">From {context}</span>{source()}</div><div className="adl-shelf-bottom">{timeline(true)}{output()}</div></>;
       case 'fshelf': return <><div className="adl-fs-top">{transport()}{identity(false)}<div className="adl-metadata">{stats()}</div><span className="adl-context-source">From {context}</span>{source()}</div><div className="adl-fs-bottom">{timeline()}{output()}</div></>;
       case 'frail': return <><div className="adl-fr-controls">{transport()}</div><div className="adl-fr-main"><div className="adl-fr-top">{identity(false)}<div className="adl-metadata">{stats()}</div><span className="adl-context-source">From {context}</span>{source()}</div><div className="adl-fr-bottom">{timeline()}{output()}</div></div></>;
       case 'fwave': return <><div className="adl-fw-top">{transport()}{identity(false)}<div className="adl-metadata">{stats()}</div>{source()}</div><div className="adl-fw-bottom">{timeline(true)}{output()}</div></>;
       case 'fflip': return <><div className="adl-ff-top">{transport()}{timeline()}{output()}</div><div className="adl-ff-bottom">{identity(false)}<div className="adl-metadata">{stats()}</div><span className="adl-context-source">From {context}</span>{source()}</div></>;
-      case 'compact': return <><div className="adl-pocket-top"><IconButton icon={SkipBack} label="Previous track" disabled={!available} onClick={() => changeTrack(-1)} /><IconButton icon={state === 'loading' ? CircleDash : playing && available ? Pause : Play} label={playing && available ? 'Pause preview' : 'Play preview'} disabled={!available} active={playing && available} className={cn('adl-play', state === 'loading' && 'adl-loading')} onClick={() => { if(position >= track.duration) setPosition(0); setPlaying(!playing); }} /><IconButton icon={SkipForward} label="Next track" disabled={!available} onClick={() => changeTrack(1)} />{identity()}<IconButton icon={expanded ? ChevronDown : ChevronUp} label={expanded ? 'Collapse dock' : 'Expand dock'} active={expanded} onClick={() => setExpanded(!expanded)} /></div>{expanded && <div className="adl-pocket-expanded"><div className="adl-pocket-seek"><IconButton label="Rewind 10 seconds" disabled={!available} onClick={() => setPosition((current) => Math.max(0, current - 10))}><span className="adl-jump">↶<small>10</small></span></IconButton>{timeline()}<IconButton label="Forward 10 seconds" disabled={!available} onClick={() => setPosition((current) => Math.min(track.duration, current + 10))}><span className="adl-jump">↷<small>10</small></span></IconButton></div><div className="adl-pocket-details"><div className="adl-metadata">{stats()}</div>{output()}</div></div>}</>;
+      case 'compact': return <><div className="adl-pocket-top"><IconButton icon={SkipPrev} label="Previous track" disabled={!available} onClick={() => changeTrack(-1)} /><IconButton icon={state === 'loading' ? Refresh : playing && available ? Pause : Play} label={playing && available ? 'Pause preview' : 'Play preview'} disabled={!available} active={playing && available} className={cn('adl-play', state === 'loading' && 'adl-loading')} onClick={() => { if(position >= track.duration) setPosition(0); setPlaying(!playing); }} /><IconButton icon={SkipNext} label="Next track" disabled={!available} onClick={() => changeTrack(1)} />{identity()}<IconButton icon={expanded ? NavArrowDown : NavArrowUp} label={expanded ? 'Collapse dock' : 'Expand dock'} active={expanded} onClick={() => setExpanded(!expanded)} /></div>{expanded && <div className="adl-pocket-expanded"><div className="adl-pocket-seek"><IconButton label="Rewind 10 seconds" disabled={!available} onClick={() => setPosition((current) => Math.max(0, current - 10))}><span className="adl-jump" aria-hidden="true"><Undo width={21} height={21} /><small>10</small></span></IconButton>{timeline()}<IconButton label="Forward 10 seconds" disabled={!available} onClick={() => setPosition((current) => Math.min(track.duration, current + 10))}><span className="adl-jump" aria-hidden="true"><Redo width={21} height={21} /><small>10</small></span></IconButton></div><div className="adl-pocket-details"><div className="adl-metadata">{stats()}</div>{output()}</div></div>}</>;
     }
   }
 
@@ -159,9 +156,9 @@ function DockPreview({ concept, state, context }: { concept: typeof CONCEPTS[num
       <Workspace trackIndex={trackIndex} context={context} disconnected={disconnected} />
       <div className={cn('adl-dock-placement', concept.kind === 'compact' && !expanded && 'adl-collapsed')}>
         {(disconnected || state === 'loading' || state === 'empty') && <div className={cn('adl-state-banner', disconnected && 'adl-state-error')} role="status">
-          {disconnected ? <WarningAlt size={14} /> : state === 'loading' ? <CircleDash size={14} className="adl-spinner" /> : <Music size={14} />}
+          {disconnected ? <WarningTriangle width={14} height={14} aria-hidden="true" /> : state === 'loading' ? <Refresh width={14} height={14} aria-hidden="true" className="adl-spinner" /> : <MusicNote width={14} height={14} aria-hidden="true" />}
           <span>{disconnected ? 'USB disconnected. Reconnect DVYDRMNG to continue listening.' : state === 'loading' ? 'Resolving the audio source…' : 'Ready when you are. Select a track to start listening.'}</span>
-          {disconnected && <button type="button" onClick={() => setReconnected(true)}>Simulate reconnect <Usb size={12} /></button>}
+          {disconnected && <button type="button" onClick={() => setReconnected(true)}>Simulate reconnect <Usb width={12} height={12} aria-hidden="true" /></button>}
         </div>}
         <div className={cn('adl-dock', concept.kind.startsWith('f') && 'adl-float', !available && 'adl-unavailable')} aria-label={`${concept.name} audio dock`}>{dockContent()}</div>
       </div>
@@ -177,7 +174,7 @@ export function AudioDockMockupsContent() {
     <div className="adl-preview-toolbar">
       <label>WORKSPACE <select aria-label="Preview workspace" value={context} onChange={(event) => setContext(event.target.value)}>{['Library', 'Cue Points', 'Audition', 'Drop Lab'].map((name) => <option key={name}>{name}</option>)}</select></label>
       <label>PLAYER STATE <select aria-label="Preview player state" value={state} onChange={(event) => setState(event.target.value as PreviewState)}><option value="ready">Track loaded</option><option value="empty">No track selected</option><option value="loading">Loading audio</option><option value="disconnected">USB disconnected</option></select></label>
-      <span><CheckmarkFilled size={12} /> Interactive controls · simulated playback, no audio</span>
+      <span><CheckCircle width={12} height={12} aria-hidden="true" /> Interactive controls · simulated playback, no audio</span>
     </div>
     {CONCEPTS.map((concept, index) => <section className="adl-concept" key={concept.kind} aria-labelledby={`adl-title-${concept.kind}`}>
       <div className="adl-concept-heading"><span className="adl-number" style={{ color: concept.accent }}>{String(index + 1).padStart(2, '0')}</span><div><h3 id={`adl-title-${concept.kind}`}>{concept.name}</h3><p>{concept.description}</p></div><span className="adl-footprint">{concept.footprint}</span></div>

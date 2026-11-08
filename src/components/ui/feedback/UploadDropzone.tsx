@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent } from 'react';
-import { CloudUpload } from '@carbon/icons-react';
+import { CloudUpload } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import '../dropdex-feedback.css';
 
@@ -54,7 +54,7 @@ export function UploadDropzone({
       aria-describedby={`${inputId}-helper`}
     >
       <input ref={inputRef} id={inputId} className="sr-only" type="file" accept={accept} multiple={multiple} onChange={onChange} onClick={(event) => event.stopPropagation()} tabIndex={-1} />
-      <CloudUpload size={42} aria-hidden="true" />
+      <CloudUpload width={42} height={42} aria-hidden="true" />
       <strong>{label}</strong>
       <span>or <u>click to browse</u></span>
       <small id={`${inputId}-helper`}>{helper}</small>

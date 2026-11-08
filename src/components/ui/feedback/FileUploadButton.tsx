@@ -1,5 +1,5 @@
 import { useRef, type ReactNode } from 'react';
-import { CircleFilled, FolderOpen, Mobile, Upload } from '@carbon/icons-react';
+import { Circle, Folder, SmartphoneDevice, Upload } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import '../dropdex-feedback.css';
 
@@ -20,7 +20,7 @@ export function FileUploadButton({
   multiple?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const icon = variant === 'primary' ? <Upload size={14} /> : variant === 'folder' ? <FolderOpen size={14} /> : variant === 'device' ? <Mobile size={14} /> : <CircleFilled size={13} />;
+  const icon = variant === 'primary' ? <Upload aria-hidden="true" width={14} height={14} /> : variant === 'folder' ? <Folder aria-hidden="true" width={14} height={14} /> : variant === 'device' ? <SmartphoneDevice aria-hidden="true" width={14} height={14} /> : <Circle aria-hidden="true" width={13} height={13} />;
   const handleClick = () => {
     if (onFiles) inputRef.current?.click();
     onClick?.();

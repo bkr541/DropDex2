@@ -1,4 +1,4 @@
-import { Add, Close } from '@carbon/icons-react';
+import { Plus, Xmark } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import '../dropdex-controls.css';
 
@@ -19,11 +19,11 @@ export function ChipMultiSelect({
         <span key={value} className={cn('dd-chip', `dd-chip--${CHIP_TONES[index % CHIP_TONES.length]}`)}>
           {value}
           <button type="button" aria-label={`Remove ${value}`} onClick={() => onChange(values.filter((item) => item !== value))}>
-            <Close size={14} />
+            <Xmark aria-hidden="true" width={14} height={14} />
           </button>
         </span>
       ))}
-      <button type="button" className="dd-chip-add"><Add size={14} /> {addLabel}</button>
+      <button type="button" className="dd-chip-add"><Plus aria-hidden="true" width={14} height={14} /> {addLabel}</button>
     </div>
   );
 }

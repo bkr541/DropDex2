@@ -1,4 +1,4 @@
-import { CheckmarkFilled, Close, CloseFilled, Information, WarningAlt } from '@carbon/icons-react';
+import { CheckCircle, InfoCircle, WarningTriangle, Xmark, XmarkCircle } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import '../dropdex-feedback.css';
 import { toneClass } from './tones';
@@ -25,12 +25,12 @@ export function ToastNotification({
   className?: string;
 }) {
   const icon = tone === 'success'
-    ? <CheckmarkFilled size={18} />
+    ? <CheckCircle aria-hidden="true" width={18} height={18} />
     : tone === 'warning'
-      ? <WarningAlt size={18} />
+      ? <WarningTriangle aria-hidden="true" width={18} height={18} />
       : tone === 'error'
-        ? <CloseFilled size={18} />
-        : <Information size={18} />;
+        ? <XmarkCircle aria-hidden="true" width={18} height={18} />
+        : <InfoCircle aria-hidden="true" width={18} height={18} />;
   return (
     <div className={cn('dd-toast', `dd-toast--${tone}`, className)} role={tone === 'error' || tone === 'warning' ? 'alert' : 'status'}>
       <span className={cn('dd-toast__icon', toneClass[toastTone[tone]])}>{icon}</span>
@@ -41,7 +41,7 @@ export function ToastNotification({
       {meta && <span className="dd-toast__meta">{meta}</span>}
       {onDismiss && (
         <button type="button" className="dd-toast__close" onClick={onDismiss} aria-label={`Dismiss ${title} notification`}>
-          <Close size={15} />
+          <Xmark aria-hidden="true" width={15} height={15} />
         </button>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { Checkmark, Subtract } from '@carbon/icons-react';
+import { Check, Minus } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 
 /** A square checkbox in the app's style. `indeterminate` shows a dash, for "some of them are selected". */
@@ -29,7 +29,7 @@ export function CheckboxControl({
       )}
       {...aria}
     >
-      {indeterminate ? <Subtract size={14} aria-hidden="true" /> : checked ? <Checkmark size={14} aria-hidden="true" /> : null}
+      {indeterminate ? <Minus width={14} height={14} aria-hidden="true" /> : checked ? <Check width={14} height={14} aria-hidden="true" /> : null}
     </button>
   );
 }

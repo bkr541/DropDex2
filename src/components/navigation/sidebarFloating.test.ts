@@ -38,7 +38,7 @@ describe('FloatingSidebar wiring', () => {
     expect(src).toContain('group relative h-12 w-12');
     expect(src).toContain('max-w-0 overflow-hidden');
     expect(src).toContain('group-hover:max-w-[200px]');
-    expect(src).toContain('group-focus-within:max-w-[200px]');
+    expect(src).toContain('group-has-[:focus-visible]:max-w-[200px]');
     expect(src).toContain('transition-[max-width,padding,opacity]');
     expect(src).toContain('aria-label={label}');
   });
@@ -65,21 +65,25 @@ describe('FloatingSidebar wiring', () => {
 
 describe('Left nav icons', () => {
   const app = read('../../App.tsx');
-  const data = read('./navIconData.ts');
-  const wanted: [string, string, string][] = [
-    ['home', 'Shelf divider', 'Library'],
-    ['artist-library', 'Clip listening', 'Artist Library'],
-    ['cues', 'Marker on wave', 'Cue Points'],
-    ['audition', 'Listening booth', 'Audition'],
-    ['discovery', 'Globe pin', 'Discover'],
-    ['drop-lab', 'Transient gate', 'Drop Lab'],
-    ['flip-lab', 'Deck swap', 'Flip Lab'],
-    ['usb', 'Drive bay', 'USB Management'],
-  ];
+  const wanted = {
+    home: 'BookStack',
+    'artist-library': 'AlbumList',
+    cues: 'TriangleFlag',
+    audition: 'Headset',
+    discovery: 'Globe',
+    'drop-lab': 'Flask',
+    'set-lab': 'PlaylistPlay',
+    'flip-lab': 'HorizontalMerge',
+    usb: 'HardDrive',
+  } as const;
 
-  it('uses the chosen Layout Lab icon for every page', () => {
-    for (const [view, name] of wanted) expect(data).toContain(`"${view}": { name: "${name}"`);
-    for (const [view] of wanted) expect(app).toContain(view.includes('-') ? `NAV_ICONS['${view}']` : `NAV_ICONS.${view}`);
+  it('uses the corresponding Iconoir Regular icon for every page', async () => {
+    const regular = await import('iconoir-react/regular');
+    const { NAV_ICONS } = await import('./NavIcons');
+    for (const view of Object.keys(wanted) as Array<keyof typeof wanted>) {
+      expect(NAV_ICONS[view]).toBe(regular[wanted[view]]);
+      expect(app).toContain(view.includes('-') ? `NAV_ICONS['${view}']` : `NAV_ICONS.${view}`);
+    }
   });
 
   it('no longer uses the old carbon icons or the old Cue Points drawing in the nav', () => {
@@ -92,8 +96,9 @@ describe('Left nav icons', () => {
     const { renderToStaticMarkup } = await import('react-dom/server');
     const { createElement } = await import('react');
     const { NAV_ICONS } = await import('./NavIcons');
-    const markup = renderToStaticMarkup(createElement(NAV_ICONS.usb, { size: 24, className: 'logo-gradient-icon' }));
+    const markup = renderToStaticMarkup(createElement(NAV_ICONS.usb, { width: 24, height: 24, className: 'nav-icon logo-gradient-icon' }));
     expect(markup).toContain('stroke="currentColor"');
+    expect(markup).toContain('stroke-width="1.5"');
     expect(markup).toContain('class="nav-icon logo-gradient-icon"');
     expect(markup).toContain('<path');
     const css = read('./navIcons.css');
@@ -156,8 +161,6 @@ describe('Left nav current page icon', () => {
   it('is larger and has a slightly thicker line', () => {
     expect(src).toContain("'logo-gradient-icon scale-[1.4]'");
     expect(css).toMatch(/\.sidebar-capsule \.nav-icon\.logo-gradient-icon \{[^}]*stroke-width: 1\.9;/);
-    // The idle icon is drawn at 1.5, so this is thicker, and it only applies inside the nav, not to the page header's icon.
-    expect(read('./NavIcons.tsx')).toContain('strokeWidth={1.5}');
   });
   it('has depth: a dark shadow underneath and a red glow around the icon, and the same lift on the profile picture', () => {
     expect(css).toMatch(/filter: drop-shadow\(0 3px 3px #000000b3\) drop-shadow\(0 0 7px #ff4e4f80\);/);

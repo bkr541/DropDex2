@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, ChevronDown, ChevronUp, CircleDash, Renew, Time } from '@carbon/icons-react';
+import { ArrowRight, Clock, NavArrowDown, NavArrowUp, Refresh } from 'iconoir-react/regular';
 import { describeCategories, formatBytes } from '../../lib/usb/usbFormat';
 import type { UsbTransferRecord } from '../../lib/queries/usbDevices';
 import { StatusBadge } from '../ui/feedback';
@@ -27,14 +27,14 @@ function TransferRow({ transfer }: { transfer: UsbTransferRecord }) {
     <li className="glass overflow-hidden rounded-2xl border border-[var(--color-border-subtle)]" data-testid="usb-history-row">
       <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="flex w-full flex-wrap items-center gap-x-5 gap-y-2 px-5 py-4 text-left hover:bg-white/[0.03]">
         <div className="flex min-w-0 items-center gap-2 text-sm font-black">
-          <span className="truncate">{transfer.sourceLabel}</span><ArrowRight size={14} className="shrink-0 text-muted-foreground" aria-label="to" /><span className="truncate">{transfer.destinationLabel}</span>
+          <span className="truncate">{transfer.sourceLabel}</span><ArrowRight width={14} height={14} className="shrink-0 text-muted-foreground" aria-label="to" /><span className="truncate">{transfer.destinationLabel}</span>
         </div>
         <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
         <span className="text-xs text-muted-foreground">{describeCategories(transfer.categories)}</span>
         <span className="ml-auto flex items-center gap-4 text-xs text-muted-foreground">
           <span className="font-mono font-bold text-foreground">{transfer.copiedCount.toLocaleString()} files · {formatBytes(transfer.totalBytes)}</span>
           <span>{formatWhen(transfer.finishedAt)}</span>
-          {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          {open ? <NavArrowUp width={16} height={16} aria-hidden="true" /> : <NavArrowDown width={16} height={16} aria-hidden="true" />}
         </span>
       </button>
       {open && (
@@ -72,19 +72,19 @@ function TransferRow({ transfer }: { transfer: UsbTransferRecord }) {
 
 /** Every transfer made between USBs, newest first, with the files that moved. */
 export function UsbHistoryTab({ transfers, loading, error, onRetry }: { transfers: UsbTransferRecord[]; loading: boolean; error: string | null; onRetry: () => void }) {
-  if (loading) return <div className="flex items-center justify-center py-24"><CircleDash className="animate-spin text-primary" size={28} /></div>;
+  if (loading) return <div className="flex items-center justify-center py-24"><Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" /></div>;
   if (error) {
     return (
       <div className="space-y-3 py-16 text-center">
         <p className="text-sm font-bold text-red-400">{error}</p>
-        <ControlButton variant="neutral" onClick={onRetry}><Renew size={14} /> Try again</ControlButton>
+        <ControlButton variant="neutral" onClick={onRetry}><Refresh width={14} height={14} aria-hidden="true" /> Try again</ControlButton>
       </div>
     );
   }
   if (transfers.length === 0) {
     return (
       <div className="glass flex flex-col items-center gap-3 rounded-3xl border border-dashed border-[var(--color-border-subtle)] px-8 py-16 text-center" data-testid="usb-history-empty">
-        <Time size={32} className="text-muted-foreground" />
+        <Clock width={32} height={32} aria-hidden="true" className="text-muted-foreground" />
         <h2 className="text-lg font-black">No transfers yet</h2>
         <p className="max-w-sm text-sm text-muted-foreground">When you copy tracks and your Rekordbox library from one USB to another, each transfer is listed here with the files that moved.</p>
       </div>

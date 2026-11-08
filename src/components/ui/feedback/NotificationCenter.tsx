@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Close, Notification, Warning } from '@carbon/icons-react';
+import { Bell, WarningCircle, Xmark } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 
 export type NotificationTone = 'error' | 'warning';
@@ -39,7 +39,7 @@ export function NotificationCard({
     >
       <span aria-hidden="true" className={cn('w-1 self-stretch shrink-0 rounded-full', tone.bar)} />
       <span aria-hidden="true" className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-full', tone.icon)}>
-        <Warning size={24} />
+        <WarningCircle aria-hidden="true" width={24} height={24} />
       </span>
       <div className="min-w-0 flex-1 pt-0.5">
         <p className="text-[15px] font-semibold leading-snug text-slate-100">{notification.title}</p>
@@ -52,7 +52,7 @@ export function NotificationCard({
           aria-label={`Dismiss ${notification.title}`}
           className="absolute right-3 top-3 rounded-md p-1 text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-100"
         >
-          <Close size={18} />
+          <Xmark aria-hidden="true" width={18} height={18} />
         </button>
       )}
     </div>
@@ -155,7 +155,7 @@ export function NotificationCenter({
               hasErrors ? TONE.error.button : TONE.warning.button,
             )}
           >
-            <Notification size={28} />
+            <Bell aria-hidden="true" width={28} height={28} />
             <span className="absolute -right-0.5 -top-0.5 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-[#0b0f16] bg-white px-1 text-[11px] font-bold text-[#0b0f16]">
               {count}
             </span>

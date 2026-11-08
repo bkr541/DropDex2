@@ -76,3 +76,63 @@ export async function loadDecodedAudioSources<TError = unknown>(
     },
   )));
 }
+
+/** Read one authorized source with a byte cap, even when a response has no Content-Length. */
+export async function readBoundedAudioBytes(
+  source: { kind: 'file'; file: Pick<File, 'size' | 'stream'> } | { kind: 'url'; url: string },
+  { maxBytes, signal, fetchImpl = fetch }: { maxBytes: number; signal: AbortSignal; fetchImpl?: typeof fetch },
+): Promise<ArrayBuffer> {
+  signal.throwIfAborted();
+  const oversize = () => new Error(`The audio file exceeds the ${Math.round(maxBytes / (1024 * 1024))} MiB preparation limit.`);
+  let body: ReadableStream<Uint8Array>;
+  if (source.kind === 'file') {
+    if (source.file.size > maxBytes) throw oversize();
+    body = source.file.stream();
+  } else {
+    let response: Response;
+    try {
+      response = await fetchImpl(source.url, { cache: 'no-store', signal });
+    } catch {
+      signal.throwIfAborted();
+      throw new Error('Could not read audio from the authorized source.');
+    }
+    if (!response.ok || !response.body) {
+      void response.body?.cancel().catch(() => undefined);
+      throw new Error(`Could not read audio from the authorized source (HTTP ${response.status}).`);
+    }
+    body = response.body;
+    if (Number(response.headers.get('content-length')) > maxBytes) {
+      void body.cancel().catch(() => undefined);
+      throw oversize();
+    }
+  }
+  const reader = body.getReader();
+  const cancel = () => { void reader.cancel().catch(() => undefined); };
+  signal.addEventListener('abort', cancel, { once: true });
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      signal.throwIfAborted();
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) throw oversize();
+      chunks.push(value);
+    }
+    signal.throwIfAborted();
+    if (size === 0) throw new Error('The audio response is empty.');
+    const buffer = new ArrayBuffer(size);
+    const output = new Uint8Array(buffer);
+    let offset = 0;
+    for (const chunk of chunks) {
+      output.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return buffer;
+  } finally {
+    signal.removeEventListener('abort', cancel);
+    cancel();
+    reader.releaseLock();
+  }
+}

@@ -1,4 +1,4 @@
-import { CircleDash } from '@carbon/icons-react';
+import { Refresh } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { UserPlaylistProfile } from '../../types';
@@ -23,7 +23,7 @@ export function PlaylistsPanel({
       </div>
       {loading ? (
         <div className="flex items-center justify-center py-10">
-          <CircleDash className="animate-spin text-muted-foreground" size={20} />
+          <Refresh className="animate-spin text-muted-foreground" width={20} height={20} aria-hidden="true" />
         </div>
       ) : playlists.length === 0 ? (
         <div className="text-center py-10 border border-dashed border-[#ffffff1a] rounded-[20px]">
@@ -60,7 +60,7 @@ export function GenresPanel({ genreStats, loading }: { genreStats: ReadonlyArray
       </p>
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <CircleDash className="animate-spin text-primary" size={28} />
+          <Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" />
         </div>
       ) : genreStats.length === 0 ? (
         <p className="text-center py-12 text-muted-foreground italic text-sm">No genre data in this library.</p>
@@ -96,7 +96,7 @@ export function ArtistsPanel({ artistStats, loading }: { artistStats: ReadonlyAr
       </p>
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <CircleDash className="animate-spin text-primary" size={28} />
+          <Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" />
         </div>
       ) : artistStats.length === 0 ? (
         <p className="text-center py-12 text-muted-foreground italic text-sm">No artist data in this library.</p>

@@ -1,4 +1,4 @@
-import { Close } from '@carbon/icons-react';
+import { Xmark } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import '../dropdex-feedback.css';
 import { CircularProgress } from './CircularProgress';
@@ -37,7 +37,7 @@ export function ImportActivityBanner({
       </div>
       {remaining && <span className="dd-activity-banner__remaining">{remaining}</span>}
       {onView && <button type="button" className="dd-feedback-button dd-feedback-button--ghost" onClick={onView}>{viewLabel}</button>}
-      {onDismiss && <button type="button" className="dd-icon-dismiss" onClick={onDismiss} aria-label={`Dismiss ${title}`}><Close size={15} /></button>}
+      {onDismiss && <button type="button" className="dd-icon-dismiss" onClick={onDismiss} aria-label={`Dismiss ${title}`}><Xmark aria-hidden="true" width={15} height={15} /></button>}
     </section>
   );
 }

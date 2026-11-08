@@ -28,6 +28,7 @@ export type AppRoute =
   | { name: 'discovery' }
   | { name: 'profile' }
   | { name: 'settings' }
+  | { name: 'set-lab' }
   | { name: 'flip-lab' }
   | { name: 'usb' }
   | { name: 'not-found'; pathname: string };
@@ -145,6 +146,7 @@ export function parseAppRoute(pathname: string, search = ''): AppRoute {
     case '/search': return { name: 'discovery' };
     case '/profile': return { name: 'profile' };
     case '/settings': return { name: 'settings' };
+    case '/set-lab': return { name: 'set-lab' };
     case '/flip-lab': return { name: 'flip-lab' };
     case '/usb': return { name: 'usb' };
     default: return { name: 'not-found', pathname: normalizedPath };
@@ -181,6 +183,7 @@ export function routeToUrl(route: AppRoute): string {
     case 'discovery': return '/discovery';
     case 'profile': return '/profile';
     case 'settings': return '/settings';
+    case 'set-lab': return '/set-lab';
     case 'flip-lab': return '/flip-lab';
     case 'usb': return '/usb';
     case 'not-found': return route.pathname;
@@ -205,6 +208,7 @@ export function routeBackFallback(route: AppRoute): AppRoute {
     case 'discovery':
     case 'profile':
     case 'settings':
+    case 'set-lab':
     case 'flip-lab':
     case 'usb':
     case 'import':

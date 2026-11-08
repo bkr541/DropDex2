@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ElementType, type ReactNode } from 'react';
-import { Calendar, Cloud, CheckmarkFilled, Flag, Music, Pause, Playlist, Renew, Tag, Upload, Usb, WarningAlt, Waveform } from '@carbon/icons-react';
+import { Activity, Calendar, CheckCircle, Cloud, Label, MusicNote, Pause, Playlist, Refresh, TriangleFlag, Upload, Usb, WarningTriangle } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import { ControlButton } from './controls/ControlButton';
 import { Socials } from './LayoutLabHeroParts';
@@ -43,15 +43,15 @@ function Avatar({ size = 64, ring = true }: { size?: number; ring?: boolean }) {
 
 /** The one shared primary button, so the mockups match the app. */
 function ImportButton({ className }: { className?: string }) {
-  return <ControlButton variant="primary" className={cn('!min-h-8 whitespace-nowrap text-[11px]', className)}><Upload size={12} /> Import Library</ControlButton>;
+  return <ControlButton variant="primary" className={cn('!min-h-8 whitespace-nowrap text-[11px]', className)}><Upload width={12} height={12} aria-hidden="true" /> Import Library</ControlButton>;
 }
 
 function Done({ label }: { label: string }) {
-  return <span className="lh-done"><CheckmarkFilled size={12} /> {label}</span>;
+  return <span className="lh-done"><CheckCircle width={12} height={12} aria-hidden="true" /> {label}</span>;
 }
 
 function UsbLine({ className }: { className?: string }) {
-  return <p className={cn('flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground', className)}><Usb size={11} /> {HERO.usb} · {LAST_IMPORT}</p>;
+  return <p className={cn('flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground', className)}><Usb width={11} height={11} aria-hidden="true" /> {HERO.usb} · {LAST_IMPORT}</p>;
 }
 
 // ── One to four: the Ghost Banner look, with the import status ──────────────
@@ -62,10 +62,10 @@ function UsbLine({ className }: { className?: string }) {
 
 type ImportState = 'complete' | 'paused' | 'importing' | 'failed';
 const IMPORT_STATES: Record<ImportState, { label: string; Icon: ElementType; next: ImportState }> = {
-  complete: { label: 'Import complete', Icon: CheckmarkFilled, next: 'paused' },
+  complete: { label: 'Import complete', Icon: CheckCircle, next: 'paused' },
   paused: { label: 'Import paused', Icon: Pause, next: 'importing' },
-  importing: { label: 'Importing', Icon: Renew, next: 'failed' },
-  failed: { label: 'Import failed', Icon: WarningAlt, next: 'complete' },
+  importing: { label: 'Importing', Icon: Refresh, next: 'failed' },
+  failed: { label: 'Import failed', Icon: WarningTriangle, next: 'complete' },
 };
 
 /** Where the import stands. Click to step through the four states. */
@@ -74,18 +74,18 @@ function ImportStatus({ initial = 'complete', className }: { initial?: ImportSta
   const { label, Icon, next } = IMPORT_STATES[state];
   return (
     <button type="button" className={cn('lh-status', className)} data-state={state} data-testid="hero-import-status" onClick={() => setState(next)} title="Click to see the other import states">
-      <Icon size={12} /> {label}
+      <Icon width={12} height={12} aria-hidden="true" /> {label}
     </button>
   );
 }
 
 /** The USB that is loaded, or a plain note when none is. */
 function UsbName({ usb = HERO.usb, className }: { usb?: string | null; className?: string }) {
-  return <p className={cn('flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground', className)} data-testid="hero-usb"><Usb size={11} /> {usb ?? 'No USB loaded'}</p>;
+  return <p className={cn('flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground', className)} data-testid="hero-usb"><Usb width={11} height={11} aria-hidden="true" /> {usb ?? 'No USB loaded'}</p>;
 }
 
 function LastImport({ className }: { className?: string }) {
-  return <p className={cn('flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground', className)} data-testid="hero-last-import"><Calendar size={11} /> Last import {LAST_IMPORT}</p>;
+  return <p className={cn('flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground', className)} data-testid="hero-last-import"><Calendar width={11} height={11} aria-hidden="true" /> Last import {LAST_IMPORT}</p>;
 }
 
 /** The artist as mockup 7 draws them, with the name set like the left of Split Cover. */
@@ -245,12 +245,12 @@ export function HeroSplitCover() {
 // cue points, genres and analysis of their library, and how much of it is in the cloud.
 
 const SEVEN: { label: string; value: ReactNode; Icon: ElementType }[] = [
-  { label: 'Tracks', value: HERO.tracks, Icon: Music },
+  { label: 'Tracks', value: HERO.tracks, Icon: MusicNote },
   { label: 'Playlists', value: HERO.playlists, Icon: Playlist },
   { label: 'USBs', value: HERO.usbs, Icon: Usb },
-  { label: 'Cue points', value: HERO.cuePoints, Icon: Flag },
-  { label: 'Genres', value: HERO.genreCount, Icon: Tag },
-  { label: 'Analysed', value: HERO.analysedPct, Icon: Waveform },
+  { label: 'Cue points', value: HERO.cuePoints, Icon: TriangleFlag },
+  { label: 'Genres', value: HERO.genreCount, Icon: Label },
+  { label: 'Analysed', value: HERO.analysedPct, Icon: Activity },
   { label: 'In the cloud', value: HERO.cloudSynced, Icon: Cloud },
 ];
 
@@ -349,7 +349,7 @@ export function HeroTileWall() {
         <div className="ml-auto grid w-[520px] shrink-0 grid-cols-4 gap-2.5">
           {SEVEN.map(({ label, value, Icon }, i) => (
             <div key={label} className={cn('lh-tile', i === 0 && 'col-span-2')} data-testid="hero-value">
-              <Icon size={15} className="text-[#9aa5b8]" />
+              <Icon width={15} height={15} aria-hidden="true" className="text-[#9aa5b8]" />
               <p className="lh-figure text-[28px]">{value}</p>
               <Eyebrow className="whitespace-nowrap">{label}</Eyebrow>
             </div>

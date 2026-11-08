@@ -1,54 +1,14 @@
-/* Audition's listening-room treatment. All tokens and overrides stay inside
-   this page; the browser and transport retain their shared behavior. */
+@import '../ui/studio-surface.css';
+
+/* Audition's layout and listening controls. The parent surface is shared. */
 .audition-studio {
-  --color-background: #1b1f28;
-  --color-card: #252a36;
-  --color-foreground: #f6f7fa;
-  --color-muted-foreground: #a4adbd;
-  --color-text-subdued: #a4adbd;
-  --color-primary: #f56b70;
-  --color-primary-rgb: 245 107 112;
-  --color-ring: #f78361;
-  --color-border-subtle: #ffffff12;
-  --color-border-faint: #ffffff0d;
-  --color-panel: #252a36;
-  --color-surface: #2b313e;
-  --color-surface-hover: #333b4a;
-  --color-control-surface: #202530;
-  --color-control-surface-raised: #2a303d;
-  --color-control-surface-hover: #333b4a;
-  --color-control-border: #ffffff1a;
-  --color-control-border-soft: #ffffff0a;
-  --color-control-focus: #f78361;
-  --color-control-blue: #f56b70;
-  --color-control-blue-rgb: 245 107 112;
   width: 100%;
   display: flex;
   flex-direction: column;
   height: calc(100vh - 3rem);
   min-height: 480px;
   overflow: hidden;
-  color-scheme: dark;
-  color: var(--color-foreground);
-  font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
-  background: linear-gradient(165deg, #292d37 0%, #20242e 36%, #191d25 100%);
-  border: 1px solid #ffffff13;
-  border-radius: 24px;
-  box-shadow: inset 0 1px 0 #ffffff06, 0 16px 40px #00000026;
 }
-.audition-header { display: flex; align-items: center; gap: 16px; padding: 14px 16px; }
-.audition-header-identity { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1; }
-.audition-studio .audition-cover { width: 48px; height: 48px; flex-shrink: 0; border-radius: 50%; border: 1px solid #ffffff26; box-shadow: 0 3px 10px #00000033; }
-.audition-header-copy { flex: 1; min-width: 0; }
-.audition-header h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 20px; font-weight: 500; line-height: 1.2; letter-spacing: -.01em; }
-.audition-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; min-width: 0; }
-.audition-artist { color: #b4bdcb; font-size: 12px; letter-spacing: .01em; }
-.audition-track-details { display: flex; align-items: center; flex: none; }
-.audition-track-details .audition-stat, .audition-header > .audition-duration { border-right: 0; }
-.audition-stat > span { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.audition-duration, .audition-stat { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-inline: 12px; border-inline: 1px solid #ffffff0d; }
-.audition-duration > span, .audition-stat > span { color: #f6f7fa; font-size: 20px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -.04em; }
-.audition-duration small, .audition-stat small { color: #9aa5b8; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; }
 .audition-track-navigation { display: flex; align-items: center; gap: 8px; }
 .audition-transport > .audition-track-navigation { padding-left: 14px; border-left: 1px solid #ffffff10; }
 .audition-track-navigation > span { min-width: 64px; color: #bdc5d2; font-size: 11px; font-variant-numeric: tabular-nums; text-align: center; }
@@ -56,13 +16,11 @@
 .audition-track-step:hover:not(:disabled) { color: #f78361; border-color: #f7836180; }
 .audition-track-step:disabled { opacity: .25; cursor: not-allowed; }
 .audition-decisions { display: flex; align-items: center; gap: 10px; }
-.audition-cue-marker { position: absolute; top: 2px; display: grid; place-items: center; min-width: 14px; height: 17px; padding-inline: 3px; transform: translateX(-50%); border: 1px solid var(--audition-cue-ink); border-radius: 3px 3px 7px 7px; background: color-mix(in srgb, var(--audition-cue-ink) 22%, #1b1f28); color: var(--audition-cue-ink); font-size: 10px; font-weight: 700; line-height: 1; }
-.audition-cue-marker--memory { min-width: 8px; height: 8px; padding: 0; margin-top: 7px; border: 0; border-radius: 50%; background: var(--audition-cue-ink); }
-.audition-cue-line { background: var(--audition-cue-ink); opacity: .7; z-index: 1; }
+.audition-cue-line { background: var(--waveform-cue-ink); opacity: .7; z-index: 1; }
 .audition-decision { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding-block: 6px; color: #a7afbd; border-bottom: 1px solid #ffffff14; font-size: 10px; font-weight: 400; cursor: not-allowed; opacity: .55; }
 
 .audition-song { flex: none; border-top: 1px solid #ffffff0d; background: #00000012; }
-.audition-studio { --audition-lead: 32px; }
+.audition-studio { --audition-lead: 32px; --waveform-timeline-lead: var(--audition-lead); }
 .audition-song-timeline { position: relative; container-type: inline-size; padding: 8px 16px 0 calc(16px + var(--audition-lead)); }
 /* The sections row and beat grid row start in the lead-in space left of 0:00; everything else lines up with the waveform. */
 .audition-lane { margin-left: calc(-1 * var(--audition-lead)); padding-left: var(--audition-lead); }
@@ -76,9 +34,6 @@
 .audition-beat-tick--bar { height: 11px; background: #c3ccdb99; }
 .audition-beat-label { position: absolute; bottom: 1px; transform: translateX(-50%); color: #9ba5b6; font-size: 10px; font-variant-numeric: tabular-nums; line-height: 1; }
 .audition-beat-message { display: flex; align-items: center; height: 100%; color: #7b879c; font-size: 11px; }
-.audition-section { color: #cad2df; border-bottom: 1px solid var(--audition-section-ink); background: color-mix(in srgb, var(--audition-section-ink) 7%, transparent); font-size: 10px; font-weight: 400; letter-spacing: .03em; }
-/* The blank section uses the gray the other non-drop sections use, so its background and border come from the same rule. */
-.audition-section--blank { --audition-section-ink: #8997AE; }
 .audition-song-transport { margin-top: 8px; padding: 6px 16px; border-top: 1px solid #ffffff09; background: #ffffff02; }
 .audition-transport { display: grid; grid-template-columns: auto minmax(160px, 1fr) auto auto auto auto; align-items: center; gap: 14px; }
 .audition-transport > .audition-decisions { padding-left: 14px; border-left: 1px solid #ffffff10; }
@@ -107,34 +62,14 @@
 .audition-studio .dd-control-start-icon { color: #c4cbd7; }
 .audition-studio [role="listbox"] { border-color: #465166; border-radius: 10px; background: #252b38; }
 .audition-studio .audition-table-scroll { flex: 1 1 auto; min-height: 0; padding: 0 8px 8px; border-radius: 0 0 24px 24px; }
-.audition-studio .cue-browser__table { background: transparent; }
-.audition-studio .cue-browser__table thead { color: #a2aec2; font-size: 9px; font-weight: 500; letter-spacing: .12em; }
-.audition-studio .cue-browser__table thead th { padding-block: 7px; background: #20242e; box-shadow: inset 0 -1px #ffffff10; }
-.audition-studio .cue-browser__table tbody { background: transparent; }
-.audition-studio .cue-browser__table tbody tr { border-color: #ffffff08; }
-.audition-studio .cue-browser__table tbody td { height: 40px; padding-block: 3px; color: #b9c2d2; font-size: 11px; font-weight: 400; }
-.audition-studio .cue-browser__table tbody td:first-child p:first-child { color: #edf0f6; font-size: 12px; font-weight: 400; line-height: 1.25; }
-.audition-studio .cue-browser__table tbody td:first-child p:last-child { color: #a0aabd; font-size: 10px; }
-.audition-studio .cue-browser__table tbody td:first-child .dd-artwork { width: 28px; height: 28px; border-radius: 50%; border-color: #ffffff1a; }
-.audition-studio .cue-browser__row:hover { background: #ffffff04; }
-.audition-studio .cue-browser__row--selected, .audition-studio .cue-browser__row--selected:hover { background: #f54b6409; box-shadow: inset 2px 0 #f5746b; }
-.audition-studio .cue-browser__row--selected td:first-child p:first-child { color: #ffbdad; }
 .audition-empty { margin-top: 20px; }
 .audition-studio button:focus-visible, .audition-studio input:focus-visible { outline: 2px solid #f78361; outline-offset: 3px; }
 
 @media (max-width: 1100px) {
-  .audition-header { flex-wrap: wrap; gap: 12px; }
-  .audition-header-identity { flex-basis: calc(100% - 130px); }
-  .audition-duration { padding-right: 0; border-right: 0; }
   .audition-transport { gap: 14px; }
 }
 @media (max-width: 700px) {
   .audition-studio { height: auto; min-height: 0; overflow: visible; border-radius: 16px; }
-  .audition-header { padding: 12px; gap: 10px; }
-  .audition-header-identity { gap: 10px; flex-basis: 100%; }
-  .audition-header h2 { font-size: 18px; }
-  .audition-duration { display: none; }
-  .audition-track-details { flex-wrap: wrap; flex-basis: 100%; }
   .audition-decisions { gap: 8px; }
   .audition-transport > .audition-decisions { grid-column: 1 / -1; padding-left: 0; border-left: 0; justify-content: space-between; }
   .audition-transport > .audition-track-navigation { grid-column: 1 / -1; padding-left: 0; border-left: 0; justify-content: center; }

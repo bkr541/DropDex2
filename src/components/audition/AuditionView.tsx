@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Music, Upload } from '@carbon/icons-react';
+import { MusicNote, Upload } from 'iconoir-react/regular';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useLibraryStats, useLibraryTracks } from '../../hooks/useRekordboxTracks';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
@@ -128,15 +128,15 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
 
   if (!importId) {
     return (
-      <div className="audition-studio audition-empty mx-auto max-w-3xl">
+      <div className="studio-surface audition-studio audition-empty mx-auto max-w-3xl">
         <div className="p-8 text-center">
-          <Music size={48} className="mx-auto mb-4 text-secondary opacity-60" />
+          <MusicNote width={48} height={48} aria-hidden="true" className="mx-auto mb-4 text-secondary opacity-60" />
           <h2 className="text-2xl font-black">Audition</h2>
           <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
             Import a Rekordbox library to listen to your tracks and see how each song is laid out.
           </p>
           <ControlButton variant="primary" className="mt-5" onClick={onImport}>
-            <Upload size={16} /> Import library
+            <Upload width={16} height={16} aria-hidden="true" /> Import library
           </ControlButton>
         </div>
       </div>
@@ -144,7 +144,7 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
   }
 
   return (
-    <div className="audition-studio" data-testid="audition-view">
+    <div className="studio-surface audition-studio" data-testid="audition-view">
       <AuditionTrackHeader
         track={selectedTrack}
         durationMs={durationMs}

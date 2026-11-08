@@ -30,7 +30,7 @@ import { RekordboxPreviewWaveform } from './RekordboxPreviewWaveform';
 import { TrackAnalysisStatusBadge } from './TrackAnalysisStatusBadge';
 import type { RekordboxTrack } from '../../types';
 import { waveformStateForTrack, type WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { CircleDash, Pause, Play, RecentlyViewed } from '@carbon/icons-react';
+import { ClockRotateRight, Pause, Play, Refresh } from 'iconoir-react/regular';
 
 interface RecentlyAddedTracksTableProps {
   tracks: RekordboxTrack[];
@@ -114,11 +114,11 @@ function TrackRowRecent({
             )}
           >
             {isLoadingThis ? (
-              <CircleDash size={13} className="animate-spin" />
+              <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" />
             ) : isPlaying ? (
-              <Pause size={13} />
+              <Pause width={13} height={13} aria-hidden="true" />
             ) : (
-              <Play size={13} />
+              <Play width={13} height={13} aria-hidden="true" />
             )}
           </button>
           <p className={cn(
@@ -177,7 +177,7 @@ function TrackRowRecent({
                 : 'bg-[var(--color-surface)] text-foreground hover:bg-primary hover:text-white',
             )}
           >
-            {isLoadingThis ? <CircleDash size={11} className="animate-spin" /> : isPlaying ? <Pause size={11} /> : <Play size={11} />}
+            {isLoadingThis ? <Refresh width={11} height={11} aria-hidden="true" className="animate-spin" /> : isPlaying ? <Pause width={11} height={11} aria-hidden="true" /> : <Play width={11} height={11} aria-hidden="true" />}
           </button>
           <div className="flex-1 min-w-0">
             <p className={cn(
@@ -228,13 +228,13 @@ export function RecentlyAddedTracksTable({
     <section className="space-y-3">
       {showHeader && (
         <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-          <RecentlyViewed size={13} /> Recently Added
+          <ClockRotateRight width={13} height={13} aria-hidden="true" /> Recently Added
         </h2>
       )}
 
       {loading && (
         <div className="flex items-center justify-center py-10">
-          <CircleDash className="animate-spin text-muted-foreground" size={20} />
+          <Refresh className="animate-spin text-muted-foreground" width={20} height={20} aria-hidden="true" />
         </div>
       )}
 

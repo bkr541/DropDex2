@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Usb } from '@carbon/icons-react';
+import { Usb } from 'iconoir-react/regular';
 import { ControlButton } from './controls/ControlButton';
 import { NoticeCard } from './feedback/NoticeCard';
 import { NOTICES, NOTICE_GROUPS, NOTICE_SHOWN_IN, SURFACE_NOTICES } from './layoutLabNoticeData';
@@ -28,7 +28,7 @@ function Dismissable({ children }: { children: (dismiss: () => void) => ReactNod
   );
 }
 
-const connect = <ControlButton variant="primary" className="!min-h-8 text-xs"><Usb size={12} /> Connect USB</ControlButton>;
+const connect = <ControlButton variant="primary" className="!min-h-8 text-xs"><Usb width={12} height={12} aria-hidden="true" /> Connect USB</ControlButton>;
 
 export function NoticeCardMockupsContent() {
   let n = 0;

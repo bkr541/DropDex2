@@ -4,21 +4,21 @@ import { describe, expect, it } from 'vitest';
 const read = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8');
 const controlsCss = read('../dropdex-controls.css');
 const feedbackCss = read('../dropdex-feedback.css');
+const raisedPlate = controlsCss.match(/\.dd-control-button:is\(\.dd-control-button--primary, \.dd-control-button--secondary\) \{([^}]*)\}/)?.[1];
 
 describe('The one primary button', () => {
-  it('is a coral outline on a clear background, the same outline as the profile icon ring in the Hero mockup', () => {
-    const hero = read('../layout-lab-hero.css');
-    const ring = hero.match(/\.lh-avatar-ring \{[^}]*border: 1\.5px solid (#[0-9a-f]{6}); border-radius: 50%; box-shadow: 0 0 12px (#[0-9a-f]{8});/)!;
-    expect(read('../../../index.css')).toContain(`--color-control-primary: ${ring[1]};`);
-    expect(read('../../../index.css')).toContain(`--color-control-primary-glow: ${ring[2]};`);
-    expect(controlsCss).toMatch(/\.dd-control-button--primary \{ border-width: 1\.5px;[^}]*box-shadow: 0 0 12px var\(--color-control-primary-glow\)/);
-    expect(controlsCss).toMatch(/\.dd-control-button--primary \{[^}]*border-color: var\(--color-control-primary\)[^}]*background: transparent[^}]*color: var\(--color-control-primary\)/);
+  it('shares a graphite plate with the secondary, with coral on the primary rim and label', () => {
+    expect(raisedPlate).toContain('repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px)');
+    expect(raisedPlate).toContain('linear-gradient(165deg, #2c303b 0%, #232731 40%, #1c2029 100%)');
+    expect(raisedPlate).toContain('box-shadow: inset 0 1px 0 #ffffff14, inset 0 -1px 0 #00000040, 0 1px 2px #00000059, 0 10px 24px -8px #0000008c;');
+    expect(controlsCss).toMatch(/\.dd-control-button--primary \{[^}]*--dd-plate-border: #f56b7099;[^}]*--dd-plate-text: var\(--color-control-primary-hover\);/);
+    expect(controlsCss).toMatch(/\.dd-control-button--primary\.dd-control-button--ready:not\(:disabled\) \{[^}]*--dd-plate-text: var\(--color-control-green\);/);
   });
 
   it('sets its text like the artist name in the Hero mockups (light, capitals, 0.1em spacing)', () => {
     const mockup = read('../LayoutLabHeroMockups.tsx');
     expect(mockup).toMatch(/<h2 className="truncate text-\[28px\] font-light uppercase leading-none tracking-\[0\.1em\]"[^>]*>\{HERO\.name\}<\/h2>/);
-    expect(controlsCss).toMatch(/\.dd-control-button--primary \{[^}]*font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; font-weight: 300; letter-spacing: \.1em; text-transform: uppercase;/);
+    expect(raisedPlate).toMatch(/font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;[^}]*font-weight: 300;[^}]*letter-spacing: \.1em;[^}]*text-transform: uppercase;/);
     expect(feedbackCss).toMatch(/\.dd-upload-button--primary \{[^}]*font-weight: 300; letter-spacing: \.1em; text-transform: uppercase;/);
   });
 
@@ -34,18 +34,19 @@ describe('The one primary button', () => {
     expect(read('../../drop-lab/DropLabView.tsx')).toContain('<ControlButton variant="primary"');
   });
 
-  it('is not left as a solid fill anywhere else', () => {
+  it('keeps the file-upload button outline', () => {
     expect(feedbackCss).toMatch(/\.dd-upload-button--primary \{[^}]*background: transparent/);
   });
 });
 
 describe('The one secondary button', () => {
-  it('is a gray outline on a clear background: the same shape as the primary, but quieter', () => {
-    expect(controlsCss).toMatch(/\.dd-control-button--secondary,\s*\.dd-control-button--neutral,\s*\.dd-control-button--surface \{[^}]*border-color: #3a4655[^}]*background: transparent[^}]*color: #d8dee7/);
-    expect(controlsCss).not.toMatch(/\.dd-control-button--secondary \{[^}]*control-blue/);
+  it('uses silver on the raised plate and brightens the rim and label on hover', () => {
+    expect(controlsCss).toMatch(/\.dd-control-button--secondary \{[^}]*--dd-plate-border: #ffffff1f;[^}]*--dd-plate-text: #cdd3dd;[^}]*--dd-plate-hover-border: #ffffff3d;[^}]*--dd-plate-hover-text: #fff;/);
+    expect(controlsCss).toMatch(/\.dd-control-button:is\(\.dd-control-button--primary, \.dd-control-button--secondary\):hover:not\(:disabled\) \{[^}]*border-color: var\(--dd-plate-hover-border\);[^}]*color: var\(--dd-plate-hover-text\);/);
   });
 
-  it('lights up on hover without turning blue, so it never looks like the primary', () => {
-    expect(controlsCss).toMatch(/\.dd-control-button--secondary:hover:not\(:disabled\),[^{]*\{[^}]*background: rgb\(255 255 255 \/ \.05\)[^}]*color: #fff/);
+  it('dims the plate when disabled and keeps neutral and surface as outline variants', () => {
+    expect(controlsCss).toContain('.dd-control-button:is(.dd-control-button--primary, .dd-control-button--secondary):disabled { opacity: .35; }');
+    expect(controlsCss).toMatch(/\.dd-control-button--neutral,\s*\.dd-control-button--surface \{[^}]*border-color: #3a4655[^}]*background: transparent[^}]*color: #d8dee7/);
   });
 });

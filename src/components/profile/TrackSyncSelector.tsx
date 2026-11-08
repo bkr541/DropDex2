@@ -1,12 +1,15 @@
+import { SurfaceCard } from '../ui/display/SurfaceCard';
+import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CircleDash } from '@carbon/icons-react';
 import { useLibraryStats } from '../../hooks/useRekordboxTracks';
 import { fetchLibraryTracksPage } from '../../lib/queries/rekordbox';
 import { logger } from '../../lib/logger';
 import { trackIdentityKey } from '../../lib/preview/trackIdentity';
-import { cn } from '../../lib/utils';
 import type { RekordboxTrack } from '../../types';
 import { CheckboxControl, ControlButton, FilterDropdown, SearchControl } from '../ui/controls';
+import { EmptyState, NoticeCard, StatusLoader } from '../ui/feedback';
+
+const PAGE_SIZE = 100;
 
 type StatusFilter = 'all' | 'not-synced' | 'synced';
 
@@ -66,7 +69,8 @@ export function TrackSyncSelector({ importId, syncedKeys, onCancel, onSync }: Tr
   const [selected, setSelected] = useState<Map<string, RekordboxTrack>>(new Map());
   const { tracks, loading, error } = useAllTracks(importId, search.trim(), genre);
   const { stats } = useLibraryStats(importId);
-  const listRef = useRef<HTMLUListElement>(null);
+  const [page, setPage] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const genreOptions = useMemo(() => [{ value: 'all', label: 'All genres' }, ...(stats?.genreTotals ?? []).map(({ name }) => ({ value: name, label: name }))], [stats?.genreTotals]);
 
@@ -76,6 +80,10 @@ export function TrackSyncSelector({ importId, syncedKeys, onCancel, onSync }: Tr
     return status === 'synced' ? synced : !synced;
   }), [tracks, status, syncedKeys]);
 
+  const selectedIds = useMemo(() => new Set(selected.keys()), [selected]);
+  const lastPage = Math.max(0, Math.ceil(visible.length / PAGE_SIZE) - 1);
+  const currentPage = Math.min(page, lastPage);
+  const shown = useMemo(() => visible.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE), [visible, currentPage]);
   const visibleSelected = visible.filter((track) => selected.has(track.id)).length;
   const allVisibleSelected = visible.length > 0 && visibleSelected === visible.length;
 
@@ -92,13 +100,14 @@ export function TrackSyncSelector({ importId, syncedKeys, onCancel, onSync }: Tr
     return next;
   });
 
-  useEffect(() => { listRef.current?.scrollTo({ top: 0 }); }, [search, genre, status]);
+  useEffect(() => { setPage(0); }, [search, genre, status]);
+  useEffect(() => { listRef.current?.scrollTo({ top: 0 }); }, [currentPage, search, genre, status]);
 
   return (
     <div className="space-y-3 p-4" data-testid="track-sync-selector">
       {/* Filter row */}
       <div className="flex flex-wrap items-stretch gap-3" data-testid="track-sync-filters">
-        <div className="min-w-[220px] flex-1">
+        <div className="min-w-[min(100%,220px)] flex-1">
           <SearchControl value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search title or artist…" aria-label="Search tracks" />
         </div>
         <FilterDropdown label="Genre" value={genre} onChange={setGenre} options={genreOptions} searchable />
@@ -106,47 +115,51 @@ export function TrackSyncSelector({ importId, syncedKeys, onCancel, onSync }: Tr
       </div>
 
       {/* The track list */}
-      <div className="overflow-hidden rounded-xl border border-[var(--color-border-subtle)]">
-        <div className="flex items-center gap-3 border-b border-[var(--color-border-subtle)] bg-white/[0.03] px-4 py-2.5">
-          <CheckboxControl checked={allVisibleSelected} indeterminate={visibleSelected > 0 && !allVisibleSelected} onChange={toggleAllVisible} disabled={visible.length === 0} aria-label="Select all shown tracks" />
+      <SurfaceCard as="div" className="profile-records">
+        <div className="profile-record flex flex-wrap items-center gap-3 border-b border-[var(--color-border-faint)]">
+          <CheckboxControl checked={allVisibleSelected} indeterminate={visibleSelected > 0 && !allVisibleSelected} onChange={toggleAllVisible} disabled={visible.length === 0} aria-label="Select all matching tracks" />
           <span className="text-xs font-bold">
             {loading ? 'Loading your tracks…' : `${visible.length.toLocaleString()} ${visible.length === 1 ? 'track' : 'tracks'} shown`}
           </span>
           <span className="ml-auto text-xs text-muted-foreground">{selected.size.toLocaleString()} selected</span>
         </div>
         {loading ? (
-          <div className="flex items-center justify-center py-16"><CircleDash className="animate-spin text-primary" size={24} /></div>
+          <div className="flex justify-center py-10"><StatusLoader label="Loading tracks to sync" /></div>
         ) : error ? (
-          <p className="py-12 text-center text-sm font-bold text-red-400">{error}</p>
+          <div className="p-4"><NoticeCard tone="error">{error}</NoticeCard></div>
         ) : visible.length === 0 ? (
-          <p className="py-12 text-center text-sm italic text-muted-foreground">No tracks match these filters.</p>
+          <EmptyState title="No tracks match" message="Try changing your search or filters." />
         ) : (
-          <ul ref={listRef} className="max-h-[26rem] divide-y divide-[var(--color-border-faint)] overflow-y-auto">
-            {visible.map((track) => {
-              const on = selected.has(track.id);
-              const synced = syncedKeys.has(trackIdentityKey(track));
-              return (
-                <li
-                  key={track.id}
-                  data-testid="track-sync-row"
-                  onClick={() => toggleOne(track)}
-                  className={cn('flex cursor-pointer items-center gap-3 px-4 py-2 transition-colors hover:bg-white/[0.04]', on && 'bg-primary/[0.07]')}
-                  style={{ contentVisibility: 'auto', containIntrinsicSize: '0 44px' }}
-                >
-                  <CheckboxControl checked={on} onChange={() => toggleOne(track)} aria-label={`Select ${track.title}`} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">{track.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">{track.artist || 'Unknown artist'}{track.genre ? ` · ${track.genre}` : ''}</p>
-                  </div>
-                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest', synced ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/[0.06] text-muted-foreground')}>
-                    {synced ? 'Synced' : 'Not synced'}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            <RecordTrackListing
+              tracks={shown}
+              importId={importId}
+              selectedIds={selectedIds}
+              onSelect={toggleOne}
+              scrollRef={listRef}
+              scrollStyle={{ maxHeight: '26rem' }}
+              rowProps={(track) => ({
+                'data-testid': 'track-sync-row',
+                title: syncedKeys.has(trackIdentityKey(track)) ? 'Synced' : 'Not synced',
+                style: { contentVisibility: 'auto', containIntrinsicSize: '0 40px' },
+              })}
+              actions={(track) => (
+                <span onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                  <CheckboxControl checked={selectedIds.has(track.id)} onChange={() => toggleOne(track)} aria-label={'Select ' + track.title} />
+                </span>
+              )}
+              ariaLabel="Select tracks to sync"
+            />
+            {lastPage > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border-subtle)] px-3 py-2">
+                <ControlButton variant="secondary" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</ControlButton>
+                <p className="text-xs text-muted-foreground">{currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, visible.length)} of {visible.length}</p>
+                <ControlButton variant="secondary" disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>Next</ControlButton>
+              </div>
+            )}
+          </>
         )}
-      </div>
+      </SurfaceCard>
 
       <div className="flex items-center justify-end gap-2">
         <ControlButton variant="ghost" onClick={onCancel}>Cancel</ControlButton>

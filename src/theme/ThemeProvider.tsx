@@ -60,6 +60,19 @@ function applyDocumentTheme(theme: ThemeId) {
   metaThemeColor?.setAttribute('content', themeColor(theme));
 }
 
+/** Theme context for standalone previews, using the saved appearance on this device. */
+export function LocalThemeProvider({ children }: { children: ReactNode }) {
+  const [theme, setTheme] = useState<ThemeId>(() => readStartupTheme(getBrowserThemeStorage()));
+  const value = useMemo(() => ({ theme, setTheme }), [theme]);
+
+  useLayoutEffect(() => {
+    applyDocumentTheme(theme);
+    persistThemeLocally(getBrowserThemeStorage(), theme);
+  }, [theme]);
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const auth = useAuthSession();
   const userId = auth.status === 'authenticated' ? auth.session.user.id : null;

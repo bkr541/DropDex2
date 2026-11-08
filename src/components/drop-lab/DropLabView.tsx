@@ -1,3 +1,4 @@
+import '../ui/studio-surface.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CandidateRotation } from './CandidateRotation';
 import { DropAnalysisStatus } from './DropAnalysisStatus';
@@ -14,7 +15,7 @@ import { sliceWaveformSegment } from '../../lib/music/waveformSegments';
 import type { RekordboxTrack } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { logger } from '../../lib/logger';
-import { ChevronLeft, CircleDash, Chemistry, Document, Search } from '@carbon/icons-react';
+import { Flask, NavArrowLeft, Page, Refresh, Search } from 'iconoir-react/regular';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { ControlButton, ToolbarIconButton, ToolbarIconGroup } from '../ui/controls';
 import { resolveDropLabLoad, type DropLabLoadMethod, type DropLabSide } from './dropLabDrag';
@@ -261,8 +262,8 @@ export function DropLabView({
   if (!sourceTrack) {
     const stuck = picks.noPairFound || Boolean(picks.error);
     return (
-      <div className="relative mx-auto flex max-w-xl flex-col items-center gap-3 py-16 text-center">
-        <Chemistry size={40} className="text-muted-foreground" />
+      <div className="studio-surface relative mx-auto flex w-full max-w-xl flex-col items-center gap-3 py-16 text-center">
+        <Flask width={40} height={40} aria-hidden="true" className="text-muted-foreground" />
         <h2 className="text-lg font-bold">{stuck ? 'No pair to start with yet' : 'Finding a pair to start with…'}</h2>
         <p className="text-sm text-muted-foreground">
           {picks.error
@@ -270,7 +271,7 @@ export function DropLabView({
               ? 'Your library has no two tracks close enough in tempo and key to suggest. Choose a source track to begin.'
               : 'Drop Lab is picking two tracks that fit together, using the same matching as Flip Lab.')}
         </p>
-        {!stuck && <CircleDash size={20} className="animate-spin text-muted-foreground" aria-label="Loading" />}
+        {!stuck && <Refresh width={20} height={20} className="animate-spin text-muted-foreground" aria-label="Loading" />}
         {stuck && (
           <div className="flex items-center gap-2">
             <ControlButton variant="primary" onClick={() => setPickerOpen(true)} className="!min-h-8 text-xs">Choose a source track</ControlButton>
@@ -301,7 +302,7 @@ export function DropLabView({
   );
 
   return (
-    <div className="relative flex flex-col pb-6">
+    <div className="studio-surface drop-lab-studio relative flex flex-col pb-6">
       {/* Selected track: above the timeline, on the left */}
       <DropLabTrackHeader
         label="Selected track"
@@ -309,9 +310,9 @@ export function DropLabView({
         dropPoint={sourceDrop}
         actions={(
           <ToolbarIconGroup className="-mt-[7px]">
-            <ToolbarIconButton label="Back" onClick={onBack}><ChevronLeft size={20} /></ToolbarIconButton>
-            <ToolbarIconButton label="Change source track" onClick={() => setPickerOpen((open) => !open)}><Search size={20} /></ToolbarIconButton>
-            <ToolbarIconButton label="Candidate details" onClick={() => activeCandidate && onTrackDetails(activeCandidate)} disabled={!activeCandidate}><Document size={20} /></ToolbarIconButton>
+            <ToolbarIconButton label="Back" onClick={onBack}><NavArrowLeft width={20} height={20} aria-hidden="true" /></ToolbarIconButton>
+            <ToolbarIconButton label="Change source track" onClick={() => setPickerOpen((open) => !open)}><Search width={20} height={20} aria-hidden="true" /></ToolbarIconButton>
+            <ToolbarIconButton label="Candidate details" onClick={() => activeCandidate && onTrackDetails(activeCandidate)} disabled={!activeCandidate}><Page width={20} height={20} aria-hidden="true" /></ToolbarIconButton>
           </ToolbarIconGroup>
         )}
       />

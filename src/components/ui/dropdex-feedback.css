@@ -45,7 +45,7 @@
 .dd-progress__value { width: 38px; color: #dce3eb; font: 700 11px/1 var(--font-mono, monospace); text-align: right; }
 
 .dd-loader { --dd-loader-size: 25px; position: relative; width: var(--dd-loader-size); height: var(--dd-loader-size); display: inline-flex; align-items: center; justify-content: center; color: var(--dd-semantic); }
-.dd-loader__ring { width: 22px; height: 22px; border: 2px solid rgb(var(--dd-semantic-rgb) / .24); border-top-color: var(--dd-semantic); border-right-color: var(--dd-semantic); border-radius: 50%; animation: dd-spin .8s linear infinite; }
+.dd-loader__ring { animation: dd-spin .8s linear infinite; }
 .dd-loader__dual-a, .dd-loader__dual-b { position: absolute; border-radius: 50%; animation: dd-spin .95s linear infinite; }
 .dd-loader__dual-a { width: 24px; height: 24px; border: 2px solid transparent; border-top-color: var(--dd-semantic); border-left-color: var(--dd-semantic); }
 .dd-loader__dual-b { width: 16px; height: 16px; border: 2px solid transparent; border-right-color: var(--dd-semantic); border-bottom-color: var(--dd-semantic); animation-direction: reverse; }

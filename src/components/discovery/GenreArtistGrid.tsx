@@ -1,4 +1,4 @@
-import { CircleDash } from '@carbon/icons-react';
+import { Refresh } from 'iconoir-react/regular';
 import { useGenreArtists } from '../../hooks/useGenreArtists';
 import type { DiscoveryArtist, GenreBrowseArtist } from '../../types';
 import { ArtistCard } from './ArtistCard';
@@ -25,7 +25,7 @@ export function GenreArtistGrid({ genreId, genreName, onSelectArtist }: GenreArt
       </div>
 
       {loading && (
-        <div className="studio-empty"><CircleDash className="animate-spin text-primary" size={24} /></div>
+        <div className="studio-empty"><Refresh className="animate-spin text-primary" width={24} height={24} aria-hidden="true" /></div>
       )}
 
       {error && (

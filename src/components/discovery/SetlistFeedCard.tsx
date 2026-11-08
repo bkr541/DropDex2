@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Music } from '@carbon/icons-react';
+import { MusicNote } from 'iconoir-react/regular';
 import type { DiscoverySetlistResult } from '../../types';
 
 interface SetlistFeedCardProps {
@@ -12,7 +12,7 @@ interface SetlistFeedCardProps {
 function SetlistThumb({ url }: { url: string | null }) {
   const [failed, setFailed] = useState(false);
   if (url && !failed) return <img src={url} alt="" onError={() => setFailed(true)} className="discovery-setlist-thumb" />;
-  return <span className="discovery-setlist-thumb" aria-hidden="true"><Music size={24} /></span>;
+  return <span className="discovery-setlist-thumb" aria-hidden="true"><MusicNote width={24} height={24} aria-hidden="true" /></span>;
 }
 
 /** One setlist: a wide thumbnail, its title, then (for rows that mix artists) the artist, its date and the share of its tracks that are identified. */

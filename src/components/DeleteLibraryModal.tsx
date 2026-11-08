@@ -7,11 +7,12 @@ import {
   type DeleteActiveStrategy,
 } from '../lib/rekordbox/libraryDeletion';
 import { cn } from '../lib/utils';
-import { CircleDash, Close, TrashCan, WarningAlt } from '@carbon/icons-react';
+import { Refresh, Trash, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { ControlButton, TextControl } from './ui/controls';
 
 interface DeleteLibraryModalProps {
   target: RekordboxImport | null;
+  profileStyle?: boolean;
   isActive: boolean;
   nextUsableImport: RekordboxImport | null;
   deleting: boolean;
@@ -23,6 +24,7 @@ interface DeleteLibraryModalProps {
 
 export function DeleteLibraryModal({
   target,
+  profileStyle = false,
   isActive,
   nextUsableImport,
   deleting,
@@ -76,13 +78,15 @@ export function DeleteLibraryModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-library-title"
-          className="w-full max-w-2xl rounded-3xl border border-red-500/20 bg-[var(--color-panel)] p-6 shadow-2xl"
+          className={cn('w-full max-w-2xl', profileStyle
+            ? 'studio-surface profile-modal p-4 sm:p-5'
+            : 'rounded-3xl border border-red-500/20 bg-[var(--color-panel)] p-6 shadow-2xl')}
         >
           {/* Top row: icon + title + body  |  contextual warning */}
-          <div className="flex gap-6">
+          <div className={cn('flex gap-6', profileStyle && 'flex-col sm:flex-row')}>
             <div className="flex min-w-0 flex-1 items-start gap-4">
               <div className="shrink-0 rounded-2xl bg-red-500/10 p-3 text-red-400">
-                <WarningAlt size={22} />
+                <WarningTriangle width={22} height={22} aria-hidden="true" />
               </div>
               <div className="min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-400">Permanent action</p>
@@ -169,7 +173,7 @@ export function DeleteLibraryModal({
               Type <span className="font-mono text-red-400">DELETE</span> exactly to confirm
             </label>
             <TextControl
-              icon={<TrashCan size={17} />}
+              icon={<Trash width={17} height={17} aria-hidden="true" />}
               id="delete-library-confirmation"
               autoFocus
               disabled={deleting}
@@ -192,7 +196,7 @@ export function DeleteLibraryModal({
 
           <div className="mt-4 flex gap-3">
             <ControlButton type="button" variant="neutral" disabled={deleting} onClick={onClose} className="flex-1">
-              <Close size={16} /> Cancel
+              <Xmark width={16} height={16} aria-hidden="true" /> Cancel
             </ControlButton>
             <ControlButton
               type="button"
@@ -203,11 +207,11 @@ export function DeleteLibraryModal({
             >
               {deleting ? (
                 <>
-                  <CircleDash size={16} className="animate-spin" />
+                  <Refresh width={16} height={16} aria-hidden="true" className="animate-spin" />
                   {deletingRetryCount > 0 ? `Cleaning up… pass ${deletingRetryCount}` : 'Deleting…'}
                 </>
               ) : (
-                <><TrashCan size={16} /> {actionLabel}</>
+                <><Trash width={16} height={16} aria-hidden="true" /> {actionLabel}</>
               )}
             </ControlButton>
           </div>

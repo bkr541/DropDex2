@@ -6,7 +6,7 @@ import { StartupConfigurationError } from './components/StartupConfigurationErro
 import { lazyWithRecovery } from './navigation/lazyWithRecovery';
 import { supabaseConfiguration } from './lib/supabase';
 import { ThemeProvider } from './theme/ThemeProvider';
-import { CircleDash } from '@carbon/icons-react';
+import { Refresh } from 'iconoir-react/regular';
 import { logger } from './lib/logger';
 
 const App = lazyWithRecovery('application', () => import('./App.tsx'));
@@ -46,7 +46,7 @@ function ApplicationLoadingScreen() {
       role="status"
     >
       <div className="text-center">
-        <CircleDash className="mx-auto animate-spin text-primary" size={32} />
+        <Refresh className="mx-auto animate-spin text-primary" width={32} height={32} aria-hidden="true" />
         <p className="mt-3 text-sm font-bold text-muted-foreground">Loading DropDex…</p>
       </div>
     </div>

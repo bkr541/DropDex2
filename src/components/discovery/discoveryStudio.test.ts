@@ -11,7 +11,7 @@ vi.mock('../../lib/supabase', () => ({ supabase: {} }));
 
 const read = (p: string) => readFileSync(resolve(__dirname, p), 'utf8');
 const studioCss = read('../ui/studio.css');
-const auditionCss = read('../audition/AuditionView.css');
+const auditionCss = read('../ui/studio-surface.css');
 const discoveryCss = read('./DiscoveryView.css');
 const view = read('./DiscoveryView.tsx');
 const noTaste: DiscoveryForYou = { hasTaste: false, favoriteGenres: [], shelves: [], loading: false, error: null, retry: vi.fn() };
@@ -23,13 +23,11 @@ const artist = (id: string, name: string, over: Partial<FeedArtist> = {}): FeedA
 });
 
 describe('Discovery uses the Audition look', () => {
-  it('shares the Audition panel: same palette, gradient, radius and fonts', () => {
+  it('shares the Audition accent, radius, border and fonts', () => {
     for (const declaration of [
-      '--color-primary: #f56b70;', '--color-ring: #f78361;', '--color-surface: #2b313e;', '--color-background: #1b1f28;',
+      '--color-primary: #f56b70;', '--color-ring: #f78361;',
       "font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;",
-      'background: linear-gradient(165deg, #292d37 0%, #20242e 36%, #191d25 100%);',
       'border-radius: 24px;', 'border: 1px solid #ffffff13;',
-      'box-shadow: inset 0 1px 0 #ffffff06, 0 16px 40px #00000026;',
     ]) {
       expect(studioCss).toContain(declaration);
       expect(auditionCss).toContain(declaration);

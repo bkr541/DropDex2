@@ -51,13 +51,14 @@ describe('Streaming group in the Library tab', () => {
     expect(group).toContain('Syncing needs the DropDex desktop app');
   });
 
-  it('the track group has a filter row above a list with a styled checkbox before each track name', async () => {
+  it('the track group has a filter row above the shared record listing with a checkbox for each track', async () => {
     const { TrackSyncSelector } = await import('./TrackSyncSelector');
     const markup = renderToStaticMarkup(createElement(TrackSyncSelector, { importId: 'i1', syncedKeys: new Set<string>(), onCancel: () => undefined, onSync: () => undefined }));
-    expect(markup.indexOf('track-sync-filters')).toBeLessThan(markup.indexOf('Select all shown tracks'));
+    expect(markup.indexOf('track-sync-filters')).toBeLessThan(markup.indexOf('Select all matching tracks'));
     for (const text of ['Search tracks', 'Genre', 'Status', 'role="checkbox"', 'Sync 0 Tracks']) expect(markup).toContain(text);
     expect(markup).toMatch(/<button[^>]*disabled=""[^>]*data-testid="track-sync-submit"|data-testid="track-sync-submit"[^>]*disabled/);
-    expect(selector.indexOf('<CheckboxControl checked={on}')).toBeLessThan(selector.indexOf('{track.title}'));
+    expect(selector).toContain('<RecordTrackListing');
+    expect(selector).toContain('<CheckboxControl checked={selectedIds.has(track.id)}');
     expect(selector).toContain('Sync {selected.size.toLocaleString()} {selected.size === 1');
   });
 });

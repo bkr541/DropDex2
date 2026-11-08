@@ -1,11 +1,7 @@
-import { formatKey } from '../../lib/utils';
-import { cueAnalysisReady } from '../../lib/cues/cueReadiness';
-import { TrackListing, type TrackListingColumn } from '../ui/display';
-import { TrackRowPlayButton } from '../player/TrackRowPlayButton';
-import { TrackRowWaveform } from '../player/TrackRowWaveform';
+import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import type { RekordboxTrack } from '../../types';
 import { waveformStateForTrack, type WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { CircleDash, Search } from '@carbon/icons-react';
+import { Refresh, Search } from 'iconoir-react/regular';
 import { ControlButton } from '../ui/controls';
 
 interface LibrarySearchResultsProps {
@@ -35,11 +31,6 @@ export function LibrarySearchResults({
   waveformStates,
   onRetryWaveform,
 }: LibrarySearchResultsProps) {
-  const columns: TrackListingColumn<RekordboxTrack>[] = [
-    { id: 'bpm', label: 'BPM', cellClassName: 'font-mono text-[13px] font-bold tabular-nums', render: (track) => (track.bpm != null ? track.bpm.toFixed(1) : '—') },
-    { id: 'key', label: 'Key', render: (track) => formatKey(track.musical_key) || '—' },
-  ];
-
   const label = loading
     ? 'Searching…'
     : results.length > 0
@@ -49,13 +40,13 @@ export function LibrarySearchResults({
   return (
     <div className="space-y-3">
       <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-        <Search size={13} />
+        <Search width={13} height={13} aria-hidden="true" />
         {label}
       </h2>
 
       {loading && (
         <div className="flex items-center justify-center py-12">
-          <CircleDash className="animate-spin text-primary" size={26} />
+          <Refresh className="animate-spin text-primary" width={26} height={26} aria-hidden="true" />
         </div>
       )}
 
@@ -67,22 +58,20 @@ export function LibrarySearchResults({
 
       {!loading && importId && results.length === 0 && (
         <div className="text-center py-12 border-2 border-dashed border-[var(--color-border-subtle)] rounded-3xl">
-          <Search size={28} className="mx-auto text-muted-foreground opacity-30 mb-2" />
+          <Search width={28} height={28} aria-hidden="true" className="mx-auto text-muted-foreground opacity-30 mb-2" />
           <p className="text-sm text-muted-foreground italic">No tracks matching your search.</p>
         </div>
       )}
 
       {!loading && results.length > 0 && (
         <div className="lib-panel">
-          <TrackListing<RekordboxTrack>
+          <RecordTrackListing
             tracks={results}
-            columns={columns}
             onSelect={onTrackClick}
-            getTitle={(track) => track.title}
-            getArtist={(track) => track.artist}
-            getStatus={(track) => (cueAnalysisReady(track) ? 'ready' : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required' ? 'error' : track.analysis_parse_status == null ? 'none' : 'warning')}
-            renderLeading={(track) => <TrackRowPlayButton track={track} />}
-            renderWaveform={(track) => <TrackRowWaveform track={track} waveformState={waveformStateForTrack(waveformStates, track.id)} onRetry={() => onRetryWaveform(track.id)} />}
+            importId={importId}
+            getWaveformState={(id) => waveformStateForTrack(waveformStates, id)}
+            onRetryWaveform={onRetryWaveform}
+            followPlayback
             rowProps={(track) => ({ 'aria-label': `Open ${track.title}${track.artist ? ` by ${track.artist}` : ''}` })}
             ariaLabel="Search results"
           />
@@ -90,7 +79,7 @@ export function LibrarySearchResults({
             <div className="border-t border-[var(--color-border-faint)] pt-2 flex justify-center">
               <ControlButton variant="neutral" onClick={onLoadMore} disabled={loadingMore}>
                 {loadingMore ? (
-                  <><CircleDash size={13} className="animate-spin" /> Loading more…</>
+                  <><Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> Loading more…</>
                 ) : (
                   `Load ${Math.min(200, total - results.length).toLocaleString()} more…`
                 )}

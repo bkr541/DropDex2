@@ -1,12 +1,15 @@
+import { ProfileSwitch } from './ProfileSwitch';
+import { SurfaceCard } from '../ui/display/SurfaceCard';
 import { useRef, useState } from 'react';
-import { CircleDash, CloudUpload, Document, DocumentAdd, Download, FolderOpen, TrashCan, WarningAlt } from '@carbon/icons-react';
+import { CloudUpload, Download, Folder, Page, PagePlus, Refresh, Trash, WarningTriangle } from 'iconoir-react/regular';
 import { useRekordboxXmlFiles } from '../../hooks/useRekordboxXmlFiles';
 import { logger } from '../../lib/logger';
 import type { RekordboxXmlRecord } from '../../lib/queries/rekordboxXml';
 import { checkRekordboxXmlFile, type RekordboxXmlHeader } from '../../lib/rekordboxXml/xmlHeader';
 import { formatBytes } from '../../lib/usb/usbFormat';
 import { cn } from '../../lib/utils';
-import { ControlButton } from '../ui/controls';
+import { ControlButton, TextControl } from '../ui/controls';
+import { NoticeCard, StatusLoader } from '../ui/feedback';
 
 const STORAGE_KEY = 'dropdex:rekordbox:xml-sync-enabled';
 
@@ -57,11 +60,11 @@ function SavedFileRow({ record, onRemove, onDownload }: { record: RekordboxXmlRe
   ].filter(Boolean).join(' · ');
 
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" data-testid="rekordbox-xml-row">
+    <li className="profile-record flex flex-wrap items-center justify-between gap-3" data-testid="rekordbox-xml-row">
       <div className="flex min-w-0 items-center gap-3">
-        <Document size={20} className="shrink-0 text-muted-foreground" />
+        <Page width={20} height={20} aria-hidden="true" className="shrink-0 text-muted-foreground" />
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold" title={record.fileName}>{record.fileName}</p>
+          <p className="truncate text-xs font-medium" title={record.fileName}>{record.fileName}</p>
           <p className="text-[11px] text-muted-foreground">{details}</p>
           {failed && <p className="mt-0.5 text-[11px] text-red-400" role="alert">{failed}</p>}
         </div>
@@ -70,14 +73,14 @@ function SavedFileRow({ record, onRemove, onDownload }: { record: RekordboxXmlRe
         <div className="flex items-center gap-2" role="group" aria-label={`Remove ${record.fileName}`}>
           <span className="text-xs text-muted-foreground">Remove this saved copy?</span>
           <ControlButton variant="danger" onClick={() => void remove()} disabled={busy}>
-            {busy ? <CircleDash className="animate-spin" size={14} /> : <TrashCan size={14} />} Remove
+            {busy ? <Refresh className="animate-spin" width={14} height={14} aria-hidden="true" /> : <Trash width={14} height={14} aria-hidden="true" />} Remove
           </ControlButton>
           <ControlButton variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>Keep</ControlButton>
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <ControlButton variant="neutral" onClick={() => void onDownload(record)}><Download size={14} /> Download</ControlButton>
-          <ControlButton variant="ghost" onClick={() => setConfirming(true)} aria-label={`Remove ${record.fileName}`}><TrashCan size={14} /></ControlButton>
+          <ControlButton variant="neutral" onClick={() => void onDownload(record)}><Download width={14} height={14} aria-hidden="true" /> Download</ControlButton>
+          <ControlButton variant="ghost" onClick={() => setConfirming(true)} aria-label={`Remove ${record.fileName}`}><Trash width={14} height={14} aria-hidden="true" /></ControlButton>
         </div>
       )}
     </li>
@@ -144,31 +147,23 @@ export function RekordboxXmlGroup({ userId }: { userId: string | null }) {
   const sameAsSaved = chosen?.header ? xml.files.some((record) => record.fileName === chosen.file.name && record.sizeBytes === chosen.file.size) : false;
 
   return (
-    <section className="space-y-3" data-testid="rekordbox-xml-group">
-      <h2 className="flex items-center gap-1.5 px-1 text-xs font-bold uppercase tracking-widest text-muted-foreground"><Document size={11} />Rekordbox</h2>
-      <div className="glass divide-y divide-[var(--color-border-faint)] rounded-2xl">
-        <div className="flex items-start justify-between gap-4 p-4">
+    <section className="profile-group" data-testid="rekordbox-xml-group">
+      <h2 className="profile-heading"><Page width={11} height={11} aria-hidden="true" />Rekordbox</h2>
+      <SurfaceCard as="div" className="profile-records divide-y divide-[var(--color-border-faint)]">
+        <div className="profile-record flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <p id="rekordbox-xml-label" className="text-sm font-bold">Sync Rekordbox XML</p>
+            <p id="rekordbox-xml-label" className="text-xs font-medium">Sync Rekordbox XML</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Keep a copy of your Rekordbox XML export in your own private DropDex cloud folder. You can save more than one, for example one for each USB or each time you export.
             </p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={enabled}
+          <ProfileSwitch
+            checked={enabled}
             aria-labelledby="rekordbox-xml-label"
             data-testid="rekordbox-xml-toggle"
             onClick={toggle}
             disabled={xml.saving}
-            className={cn(
-              'relative mt-0.5 h-6 w-11 shrink-0 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-50',
-              enabled ? 'border-primary bg-primary' : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)]',
-            )}
-          >
-            <span className={cn('absolute top-0.5 h-[18px] w-[18px] rounded-full bg-white shadow transition-all', enabled ? 'left-[22px]' : 'left-0.5')} />
-          </button>
+          />
         </div>
 
         {enabled && (
@@ -176,17 +171,18 @@ export function RekordboxXmlGroup({ userId }: { userId: string | null }) {
             <div>
               <label htmlFor="rekordbox-xml-path" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Rekordbox XML file</label>
               <div className="mt-1.5 flex items-stretch gap-2">
-                <input
+                <TextControl
                   id="rekordbox-xml-path"
+                  icon={<Page width={16} height={16} aria-hidden="true" />}
                   readOnly
                   value={chosen?.location ?? ''}
                   placeholder="No file chosen"
                   title={chosen?.location}
                   data-testid="rekordbox-xml-path"
-                  className="min-w-0 flex-1 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-xs"
+                  containerClassName="min-w-0 flex-1"
                 />
                 <ControlButton variant="neutral" onClick={() => inputRef.current?.click()} disabled={xml.saving}>
-                  <FolderOpen size={14} /> Browse…
+                  <Folder width={14} height={14} aria-hidden="true" /> Browse…
                 </ControlButton>
                 <input
                   ref={inputRef}
@@ -202,14 +198,14 @@ export function RekordboxXmlGroup({ userId }: { userId: string | null }) {
                   {[formatBytes(chosen.file.size), chosen.header.trackCount != null ? `${chosen.header.trackCount.toLocaleString()} tracks` : null, chosen.header.rekordboxVersion ? `Rekordbox ${chosen.header.rekordboxVersion}` : null].filter(Boolean).join(' · ')}
                 </p>
               )}
-              {chosen?.problem && <p className="mt-1.5 flex items-start gap-1.5 text-xs text-red-400" role="alert"><WarningAlt size={14} className="mt-px shrink-0" />{chosen.problem}</p>}
+              {chosen?.problem && <p className="mt-1.5 flex items-start gap-1.5 text-xs text-red-400" role="alert"><WarningTriangle width={14} height={14} aria-hidden="true" className="mt-px shrink-0" />{chosen.problem}</p>}
               {sameAsSaved && <p className="mt-1.5 text-[11px] text-muted-foreground">You already saved a file with this name and size. Saving it again keeps both copies.</p>}
               {chosen && !desktop && <p className="mt-1.5 text-[11px] text-muted-foreground">Your browser only shares the file&apos;s name. The desktop app shows its full location.</p>}
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
               <ControlButton variant="primary" onClick={() => void save()} disabled={!chosen?.header || xml.saving} data-testid="rekordbox-xml-save">
-                {xml.saving ? <CircleDash className="animate-spin" size={14} /> : <CloudUpload size={14} />} {xml.saving ? 'Saving…' : 'Save to DropDex'}
+                {xml.saving ? <Refresh className="animate-spin" width={14} height={14} aria-hidden="true" /> : <CloudUpload width={14} height={14} aria-hidden="true" />} {xml.saving ? 'Saving…' : 'Save to DropDex'}
               </ControlButton>
               {message && (
                 <p className={cn('text-xs', message.kind === 'error' ? 'text-red-400' : 'text-emerald-400')} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</p>
@@ -220,13 +216,17 @@ export function RekordboxXmlGroup({ userId }: { userId: string | null }) {
 
         {enabled && (
           <div data-testid="rekordbox-xml-saved">
-            <p className="flex items-center gap-1.5 px-4 pt-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground"><DocumentAdd size={11} />Saved copies{xml.files.length > 0 ? ` · ${xml.files.length}` : ''}</p>
+            <p className="profile-record-heading flex items-center gap-1.5"><PagePlus width={11} height={11} aria-hidden="true" />Saved copies{xml.files.length > 0 ? ` · ${xml.files.length}` : ''}</p>
             {xml.loading && xml.files.length === 0 ? (
-              <p className="flex items-center gap-2 px-4 py-4 text-xs text-muted-foreground"><CircleDash className="animate-spin text-primary" size={14} /> Loading your saved files…</p>
+              <div className="flex items-center gap-3 px-4 py-4 text-xs text-muted-foreground">
+                <StatusLoader label="Loading saved XML files" /> Loading your saved files…
+              </div>
             ) : xml.loadFailed ? (
-              <p className="flex items-center gap-3 px-4 py-4 text-xs text-red-400" role="alert">
-                Your saved files couldn&apos;t be loaded. <button type="button" onClick={xml.reload} className="font-bold text-primary hover:underline">Try again</button>
-              </p>
+              <div className="p-4">
+                <NoticeCard tone="error" action={<ControlButton variant="secondary" onClick={xml.reload}>Try again</ControlButton>}>
+                  Your saved files couldn&apos;t be loaded.
+                </NoticeCard>
+              </div>
             ) : xml.files.length === 0 ? (
               <p className="px-4 py-4 text-xs text-muted-foreground" data-testid="rekordbox-xml-empty">Nothing saved yet. Choose a Rekordbox XML file above and save it.</p>
             ) : (
@@ -236,7 +236,7 @@ export function RekordboxXmlGroup({ userId }: { userId: string | null }) {
             )}
           </div>
         )}
-      </div>
+      </SurfaceCard>
     </section>
   );
 }

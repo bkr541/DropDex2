@@ -138,16 +138,38 @@ describe('Dense track name cell', () => {
 });
 
 describe('Timeline lanes', () => {
-  it('draws section names in mono caps with a 2px colored underline and a gray trailing bar', () => {
+  it('uses Audition phrase labels, opening space and a styled trailing section', () => {
     const markup = render(createElement(TimelineSectionLane, {
       sections: [{ id: 'a', label: 'Build', color: '#ff8614', leftPercent: 0, widthPercent: 40 }],
       trailing: { leftPercent: 40, widthPercent: 60 },
     }));
     expect(markup).toContain('cue-timeline__data-lane h-[28px]');
-    expect(markup).toContain('>BUILD<');
-    expect(markup).toContain('border-bottom:2px solid #ff8614');
-    expect(markup).toContain('rgba(255,255,255,0.28)');
+    expect(markup).toContain('>Build<');
+    expect(markup).toContain('--section-ink:#ff8614');
+    expect(markup).toContain('left:calc(0% - var(--waveform-section-lead))');
+    expect(markup).toContain('waveform-section--blank');
     expect(markup).toContain('left:40%;width:60%');
+  });
+
+  it('continues after the furthest section even when the phrase input is unsorted', () => {
+    const markup = render(createElement(TimelineSectionLane, {
+      sections: [
+        { id: 'later', label: 'Verse', color: '#8997AE', leftPercent: 40, widthPercent: 40 },
+        { id: 'intro', label: 'Intro', color: '#8997AE', leftPercent: 0, widthPercent: 1 },
+      ],
+    }));
+    expect(markup).toContain('width:calc(1% - 2px + var(--waveform-section-lead))');
+    expect(markup).toContain('left:80%;width:20%');
+    expect(markup.match(/timeline-section-blank/g)).toHaveLength(1);
+  });
+
+  it('clips sections to the current viewport and omits a blank when the row reaches its end', () => {
+    const markup = render(createElement(TimelineSectionLane, {
+      sections: [{ id: 'verse', label: 'Verse', color: '#8997AE', leftPercent: -20, widthPercent: 140 }],
+    }));
+    expect(markup).toContain('left:calc(0% - var(--waveform-section-lead))');
+    expect(markup).toContain('width:calc(100% - 2px + var(--waveform-section-lead))');
+    expect(markup).not.toContain('timeline-section-blank');
   });
 
   it('shows a message in place of the sections', () => {

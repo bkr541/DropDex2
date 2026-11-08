@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Pause, Play, SkipBack, SkipForward } from '@carbon/icons-react';
+import { Forward, Pause, Play, Rewind, SkipNext, SkipPrev } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import { TransportButton } from './TransportButton';
 
@@ -52,10 +52,10 @@ export function MediaTransportControlGroup({
       {!playOnly && (
         <>
           <TransportButton label="Previous track" size={size} disabled={disabled || previousDisabled} onClick={onPrevious}>
-            <SkipBack size={iconSize} fill="currentColor" />
+            <SkipPrev aria-hidden="true" width={iconSize} height={iconSize} />
           </TransportButton>
           <TransportButton label="Rewind" size={size} disabled={disabled || rewindDisabled} onClick={onRewind}>
-            <SkipBack size={iconSize} fill="currentColor" />
+            <Rewind aria-hidden="true" width={iconSize} height={iconSize} />
           </TransportButton>
         </>
       )}
@@ -67,15 +67,15 @@ export function MediaTransportControlGroup({
         disabled={disabled || playDisabled}
         onClick={onTogglePlay}
       >
-        {playIcon ?? (playing ? <Pause size={compact ? 17 : 22} fill="currentColor" /> : <Play size={compact ? 17 : 22} fill="currentColor" />)}
+        {playIcon ?? (playing ? <Pause aria-hidden="true" width={compact ? 17 : 22} height={compact ? 17 : 22} /> : <Play aria-hidden="true" width={compact ? 17 : 22} height={compact ? 17 : 22} />)}
       </TransportButton>
       {!playOnly && (
         <>
           <TransportButton label="Fast forward" size={size} disabled={disabled || forwardDisabled} onClick={onForward}>
-            <SkipForward size={iconSize} fill="currentColor" />
+            <Forward aria-hidden="true" width={iconSize} height={iconSize} />
           </TransportButton>
           <TransportButton label="Next track" size={size} disabled={disabled || nextDisabled} onClick={onNext}>
-            <SkipForward size={iconSize} fill="currentColor" />
+            <SkipNext aria-hidden="true" width={iconSize} height={iconSize} />
           </TransportButton>
         </>
       )}

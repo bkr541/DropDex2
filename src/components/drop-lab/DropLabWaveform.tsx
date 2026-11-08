@@ -162,7 +162,7 @@ export function DropLabWaveform({
       : null;
 
   return (
-    <div className="shrink-0 pt-1">
+    <div className="waveform-section-frame shrink-0 pt-1">
       <div
         className="cue-timeline relative"
         data-testid="drop-lab-timeline"

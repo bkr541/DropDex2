@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, type ChangeEvent } from 'react';
-import { cn } from '../../lib/utils';
 import { uploadAvatar } from '../../lib/queries/storage';
 import { upsertUserProfile } from '../../lib/queries/userProfile';
 import {
@@ -13,17 +12,10 @@ import {
   searchArtistsByName,
 } from '../../lib/queries/userPreferences';
 import type { UserProfile, UserGenrePreference, UserArtistPreference } from '../../types';
-import { At, CircleDash, Close, Cloud, Globe, LogoInstagram, LogoYoutube, Music, TextAlignLeft, Upload, User } from '@carbon/icons-react';
-import { ControlButton, SearchControl, TextareaControl, TextControl } from '../ui/controls';
-
-function TikTokIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M14.2 3.5v10.1a4.7 4.7 0 1 1-4-4.65v2.8a2 2 0 1 0 1.2 1.85V3.5h2.8Z" fill="currentColor" />
-      <path d="M14.2 3.5c.45 2.35 1.8 3.75 4.3 4.1v2.75c-1.75-.05-3.15-.55-4.3-1.5V3.5Z" fill="currentColor" />
-    </svg>
-  );
-}
+import { AlignLeft, AtSign, Cloud, Globe, Instagram, LogOut, Refresh, Spotify, Tiktok, Upload, Xmark, Youtube } from 'iconoir-react/regular';
+import { ControlButton, FormField, SearchControl, TextareaControl, TextControl } from '../ui/controls';
+import { Avatar } from '../ui/display';
+import { NoticeCard } from '../ui/feedback';
 
 // ── Preference picker (genres or artists) ────────────────────────────────────
 
@@ -82,11 +74,11 @@ function PreferencePicker({
   const atMax = selected.length >= maxItems;
 
   return (
-    <section className="space-y-1.5">
-      <h3 className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground flex items-center justify-between">
+    <section className="space-y-3">
+      <h2 className="profile-heading justify-between">
         {label}
-        <span className="opacity-50 font-mono">{selected.length}/{maxItems}</span>
-      </h3>
+        <span className="profile-preference-count">{selected.length}/{maxItems}</span>
+      </h2>
 
       {/* Search input */}
       {!atMax && (
@@ -102,7 +94,7 @@ function PreferencePicker({
 
           {showDropdown && (
             <div
-              className="absolute top-full mt-0.5 left-0 right-0 z-50 bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-xl shadow-lg overflow-hidden max-h-44 overflow-y-auto"
+              className="dd-autocomplete__list"
               onMouseDown={(e) => e.preventDefault()}
             >
               {results.map((r) => {
@@ -111,13 +103,9 @@ function PreferencePicker({
                   <button
                     key={r.id}
                     type="button"
-                    onClick={() => { if (!alreadySelected) void handleAdd(r); }}
-                    className={cn(
-                      'w-full px-3 py-2 text-left text-xs font-medium transition-colors',
-                      alreadySelected
-                        ? 'text-muted-foreground cursor-default opacity-50'
-                        : 'hover:bg-[var(--color-surface-hover)] text-foreground cursor-pointer',
-                    )}
+                    onClick={() => void handleAdd(r)}
+                    disabled={busy || alreadySelected}
+                    className="dd-autocomplete__option"
                   >
                     {r.name}
                   </button>
@@ -128,26 +116,26 @@ function PreferencePicker({
         </div>
       )}
       {atMax && (
-        <p className="text-[9px] text-muted-foreground italic">Max {maxItems} selected.</p>
+        <p className="text-xs text-muted-foreground">Max {maxItems} selected.</p>
       )}
 
       {/* Selected chips */}
       {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        <div className="dd-chip-list" aria-label={label}>
           {selected.map((item) => (
             <span
               key={item.id}
-              className="flex items-center gap-1 pl-1 pr-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/15"
+              className="dd-chip"
             >
+              {item.name}
               <button
+                type="button"
                 onClick={() => void handleRemove(item.id)}
                 disabled={busy}
-                className="flex items-center justify-center w-3 h-3 rounded-full hover:bg-primary/25 transition-colors"
                 aria-label={`Remove ${item.name}`}
               >
-                <Close size={7} />
+                <Xmark width={14} height={14} aria-hidden="true" />
               </button>
-              {item.name}
             </span>
           ))}
         </div>
@@ -163,6 +151,7 @@ interface EditProfileViewProps {
   existingProfile: UserProfile | null;
   onPreferencesChanged: () => void;
   onSaved: (profile: UserProfile) => void;
+  onSignOut: () => void;
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -173,6 +162,7 @@ export function EditProfileView({
   existingProfile,
   onPreferencesChanged,
   onSaved,
+  onSignOut,
 }: EditProfileViewProps) {
   // Profile fields
   const [displayName, setDisplayName] = useState(existingProfile?.display_name ?? '');
@@ -188,7 +178,6 @@ export function EditProfileView({
   // Avatar
   const [pendingAvatar, setPendingAvatar] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [imgError, setImgError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Preferences
@@ -210,7 +199,6 @@ export function EditProfileView({
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     setSaveError(null);
-    setImgError(false);
     const file = e.target.files?.[0];
     if (!file) return;
     if (!ACCEPTED_TYPES.includes(file.type)) { setSaveError('Please select a JPEG, PNG, WebP, or GIF image.'); return; }
@@ -296,150 +284,133 @@ export function EditProfileView({
     pendingAvatar !== null;
 
   return (
-    <div className="space-y-3">
+    <div className="profile-stack">
 
       {/* ── Identity row ── */}
-      <div className="flex gap-4 items-start">
-        {/* Avatar */}
-        <div className="shrink-0 flex flex-col items-center gap-1.5">
-          <div className="w-20 h-20 rounded-full ring-4 ring-primary/25 shadow-lg bg-primary/10 flex items-center justify-center overflow-hidden">
-            {displayedAvatar && !imgError ? (
-              <img src={displayedAvatar} alt="Avatar" className="w-full h-full object-cover" onError={() => setImgError(true)} />
-            ) : (
-              <User size={32} className="text-primary/60" />
-            )}
+      <section className="lgh profile-identity-hero" aria-label="Identity">
+        <span aria-hidden="true" className="lgh-watermark">{displayName.trim() || 'Profile'}</span>
+        <div className="profile-identity">
+          <div className="flex flex-col items-center gap-2">
+            <div className="relative flex">
+              <span className="lgh-ring" aria-hidden="true" />
+              <Avatar src={displayedAvatar} alt="Profile avatar" className="lgh-avatar" />
+            </div>
+            <ControlButton variant="neutral" onClick={() => fileInputRef.current?.click()} aria-label="Choose profile avatar">
+              <Upload width={14} height={14} aria-hidden="true" />
+              {pendingAvatar ? 'Change' : existingProfile?.avatar_url ? 'Replace' : 'Upload'}
+            </ControlButton>
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={handleFileChange} />
           </div>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 text-muted-foreground hover:text-primary text-[9px] font-bold uppercase tracking-widest transition-all"
-          >
-            <Upload size={10} />
-            {pendingAvatar ? 'Change' : existingProfile?.avatar_url ? 'Replace' : 'Upload'}
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={handleFileChange} />
+
+          <div className="profile-identity-fields">
+            <FormField label="Display Name" required>
+              {({ id }) => (
+                <TextControl
+                  id={id}
+                  required
+                  icon={null}
+                  className="profile-identity-name"
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Your artist name"
+                  maxLength={120}
+                />
+              )}
+            </FormField>
+
+            <FormField label="Username">
+              {({ id }) => (
+                <TextControl
+                  id={id}
+                  icon={<AtSign width={17} height={17} aria-hidden="true" />}
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="@yourhandle"
+                  maxLength={60}
+                />
+              )}
+            </FormField>
+
+            <FormField label="Bio">
+              {({ id }) => (
+                <TextareaControl
+                  id={id}
+                  icon={<AlignLeft width={17} height={17} aria-hidden="true" />}
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="Tell people about your sound…"
+                  rows={2}
+                  maxLength={500}
+                  className="resize-none"
+                />
+              )}
+            </FormField>
+          </div>
         </div>
-
-        {/* Name + Username + Bio */}
-        <div className="flex-1 min-w-0 grid grid-cols-2 gap-x-3 gap-y-2">
-          <div className="space-y-1">
-            <label className="block text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
-              Display Name <span className="text-primary">*</span>
-            </label>
-            <TextControl
-              icon={<User size={17} />}
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Your artist name"
-              maxLength={120}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Username</label>
-            <TextControl
-              icon={<At size={17} />}
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="@yourhandle"
-              maxLength={60}
-            />
-          </div>
-
-          <div className="col-span-2 space-y-1">
-            <label className="block text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Bio</label>
-            <TextareaControl
-              icon={<TextAlignLeft size={17} />}
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Tell people about your sound…"
-              rows={2}
-              maxLength={500}
-              className="resize-none"
-            />
-          </div>
-        </div>
-      </div>
+      </section>
 
       {/* ── Genres + Artists ── */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="glass rounded-xl p-3">
-          <PreferencePicker
-            label="Genres"
-            placeholder="Search genres…"
-            selected={genreItems}
-            maxItems={5}
-            onSearch={searchGenres}
-            onAdd={handleAddGenre}
-            onRemove={handleRemoveGenre}
-          />
-        </div>
-        <div className="glass rounded-xl p-3">
-          <PreferencePicker
-            label="Favorite Artists"
-            placeholder="Search artists…"
-            selected={artistItems}
-            maxItems={10}
-            onSearch={searchArtistsByName}
-            onAdd={handleAddArtist}
-            onRemove={handleRemoveArtist}
-          />
-        </div>
+      <div className="profile-group profile-preference-grid">
+        <PreferencePicker
+          label="Genres"
+          placeholder="Search genres…"
+          selected={genreItems}
+          maxItems={5}
+          onSearch={searchGenres}
+          onAdd={handleAddGenre}
+          onRemove={handleRemoveGenre}
+        />
+        <PreferencePicker
+          label="Favorite Artists"
+          placeholder="Search artists…"
+          selected={artistItems}
+          maxItems={10}
+          onSearch={searchArtistsByName}
+          onAdd={handleAddArtist}
+          onRemove={handleRemoveArtist}
+        />
       </div>
 
       {/* ── Social links ── */}
-      <section className="glass overflow-hidden rounded-xl">
-        <div className="px-3 py-2.5">
-          <h3 className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Social Links</h3>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2">
+      <section className="profile-group">
+        <h2 className="profile-heading"><Globe width={14} height={14} aria-hidden="true" />Social Links</h2>
+        <div className="profile-fields">
           {[
-            { label: 'Spotify', value: spotifyUrl, set: setSpotifyUrl, placeholder: 'https://open.spotify.com/artist/…', icon: <Music size={16} /> },
-            { label: 'SoundCloud', value: soundcloudUrl, set: setSoundcloudUrl, placeholder: 'https://soundcloud.com/…', icon: <Cloud size={16} /> },
-            { label: 'Instagram', value: instagramUrl, set: setInstagramUrl, placeholder: 'https://instagram.com/…', icon: <LogoInstagram size={16} /> },
-            { label: 'TikTok', value: tiktokUrl, set: setTiktokUrl, placeholder: 'https://tiktok.com/@…', icon: <TikTokIcon /> },
-            { label: 'YouTube', value: youtubeUrl, set: setYoutubeUrl, placeholder: 'https://youtube.com/…', icon: <LogoYoutube size={16} /> },
-            { label: 'Website', value: websiteUrl, set: setWebsiteUrl, placeholder: 'https://yoursite.com', icon: <Globe size={16} /> },
-          ].map(({ label, value, set, placeholder, icon }, index) => (
-            <div
-              key={label}
-              className={cn(
-                'flex min-w-0 items-center gap-3 border-[var(--color-border-faint)] px-3 py-1.5',
-                index < 5 && 'border-b',
-                index % 2 === 0 && 'sm:border-r',
-                index >= 4 && 'sm:border-b-0',
+            { label: 'Spotify', value: spotifyUrl, set: setSpotifyUrl, placeholder: 'https://open.spotify.com/artist/…', icon: <Spotify width={16} height={16} aria-hidden="true" /> },
+            { label: 'SoundCloud', value: soundcloudUrl, set: setSoundcloudUrl, placeholder: 'https://soundcloud.com/…', icon: <Cloud width={16} height={16} aria-hidden="true" /> },
+            { label: 'Instagram', value: instagramUrl, set: setInstagramUrl, placeholder: 'https://instagram.com/…', icon: <Instagram width={16} height={16} aria-hidden="true" /> },
+            { label: 'TikTok', value: tiktokUrl, set: setTiktokUrl, placeholder: 'https://tiktok.com/@…', icon: <Tiktok width={16} height={16} aria-hidden="true" /> },
+            { label: 'YouTube', value: youtubeUrl, set: setYoutubeUrl, placeholder: 'https://youtube.com/…', icon: <Youtube width={16} height={16} aria-hidden="true" /> },
+            { label: 'Website', value: websiteUrl, set: setWebsiteUrl, placeholder: 'https://yoursite.com', icon: <Globe width={16} height={16} aria-hidden="true" /> },
+          ].map(({ label, value, set, placeholder, icon }) => (
+            <FormField key={label} label={label}>
+              {({ id }) => (
+                <TextControl
+                  id={id}
+                  icon={icon}
+                  type="url"
+                  value={value}
+                  onChange={(e) => set(e.target.value)}
+                  placeholder={placeholder}
+                />
               )}
-            >
-              <p className="w-18 shrink-0 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
-              <TextControl
-                icon={icon}
-                type="url"
-                value={value}
-                onChange={(e) => set(e.target.value)}
-                placeholder={placeholder}
-                className="font-mono"
-                containerClassName="min-w-0 flex-1"
-              />
-            </div>
+            </FormField>
           ))}
         </div>
       </section>
 
-      {/* ── Save ── */}
-      {(isDirty || saving) && (
-        <div className="flex flex-col items-center gap-2">
-          {saveError && <p className="text-xs text-red-400 font-medium">{saveError}</p>}
-          <ControlButton
-            onClick={handleSave}
-            disabled={saving}
-            variant="primary"
-          >
-            {saving ? <><CircleDash size={13} className="animate-spin" /> Saving…</>
-              : <><Upload size={13} /> Save Profile</>}
+      <div className="profile-footer">
+        {saveError && <NoticeCard tone="error" className="w-full">{saveError}</NoticeCard>}
+        <ControlButton variant="danger-outline" onClick={onSignOut}><LogOut width={14} height={14} aria-hidden="true" /> Sign Out</ControlButton>
+        {(isDirty || saving) && (
+          <ControlButton onClick={handleSave} disabled={saving} variant="primary">
+            {saving ? <><Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> Saving…</>
+              : <><Upload width={13} height={13} aria-hidden="true" /> Save Profile</>}
           </ControlButton>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

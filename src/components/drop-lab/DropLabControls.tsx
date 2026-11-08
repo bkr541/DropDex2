@@ -1,7 +1,7 @@
 import { cn } from '../../lib/utils';
 import type { DropPoint } from '../../lib/music/dropPointResolver';
 import type { DropLabBarCount, DropLabBeatOffset } from '../../lib/music/dropLabSegments';
-import { CircleDash, Play, RotateCounterclockwise, Stop } from '@carbon/icons-react';
+import { Play, Refresh, Square } from 'iconoir-react/regular';
 import { FilterDropdown } from '../ui/controls';
 import { TabNavigation } from '../ui/display';
 import { AudioDock, MediaTransportControlGroup, PlaybackSeekBar } from '../ui/media';
@@ -39,8 +39,8 @@ export function DropLabDock({
         playing={previewPlaying}
         playLabel={previewDisabled && disabledReason ? `${previewLabel} (${disabledReason})` : previewLabel}
         playIcon={previewLoading
-          ? <CircleDash size={16} className="animate-spin" />
-          : previewPlaying ? <Stop size={14} fill="currentColor" /> : previewError ? <RotateCounterclockwise size={16} /> : <Play size={16} fill="currentColor" />}
+          ? <Refresh width={16} height={16} aria-hidden="true" className="animate-spin" />
+          : previewPlaying ? <Square width={14} height={14} aria-hidden="true" /> : previewError ? <Refresh width={16} height={16} aria-hidden="true" /> : <Play width={16} height={16} aria-hidden="true" />}
         onTogglePlay={onPreview}
         playDisabled={previewDisabled}
       />

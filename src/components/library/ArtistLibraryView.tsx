@@ -1,6 +1,7 @@
 import './library-studio.css';
+import '../ui/studio-surface.css';
 import { useEffect, useMemo, useState } from 'react';
-import { Music, Upload } from '@carbon/icons-react';
+import { MusicNote, Upload } from 'iconoir-react/regular';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useLibraryStats } from '../../hooks/useRekordboxTracks';
@@ -75,12 +76,13 @@ export function ArtistLibraryView({
   const artistStats = useMemo(() => (stats?.artistTotals ?? []).map(({ name, count }) => [name, count] as const), [stats?.artistTotals]);
 
   return (
-    <div className="lib-scope min-w-0 space-y-5" data-testid="artist-library">
+    <div className="lib-scope studio-surface artist-library-studio" data-testid="artist-library">
       {/* The selected track's waveform, cue points and beat grid: the same panel as Track Intelligence. */}
       {selectedTrack && (
         <CuePointsTrackPanel
           key={selectedTrack.id}
           track={selectedTrack}
+          cuesAboveWaveform
           waveformState={panelWaveforms.getState(selectedTrack.id)}
           onRetryWaveform={() => panelWaveforms.retry([selectedTrack.id])}
         />
@@ -113,11 +115,11 @@ export function ArtistLibraryView({
 
 export function ArtistLibraryEmptyState({ onImport }: { onImport?: () => void }) {
   return (
-    <div className="lib-scope lib-card p-8 text-center">
-      <Music size={40} className="mx-auto mb-4 text-primary" />
+    <div className="lib-scope studio-surface p-8 text-center">
+      <MusicNote width={40} height={40} aria-hidden="true" className="mx-auto mb-4 text-primary" />
       <h2 className="text-[26px] font-light tracking-[-0.035em]">Artist Library</h2>
       <p className="mt-2 text-sm text-muted-foreground">Import a library to start reviewing your collection.</p>
-      {onImport && <ControlButton variant="primary" onClick={onImport} className="mt-5"><Upload size={16} /> Import library</ControlButton>}
+      {onImport && <ControlButton variant="primary" onClick={onImport} className="mt-5"><Upload width={16} height={16} aria-hidden="true" /> Import library</ControlButton>}
     </div>
   );
 }

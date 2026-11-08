@@ -1,0 +1,47 @@
+/* Full-size Fine Outline for timelines and a scaled version for thumbnails. */
+.waveform-cue-marker {
+  position: absolute;
+  top: 0;
+  display: grid;
+  place-items: end center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  transform: translateX(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--waveform-cue-ink);
+}
+.cue-flag { position: relative; display: grid; place-items: center; width: 29px; height: 30px; }
+.cue-flag--fine { width: 24px; height: 30px; --cue-flag-stroke: 1px; }
+.cue-flag__icon { position: absolute; inset: 0; overflow: visible; transform: rotate(90deg) scale(1.2, 1.5); }
+.cue-flag__icon--rounded { transform: none; }
+.cue-flag__icon path {
+  fill: var(--cue-flag-fill, color-mix(in srgb, var(--waveform-cue-ink) 18%, #191d25));
+  stroke-width: var(--cue-flag-stroke, 1.6px);
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.cue-flag__label {
+  position: relative;
+  top: -2px;
+  color: var(--cue-flag-label, #e1e5ed);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+.waveform-cue-marker--memory { --cue-flag-label: #c1cad6; }
+.waveform-cue-marker:not(.waveform-cue-marker--compact) .cue-flag { width: 21px; height: 26px; }
+.waveform-cue-marker .cue-flag__label {
+  top: -1px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.04em;
+}
+.waveform-cue-marker:hover { --cue-flag-fill: color-mix(in srgb, var(--waveform-cue-ink) 28%, #191d25); }
+.waveform-cue-marker[data-selected="true"]::before { position: absolute; top: 0; left: 50%; width: 8px; height: 1px; background: #c7d0df; transform: translateX(-50%); content: ''; }
+.waveform-cue-marker--compact { width: 10px; height: 11px; place-items: center; }
+.waveform-cue-marker--compact .cue-flag { width: 9px; height: 11px; }

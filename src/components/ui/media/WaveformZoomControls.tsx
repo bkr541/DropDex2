@@ -1,4 +1,4 @@
-import { Add, Subtract } from '@carbon/icons-react';
+import { Minus, Plus } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 
 const BUTTON = 'pointer-events-auto flex h-[22px] w-[22px] items-center justify-center rounded-full text-foreground/90 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50';
@@ -27,10 +27,10 @@ export function WaveformZoomControls({
     >
       <div className="flex flex-col rounded-full border border-[var(--color-border-faint)] bg-[var(--color-card)]/80 p-px backdrop-blur-sm">
         <button type="button" className={BUTTON} onClick={onZoomIn} disabled={!canZoomIn} aria-label="Zoom in" title="Zoom in">
-          <Add size={16} />
+          <Plus aria-hidden="true" width={16} height={16} />
         </button>
         <button type="button" className={BUTTON} onClick={onZoomOut} disabled={!canZoomOut} aria-label="Zoom out" title="Zoom out">
-          <Subtract size={16} />
+          <Minus aria-hidden="true" width={16} height={16} />
         </button>
       </div>
     </div>

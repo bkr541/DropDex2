@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight } from '@carbon/icons-react';
+import { NavArrowLeft, NavArrowRight } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 
 interface HorizontalScrollerProps {
@@ -71,7 +71,7 @@ export function HorizontalScroller({
     <div className={cn('discovery-scroller', `discovery-scroller--${variant}`, className)} data-testid={testId}>
       {canScrollLeft && (
         <button type="button" className="discovery-scroll-arrow discovery-scroll-arrow--left" aria-label="Scroll left" onClick={() => scrollBy(-SCROLL_STEP)}>
-          <ChevronLeft size={16} />
+          <NavArrowLeft width={16} height={16} aria-hidden="true" />
         </button>
       )}
       <div ref={rowRef} className="discovery-scroller-row" role="group" aria-label={ariaLabel}>
@@ -79,7 +79,7 @@ export function HorizontalScroller({
       </div>
       {canScrollRight && (
         <button type="button" className="discovery-scroll-arrow discovery-scroll-arrow--right" aria-label="Scroll right" onClick={() => scrollBy(SCROLL_STEP)}>
-          <ChevronRight size={16} />
+          <NavArrowRight width={16} height={16} aria-hidden="true" />
         </button>
       )}
     </div>

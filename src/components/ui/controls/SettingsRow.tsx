@@ -1,4 +1,4 @@
-import { ChevronDown, Settings } from '@carbon/icons-react';
+import { NavArrowDown, Settings } from 'iconoir-react/regular';
 import '../dropdex-controls.css';
 import { IconControlButton } from './IconControlButton';
 
@@ -8,11 +8,11 @@ export function SettingsRow() {
       {['BPM', 'KEY', 'GRID'].map((label) => (
         <button type="button" key={label} className="dd-settings-row__button">
           <span>{label}</span>
-          <ChevronDown size={15} aria-hidden="true" />
+          <NavArrowDown width={15} height={15} aria-hidden="true" />
         </button>
       ))}
       <IconControlButton label="Open settings" tone="blue" className="dd-settings-row__settings">
-        <Settings size={19} />
+        <Settings aria-hidden="true" width={19} height={19} />
       </IconControlButton>
     </div>
   );

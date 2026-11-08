@@ -1,13 +1,15 @@
+import { ProfileSwitch } from './ProfileSwitch';
+import { SurfaceCard } from '../ui/display/SurfaceCard';
 import { useState } from 'react';
-import { Cloud, CloudUpload, Information, StopFilled, WarningAlt, CircleDash } from '@carbon/icons-react';
+import { Cloud, CloudUpload, Refresh, Square } from 'iconoir-react/regular';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { logger } from '../../lib/logger';
 import { fetchAllImportTracks, previewSyncStore, usePreviewSync } from '../../lib/preview/previewSync';
 import { fetchPreviewStates } from '../../lib/queries/trackPreviews';
-import { cn } from '../../lib/utils';
 import type { RekordboxTrack } from '../../types';
 import { ControlButton } from '../ui/controls';
 import { Dialog, QuietProgress, quietOverallPercent, type QuietPhase } from '../ui/feedback';
+import { NoticeCard } from '../ui/feedback/NoticeCard';
 import { TrackSyncSelector } from './TrackSyncSelector';
 
 /** The phases of a cloud sync: getting ready, uploading the previews, and done. */
@@ -112,31 +114,23 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
   };
 
   return (
-    <section className="space-y-3" data-testid="streaming-sync-group">
-      <h2 className="flex items-center gap-1.5 px-1 text-xs font-bold uppercase tracking-widest text-muted-foreground"><Cloud size={11} />Streaming</h2>
-      <div className="glass divide-y divide-[var(--color-border-faint)] rounded-2xl">
-        <div className="flex items-start justify-between gap-4 p-4">
+    <section className="profile-group" data-testid="streaming-sync-group">
+      <h2 className="profile-heading"><Cloud width={11} height={11} aria-hidden="true" />Streaming</h2>
+      <SurfaceCard as="div" className="profile-records divide-y divide-[var(--color-border-faint)]">
+        <div className="profile-record flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <p id="streaming-sync-label" className="text-sm font-bold">Sync my music to the DropDex cloud</p>
+            <p id="streaming-sync-label" className="text-xs font-medium">Sync my music to the DropDex cloud</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Lets you listen to your tracks and audition them away from your USB, on any device you sign in on. DropDex stores a smaller preview of each track in your own private cloud folder and leaves your original files exactly as they are.
             </p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={allowed}
+          <ProfileSwitch
+            checked={allowed}
             aria-labelledby="streaming-sync-label"
             data-testid="streaming-sync-toggle"
             onClick={toggle}
             disabled={running}
-            className={cn(
-              'relative mt-0.5 h-6 w-11 shrink-0 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-50',
-              allowed ? 'border-primary bg-primary' : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)]',
-            )}
-          >
-            <span className={cn('absolute top-0.5 h-[18px] w-[18px] rounded-full bg-white shadow transition-all', allowed ? 'left-[22px]' : 'left-0.5')} />
-          </button>
+          />
         </div>
 
         {allowed && !selecting && (
@@ -151,13 +145,11 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
                 </p>
               </div>
               <ControlButton variant="primary" disabled={trackCount == null || running || loadingStates} onClick={openSync} data-testid="streaming-sync-button">
-                {loadingStates ? <CircleDash className="animate-spin" size={14} /> : <CloudUpload size={14} />} Sync to cloud
+                {loadingStates ? <Refresh className="animate-spin" width={14} height={14} aria-hidden="true" /> : <CloudUpload width={14} height={14} aria-hidden="true" />} Sync to cloud
               </ControlButton>
             </div>
             {message && (
-              <p className="flex items-start gap-2 rounded-xl border border-[var(--color-border-subtle)] bg-white/[0.03] p-3 text-xs text-muted-foreground" role="status" data-testid="streaming-sync-notice">
-                <Information size={14} className="mt-0.5 shrink-0 text-primary" /> {message}
-              </p>
+              <div data-testid="streaming-sync-notice"><NoticeCard tone="info">{message}</NoticeCard></div>
             )}
           </div>
         )}
@@ -190,17 +182,17 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
             >
               {running && (
                 <div className="flex justify-center">
-                  <ControlButton variant="danger-outline" onClick={() => previewSyncStore.cancel()}><StopFilled size={14} /> Stop</ControlButton>
+                  <ControlButton variant="danger-outline" onClick={() => previewSyncStore.cancel()}><Square width={14} height={14} aria-hidden="true" /> Stop</ControlButton>
                 </div>
               )}
               {sync.phase === 'done' && (
                 <>
                   {sync.failures.length > 0 && (
-                    <ul className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-black/20 p-3 text-[11px]">
+                    <ul className="max-h-40 divide-y divide-[var(--color-control-border-soft)] overflow-y-auto rounded-[var(--radius-control)] border border-[var(--color-control-border)] bg-[var(--color-control-surface)] px-3 text-xs">
                       {sync.failures.slice(0, 50).map((failure) => (
-                        <li key={failure.trackId}><span className="font-bold">{failure.title}</span> <span className="text-muted-foreground">— {failure.message}</span></li>
+                        <li key={failure.trackId} className="py-2"><span className="font-semibold">{failure.title}</span> <span className="text-muted-foreground">— {failure.message}</span></li>
                       ))}
-                      {sync.failures.length > 50 && <li className="text-muted-foreground">…and {(sync.failures.length - 50).toLocaleString()} more (see the Developer tab's log).</li>}
+                      {sync.failures.length > 50 && <li className="py-2 text-muted-foreground">…and {(sync.failures.length - 50).toLocaleString()} more (see the Developer tab's log).</li>}
                     </ul>
                   )}
                   <div className="flex justify-center"><ControlButton variant="primary" onClick={() => previewSyncStore.reset()}>Done</ControlButton></div>
@@ -208,14 +200,14 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
               )}
               {sync.phase === 'error' && (
                 <>
-                  <p className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300" role="alert"><WarningAlt size={16} className="mt-0.5 shrink-0" /> {sync.message}</p>
+                  <NoticeCard tone="error">{sync.message}</NoticeCard>
                   <div className="flex justify-center"><ControlButton variant="secondary" onClick={() => previewSyncStore.reset()}>Close</ControlButton></div>
                 </>
               )}
             </QuietProgress>
           </div>
         )}
-      </div>
+      </SurfaceCard>
 
       <Dialog
         open={dialogOpen}

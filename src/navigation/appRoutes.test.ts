@@ -38,6 +38,13 @@ describe('app routes', () => {
     expect(routeBackFallback({ name: 'audition' })).toEqual({ name: 'library', tab: 'overview', search: '' });
   });
 
+  it('round trips Set Lab as a distinct workspace route', () => {
+    const route = { name: 'set-lab' } as const;
+    expect(routeToUrl(route)).toBe('/set-lab');
+    expect(parseAppRoute('/set-lab/')).toEqual(route);
+    expect(routeBackFallback(route)).toEqual({ name: 'library', tab: 'overview', search: '' });
+  });
+
   it('maps library tabs and search to canonical URLs', () => {
     expect(parseAppRoute('/library/recent', '?q=night+drive')).toEqual({
       name: 'library',

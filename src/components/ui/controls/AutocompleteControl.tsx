@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from 'react';
-import { Close, Waveform } from '@carbon/icons-react';
+import { Activity, Xmark } from 'iconoir-react/regular';
 import '../dropdex-controls.css';
 import { TextControl } from './TextControl';
 
@@ -39,7 +39,7 @@ export function AutocompleteControl({
   return (
     <div className="dd-autocomplete">
       <TextControl
-        icon={<Waveform size={18} className="text-primary" />}
+        icon={<Activity aria-hidden="true" width={18} height={18} className="text-primary" />}
         role="combobox"
         aria-label={ariaLabel}
         aria-expanded={open}
@@ -72,7 +72,7 @@ export function AutocompleteControl({
         }}
         endAdornment={value ? (
           <button type="button" aria-label="Clear autocomplete" className="dd-control-end-action" onClick={() => { onChange(''); setOpen(true); }}>
-            <Close size={16} />
+            <Xmark aria-hidden="true" width={16} height={16} />
           </button>
         ) : null}
       />
@@ -89,7 +89,7 @@ export function AutocompleteControl({
               onMouseEnter={() => setActiveIndex(index)}
               onClick={() => commit(option)}
             >
-              <Waveform size={16} aria-hidden="true" />
+              <Activity width={16} height={16} aria-hidden="true" />
               <span>{option.label}</span>
             </button>
           ))}

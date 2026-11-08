@@ -56,7 +56,7 @@ import {
   type UsbImportPhase,
   verifyUsbReleased,
 } from '../lib/rekordbox/localUsbLifecycle';
-import { ArrowLeft, ArrowRight, CheckmarkFilled, ChevronDown, CircleDash, Close, DataBase, FolderOpen, Package, Pause, Renew, TrashCan, Upload, View, WarningAlt } from '@carbon/icons-react';
+import { ArrowLeft, ArrowRight, CheckCircle, Database, Eye, Folder, NavArrowDown, Package, Pause, Refresh, Trash, Upload, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { ControlButton } from './ui/controls';
 import { ImportProgressModal, issueBadgeLabel, trackExpandedDetail, userFriendlyIssueReason } from './ImportProgressModal';
 import type { ImportUiStep } from './ImportStageProgress';
@@ -196,17 +196,17 @@ const CLOUD_CANCEL_MAX_POLLS = 30;
 const MODE_LABELS: Record<Mode, { label: string; icon: React.ReactNode; tip: string }> = {
   usb_folder: {
     label: 'USB Folder',
-    icon: <FolderOpen size={14} />,
+    icon: <Folder width={14} height={14} aria-hidden="true" />,
     tip: 'Select your USB drive root (e.g. "My USB"). DropDex will find exportLibrary.db automatically. Your music files are not uploaded.',
   },
   zip_bundle: {
     label: 'ZIP Bundle',
-    icon: <Package size={14} />,
+    icon: <Package width={14} height={14} aria-hidden="true" />,
     tip: 'Upload a ZIP archive containing exportLibrary.db and ANLZ files.',
   },
   database_only: {
     label: 'Database Only',
-    icon: <DataBase size={14} />,
+    icon: <Database width={14} height={14} aria-hidden="true" />,
     tip: 'Upload exportLibrary.db to import playlists and track metadata without analysis data.',
   },
 };
@@ -1673,7 +1673,7 @@ export function ImportLibraryModal({
   // Abort confirmation overlay — projects into ImportProgressModal covering header+stepper+body
   const abortDialogContent = showAbortDialog ? (
     <div className="bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-2xl p-6 text-center max-w-xs w-full">
-      <WarningAlt className="mx-auto mb-3 text-amber-400" size={28} />
+      <WarningTriangle className="mx-auto mb-3 text-amber-400" width={28} height={28} aria-hidden="true" />
       <p className="font-bold text-lg mb-2">
         {abortDialogIntent === 'pause'
           ? 'Pause analysis?'
@@ -1695,9 +1695,9 @@ export function ImportLibraryModal({
           className="flex-1 whitespace-nowrap"
         >
           {abortDialogIntent === 'pause' ? (
-            <><Pause size={16} /> Pause</>
+            <><Pause width={16} height={16} aria-hidden="true" /> Pause</>
           ) : (
-            <><TrashCan size={16} /> {abortDialogIntent === 'close' ? 'Stop and delete' : 'Delete Import and Data'}</>
+            <><Trash width={16} height={16} aria-hidden="true" /> {abortDialogIntent === 'close' ? 'Stop and delete' : 'Delete Import and Data'}</>
           )}
         </ControlButton>
         <ControlButton
@@ -1705,7 +1705,7 @@ export function ImportLibraryModal({
           variant="neutral"
           className="flex-1 whitespace-nowrap"
         >
-          <ArrowRight size={16} /> Keep going
+          <ArrowRight width={16} height={16} aria-hidden="true" /> Keep going
         </ControlButton>
       </div>
     </div>
@@ -1772,12 +1772,12 @@ export function ImportLibraryModal({
                         !(phase === 'database_selected' && folderScan) && 'invisible pointer-events-none',
                       )}
                     >
-                      <ArrowRight size={10} className="rotate-180 shrink-0" />
+                      <ArrowRight width={10} height={10} aria-hidden="true" className="rotate-180 shrink-0" />
                       Choose different folder
                     </button>
                     {phase === 'scanning_usb' ? (
                       <div className="flex-1 mb-4 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                        <CircleDash size={20} className="animate-spin text-primary" />
+                        <Refresh width={20} height={20} aria-hidden="true" className="animate-spin text-primary" />
                         <p className="text-sm">Scanning folder…</p>
                       </div>
                     ) : phase === 'database_selected' && folderScan ? (
@@ -1788,7 +1788,7 @@ export function ImportLibraryModal({
                         <div className="space-y-2">
                           {folderScan.dbFile ? (
                             <div className="flex items-center gap-2 text-sm">
-                              <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
+                              <CheckCircle width={14} height={14} aria-hidden="true" className="text-emerald-400 shrink-0" />
                               <span className="font-mono text-xs truncate">
                                 {folderScan.dbFile.name}
                               </span>
@@ -1798,22 +1798,22 @@ export function ImportLibraryModal({
                             </div>
                           ) : (
                             <div className="flex items-center gap-2 text-sm">
-                              <WarningAlt size={14} className="text-red-400 shrink-0" />
+                              <WarningTriangle width={14} height={14} aria-hidden="true" className="text-red-400 shrink-0" />
                               <span className="text-red-400 text-xs">exportLibrary.db not found</span>
                             </div>
                           )}
                           <div className="flex items-center gap-2 text-sm">
                             {folderScan.targetedResolver ? (
                               <>
-                                <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
+                                <CheckCircle width={14} height={14} aria-hidden="true" className="text-emerald-400 shrink-0" />
                                 <span className="text-xs">
                                   Analysis files will be opened only when requested by the library manifest
                                 </span>
                               </>
                             ) : folderScan.anlzFiles.length > 0 ? (
-                              <CheckmarkFilled size={14} className="text-emerald-400 shrink-0" />
+                              <CheckCircle width={14} height={14} aria-hidden="true" className="text-emerald-400 shrink-0" />
                             ) : (
-                              <WarningAlt size={14} className="text-amber-400 shrink-0" />
+                              <WarningTriangle width={14} height={14} aria-hidden="true" className="text-amber-400 shrink-0" />
                             )}
                             {!folderScan.targetedResolver && (
                               <span className="text-xs">
@@ -1830,7 +1830,7 @@ export function ImportLibraryModal({
                         onClick={() => void handleUsbSourceSelect()}
                         className="flex-1 w-full mb-4 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-2 text-muted-foreground"
                       >
-                        <FolderOpen size={20} />
+                        <Folder width={20} height={20} aria-hidden="true" />
                         <p className="text-sm">Click to select USB drive folder</p>
                       </button>
                     )}
@@ -1846,7 +1846,7 @@ export function ImportLibraryModal({
 
                     <div className="mt-auto flex justify-center gap-3">
                       <ControlButton variant="ghost" onClick={handleClose}>
-                        <Close size={16} /> Cancel
+                        <Xmark width={16} height={16} aria-hidden="true" /> Cancel
                       </ControlButton>
                       <ControlButton
                         variant="primary"
@@ -1855,7 +1855,7 @@ export function ImportLibraryModal({
                         className={folderScan?.dbFile ? 'dd-control-button--ready' : ''}
                       >
                         <span key={folderScan?.dbFile ? 'ready' : 'idle'} className="dd-icon-pop">
-                          {folderScan?.dbFile ? <CheckmarkFilled size={16} /> : <Upload size={16} />}
+                          {folderScan?.dbFile ? <CheckCircle width={16} height={16} aria-hidden="true" /> : <Upload width={16} height={16} aria-hidden="true" />}
                         </span>
                         Import
                       </ControlButton>
@@ -1884,7 +1884,7 @@ export function ImportLibraryModal({
                         onClick={() => fileInputRef.current?.click()}
                         className="flex-1 w-full mb-4 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-2 text-muted-foreground"
                       >
-                        <Upload size={20} />
+                        <Upload width={20} height={20} aria-hidden="true" />
                         <p className="text-sm">
                           Click to select {mode === 'zip_bundle' ? '.zip bundle' : 'exportLibrary.db'}
                         </p>
@@ -1893,7 +1893,7 @@ export function ImportLibraryModal({
 
                     {unexpectedDbName && (
                       <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl mb-4 shrink-0">
-                        <WarningAlt size={13} className="text-amber-400 shrink-0 mt-0.5" />
+                        <WarningTriangle width={13} height={13} aria-hidden="true" className="text-amber-400 shrink-0 mt-0.5" />
                         <p className="text-xs text-amber-300 leading-relaxed">
                           Unexpected filename. The standard rekordbox database is named{' '}
                           <code className="font-mono">exportLibrary.db</code>. You can still try
@@ -1912,14 +1912,14 @@ export function ImportLibraryModal({
 
                     <div className="mt-auto flex justify-center gap-3">
                       <ControlButton variant="ghost" onClick={handleClose}>
-                        <Close size={16} /> Cancel
+                        <Xmark width={16} height={16} aria-hidden="true" /> Cancel
                       </ControlButton>
                       <ControlButton
                         variant="primary"
                         onClick={handleImport}
                         disabled={!selectedFile}
                       >
-                        <Upload size={16} />
+                        <Upload width={16} height={16} aria-hidden="true" />
                         Import
                       </ControlButton>
                     </div>
@@ -1940,13 +1940,13 @@ export function ImportLibraryModal({
                     {localUsbStage === 'uploading_bundle' && 'Uploading Bundle…'}
                   </h2>
                   <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-                    <CircleDash className="animate-spin text-primary" size={24} />
+                    <Refresh className="animate-spin text-primary" width={24} height={24} aria-hidden="true" />
                   </div>
                 </div>
 
                 {/* USB safety warning */}
                 <div className="mb-3 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left shrink-0">
-                  <WarningAlt size={16} className="mt-0.5 shrink-0 text-amber-400" />
+                  <WarningTriangle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-amber-400" />
                   <p className="text-xs leading-relaxed text-amber-100">
                     Keep Rekordbox closed and do not eject this drive until DropDex confirms USB access has ended.
                   </p>
@@ -2019,7 +2019,7 @@ export function ImportLibraryModal({
                 {/* Buttons pinned to bottom */}
                 <div className="mt-auto flex justify-center gap-3 pt-2">
                   <ControlButton variant="ghost" onClick={() => openAbortDialog('delete')} className="whitespace-nowrap">
-                    <Close size={16} /> Cancel import
+                    <Xmark width={16} height={16} aria-hidden="true" /> Cancel import
                   </ControlButton>
                   {mode === 'usb_folder' && libraryMetadataReady && (
                     <ControlButton
@@ -2028,7 +2028,7 @@ export function ImportLibraryModal({
                       onClick={handleContinueInBackground}
                       className="whitespace-nowrap"
                     >
-                      <ArrowRight size={16} />
+                      <ArrowRight width={16} height={16} aria-hidden="true" />
                       Browse in Background
                     </ControlButton>
                   )}
@@ -2040,7 +2040,7 @@ export function ImportLibraryModal({
             {phase === 'usb_released' && !cancelRequestedRef.current && (
               <div className="space-y-4 text-center">
                 <div className="w-14 h-14 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto">
-                  <CheckmarkFilled className="text-emerald-400" size={24} />
+                  <CheckCircle className="text-emerald-400" width={24} height={24} aria-hidden="true" />
                 </div>
                 <h2 className="text-xl font-bold">USB Access Released</h2>
                 <p className="text-sm text-muted-foreground">
@@ -2062,9 +2062,9 @@ export function ImportLibraryModal({
                       <>
                         <div className="w-14 h-14 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
                           {showSpinner ? (
-                            <CircleDash className="animate-spin text-amber-400" size={24} />
+                            <Refresh className="animate-spin text-amber-400" width={24} height={24} aria-hidden="true" />
                           ) : (
-                            <CheckmarkFilled className="text-emerald-400" size={24} />
+                            <CheckCircle className="text-emerald-400" width={24} height={24} aria-hidden="true" />
                           )}
                         </div>
                         <h2 className="text-xl font-bold mb-2">
@@ -2108,7 +2108,7 @@ export function ImportLibraryModal({
 
                 {!usbReleaseConfirmed && (
                   <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
-                    <WarningAlt size={18} className="mt-0.5 shrink-0 text-amber-400" />
+                    <WarningTriangle width={18} height={18} aria-hidden="true" className="mt-0.5 shrink-0 text-amber-400" />
                     <p className="text-xs leading-relaxed text-amber-100">
                       Keep Rekordbox closed and do not eject the drive until the USB access released step is checked.
                     </p>
@@ -2121,7 +2121,7 @@ export function ImportLibraryModal({
             {phase === 'parsing_cloud_data' && (
               <div className="text-center">
                 <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <CircleDash className="animate-spin text-primary" size={24} />
+                  <Refresh className="animate-spin text-primary" width={24} height={24} aria-hidden="true" />
                 </div>
                 <h2 className="text-xl font-bold mb-3">Analysis Running</h2>
                 <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3 text-left text-xs mb-0">
@@ -2185,7 +2185,7 @@ export function ImportLibraryModal({
                     onClick={() => openAbortDialog('pause')}
                     className="whitespace-nowrap shrink-0"
                   >
-                    <Pause size={16} /> Pause Import
+                    <Pause width={16} height={16} aria-hidden="true" /> Pause Import
                   </ControlButton>
                   <ControlButton
                     type="button"
@@ -2193,7 +2193,7 @@ export function ImportLibraryModal({
                     onClick={handleContinueInBackground}
                     className="whitespace-nowrap shrink-0"
                   >
-                    <ArrowRight size={16} />
+                    <ArrowRight width={16} height={16} aria-hidden="true" />
                     Continue in Background
                   </ControlButton>
                 </div>
@@ -2203,17 +2203,17 @@ export function ImportLibraryModal({
             {phase === 'paused' && (
               <div className="space-y-5 text-center">
                 <div className="w-14 h-14 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto">
-                  <CheckmarkFilled className="text-amber-300" size={24} />
+                  <CheckCircle className="text-amber-300" width={24} height={24} aria-hidden="true" />
                 </div>
                 <h2 className="text-xl font-bold">Analysis Paused Safely</h2>
                 <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left">
-                  <CheckmarkFilled size={18} className="mt-0.5 shrink-0 text-emerald-400" />
+                  <CheckCircle width={18} height={18} aria-hidden="true" className="mt-0.5 shrink-0 text-emerald-400" />
                   <p className="text-xs leading-relaxed text-emerald-100">
                     Your progress is saved. You can pick up where you left off at any time from Import History.
                   </p>
                 </div>
                 <ControlButton type="button" variant="primary" onClick={handleDone}>
-                  <CheckmarkFilled size={16} />
+                  <CheckCircle width={16} height={16} aria-hidden="true" />
                   Done
                 </ControlButton>
               </div>
@@ -2222,7 +2222,7 @@ export function ImportLibraryModal({
             {phase === 'interrupted' && (
               <div className="space-y-5 text-center">
                 <div className="w-14 h-14 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto">
-                  <WarningAlt className="text-amber-400" size={24} />
+                  <WarningTriangle className="text-amber-400" width={24} height={24} aria-hidden="true" />
                 </div>
                 <h2 className="text-xl font-bold">Analysis Interrupted</h2>
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left">
@@ -2231,7 +2231,7 @@ export function ImportLibraryModal({
                   </p>
                 </div>
                 <ControlButton type="button" variant="primary" onClick={handleDone}>
-                  <CheckmarkFilled size={16} />
+                  <CheckCircle width={16} height={16} aria-hidden="true" />
                   Done
                 </ControlButton>
               </div>
@@ -2241,7 +2241,7 @@ export function ImportLibraryModal({
             {phase === 'completed' && (
               <div className="text-center">
                 <div className="w-14 h-14 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckmarkFilled className="text-emerald-400" size={24} />
+                  <CheckCircle className="text-emerald-400" width={24} height={24} aria-hidden="true" />
                 </div>
                 <h2 className="text-xl font-bold mb-1">
                   {withAnalysis ? 'Book Imported with Analysis!' : 'Book Imported!'}
@@ -2249,7 +2249,7 @@ export function ImportLibraryModal({
 
                 {usbReleaseConfirmed && (
                   <div className="my-3 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left">
-                    <CheckmarkFilled size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                    <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-emerald-400" />
                     <p className="text-xs leading-relaxed text-emerald-100">
                       USB reading is complete. DropDex no longer needs the USB.
                     </p>
@@ -2363,7 +2363,7 @@ export function ImportLibraryModal({
                 )}
 
                 <ControlButton variant="primary" onClick={handleDone}>
-                  <CheckmarkFilled size={16} />
+                  <CheckCircle width={16} height={16} aria-hidden="true" />
                   Done
                 </ControlButton>
               </div>
@@ -2384,7 +2384,7 @@ export function ImportLibraryModal({
                     >
                       {usbReleaseConfirmed && (
                         <div className="mb-3 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
-                          <CheckmarkFilled size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                          <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-emerald-400" />
                           <p className="text-xs leading-relaxed text-emerald-100">
                             USB reading is complete. DropDex no longer needs the USB.
                           </p>
@@ -2424,7 +2424,7 @@ export function ImportLibraryModal({
                                   className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300 transition-colors hover:bg-amber-400/20"
                                 >
                                   <span>{issueCount.toLocaleString()} {issueCount === 1 ? 'Issue' : 'Issues'}</span>
-                                  <View size={13} />
+                                  <Eye width={13} height={13} aria-hidden="true" />
                                 </button>
                               )}
                             </div>
@@ -2471,7 +2471,7 @@ export function ImportLibraryModal({
 
                       <div className="flex justify-center mt-1">
                         <ControlButton variant="primary" onClick={handleDone}>
-                          <CheckmarkFilled size={16} />
+                          <CheckCircle width={16} height={16} aria-hidden="true" />
                           Done
                         </ControlButton>
                       </div>
@@ -2493,14 +2493,14 @@ export function ImportLibraryModal({
                           className="flex items-center justify-center rounded-lg p-1 text-muted-foreground transition-colors hover:text-foreground hover:bg-white/[0.06]"
                           aria-label="Back to summary"
                         >
-                          <ArrowLeft size={20} />
+                          <ArrowLeft width={20} height={20} aria-hidden="true" />
                         </button>
                         <h3 className="text-lg font-bold">Track Issues</h3>
                       </div>
 
                       {issueTracksLoading && (
                         <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
-                          <CircleDash className="animate-spin" size={16} />
+                          <Refresh className="animate-spin" width={16} height={16} aria-hidden="true" />
                           Loading affected tracks…
                         </div>
                       )}
@@ -2552,8 +2552,8 @@ export function ImportLibraryModal({
                                     )}>
                                       {issueLabel}
                                     </span>
-                                    <ChevronDown
-                                      size={12}
+                                    <NavArrowDown
+                                      width={12} height={12} aria-hidden="true"
                                       className={cn(
                                         'text-muted-foreground transition-transform duration-200',
                                         isExpanded && 'rotate-180',
@@ -2576,7 +2576,7 @@ export function ImportLibraryModal({
 
                       <div className="flex justify-center mt-4 shrink-0">
                         <ControlButton variant="primary" onClick={handleDone}>
-                          <CheckmarkFilled size={16} />
+                          <CheckCircle width={16} height={16} aria-hidden="true" />
                           Done
                         </ControlButton>
                       </div>
@@ -2589,7 +2589,7 @@ export function ImportLibraryModal({
             {/* ── Cancellation ── */}
             {phase === 'cancelled' && (
               <div className="space-y-4 text-center">
-                <WarningAlt size={34} className="mx-auto text-amber-500" />
+                <WarningTriangle width={34} height={34} aria-hidden="true" className="mx-auto text-amber-500" />
                 <div>
                   <h3 className="font-semibold">Import deleted</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -2598,7 +2598,7 @@ export function ImportLibraryModal({
                   {errorMessage && <p className="mt-2 text-sm text-destructive">{errorMessage}</p>}
                 </div>
                 <ControlButton type="button" variant="neutral" onClick={reset} className="whitespace-nowrap">
-                  <Renew size={16} /> Start another import
+                  <Refresh width={16} height={16} aria-hidden="true" /> Start another import
                 </ControlButton>
               </div>
             )}
@@ -2606,7 +2606,7 @@ export function ImportLibraryModal({
             {phase === 'failed' && (
               <div className="text-center">
                 <div className="w-14 h-14 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-                  <WarningAlt className="text-red-400" size={24} />
+                  <WarningTriangle className="text-red-400" width={24} height={24} aria-hidden="true" />
                 </div>
                 <h2 className="text-xl font-bold mb-2">
                   {errorStructured ? 'Book Parsed, Save Failed' : 'Import Failed'}
@@ -2630,11 +2630,11 @@ export function ImportLibraryModal({
                 )}
                 <div className="flex gap-3 mt-5 justify-center">
                   <ControlButton variant="primary" onClick={reset} className="whitespace-nowrap">
-                    <Renew size={16} />
+                    <Refresh width={16} height={16} aria-hidden="true" />
                     Retry
                   </ControlButton>
                   <ControlButton variant="neutral" onClick={() => { reset(); onClose(); }} className="whitespace-nowrap">
-                    <Close size={16} />
+                    <Xmark width={16} height={16} aria-hidden="true" />
                     Cancel
                   </ControlButton>
                 </div>
@@ -2661,9 +2661,9 @@ function SafetyStep({
   return (
     <div className="flex items-center gap-3 text-left">
       {complete ? (
-        <CheckmarkFilled size={16} className="shrink-0 text-emerald-400" />
+        <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-emerald-400" />
       ) : active ? (
-        <CircleDash size={16} className="shrink-0 animate-spin text-amber-400" />
+        <Refresh width={16} height={16} aria-hidden="true" className="shrink-0 animate-spin text-amber-400" />
       ) : (
         <div className="h-4 w-4 shrink-0 rounded-full border border-[var(--color-border-subtle)]" />
       )}

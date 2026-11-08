@@ -1,9 +1,12 @@
+import '../ui/studio-surface.css';
+import { WaveformSectionRow } from '../ui/media/WaveformSectionRow';
+import { RecordTrackListing } from '../ui/display/RecordTrackListing';
+import { TrackRowPlayControl } from '../player/TrackRowPlayButton';
 import { useState, useEffect, useMemo, useCallback, useRef, useDeferredValue } from 'react';
 import { createPortal } from 'react-dom';
 import {
   classifyCamelotRelationship,
   parseCamelotKey,
-  type CamelotRelationship,
 } from '../../lib/music/camelot';
 import { fetchFlipLabCandidatePools } from './flipLabCandidates';
 import type { RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
@@ -38,10 +41,10 @@ import {
 import { MIN_CUE_TIMELINE_WINDOW_MS, panCueTimelineView, zoomCueTimelineView } from '../../lib/cues/cueTimelineViewport';
 import { useFlipLab } from './useFlipLab';
 import { NotificationCenter, type AppNotification } from '../ui/feedback';
-import { KeyBadge, TabNavigation } from '../ui/display';
-import { MediaTransportControlGroup, TrackWaveformPreview, WaveformZoomControls, cueMarkersFromState, type TrackCueMarker } from '../ui/media';
+import { TabNavigation } from '../ui/display';
+import { MediaTransportControlGroup, WaveformZoomControls, cueMarkersFromState, type TrackCueMarker } from '../ui/media';
 import { logger } from '../../lib/logger';
-import { Close } from '@carbon/icons-react';
+import { SoundHigh, SoundOff, Xmark } from 'iconoir-react/regular';
 import { ControlButton, Knob, SearchControl } from '../ui/controls';
 import { FLIP_LAB_EQ_RANGE_DB, type FlipLabEqBand, type FlipLabStem, type FlipLabStemEq } from './flipLabEngine';
 import { FlipIcon, InstrumentalIcon, VocalIcon } from './FlipLabIcons';
@@ -55,8 +58,8 @@ import {
 } from './flipLabPerformance';
 
 // ── Color tokens ──────────────────────────────────────────────────────────────
-const BG       = 'var(--color-background)';
-const PANEL    = 'var(--color-panel)';
+const BG       = 'transparent';
+const PANEL    = '#ffffff02';
 const FG       = 'var(--color-foreground)';
 const MUTED    = 'var(--color-muted-foreground)';
 const BORDER_F = 'var(--color-border-faint)';
@@ -96,19 +99,6 @@ function shiftedCamelot(key: string | null, semitones: number | null): string | 
   if (!parsed || semitones == null) return key;
   const number = ((((parsed.number - 1 + semitones * 7) % 12) + 12) % 12) + 1;
   return `${number}${parsed.mode}`;
-}
-
-function matchDotColor(rel: CamelotRelationship | null): string {
-  if (rel === null) return '#4b5563';
-  switch (rel) {
-    case 'exact':
-    case 'relative':
-    case 'adjacent_up':
-    case 'adjacent_down': return '#22c55e';
-    case 'energy_boost':  return '#f59e0b';
-    case 'incompatible':  return '#ef4444';
-    case 'unknown':       return '#4b5563';
-  }
 }
 
 const FLIP_LAB_KEYFRAMES = `
@@ -163,36 +153,18 @@ function SectionRow({ segments, analysisStatus }: {
   const emptyLabel = analysisStatus === 'loading' ? 'Loading phrase data…' : 'Phrase data unavailable';
 
   return (
-    <div style={{ position: 'absolute', inset: 0 }}>
-      {segments.length === 0 ? (
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 9, color: MUTED, letterSpacing: '0.04em',
-        }}>{emptyLabel}</div>
-      ) : segments.map((segment, index) => {
-        const color = SECTION_COLORS[segment.tone].wave;
-        return (
-          <div
-            key={`${segment.label}-${index}-${segment.startPercent}`}
-            style={{
-              position: 'absolute', left: `${segment.startPercent}%`, width: `${segment.endPercent - segment.startPercent}%`,
-              top: 5, height: 28,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden', borderBottom: `2px solid ${color}`,
-            }}
-          >
-            <span style={{
-              fontFamily: 'monospace', fontSize: 9, fontWeight: 700,
-              color, letterSpacing: '0.06em',
-              textShadow: '0 1px 4px rgba(0,0,0,0.8)', whiteSpace: 'nowrap',
-            }}>
-              {segment.label.toUpperCase()}
-            </span>
-          </div>
-        );
-      })}
-    </div>
+    <WaveformSectionRow
+      sections={segments.map((segment, index) => ({
+        id: segment.label + '-' + index,
+        label: segment.label,
+        color: SECTION_COLORS[segment.tone].wave,
+        leftPercent: segment.startPercent,
+        widthPercent: segment.endPercent - segment.startPercent,
+      }))}
+      message={segments.length ? undefined : (
+        <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground">{emptyLabel}</div>
+      )}
+    />
   );
 }
 
@@ -335,157 +307,6 @@ function TrackHeader({ track, titleSide = 'left', targetBpm, keyShift, solo }: T
 }
 
 // ── Track selector row ────────────────────────────────────────────────────────
-const ROW_GRID = '24px minmax(0,1fr) 168px 40px 56px 12px 20px';
-const ROW_GAP  = 6;
-
-function TrackSelectorRow({
-  candidate,
-  selected,
-  disabled,
-  onSelect,
-  onPreview,
-  previewStatus,
-  waveformState,
-  cueMarkers,
-  otherTrack,
-}: {
-  candidate: RouletteCandidateAnalysis;
-  selected: boolean;
-  disabled: boolean;
-  onSelect: () => void;
-  onPreview: () => void;
-  previewStatus: 'idle' | 'loading' | 'playing';
-  waveformState: WaveformLoadState;
-  cueMarkers: TrackCueMarker[];
-  otherTrack: RekordboxTrack | null;
-}) {
-  const { track } = candidate;
-  const bpm    = track.bpm != null ? track.bpm.toFixed(0) : '—';
-  const keyStr = resolveFlipLabCamelotKey(track);
-
-  const rel = useMemo<CamelotRelationship | null>(() => {
-    if (!otherTrack) return null;
-    const mine   = resolveFlipLabCamelotKey(track);
-    const theirs = resolveFlipLabCamelotKey(otherTrack);
-    if (!mine || !theirs) return 'unknown';
-    return classifyCamelotRelationship(mine, theirs);
-  }, [track, otherTrack]);
-
-  const dotClr = matchDotColor(rel);
-
-  return (
-    <div
-      role="button"
-      tabIndex={disabled ? -1 : 0}
-      aria-pressed={selected}
-      aria-disabled={disabled}
-      onClick={disabled ? undefined : onSelect}
-      onKeyDown={(event) => {
-        if (disabled) return;
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onSelect();
-        }
-      }}
-      style={{
-        width: '100%',
-        display: 'grid',
-        gridTemplateColumns: ROW_GRID,
-        alignItems: 'center',
-        columnGap: ROW_GAP,
-        padding: '5px 12px',
-        background: selected ? `${PRIMARY}12` : 'transparent',
-        border: 'none',
-        borderBottom: `1px solid ${BORDER_F}`,
-        borderLeft: `2px solid ${selected ? PRIMARY : 'transparent'}`,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.45 : 1,
-        textAlign: 'left',
-      }}
-    >
-      {/* Plays the original track; separate from row selection. */}
-      <button
-        type="button"
-        disabled={disabled}
-        aria-label={`${previewStatus === 'playing' ? 'Stop' : 'Preview'} ${track.title}`}
-        aria-pressed={previewStatus === 'playing'}
-        onClick={(event) => {
-          event.stopPropagation();
-          onPreview();
-        }}
-        onKeyDown={(event) => event.stopPropagation()}
-        style={{
-          width: 24, height: 24, borderRadius: '50%', padding: 0,
-          background: previewStatus !== 'idle' ? `${PRIMARY}20` : CTRL_BG,
-          border: `1px solid ${previewStatus !== 'idle' ? PRIMARY : CTRL_BDR}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 7, color: previewStatus !== 'idle' ? PRIMARY : FG,
-          flexShrink: 0, cursor: disabled ? 'not-allowed' : 'pointer',
-        }}
-      >{previewStatus === 'loading' ? '…' : previewStatus === 'playing' ? '■' : '▶'}</button>
-
-      <div style={{ minWidth: 0, overflow: 'hidden' }}>
-        <div style={{
-          fontSize: 11, fontWeight: 600, color: FG,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{track.title}</div>
-        <div style={{
-          fontSize: 10, color: MUTED,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{resolveFlipLabArtist(track, 'Unknown artist')}</div>
-      </div>
-
-      <TrackWaveformPreview
-        waveformState={waveformState}
-        durationMs={trackDurationMs(track)}
-        cues={cueMarkers}
-        height={24}
-        ariaLabel={`Waveform for ${track.title}`}
-      />
-
-      <div style={{
-        fontSize: 11, fontWeight: 700, color: FG,
-        fontVariantNumeric: 'tabular-nums', textAlign: 'center',
-      }}>{bpm}</div>
-
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <KeyBadge camelotKey={keyStr} />
-      </div>
-
-      <div style={{
-        width: 8, height: 8, borderRadius: '50%',
-        background: dotClr, boxShadow: `0 0 5px ${dotClr}70`,
-        margin: '0 auto',
-      }} />
-
-      {/* Reserved column: no fake overflow-menu affordance until a real menu exists. */}
-      <div aria-hidden="true" />
-    </div>
-  );
-}
-
-function TrackListColumnHeader() {
-  return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: ROW_GRID,
-      alignItems: 'center',
-      columnGap: ROW_GAP,
-      padding: '5px 12px',
-      borderBottom: `1px solid ${BORDER_F}`,
-      background: PANEL,
-    }}>
-      {['', 'Track', '', 'BPM', 'Key', 'Match', ''].map((label, i) => (
-        <div key={i} style={{
-          fontSize: 8, fontWeight: 800, color: MUTED,
-          letterSpacing: '0.08em', textTransform: 'uppercase',
-          textAlign: i >= 2 ? 'center' : 'left',
-        }}>{label}</div>
-      ))}
-    </div>
-  );
-}
-
 // ── Select panel (left or right column) ──────────────────────────────────────
 interface SelectPanelProps {
   role: 'vocal' | 'instrumental';
@@ -536,16 +357,21 @@ function SelectPanel({
     [filtered, windowRange.endIndex, windowRange.startIndex],
   );
 
+  const hasTracks = filtered.length > 0;
+  const visibleTracks = useMemo(() => visibleCandidates.map(({ track }) => track), [visibleCandidates]);
   useEffect(() => {
     const node = listRef.current;
     if (!node) return;
-    const updateHeight = () => setViewportHeight(Math.max(FLIP_LAB_ROW_HEIGHT, node.clientHeight));
+    const updateHeight = () => {
+      const headerHeight = node.querySelector('thead')?.getBoundingClientRect().height ?? 0;
+      setViewportHeight(Math.max(FLIP_LAB_ROW_HEIGHT, node.clientHeight - headerHeight));
+    };
     updateHeight();
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(updateHeight);
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [hasTracks]);
 
   useEffect(() => {
     const node = listRef.current;
@@ -568,8 +394,8 @@ function SelectPanel({
   }, [filtered, selectedId, viewportHeight]);
 
   useEffect(() => {
-    onVisibleTrackIdsChange(visibleCandidates.map((candidate) => candidate.track.id));
-  }, [onVisibleTrackIdsChange, visibleCandidates]);
+    onVisibleTrackIdsChange(visibleTracks.map((track) => track.id));
+  }, [onVisibleTrackIdsChange, visibleTracks]);
 
   return (
     <div style={{
@@ -614,46 +440,46 @@ function SelectPanel({
         />
       </div>
 
-      <TrackListColumnHeader />
-
-      <div
-        ref={listRef}
-        onScroll={(event) => {
-          scrollTopRef.current = event.currentTarget.scrollTop;
-          setScrollTop(event.currentTarget.scrollTop);
-        }}
-        style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: 88 }}
-      >
-        {filtered.length === 0 ? (
-          <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 11, color: MUTED }}>
-            {tab === 'suggested' && suggested.length === 0
-              ? (otherTrack ? 'No compatible suggestions for this selection.' : 'Select a track on the other side to see suggestions.')
-              : library.length === 0
-                ? 'No tracks in library yet.'
-                : 'No tracks match your search.'}
-          </div>
-        ) : (
-          <>
-            {windowRange.topSpacerHeight > 0 && <div aria-hidden="true" style={{ height: windowRange.topSpacerHeight }} />}
-            {visibleCandidates.map(c => (
-              <div key={c.track.id} style={{ height: FLIP_LAB_ROW_HEIGHT, overflow: 'hidden' }}>
-                <TrackSelectorRow
-                  candidate={c}
-                  selected={c.track.id === selectedId}
-                  disabled={disabled}
-                  onSelect={() => onSelect(c.track.id)}
-                  onPreview={() => onPreview(c.track)}
-                  previewStatus={previewStatusFor(c.track.id)}
-                  waveformState={getWaveformState(c.track.id)}
-                  cueMarkers={cueMarkersFor(c.track.id)}
-                  otherTrack={otherTrack}
-                />
-              </div>
-            ))}
-            {windowRange.bottomSpacerHeight > 0 && <div aria-hidden="true" style={{ height: windowRange.bottomSpacerHeight }} />}
-          </>
-        )}
-      </div>
+      {filtered.length === 0 ? (
+        <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 11, color: MUTED }}>
+          {tab === 'suggested' && suggested.length === 0
+            ? (otherTrack ? 'No compatible suggestions for this selection.' : 'Select a track on the other side to see suggestions.')
+            : library.length === 0
+              ? 'No tracks in library yet.'
+              : 'No tracks match your search.'}
+        </div>
+      ) : (
+        <RecordTrackListing
+          tracks={visibleTracks}
+          selectedId={selectedId}
+          onSelect={disabled ? undefined : (track) => onSelect(track.id)}
+          getWaveformState={getWaveformState}
+          getCueMarkers={cueMarkersFor}
+          renderLeading={(track) => {
+            const status = previewStatusFor(track.id);
+            return <TrackRowPlayControl
+              label={(status === 'playing' ? 'Stop ' : 'Preview ') + track.title}
+              active={status !== 'idle'} playing={status === 'playing'} loading={status === 'loading'}
+              disabled={disabled} onToggle={() => onPreview(track)}
+            />;
+          }}
+          getActions={otherTrack ? (track) => [{
+            id: 'match', label: 'Harmonic match',
+            hint: classifyCamelotRelationship(resolveFlipLabCamelotKey(track), resolveFlipLabCamelotKey(otherTrack)).replaceAll('_', ' '),
+          }] : undefined}
+          rowProps={() => ({ 'aria-disabled': disabled, tabIndex: disabled ? -1 : 0 })}
+          className="min-h-0 flex-1"
+          scrollRef={listRef}
+          scrollStyle={{ height: '100%', paddingBottom: 88 }}
+          onScroll={(event) => {
+            scrollTopRef.current = event.currentTarget.scrollTop;
+            setScrollTop(event.currentTarget.scrollTop);
+          }}
+          topSpacer={windowRange.topSpacerHeight}
+          bottomSpacer={windowRange.bottomSpacerHeight}
+          ariaLabel={roleLabel + ' tracks'}
+        />
+      )}
     </div>
   );
 }
@@ -817,7 +643,7 @@ function FlipFloatingControls({
           boxShadow: '0 8px 20px rgba(0, 0, 0, 0.4)',
         }}
       >
-        <Close size={18} />
+        <Xmark width={18} height={18} aria-hidden="true" />
       </button>
     </div>,
     document.body,
@@ -1111,7 +937,9 @@ function FlipLabAudioDock({
         </span>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, borderLeft: `1px solid ${BORDER_F}`, paddingLeft: 10 }}>
-          <span aria-hidden="true" style={{ fontSize: 12, color: MUTED }}>{volume === 0 ? '🔇' : '🔊'}</span>
+          {volume === 0
+            ? <SoundOff width={14} height={14} color={MUTED} aria-hidden="true" />
+            : <SoundHigh width={14} height={14} color={MUTED} aria-hidden="true" />}
           <input
             type="range"
             min={0}
@@ -1315,69 +1143,72 @@ function TopWaveformSection({
         solo={{ enabled: state.solo === 'vocal', disabled: busy, onToggle: () => flipLab.toggleSolo('vocal') }}
       />
 
-      <div style={{ position: 'relative', height: 40, borderBottom: `1px solid ${BORDER_F}`, overflow: 'hidden' }}>
-        <div style={vocalBox}><SectionRow segments={vocalSections} analysisStatus={vocalAnalysis.status} /></div>
-      </div>
+      <div className="waveform-section-frame">
+        <div style={{ position: 'relative', height: 32, borderBottom: `1px solid ${BORDER_F}` }}>
+          <div style={vocalBox}><SectionRow segments={vocalSections} analysisStatus={vocalAnalysis.status} /></div>
+        </div>
 
-      <div
-        ref={lanesRef}
-        data-testid="flip-lab-lanes"
-        className="group/waveform"
-        onPointerDown={handleLanePointerDown}
-        onPointerMove={handleLanePointerMove}
-        onPointerUp={handleLanePointerUp}
-        onPointerCancel={handleLanePointerCancel}
-        style={{ position: 'relative', cursor: ready ? (grabbing ? 'grabbing' : 'grab') : undefined, touchAction: 'pan-y', userSelect: 'none' }}
-      >
-        <FillingWaveformLane
-          box={vocalBox}
-          fill={vocalFill}
-          muted={state.solo === 'instrumental'}
-          waveformState={vocalWaveformState}
-          ariaLabel={`Waveform for ${vocalTrack.title}`}
-        />
-        <FillingWaveformLane
-          box={instrBox}
-          fill={instrFill}
-          muted={state.solo === 'vocal'}
-          waveformState={instrWaveformState}
-          ariaLabel={`Waveform for ${instrTrack.title}`}
-        />
-        {state.phase === 'ready' && playheadProgress >= 0 && playheadProgress <= 1 && (
-          <FlipLabPlayheadOverlay progress={playheadProgress} />
-        )}
-        {pausePrompt && (
-          <div
-            role="alert"
-            data-testid="flip-lab-pause-prompt"
-            style={{
-              position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', zIndex: 30,
-              display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px 12px 16px',
-              background: 'rgba(27,34,48,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14,
-              boxShadow: '0 16px 40px rgba(0,0,0,0.5)', cursor: 'default',
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: FG }}>Pause the track first</div>
-              <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>You can only slide a track left or right to line it up while it's paused.</div>
-            </div>
-            <ControlButton
-              variant="primary"
-              className="h-[30px] min-h-0 px-3 text-[11px]"
-              onClick={() => { flipLab.pause(); setPausePrompt(false); }}
+        <div
+          ref={lanesRef}
+          data-testid="flip-lab-lanes"
+          className="group/waveform"
+          onPointerDown={handleLanePointerDown}
+          onPointerMove={handleLanePointerMove}
+          onPointerUp={handleLanePointerUp}
+          onPointerCancel={handleLanePointerCancel}
+          style={{ position: 'relative', cursor: ready ? (grabbing ? 'grabbing' : 'grab') : undefined, touchAction: 'pan-y', userSelect: 'none' }}
+        >
+          <FillingWaveformLane
+            box={vocalBox}
+            fill={vocalFill}
+            muted={state.solo === 'instrumental'}
+            waveformState={vocalWaveformState}
+            ariaLabel={`Waveform for ${vocalTrack.title}`}
+          />
+          <FillingWaveformLane
+            box={instrBox}
+            fill={instrFill}
+            muted={state.solo === 'vocal'}
+            waveformState={instrWaveformState}
+            ariaLabel={`Waveform for ${instrTrack.title}`}
+          />
+          {state.phase === 'ready' && playheadProgress >= 0 && playheadProgress <= 1 && (
+            <FlipLabPlayheadOverlay progress={playheadProgress} />
+          )}
+          {pausePrompt && (
+            <div
+              role="alert"
+              data-testid="flip-lab-pause-prompt"
+              style={{
+                position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', zIndex: 30,
+                display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px 12px 16px',
+                background: 'rgba(27,34,48,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.5)', cursor: 'default',
+              }}
             >
-              Pause
-            </ControlButton>
-          </div>
-        )}
-        <WaveformZoomControls onZoomIn={() => handleZoom(0.75)} onZoomOut={() => handleZoom(1 / 0.75)} canZoomIn={canZoomIn} canZoomOut={canZoomOut} />
-      </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: FG }}>Pause the track first</div>
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>You can only slide a track left or right to line it up while it's paused.</div>
+              </div>
+              <ControlButton
+                variant="primary"
+                className="h-[30px] min-h-0 px-3 text-[11px]"
+                onClick={() => { flipLab.pause(); setPausePrompt(false); }}
+              >
+                Pause
+              </ControlButton>
+            </div>
+          )}
+          <WaveformZoomControls onZoomIn={() => handleZoom(0.75)} onZoomOut={() => handleZoom(1 / 0.75)} canZoomIn={canZoomIn} canZoomOut={canZoomOut} />
+        </div>
 
-      <div style={{ position: 'relative', height: 40, borderBottom: `1px solid ${BORDER_F}`, overflow: 'hidden' }}>
-        <div style={instrBox}><SectionRow segments={instrSections} analysisStatus={instrAnalysis.status} /></div>
-      </div>
+        <div style={{ position: 'relative', height: 32, borderBottom: `1px solid ${BORDER_F}` }}>
+          <div style={instrBox}><SectionRow segments={instrSections} analysisStatus={instrAnalysis.status} /></div>
+        </div>
 
-      <CombinedBeatGridLane beats={combinedBeats} view={view} />
+        <CombinedBeatGridLane beats={combinedBeats} view={view} />
+
+      </div>
 
       <TrackHeader
         track={instrTrack}
@@ -1603,12 +1434,9 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
   const showLoadedPair = pairIsLoaded && selectedVocal !== null && selectedInstr !== null && flipState.timeline !== null;
 
   return (
-    <div ref={rootRef} style={{
+    <div ref={rootRef} className="studio-surface flip-lab-studio" style={{
       display: 'flex', flexDirection: 'column',
       flex: 1, minHeight: 0, overflowY: 'auto',
-      borderTop: `1px solid ${BORDER_F}`,
-      borderBottom: `1px solid ${BORDER_F}`,
-      background: BG, fontFamily: 'inherit',
     }}>
       <style>{FLIP_LAB_KEYFRAMES}</style>
       <NotificationCenter notifications={notifications} onDismiss={dismissNotification} label="Flip Lab notifications" />

@@ -1,16 +1,20 @@
+import { AuditionTrackHeader } from '../audition/AuditionTrackHeader';
+import { formatClock, timeRulerTicks } from '../audition/auditionTracks';
+import { WaveformTimeRuler } from '../ui/media/WaveformTimeRuler';
+import { waveformSectionInk } from '../ui/media/waveformPresentation';
+import { cueFlagColor, WaveformCueMarker } from '../ui/media/WaveformCueMarker';
+import { CloudSyncIcon } from '../library/CloudSyncIcon';
+import { useSyncedPreviewKeys } from '../../hooks/useSyncedPreviewKeys';
+import { trackIdentityKey } from '../../lib/preview/trackIdentity';
+import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { ChevronDown, CircleDash, Close, ColorPalette, Edit, Export, Idea, Music, Pause, Pending, Play, Repeat, Save, Tag, Time, Timer, Upload, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
-import { AudioWaveform, Bookmark, Grip, List, RotateCcw } from 'lucide-react';
+import { Clock, DatabaseExport, DotsGrid3x3, EditPencil, FloppyDisk, Label, LightBulb, MusicNote, NavArrowDown, Palette, Pause, Play, Refresh, Repeat, SoundHigh, SoundOff, TaskList, Timer, Undo, Upload, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
 import { barLabelBeats, beatRulerTicks, timelineGridLines } from '../../lib/cues/beatRuler';
 import { gridBeatsForMode, type CueGridDisplayMode } from '../../lib/cues/cueTimelineViewport';
-import { StatusBadge } from '../ui/feedback';
 import { useTimelineZoom } from '../../hooks/useTimelineZoom';
 import { useTrackPlaylistCounts } from '../../hooks/useTrackPlaylistCounts';
-import { useSyncedPreviewKeys } from '../../hooks/useSyncedPreviewKeys';
-import { trackIdentityKey } from '../../lib/preview/trackIdentity';
-import { CloudSyncIcon } from '../library/CloudSyncIcon';
 import { applyAutoCueStrategy } from '../../lib/music/autoCueStrategy';
 import {
   addWorkingCue,
@@ -47,11 +51,8 @@ import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/
 import { CueEditorToolbar, CueStateIcon } from './CueEditorToolbar';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { ControlButton, DualRangeSlider, FilterDropdown, SearchControl, SelectControl, TextControl } from '../ui/controls';
-import { TrackIdentity, TrackListing, TrackListingWaveform, type TrackListingColumn } from '../ui/display';
-import { TrackRowPlayButton } from '../player/TrackRowPlayButton';
 import { TabNavigation } from '../ui/display/TabNavigation';
-import { AudioDock, MediaTransportControlGroup, PlaybackSeekBar, TimelineBeatLane, TimelineSectionLane, WaveformZoomControls, cueMarkersFromState } from '../ui/media';
-import { KeyBadge } from '../ui/display';
+import { AudioDock, MediaTransportControlGroup, PlaybackSeekBar, TransportButton, TimelineBeatLane, TimelineSectionLane, WaveformZoomControls } from '../ui/media';
 import { PlaybackSourceBadge } from '../player/PlaybackSourceBadge';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
@@ -182,28 +183,11 @@ interface CueRebaseRecoveryState {
   items: CueRebaseRecoveryItem[];
 }
 
-/** The Library page's Format, rate and bit rate badges: 12px, medium weight and the normal text colour, exactly like every other value in the table; text as written. */
-const LIBRARY_PROPERTY_BADGE = { fontSize: 12, fontWeight: 500, letterSpacing: 'normal', textTransform: 'none', color: 'var(--color-foreground)' } as const;
-
-/** How every data value looks in the Library page's table: 12px like the track title, normal text colour, medium weight. */
-const LIBRARY_VALUE = 'text-xs font-medium text-foreground';
 const CUE_PAGE_SIZE = 100;
 
-const CAMELOT_COLORS: Record<number, string> = {
-  1: '#e74c3c', 2: '#3b82f6', 3: '#1d4ed8', 4: '#f59e0b', 5: '#16a34a', 6: '#d97706',
-  7: '#8b5cf6', 8: '#0d9488', 9: '#22c55e', 10: '#0891b2', 11: '#06b6d4', 12: '#ec4899',
-};
 function formatCamelotKey(key: string | null | undefined): string {
   const raw = formatKey(key);
   return raw.replace(/^(\d)([AB])$/i, (_, n, l) => `0${n}${l.toUpperCase()}`);
-}
-
-function camelotColor(key: string | null | undefined): string {
-  if (!key) return '#6b7280';
-  const m = key.match(/^(\d{1,2})[AB]$/i);
-  if (!m) return '#6b7280';
-  const n = parseInt(m[1], 10);
-  return (n >= 1 && n <= 12) ? (CAMELOT_COLORS[n] ?? '#6b7280') : '#6b7280';
 }
 
 function cueLabel(cue: WorkingCue): string {
@@ -285,7 +269,7 @@ function CueTrackPlayButton({ track }: { track: RekordboxTrack }) {
       }}
       onKeyDown={(event) => event.stopPropagation()}
     >
-      {isLoading ? <CircleDash size={13} className="animate-spin" /> : isPlaying ? <Pause size={13} /> : <Play size={13} />}
+      {isLoading ? <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> : isPlaying ? <Pause width={13} height={13} aria-hidden="true" /> : <Play width={13} height={13} aria-hidden="true" />}
     </button>
   );
 }
@@ -373,22 +357,22 @@ function CuePointsAudioDock({
     getAudioElement,
   } = useAudioPlayer();
   const label = regionLabel ?? (audition ? 'Audition' : 'Cue Points');
-  const transportTrack = audition ? selectedTrack ?? activeTrack : activeTrack ?? selectedTrack;
+  const transportTrack = selectedTrack ?? activeTrack;
   const transportIsActive = activeTrack?.id === transportTrack?.id;
   const playbackProgress = useWaveformProgress(transportTrack?.id);
   const orderedTrackIds = useMemo(() => orderedTracks.map((track) => track.id), [orderedTracks]);
   const previousIndex = cueAdjacentTrackIndex(orderedTrackIds, transportTrack?.id, selectedTrack?.id, -1);
   const nextIndex = cueAdjacentTrackIndex(orderedTrackIds, transportTrack?.id, selectedTrack?.id, 1);
   const audio = getAudioElement();
-  const durationSeconds = (transportIsActive || !audition) && audio && Number.isFinite(audio.duration) && audio.duration > 0
+  const durationSeconds = transportIsActive && audio && Number.isFinite(audio.duration) && audio.duration > 0
     ? audio.duration
-    : audition && transportTrack ? (durationMsForTrack(transportTrack, null) ?? 0) / 1000 : 0;
+    : transportTrack ? (durationMsForTrack(transportTrack, null) ?? 0) / 1000 : 0;
   const fallbackCurrentTime = playbackProgress != null && durationSeconds > 0 ? playbackProgress * durationSeconds : 0;
   const currentSeconds = transportIsActive && audio && Number.isFinite(audio.currentTime) ? audio.currentTime : fallbackCurrentTime;
-  const loading = status === 'resolving' || status === 'loading';
+  const loading = transportIsActive && (status === 'resolving' || status === 'loading');
   const hasTransportTrack = Boolean(activeTrack ?? selectedTrack);
-  const transportBlocked = !hasTransportTrack || loading || (!audition && status === 'error');
-  const seekable = Boolean(transportIsActive && activeTrack && durationSeconds > 0 && !transportBlocked);
+  const transportBlocked = !hasTransportTrack || loading;
+  const seekable = Boolean(transportIsActive && audio && Number.isFinite(audio.duration) && audio.duration > 0 && status !== 'error' && !transportBlocked);
   const playing = Boolean(transportIsActive && activeTrack && playIntent && status !== 'error');
 
   const playAdjacent = useCallback((index: number | null) => {
@@ -409,6 +393,15 @@ function CuePointsAudioDock({
     if (!seekable) return;
     seek(clampCueTransportTime(currentSeconds, durationSeconds, deltaSeconds));
   }, [currentSeconds, durationSeconds, seek, seekable]);
+
+  const volumeControls = (<>
+        <TransportButton label={muted ? 'Unmute' : 'Mute'} tone="mute" size="compact" active={muted} onClick={toggleMute}>
+          {muted || volume === 0 ? <SoundOff width={16} height={16} aria-hidden="true" /> : <SoundHigh width={16} height={16} aria-hidden="true" />}
+        </TransportButton>
+        <input type="range" min={0} max={1} step={0.01} value={muted ? 0 : volume}
+          onChange={(event) => setVolume(Number(event.target.value))}
+          aria-label={`${label} playback volume`} className="h-1.5 w-20 cursor-pointer accent-primary" />
+  </>);
 
   return (
     <AudioDock
@@ -446,6 +439,7 @@ function CuePointsAudioDock({
       />
 
       <PlaybackSeekBar
+        className="cue-dock__seek"
         currentSeconds={currentSeconds}
         durationSeconds={durationSeconds}
         seekable={seekable}
@@ -457,7 +451,7 @@ function CuePointsAudioDock({
 
       {audition && (
         <>
-      <div className="flex shrink-0 items-center gap-3 border-l border-white/10 pl-4">
+      <div className="cue-dock__grid-count flex shrink-0 items-center gap-3 border-l border-white/10 pl-4">
         <FilterDropdown
           label="Beat Count"
           value={gridDisplayMode}
@@ -473,7 +467,7 @@ function CuePointsAudioDock({
         />
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="cue-dock__options flex shrink-0 items-center gap-2">
         <button
           type="button"
           aria-label={gridVisible ? 'Hide grid' : 'Show grid'}
@@ -486,7 +480,7 @@ function CuePointsAudioDock({
               : 'border-[var(--color-border-subtle)] bg-[var(--color-card)] text-muted-foreground hover:text-foreground',
           )}
         >
-          <Grip size={14} />
+          <DotsGrid3x3 width={14} height={14} aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -501,29 +495,13 @@ function CuePointsAudioDock({
               : 'border-[var(--color-border-subtle)] bg-[var(--color-card)] text-muted-foreground hover:text-foreground',
           )}
         >
-          <Repeat size={14} />
+          <Repeat width={14} height={14} aria-hidden="true" />
         </button>
-        <button
-          type="button"
-          aria-label={muted ? 'Unmute' : 'Mute'}
-          onClick={toggleMute}
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-card)] text-muted-foreground transition-colors hover:text-foreground"
-        >
-          {muted || volume === 0 ? <VolumeMute size={14} /> : <VolumeUp size={14} />}
-        </button>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.02}
-          value={volume}
-          onChange={(event) => setVolume(Number(event.target.value))}
-          aria-label={`${label} playback volume`}
-          className="h-1.5 w-20 cursor-pointer accent-primary"
-        />
+        {volumeControls}
       </div>
         </>
       )}
+      {!audition && <div className="cue-dock__options flex shrink-0 items-center gap-2 border-l border-white/10 pl-3">{volumeControls}</div>}
     </AudioDock>
   );
 }
@@ -652,7 +630,7 @@ function CueInspector({
           aria-label="Dismiss selected cue inspector"
           onClick={onClose}
         >
-          <Close size={15} />
+          <Xmark width={15} height={15} aria-hidden="true" />
         </button>
       </div>
 
@@ -731,7 +709,7 @@ function CueInspector({
         <label className="min-w-0 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
           Start (ms)
           <TextControl
-            icon={<Timer size={15} />}
+            icon={<Timer width={15} height={15} aria-hidden="true" />}
             key={`${cue.editorId}:start:${cue.startMs}`}
             className="font-mono tabular-nums"
             containerClassName="mt-1"
@@ -782,7 +760,7 @@ function CueInspector({
             </SelectControl>
           ) : (
             <TextControl
-              icon={<ColorPalette size={15} />}
+              icon={<Palette width={15} height={15} aria-hidden="true" />}
               key={`${cue.editorId}:color-index:${cue.colorTableIndex}`}
               className="font-mono tabular-nums"
               containerClassName="mt-1"
@@ -803,7 +781,7 @@ function CueInspector({
           <label className="text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
             Loop end (ms)
             <TextControl
-              icon={<Timer size={15} />}
+              icon={<Timer width={15} height={15} aria-hidden="true" />}
               key={`${cue.editorId}:end:${cue.endMs}`}
               className="font-mono tabular-nums"
               containerClassName="mt-1"
@@ -823,7 +801,7 @@ function CueInspector({
           <label className="text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
             Loop length (ms)
             <TextControl
-              icon={<Time size={15} />}
+              icon={<Clock width={15} height={15} aria-hidden="true" />}
               key={`${cue.editorId}:length:${loopLengthMs}`}
               className="font-mono tabular-nums"
               containerClassName="mt-1"
@@ -864,7 +842,7 @@ function CueInspector({
       <label className="mt-3 block text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
         Comment / name
         <TextControl
-          icon={<Edit size={15} />}
+          icon={<EditPencil width={15} height={15} aria-hidden="true" />}
           containerClassName="mt-1"
           disabled={!editable}
           value={cue.comment ?? ''}
@@ -887,6 +865,7 @@ type CueContextMenuState =
 function CueWaveformPanel({
   audition = false,
   compact = false,
+  cuesAboveWaveform = false,
   track,
   beatGrid,
   cues,
@@ -930,6 +909,7 @@ function CueWaveformPanel({
 }: {
   audition?: boolean;
   compact?: boolean;
+  cuesAboveWaveform?: boolean;
   track: RekordboxTrack | null;
   beatGrid: BeatGridRow | null;
   cues: WorkingCue[];
@@ -1062,24 +1042,25 @@ function CueWaveformPanel({
   const displayGridBeats = useMemo(() => gridVisible ? gridBeatsForMode(beatGrid?.beats ?? [], gridDisplayMode) : [], [beatGrid, gridDisplayMode, gridVisible]);
   const gridLines = useMemo(() => timelineGridLines(displayGridBeats), [displayGridBeats]);
   const rulerTicks = useMemo(() => beatRulerTicks(displayGridBeats), [displayGridBeats]);
+  const timeTicks = useMemo(() => timeRulerTicks(effectiveViewEnd - viewStart).map((tick) => ({
+    ms: tick.ms + viewStart, label: formatClock(tick.ms + viewStart),
+  })), [viewStart, effectiveViewEnd]);
   const rulerLabels = useMemo(() => gridVisible ? barLabelBeats(beatGrid?.beats ?? []) : [], [beatGrid, gridVisible]);
-  const positionedCues = useMemo(
-    () => cues.filter((cue) => cue.startMs != null && durationMs != null && durationMs > 0),
-    [cues, durationMs],
-  );
-  const memoryCueIndexes = useMemo(() => {
-    let memoryIndex = 0;
-    return new Map(positionedCues.map((cue) => {
-      const index = cue.family === 'memory' ? memoryIndex++ : memoryIndex;
-      return [cue.editorId, index] as const;
-    }));
-  }, [positionedCues]);
+  const positionedCues = useMemo(() => {
+    if (durationMs == null || durationMs <= 0) return [];
+    let memoryNumber = 0;
+    return cues.filter((cue) => cue.startMs != null).map((cue) => {
+      const markerLabel = cue.family === 'hot' ? cueLabel(cue) : String(++memoryNumber);
+      const displayColor = resolveCueDisplayColor(cue);
+      return { ...cue, markerLabel, displayColor, markerColor: cueFlagColor(markerLabel, displayColor.hex) };
+    });
+  }, [cues, durationMs]);
   const waveformColorSegments = useMemo<WaveformColorSegment[]>(() => {
     if (durationMs == null || durationMs <= 0) return [];
     return sections.map((section) => ({
       startFraction: section.startMs / durationMs,
       endFraction: section.endMs / durationMs,
-      color: section.waveformColor,
+      color: waveformSectionInk(section.label),
     }));
   }, [durationMs, sections]);
   const { activeTrack: panelActiveTrack, status: panelPlayerStatus, seek: seekPlayback } = useAudioPlayer();
@@ -1206,7 +1187,7 @@ function CueWaveformPanel({
       <section className="overflow-hidden border-t border-[var(--color-border-subtle)] bg-[var(--color-card)]">
         <div className="flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
-            <Music size={26} />
+            <MusicNote width={26} height={26} aria-hidden="true" />
           </div>
           <h2 className="text-lg font-black">{audition ? 'Select a track to audition' : 'Select a track to inspect cue points'}</h2>
           <p className="mt-2 max-w-md text-sm text-muted-foreground">
@@ -1217,32 +1198,53 @@ function CueWaveformPanel({
     );
   }
 
-  const keyDisplay = formatCamelotKey(track.musical_key);
-  const bpmDisplay = track.bpm != null ? track.bpm.toFixed(2) : '—';
-  const durationDisplay = formatTime(durationMs);
   const saveDisabled = (!dirty && !baselineProofRefreshNeeded) || !cueEditingAllowed || saving;
   const discardDisabled = !dirty || !cueEditingAllowed || saving;
   const applyTrackDisabled = !applyTrackAvailable || applying;
   const applyAllDisabled = applyAllCount === 0 || applying;
 
+  const sectionAndRuler = (
+    <>
+      <TimelineSectionLane
+        message={phraseLoading ? (
+          <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
+        ) : sections.length === 0 ? (
+          <div className="absolute inset-0 flex items-center px-2">
+            <div className="h-[30px] w-full rounded-[5px] border border-white/[0.035] bg-white/[0.015]" />
+            <span className="absolute left-4 text-[10px] font-medium uppercase tracking-[0.12em] text-[#66717b]">
+              Sections unavailable
+            </span>
+          </div>
+        ) : undefined}
+        sections={sections.map((section) => {
+          const left = percentageAt(section.startMs, viewStart, effectiveViewEnd);
+          const right = percentageAt(section.endMs, viewStart, effectiveViewEnd);
+          return {
+            id: section.id,
+            label: section.label,
+            color: waveformSectionInk(section.label),
+            leftPercent: left,
+            widthPercent: Math.max(0, right - left),
+            title: `${section.label} · ${formatTime(section.startMs)}–${formatTime(section.endMs)}`,
+          };
+        })}
+      />
+
+      <div className="cue-timeline__data-lane">
+        <WaveformTimeRuler ticks={timeTicks} startMs={viewStart} endMs={effectiveViewEnd} />
+      </div>
+    </>
+  );
+
   return (
     <section className="cue-workstation relative overflow-visible" data-testid="cue-points-workstation">
-      <div className={cn('cue-workstation__header flex flex-row items-start justify-between px-4 lg:px-5', compact ? 'gap-2 py-1.5' : 'gap-3 py-2')}>
-        <TrackIdentity
-          as="h1"
-          compact={compact}
-          title={track.title}
-          subtitle={track.artist}
-          artworkSrc={track.artwork_path}
-          stats={[
-            { label: 'BPM', value: bpmDisplay },
-            { label: 'Key', value: keyDisplay, color: camelotColor(track.musical_key) },
-            { label: 'Duration', value: durationDisplay },
-            { label: 'Cues', value: cueLoading ? '…' : cueLoadStatus === 'failed' ? '!' : String(cues.length) },
-          ]}
-        />
-
-        {!audition && <div className="cue-workstation__actions -mt-[7px] flex shrink-0 items-center gap-0.5">
+      <AuditionTrackHeader
+        track={track}
+        durationMs={durationMs}
+        cueCount={audition ? undefined : cueLoading ? '…' : cueLoadStatus === 'failed' ? '!' : String(cues.length)}
+      />
+      {!audition && <div className="cue-workstation__toolbar">
+        <div className="cue-workstation__actions flex shrink-0 items-center gap-0.5">
           <CueStateIcon state={draftStatus} />
           <span className="mx-1.5 h-5 w-px bg-white/10" aria-hidden="true" />
           <CueEditorToolbar
@@ -1262,7 +1264,7 @@ function CueWaveformPanel({
             aria-label={metadataDraftLoadStatus === 'loaded' ? `Open Pending Changes, ${pendingMetadataCount} pending` : 'Open Pending Changes'}
             title={metadataDraftLoadStatus === 'failed' ? 'Pending metadata state failed to load. Open to retry.' : 'Review saved metadata changes'}
           >
-            <Pending size={20} />
+            <TaskList width={20} height={20} aria-hidden="true" />
             {metadataDraftLoadStatus === 'loaded' && pendingMetadataCount > 0 && <span className="cue-action-icon__badge">{pendingMetadataCount}</span>}
             {metadataDraftLoadStatus === 'failed' && <span className="cue-action-icon__badge cue-action-icon__badge--warn">!</span>}
           </ControlButton>
@@ -1275,7 +1277,7 @@ function CueWaveformPanel({
             onClick={() => setEditorMessage(onAutoCue())}
             title={autoCueReady ? 'Auto Cue: generate deterministic A–H cue proposals' : "Auto Cue requires the selected track's exact beat grid and phrase data to finish loading"}
           >
-            <Idea size={20} />
+            <LightBulb width={20} height={20} aria-hidden="true" />
           </ControlButton>
           <div ref={applyMenuRef} className="relative flex" data-testid="cue-apply-menu">
             <ControlButton
@@ -1287,7 +1289,7 @@ function CueWaveformPanel({
               onClick={onApplyAll}
               title={applyAllCount > 0 ? `Apply all ${applyAllCount} saved track changes to local Rekordbox` : 'Apply All requires at least one saved draft that needs apply'}
             >
-              {applying ? <CircleDash size={20} className="animate-spin" /> : <Export size={20} />}
+              {applying ? <Refresh width={20} height={20} aria-hidden="true" className="animate-spin" /> : <DatabaseExport width={20} height={20} aria-hidden="true" />}
               {applyAllCount > 0 && <span className="cue-action-icon__badge">{applyAllCount}</span>}
             </ControlButton>
             <ControlButton
@@ -1299,7 +1301,7 @@ function CueWaveformPanel({
               onClick={() => setApplyMenuOpen((open) => !open)}
               title="Save, Apply, or Discard"
             >
-              <ChevronDown size={15} className={cn('transition-transform', applyMenuOpen && 'rotate-180')} />
+              <NavArrowDown width={15} height={15} aria-hidden="true" className={cn('transition-transform', applyMenuOpen && 'rotate-180')} />
             </ControlButton>
             {applyMenuOpen && (
               <div
@@ -1320,7 +1322,7 @@ function CueWaveformPanel({
                   className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-foreground transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => { closeApplyMenuAndRestoreFocus(); void onSave().then(setEditorMessage); }}
                 >
-                  {saving ? <CircleDash size={15} className="animate-spin" /> : <Save size={15} />}
+                  {saving ? <Refresh width={15} height={15} aria-hidden="true" className="animate-spin" /> : <FloppyDisk width={15} height={15} aria-hidden="true" />}
                   <span>Save Draft</span>
                 </button>
                 <button
@@ -1331,7 +1333,7 @@ function CueWaveformPanel({
                   className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-foreground transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => { closeApplyMenuAndRestoreFocus(); onApplyTrack(); }}
                 >
-                  <Export size={15} />
+                  <DatabaseExport width={15} height={15} aria-hidden="true" />
                   <span>Apply Track</span>
                 </button>
                 <button
@@ -1342,7 +1344,7 @@ function CueWaveformPanel({
                   className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-foreground transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => { closeApplyMenuAndRestoreFocus(); onApplyAll(); }}
                 >
-                  <Export size={15} />
+                  <DatabaseExport width={15} height={15} aria-hidden="true" />
                   <span>Apply All ({applyAllCount})</span>
                 </button>
                 <div className="my-1 border-t border-white/[0.07]" />
@@ -1354,19 +1356,19 @@ function CueWaveformPanel({
                   className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-amber-100 transition-colors hover:bg-amber-300/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => { closeApplyMenuAndRestoreFocus(); onDiscard(); }}
                 >
-                  <RotateCcw size={15} />
+                  <Undo width={15} height={15} aria-hidden="true" />
                   <span>Discard Changes</span>
                 </button>
               </div>
             )}
           </div>
-        </div>}
-      </div>
+        </div>
+      </div>}
 
       {!audition && cueBaselineComplete && cueIntegrity && cueIntegrity.status !== 'valid' && (
         <div className="mx-5 mt-3 flex items-start justify-between gap-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.06] px-3 py-2 text-amber-100" role="status">
           <div className="flex min-w-0 items-start gap-2">
-            <WarningAlt size={16} className="mt-0.5 shrink-0" />
+            <WarningTriangle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0" />
             <div className="min-w-0">
               <p className="text-[10px] font-black uppercase tracking-[0.12em]">
                 {cueIntegrity.status === 'unresolved' ? 'Cue ownership unresolved' : 'Cue baseline invalid'}
@@ -1384,17 +1386,18 @@ function CueWaveformPanel({
         </div>
       )}
 
-      <div className={cn('px-4 lg:px-5', compact ? 'py-1.5' : 'pb-0 pt-0')}>
+      <div className={cn('cue-workstation__timeline px-4 lg:px-5', compact ? 'py-1.5' : 'pb-0 pt-0')}>
         <div className="overflow-x-auto">
-          <div className="min-w-[920px]">
-            <div className="cue-timeline relative overflow-hidden bg-[var(--color-background)]">
+          <div className="waveform-section-frame min-w-[920px]">
+            <div className="cue-timeline relative bg-[var(--color-background)]">
               <CueEditorPlaybackPlayhead
                 trackId={track.id}
                 viewStartMs={viewStart}
                 viewEndMs={effectiveViewEnd}
               />
             <div className="grid gap-0 grid-cols-[minmax(0,1fr)]">
-              <div className="cue-timeline__data-lane h-[34px] pt-1.5 overflow-hidden">
+              {cuesAboveWaveform && sectionAndRuler}
+              <div className="cue-timeline__cues cue-timeline__data-lane h-9 overflow-hidden">
                 <div className="relative h-full overflow-visible">
                 {cueLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading cue points…</div>
@@ -1418,7 +1421,6 @@ function CueWaveformPanel({
                     {positionedCues.map((cue) => {
                       const range = cueLoopRangeGeometry(cue, viewStart, effectiveViewEnd);
                       if (!range?.visible) return null;
-                      const displayColor = resolveCueDisplayColor(cue);
                       return (
                         <span
                           key={`cue-loop-range-${cue.editorId}`}
@@ -1428,20 +1430,18 @@ function CueWaveformPanel({
                             left: `${range.leftPercent}%`,
                             width: `${range.widthPercent}%`,
                             minWidth: '2px',
-                            borderColor: `${displayColor.hex}AA`,
-                            backgroundColor: `${displayColor.hex}24`,
+                            borderColor: `${cue.markerColor}AA`,
+                            backgroundColor: `${cue.markerColor}24`,
                           }}
                           title={`${cueDisplayName(cue)} range · ${formatTime(cue.startMs)}–${formatTime(cue.endMs)}`}
                         >
-                          <span className="absolute bottom-0 right-0 top-0 w-px" style={{ backgroundColor: displayColor.hex }} aria-hidden="true" />
+                          <span className="absolute bottom-0 right-0 top-0 w-px" style={{ backgroundColor: cue.markerColor }} aria-hidden="true" />
                         </span>
                       );
                     })}
                     {positionedCues.map((cue) => {
                       const left = percentageAt(cue.startMs ?? 0, viewStart, effectiveViewEnd);
-                      const displayColor = resolveCueDisplayColor(cue);
-                      const markerColor = displayColor.hex;
-                      const memoryIndex = memoryCueIndexes.get(cue.editorId) ?? 0;
+                      const { displayColor, markerColor } = cue;
                       const selected = selectedCueId === cue.editorId;
                       return (
                         <button
@@ -1473,27 +1473,15 @@ function CueWaveformPanel({
                             }
                           }}
                         >
-                        <span
-                          className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 flex items-center justify-center"
-                          style={{ width: 24, height: 27 }}
+                        <WaveformCueMarker
+                          className="pointer-events-none"
+                          label={cue.markerLabel}
+                          color={markerColor}
+                          memory={cue.family === 'memory'}
+                          selected={selected}
+                          style={{ left: '50%' }}
                           aria-hidden="true"
-                        >
-                          <svg
-                            viewBox="0 0 256 256"
-                            width={24}
-                            height={27}
-                            xmlns="http://www.w3.org/2000/svg"
-                            style={{ fill: 'none', stroke: markerColor, strokeWidth: 14, transform: 'rotate(90deg)', display: 'block', flexShrink: 0 }}
-                          >
-                            <path d="M187.71875,203.99963H40a12.01312,12.01312,0,0,1-12-12v-128a12.01312,12.01312,0,0,1,12-12H187.71875a11.976,11.976,0,0,1,9.98437,5.34375l45.625,68.4375a4.00066,4.00066,0,0,1,0,4.4375l-45.625,68.43848A11.97381,11.97381,0,0,1,187.71875,203.99963Z" />
-                          </svg>
-                          <span
-                            className="absolute font-black uppercase leading-none"
-                            style={{ fontSize: 9, top: '48%', left: '50%', transform: 'translate(-50%, -50%)', color: markerColor }}
-                          >
-                            {cue.family === 'hot' ? cueLabel(cue) : String(memoryIndex + 1)}
-                          </span>
-                        </span>
+                        />
                       </button>
                       );
                     })}
@@ -1502,37 +1490,8 @@ function CueWaveformPanel({
                 </div>
               </div>
 
-              <TimelineSectionLane
-                message={phraseLoading ? (
-                  <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
-                ) : sections.length === 0 ? (
-                  <div className="absolute inset-0 flex items-center px-2">
-                    <div className="h-[30px] w-full rounded-[5px] border border-white/[0.035] bg-white/[0.015]" />
-                    <span className="absolute left-4 text-[10px] font-medium uppercase tracking-[0.12em] text-[#66717b]">
-                      Sections unavailable
-                    </span>
-                  </div>
-                ) : undefined}
-                sections={sections.map((section) => {
-                  const left = percentageAt(section.startMs, viewStart, effectiveViewEnd);
-                  const right = percentageAt(section.endMs, viewStart, effectiveViewEnd);
-                  return {
-                    id: section.id,
-                    label: section.label,
-                    color: section.waveformColor,
-                    leftPercent: left,
-                    widthPercent: Math.max(0, right - left),
-                    title: `${section.label} · ${formatTime(section.startMs)}–${formatTime(section.endMs)}`,
-                  };
-                })}
-                trailing={durationMs != null && sections.length > 0 && sections[sections.length - 1].endMs < durationMs ? (() => {
-                  const left = percentageAt(sections[sections.length - 1].endMs, viewStart, effectiveViewEnd);
-                  const right = percentageAt(durationMs, viewStart, effectiveViewEnd);
-                  return { leftPercent: left, widthPercent: Math.max(0, right - left) };
-                })() : null}
-              />
-
-              <div className={cn('cue-timeline__data-lane relative group/waveform', compact ? 'h-[56px]' : 'h-[68px]')}>
+              {!cuesAboveWaveform && sectionAndRuler}
+              <div className={cn('cue-timeline__data-lane relative group/waveform' , compact ? 'h-[56px]' : 'h-[72px]')}>
               <div
                 ref={waveformDivRef}
                 className={cn('relative h-full overflow-hidden', audition ? 'cursor-pointer' : 'cursor-crosshair')}
@@ -1550,7 +1509,7 @@ function CueWaveformPanel({
                     <div className="absolute inset-y-0" style={{ left: `${wLeft}%`, width: `${wScale * 100}%` }}>
                       <RekordboxPreviewWaveform
                         state={waveformState}
-                        height={compact ? 54 : 66}
+                        height={compact ? 54 : 72}
                         variant="detail"
                         appearance="rekordbox"
                         renderMode="area"
@@ -1566,7 +1525,7 @@ function CueWaveformPanel({
                 })() : (
                   <RekordboxPreviewWaveform
                     state={waveformState}
-                    height={compact ? 54 : 66}
+                    height={compact ? 54 : 72}
                     variant="detail"
                     appearance="rekordbox"
                     renderMode="area"
@@ -1585,12 +1544,12 @@ function CueWaveformPanel({
                       const rightPct = percentageAt(activeSection.endMs, viewStart, effectiveViewEnd);
                       return (
                         <span
-                          className="absolute bottom-0 top-0 border border-cyan-400/70 bg-cyan-400/[0.07]"
-                          style={{ left: `${leftPct}%`, width: `${Math.max(0, rightPct - leftPct)}%`, boxShadow: '0 0 12px 2px rgb(34 211 238 / 0.18)' }}
+                          className="absolute bottom-0 top-0 border border-white/15 bg-white/[0.025]"
+                          style={{ left: `${leftPct}%`, width: `${Math.max(0, rightPct - leftPct)}%` }}
                         />
                       );
                     })()}
-                    {gridLines.map((beat) => (
+                    {effectiveViewEnd - viewStart < durationMs && gridLines.map((beat) => (
                       <span
                         key={`wave-grid-${beat.seq}`}
                         className={cn(
@@ -1600,7 +1559,11 @@ function CueWaveformPanel({
                         style={{ left: `${percentageAt(beat.ms, viewStart, effectiveViewEnd)}%` }}
                       />
                     ))}
-                    {gridVisible && sections.slice(1).map((section) => (
+                    {timeTicks.slice(1).map((tick) => (
+                      <span key={`time-grid-${tick.ms}`} className="absolute bottom-0 top-0 w-px bg-white/[0.06]"
+                        style={{ left: `${percentageAt(tick.ms, viewStart, effectiveViewEnd)}%` }} />
+                    ))}
+                    {gridVisible && effectiveViewEnd - viewStart < durationMs && sections.slice(1).map((section) => (
                       <span
                         key={`section-boundary-${section.id}`}
                         className="absolute bottom-0 top-0 w-px bg-white/[0.16]"
@@ -1608,8 +1571,7 @@ function CueWaveformPanel({
                       />
                     ))}
                     {positionedCues.map((cue) => {
-                      const displayColor = resolveCueDisplayColor(cue);
-                      const markerColor = displayColor.hex;
+                      const { markerColor } = cue;
                       const range = cueLoopRangeGeometry(cue, viewStart, effectiveViewEnd);
                       return (
                         <span key={`wave-cue-${cue.editorId}`}>
@@ -1659,7 +1621,8 @@ function CueWaveformPanel({
               />
               </div>
 
-              <TimelineBeatLane
+              <TimelineBeatLane className="cue-timeline__beats"
+                extendLeft={cuesAboveWaveform}
                 message={!gridVisible ? (
                   <div className="flex h-full items-center px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">Grid hidden</div>
                 ) : beatGridLoading ? (
@@ -1767,10 +1730,11 @@ function CueWaveformPanel({
 }
 
 /** Focused, read-only use of the production Cue Points timeline for track details. */
-export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform }: {
+export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform, cuesAboveWaveform = false }: {
   track: RekordboxTrack;
   waveformState: WaveformLoadState;
   onRetryWaveform?: () => void;
+  cuesAboveWaveform?: boolean;
 }) {
   const auth = useAuthSession();
   const userId = auth.status === 'authenticated' ? auth.session.user.id : null;
@@ -1820,8 +1784,8 @@ export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform }: {
   const retryAnalysis = () => setRetry((value) => value + 1);
   const noop = () => {};
   return (
-    <section className="glass overflow-hidden rounded-2xl border border-[var(--color-border-subtle)]" aria-label="Track timeline">
-      <CueWaveformPanel audition track={track} beatGrid={beatGrid} cues={cues} phrases={phrases}
+    <section className="studio-surface cue-studio cue-track-panel" aria-label="Track timeline">
+      <CueWaveformPanel audition cuesAboveWaveform={cuesAboveWaveform} track={track} beatGrid={beatGrid} cues={cues} phrases={phrases}
         cueLoading={loading} cueLoadStatus={cueStatus} cueLoadError={cueError} cueIntegrity={null}
         beatGridLoading={loading} phraseLoading={loading} waveformState={waveformState}
         dirty={false} draftStatus="Original" baselineProofRefreshNeeded={false} saving={false}
@@ -2898,10 +2862,8 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
     };
   }, [cueSummaryRetryNonce, importId, trackIdsKey]);
 
-  // The Artist Library shows how many playlists each track is in.
   const activeSourceTrackIds = useMemo(() => activeSourceTracks.map((track) => track.id), [activeSourceTracks]);
-  const playlistCounts = useTrackPlaylistCounts(activeSourceTrackIds, artistLibrary);
-  // Which tracks have a DropDex Cloud preview, for the cloud column on the Library page.
+  const playlistCounts = useTrackPlaylistCounts(activeSourceTrackIds);
   const cloudSynced = useSyncedPreviewKeys(artistLibrary);
 
   const sourceSearchFilteredTracks = useMemo(() => {
@@ -2942,23 +2904,17 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
       if (sortCol === 'title') { av = a.title ?? ''; bv = b.title ?? ''; }
       else if (sortCol === 'artist') { av = a.artist ?? ''; bv = b.artist ?? ''; }
       else if (sortCol === 'bpm') { av = a.bpm ?? -1; bv = b.bpm ?? -1; }
-      else if (sortCol === 'key') { av = formatCamelotKey(a.musical_key); bv = formatCamelotKey(b.musical_key); }
+      else if (sortCol === 'key') { av = formatCamelotKey(a.camelot_key || a.musical_key); bv = formatCamelotKey(b.camelot_key || b.musical_key); }
       else if (sortCol === 'genre') { av = a.genre ?? ''; bv = b.genre ?? ''; }
       else if (sortCol === 'format') { av = a.file_format ?? ''; bv = b.file_format ?? ''; }
-      else if (sortCol === 'sampleRate') { av = a.sample_rate_hz ?? -1; bv = b.sample_rate_hz ?? -1; }
-      else if (sortCol === 'bitRate') { av = a.bitrate_kbps ?? -1; bv = b.bitrate_kbps ?? -1; }
-      else if (sortCol === 'cues') {
-        const aCount = cueLoadCount(cueSummaryStates.get(a.id));
-        const bCount = cueLoadCount(cueSummaryStates.get(b.id));
-        av = aCount ?? Number.POSITIVE_INFINITY;
-        bv = bCount ?? Number.POSITIVE_INFINITY;
-      }
       else if (sortCol === 'playlists') {
-        av = playlistCounts.counts.get(a.id) ?? Number.POSITIVE_INFINITY;
-        bv = playlistCounts.counts.get(b.id) ?? Number.POSITIVE_INFINITY;
+        const ac = playlistCounts.counts.get(a.id);
+        const bc = playlistCounts.counts.get(b.id);
+        if (ac == null || bc == null) return ac == null ? Number(bc != null) : -1;
+        av = ac; bv = bc;
       }
       else if (sortCol === 'analysis') { av = analysisReady(a) ? 1 : 0; bv = analysisReady(b) ? 1 : 0; }
-      else if (sortCol === 'duration') {
+      else if (sortCol === 'length') {
         av = a.duration_ms ?? (a.duration_seconds != null ? a.duration_seconds * 1000 : -1);
         bv = b.duration_ms ?? (b.duration_seconds != null ? b.duration_seconds * 1000 : -1);
       }
@@ -2966,7 +2922,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
       const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [filteredTracks, sortCol, sortDir, cueSummaryStates, playlistCounts.counts]);
+  }, [filteredTracks, sortCol, sortDir, playlistCounts.counts]);
 
   // Stage 3 consumes this derived list for Previous/Next playback. It intentionally
   // follows the active source, current playlist, filters, sort order, and only the
@@ -3927,25 +3883,18 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
     return (
       <div className="mx-auto max-w-3xl pt-8">
         <div className="border-y border-[var(--color-border-faint)] bg-[var(--color-card)]/55 p-8 text-center">
-          <Music size={48} className="mx-auto mb-4 text-secondary opacity-60" />
+          <MusicNote width={48} height={48} aria-hidden="true" className="mx-auto mb-4 text-secondary opacity-60" />
           <h2 className="text-2xl font-black">{audition ? 'Audition' : 'Cue Points'}</h2>
           <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
             Import a Rekordbox library to preview waveforms, beat grids, and existing cue points.
           </p>
           <ControlButton variant="primary" className="mt-5" onClick={onImport}>
-            <Upload size={16} /> Import library
+            <Upload width={16} height={16} aria-hidden="true" /> Import library
           </ControlButton>
         </div>
       </div>
     );
   }
-
-  // The green dot: ready, the problem it had, or not analysed yet.
-  const listingStatus = (track: RekordboxTrack) => (analysisReady(track)
-    ? 'ready' as const
-    : track.analysis_parse_status === 'failed' || track.analysis_parse_status === 'missing_required'
-      ? 'error' as const
-      : track.analysis_parse_status == null ? 'none' as const : 'warning' as const);
 
   const renderGenreCell = (track: RekordboxTrack) => {
     const genreDraft = genreDraftsByTrackId.get(track.id) ?? null;
@@ -3965,7 +3914,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                               <div className="flex items-center gap-1.5">
                                 <div className="flex-1">
                                   <TextControl
-                                    icon={<Tag size={15} />}
+                                    icon={<Label width={15} height={15} aria-hidden="true" />}
                                     type="text"
                                     autoFocus
                                     maxLength={REKORDBOX_GENRE_MAX_LENGTH}
@@ -4003,7 +3952,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                                       void saveInlineGenreDraft(track);
                                     }}
                                   >
-                                    {genreSaving ? <CircleDash className="animate-spin" size={13} /> : <Save size={13} />}
+                                    {genreSaving ? <Refresh className="animate-spin" width={13} height={13} aria-hidden="true" /> : <FloppyDisk width={13} height={13} aria-hidden="true" />}
                                   </button>
                                 )}
                                 <button
@@ -4018,7 +3967,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                                     setGenreSaveError((current) => current?.trackId === track.id ? null : current);
                                   }}
                                 >
-                                  <Close size={13} />
+                                  <Xmark width={13} height={13} aria-hidden="true" />
                                 </button>
                               </div>
                               {genreSaveError?.trackId === track.id && (
@@ -4078,7 +4027,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                                   setGenreSaveError(null);
                                 }}
                               >
-                                <Edit size={12} />
+                                <EditPencil width={12} height={12} aria-hidden="true" />
                               </button>
                             </div>
                           )}
@@ -4087,97 +4036,8 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
     );
   };
 
-  const listingColumns: TrackListingColumn<RekordboxTrack>[] = [
-    { id: 'bpm', label: 'BPM', sort: 'bpm', cellClassName: artistLibrary ? cn('whitespace-nowrap', LIBRARY_VALUE) : 'font-mono text-[13px] font-bold tabular-nums', render: (track) => (track.bpm != null ? track.bpm.toFixed(1) : '—') },
-    {
-      id: 'key', label: 'Key', sort: 'key', cellClassName: artistLibrary ? cn('whitespace-nowrap', LIBRARY_VALUE) : undefined,
-      render: (track) => (artistLibrary
-        ? (track.musical_key ? formatCamelotKey(track.musical_key) : '—')
-        : <KeyBadge camelotKey={formatCamelotKey(track.musical_key)} variant={mode === 'audition' ? 'text' : 'badge'} />),
-    },
-    {
-      id: 'genre', label: 'Genre', sort: 'genre',
-      headClassName: mode === 'audition' ? 'w-[112px]' : artistLibrary ? 'w-[71px]' : 'w-[178px]',
-      cellClassName: cn(artistLibrary ? LIBRARY_VALUE : 'text-xs text-muted-foreground', mode === 'audition' ? 'w-[112px] max-w-[112px]' : artistLibrary ? 'w-[71px] max-w-[71px]' : 'w-[178px]'),
-      render: renderGenreCell,
-    },
-    {
-      id: 'cues', label: 'Cues', sort: 'cues', headClassName: artistLibrary ? undefined : 'text-center', cellClassName: artistLibrary ? undefined : 'text-center',
-      render: (track) => {
-        const cueState = cueSummaryStates.get(track.id);
-        const cueCount = cueLoadCount(cueState);
-        return (
-          <span className={cn(
-            artistLibrary
-              ? cn('whitespace-nowrap', LIBRARY_VALUE)
-              : mode === 'audition'
-              ? 'font-mono text-[12px] font-black text-primary'
-              : cn('inline-flex min-w-8 justify-center rounded-md border px-2 py-1 font-mono text-[12px] font-black',
-                cueState?.status === 'failed'
-                  ? 'border-red-400/25 bg-red-400/10 text-red-300'
-                  : (cueCount ?? 0) > 0
-                  ? 'border-secondary/25 bg-secondary/10 text-secondary'
-                  : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-muted-foreground'),
-          )} title={cueState?.status === 'failed' ? cueState.error : undefined}>
-            {cueState?.status === 'loading' || !cueState ? '…' : cueState.status === 'failed' ? '!' : cueCount}
-          </span>
-        );
-      },
-    },
-    ...(artistLibrary ? [{
-      id: 'playlists', label: 'Playlists', sort: 'playlists', cellClassName: cn('whitespace-nowrap', LIBRARY_VALUE), cellProps: () => ({ 'data-testid': 'playlist-count' }),
-      render: (track: RekordboxTrack) => (playlistCounts.counts.has(track.id)
-        ? <span title={`In ${playlistCounts.counts.get(track.id)} ${playlistCounts.counts.get(track.id) === 1 ? 'playlist' : 'playlists'}`}>{playlistCounts.counts.get(track.id)}</span>
-        : playlistCounts.error
-          ? (
-            <button
-              type="button"
-              className="text-red-300 hover:text-red-200"
-              title="Playlist counts could not be loaded. Click to try again."
-              aria-label="Playlist counts could not be loaded. Try again."
-              onClick={(event) => { event.stopPropagation(); playlistCounts.retry(); }}
-            >!</button>
-          )
-          : '…'),
-    }] : []),
-    ...(artistLibrary ? [{
-      id: 'properties', label: 'Properties', headClassName: 'whitespace-nowrap', cellClassName: 'whitespace-nowrap', cellProps: () => ({ 'data-testid': 'properties-cell' }),
-      render: (track: RekordboxTrack) => (
-        <span className="inline-flex items-center gap-1.5">
-          {[
-            track.file_format ? `.${track.file_format.toLowerCase()}` : null,
-            track.sample_rate_hz != null && track.sample_rate_hz > 0 ? `${track.sample_rate_hz / 1000} kHz` : null,
-            track.bitrate_kbps != null && track.bitrate_kbps > 0 ? `${track.bitrate_kbps} kbps` : null,
-          ].filter((value): value is string => Boolean(value)).map((value) => (
-            <StatusBadge key={value} tone="neutral" style={LIBRARY_PROPERTY_BADGE}>{value}</StatusBadge>
-          ))}
-          {!track.file_format && !(track.sample_rate_hz && track.sample_rate_hz > 0) && !(track.bitrate_kbps && track.bitrate_kbps > 0) && <span className={LIBRARY_VALUE}>—</span>}
-        </span>
-      ),
-    }] : [
-      { id: 'format', label: 'Format', sort: 'format', headClassName: 'whitespace-nowrap', cellClassName: 'whitespace-nowrap text-xs text-muted-foreground', render: (track: RekordboxTrack) => track.file_format ?? '—' },
-      {
-        id: 'sampleRate', label: 'Sample Rate', sort: 'sampleRate', headClassName: 'whitespace-nowrap', cellClassName: cn('whitespace-nowrap text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]'),
-        render: (track: RekordboxTrack) => (track.sample_rate_hz != null && track.sample_rate_hz > 0 ? `${track.sample_rate_hz / 1000} kHz` : '—'),
-      },
-      {
-        id: 'bitRate', label: 'Bit Rate', sort: 'bitRate', headClassName: 'whitespace-nowrap', cellClassName: cn('whitespace-nowrap text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]'),
-        render: (track: RekordboxTrack) => (track.bitrate_kbps != null && track.bitrate_kbps > 0 ? `${track.bitrate_kbps} kbps` : '—'),
-      },
-    ]),
-    {
-      id: 'duration', label: 'Duration', sort: 'duration', headClassName: 'text-left w-[80px]',
-      cellClassName: cn('w-[80px] text-left', artistLibrary ? LIBRARY_VALUE : cn('text-muted-foreground', mode === 'audition' ? 'text-xs' : 'font-mono text-[13px]')),
-      render: (track) => formatTime(durationMsForTrack(track, null)),
-    },
-    ...(artistLibrary ? [{
-      id: 'cloud', label: 'Cloud', headClassName: 'w-[64px]', cellClassName: 'w-[64px]', cellProps: () => ({ 'data-testid': 'cloud-cell' }),
-      render: (track: RekordboxTrack) => <CloudSyncIcon synced={cloudSynced.keys.has(trackIdentityKey(track))} unknown={cloudSynced.failed} />,
-    }] : []),
-  ];
-
   return (
-    <div className={cn('flex w-full flex-col pb-10', mode === 'audition' ? 'gap-1' : 'gap-4', mode === 'cues' && 'cue-studio')} data-testid={mode === 'cues' ? 'cue-studio' : undefined}>
+    <div className={cn('flex w-full flex-col pb-10', mode === 'audition' ? 'gap-1' : 'gap-4', mode === 'cues' && 'studio-surface cue-studio')} data-testid={mode === 'cues' ? 'cue-studio' : undefined}>
       {!audition && <PendingMetadataChangesReview
         open={pendingMetadataReviewOpen}
         pendingCount={pendingMetadataCount}
@@ -4373,12 +4233,12 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
         </div>
       )}
 
-      <section className={cn('cue-browser', artistLibrary ? 'artist-library-browser glass rounded-2xl border border-[var(--color-border-subtle)]' : 'border-y border-[var(--color-border-faint)]')} style={{ overflow: 'clip' }}>
+      <section className={cn('cue-browser', artistLibrary ? 'artist-library-browser' : 'border-y border-[var(--color-border-faint)]')} style={{ overflow: 'clip' }}>
         <div ref={filterRowRef} className="cue-browser__chrome sticky z-20 border-b border-[var(--color-border-faint)]" style={{ top: waveformPanelHeight }}>
           <div className="flex flex-col">
             {!artistLibrary && <div className="cue-browser__transport-row w-full">
               <CuePointsAudioDock
-                showBrowserSource={mode !== 'audition'}
+                showBrowserSource={false}
                 audition={audition}
                 selectedTrack={selectedTrack}
                 orderedTracks={orderedVisibleTracks}
@@ -4392,6 +4252,11 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
               />
             </div>}
             <div className="cue-browser__filters flex flex-wrap items-stretch gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] px-4 py-2.5 md:px-5" data-testid="cue-browser-filters">
+              {!artistLibrary && mode !== 'audition' && <div data-testid="cue-browser-source-tabs" className="cue-browser__source-tabs">
+                <TabNavigation ariaLabel="Cue Points browser source" variant="primary" value={browserSource}
+                  onChange={(value) => setBrowserSource(value as BrowserSource)}
+                  options={[{ id: 'library', label: 'Library' }, { id: 'playlists', label: 'Playlists' }]} />
+              </div>}
               <div className="flex min-w-[200px] max-w-[320px] flex-1 flex-col justify-end" data-testid="cue-browser-search">
                 <SearchControl
                   value={search}
@@ -4404,7 +4269,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                 label="Status"
                 value={statusFilter}
                 onChange={(v) => setStatusFilter(v as StatusFilter)}
-                className="min-w-[90px]"
+                className="cue-browser__filter min-w-[90px]"
                 options={[
                   { value: 'all', label: 'All' },
                   { value: 'ready', label: 'Ready' },
@@ -4418,7 +4283,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                 value={genre}
                 onChange={setGenre}
                 searchable
-                className="min-w-[100px]"
+                className="cue-browser__filter cue-browser__filter--genre min-w-[100px]"
                 options={[
                   { value: '', label: 'All' },
                   ...(stats?.genreTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
@@ -4428,8 +4293,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                 label="Key"
                 value={keyFilter}
                 onChange={setKeyFilter}
-                searchable
-                className="min-w-[90px]"
+                className="cue-browser__filter cue-browser__filter--key"
                 options={[
                   { value: '', label: 'All' },
                   ...(stats?.keyTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
@@ -4439,7 +4303,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                 label="Cue States"
                 value={cueFilter}
                 onChange={(v) => setCueFilter(v as CueFilter)}
-                className="min-w-[90px]"
+                className="cue-browser__filter cue-browser__filter--cues"
                 options={[
                   { value: 'all', label: 'All' },
                   { value: 'with-cues', label: 'Has cues' },
@@ -4450,7 +4314,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                 label="Analysis"
                 value={analysisFilter}
                 onChange={(v) => setAnalysisFilter(v as AnalysisFilter)}
-                className="min-w-[90px]"
+                className="cue-browser__filter cue-browser__filter--analysis min-w-[90px]"
                 options={[
                   { value: 'all', label: 'All' },
                   { value: 'ready', label: 'Analysis ready' },
@@ -4491,7 +4355,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
 
         {!audition && metadataDraftLoadStatus === 'loading' && userId && importId && (
           <div className="flex items-center gap-2 border-b border-[var(--color-border-faint)] bg-white/[0.02] px-5 py-2.5 text-xs text-muted-foreground" role="status">
-            <CircleDash className="animate-spin" size={14} />
+            <Refresh className="animate-spin" width={14} height={14} aria-hidden="true" />
             Loading pending Genre changes…
           </div>
         )}
@@ -4522,12 +4386,12 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
 
         {activeSourceError ? (
           <div className="flex items-center gap-3 px-5 py-8 text-sm text-red-300">
-            <WarningAlt size={20} />
+            <WarningTriangle width={20} height={20} aria-hidden="true" />
             <span>{activeSourceError}</span>
           </div>
         ) : activeSourceLoading ? (
           <div className="flex items-center justify-center gap-3 py-16 text-sm text-muted-foreground">
-            <CircleDash className="animate-spin text-primary" size={22} />
+            <Refresh className="animate-spin text-primary" width={22} height={22} aria-hidden="true" />
             {browserSource === 'library' ? 'Loading library tracks…' : 'Loading playlist tracks…'}
           </div>
         ) : browserSource === 'playlists' && selectablePlaylists.length === 0 ? (
@@ -4542,24 +4406,24 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
           </div>
         ) : (
           <>
-            <TrackListing<RekordboxTrack>
+            <RecordTrackListing<RekordboxTrack>
               tracks={orderedVisibleTracks}
-              columns={listingColumns}
               selectedId={selectedTrackId}
               onSelect={setSelectedTrack}
-              getTitle={(track) => track.title}
-              getArtist={(track) => track.artist}
-              getStatus={listingStatus}
-              renderLeading={(track) => <TrackRowPlayButton track={track} />}
-              renderWaveform={(track) => (
-                <TrackListingWaveform
-                  waveformState={getWaveformState(track.id)}
-                  durationMs={durationMsForTrack(track, null)}
-                  cues={cueMarkersFromState(cueSummaryStates.get(track.id))}
-                  height={18}
-                  ariaLabel={`Waveform for ${track.title}`}
-                />
-              )}
+              importId={importId}
+              getWaveformState={getWaveformState}
+              cueStates={cueSummaryStates}
+              playlistCounts={playlistCounts}
+              renderGenre={renderGenreCell}
+              getActions={(track) => [
+                { id: 'cues', label: 'Cue points', hint: cueLoadCount(cueSummaryStates.get(track.id)) ?? '—' },
+                { id: 'sample-rate', label: 'Sample rate', hint: track.sample_rate_hz ? (track.sample_rate_hz / 1000) + ' kHz' : '—' },
+                { id: 'bit-rate', label: 'Bit rate', hint: track.bitrate_kbps ? track.bitrate_kbps + ' kbps' : '—' },
+                ...(artistLibrary ? [{
+                  id: 'cloud', label: 'Cloud preview',
+                  hint: <CloudSyncIcon synced={cloudSynced.keys.has(trackIdentityKey(track))} unknown={cloudSynced.failed} />,
+                }] : []),
+              ]}
               rowKey={(track, rowIndex) => `${browserSource}:${selectedPlaylistId ?? 'library'}:${track.id}:${rowIndex}`}
               rowProps={(track) => ({
                 // On the Artist Library page a click selects the track (its waveform shows above), and a double-click or Enter opens it.
@@ -4572,10 +4436,8 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                   }
                 },
               })}
-              trackSort="title"
               sort={sortCol ? { column: sortCol, direction: sortDir } : null}
               onSort={(column) => handleColClick(column as typeof sortCol & string)}
-              tableClassName={artistLibrary ? 'cue-browser__table--tight' : undefined}
               scrollStyle={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}
               tableTestId="cue-browser-track-table"
               ariaLabel="Cue Points browser tracks"

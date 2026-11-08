@@ -1,5 +1,6 @@
+import { SurfaceCard } from '../ui/display/SurfaceCard';
 import { useCallback, useEffect, useState } from 'react';
-import { CheckmarkFilled, Launch, Renew, WarningFilled } from '@carbon/icons-react';
+import { CheckCircle, OpenNewWindow, Refresh, Spotify, WarningCircle } from 'iconoir-react/regular';
 import {
   beginSpotifyAccountLink,
   fetchSpotifyAccountStatus,
@@ -7,18 +8,10 @@ import {
   type SpotifyAccountStatus,
 } from '../../lib/api/externalAccounts';
 import { ControlButton } from '../ui/controls';
-import { StatusBadge } from '../ui/feedback';
+import { NoticeCard, StatusBadge } from '../ui/feedback';
 
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 120_000;
-
-function SpotifyIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
-      <path d="M12 1.25A10.75 10.75 0 1 0 12 22.75 10.75 10.75 0 0 0 12 1.25Zm4.93 15.5a.67.67 0 0 1-.92.22c-2.52-1.54-5.7-1.89-9.44-1.03a.67.67 0 0 1-.3-1.3c4.1-.94 7.61-.54 10.44 1.19.32.2.42.61.22.92Zm1.31-2.92a.84.84 0 0 1-1.15.28c-2.88-1.77-7.28-2.29-10.69-1.25a.84.84 0 1 1-.49-1.6c3.9-1.18 8.74-.61 12.05 1.42.4.24.52.76.28 1.15Zm.12-3.05C14.9 8.73 9.2 8.54 5.9 9.54a1 1 0 1 1-.58-1.92c3.79-1.15 10.1-.93 14.08 1.44a1 1 0 0 1-1.03 1.72Z" />
-    </svg>
-  );
-}
 
 export function SpotifyExternalAccount({ accessToken }: { accessToken: string | null }) {
   const [account, setAccount] = useState<SpotifyAccountStatus | null>(null);
@@ -130,41 +123,39 @@ export function SpotifyExternalAccount({ accessToken }: { accessToken: string | 
   const isLinked = status === 'linked';
 
   return (
-    <div className="glass rounded-2xl p-5">
+    <SurfaceCard as="div" className="profile-records profile-record space-y-2">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="grid size-11 shrink-0 place-items-center rounded-full bg-[#1ed760]/12 text-[#1ed760]">
-            <SpotifyIcon />
+          <div className="grid size-8 shrink-0 place-items-center text-muted-foreground">
+            <Spotify width={24} height={24} aria-hidden="true" />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-bold text-sm">Spotify</p>
               {isPending ? (
-                <StatusBadge tone="warning" icon={<Renew size={10} className="animate-spin" />}>Connecting</StatusBadge>
+                <StatusBadge tone="warning" icon={<Refresh width={10} height={10} aria-hidden="true" className="animate-spin" />}>Connecting</StatusBadge>
               ) : isLinked ? (
-                <StatusBadge tone="success" icon={<CheckmarkFilled size={10} />}>Linked</StatusBadge>
+                <StatusBadge tone="success" icon={<CheckCircle width={10} height={10} aria-hidden="true" />}>Linked</StatusBadge>
               ) : (
-                <StatusBadge tone="error" icon={<WarningFilled size={10} />}>Failed</StatusBadge>
+                <StatusBadge tone="error" icon={<WarningCircle width={10} height={10} aria-hidden="true" />}>Failed</StatusBadge>
               )}
             </div>
-            <p className="mt-1 truncate text-xs text-muted-foreground">
+            <p className="mt-1 break-words text-xs text-muted-foreground">
               {isLinked
                 ? account?.playlist_access
                   ? account.display_name || 'Spotify account connected'
                   : 'Relink Spotify once to enable playlist access'
                 : 'Connect Spotify to your DropDex profile'}
             </p>
-            {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
           </div>
         </div>
-        <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <ControlButton
-            variant={isLinked ? 'surface' : 'primary'}
+            variant={isLinked ? 'neutral' : 'primary'}
             onClick={() => void linkSpotify()}
             disabled={!accessToken || loading || isPending}
-            className="!h-7 !min-h-7 w-[116px] !px-2.5 !text-[10px]"
           >
-            {isLinked ? <Renew size={12} /> : <Launch size={12} />}
+            {isLinked ? <Refresh width={12} height={12} aria-hidden="true" /> : <OpenNewWindow width={12} height={12} aria-hidden="true" />}
             {isLinked ? 'Relink Spotify' : isPending ? 'Connecting…' : 'Link Spotify'}
           </ControlButton>
           {isLinked && (
@@ -172,13 +163,13 @@ export function SpotifyExternalAccount({ accessToken }: { accessToken: string | 
               variant="danger-outline"
               onClick={() => void unlinkSpotify()}
               disabled={!accessToken || loading || isPending}
-              className="!h-7 !min-h-7 w-[116px] !px-2.5 !text-[10px]"
             >
               Unlink Spotify
             </ControlButton>
           )}
         </div>
       </div>
-    </div>
+      {error && <NoticeCard tone="error">{error}</NoticeCard>}
+    </SurfaceCard>
   );
 }

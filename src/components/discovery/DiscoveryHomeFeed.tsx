@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { CircleDash } from '@carbon/icons-react';
+import { Refresh } from 'iconoir-react/regular';
 import type { DiscoveryFeed } from '../../hooks/useDiscoveryFeed';
 import type { DiscoveryForYou } from '../../hooks/useDiscoveryForYou';
 import { ArtistCard } from './ArtistCard';
@@ -49,7 +49,7 @@ export function DiscoveryHomeFeed({ feed, forYou, genres, onSelectArtist, onOpen
   if (feed.loading && forYou.loading) {
     return (
       <div className="studio-empty" role="status">
-        <CircleDash className="animate-spin text-primary" size={24} />
+        <Refresh className="animate-spin text-primary" width={24} height={24} aria-hidden="true" />
       </div>
     );
   }

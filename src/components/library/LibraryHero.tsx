@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import type { RekordboxImport, UserProfile } from '../../types';
-import { CheckmarkFilled, ChevronRight, Music, Renew, Upload, User, WarningAlt } from '@carbon/icons-react';
+import { CheckCircle, MusicNote, Refresh, Upload, User, WarningTriangle } from 'iconoir-react/regular';
 import { ControlButton } from '../ui/controls';
 import type { LibraryOverviewWidgetId } from '../../lib/dashboard/libraryOverviewWidgets';
 
@@ -62,7 +62,7 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis,
                 {initials ? (
                   <span className="text-2xl font-black text-primary">{initials}</span>
                 ) : (
-                  <User size={32} className="text-primary/70" />
+                  <User width={32} height={32} aria-hidden="true" className="text-primary/70" />
                 )}
               </div>
             )}
@@ -94,14 +94,14 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis,
             </p>
             {/* Row 2: aligns with stat values */}
             <div className="flex items-center gap-1.5 mt-1">
-              <CheckmarkFilled size={14} className="text-green-500 shrink-0" />
+              <CheckCircle width={14} height={14} aria-hidden="true" className="text-green-500 shrink-0" />
               <span className="font-black text-lg leading-none text-green-500">Import Complete</span>
             </div>
             {/* Row 3: spacer aligns with stat labels row */}
             <div className="mt-0.5 h-3" aria-hidden="true" />
             {/* Row 4: Import Book button aligns with "Imported from" */}
             <ControlButton variant="primary" onClick={onImport} className="mt-1.5 text-xs">
-              <Upload size={12} /> Import New Book
+              <Upload width={12} height={12} aria-hidden="true" /> Import New Book
             </ControlButton>
           </div>
 
@@ -119,7 +119,7 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis,
                 </p>
                 {/* Row 2: aligns with stat values */}
                 <div className="flex items-center gap-1.5 mt-1">
-                  <WarningAlt size={14} className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'} />
+                  <WarningTriangle width={14} height={14} aria-hidden="true" className={isAmber ? 'text-amber-400 shrink-0' : 'text-red-400 shrink-0'} />
                   <span className={`font-black text-lg leading-none ${isAmber ? 'text-amber-400' : 'text-red-400'}`}>
                     {ANALYSIS_TITLES[analysisStatus] ?? 'Analysis Issue'}
                   </span>
@@ -129,7 +129,7 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis,
                 {/* Row 4: resume button aligns with "Imported from" */}
                 {isActionable && onResumeAnalysis ? (
                   <ControlButton variant="primary" onClick={() => onResumeAnalysis(latestImport.id)} className="mt-1.5 text-xs">
-                    <Renew size={12} /> Resume Analysis
+                    <Refresh width={12} height={12} aria-hidden="true" /> Resume Analysis
                   </ControlButton>
                 ) : (
                   <div className="mt-1.5 h-3" aria-hidden="true" />
@@ -142,7 +142,7 @@ export function LibraryHero({ latestImport, profile, onImport, onResumeAnalysis,
 
           {/* Stats */}
           <div className="flex flex-col">
-            <Music size={12} className="text-muted-foreground" />
+            <MusicNote width={12} height={12} aria-hidden="true" className="text-muted-foreground" />
             <span className="text-lg font-black tabular-nums leading-none mt-1">{latestImport.playlist_count}</span>
             <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">Playlists</span>
             <p className="text-[10px] text-muted-foreground font-mono mt-1.5">

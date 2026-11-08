@@ -1,3 +1,4 @@
+import { WaveformSectionRow } from './WaveformSectionRow';
 import type { CSSProperties, ReactNode, Ref } from 'react';
 import { cn } from '../../../lib/utils';
 import '../dropdex-media.css';
@@ -31,53 +32,19 @@ export interface TimelineSectionItem {
   title?: string;
 }
 
-/**
- * The colored section names above a waveform: mono caps with a 2px underline.
- * `trailing` draws the gray bar that continues after the last section.
- */
+/** Section labels and the trailing blank use the Audition waveform standard. */
 export function TimelineSectionLane({
-  sections, trailing, message,
+  sections, trailing, message, leadIn = true,
 }: {
   sections: TimelineSectionItem[];
   trailing?: { leftPercent: number; widthPercent: number } | null;
-  /** Shown in place of the sections while loading or when there are none. */
   message?: ReactNode;
+  leadIn?: boolean;
 }) {
   return (
-    <TimelineLane heightClass="h-[28px]">
-      {message ?? (
-        <>
-          {sections.map((section) => (
-            <div
-              key={section.id}
-              data-testid="timeline-section"
-              className="timeline-section absolute top-0 flex h-[22px] items-center justify-center overflow-hidden"
-              style={{
-                '--section-ink': section.color,
-                left: `${section.leftPercent}%`,
-                width: `${section.widthPercent}%`,
-                backgroundColor: 'transparent',
-                borderBottom: `2px solid ${section.color}`,
-              } as CSSProperties}
-              title={section.title}
-            >
-              <span
-                className="whitespace-nowrap font-mono text-[9px] font-bold leading-none tracking-wide"
-                style={{ color: section.color, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}
-              >
-                {section.label.toUpperCase()}
-              </span>
-            </div>
-          ))}
-          {trailing && trailing.widthPercent > 0 ? (
-            <div
-              className="absolute top-0 h-[22px]"
-              style={{ left: `${trailing.leftPercent}%`, width: `${trailing.widthPercent}%`, backgroundColor: 'transparent', borderBottom: '2px solid rgba(255,255,255,0.28)' }}
-            />
-          ) : null}
-        </>
-      )}
-    </TimelineLane>
+    <div className="cue-timeline__data-lane h-[28px]">
+      <WaveformSectionRow sections={sections} trailing={trailing} message={message} leadIn={leadIn} />
+    </div>
   );
 }
 
@@ -97,14 +64,32 @@ export interface TimelineBeatLabel {
 
 /** The beat ruler under a waveform: red bar ticks, green beat ticks and numbers beneath. */
 export function TimelineBeatLane({
-  ticks, labels, message,
+  ticks, labels, message, className, extendLeft = false,
 }: {
   ticks: TimelineBeatTick[];
   labels: TimelineBeatLabel[];
   message?: ReactNode;
+  className?: string;
+  extendLeft?: boolean;
 }) {
+  const first = ticks[0];
+  const period = ticks[1]?.leftPercent - (first?.leftPercent ?? 0);
+  const bars = ticks.filter((tick) => tick.downbeat);
+  const barPeriod = bars[1]?.leftPercent - (bars[0]?.leftPercent ?? 0);
+  const lead = extendLeft && !message && period > 0 ? (
+    <span className="timeline-beat-lead" aria-hidden="true">
+      <span className="timeline-beat-lead__ticks" style={{
+        width: `calc(var(--waveform-timeline-lead, 32px) + ${first.leftPercent}cqw)`,
+        '--beat-lead-gap': `${period}cqw`,
+      } as CSSProperties} />
+      {barPeriod > 0 && <span className="timeline-beat-lead__ticks timeline-beat-lead__ticks--bar" style={{
+        width: `calc(var(--waveform-timeline-lead, 32px) + ${bars[0].leftPercent}cqw)`,
+        '--beat-lead-gap': `${barPeriod}cqw`,
+      } as CSSProperties} />}
+    </span>
+  ) : undefined;
   return (
-    <TimelineLane heightClass="h-[34px]">
+    <TimelineLane heightClass="h-[34px]" className={cn(className, extendLeft && 'timeline-beat-lane--extend')} overlay={lead}>
       {message ?? (
         <>
           {ticks.map((tick) => (

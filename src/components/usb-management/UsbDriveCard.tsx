@@ -1,32 +1,17 @@
 import type { ReactNode } from 'react';
+import { HardDrive } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import { formatBytes, makeAndModel, percentUsed } from '../../lib/usb/usbFormat';
 import type { DesktopTransferScan, DesktopUsbDetails } from '../../types/dropdex-desktop';
 
-/** A stylised USB stick: a gradient body, a metal connector with contacts, and a status light. */
 export function UsbStickArt({ lit = true, size = 112, className }: { lit?: boolean; size?: number; className?: string }) {
   return (
-    <svg viewBox="0 0 96 140" width={size * (96 / 140)} height={size} className={className} aria-hidden="true">
-      <defs>
-        <linearGradient id="usb-art-body" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#1d3557" />
-          <stop offset="100%" stopColor="#0b1626" />
-        </linearGradient>
-        <linearGradient id="usb-art-metal" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#6b7a8d" />
-          <stop offset="50%" stopColor="#c3cfdd" />
-          <stop offset="100%" stopColor="#6b7a8d" />
-        </linearGradient>
-      </defs>
-      <rect x="29" y="6" width="38" height="44" rx="4" fill="url(#usb-art-metal)" />
-      <rect x="35" y="14" width="9" height="12" rx="1.5" fill="#0b1626" />
-      <rect x="52" y="14" width="9" height="12" rx="1.5" fill="#0b1626" />
-      <rect x="14" y="44" width="68" height="90" rx="14" fill="url(#usb-art-body)" stroke="rgba(120,170,255,0.45)" strokeWidth="1.5" />
-      <rect x="24" y="58" width="48" height="6" rx="3" fill="rgba(120,170,255,0.18)" />
-      <rect x="24" y="72" width="30" height="4" rx="2" fill="rgba(120,170,255,0.12)" />
-      <circle cx="48" cy="112" r="6" fill={lit ? '#22c55e' : '#475569'} />
-      {lit && <circle cx="48" cy="112" r="11" fill="#22c55e" opacity="0.18" />}
-    </svg>
+    <HardDrive
+      width={size * (96 / 140)}
+      height={size}
+      className={cn(lit ? 'text-foreground' : 'text-muted-foreground', className)}
+      aria-hidden="true"
+    />
   );
 }
 

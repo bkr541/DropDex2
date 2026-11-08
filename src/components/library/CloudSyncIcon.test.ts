@@ -24,11 +24,9 @@ describe('cloud icon on the Library page track list', () => {
     expect(renderToStaticMarkup(createElement(CloudSyncIcon, { synced: false, unknown: true }))).toContain('DropDex Cloud status unavailable');
   });
 
-  it('is a Cloud column in the Library page track table only, after Duration', () => {
-    expect(view).toContain("...(artistLibrary ? [{\n      id: 'cloud', label: 'Cloud'");
-    expect(view.indexOf("id: 'duration'")).toBeLessThan(view.indexOf("id: 'cloud'"));
-    expect(view).toContain("cellProps: () => ({ 'data-testid': 'cloud-cell' })");
-    expect(view).toContain('synced={cloudSynced.keys.has(trackIdentityKey(track))}');
+  it('shows cloud status in the Library row Actions menu', () => {
+    expect(view).toContain("id: 'cloud', label: 'Cloud preview'");
+    expect(view).toContain('unknown={cloudSynced.failed}');
     expect(view).toContain('useSyncedPreviewKeys(artistLibrary)');
   });
 });

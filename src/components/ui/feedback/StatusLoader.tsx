@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { Refresh } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import '../dropdex-feedback.css';
 import { toneClass } from './tones';
@@ -10,7 +11,7 @@ export function StatusLoader({ variant = 'spinner', tone = 'active', label = 'Lo
   const cls = toneClass[tone];
   return (
     <span className={cn('dd-loader', `dd-loader--${variant}`, cls)} role="status" aria-label={label}>
-      {variant === 'spinner' && <span className="dd-loader__ring" />}
+      {variant === 'spinner' && <Refresh width={22} height={22} className="dd-loader__ring" aria-hidden="true" />}
       {variant === 'dual-ring' && <><span className="dd-loader__dual-a" /><span className="dd-loader__dual-b" /></>}
       {variant === 'pulse' && <><span className="dd-loader__pulse-ring" /><span className="dd-loader__pulse-core" /></>}
       {variant === 'bars' && Array.from({ length: 4 }).map((_, i) => <i key={i} style={{ '--dd-loader-index': i } as CSSProperties} />)}

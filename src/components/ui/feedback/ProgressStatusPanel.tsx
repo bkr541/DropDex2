@@ -1,4 +1,4 @@
-import { Close } from '@carbon/icons-react';
+import { Xmark } from 'iconoir-react/regular';
 import '../dropdex-feedback.css';
 import { CircularProgress } from './CircularProgress';
 
@@ -22,7 +22,7 @@ export function ProgressStatusPanel({
 }) {
   return (
     <section className="dd-progress-panel" aria-label={title}>
-      <header><strong>{title}</strong><Close size={14} aria-hidden="true" /></header>
+      <header><strong>{title}</strong><Xmark width={14} height={14} aria-hidden="true" /></header>
       <div className="dd-progress-panel__body">
         <CircularProgress value={value} size={104} strokeWidth={7} tone="purple" label={`${title} progress`} />
         <dl>

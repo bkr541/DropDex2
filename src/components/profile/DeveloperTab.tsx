@@ -1,9 +1,13 @@
+import { ProfileSwitch } from './ProfileSwitch';
+import { SurfaceCard } from '../ui/display/SurfaceCard';
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChevronDown, ChevronRight, TrashCan } from '@carbon/icons-react';
+import { NavArrowDown, NavArrowRight, Trash } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import { getLogEntries, subscribeToLogs, clearLogEntries, type LogEntry, type LogLevel } from '../../lib/logger';
 import { clearFlipLabStemCache } from '../flip-lab/flipLabSeparation';
-import { SearchControl } from '../ui/controls';
+import { ControlButton, SearchControl, SelectControl } from '../ui/controls';
+import { NoticeCard, StatusBadge } from '../ui/feedback';
+import type { SemanticTone } from '../ui/feedback/types';
 
 // ── Flip Lab stem cache ───────────────────────────────────────────────────────
 
@@ -20,32 +24,29 @@ function FlipLabStemCachePanel() {
   }, []);
 
   return (
-    <div className="space-y-2">
-      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5">
+    <section className="profile-group">
+      <h2 className="profile-heading">
         <span className="w-2 h-2 rounded-full bg-secondary/60 inline-block" />
         Flip Lab
       </h2>
-      <div className="glass rounded-2xl px-4 py-3 flex items-center gap-3">
+      <SurfaceCard as="div" className="flex flex-wrap items-center gap-3 p-4">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">Empty Stem Cache</p>
           <p className="text-xs text-muted-foreground">
             Deletes every vocal and instrumental stem Flip Lab has saved on this computer. Tracks will be separated again the next time you press Flip.
           </p>
-          {message && (
-            <p role="status" className={cn('mt-1 text-xs', status === 'error' ? 'text-red-400' : 'text-emerald-400')}>{message}</p>
-          )}
         </div>
-        <button
-          type="button"
+        <ControlButton
+          variant="danger-outline"
           data-testid="empty-stem-cache"
           onClick={() => { void handleEmpty(); }}
           disabled={status === 'clearing'}
-          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <TrashCan size={14} /> {status === 'clearing' ? 'Emptying…' : 'Empty Stem Cache'}
-        </button>
-      </div>
-    </div>
+          <Trash width={14} height={14} aria-hidden="true" /> {status === 'clearing' ? 'Emptying…' : 'Empty Stem Cache'}
+        </ControlButton>
+      </SurfaceCard>
+      {message && <NoticeCard tone={status === 'error' ? 'error' : 'success'}>{message}</NoticeCard>}
+    </section>
   );
 }
 
@@ -99,19 +100,15 @@ function classifyComponent(message: string): Exclude<LogComponent, 'All'> {
 
 // ── Level badge ───────────────────────────────────────────────────────────────
 
-const LEVEL_COLORS: Record<LogLevel, string> = {
-  debug: 'bg-muted text-muted-foreground',
-  info:  'bg-blue-500/15 text-blue-400',
-  warn:  'bg-amber-500/15 text-amber-400',
-  error: 'bg-red-500/15 text-red-400',
+const LEVEL_TONES: Record<LogLevel, SemanticTone> = {
+  debug: 'neutral',
+  info: 'active',
+  warn: 'warning',
+  error: 'error',
 };
 
 function LevelBadge({ level }: { level: LogLevel }) {
-  return (
-    <span className={cn('inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0', LEVEL_COLORS[level])}>
-      {level}
-    </span>
-  );
+  return <StatusBadge tone={LEVEL_TONES[level]} className="shrink-0">{level}</StatusBadge>;
 }
 
 // ── Single log row ────────────────────────────────────────────────────────────
@@ -126,12 +123,13 @@ function LogRow({ entry }: { entry: LogEntry }) {
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[var(--color-surface-hover)] transition-colors"
+        aria-expanded={expanded}
+        className="profile-log-row flex w-full items-center gap-2 px-3 py-2 text-left"
       >
         <span className="text-muted-foreground shrink-0">
           {expanded
-            ? <ChevronDown size={11} />
-            : <ChevronRight size={11} />}
+            ? <NavArrowDown width={11} height={11} aria-hidden="true" />
+            : <NavArrowRight width={11} height={11} aria-hidden="true" />}
         </span>
         <LevelBadge level={entry.level} />
         <span className="text-[10px] font-mono text-muted-foreground shrink-0">{time}</span>
@@ -145,7 +143,7 @@ function LogRow({ entry }: { entry: LogEntry }) {
 
       {expanded && (
         <div className="px-8 pb-3 space-y-0.5">
-          <div className="glass rounded-xl overflow-hidden divide-y divide-[var(--color-border-faint)]">
+          <SurfaceCard as="div" className="divide-y divide-[var(--color-border-faint)]">
             {/* Timestamp & level */}
             <FieldRow label="timestamp" value={entry.timestamp} />
             <FieldRow label="level" value={entry.level} />
@@ -153,7 +151,7 @@ function LogRow({ entry }: { entry: LogEntry }) {
             {hasContext && Object.entries(entry.context!).map(([k, v]) => (
               <FieldRow key={k} label={k} value={v} />
             ))}
-          </div>
+          </SurfaceCard>
         </div>
       )}
     </div>
@@ -220,40 +218,26 @@ export function DeveloperTab() {
 
   const handleClear = useCallback(() => { clearLogEntries(); }, []);
 
-  const selectClass = 'bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-lg py-1.5 px-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 text-foreground transition-all appearance-none cursor-pointer';
-
   return (
-    <section className="space-y-6">
+    <div className="profile-stack">
       <FlipLabStemCachePanel />
 
       {/* ── Import event filters group ── */}
-      <div className="space-y-2">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5">
+      <section className="profile-group">
+        <h2 className="profile-heading">
           <span className="w-2 h-2 rounded-full bg-amber-400/60 inline-block" />
           Import Event Filters
         </h2>
-        <div className="glass rounded-2xl overflow-hidden divide-y divide-[var(--color-border-faint)]">
+        <SurfaceCard as="div" className="profile-records divide-y divide-[var(--color-border-faint)]">
           {IMPORT_TRACK_EVENTS.map(({ key, label, description }) => {
             const enabled = !disabledEvents.has(key);
             return (
-              <div key={key} className="flex items-center gap-3 px-4 py-3">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={enabled}
+              <div key={key} className="profile-record flex items-center gap-3">
+                <ProfileSwitch
+                  checked={enabled}
+                  aria-label={label}
                   onClick={() => toggleEvent(key)}
-                  className={cn(
-                    'relative shrink-0 w-9 h-5 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50',
-                    enabled ? 'bg-primary' : 'bg-[var(--color-border-subtle)]',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
-                      enabled ? 'translate-x-4' : 'translate-x-0',
-                    )}
-                  />
-                </button>
+                />
                 <div className="min-w-0 flex-1">
                   <p className={cn('text-xs font-semibold leading-tight', enabled ? 'text-foreground' : 'text-muted-foreground')}>
                     {label}
@@ -267,20 +251,20 @@ export function DeveloperTab() {
               </div>
             );
           })}
-        </div>
+        </SurfaceCard>
         <p className="text-[10px] text-muted-foreground/60 px-1 leading-relaxed">
           Toggles here filter these event types from the log viewer below. State is saved across reloads.
         </p>
-      </div>
+      </section>
 
       {/* ── Logger group ── */}
-      <div className="space-y-2">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5">
+      <section className="profile-group">
+        <h2 className="profile-heading">
           <span className="w-2 h-2 rounded-full bg-primary/60 inline-block" />
           Logger
         </h2>
 
-        <div className="glass rounded-2xl overflow-hidden">
+        <SurfaceCard as="div" className="profile-records">
           {/* Filter row */}
           <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--color-border-faint)] flex-wrap">
             {/* Search */}
@@ -294,35 +278,32 @@ export function DeveloperTab() {
             </div>
 
             {/* Component dropdown */}
-            <div className="relative">
-              <select value={component} onChange={(e) => setComponent(e.target.value as LogComponent)} className={selectClass}>
+            <div className="min-w-36">
+              <SelectControl aria-label="Log component" value={component} onChange={(e) => setComponent(e.target.value as LogComponent)}>
                 {COMPONENTS.map((c) => (
                   <option key={c} value={c}>{c === 'All' ? 'All Components' : c}</option>
                 ))}
-              </select>
-              <ChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </SelectControl>
             </div>
 
             {/* Level dropdown */}
-            <div className="relative">
-              <select value={level} onChange={(e) => setLevel(e.target.value as 'All' | LogLevel)} className={selectClass}>
+            <div className="min-w-28">
+              <SelectControl aria-label="Log level" value={level} onChange={(e) => setLevel(e.target.value as 'All' | LogLevel)}>
                 {LEVEL_OPTIONS.map((l) => (
                   <option key={l} value={l}>{LEVEL_LABELS[l]}</option>
                 ))}
-              </select>
-              <ChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </SelectControl>
             </div>
 
             {/* Clear */}
-            <button
-              type="button"
+            <ControlButton
+              variant="danger-outline"
               onClick={handleClear}
               title="Clear all logs"
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-[var(--color-border-subtle)] transition-colors"
             >
-              <TrashCan size={11} />
+              <Trash width={14} height={14} aria-hidden="true" />
               Clear
-            </button>
+            </ControlButton>
 
             <span className="text-[9px] font-mono text-muted-foreground opacity-60 shrink-0">
               {filtered.length} / {entries.length}
@@ -339,8 +320,8 @@ export function DeveloperTab() {
               filtered.map((entry) => <LogRow key={entry.id} entry={entry} />)
             )}
           </div>
-        </div>
-      </div>
-    </section>
+        </SurfaceCard>
+      </section>
+    </div>
   );
 }

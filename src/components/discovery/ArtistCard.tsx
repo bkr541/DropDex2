@@ -1,4 +1,4 @@
-import { ChevronRight } from '@carbon/icons-react';
+import { NavArrowRight } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import { DiscoveryAvatar } from './DiscoveryAvatar';
 
@@ -31,7 +31,7 @@ export function ArtistCard({ name, imageUrl, subtitle, setCount, onOpen, classNa
         ) : (
           <small>View artist</small>
         )}
-        <ChevronRight size={16} aria-hidden="true" />
+        <NavArrowRight width={16} height={16} aria-hidden="true" />
       </span>
     </button>
   );

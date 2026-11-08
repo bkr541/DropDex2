@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { ArrowRight, Add, Checkmark, ChevronRight, Close, Play, Search, Shuffle } from '@carbon/icons-react';
+import { ArrowRight, Check, NavArrowRight, Play, Plus, Search, Shuffle, Xmark } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import { ControlButton } from './controls/ControlButton';
 import { CARD_KINDS, COMPATIBLE_KEYS, GENRES, RECENT_SEARCHES, SAMPLE, SEARCH_SCOPES, PICK_YEAR_SETS, PICK_YEARS, WEEK_DAYS, WEEK_SETS, type CardKind } from './layoutLabDiscoveryData';
@@ -41,7 +41,7 @@ function GenreTabs() {
         <button type="button" aria-pressed={picked === null} onClick={() => setPicked(null)}>All</button>
         {GENRES.map((g) => <button key={g.name} type="button" aria-pressed={picked === g.name} onClick={() => setPicked(g.name)}>{g.name}<small>{g.count}</small></button>)}
       </div>
-      {picked && <button type="button" className="ld-g-clear" onClick={() => setPicked(null)}><Close size={12} /> Clear</button>}
+      {picked && <button type="button" className="ld-g-clear" onClick={() => setPicked(null)}><Xmark width={12} height={12} aria-hidden="true" /> Clear</button>}
     </div>
   );
 }
@@ -70,7 +70,7 @@ function GenreRail() {
         <span className="ld-g-thumb" aria-hidden="true" />
         {options.map((name, i) => <button key={name} type="button" aria-pressed={index === i} onClick={() => setIndex(i)}>{name}</button>)}
       </div>
-      <button type="button" className="ld-g-more">More genres <ChevronRight size={12} /></button>
+      <button type="button" className="ld-g-more">More genres <NavArrowRight width={12} height={12} aria-hidden="true" /></button>
     </div>
   );
 }
@@ -83,13 +83,13 @@ function GenreMulti() {
   const toggle = (name: string) => setPicked((p) => (p.includes(name) ? p.filter((x) => x !== name) : [...p, name]));
   return (
     <div className="ld-genres ld-g-multi">
-      <label className="ld-g-search"><Search size={14} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter genres…" aria-label="Filter genres" /></label>
+      <label className="ld-g-search"><Search width={14} height={14} aria-hidden="true" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter genres…" aria-label="Filter genres" /></label>
       <div className="ld-g-scroll">
         {shown.map((g, i) => (
           <button key={g.name} type="button" aria-pressed={picked.includes(g.name)} onClick={() => toggle(g.name)}>
             <i style={{ background: ['#8c63ff', '#35d7ce', '#ee4aa5', '#f0b35a', '#78adff'][i % 5] }} />
             {g.name}
-            {picked.includes(g.name) && <Checkmark size={12} />}
+            {picked.includes(g.name) && <Check width={12} height={12} aria-hidden="true" />}
           </button>
         ))}
       </div>
@@ -105,11 +105,11 @@ const S = SAMPLE.set;
 
 /** Style A, Studio: the production layout. Content stacked from the top, a hairline, then a footer line with an arrow. */
 function CardStudio({ kind }: { kind: CardKind }) {
-  const foot = (text: ReactNode) => <span className="ld-a-foot">{text}<ChevronRight size={16} /></span>;
+  const foot = (text: ReactNode) => <span className="ld-a-foot">{text}<NavArrowRight width={16} height={16} aria-hidden="true" /></span>;
   switch (kind) {
     case 'artist': return <div className="ld-a-card"><span className="ld-avatar" style={hue(A.hue)}>{A.initials}</span><span><b className="ld-a-name">{A.name}</b><span className="ld-a-sub">{A.genres}</span></span>{foot(<span><em>{A.sets}</em><small>Sets</small></span>)}</div>;
     case 'genre': return <div className="ld-a-card"><span><em className="ld-a-figure">{SAMPLE.genre.artists}</em><small className="ld-a-label">Artists</small></span><span className="ld-a-spacer" />{foot(<b className="ld-a-name">{SAMPLE.genre.name}</b>)}</div>;
-    case 'set': return <div className="ld-a-card ld-a-set"><span className="ld-a-art" style={hue(S.hue)}><Play size={22} /></span><span><b className="ld-a-title">{S.title}</b><span className="ld-a-sub">{S.date} · {S.identified}% identified</span></span></div>;
+    case 'set': return <div className="ld-a-card ld-a-set"><span className="ld-a-art" style={hue(S.hue)}><Play width={22} height={22} aria-hidden="true" /></span><span><b className="ld-a-title">{S.title}</b><span className="ld-a-sub">{S.date} · {S.identified}% identified</span></span></div>;
     case 'artists': return <div className="ld-a-card"><span><em className="ld-a-figure">{SAMPLE.artists.value}</em><small className="ld-a-label">{SAMPLE.artists.label}</small></span><span className="ld-a-spacer" />{foot(<span className="ld-a-sub">{SAMPLE.artists.note}</span>)}</div>;
     case 'genres': return <div className="ld-a-card"><span><em className="ld-a-figure">{SAMPLE.genres.value}</em><small className="ld-a-label">{SAMPLE.genres.label}</small></span><span className="ld-a-spacer" />{foot(<span className="ld-a-sub">{SAMPLE.genres.note}</span>)}</div>;
   }
@@ -122,8 +122,8 @@ function Ring({ value, label }: { value: ReactNode; label: string }) {
 function CardRaised({ kind }: { kind: CardKind }) {
   switch (kind) {
     case 'artist': return <div className="ld-b-card"><span className="ld-avatar ld-b-avatar" style={hue(A.hue)}>{A.initials}</span><b>{A.name}</b><span className="ld-b-sub">{A.genres}</span><span className="ld-b-chip">{A.sets} sets</span></div>;
-    case 'genre': return <div className="ld-b-card"><Ring value={SAMPLE.genre.artists} label="Artists" /><b>{SAMPLE.genre.name}</b><span className="ld-b-chip">Open genre <ArrowRight size={12} /></span></div>;
-    case 'set': return <div className="ld-b-card"><span className="ld-b-disc" style={hue(S.hue)}><Play size={18} /></span><b>{S.title}</b><span className="ld-b-sub">{S.artist} · {S.date}</span><span className="ld-b-chip">{S.identified}% identified</span></div>;
+    case 'genre': return <div className="ld-b-card"><Ring value={SAMPLE.genre.artists} label="Artists" /><b>{SAMPLE.genre.name}</b><span className="ld-b-chip">Open genre <ArrowRight width={12} height={12} aria-hidden="true" /></span></div>;
+    case 'set': return <div className="ld-b-card"><span className="ld-b-disc" style={hue(S.hue)}><Play width={18} height={18} aria-hidden="true" /></span><b>{S.title}</b><span className="ld-b-sub">{S.artist} · {S.date}</span><span className="ld-b-chip">{S.identified}% identified</span></div>;
     case 'artists': return <div className="ld-b-card"><Ring value={SAMPLE.artists.value} label={SAMPLE.artists.label} /><span className="ld-b-sub">{SAMPLE.artists.note}</span></div>;
     case 'genres': return <div className="ld-b-card"><Ring value={SAMPLE.genres.value} label={SAMPLE.genres.label} /><span className="ld-b-sub">{SAMPLE.genres.note}</span></div>;
   }
@@ -132,9 +132,9 @@ function CardRaised({ kind }: { kind: CardKind }) {
 /** Style C, Wells: compact horizontal wells, sunk into a brushed surface. The figure or picture is on the left, the words and a chevron on the right. */
 function CardWell({ kind }: { kind: CardKind }) {
   switch (kind) {
-    case 'artist': return <div className="ld-c-card"><span className="ld-avatar ld-c-avatar" style={hue(A.hue)}>{A.initials}</span><span className="ld-c-copy"><b>{A.name}</b><span>{A.genres}</span><small>{A.sets} sets</small></span><ChevronRight size={16} /></div>;
-    case 'genre': return <div className="ld-c-card"><em className="ld-c-figure">{SAMPLE.genre.artists}</em><span className="ld-c-copy"><b>{SAMPLE.genre.name}</b><small>Artists</small></span><ChevronRight size={16} /></div>;
-    case 'set': return <div className="ld-c-card"><span className="ld-c-art" style={hue(S.hue)}><Play size={16} /></span><span className="ld-c-copy"><b>{S.title}</b><span>{S.date}</span><small>{S.identified}% identified</small></span><ChevronRight size={16} /></div>;
+    case 'artist': return <div className="ld-c-card"><span className="ld-avatar ld-c-avatar" style={hue(A.hue)}>{A.initials}</span><span className="ld-c-copy"><b>{A.name}</b><span>{A.genres}</span><small>{A.sets} sets</small></span><NavArrowRight width={16} height={16} aria-hidden="true" /></div>;
+    case 'genre': return <div className="ld-c-card"><em className="ld-c-figure">{SAMPLE.genre.artists}</em><span className="ld-c-copy"><b>{SAMPLE.genre.name}</b><small>Artists</small></span><NavArrowRight width={16} height={16} aria-hidden="true" /></div>;
+    case 'set': return <div className="ld-c-card"><span className="ld-c-art" style={hue(S.hue)}><Play width={16} height={16} aria-hidden="true" /></span><span className="ld-c-copy"><b>{S.title}</b><span>{S.date}</span><small>{S.identified}% identified</small></span><NavArrowRight width={16} height={16} aria-hidden="true" /></div>;
     case 'artists': return <div className="ld-c-card ld-c-count"><em className="ld-c-figure">{SAMPLE.artists.value}</em><span className="ld-c-copy"><b>{SAMPLE.artists.label}</b><small>{SAMPLE.artists.note}</small></span></div>;
     case 'genres': return <div className="ld-c-card ld-c-count"><em className="ld-c-figure">{SAMPLE.genres.value}</em><span className="ld-c-copy"><b>{SAMPLE.genres.label}</b><small>{SAMPLE.genres.note}</small></span></div>;
   }
@@ -148,7 +148,7 @@ function CardPoster({ kind }: { kind: CardKind }) {
   switch (kind) {
     case 'artist': return poster(<span className="ld-d-mark">{A.initials}</span>, A.hue, <><b>{A.name}</b><span>{A.genres}</span><small>{A.sets} sets</small></>);
     case 'genre': return poster(<span className="ld-d-big">{SAMPLE.genre.artists}</span>, SAMPLE.genre.hue, <><b>{SAMPLE.genre.name}</b><small>Artists</small></>);
-    case 'set': return poster(<span className="ld-d-play"><Play size={20} /></span>, S.hue, <><b>{S.title}</b><span>{S.artist} · {S.date}</span><small>{S.identified}% identified</small></>);
+    case 'set': return poster(<span className="ld-d-play"><Play width={20} height={20} aria-hidden="true" /></span>, S.hue, <><b>{S.title}</b><span>{S.artist} · {S.date}</span><small>{S.identified}% identified</small></>);
     case 'artists': return poster(<span className="ld-d-big">{SAMPLE.artists.value}</span>, ['#5fd0b8', '#1e3a3c'], <><b>{SAMPLE.artists.label}</b><small>{SAMPLE.artists.note}</small></>);
     case 'genres': return poster(<span className="ld-d-big">{SAMPLE.genres.value}</span>, ['#b59bff', '#2b2552'], <><b>{SAMPLE.genres.label}</b><small>{SAMPLE.genres.note}</small></>);
   }
@@ -165,7 +165,7 @@ function HeroSetBuilder() {
       <div className="ld-h-main">
         <span className="ld-label">Building your set · 140 BPM · 7A</span>
         <h3>What do you need next?</h3>
-        <label className="ld-h-search"><Search size={16} /><input placeholder="Search artists, sets or genres that fit…" aria-label="Search" /></label>
+        <label className="ld-h-search"><Search width={16} height={16} aria-hidden="true" /><input placeholder="Search artists, sets or genres that fit…" aria-label="Search" /></label>
         <div className="ld-h-filters">
           <span className="ld-h-group"><small>Tempo</small>
             <button type="button" aria-label="Narrower" onClick={() => setBpm(Math.max(1, bpm - 1))}>−</button><b>{140 - bpm}–{140 + bpm}</b><button type="button" aria-label="Wider" onClick={() => setBpm(Math.min(10, bpm + 1))}>+</button>
@@ -178,7 +178,7 @@ function HeroSetBuilder() {
       </div>
       <div className="ld-h-side">
         <em>312</em><small>Compatible sets</small>
-        <ControlButton variant="primary"><ArrowRight size={14} /> Show matches</ControlButton>
+        <ControlButton variant="primary"><ArrowRight width={14} height={14} aria-hidden="true" /> Show matches</ControlButton>
       </div>
     </div>
   );
@@ -230,8 +230,8 @@ function HeroFresh() {
       title="Fresh this week"
       figures={[['47', 'New sets'], ['12', 'New artists'], ['Riddim', 'Trending genre · +18%']]}
       actions={<>
-        <ControlButton variant="primary"><ArrowRight size={14} /> See what’s new</ControlButton>
-        <ControlButton variant="secondary"><Shuffle size={14} /> Surprise me</ControlButton>
+        <ControlButton variant="primary"><ArrowRight width={14} height={14} aria-hidden="true" /> See what’s new</ControlButton>
+        <ControlButton variant="secondary"><Shuffle width={14} height={14} aria-hidden="true" /> Surprise me</ControlButton>
       </>}
       chartTitle="Sets added per day"
       chartLabel="Sets added each day this week"
@@ -249,12 +249,12 @@ function HeroDigger() {
       <div className="ld-h-tabs" role="tablist" aria-label="Search for">
         {SEARCH_SCOPES.map((s) => <button key={s} type="button" role="tab" aria-selected={scope === s} onClick={() => setScope(s)}>{s}</button>)}
       </div>
-      <label className="ld-h-search ld-h-search-big"><Search size={20} /><input placeholder={`Search ${scope.toLowerCase()}…`} aria-label="Search" /></label>
+      <label className="ld-h-search ld-h-search-big"><Search width={20} height={20} aria-hidden="true" /><input placeholder={`Search ${scope.toLowerCase()}…`} aria-label="Search" /></label>
       <div className="ld-h-recent"><small>Recent</small>{RECENT_SEARCHES.map((r) => <button key={r} type="button">{r}</button>)}</div>
       <div className="ld-h-picks">
         <small>Because you play Melodic Dubstep</small>
         {[['Au5', '18 sets fit your tempo'], ['Dubloadz', 'New set this week'], ['Seven Lions', 'Shares 4 genres with ILLENIUM']].map(([name, why], i) => (
-          <button key={name} type="button"><span className="ld-avatar ld-h-mini" style={hue([['#5fd0b8', '#1e3a3c'], ['#f0b35a', '#4a2a2a'], ['#8c63ff', '#2b2552']][i] as [string, string])}>{name.slice(0, 2).toUpperCase()}</span><span><b>{name}</b><small>{why}</small></span><ChevronRight size={14} /></button>
+          <button key={name} type="button"><span className="ld-avatar ld-h-mini" style={hue([['#5fd0b8', '#1e3a3c'], ['#f0b35a', '#4a2a2a'], ['#8c63ff', '#2b2552']][i] as [string, string])}>{name.slice(0, 2).toUpperCase()}</span><span><b>{name}</b><small>{why}</small></span><NavArrowRight width={14} height={14} aria-hidden="true" /></button>
         ))}
       </div>
     </div>
@@ -271,8 +271,8 @@ function HeroSpotlight() {
       title="Picked for you"
       figures={[['Au5', 'Artist · 63 sets'], ['18', 'Sets in your BPM range'], ['Melodic Dubstep', 'Top genre · 4 in common']]}
       actions={<>
-        <ControlButton variant="primary"><ArrowRight size={14} /> Open artist</ControlButton>
-        <ControlButton variant="secondary" onClick={() => setSaved(!saved)}>{saved ? <Checkmark size={14} /> : <Add size={14} />} {saved ? 'In your crate' : 'Add to crate'}</ControlButton>
+        <ControlButton variant="primary"><ArrowRight width={14} height={14} aria-hidden="true" /> Open artist</ControlButton>
+        <ControlButton variant="secondary" onClick={() => setSaved(!saved)}>{saved ? <Check width={14} height={14} aria-hidden="true" /> : <Plus width={14} height={14} aria-hidden="true" />} {saved ? 'In your crate' : 'Add to crate'}</ControlButton>
       </>}
       chartTitle="Au5 sets per year"
       chartLabel="Sets by Au5 each year"

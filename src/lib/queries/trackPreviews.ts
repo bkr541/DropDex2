@@ -83,17 +83,31 @@ const PREVIEW_LINK_SECONDS = 60 * 60;
  * The DropDex Cloud preview for a track, ready to play, or null when this user has not synced one.
  * Only the signed-in user's own previews are visible, since both the table and the storage bucket are protected per user.
  */
-export async function fetchPreviewPlayback(identityKey: string): Promise<CloudPreview | null> {
-  const { data, error } = await supabase
+export async function fetchPreviewPlayback(
+  identityKey: string,
+  options?: { userId: string; signal?: AbortSignal },
+): Promise<CloudPreview | null> {
+  options?.signal?.throwIfAborted();
+  let query = supabase
     .from('track_previews')
     .select('storage_path, duration_ms')
     .eq('identity_key', identityKey)
-    .eq('status', 'ready')
-    .maybeSingle();
+    .eq('status', 'ready');
+  if (options) query = query.eq('user_id', options.userId);
+  if (options?.signal) query = query.abortSignal(options.signal);
+  const { data, error } = await query.maybeSingle();
+  options?.signal?.throwIfAborted();
   if (error) throw new Error(error.message);
   if (!data) return null;
   const row = data as { storage_path: string; duration_ms: number | null };
+  if (options) {
+    const [owner, filename, ...extra] = row.storage_path.split('/');
+    if (owner !== options.userId || !/^[a-f0-9]{32}\.m4a$/.test(filename ?? '') || extra.length > 0) {
+      throw new Error('The preview object does not match the requested account.');
+    }
+  }
   const signed = await supabase.storage.from(PREVIEW_BUCKET).createSignedUrl(row.storage_path, PREVIEW_LINK_SECONDS);
+  options?.signal?.throwIfAborted();
   if (signed.error || !signed.data?.signedUrl) throw new Error(signed.error?.message ?? 'The preview link could not be created.');
   return { url: signed.data.signedUrl, durationMs: row.duration_ms };
 }

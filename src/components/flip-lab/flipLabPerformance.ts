@@ -1,6 +1,6 @@
 import type { RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
 
-export const FLIP_LAB_ROW_HEIGHT = 51;
+export const FLIP_LAB_ROW_HEIGHT = 40;
 export const FLIP_LAB_LIST_OVERSCAN = 6;
 export const FLIP_LAB_MAX_RENDERED_ROWS = 40;
 

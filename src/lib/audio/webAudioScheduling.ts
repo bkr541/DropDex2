@@ -13,11 +13,11 @@ export interface ScheduledAudioClips {
   endAt: number;
 }
 
-export function createBrowserAudioContext(): AudioContext {
+export function createBrowserAudioContext(options?: AudioContextOptions): AudioContext {
   const AudioContextCtor = window.AudioContext
     || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextCtor) throw new Error('Web Audio is not supported in this browser.');
-  return new AudioContextCtor();
+  return new AudioContextCtor(options);
 }
 
 export function stopAndDisconnectAudioNodes(nodes: AudioBufferSourceNode[]): void {

@@ -1,5 +1,5 @@
 import type { DiscoverySetTrack } from '../../types';
-import { Launch } from '@carbon/icons-react';
+import { OpenNewWindow } from 'iconoir-react/regular';
 
 export interface SetTrackTimelineProps {
   tracks: DiscoverySetTrack[];
@@ -85,7 +85,7 @@ function PrimaryCard({ g }: { g: TimelineGroup }) {
               className="text-muted-foreground hover:text-primary transition-colors"
               title="View on source"
             >
-              <Launch size={10} />
+              <OpenNewWindow width={10} height={10} aria-hidden="true" />
             </a>
           )}
         </div>
@@ -129,7 +129,7 @@ function LayeredCards({ tracks }: { tracks: DiscoverySetTrack[] }) {
                   rel="noopener noreferrer"
                   className="text-muted-foreground hover:text-primary transition-colors shrink-0"
                 >
-                  <Launch size={9} />
+                  <OpenNewWindow width={9} height={9} aria-hidden="true" />
                 </a>
               )}
             </div>

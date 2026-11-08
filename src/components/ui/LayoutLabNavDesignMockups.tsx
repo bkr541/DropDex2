@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import { ArrowRight, CheckmarkFilled, Music, Pause, Play, Search, SkipForward, Usb, Waveform } from '@carbon/icons-react';
+import { Activity, ArrowRight, CheckCircle, MusicNote, Pause, Play, Search, SkipNext, Usb } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import { NAV_ICONS } from '../navigation/NavIcons';
 import '../navigation/FloatingSidebar.css';
@@ -68,7 +68,7 @@ function MockNav({ study, active, onChange }: { study: typeof STUDIES[number]; a
                 aria-pressed={active === item.id}
                 onClick={() => onChange(item.id)}
               >
-                <span className="nd-ico"><Icon size={24} /></span>
+                <span className="nd-ico"><Icon width={24} height={24} aria-hidden="true" /></span>
                 <span className="nd-lbl" style={{ '--nd-chars': item.label.length } as CSSProperties}><b>{item.label}</b><small>⌘{i + 1}</small></span>
               </button>
             </div>
@@ -90,7 +90,7 @@ function LibraryContent({ view }: { view: 'overview' | 'playlists' }) {
     <div className="nd-playlists">
       {['Peak Time', 'Late Night', 'Heavy Rotation'].map((name, i) => (
         <div key={name} className={`nd-playlist nd-art-${i}`}>
-          <Music size={24} /><div><strong>{name}</strong><span>{[18, 15, 12][i]} tracks · {HERO.name}</span></div><ArrowRight size={18} />
+          <MusicNote width={24} height={24} aria-hidden="true" /><div><strong>{name}</strong><span>{[18, 15, 12][i]} tracks · {HERO.name}</span></div><ArrowRight width={18} height={18} aria-hidden="true" />
         </div>
       ))}
     </div>
@@ -102,7 +102,7 @@ function LibraryContent({ view }: { view: 'overview' | 'playlists' }) {
           <thead><tr><th scope="col">Track / Artist</th><th scope="col">BPM</th><th scope="col">Key</th><th scope="col">Time</th></tr></thead>
           <tbody>{TRACKS.map((track, i) => (
             <tr key={track.title}>
-              <td><div className="nd-track-name"><div className={`nd-art nd-art-${i}`}><Music size={16} /></div><div><strong>{track.title}</strong><span>{track.artist}</span></div></div></td>
+              <td><div className="nd-track-name"><div className={`nd-art nd-art-${i}`}><MusicNote width={16} height={16} aria-hidden="true" /></div><div><strong>{track.title}</strong><span>{track.artist}</span></div></div></td>
               <td>{track.bpm}</td><td><span className="nd-key" style={{ color: track.color }}>{track.key}</span></td><td>{track.duration}</td>
             </tr>
           ))}</tbody>
@@ -110,9 +110,9 @@ function LibraryContent({ view }: { view: 'overview' | 'playlists' }) {
       </div>
       <div className="nd-collection">
         <span className="nd-eyebrow">In rotation</span>
-        <div className="nd-collection-art"><Waveform size={38} /></div>
+        <div className="nd-collection-art"><Activity width={38} height={38} aria-hidden="true" /></div>
         <div><h4>{HERO.largestPlaylist}</h4><p>18 tracks · Ready for your next set</p></div>
-        <span className="nd-collection-label">FEATURED PLAYLIST <ArrowRight size={12} /></span>
+        <span className="nd-collection-label">FEATURED PLAYLIST <ArrowRight width={12} height={12} aria-hidden="true" /></span>
       </div>
     </div>
   );
@@ -141,20 +141,20 @@ function NavConcept({ study, index }: { study: typeof STUDIES[number]; index: nu
           <div className="nd-canvas">
             <header className="nd-page-header">
               <div className="nd-breadcrumb"><span>Workspace</span><span>/</span><strong>{activeLabel}</strong></div>
-              <div className="nd-header-right"><span><CheckmarkFilled size={12} /> All changes synced</span><Search size={16} /><span className="nd-user-avatar">{HERO.initials}</span></div>
+              <div className="nd-header-right"><span><CheckCircle width={12} height={12} aria-hidden="true" /> All changes synced</span><Search width={16} height={16} aria-hidden="true" /><span className="nd-user-avatar">{HERO.initials}</span></div>
             </header>
             <div className="nd-hero-wrap"><Hero /></div>
             <div className="nd-content-tabs" role="group" aria-label="Library preview content">
               <button type="button" aria-pressed={view === 'overview'} onClick={() => setView('overview')} className={view === 'overview' ? 'is-active' : ''}>Overview</button>
               <button type="button" aria-pressed={view === 'playlists'} onClick={() => setView('playlists')} className={view === 'playlists' ? 'is-active' : ''}>Playlists <span>{HERO.playlists}</span></button>
-              <span className="nd-content-summary"><Usb size={12} /> {HERO.usb} · {HERO.analyzed}/{HERO.tracks} analyzed</span>
+              <span className="nd-content-summary"><Usb width={12} height={12} aria-hidden="true" /> {HERO.usb} · {HERO.analyzed}/{HERO.tracks} analyzed</span>
             </div>
             <LibraryContent view={view} />
             <footer className="nd-player">
-              <div className="nd-player-track"><div className="nd-art nd-art-0"><Music size={17} /></div><div><strong>{TRACKS[0].title}</strong><span>{TRACKS[0].artist}</span></div></div>
+              <div className="nd-player-track"><div className="nd-art nd-art-0"><MusicNote width={17} height={17} aria-hidden="true" /></div><div><strong>{TRACKS[0].title}</strong><span>{TRACKS[0].artist}</span></div></div>
               <div className="nd-transport">
-                <button type="button" aria-label={playing ? 'Pause preview animation' : 'Play preview animation'} aria-pressed={playing} onClick={() => setPlaying(!playing)}>{playing ? <Pause size={18} /> : <Play size={18} />}</button>
-                <SkipForward size={15} className="nd-skip-icon" aria-hidden="true" />
+                <button type="button" aria-label={playing ? 'Pause preview animation' : 'Play preview animation'} aria-pressed={playing} onClick={() => setPlaying(!playing)}>{playing ? <Pause width={18} height={18} aria-hidden="true" /> : <Play width={18} height={18} aria-hidden="true" />}</button>
+                <SkipNext width={15} height={15} className="nd-skip-icon" aria-hidden="true" />
                 <span className={cn('nd-player-wave', playing && 'is-playing')} aria-hidden="true">{Array.from({ length: 38 }, (_, i) => <i key={i} style={{ height: `${5 + ((i * 17 + i * i) % 20)}px`, animationDelay: `${i * -0.07}s` }} />)}</span>
                 <span className="nd-player-time">0:00 / 2:47</span>
               </div>

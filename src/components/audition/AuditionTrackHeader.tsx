@@ -1,3 +1,4 @@
+import './AuditionTrackHeader.css';
 import { Artwork } from '../ui/display/Artwork';
 import { formatCamelotCode } from '../ui/display/camelotKey';
 import { formatClock } from './auditionTracks';
@@ -6,9 +7,10 @@ import type { RekordboxTrack } from '../../types';
 interface AuditionTrackHeaderProps {
   track: RekordboxTrack | null;
   durationMs: number | null;
+  cueCount?: string;
 }
 
-export function AuditionTrackHeader({ track, durationMs }: AuditionTrackHeaderProps) {
+export function AuditionTrackHeader({ track, durationMs, cueCount }: AuditionTrackHeaderProps) {
   return (
     <section data-testid="audition-track-header" aria-label="Selected track" className="audition-header">
       <div className="audition-header-identity">
@@ -26,11 +28,12 @@ export function AuditionTrackHeader({ track, durationMs }: AuditionTrackHeaderPr
         </div>
       </div>
       {track && <div className="audition-track-details">
-        <div className="audition-stat"><span>{track.bpm != null ? track.bpm.toFixed(0) : '—'}</span><small>Tempo</small></div>
+        <div className="audition-stat"><span>{track.bpm != null ? track.bpm.toFixed(0) : '—'}</span><small>BPM</small></div>
+        {cueCount !== undefined && <div className="audition-stat"><span>{cueCount}</span><small>Cues</small></div>}
         <div className="audition-stat"><span>{formatCamelotCode(track.musical_key) ?? '—'}</span><small>Key</small></div>
         <div className="audition-stat"><span title={track.genre ?? undefined}>{track.genre || '—'}</span><small>Genre</small></div>
       </div>}
-      <div className="audition-duration"><span>{durationMs != null ? formatClock(durationMs) : '—:—'}</span><small>Track length</small></div>
+      <div className="audition-duration"><span>{durationMs != null ? formatClock(durationMs) : '—:—'}</span><small>Duration</small></div>
     </section>
   );
 }

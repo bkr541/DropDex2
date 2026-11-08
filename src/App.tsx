@@ -50,6 +50,7 @@ const CuePointsView = lazyWithRecovery('cue-points', () => import('./components/
 const AuditionView = lazyWithRecovery('audition', () => import('./components/audition/AuditionView').then(m => ({ default: m.AuditionView })));
 const UsbManagementView = lazyWithRecovery('usb-management', () => import('./components/usb-management/UsbManagementView').then(m => ({ default: m.UsbManagementView })));
 const DropLabView = lazyWithRecovery('drop-lab', () => import('./components/drop-lab/DropLabView').then(m => ({ default: m.DropLabView })));
+const SetLabView = lazyWithRecovery('set-lab', () => import('./features/set-lab/SetLabView').then(m => ({ default: m.SetLabView })));
 
 import { LibraryView } from './components/library/LibraryView';
 import { PlaylistEditView } from './components/library/PlaylistEditView';
@@ -57,6 +58,7 @@ import { TrackDetailView } from './components/library/TrackDetailView';
 import { EditProfileView } from './components/profile/EditProfileView';
 import { DeveloperTab } from './components/profile/DeveloperTab';
 import { SpotifyExternalAccount } from './components/profile/SpotifyExternalAccount';
+import { SoundCloudTab } from './components/profile/SoundCloudTab';
 import { UsbConnectionProvider, useUsbConnection } from './contexts/UsbConnectionContext';
 import { FloatingSidebar } from './components/navigation/FloatingSidebar';
 import { NAV_ICONS } from './components/navigation/NavIcons';
@@ -76,24 +78,38 @@ import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
-import { CheckmarkFilled, CircleDash, Close, DataBase, Edit, Growth, Layers, Logout, Moon, Music, Radio, RecordingFilled, Renew, Settings, Sun, Upload, Usb, User, WarningAlt } from '@carbon/icons-react';
+import { CheckCircle, CompactDisc, Database, EditPencil, GraphUp, HalfMoon, MusicNote, Refresh, SunLight, Upload, Usb, User, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { openLayoutLab } from './components/ui/openLayoutLab';
 import { ControlButton } from './components/ui/controls';
+import { StatTile, SurfaceCard, TabNavigation } from './components/ui/display';
+import { NoticeCard, SelectableOptionCard, StatusLoader } from './components/ui/feedback';
+import './components/profile/profile.css';
 
 type ThemeOption = {
   id: ThemeId;
   label: string;
   description: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: typeof HalfMoon;
 };
 
 const THEME_OPTIONS: ThemeOption[] = [
-  { id: 'dark', label: 'Dark', description: 'Default', icon: Moon },
-  { id: 'light', label: 'Light', description: 'High contrast', icon: Sun },
-  { id: 'cdj', label: 'CDJ', description: 'Performance deck', icon: RecordingFilled },
+  { id: 'dark', label: 'Dark', description: 'Default', icon: HalfMoon },
+  { id: 'light', label: 'Light', description: 'High contrast', icon: SunLight },
+  { id: 'cdj', label: 'CDJ', description: 'Performance deck', icon: CompactDisc },
 ];
 
-type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'artist-library' | 'cues' | 'audition' | 'settings' | 'discovery' | 'drop-lab' | 'import' | 'flip-lab' | 'usb' | 'not-found';
+const PROFILE_TABS = [
+  { id: 'account', label: 'Account' },
+  { id: 'appearance', label: 'Personalization' },
+  { id: 'library', label: 'Library' },
+  { id: 'soundcloud', label: 'SoundCloud' },
+  { id: 'about', label: 'About' },
+  { id: 'developer', label: 'Developer' },
+] as const;
+
+type ProfileTab = (typeof PROFILE_TABS)[number]['id'];
+
+type View = 'home' | 'playlist' | 'playlist-edit' | 'track' | 'artist-library' | 'cues' | 'audition' | 'settings' | 'discovery' | 'drop-lab' | 'set-lab' | 'import' | 'flip-lab' | 'usb' | 'not-found';
 
 type ImportNotice = {
   kind: 'success' | 'warning';
@@ -108,6 +124,7 @@ function viewForRoute(route: AppRoute): View {
     case 'playlist-edit': return 'playlist-edit';
     case 'track': return 'track';
     case 'drop-lab': return 'drop-lab';
+    case 'set-lab': return 'set-lab';
     case 'import': return 'import';
     case 'artist-library': return 'artist-library';
     case 'cues': return 'cues';
@@ -146,6 +163,7 @@ function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavPr
   const usbConnected = usbStatus === 'connected';
   const usbProblem = usbStatus === 'unavailable' || usbStatus === 'permission-required' || usbStatus === 'wrong_root' || usbStatus === 'error';
   const usbLabel = usbStatus === 'connecting' ? 'Connecting' : usbConnected ? (volumeName ?? 'USB') : 'Connect';
+  const ArtistLibraryIcon = NAV_ICONS['artist-library'];
 
   return (
     <nav className={cn(
@@ -156,14 +174,14 @@ function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavPr
         onClick={() => setCurrentView('home')}
         className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'home' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
       >
-        <Music size={20} />
+        <NAV_ICONS.home width={20} height={20} aria-hidden="true" />
         <span className="text-[8px] font-bold uppercase tracking-widest truncate max-w-[48px]">{libraryLabel}</span>
       </button>
       <button
         onClick={() => setCurrentView('artist-library')}
         className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'artist-library' ? 'text-secondary neon-text-purple' : 'text-muted-foreground')}
       >
-        <Growth size={20} />
+        <ArtistLibraryIcon width={20} height={20} aria-hidden="true" />
         <span className="text-[8px] font-bold uppercase tracking-widest">Artist Library</span>
       </button>
 
@@ -179,7 +197,7 @@ function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavPr
         )}
       >
         <div className="relative">
-          <Usb size={20} />
+          <Usb width={20} height={20} aria-hidden="true" />
           {usbConnected && (
             <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-green-500" />
           )}
@@ -197,7 +215,7 @@ function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavPr
         onClick={() => setCurrentView('discovery')}
         className={cn('flex flex-col items-center gap-1 transition-all px-2', currentView === 'discovery' ? 'text-primary neon-text-blue' : 'text-muted-foreground')}
       >
-        <Radio size={20} />
+        <NAV_ICONS.discovery width={20} height={20} aria-hidden="true" />
         <span className="text-[8px] font-bold uppercase tracking-widest">Discover</span>
       </button>
     </nav>
@@ -343,7 +361,7 @@ function ImportStatusView({
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-              <DataBase className="text-primary" size={20} />
+              <Database className="text-primary" width={20} height={20} aria-hidden="true" />
             </div>
             <div className="min-w-0">
               <h2 className="text-xl font-bold truncate">{item.source_filename}</h2>
@@ -362,7 +380,7 @@ function ImportStatusView({
             </span>
             {onBack && (
               <ControlButton variant="ghost" onClick={onBack}>
-                <Close size={18} />
+                <Xmark width={18} height={18} aria-hidden="true" />
               </ControlButton>
             )}
           </div>
@@ -415,17 +433,17 @@ function ImportStatusView({
         <div className="mt-6 flex justify-center gap-3">
           {!isActive && !inFlight && !stalled && isUsableLibrarySnapshot(item) && presentation.canActivate && (
             <ControlButton type="button" variant="primary" onClick={onMakeActive}>
-              <CheckmarkFilled size={16} /> Make Active
+              <CheckCircle width={16} height={16} aria-hidden="true" /> Make Active
             </ControlButton>
           )}
           {analysisCanResume && (
             <ControlButton type="button" variant="primary" onClick={onResume}>
-              <Renew size={16} /> Resume Analysis
+              <Refresh width={16} height={16} aria-hidden="true" /> Resume Analysis
             </ControlButton>
           )}
           {(presentation.canRetry || stalled) && !analysisCanResume && (
             <ControlButton type="button" variant="primary" onClick={onRetryImport}>
-              <Upload size={16} /> Retry Import
+              <Upload width={16} height={16} aria-hidden="true" /> Retry Import
             </ControlButton>
           )}
           {isPendingHardDelete(item) && onRetryDelete && (
@@ -471,7 +489,7 @@ export default function App() {
   const [deleteAllLibrariesInitialCount, setDeleteAllLibrariesInitialCount] = useState(0);
   const [deleteAllLibrariesRemainingCount, setDeleteAllLibrariesRemainingCount] = useState(0);
   const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(() => new Set());
-  const [settingsTab, setSettingsTab] = useState<'account' | 'appearance' | 'library' | 'about' | 'developer'>('account');
+  const [settingsTab, setSettingsTab] = useState<ProfileTab>('account');
   const deleteExecutorRef = useRef<ConfirmedDeleteExecutor | null>(null);
   const pendingDeletionContextsRef = useRef<Map<string, PendingDeletionContext>>(new Map());
   const importStatusRef = useRef<Map<string, {
@@ -486,7 +504,7 @@ export default function App() {
   const libraryOverviewWidgets = useLibraryOverviewWidgets(userId);
 
   // ── Supabase data ──────────────────────────────────────────────────────────
-  const { data: latestImport, loading: importLoading, error: importError, refetch: refetchImport } =
+  const { data: latestImport, loading: importLoading, error: importError, refetch: refetchImport, settled: importSettled } =
     useLatestRekordboxImport(userId);
   const importId = latestImport?.id ?? null;
   const { playlists, loading: playlistsLoading } = useRekordboxPlaylists(importId);
@@ -781,6 +799,7 @@ export default function App() {
       case 'discovery': navigate({ name: 'discovery' }); break;
       case 'flip-lab': navigate({ name: 'flip-lab' }); break;
       case 'usb': navigate({ name: 'usb' }); break;
+      case 'set-lab': navigate({ name: 'set-lab' }); break;
       case 'drop-lab': navigate({ name: 'drop-lab', sourceTrackId: null, candidateTrackId: null, sourceDropId: null, candidateDropId: null }); break;
       default: break;
     }
@@ -1082,6 +1101,7 @@ export default function App() {
     { view: 'audition', icon: NAV_ICONS.audition, label: 'Audition' },
     { view: 'discovery', icon: NAV_ICONS.discovery, label: 'Discover' },
     { view: 'drop-lab', icon: NAV_ICONS['drop-lab'], label: 'Drop Lab' },
+    { view: 'set-lab', icon: NAV_ICONS['set-lab'], label: 'Set Lab' },
     { view: 'flip-lab', icon: NAV_ICONS['flip-lab'], label: 'Flip Lab' },
     { view: 'usb', icon: NAV_ICONS.usb, label: 'USB Management' },
   ];
@@ -1120,7 +1140,7 @@ export default function App() {
               )}
               {selectedPlaylist && !selectedPlaylist.is_folder && (
                 <ControlButton variant="neutral" onClick={() => selectedPlaylist && handleEditPlaylist(selectedPlaylist)} className="ml-auto text-xs">
-                  <Edit size={12} /> Edit
+                  <EditPencil width={12} height={12} aria-hidden="true" /> Edit
                 </ControlButton>
               )}
             </div>
@@ -1133,6 +1153,7 @@ export default function App() {
       case 'flip-lab': return titledPage('Flip Lab');
       case 'usb': return titledPage('USB Management');
       case 'drop-lab': return titledPage('Drop Lab', handleDropLabBack);
+      case 'set-lab': return titledPage('Set Lab');
       case 'cues': return titledPage('Cue Points');
       case 'audition': return titledPage('Audition');
       default: return null;
@@ -1141,8 +1162,8 @@ export default function App() {
 
   const pageIcon: React.ElementType | undefined = (
     sidebarNavItems.find((item) => item.view === currentView)?.icon
-    ?? ({ settings: User, import: Upload, 'drop-lab': Layers } as Partial<Record<View, React.ElementType>>)[currentView]
-    ?? Music
+    ?? ({ settings: User, import: Upload } as Partial<Record<View, React.ElementType>>)[currentView]
+    ?? MusicNote
   );
 
   return (
@@ -1151,16 +1172,6 @@ export default function App() {
     <>
     <RootFailureProbe />
     <div className="flex h-screen flex-col overflow-hidden font-sans relative">
-      {/* The logo's red gradient, shared by every icon that uses the logo-gradient-icon class. */}
-      <svg width="0" height="0" className="absolute" aria-hidden="true" focusable="false">
-        <defs>
-          <linearGradient id="dd-logo-gradient" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#fa2830" />
-            <stop offset="50%" stopColor="#ff4e4f" />
-            <stop offset="100%" stopColor="#fb7974" />
-          </linearGradient>
-        </defs>
-      </svg>
       {/* Background ambience */}
       <div className="app-backdrop fixed inset-0 -z-10 overflow-hidden" data-testid="app-backdrop">
         <div className="ambience-blob absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 blur-[120px] rounded-full" />
@@ -1257,7 +1268,7 @@ export default function App() {
                 className="space-y-4"
               >
                 <div className="glass p-6 rounded-3xl mb-6 relative overflow-hidden">
-                  <Growth className="absolute -right-4 -bottom-4 text-primary/10 w-24 h-24" />
+                  <GraphUp className="absolute -right-4 -bottom-4 text-primary/10 w-24 h-24" aria-hidden="true" />
                   <div className="flex gap-4 items-start">
                     {/* Artwork thumbnail */}
                     {currentPlaylistProfile?.artwork_url && (
@@ -1307,7 +1318,7 @@ export default function App() {
 
                 {playlistTracksLoading && (
                   <div className="flex items-center justify-center py-16">
-                    <CircleDash className="animate-spin text-primary" size={32} />
+                    <Refresh className="animate-spin text-primary" width={32} height={32} aria-hidden="true" />
                   </div>
                 )}
 
@@ -1334,7 +1345,7 @@ export default function App() {
                   <div className="flex justify-center">
                     <ControlButton variant="neutral" onClick={() => { void loadMorePlaylistTracks(); }} disabled={playlistTracksLoadingMore}>
                       {playlistTracksLoadingMore ? (
-                        <><CircleDash size={13} className="animate-spin" /> Loading more…</>
+                        <><Refresh width={13} height={13} className="animate-spin" aria-hidden="true" /> Loading more…</>
                       ) : (
                         `Load ${Math.min(200, playlistTrackTotal - playlistTracks.length).toLocaleString()} more…`
                       )}
@@ -1394,6 +1405,37 @@ export default function App() {
                   onOpenDropLab={handleOpenDropLab}
                 />
               </motion.div>
+            )}
+
+            {currentView === 'set-lab' && (
+              <div key="set-lab" className="min-w-0">
+                {!importSettled || importLoading ? (
+                  <RouteLoadingState label="Loading active library…" />
+                ) : importError ? (
+                  <RouteLoadErrorState message={importError} onRetry={refetchImport} onReturnToLibrary={returnToLibrary} />
+                ) : userId && latestImport && latestImport.user_id === userId ? (
+                  <LazyFeature
+                    label="Loading Set Lab…"
+                    boundaryKey={`set-lab:${userId}:${latestImport.id}`}
+                    onReturnToLibrary={returnToLibrary}
+                  >
+                    <SetLabView
+                      key={`${userId}:${latestImport.id}`}
+                      scope={{ userId, sourceImportId: latestImport.id }}
+                      importDeviceName={latestImport.device_name}
+                      onReturnToLibrary={returnToLibrary}
+                    />
+                  </LazyFeature>
+                ) : (
+                  <section className="mx-auto max-w-md py-16 text-center">
+                    <h2 className="text-2xl font-black">No active Rekordbox library</h2>
+                    <p className="mt-2 text-sm text-muted-foreground">Import or activate a library to open Set Lab.</p>
+                    <ControlButton type="button" variant="primary" className="mt-4" onClick={returnToLibrary}>
+                      Return to Library
+                    </ControlButton>
+                  </section>
+                )}
+              </div>
             )}
 
             {/* ── Drop Lab ── */}
@@ -1512,236 +1554,166 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
-                className="space-y-8 pb-8"
+                className="profile-layout"
               >
-                {/* ── Tab nav ── */}
-                <div className="flex gap-1 border-b border-[var(--color-border-faint)]">
-                  {(['account', 'appearance', 'library', 'about', 'developer'] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setSettingsTab(tab)}
-                      className={cn(
-                        'px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px capitalize',
-                        settingsTab === tab
-                          ? 'border-primary text-primary'
-                          : 'border-transparent text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      {tab === 'appearance' ? 'Personalization' : tab}
-                    </button>
-                  ))}
-                </div>
+                <TabNavigation
+                  ariaLabel="Profile sections"
+                  className="profile-tabs"
+                  options={[...PROFILE_TABS]}
+                  value={settingsTab}
+                  onChange={(tab) => setSettingsTab(tab as ProfileTab)}
+                />
+                <div className="studio-surface profile-workspace">
+                  {settingsTab === 'soundcloud' && (
+                    <SoundCloudTab accessToken={session?.access_token ?? null} />
+                  )}
 
-                {/* ── Account tab ── */}
-                {settingsTab === 'account' && userId && (
-                  <div className="flex flex-col min-h-[calc(100vh-200px)] lg:px-[188px]">
-                    <div className="space-y-6">
-                      <EditProfileView
-                        userId={userId}
-                        existingProfile={userProfile}
-                        onPreferencesChanged={() => void refetchUserGenres()}
-                        onSaved={(_saved) => {
-                          void refetchUserProfile();
-                          void refetchUserGenres();
-                        }}
-                      />
-                    </div>
-                    <div className="mt-auto pb-12 flex justify-center">
-                      <ControlButton variant="danger-outline" onClick={() => supabase.auth.signOut()} className="text-xs">
-                        <Logout size={14} /> Sign Out
-                      </ControlButton>
-                    </div>
-                  </div>
-                )}
+                  {/* ── Account tab ── */}
+                  {settingsTab === 'account' && userId && (
+                    <EditProfileView
+                      userId={userId}
+                      existingProfile={userProfile}
+                      onPreferencesChanged={() => void refetchUserGenres()}
+                      onSaved={(_saved) => {
+                        void refetchUserProfile();
+                        void refetchUserGenres();
+                      }}
+                      onSignOut={() => void supabase.auth.signOut()}
+                    />
+                  )}
 
-                {/* ── Personalization tab ── */}
-                {settingsTab === 'appearance' && (
-                  <section className="space-y-6 lg:px-[188px]">
-                    <div className="glass rounded-2xl p-5 space-y-4">
-                      <div>
-                        <p className="font-bold text-sm mb-0.5">Theme</p>
-                        <p className="text-xs text-muted-foreground">Choose your preferred color scheme</p>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {THEME_OPTIONS.map((option) => {
-                          const Icon = option.icon;
-                          const isActive = theme === option.id;
-                          return (
-                            <button
-                              key={option.id}
-                              type="button"
-                              onClick={() => setTheme(option.id)}
-                              aria-pressed={isActive}
-                              className={cn(
-                                'flex flex-col items-start gap-3 p-4 rounded-xl border-2 transition-all text-left',
-                                isActive
-                                  ? 'border-primary bg-primary/10'
-                                  : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]'
-                              )}
-                            >
-                              <Icon size={22} className={isActive ? 'text-primary' : 'text-muted-foreground'} />
-                              <div>
-                                <p className="font-bold text-sm">{option.label}</p>
-                                <p className="text-xs text-muted-foreground">{option.description}</p>
-                              </div>
-                              {isActive && (
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-primary">Active</span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <DashboardWidgetsGroup widgets={libraryOverviewWidgets} />
-                    <div className="space-y-3">
-                      <h2 className="px-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                        External Accounts
-                      </h2>
-                      <SpotifyExternalAccount accessToken={session?.access_token ?? null} />
-                    </div>
-                  </section>
-                )}
-
-                {/* ── Library tab ── */}
-                {settingsTab === 'library' && (
-                  <div className="space-y-8 lg:px-[188px]">
-                    {/* Library stat cards */}
-                    <section className="space-y-3">
-                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><DataBase size={11} />Library</h2>
-                      {latestImport && (
-                      <div className="grid grid-cols-3 gap-3">
-                        {/* USB */}
-                        <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
-                          <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <rect x="3" y="7" width="14" height="10" rx="1" transform="translate(20 24) rotate(180)" style={{fill: '#348dff', opacity: 0.35}} />
-                            <polyline points="8 12 10 13 10 11 12 12" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-                            <path d="M17,15V9h4v6ZM4,17H16a1,1,0,0,0,1-1V8a1,1,0,0,0-1-1H4A1,1,0,0,0,3,8v8A1,1,0,0,0,4,17Z" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-                          </svg>
-                          <p className="mt-2 text-2xl font-black tabular-nums leading-none" data-testid="library-usb-count">
-                            {usbCount.toLocaleString()}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">{usbCount === 1 ? 'USB' : 'USBs'}</p>
-                        </div>
-
-                        {/* Tracks */}
-                        <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
-                          <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M7,19a2,2,0,1,1-2-2A2,2,0,0,1,7,19ZM9,7l2,2h8V4a1,1,0,0,0-1-1H6A1,1,0,0,0,5,4V7Z" style={{fill: '#348dff', opacity: 0.35}} />
-                            <path d="M10,16a2.9,2.9,0,0,0-3-3v6" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-                            <path d="M3,13V8A1,1,0,0,1,4,7H9l2,2h9a1,1,0,0,1,1,1V20a1,1,0,0,1-1,1H11" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-                            <path d="M7,19a2,2,0,1,1-2-2A2,2,0,0,1,7,19ZM9,7l2,2h8V4a1,1,0,0,0-1-1H6A1,1,0,0,0,5,4V7Z" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-                          </svg>
-                          <p className="mt-2 text-2xl font-black tabular-nums leading-none">
-                            {latestImport.track_count >= 1000
-                              ? `${(latestImport.track_count / 1000).toFixed(1)}k`
-                              : latestImport.track_count.toLocaleString()}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">Tracks</p>
-                        </div>
-
-                        {/* Playlists */}
-                        <div className="glass rounded-2xl p-4 flex flex-col items-center text-center">
-                          <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M18,4H4A1,1,0,0,0,3,5V19a1,1,0,0,0,1,1H18a1,1,0,0,0,1-1V5A1,1,0,0,0,18,4ZM9,16a2,2,0,1,1,2-2A2,2,0,0,1,9,16Z" style={{fill: '#348dff', opacity: 0.35}} />
-                            <path d="M11,14V8a2.9,2.9,0,0,1,3,3" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-                            <path d="M11,14a2,2,0,1,1-2-2A2,2,0,0,1,11,14Zm8,5V5a1,1,0,0,0-1-1H4A1,1,0,0,0,3,5V19a1,1,0,0,0,1,1H18A1,1,0,0,0,19,19Zm2-7a5,5,0,0,1-2,4V8A5,5,0,0,1,21,12Z" style={{fill: 'none', stroke: '#000000', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2}} />
-                          </svg>
-                          <p className="mt-2 text-2xl font-black tabular-nums leading-none">
-                            {latestImport.playlist_count}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">Playlists</p>
-                        </div>
-                      </div>
-                    )}
-                    </section>
-
-                    {/* USBs, each with the library snapshots that came from it */}
-                    <section className="space-y-3" data-testid="profile-usbs">
-                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-1.5"><Usb size={11} />USBs</h2>
-                      {usbDevicesLoading || importsListLoading ? (
-                        <div className="flex items-center justify-center py-6"><CircleDash className="animate-spin text-muted-foreground" size={20} /></div>
-                      ) : importsListError ? (
-                        <div className="glass rounded-2xl p-4 text-center space-y-2">
-                          <p className="text-sm text-red-400">{importsListError}</p>
-                          <ControlButton variant="ghost" onClick={refetchImportList} className="text-xs"><Renew size={13} /> Retry</ControlButton>
-                        </div>
-                      ) : (
-                        <UsbCardsSection
-                          groups={usbGroups}
-                          activeImportId={latestImport?.id ?? null}
-                          onOpen={(imp) => navigate({ name: 'import', importId: imp.id, resume: false })}
-                          onMakeActive={(imp) => handleSetActiveImport(imp.id)}
-                          onResumeOrRetry={(imp) => {
-                            if (imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted') {
-                              navigate({ name: 'import', importId: imp.id, resume: true });
-                            } else {
-                              setIsImportModalOpen(true);
-                            }
-                          }}
-                          onDelete={handleDeleteImport}
-                        />
-                      )}
-                    </section>
-
-                    <StreamingSyncGroup importId={latestImport?.id ?? null} trackCount={latestImport?.track_count ?? null} sourceName={latestImport?.device_name ?? latestImport?.source_filename ?? null} deviceName={latestImport?.device_name ?? null} />
-
-                    <RekordboxXmlGroup userId={userId} />
-
-                    {/* Danger zone */}
-                    <section className="space-y-3">
-                      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Library Reset</h2>
-                      <div className="glass rounded-2xl p-4 flex items-center justify-between gap-4 border border-red-500/10">
-                        <div className="flex items-start gap-3 min-w-0">
-                          <WarningAlt size={18} className="mt-0.5 shrink-0 text-red-400" />
-                          <div className="min-w-0">
-                            <p className="font-bold text-sm">Delete All Rekordbox Data</p>
-                            <p className="text-xs leading-relaxed text-muted-foreground">
-                              Permanently remove every library snapshot and all imported Rekordbox data for this account.
-                            </p>
+                  {/* ── Personalization tab ── */}
+                  {settingsTab === 'appearance' && (
+                    <div className="profile-stack">
+                      <section className="profile-group">
+                        <h2 className="profile-heading">Theme</h2>
+                        <div>
+                          <p className="mb-2 text-xs text-muted-foreground">Choose your preferred color scheme</p>
+                          <div className="profile-theme-options" role="radiogroup" aria-label="Theme">
+                            {THEME_OPTIONS.map(({ id, label, description, icon: Icon }) => (
+                              <SelectableOptionCard
+                                key={id}
+                                selected={theme === id}
+                                title={label}
+                                description={description}
+                                icon={<Icon width={20} height={20} aria-hidden="true" />}
+                                onSelect={() => setTheme(id)}
+                              />
+                            ))}
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          disabled={deleteAllLibrariesSubmitting}
-                          onClick={() => {
-                            setDeleteAllLibrariesError(null);
-                            setDeleteAllLibrariesPass(0);
-                            setDeleteAllLibrariesOpen(true);
-                          }}
-                          className="shrink-0 text-xs font-bold text-red-400 transition-colors hover:text-red-300 disabled:opacity-50"
-                        >
-                          Delete All
-                        </button>
-                      </div>
-                    </section>
-                  </div>
-                )}
-
-                {/* ── About tab ── */}
-                {settingsTab === 'about' && (
-                  <section className="space-y-3 lg:px-[188px]">
-                    <div className="glass rounded-2xl divide-y divide-[var(--color-border-faint)]">
-                      {[
-                        { label: 'Version', value: '2.0.0' },
-                        { label: 'Book Source', value: 'Supabase (rekordbox USB)' },
-                        { label: 'Import ID', value: latestImport?.id?.slice(0, 8) ?? '—' },
-                      ].map(({ label, value }) => (
-                        <div key={label} className="px-4 py-3 flex items-center justify-between">
-                          <p className="text-sm text-muted-foreground">{label}</p>
-                          <p className="text-sm font-mono font-bold">{value}</p>
-                        </div>
-                      ))}
+                      </section>
+                      <DashboardWidgetsGroup widgets={libraryOverviewWidgets} />
+                      <section className="profile-group">
+                        <h2 className="profile-heading">External Accounts</h2>
+                        <SpotifyExternalAccount accessToken={session?.access_token ?? null} />
+                      </section>
                     </div>
-                  </section>
-                )}
+                  )}
 
-                {/* ── Developer tab ── */}
-                {settingsTab === 'developer' && (
-                  <div className="lg:px-[188px]">
-                    <DeveloperTab />
-                  </div>
-                )}
+                  {/* ── Library tab ── */}
+                  {settingsTab === 'library' && (
+                    <div className="profile-stack">
+                      <section className="profile-group">
+                        <h2 className="profile-heading"><Database width={14} height={14} aria-hidden="true" />Library</h2>
+                        {latestImport && (
+                          <div className="profile-stats">
+                            <StatTile
+                              label={usbCount === 1 ? 'USB' : 'USBs'}
+                              value={<span data-testid="library-usb-count">{usbCount.toLocaleString()}</span>}
+                            />
+                            <StatTile label="Tracks" value={latestImport.track_count.toLocaleString()} />
+                            <StatTile label="Playlists" value={latestImport.playlist_count.toLocaleString()} />
+                          </div>
+                        )}
+                      </section>
+
+                      {/* USBs, each with the library snapshots that came from it */}
+                      <section className="profile-group" data-testid="profile-usbs">
+                        <h2 className="profile-heading"><Usb width={14} height={14} aria-hidden="true" />USBs</h2>
+                        {usbDevicesLoading || importsListLoading ? (
+                          <div className="flex justify-center py-6"><StatusLoader label="Loading USBs and imports" /></div>
+                        ) : importsListError ? (
+                          <NoticeCard
+                            tone="error"
+                            title="Could not load imports"
+                            action={<ControlButton variant="neutral" onClick={refetchImportList}><Refresh width={14} height={14} aria-hidden="true" /> Retry</ControlButton>}
+                          >
+                            {importsListError}
+                          </NoticeCard>
+                        ) : (
+                          <UsbCardsSection
+                            groups={usbGroups}
+                            activeImportId={latestImport?.id ?? null}
+                            onOpen={(imp) => navigate({ name: 'import', importId: imp.id, resume: false })}
+                            onMakeActive={(imp) => handleSetActiveImport(imp.id)}
+                            onResumeOrRetry={(imp) => {
+                              if (imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted') {
+                                navigate({ name: 'import', importId: imp.id, resume: true });
+                              } else {
+                                setIsImportModalOpen(true);
+                              }
+                            }}
+                            onDelete={handleDeleteImport}
+                          />
+                        )}
+                      </section>
+
+                      <StreamingSyncGroup importId={latestImport?.id ?? null} trackCount={latestImport?.track_count ?? null} sourceName={latestImport?.device_name ?? latestImport?.source_filename ?? null} deviceName={latestImport?.device_name ?? null} />
+
+                      <RekordboxXmlGroup userId={userId} />
+
+                      {/* Danger zone */}
+                      <section className="profile-group">
+                        <h2 className="profile-heading">Library Reset</h2>
+                        <div className="profile-records profile-record flex flex-wrap items-center justify-between gap-4">
+                          <div className="flex items-start gap-3 min-w-0">
+                            <WarningTriangle width={18} height={18} aria-hidden="true" className="mt-0.5 shrink-0 text-red-400" />
+                            <div className="min-w-0">
+                              <p className="font-bold text-sm">Delete All Rekordbox Data</p>
+                              <p className="text-xs leading-relaxed text-muted-foreground">
+                                Permanently remove every library snapshot and all imported Rekordbox data for this account.
+                              </p>
+                            </div>
+                          </div>
+                          <ControlButton
+                            variant="danger-outline"
+                            disabled={deleteAllLibrariesSubmitting}
+                            onClick={() => {
+                              setDeleteAllLibrariesError(null);
+                              setDeleteAllLibrariesPass(0);
+                              setDeleteAllLibrariesOpen(true);
+                            }}
+                          >
+                            Delete All
+                          </ControlButton>
+                        </div>
+                      </section>
+                    </div>
+                  )}
+
+                  {/* ── About tab ── */}
+                  {settingsTab === 'about' && (
+                    <section className="profile-group">
+                      <h2 className="profile-heading">App Information</h2>
+                      <SurfaceCard as="dl" className="profile-records divide-y divide-[var(--color-border-faint)]">
+                        {[
+                          { label: 'Version', value: '2.0.0' },
+                          { label: 'Book Source', value: 'Supabase (rekordbox USB)' },
+                          { label: 'Import ID', value: latestImport?.id?.slice(0, 8) ?? '—' },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="profile-record flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                            <dt className="text-xs text-muted-foreground">{label}</dt>
+                            <dd className="font-mono text-xs">{value}</dd>
+                          </div>
+                        ))}
+                      </SurfaceCard>
+                    </section>
+                  )}
+
+                  {/* ── Developer tab ── */}
+                  {settingsTab === 'developer' && <DeveloperTab />}
+                </div>
               </motion.div>
             )}
 
@@ -1832,6 +1804,7 @@ export default function App() {
         <DeleteLibraryModal
           key="delete-library"
           target={deleteLibraryTarget}
+          profileStyle={currentView === 'settings'}
           isActive={Boolean(deleteLibraryTarget && (
             deleteLibraryTarget.id === latestImport?.id
             || pendingDeletionContextsRef.current.get(deleteLibraryTarget.id)?.wasActive
@@ -1864,8 +1837,8 @@ export default function App() {
             role="status"
           >
             {importNotice.kind === 'success'
-              ? <CheckmarkFilled size={20} className="mt-0.5 shrink-0 text-emerald-400" />
-              : <WarningAlt size={20} className="mt-0.5 shrink-0 text-amber-400" />}
+              ? <CheckCircle width={20} height={20} aria-hidden="true" className="mt-0.5 shrink-0 text-emerald-400" />
+              : <WarningTriangle width={20} height={20} aria-hidden="true" className="mt-0.5 shrink-0 text-amber-400" />}
             <div className="min-w-0">
               <p className="text-sm font-black">{importNotice.title}</p>
               <p className="mt-1 text-xs leading-relaxed opacity-80">{importNotice.detail}</p>

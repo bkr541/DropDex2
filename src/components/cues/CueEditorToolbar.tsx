@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Asterisk, Checkmark, Document, Repeat, Save, Time, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
-import { Grip, Magnet, Ruler } from 'lucide-react';
+import { Asterisk, Check, Clock, DotsGrid3x3, FloppyDisk, Magnet, Page, Repeat, Ruler, SoundHigh, SoundOff, WarningTriangle } from 'iconoir-react/regular';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import type { CueGridDisplayMode } from '../../lib/cues/cueTimelineViewport';
 import type { CueSnapResolution } from '../../lib/music/cueEditorState';
@@ -8,12 +7,12 @@ import type { CueSnapResolution } from '../../lib/music/cueEditorState';
 export type CueDraftState = 'Original' | 'Unsaved' | 'Saved' | 'Needs Verification' | 'Needs Apply' | 'Applied';
 
 const STATE_VISUALS: Record<CueDraftState, { color: string; icon: (size: number) => ReactNode }> = {
-  Original: { color: '#8e9aa8', icon: (size) => <Document size={size} /> },
-  Unsaved: { color: '#fbbf24', icon: (size) => <Asterisk size={size} /> },
-  Saved: { color: '#3b91ff', icon: (size) => <Save size={size} /> },
-  'Needs Apply': { color: '#38c3dc', icon: (size) => <Time size={size} /> },
-  Applied: { color: '#34d399', icon: (size) => <Checkmark size={size + 1} /> },
-  'Needs Verification': { color: '#f87171', icon: (size) => <WarningAlt size={size} /> },
+  Original: { color: '#8e9aa8', icon: (size) => <Page width={size} height={size} aria-hidden="true" /> },
+  Unsaved: { color: '#fbbf24', icon: (size) => <Asterisk width={size} height={size} aria-hidden="true" /> },
+  Saved: { color: '#3b91ff', icon: (size) => <FloppyDisk width={size} height={size} aria-hidden="true" /> },
+  'Needs Apply': { color: '#38c3dc', icon: (size) => <Clock width={size} height={size} aria-hidden="true" /> },
+  Applied: { color: '#34d399', icon: (size) => <Check width={size + 1} height={size + 1} aria-hidden="true" /> },
+  'Needs Verification': { color: '#f87171', icon: (size) => <WarningTriangle width={size} height={size} aria-hidden="true" /> },
 };
 
 /**
@@ -199,7 +198,7 @@ export function CueEditorToolbar({
   return (
     <>
       <IconOptionMenu
-        icon={<Magnet size={18} />}
+        icon={<Magnet width={18} height={18} aria-hidden="true" />}
         label="Snap"
         value={snapResolution}
         active={snapResolution !== 'off'}
@@ -212,7 +211,7 @@ export function CueEditorToolbar({
         ]}
       />
       <IconOptionMenu
-        icon={<Ruler size={18} />}
+        icon={<Ruler width={18} height={18} aria-hidden="true" />}
         label="Beat Count"
         value={gridDisplayMode}
         onChange={onGridDisplayModeChange}
@@ -233,7 +232,7 @@ export function CueEditorToolbar({
         aria-pressed={gridVisible}
         onClick={() => onGridVisibleChange(!gridVisible)}
       >
-        <Grip size={18} />
+        <DotsGrid3x3 width={18} height={18} aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -245,7 +244,7 @@ export function CueEditorToolbar({
         disabled={!activeTrack || transportBlocked}
         onClick={toggleRepeat}
       >
-        <Repeat size={20} />
+        <Repeat width={20} height={20} aria-hidden="true" />
       </button>
       <div ref={volumeRef} className="relative">
         <button
@@ -259,7 +258,7 @@ export function CueEditorToolbar({
           aria-pressed={volumeOpen}
           onClick={() => setVolumeOpen((open) => !open)}
         >
-          {silent ? <VolumeMute size={20} /> : <VolumeUp size={20} />}
+          {silent ? <SoundOff width={20} height={20} aria-hidden="true" /> : <SoundHigh width={20} height={20} aria-hidden="true" />}
         </button>
         {volumeOpen && (
           <div
@@ -273,7 +272,7 @@ export function CueEditorToolbar({
               aria-label={muted ? 'Unmute' : 'Mute'}
               className="shrink-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none"
             >
-              {silent ? <VolumeMute size={16} /> : <VolumeUp size={16} />}
+              {silent ? <SoundOff width={16} height={16} aria-hidden="true" /> : <SoundHigh width={16} height={16} aria-hidden="true" />}
             </button>
             <input
               type="range"

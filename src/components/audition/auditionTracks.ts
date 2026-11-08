@@ -33,7 +33,7 @@ function sortValue(track: RekordboxTrack, column: AuditionSortColumn, playlistCo
     case 'title': return track.title ?? '';
     case 'artist': return track.artist ?? '';
     case 'genre': return track.genre ?? '';
-    case 'key': return formatCamelotCode(track.musical_key);
+    case 'key': return formatCamelotCode(track.camelot_key || track.musical_key);
     case 'bpm': return track.bpm;
     case 'length': return durationMsForTrack(track, null);
     case 'format': return track.file_format ?? '';

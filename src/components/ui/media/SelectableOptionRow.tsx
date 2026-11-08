@@ -1,5 +1,5 @@
 import { useId, useState, type KeyboardEvent } from 'react';
-import { ChevronDown } from '@carbon/icons-react';
+import { NavArrowDown } from 'iconoir-react/regular';
 import '../dropdex-media.css';
 
 export interface SelectableOptionItem {
@@ -87,7 +87,7 @@ export function SelectableOptionRow({
         <span className="dd-media-listbox__selection">
           {selected?.meta && <small>{selected.meta}</small>}
           <strong>{selected?.label ?? '—'}</strong>
-          <ChevronDown size={15} aria-hidden="true" />
+          <NavArrowDown width={15} height={15} aria-hidden="true" />
         </span>
       </button>
       {open && (

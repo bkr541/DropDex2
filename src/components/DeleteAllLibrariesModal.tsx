@@ -1,7 +1,7 @@
 import { SLIDER_TRACK_HEIGHT, THUMB_SIZE, TRACK_BORDER, TRACK_PAD, sliderTravel } from './deleteAllSlider';
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, CircleDash, Close, TrashCan, WarningAlt } from '@carbon/icons-react';
+import { ArrowRight, Check, Refresh, Trash, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { ControlButton } from './ui/controls';
 
 interface DeleteAllLibrariesModalProps {
@@ -123,13 +123,13 @@ export function DeleteAllLibrariesModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-all-libraries-title"
-          className="relative w-full max-w-2xl rounded-3xl border border-red-500/25 bg-[var(--color-panel)] p-6 shadow-2xl"
+          className="studio-surface profile-modal relative w-full max-w-2xl p-4 sm:p-5"
         >
           {deleting ? (
             /* ── Deletion in progress: progress view ── */
             <div className="py-2 text-center">
               <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-                <CircleDash className="animate-spin text-red-400" size={28} />
+                <Refresh className="animate-spin text-red-400" width={28} height={28} aria-hidden="true" />
               </div>
               <h2 id="delete-all-libraries-title" className="text-xl font-black mb-1">
                 Deleting Rekordbox Libraries…
@@ -178,11 +178,11 @@ export function DeleteAllLibrariesModal({
                 className="absolute top-4 right-4 flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-white/[0.06]"
                 aria-label="Close"
               >
-                <Close size={18} />
+                <Xmark width={18} height={18} aria-hidden="true" />
               </button>
               <div className="flex min-w-0 items-start gap-4">
                 <div className="shrink-0 rounded-2xl bg-red-500/10 p-3 text-red-400">
-                  <WarningAlt size={22} />
+                  <WarningTriangle width={22} height={22} aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-400">Permanent action</p>
@@ -246,11 +246,9 @@ export function DeleteAllLibrariesModal({
                     }}
                   >
                     {confirmed ? (
-                      <svg viewBox="0 0 20 20" width={18} height={18} fill="none" stroke="rgba(255,200,200,0.9)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <polyline points="4 10 8 14 16 6" />
-                      </svg>
+                      <Check width={18} height={18} color="rgba(255,200,200,0.9)" strokeWidth={2.5} aria-hidden="true" />
                     ) : (
-                      <ArrowRight size={18} className="text-white" />
+                      <ArrowRight width={18} height={18} aria-hidden="true" className="text-white" />
                     )}
                   </div>
                 </div>
@@ -264,7 +262,7 @@ export function DeleteAllLibrariesModal({
 
               <div className="mt-4 flex gap-3">
                 <ControlButton type="button" variant="neutral" onClick={onClose} className="flex-1">
-                  <Close size={16} /> Cancel
+                  <Xmark width={16} height={16} aria-hidden="true" /> Cancel
                 </ControlButton>
                 <ControlButton
                   type="button"
@@ -273,7 +271,7 @@ export function DeleteAllLibrariesModal({
                   onClick={onConfirm}
                   className="flex-1"
                 >
-                  <TrashCan size={16} /> Delete All
+                  <Trash width={16} height={16} aria-hidden="true" /> Delete All
                 </ControlButton>
               </div>
             </>

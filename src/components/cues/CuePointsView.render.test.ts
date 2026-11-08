@@ -95,9 +95,11 @@ describe('CuePointsView production Stage 3 render', () => {
     );
 
     expect(markup).toContain('aria-label="Cue Points browser source"');
-    expect(markup).toContain('aria-pressed="true">Library</button>');
-    expect(markup).toContain('aria-pressed="false">Playlists</button>');
-    expect(markup).toContain('data-testid="cue-browser-command-bar"');
+    expect(markup).toMatch(/role="tab" aria-selected="true"[^>]*><span>Library<\/span><\/button>/);
+    expect(markup).toMatch(/role="tab" aria-selected="false"[^>]*><span>Playlists<\/span><\/button>/);
+    const sourceTabs = markup.indexOf('data-testid="cue-browser-source-tabs"');
+    expect(sourceTabs).toBeGreaterThan(markup.indexOf('data-testid="cue-browser-filters"'));
+    expect(sourceTabs).toBeLessThan(markup.indexOf('data-testid="cue-browser-search"'));
     expect(markup).toContain('aria-label="Search cue point tracks"');
     expect(markup).toContain('data-testid="cue-audio-dock"');
     expect(markup).toContain('aria-label="Cue Points transport controls"');
@@ -123,10 +125,10 @@ describe('Audition workspace', () => {
       const audition = render('audition');
       const cues = render('cues');
       expect(audition).toContain('<thead');
-      expect(audition.match(/<thead[\s\S]*?<\/thead>/)?.[0].replace('w-[112px]', 'w-[178px]')).toBe(cues.match(/<thead[\s\S]*?<\/thead>/)?.[0]);
+      expect(audition.match(/<thead[\s\S]*?<\/thead>/)?.[0]).toBe(cues.match(/<thead[\s\S]*?<\/thead>/)?.[0]);
       expect(audition).toContain('Audition Track');
       expect(audition).toContain('Test Artist');
-      expect(audition).toContain('44.1 kHz');
+      expect(audition).toMatch(/<td[^>]*>WAV<\/td>/);
       expect(audition).toContain('aria-label="Search audition tracks"');
       expect(audition).toContain('data-testid="cue-browser-filters"');
       expect(audition).toContain('aria-label="Audition audio dock"');
@@ -150,7 +152,7 @@ describe('Audition workspace', () => {
 
 describe('Review shared browser and focused track timeline', () => {
   const track = {
-    id: 'review-track', import_id: 'import-test', title: 'Review Track', artist: 'Test Artist',
+    id: 'review-track', rekordbox_content_id: '42', import_id: 'import-test', title: 'Review Track', artist: 'Test Artist',
     genre: 'House', bpm: 128, musical_key: '8A', duration_ms: 180000,
     file_format: 'WAV', sample_rate_hz: 44100, bitrate_kbps: 1411,
   } as RekordboxTrack;
@@ -164,11 +166,11 @@ describe('Review shared browser and focused track timeline', () => {
           mode: 'artist-library', importId: 'import-test', onImport: vi.fn(), onTrackOpen: vi.fn(),
         }),
       }));
-      expect(markup).toContain('artist-library-browser glass rounded-2xl');
+      expect(markup).toContain('artist-library-browser');
       expect(markup).toContain('aria-label="Search artist library tracks"');
       expect(markup).toContain('data-testid="cue-browser-filters"');
       expect(markup).toContain('Review Track');
-      expect(markup).toContain('Properties');
+      expect(markup).toContain('aria-label="Sort by Format"');
       expect(markup).not.toContain('Sort by Rate');
       expect(markup).not.toContain('Sample Rate');
       expect(markup).not.toContain('Select a track');
@@ -193,64 +195,15 @@ describe('Review shared browser and focused track timeline', () => {
       vi.unstubAllGlobals();
     }
   };
-  const valueClass = 'text-xs font-medium text-foreground';
-  const cell = (rows: string, text: string) => rows.match(new RegExp(`<td class="([^"]*)"[^>]*>(?:<span[^>]*>)?${text}(?:</span>)?</td>`))?.[1] ?? '';
-
-  it('Review: every data value is 12px, the same size as the track title, in the normal text colour, medium weight, with no key badge, colours or boxes', () => {
-    const rows = renderRows('artist-library');
-    expect(renderRows('artist-library')).toContain('truncate font-bold text-xs leading-tight');
-    for (const value of ['128.0', '08A', '3:00']) {
-      expect(cell(rows, value), value).toContain(valueClass);
-            expect(cell(rows, value), value).not.toContain('text-muted-foreground');
-      expect(cell(rows, value), value).not.toContain('font-mono');
+  it('both modes render plain format and key values with shared metadata styles', () => {
+    for (const mode of ['artist-library', 'cues'] as const) {
+      const rows = renderRows(mode);
+      expect(rows).toMatch(/<td[^>]*>08A<\/td>/);
+      expect(rows).toMatch(/<td[^>]*>WAV<\/td>/);
+      expect(rows).toMatch(/<td[^>]*font-mono[^>]*>128\.0<\/td>/);
+      expect(rows).not.toContain('properties-cell');
+      expect(rows).not.toContain('dd-status-badge');
     }
-    expect(rows).not.toContain('rounded-[5px] bg-white/[0.05]');
-    expect(rows).not.toContain('font-bold tabular-nums">128.0');
-  });
-
-  it('Review: Format, rate and bit rate share one Properties column, each value in its own 12px badge, the same size as the other values', () => {
-    const rows = renderRows('artist-library');
-    const cell = rows.match(/<td data-testid="properties-cell" class="px-3 py-1.5 whitespace-nowrap">([\s\S]*?)<\/td>/)?.[1] ?? '';
-    const badges = cell.match(/<span class="dd-status-badge dd-tone-neutral"[^>]*>[\s\S]*?<\/span><\/span>/g) ?? [];
-    expect(badges).toHaveLength(3);
-    expect(badges.map((badge) => badge.replace(/<[^>]+>/g, ''))).toEqual(['.wav', '44.1 kHz', '1411 kbps']);
-    for (const badge of badges) expect(badge).toContain('font-size:12px;font-weight:500;letter-spacing:normal;text-transform:none;color:var(--color-foreground)');
-    expect(rows.match(/properties-cell/g)).toHaveLength(1);
-    expect(rows).not.toMatch(/<td[^>]*>WAV<\/td>/);
-    expect(cell).not.toContain('>WAV<');
-  });
-
-  it('Review: shows a dash when a track has no format, rate or bit rate', () => {
-    vi.stubGlobal('window', { devicePixelRatio: 1 });
-    libraryFixture.tracks = [{ ...track, file_format: null, sample_rate_hz: null, bitrate_kbps: null } as RekordboxTrack];
-    try {
-      const markup = renderToStaticMarkup(createElement(AudioPlayerProvider, {
-        imports: [], children: createElement(CuePointsView, { mode: 'artist-library', importId: 'import-test', onImport: vi.fn(), onTrackOpen: vi.fn() }),
-      }));
-      const cell = markup.match(/data-testid="properties-cell"[^>]*>([\s\S]*?)<\/td>/)?.[1] ?? '';
-      expect(cell).toContain('—');
-      expect(cell).not.toContain('dd-status-badge');
-    } finally {
-      libraryFixture.tracks = [];
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it('Review: the genre, cues and playlists values are all there', () => {
-    const rows = renderRows('artist-library');
-    expect(rows).toMatch(/<td class="[^"]*w-\[71px\][^"]*"><span class="block min-w-0 truncate">House<\/span><\/td>/);
-    expect(rows).toContain('data-testid="playlist-count"');
-    expect(rows).toContain('>…</span></td>');
-  });
-
-  it('Cue Points keeps its smaller muted values, monospace numbers and boxed cue count', () => {
-    const rows = renderRows('cues');
-    expect(rows).toContain('text-xs text-muted-foreground');
-    expect(rows).toContain('font-mono text-[13px]');
-    expect(rows).toContain('inline-flex min-w-8 justify-center rounded-md border');
-    expect(rows).not.toContain(valueClass);
-    expect(rows).not.toContain('properties-cell');
-    expect(rows).not.toContain('dd-status-badge');
   });
 
   it('Review: adds a Playlists column showing how many playlists each track is in', () => {
@@ -278,28 +231,8 @@ describe('Review shared browser and focused track timeline', () => {
     }
   });
 
-  it('Cue Points does not get the Playlists column', () => {
-    expect(renderRows('cues')).not.toContain('data-testid="playlist-count"');
-  });
-
-  it('Review: columns sit 4px closer (10px on each side of a cell instead of 12px); Cue Points is unchanged', async () => {
-    const { readFileSync } = await import('node:fs');
-    const css = readFileSync(new URL('../ui/dropdex-display.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.cue-browser__table--tight th,\s*\.cue-browser__table--tight td \{\s*padding-inline: 10px;/);
-    const tableOf = (mode: 'artist-library' | 'cues') => {
-      vi.stubGlobal('window', { devicePixelRatio: 1 });
-      libraryFixture.tracks = [track];
-      try {
-        return renderToStaticMarkup(createElement(AudioPlayerProvider, {
-          imports: [], children: createElement(CuePointsView, { mode, importId: 'import-test', onImport: vi.fn(), onTrackOpen: vi.fn() }),
-        })).match(/<table [^>]*>/)?.[0] ?? '';
-      } finally {
-        libraryFixture.tracks = [];
-        vi.unstubAllGlobals();
-      }
-    };
-    expect(tableOf('artist-library')).toContain('cue-browser__table--tight');
-    expect(tableOf('cues')).not.toContain('cue-browser__table--tight');
+  it('shows playlist counts in Cue Points as well as Review', () => {
+    expect(renderRows('cues')).toContain('data-testid="playlist-count"');
   });
 
   it('every listing mode is drawn by the shared TrackListing: capital headings, a play button, the waveform and an Actions column', () => {
@@ -317,22 +250,22 @@ describe('Review shared browser and focused track timeline', () => {
       }
     };
     const review = table('artist-library');
-    const reviewHead = review.slice(review.indexOf('<thead'), review.indexOf('</thead>'));
-    expect(reviewHead.match(/<th /g)).toHaveLength(10);
-    for (const label of ['Track', 'BPM', 'Key', 'Genre', 'Cues', 'Playlists', 'Properties', 'Duration', 'Cloud', 'Actions']) expect(reviewHead).toContain(`>${label}<`);
-    for (const gone of ['>Format<', '>Sample Rate<', '>Bit Rate<', 'normal-case']) expect(reviewHead).not.toContain(gone);
     const cues = table('cues');
-    const cuesHead = cues.slice(cues.indexOf('<thead'), cues.indexOf('</thead>'));
-    expect(cuesHead.match(/<th /g)).toHaveLength(10);
-    for (const label of ['Format', 'Sample Rate', 'Bit Rate', 'Actions']) expect(cuesHead).toContain(`>${label}<`);
-    expect(cuesHead).not.toContain('Playlists');
+    const headers = ['Track', 'BPM', 'Key', 'Genre', 'Format', 'Playlists', 'Duration', 'Actions'];
+    for (const markup of [review, cues]) {
+      const head = markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'));
+      expect(head.match(/<th /g)).toHaveLength(headers.length);
+      const offsets = headers.map((label) => head.indexOf('>' + label + '<'));
+      expect(offsets.every((offset) => offset >= 0)).toBe(true);
+      expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
+    }
     for (const markup of [review, cues]) {
       expect(markup).toContain('aria-label="Play Review Track"');
       expect(markup).toContain('data-testid="track-listing-wave"');
       expect(markup).toContain('aria-label="Actions for Review Track"');
       expect(markup).toContain('h-1.5 w-1.5 shrink-0 rounded-full');
     }
-    expect(review).toContain('cue-browser__table--tight');
+    expect(review).not.toContain('cue-browser__table--tight');
     expect(cues).not.toContain('cue-browser__table--tight');
   });
 
@@ -346,9 +279,13 @@ describe('Review shared browser and focused track timeline', () => {
       }));
       expect(markup).toContain('Review Track');
       expect(markup).toContain('Test Artist');
+      expect(markup).toContain('data-testid="audition-track-header"');
+      expect(markup).toContain('waveform-time-ruler');
       expect(markup).toContain('data-testid="cue-points-workstation"');
       expect(markup).toContain('Loading beat grid');
       expect(markup).toContain('Loading');
+      expect(markup).toContain('class="studio-surface cue-studio cue-track-panel"');
+      expect(markup).toContain('cue-workstation__timeline');
       expect(markup).toContain('aria-label="Track audio dock"');
       expect(markup).toContain('aria-label="Track transport controls"');
       expect(markup).not.toContain('browser source');
@@ -356,6 +293,20 @@ describe('Review shared browser and focused track timeline', () => {
       expect(markup).not.toContain('Save Draft');
       expect(markup).not.toContain('Auto Cue');
       expect(markup).not.toContain('Pending Changes');
+      expect(markup.indexOf('cue-timeline__cues')).toBeLessThan(markup.indexOf('waveform-section-row'));
+      const libraryMarkup = renderToStaticMarkup(createElement(AudioPlayerProvider, {
+        imports: [], children: createElement(CuePointsTrackPanel, {
+          track, waveformState: { status: 'idle', trackId: track.id }, cuesAboveWaveform: true,
+        }),
+      }));
+      const sectionRow = libraryMarkup.indexOf('waveform-section-row');
+      const timeRuler = libraryMarkup.indexOf('waveform-time-ruler');
+      const cueRow = libraryMarkup.indexOf('cue-timeline__cues');
+      const waveform = libraryMarkup.indexOf('group/waveform');
+      expect(sectionRow).toBeGreaterThan(-1);
+      expect(timeRuler).toBeGreaterThan(sectionRow);
+      expect(cueRow).toBeGreaterThan(timeRuler);
+      expect(waveform).toBeGreaterThan(cueRow);
     } finally {
       vi.unstubAllGlobals();
     }

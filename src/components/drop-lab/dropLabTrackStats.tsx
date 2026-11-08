@@ -1,4 +1,4 @@
-import { Star, StarFilled } from '@carbon/icons-react';
+import { Star } from 'iconoir-react/regular';
 import type { DropPoint } from '../../lib/music/dropPointResolver';
 import type { RekordboxTrack } from '../../types';
 import type { TrackIdentityStat } from '../ui/display';
@@ -14,8 +14,8 @@ export function dropLabTrackStats(track: RekordboxTrack, dropPoint: DropPoint | 
     {
       label: 'Rating',
       value: rating > 0
-        ? <span className="inline-flex items-center gap-0.5"><StarFilled size={9} />{rating}/5</span>
-        : <span className="inline-flex items-center gap-0.5"><Star size={9} />—</span>,
+        ? <span className="inline-flex items-center gap-0.5"><Star width={9} height={9} aria-hidden="true" />{rating}/5</span>
+        : <span className="inline-flex items-center gap-0.5"><Star width={9} height={9} aria-hidden="true" />—</span>,
     },
     { label: 'Drop', value: dropPoint ? `${dropPoint.label} · ${dropPoint.confidence}` : 'Unavailable' },
   ];

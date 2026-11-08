@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from 'react';
-import { WarningAlt } from '@carbon/icons-react';
+import { WarningTriangle } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import '../dropdex-controls.css';
 
@@ -26,7 +26,7 @@ export function FormField({
       {children({ id, describedBy, invalid: Boolean(error) })}
       {(error || helperText) && (
         <p id={describedBy} className={cn('dd-form-field__message', error && 'dd-form-field__message--error')}>
-          {error && <WarningAlt size={15} aria-hidden="true" />}
+          {error && <WarningTriangle width={15} height={15} aria-hidden="true" />}
           {error ?? helperText}
         </p>
       )}

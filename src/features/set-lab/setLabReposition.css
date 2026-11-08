@@ -1,0 +1,15 @@
+.set-lab-reposition {
+  width: min(56rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .set-lab-reposition__reveal {
+    animation: set-lab-reveal-source 220ms ease-out both;
+  }
+}
+
+@keyframes set-lab-reveal-source {
+  from { clip-path: inset(0 30%); }
+  to { clip-path: inset(0); }
+}

@@ -1,4 +1,4 @@
-import { ChevronRight } from '@carbon/icons-react';
+import { NavArrowRight } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 
 interface GenreTileProps {
@@ -16,7 +16,7 @@ export function GenreTile({ name, artistCount, favorite = false, onOpen }: Genre
       <span className="discovery-genre-tile-count"><span>{artistCount.toLocaleString()}</span><small>{artistCount === 1 ? 'Artist' : 'Artists'}</small></span>
       <span className="discovery-genre-tile-foot">
         <span className="discovery-genre-tile-name">{name}</span>
-        <ChevronRight size={16} aria-hidden="true" />
+        <NavArrowRight width={16} height={16} aria-hidden="true" />
       </span>
     </button>
   );

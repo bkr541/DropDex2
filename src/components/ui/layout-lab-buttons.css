@@ -1,4 +1,4 @@
-/* Layout Lab / UI Components / Buttons. Five primary and five secondary looks in the graphite style. */
+/* Layout Lab / UI Components / Buttons. Graphite button concepts and Filled Disc studies. */
 .lb-rows { max-width: 1180px; margin-top: 44px; font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; }
 .lb-row { margin-bottom: 34px; }
 .lb-row-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #ffffff0d; }
@@ -17,12 +17,18 @@
 .lb-btn:focus-visible { outline: 2px solid #f78361; outline-offset: 3px; }
 .lb-btn:disabled { cursor: not-allowed; opacity: .35; }
 
+/* Original outline looks, kept as comparison mockups. */
+.lb-p1,
+.lb-s1 { padding: 0 14px; border-radius: var(--radius-control); font-size: 13px; }
+.lb-p1 { border-width: 1.5px; border-color: var(--color-control-primary); box-shadow: 0 0 12px var(--color-control-primary-glow); color: var(--color-control-primary); }
+.lb-p1:hover:not(:disabled) { background: rgb(var(--color-control-primary-rgb) / .1); border-color: var(--color-control-primary-hover); box-shadow: 0 0 16px var(--color-control-primary-glow); color: var(--color-control-primary-hover); }
+.lb-p1:disabled { opacity: 1; background: var(--color-control-surface); border-color: var(--color-control-border-soft); color: #596474; box-shadow: none; }
+.lb-s1 { border-color: #3a4655; color: #d8dee7; font-weight: 500; letter-spacing: .025em; text-transform: none; }
+.lb-s1:hover:not(:disabled) { background: rgb(255 255 255 / .05); border-color: #566377; color: #fff; }
+.lb-s1:disabled { opacity: 1; border-color: #272e38; color: #3a4251; }
+
 /* Primary 2 · filled disc: the Audition play button's gradient. */
-.lb-p2 { border-color: #f78361; background: linear-gradient(135deg, #f54b64, #f78361); color: #fff; }
-.lb-p2:hover:not(:disabled) { background: linear-gradient(135deg, #f65e72, #f89573); }
-/* Primary 3 · raised plate: lit rim, fine grain, three shadows, a hairline coral ring. */
-.lb-p3 { border-color: #f56b7099; background: repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px), linear-gradient(165deg, #2c303b 0%, #232731 40%, #1c2029 100%); box-shadow: inset 0 1px 0 #ffffff14, inset 0 -1px 0 #00000040, 0 1px 2px #00000059, 0 10px 24px -8px #0000008c; color: #f78361; }
-.lb-p3:hover:not(:disabled) { border-color: #f78361; color: #ffa07f; }
+.lb-p2 { border-color: #f78361; color: #fff; }
 /* Primary 4 · underline: no box, one coral rule. */
 .lb-p4 { min-height: 34px; padding: 0 2px 4px; border-radius: 0; border-bottom: 1.5px solid #f56b70; color: #f78361; }
 .lb-p4:hover:not(:disabled) { border-bottom-color: #f78361; color: #ffa07f; }
@@ -30,9 +36,6 @@
 .lb-p5 { border-color: #00000040; border-left: 3px solid #f56b70; background: linear-gradient(180deg, #14171d, #191d25); box-shadow: inset 0 2px 6px #000000a6, 0 1px 0 #ffffff0f; color: #f78361; }
 .lb-p5:hover:not(:disabled) { color: #ffa07f; border-left-color: #f78361; }
 
-/* Secondary 2 · raised plate in gray. */
-.lb-s2 { border-color: #ffffff1f; background: repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px), linear-gradient(165deg, #2c303b 0%, #232731 40%, #1c2029 100%); box-shadow: inset 0 1px 0 #ffffff14, inset 0 -1px 0 #00000040, 0 1px 2px #00000059, 0 10px 24px -8px #0000008c; color: #cdd3dd; }
-.lb-s2:hover:not(:disabled) { border-color: #ffffff3d; color: #fff; }
 /* Secondary 3 · hairline underline. */
 .lb-s3 { min-height: 34px; padding: 0 2px 4px; border-radius: 0; border-bottom: 1px solid #ffffff2e; color: #b4bdcb; }
 .lb-s3:hover:not(:disabled) { border-bottom-color: #ffffff80; color: #fff; }
@@ -43,5 +46,52 @@
 .lb-s5 { padding: 0 14px 0 6px; border-color: #ffffff1c; border-radius: 999px; color: #b4bdcb; }
 .lb-s5:hover:not(:disabled) { border-color: #ffffff3d; color: #fff; }
 .lb-disc { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid #ffffff26; border-radius: 50%; color: #cdd3dd; }
+
+.lb-p2,
+.lb-filled-disc-row--primary {
+  --lb-disc-start: #f54b64;
+  --lb-disc-end: #f78361;
+  --lb-disc-hover-start: #f65e72;
+  --lb-disc-hover-end: #f89573;
+  --lb-disc-edge: #f78361;
+}
+
+.lb-filled-disc-row--secondary {
+  --lb-disc-start: #3c4452;
+  --lb-disc-end: #596476;
+  --lb-disc-hover-start: #485263;
+  --lb-disc-hover-end: #68758a;
+  --lb-disc-edge: #768295;
+}
+
+.lb-p2,
+.lb-filled-disc-row .lb-btn {
+  --lb-disc-gradient: linear-gradient(var(--lb-disc-angle, 135deg), var(--lb-disc-start), var(--lb-disc-end));
+  background: var(--lb-disc-fill, var(--lb-disc-gradient));
+}
+.lb-p2:hover:not(:disabled),
+.lb-filled-disc-row .lb-btn:hover:not(:disabled) {
+  --lb-disc-start: var(--lb-disc-hover-start);
+  --lb-disc-end: var(--lb-disc-hover-end);
+}
+
+.lb-filled-disc-row .lb-stage { padding-inline: 8px; }
+.lb-filled-disc-row .lb-btn {
+  padding-inline: 10px;
+  border-color: var(--lb-disc-edge);
+  color: #fff;
+}
+.lb-filled-disc-row .lb-btn:focus-visible { outline-color: var(--lb-disc-edge); }
+
+.lb-vertical-fade { --lb-disc-angle: 0deg; }
+.lb-reverse-sweep { --lb-disc-angle: 225deg; }
+.lb-satin-sheen {
+  --lb-disc-fill: radial-gradient(ellipse at 50% 0%, #ffffff45, transparent 72%), var(--lb-disc-gradient);
+}
+.lb-deep-gradient {
+  --lb-disc-fill: linear-gradient(135deg, color-mix(in srgb, var(--lb-disc-start) 65%, #191d25), var(--lb-disc-end));
+}
+.lb-soft-capsule { border-radius: 999px; }
+
 @media (max-width: 1100px) { .lb-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .lb-btn { transition: none; } }

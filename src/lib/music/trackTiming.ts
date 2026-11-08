@@ -4,7 +4,7 @@ import type { BeatGridRow, PhraseRow } from '../queries/analysisData';
 import type { RekordboxTrack } from '../../types';
 
 export function durationMsForTrack(
-  track: RekordboxTrack | null,
+  track: Pick<RekordboxTrack, 'duration_ms' | 'duration_seconds'> | null,
   beatGrid: BeatGridRow | null,
   phrases: PhraseRow[] = [],
 ): number | null {

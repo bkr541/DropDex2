@@ -8,6 +8,7 @@ export function useLatestRekordboxImport(userId: string | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [resolved, setResolved] = useState<{ userId: string; tick: number } | null>(null);
   const generationRef = useRef(0);
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export function useLatestRekordboxImport(userId: string | null) {
     if (!userId) {
       generationRef.current += 1;
       setData(null);
+      setResolved(null);
       setLoading(false);
       setError(null);
       return;
@@ -51,12 +53,15 @@ export function useLatestRekordboxImport(userId: string | null) {
         }
       })
       .finally(() => {
-        if (active && generation === generationRef.current) setLoading(false);
+        if (active && generation === generationRef.current) {
+          setResolved({ userId, tick });
+          setLoading(false);
+        }
       });
     return () => { active = false; generationRef.current += 1; };
   }, [userId, tick]);
 
   const refetch = useCallback(() => setTick((t) => t + 1), []);
 
-  return { data, loading, error, refetch };
+  return { data, loading, error, refetch, settled: resolved != null && resolved.userId === userId && resolved.tick === tick };
 }

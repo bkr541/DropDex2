@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import { cn } from '../../lib/utils';
 import type { DiscoverySetlistResult } from '../../types';
-import { Calendar, ChevronRight, Favorite, Launch, Music, Time, View } from '@carbon/icons-react';
+import { Calendar, Clock, Eye, Heart, MusicNote, NavArrowRight, OpenNewWindow } from 'iconoir-react/regular';
 import { ControlButton } from '../ui/controls';
 
 interface ArtistSetlistCardProps {
@@ -24,7 +24,7 @@ function ArtworkImage({ url, title }: { url: string; title: string }) {
   }
   return (
     <div className="w-full h-full flex items-center justify-center">
-      <Music size={36} className="text-primary/20" />
+      <MusicNote width={36} height={36} aria-hidden="true" className="text-primary/20" />
     </div>
   );
 }
@@ -50,7 +50,7 @@ export function ArtistSetlistCard({ setlist, onOpen }: ArtistSetlistCardProps) {
           <ArtworkImage url={setlist.artwork_url} title={title} />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Music size={36} className="text-primary/20" />
+            <MusicNote width={36} height={36} aria-hidden="true" className="text-primary/20" />
           </div>
         )}
 
@@ -59,13 +59,13 @@ export function ArtistSetlistCard({ setlist, onOpen }: ArtistSetlistCardProps) {
           <div className="absolute top-2 left-2 flex gap-1.5">
             {setlist.views != null && (
               <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-background/80 backdrop-blur-sm text-[9px] font-bold text-muted-foreground border border-[var(--color-border-subtle)]">
-                <View size={9} />
+                <Eye width={9} height={9} aria-hidden="true" />
                 {setlist.views.toLocaleString()}
               </span>
             )}
             {setlist.likes != null && (
               <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-background/80 backdrop-blur-sm text-[9px] font-bold text-muted-foreground border border-[var(--color-border-subtle)]">
-                <Favorite size={9} />
+                <Heart width={9} height={9} aria-hidden="true" />
                 {setlist.likes.toLocaleString()}
               </span>
             )}
@@ -82,7 +82,7 @@ export function ArtistSetlistCard({ setlist, onOpen }: ArtistSetlistCardProps) {
             className="absolute top-2 right-2 p-1.5 rounded-lg bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-foreground transition-colors border border-[var(--color-border-subtle)]"
             title="View on 1001Tracklists"
           >
-            <Launch size={12} />
+            <OpenNewWindow width={12} height={12} aria-hidden="true" />
           </a>
         )}
 
@@ -116,13 +116,13 @@ export function ArtistSetlistCard({ setlist, onOpen }: ArtistSetlistCardProps) {
           <div className="flex flex-wrap gap-3">
             {setlist.set_date && (
               <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Calendar size={10} />
+                <Calendar width={10} height={10} aria-hidden="true" />
                 {setlist.set_date}
               </span>
             )}
             {setlist.duration_text && (
               <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Time size={10} />
+                <Clock width={10} height={10} aria-hidden="true" />
                 {setlist.duration_text}
               </span>
             )}
@@ -139,7 +139,7 @@ export function ArtistSetlistCard({ setlist, onOpen }: ArtistSetlistCardProps) {
             }}
             className="w-full text-xs"
           >
-            View Tracks <ChevronRight size={12} />
+            View Tracks <NavArrowRight width={12} height={12} aria-hidden="true" />
           </ControlButton>
         </div>
       </div>

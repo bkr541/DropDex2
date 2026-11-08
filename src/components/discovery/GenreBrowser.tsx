@@ -1,4 +1,4 @@
-import { CircleDash, Close } from '@carbon/icons-react';
+import { Refresh, Xmark } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import type { CatalogGenre } from '../../types';
 import { HorizontalScroller } from './HorizontalScroller';
@@ -24,7 +24,7 @@ export function GenreBrowser({ genres, loading, error, onRetry, selectedGenreId,
       <div className="discovery-genres" aria-live="polite">
         <span className="studio-label">Genre</span>
         <span className="discovery-genres-status inline-flex items-center gap-2">
-          <CircleDash className="animate-spin text-primary" size={14} /> Loading genres…
+          <Refresh className="animate-spin text-primary" width={14} height={14} aria-hidden="true" /> Loading genres…
         </span>
       </div>
     );
@@ -82,7 +82,7 @@ export function GenreBrowser({ genres, loading, error, onRetry, selectedGenreId,
       </HorizontalScroller>
       {selectedGenreId !== null && (
         <button type="button" className="discovery-genre-clear" aria-label="Clear genre filter" onClick={() => onSelectGenre(null)}>
-          <Close size={12} /> Clear
+          <Xmark width={12} height={12} aria-hidden="true" /> Clear
         </button>
       )}
     </div>

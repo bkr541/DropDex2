@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowsHorizontal, Devices, Time, Usb } from '@carbon/icons-react';
+import { ArrowSeparate, Clock, Laptop, Usb } from 'iconoir-react/regular';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { getDesktopBridge, usePrimaryUsbDetails } from '../../hooks/useDesktopUsb';
 import { useUsbLibrary } from '../../hooks/useUsbLibrary';
@@ -13,9 +13,9 @@ type UsbTab = 'overview' | 'transfer' | 'history' | 'devices';
 
 const USB_TABS = [
   { id: 'overview', label: 'My USB', icon: Usb },
-  { id: 'transfer', label: 'Transfer', icon: ArrowsHorizontal },
-  { id: 'history', label: 'History', icon: Time },
-  { id: 'devices', label: 'My USBs', icon: Devices },
+  { id: 'transfer', label: 'Transfer', icon: ArrowSeparate },
+  { id: 'history', label: 'History', icon: Clock },
+  { id: 'devices', label: 'My USBs', icon: Laptop },
 ] as const;
 
 /**

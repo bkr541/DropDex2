@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type PointerEvent } from 'react';
-import { Close } from '@carbon/icons-react';
+import { Xmark } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import { commitTypedBound } from './dualRangeMath';
 
@@ -410,7 +410,7 @@ export function DualRangeSlider({
         )}
         {s.isFiltered && onReset && (
           <button type="button" onClick={onReset} className={cn('shrink-0 text-red-400 transition-colors hover:text-red-300 focus-visible:outline-none', !showReadout && 'ml-auto')} aria-label={`Reset ${label} filter`}>
-            <Close size={12} />
+            <Xmark aria-hidden="true" width={12} height={12} />
           </button>
         )}
       </div>

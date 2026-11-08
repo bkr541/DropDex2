@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SupabaseConfiguration } from '../lib/supabase';
-import { Renew, WarningAlt } from '@carbon/icons-react';
+import { Refresh, WarningTriangle } from 'iconoir-react/regular';
 import { ControlButton } from './ui/controls';
 
 interface StartupConfigurationErrorProps {
@@ -15,7 +15,7 @@ export function StartupConfigurationError({ configuration }: StartupConfiguratio
         className="w-full max-w-lg rounded-2xl border border-red-400/30 bg-[var(--color-panel)] p-7 shadow-2xl"
       >
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-red-500/15 text-red-400">
-          <WarningAlt size={24} aria-hidden="true" />
+          <WarningTriangle width={24} height={24} aria-hidden="true" />
         </div>
         <h1 id="startup-configuration-title" className="text-2xl font-black">
           DropDex configuration is incomplete
@@ -43,7 +43,7 @@ export function StartupConfigurationError({ configuration }: StartupConfiguratio
         </p>
         <div className="mt-6">
           <ControlButton type="button" variant="primary" onClick={() => window.location.reload()}>
-            <Renew size={15} /> Reload after configuration
+            <Refresh width={15} height={15} aria-hidden="true" /> Reload after configuration
           </ControlButton>
         </div>
       </section>

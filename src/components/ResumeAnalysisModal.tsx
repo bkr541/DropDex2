@@ -30,7 +30,7 @@ import { isFreshImportResponse } from '../lib/rekordbox/importRequestFreshness';
 import { QuietProgress, quietOverallPercent, type QuietPhase } from './ui/feedback';
 import { runCancellableUploadQueue, UploadQueueRuntime } from '../lib/rekordbox/cancellableUploadQueue';
 import { IdempotentUsbCleanup, verifyUsbReleased } from '../lib/rekordbox/localUsbLifecycle';
-import { CheckmarkFilled, Close, FolderOpen, Renew, WarningAlt } from '@carbon/icons-react';
+import { CheckCircle, Folder, Refresh, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { ControlButton } from './ui/controls';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -547,7 +547,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
             {/* Close button */}
             {(phase === 'scan_prompt' || phase === 'error' || phase === 'done_partial') && (
               <ControlButton variant="ghost" onClick={handleClose} className="absolute top-5 right-5">
-                <Close size={18} />
+                <Xmark width={18} height={18} aria-hidden="true" />
               </ControlButton>
             )}
 
@@ -567,7 +567,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
               <div>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center shrink-0">
-                    <Renew className="text-amber-400" size={22} />
+                    <Refresh className="text-amber-400" width={22} height={22} aria-hidden="true" />
                   </div>
                   <h2 className="text-xl font-bold">Resume Analysis</h2>
                 </div>
@@ -643,7 +643,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   variant="primary"
                   onClick={() => void handleUsbFolderSelect()}
                 >
-                  <FolderOpen size={16} />
+                  <Folder width={16} height={16} aria-hidden="true" />
                   {wrongDrive ? 'Select Different Folder' : 'Select PIONEER Folder on USB'}
                 </ControlButton>
                 <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
@@ -690,7 +690,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                 headline="Reprocessing waveform, cue, and beat data for affected tracks."
               >
                 <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
-                  <CheckmarkFilled size={14} className="shrink-0 text-emerald-400" />
+                  <CheckCircle width={14} height={14} aria-hidden="true" className="shrink-0 text-emerald-400" />
                   <p className="text-xs text-emerald-100">USB released — reprocessing uses uploaded copies only.</p>
                 </div>
               </QuietProgress>
@@ -701,7 +701,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
               <div>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-12 h-12 bg-emerald-500/10 rounded-full flex items-center justify-center shrink-0">
-                    <CheckmarkFilled className="text-emerald-400" size={24} />
+                    <CheckCircle className="text-emerald-400" width={24} height={24} aria-hidden="true" />
                   </div>
                   <div>
                     <h2 className="text-xl font-bold">Analysis Complete</h2>
@@ -720,7 +720,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   ))}
                 </div>
                 <ControlButton variant="primary" onClick={handleDone}>
-                  <CheckmarkFilled size={16} />
+                  <CheckCircle width={16} height={16} aria-hidden="true" />
                   Done
                 </ControlButton>
               </div>
@@ -731,7 +731,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
               <div>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center shrink-0">
-                    <WarningAlt className="text-amber-400" size={24} />
+                    <WarningTriangle className="text-amber-400" width={24} height={24} aria-hidden="true" />
                   </div>
                   <div>
                     <h2 className="text-xl font-bold">Analysis Updated</h2>
@@ -765,7 +765,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   </p>
                 )}
                 <ControlButton variant="primary" onClick={handleDone}>
-                  <CheckmarkFilled size={16} />
+                  <CheckCircle width={16} height={16} aria-hidden="true" />
                   Done
                 </ControlButton>
               </div>
@@ -776,7 +776,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
               <div>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center shrink-0">
-                    <WarningAlt className="text-red-400" size={24} />
+                    <WarningTriangle className="text-red-400" width={24} height={24} aria-hidden="true" />
                   </div>
                   <div>
                     <h2 className="text-xl font-bold">Resume Failed</h2>
@@ -791,11 +791,11 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                       setErrorMessage('');
                     }}
                   >
-                    <Renew size={16} />
+                    <Refresh width={16} height={16} aria-hidden="true" />
                     Retry
                   </ControlButton>
                   <ControlButton variant="neutral" onClick={handleClose} className="flex-1">
-                    <Close size={16} /> Cancel
+                    <Xmark width={16} height={16} aria-hidden="true" /> Cancel
                   </ControlButton>
                 </div>
               </div>

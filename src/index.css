@@ -75,7 +75,7 @@
   --color-control-text: #f6f8fb;
   --color-control-muted: #9ba5b2;
   --color-control-blue: #1f7dff;
-  /* The primary button: the coral outline from the profile icon ring in the Hero mockup (1.5px, with its soft glow). Every primary action uses it. */
+  /* Coral accents for primary controls and the Hero profile ring. */
   --color-control-primary: #f56b70;
   --color-control-primary-hover: #f78361;
   --color-control-primary-rgb: 245 107 112;
@@ -232,12 +232,6 @@ html .glass.logo-gradient-border {
   background:
     linear-gradient(#ffffff, #ffffff) padding-box,
     var(--gradient-logo) border-box;
-}
-
-/* Icons filled with the logo gradient (the gradient itself is defined once, in App). */
-.logo-gradient-icon {
-  color: var(--color-logo-red);
-  fill: url(#dd-logo-gradient);
 }
 
 /* Compact metadata chips use the same surface language in every appearance. */

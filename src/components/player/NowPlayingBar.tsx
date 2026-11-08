@@ -7,7 +7,7 @@ import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import { computeProgress } from '../../lib/rekordbox/waveformRenderer';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
 import { PlaybackSourceBadge } from './PlaybackSourceBadge';
-import { CircleDash, Close, Pause, Play, Stop, Usb, VolumeMute, VolumeUp, WarningAlt } from '@carbon/icons-react';
+import { Pause, Play, Refresh, SoundHigh, SoundOff, Square, Usb, WarningTriangle, Xmark } from 'iconoir-react/regular';
 
 // ── Time formatting ───────────────────────────────────────────────────────────
 
@@ -123,13 +123,13 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
       {/* Error state */}
       {isError && (
         <>
-          <WarningAlt size={16} className="text-amber-400 shrink-0" />
+          <WarningTriangle aria-hidden="true" width={16} height={16} className="text-amber-400 shrink-0" />
           <p className="flex-1 min-w-0 text-xs text-amber-400 truncate">
             {error}
           </p>
           {usbStatus === 'disconnected' || usbStatus === 'unavailable' ? (
             <ControlButton variant="primary" onClick={() => void connectUsb()} className="shrink-0 !min-h-8 text-xs">
-              <Usb size={12} />
+              <Usb aria-hidden="true" width={12} height={12} />
               Connect USB
             </ControlButton>
           ) : null}
@@ -138,7 +138,7 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
             aria-label="Dismiss error"
             className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all"
           >
-            <Close size={16} />
+            <Xmark aria-hidden="true" width={16} height={16} />
           </button>
         </>
       )}
@@ -164,11 +164,11 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
             className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-white hover:bg-primary/90 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait"
           >
             {isLoading || isBuffering ? (
-              <CircleDash size={14} className="animate-spin" />
+              <Refresh aria-hidden="true" width={14} height={14} className="animate-spin" />
             ) : isPlaying ? (
-              <Pause size={14} />
+              <Pause aria-hidden="true" width={14} height={14} />
             ) : (
-              <Play size={14} />
+              <Play aria-hidden="true" width={14} height={14} />
             )}
           </button>
 
@@ -208,7 +208,7 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
               aria-label={muted ? 'Unmute' : 'Mute'}
               className="p-1 text-muted-foreground hover:text-foreground transition-colors rounded"
             >
-              {muted || volume === 0 ? <VolumeMute size={14} /> : <VolumeUp size={14} />}
+              {muted || volume === 0 ? <SoundOff aria-hidden="true" width={14} height={14} /> : <SoundHigh aria-hidden="true" width={14} height={14} />}
             </button>
             <input
               type="range"
@@ -239,7 +239,7 @@ export function NowPlayingBar({ className }: NowPlayingBarProps) {
             aria-label="Stop playback"
             className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all"
           >
-            <Stop size={14} />
+            <Square aria-hidden="true" width={14} height={14} />
           </button>
         </>
       )}

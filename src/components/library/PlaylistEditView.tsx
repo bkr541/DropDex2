@@ -4,7 +4,7 @@ import { uploadPlaylistArtwork } from '../../lib/queries/storage';
 import { upsertPlaylistProfile, buildPlaylistIdentityKey, playlistKeyOwner } from '../../lib/queries/userPlaylists';
 import type { RekordboxImport, UserPlaylistProfile } from '../../types';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
-import { Checkmark, CircleDash, FolderOpen, Music, Renew, TextAlignLeft, Upload } from '@carbon/icons-react';
+import { AlignLeft, Check, Folder, MusicNote, Refresh, Upload } from 'iconoir-react/regular';
 import { ControlButton, TextareaControl, TextControl } from '../ui/controls';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -38,7 +38,7 @@ function PlaylistFallbackArt({ isFolder, seed }: { isFolder: boolean; seed: stri
           isFolder ? 'bg-primary/25 text-primary' : 'bg-secondary/25 text-secondary',
         )}
       >
-        {isFolder ? <FolderOpen size={26} /> : <Music size={26} />}
+        {isFolder ? <Folder width={26} height={26} aria-hidden="true" /> : <MusicNote width={26} height={26} aria-hidden="true" />}
       </div>
     </div>
   );
@@ -136,7 +136,7 @@ export function PlaylistEditView({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <Renew size={15} className="text-primary shrink-0" />
+              <Refresh width={15} height={15} aria-hidden="true" className="text-primary shrink-0" />
               <h3 className="font-black text-sm">Rescan Device</h3>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
@@ -146,7 +146,7 @@ export function PlaylistEditView({
             </p>
           </div>
           <ControlButton variant="primary" onClick={onImport} className="w-auto px-4 py-2 text-xs min-h-0 shrink-0">
-            <Renew size={13} />
+            <Refresh width={13} height={13} aria-hidden="true" />
             Rescan Device
           </ControlButton>
         </div>
@@ -174,7 +174,7 @@ export function PlaylistEditView({
             onClick={() => fileInputRef.current?.click()}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-primary/40 text-muted-foreground hover:text-primary text-xs font-bold uppercase tracking-widest transition-all"
           >
-            <Upload size={13} />
+            <Upload width={13} height={13} aria-hidden="true" />
             {pendingFile
               ? 'Change Artwork'
               : existingProfile?.artwork_url
@@ -231,7 +231,7 @@ export function PlaylistEditView({
               Custom Display Name
             </label>
             <TextControl
-              icon={<Music size={17} />}
+              icon={<MusicNote width={17} height={17} aria-hidden="true" />}
               type="text"
               value={displayName}
               onChange={(e) => { setDisplayName(e.target.value); setSaved(false); }}
@@ -249,7 +249,7 @@ export function PlaylistEditView({
               Description
             </label>
             <TextareaControl
-              icon={<TextAlignLeft size={17} />}
+              icon={<AlignLeft width={17} height={17} aria-hidden="true" />}
               value={description}
               onChange={(e) => { setDescription(e.target.value); setSaved(false); }}
               placeholder="What's this playlist for? Notes, vibes, occasion…"
@@ -271,11 +271,11 @@ export function PlaylistEditView({
             variant={saved ? 'surface' : 'primary'}
           >
             {saving ? (
-              <><CircleDash size={13} className="animate-spin" /> Saving…</>
+              <><Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> Saving…</>
             ) : saved ? (
-              <><Checkmark size={13} /> Saved</>
+              <><Check width={13} height={13} aria-hidden="true" /> Saved</>
             ) : (
-              <><Upload size={13} /> Save Changes</>
+              <><Upload width={13} height={13} aria-hidden="true" /> Save Changes</>
             )}
           </ControlButton>
         </div>

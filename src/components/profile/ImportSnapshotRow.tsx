@@ -1,8 +1,9 @@
-import { cn } from '../../lib/utils';
 import { getImportHistoryPresentation } from '../../lib/rekordbox/importHistoryPresentation';
 import { isPendingHardDelete, isUsableLibrarySnapshot } from '../../lib/rekordbox/libraryDeletion';
 import { getImportProgress, isImportInFlight, isImportStalled } from '../../lib/rekordbox/importLifecycle';
 import type { RekordboxImport } from '../../types';
+import { ControlButton } from '../ui/controls';
+import { NoticeCard, ProgressBar, StatusBadge } from '../ui/feedback';
 
 interface ImportSnapshotRowProps {
   snapshot: RekordboxImport;
@@ -22,34 +23,26 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
   const importStalled = isImportStalled(imp);
   const showStatusBadge = imp.status !== 'completed'
     || (imp.analysis_status !== 'completed' && imp.analysis_status !== 'not_requested');
+  const statusTone = importPresentation.tone === 'info' ? 'active' : importPresentation.tone;
   const resumable = imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted';
 
   return (
-    <div data-testid={`import-history-row-${imp.id}`} className="flex items-center justify-between gap-3 px-4 py-2">
-      <div className="min-w-0 flex-1">
+    <div data-testid={`import-history-row-${imp.id}`} className="profile-record flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+      <div className="min-w-0 flex-1 basis-48">
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
+          <ControlButton
+            variant="ghost"
             onClick={() => onOpen(imp)}
             aria-label={`Open import ${imp.source_filename}`}
-            className="max-w-full truncate text-left font-mono text-xs font-bold transition-colors hover:text-primary"
+            className="profile-record-link max-w-full"
           >
-            {imp.source_filename}
-          </button>
-          {isActive && (
-            <span className="text-[9px] font-bold capitalize tracking-widest px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 rounded-full shrink-0">
-              Active
-            </span>
-          )}
+            <span className="truncate">{imp.source_filename}</span>
+          </ControlButton>
+          {isActive && <StatusBadge tone="success">Active</StatusBadge>}
           {showStatusBadge && (
-            <span className={cn(
-              'text-[9px] font-bold capitalize tracking-widest px-1.5 py-0.5 rounded-full shrink-0',
-              importPresentation.tone === 'error' ? 'bg-red-500/10 text-red-400' :
-              (importPresentation.tone === 'warning' || importStalled) ? 'bg-amber-500/10 text-amber-400' :
-              'bg-blue-500/10 text-blue-400',
-            )}>
+            <StatusBadge tone={importStalled ? 'warning' : statusTone}>
               {importStalled ? 'Interrupted' : importPresentation.label}
-            </span>
+            </StatusBadge>
           )}
         </div>
         <p className="text-[10px] text-muted-foreground font-mono">
@@ -57,34 +50,29 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
         </p>
         {importInFlight && (
           <div className="mt-2 max-w-md">
-            <div className="flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
-              <span className="truncate">{importProgress.currentTrackLabel || 'Preparing current track…'}</span>
-              <span className="shrink-0 font-mono">{importProgress.percent}%</span>
-            </div>
-            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface)]">
-              <div className="h-full rounded-full bg-primary" style={{ width: `${importProgress.percent}%` }} />
-            </div>
+            <p className="mb-1 truncate text-xs text-muted-foreground">{importProgress.currentTrackLabel || 'Preparing current track…'}</p>
+            <ProgressBar value={importProgress.percent} label="Import progress" showValue />
           </div>
         )}
         {(imp.status === 'failed' || imp.status === 'cancelled') && imp.error_message && (
-          <p className="text-[10px] text-red-400 mt-1">{imp.error_message}</p>
+          <NoticeCard tone="error" className="mt-1">{imp.error_message}</NoticeCard>
         )}
       </div>
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex flex-wrap items-center gap-2">
         {!isActive && !importInFlight && !importStalled && isUsableLibrarySnapshot(imp) && importPresentation.canActivate && (
-          <button onClick={() => onMakeActive(imp)} className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors">
+          <ControlButton variant="neutral" onClick={() => onMakeActive(imp)}>
             Make Active
-          </button>
+          </ControlButton>
         )}
         {(importPresentation.canRetry || importStalled) && (
-          <button onClick={() => onResumeOrRetry(imp)} className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors">
+          <ControlButton variant="neutral" onClick={() => onResumeOrRetry(imp)}>
             {resumable ? 'Resume' : 'Retry'}
-          </button>
+          </ControlButton>
         )}
         {(!importInFlight || imp.retryable || isPendingHardDelete(imp)) && (
-          <button onClick={() => onDelete(imp)} className="text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors">
+          <ControlButton variant="danger-outline" onClick={() => onDelete(imp)}>
             {isPendingHardDelete(imp) ? 'Retry Delete' : 'Delete'}
-          </button>
+          </ControlButton>
         )}
       </div>
     </div>

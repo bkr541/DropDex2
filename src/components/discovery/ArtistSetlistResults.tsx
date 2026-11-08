@@ -1,6 +1,6 @@
 import { ArtistSetlistCard } from './ArtistSetlistCard';
 import type { DiscoverySetlistResult } from '../../types';
-import { CircleDash, Music } from '@carbon/icons-react';
+import { MusicNote, Refresh } from 'iconoir-react/regular';
 
 interface ArtistSetlistResultsProps {
   setlists: DiscoverySetlistResult[];
@@ -20,7 +20,7 @@ export function ArtistSetlistResults({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <CircleDash className="animate-spin text-primary" size={28} />
+        <Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" />
       </div>
     );
   }
@@ -37,7 +37,7 @@ export function ArtistSetlistResults({
   if (setlists.length === 0) {
     return (
       <div className="text-center py-16 border-2 border-dashed border-[var(--color-border-subtle)] rounded-3xl space-y-3">
-        <Music size={32} className="mx-auto text-muted-foreground opacity-40" />
+        <MusicNote width={32} height={32} aria-hidden="true" className="mx-auto text-muted-foreground opacity-40" />
         <div>
           <p className="text-sm font-bold text-muted-foreground">No setlists stored yet</p>
           <p className="text-xs text-muted-foreground mt-1">
@@ -52,7 +52,7 @@ export function ArtistSetlistResults({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-          <Music size={12} />
+          <MusicNote width={12} height={12} aria-hidden="true" />
           Saved Setlists
         </h3>
         <span className="text-[10px] text-muted-foreground font-mono">{total} TOTAL</span>
