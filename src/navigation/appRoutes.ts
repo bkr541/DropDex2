@@ -5,7 +5,6 @@ export type LibraryTab =
   | 'tracks'
   | 'genres'
   | 'artists'
-  | 'spotify'
   | 'incomplete-analysis';
 
 export type AppRoute =
@@ -40,7 +39,6 @@ const LIBRARY_TAB_PATHS: Record<LibraryTab, string> = {
   tracks: '/library/tracks',
   genres: '/library/genres',
   artists: '/library/artists',
-  spotify: '/library/spotify',
   'incomplete-analysis': '/library/incomplete-analysis',
 };
 
@@ -145,7 +143,9 @@ export function parseAppRoute(pathname: string, search = ''): AppRoute {
     // The old Artist Search page now lives inside Discovery; keep old links and bookmarks working.
     case '/search': return { name: 'discovery' };
     case '/profile': return { name: 'profile' };
-    case '/settings': return { name: 'settings' };
+    case '/settings':
+    // Spotify metadata now lives in Profile, rather than Library.
+    case '/library/spotify': return { name: 'settings' };
     case '/set-lab': return { name: 'set-lab' };
     case '/flip-lab': return { name: 'flip-lab' };
     case '/usb': return { name: 'usb' };

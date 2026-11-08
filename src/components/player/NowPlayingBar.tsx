@@ -1,248 +1,140 @@
-import { useEffect, useRef, useState } from 'react';
-import { cn } from '../../lib/utils';
-import { ControlButton } from '../ui/controls/ControlButton';
+import { useEffect, useState, type CSSProperties, type ElementType, type ReactNode } from 'react';
+import { CompactDisc, Pause, Play, Redo, Refresh, Repeat, SkipNext, SkipPrev, SoundHigh, SoundOff, Square, Undo, Usb, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
+import { useAudioDockWorkspace } from '../../contexts/AudioDockWorkspaceContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
-import { computeProgress } from '../../lib/rekordbox/waveformRenderer';
+import { durationMsForTrack } from '../../lib/music/trackTiming';
+import { formatKey } from '../../lib/utils';
 import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
+import { Artwork } from '../ui/display/Artwork';
+import { ControlButton } from '../ui/controls/ControlButton';
+import { EssentialAudioDock } from './EssentialAudioDock';
 import { PlaybackSourceBadge } from './PlaybackSourceBadge';
-import { Pause, Play, Refresh, SoundHigh, SoundOff, Square, Usb, WarningTriangle, Xmark } from 'iconoir-react/regular';
+import './application-audio-dock.css';
 
-// ── Time formatting ───────────────────────────────────────────────────────────
-
-function fmtTime(secs: number): string {
-  if (!isFinite(secs) || isNaN(secs)) return '0:00';
-  const s = Math.floor(secs);
-  const m = Math.floor(s / 60);
-  return `${m}:${String(s % 60).padStart(2, '0')}`;
+function time(seconds: number) {
+  const value = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+  return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 }
 
-// ── Local time/duration hook — polls audio element, does not pollute context ──
-
-function usePlayerTime(getAudioElement: () => HTMLAudioElement | null, active: boolean) {
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const rafRef = useRef<number>(0);
-
+/** Poll only this small transport while audio is playing; media events also update paused seeks. */
+function usePlayerTime(getAudioElement: () => HTMLAudioElement | null, trackId: string | undefined, playing: boolean) {
+  const [clock, setClock] = useState(() => {
+    const audio = trackId ? getAudioElement() : null;
+    return { trackId, position: audio && Number.isFinite(audio.currentTime) ? audio.currentTime : 0, duration: audio && Number.isFinite(audio.duration) ? audio.duration : 0 };
+  });
   useEffect(() => {
-    if (!active) {
-      setCurrentTime(0);
-      setDuration(0);
-      return;
-    }
-
-    let running = true;
-    // Keep the shared transport playhead fluid without repainting the whole app at 60fps.
-    let lastUpdate = 0;
-    function tickThrottled() {
-      if (!running) return;
-      const now = performance.now();
-      if (now - lastUpdate >= 50) {
-        lastUpdate = now;
-        const audio = getAudioElement();
-        if (audio) {
-          setCurrentTime(audio.currentTime);
-          setDuration(isFinite(audio.duration) ? audio.duration : 0);
-        }
-      }
-      rafRef.current = requestAnimationFrame(tickThrottled);
-    }
-    rafRef.current = requestAnimationFrame(tickThrottled);
+    const audio = trackId ? getAudioElement() : null;
+    const update = () => setClock({ trackId, position: audio && Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
+      duration: audio && Number.isFinite(audio.duration) ? audio.duration : 0 });
+    update();
+    const events = ['timeupdate', 'durationchange', 'loadedmetadata', 'seeked', 'ended', 'emptied'];
+    events.forEach((name) => audio?.addEventListener(name, update));
+    const interval = playing ? window.setInterval(update, 50) : null;
     return () => {
-      running = false;
-      cancelAnimationFrame(rafRef.current);
+      events.forEach((name) => audio?.removeEventListener(name, update));
+      if (interval != null) window.clearInterval(interval);
     };
-  }, [active, getAudioElement]);
-
-  return { currentTime, duration };
+  }, [getAudioElement, trackId, playing]);
+  return clock.trackId === trackId ? clock : { trackId, position: 0, duration: 0 };
 }
 
-// ── NowPlayingBar ─────────────────────────────────────────────────────────────
-
-interface NowPlayingBarProps {
-  className?: string;
+function DockButton({ icon: Icon, label, active, children, primary, loading, ...props }: {
+  icon?: ElementType; label: string; active?: boolean; primary?: boolean; loading?: boolean; children?: ReactNode;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <button {...props} type="button" title={label} aria-label={label} aria-pressed={active}
+    className={`adl-icon-button${primary ? ' adl-play' : ''}${active ? ' adl-active' : ''}`}>
+    {Icon && <Icon width={17} height={17} aria-hidden="true" className={loading ? 'animate-spin' : undefined} />}{children}
+  </button>;
 }
 
-export function NowPlayingBar({ className }: NowPlayingBarProps) {
-  const {
-    activeTrack,
-    status,
-    playIntent,
-    volume,
-    muted,
-    error,
-    pause,
-    resume,
-    stop,
-    seek,
-    setVolume,
-    toggleMute,
-    clearError,
-    getAudioElement,
-  } = useAudioPlayer();
-  const { status: usbStatus, connect: connectUsb } = useUsbConnection();
+export interface NowPlayingBarProps {
+  /** Separate engines retain their own controls. The bottom dock is a disabled placeholder there. */
+  independentWorkspace?: string;
+}
 
-  const isActive = status !== 'idle';
-  const isPlaying = playIntent;
-  const isLoading = status === 'resolving' || status === 'loading';
-  const isBuffering = status === 'buffering' || status === 'seeking';
-  const isError = status === 'error';
+export function NowPlayingBar({ independentWorkspace }: NowPlayingBarProps) {
+  const player = useAudioPlayer();
+  const workspace = useAudioDockWorkspace();
+  const usb = useUsbConnection();
+  const standard = !independentWorkspace;
+  const track = standard ? player.activeTrack ?? workspace?.selectedTrack ?? workspace?.tracks[0] ?? null : null;
+  const active = standard && !!track && track.id === player.activeTrack?.id;
+  const loading = active && ['resolving', 'loading'].includes(player.status);
+  const buffering = active && ['buffering', 'seeking'].includes(player.status);
+  const failed = standard && player.status === 'error';
+  const playing = active && player.playIntent && !failed;
+  const clock = usePlayerTime(player.getAudioElement, standard ? player.activeTrack?.id : undefined, playing);
+  const audio = active ? player.getAudioElement() : null;
+  const audioDuration = audio && Number.isFinite(audio.duration) ? audio.duration : clock.duration;
+  const duration = audioDuration > 0 ? audioDuration : track ? (durationMsForTrack(track, null) ?? 0) / 1000 : 0;
+  const position = active ? Math.max(0, Math.min(duration, clock.position)) : 0;
+  const seekable = active && !loading && !failed && audioDuration > 0;
+  const blocked = !standard || !track || loading;
+  const queue = workspace?.tracks ?? [];
+  const index = track ? queue.findIndex((item) => item.id === track.id) : -1;
+  const previous = index > 0 ? queue[index - 1] : null;
+  const next = index >= 0 && index < queue.length - 1 ? queue[index + 1] : null;
+  const waveformIds = track ? [track.id] : [];
+  const waveforms = useTrackPreviewWaveforms(track?.import_id ?? null, waveformIds);
+  const waveform = waveforms.getState(track?.id);
 
-  const { currentTime, duration } = usePlayerTime(getAudioElement, isActive && !isError);
-  const activeWaveforms = useTrackPreviewWaveforms(
-    activeTrack?.import_id ?? null,
-    activeTrack ? [activeTrack.id] : [],
-  );
-  const waveformState = activeWaveforms.getState(activeTrack?.id);
-  const progress = computeProgress(currentTime, duration);
-
-  if (!isActive) return null;
-
-  function handleWaveformSeek(fraction: number) {
-    if (!Number.isFinite(duration) || duration <= 0) return;
-    seek(fraction * duration);
+  function togglePlay() {
+    if (blocked) return;
+    if (active && playing) player.pause();
+    else if (active && !failed) void player.resume();
+    else void player.playTrack(track);
+  }
+  function adjacent(destination: typeof track) {
+    if (blocked || !destination) return;
+    workspace?.onSelectTrack?.(destination);
+    void player.playTrack(destination);
+  }
+  function seek(seconds: number) {
+    if (seekable) player.seek(Math.max(0, Math.min(duration, seconds)));
   }
 
-  function handlePlayPause() {
-    if (isPlaying) pause();
-    else void resume();
-  }
+  const transport = <div className="adl-transport" role="group" aria-label="Playback controls">
+    <DockButton icon={SkipPrev} label="Previous track" disabled={blocked || !previous} onClick={() => adjacent(previous)} />
+    <DockButton label="Rewind 10 seconds" disabled={!seekable} onClick={() => seek(position - 10)}><span className="adl-jump" aria-hidden="true"><Undo width={21} height={21} /><small>10</small></span></DockButton>
+    <DockButton icon={loading || buffering ? Refresh : playing ? Pause : Play} label={loading ? 'Loading audio' : failed ? 'Retry playback' : playing ? 'Pause' : 'Play'}
+      primary loading={loading || buffering} active={playing} disabled={blocked} onClick={togglePlay} />
+    <DockButton label="Forward 10 seconds" disabled={!seekable} onClick={() => seek(position + 10)}><span className="adl-jump" aria-hidden="true"><Redo width={21} height={21} /><small>10</small></span></DockButton>
+    <DockButton icon={SkipNext} label="Next track" disabled={blocked || !next} onClick={() => adjacent(next)} />
+  </div>;
+  const identity = <div className="adl-identity">
+    <Artwork src={track?.artwork_path} alt={track ? `Artwork for ${track.title}` : 'No track selected'} className="adl-art" fallbackIcon={<CompactDisc width={29} height={29} />} />
+    <div className="adl-identity-text"><strong title={track?.title ?? undefined}>{track?.title || (independentWorkspace ? `${independentWorkspace} playback` : 'Nothing playing yet')}</strong>
+      <span>{track?.artist || (independentWorkspace ? 'Use the workspace controls' : track ? 'Artist Not Available' : 'Choose a track from any page')}</span></div>
+  </div>;
+  const timeline = <div className="adl-timeline adl-timeline-wave">
+    <span className="adl-time">{time(position)}</span>
+    <div className="adl-seek" style={{ '--adl-progress': `${duration > 0 ? position / duration * 100 : 0}%` } as CSSProperties}>
+      {waveform.status === 'loaded' ? <RekordboxPreviewWaveform state={waveform} height={35} variant="transport" appearance="dropdex"
+        surface={false} showCenterLine={false} tint="#8997AE" activeProgress={duration > 0 ? position / duration : 0}
+        ariaLabel={track ? `Playback waveform for ${track.title}` : 'Playback waveform'} className="app-dock-waveform" />
+        : <span className="adl-progress-rail"><span /></span>}
+      <input type="range" min={0} max={duration || 1} step={0.1} value={position} disabled={!seekable}
+        aria-label="Playback position" aria-valuetext={`${time(position)} of ${time(duration)}`} onChange={(event) => seek(Number(event.target.value))} />
+    </div><span className="adl-time">{time(duration)}</span>
+  </div>;
+  const metadata = <><span>{track?.bpm ? track.bpm.toFixed(1) : '—'} <small>BPM</small></span><span className="adl-key">{track?.musical_key ? formatKey(track.musical_key) : '—'}</span></>;
+  const output = <div className="adl-output" role="group" aria-label="Output controls">
+    <DockButton icon={Repeat} label="Repeat track" active={standard && player.repeat} disabled={blocked} onClick={() => { if (!blocked) player.toggleRepeat(); }} />
+    <DockButton icon={player.muted || player.volume === 0 ? SoundOff : SoundHigh} label={player.muted ? 'Unmute' : 'Mute'}
+      active={standard && player.muted} disabled={!standard} onClick={() => { if (standard) player.toggleMute(); }} />
+    <input type="range" min={0} max={1} step={0.01} value={standard && !player.muted ? player.volume : 0} aria-label="Volume" disabled={!standard}
+      onChange={(event) => { if (standard) { player.setVolume(Number(event.target.value)); if (player.muted) player.toggleMute(); } }} />
+    <DockButton icon={Square} label="Stop playback" disabled={!standard || player.status === 'idle'} onClick={() => { if (standard) player.stop(); }} />
+  </div>;
 
-  return (
-    <div
-      className={cn(
-        'flex items-center gap-3 px-4 border-t border-[var(--color-border-subtle)]',
-        'bg-[var(--color-panel)] backdrop-blur-md',
-        className,
-      )}
-      style={{ height: 64 }}
-      aria-label="Now Playing"
-      role="region"
-    >
-      {/* Error state */}
-      {isError && (
-        <>
-          <WarningTriangle aria-hidden="true" width={16} height={16} className="text-amber-400 shrink-0" />
-          <p className="flex-1 min-w-0 text-xs text-amber-400 truncate">
-            {error}
-          </p>
-          {usbStatus === 'disconnected' || usbStatus === 'unavailable' ? (
-            <ControlButton variant="primary" onClick={() => void connectUsb()} className="shrink-0 !min-h-8 text-xs">
-              <Usb aria-hidden="true" width={12} height={12} />
-              Connect USB
-            </ControlButton>
-          ) : null}
-          <button
-            onClick={clearError}
-            aria-label="Dismiss error"
-            className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all"
-          >
-            <Xmark aria-hidden="true" width={16} height={16} />
-          </button>
-        </>
-      )}
-
-      {/* Playback state */}
-      {!isError && (
-        <>
-          {/* Track info */}
-          <div className="min-w-0 w-40 hidden sm:block shrink-0">
-            <p className="text-xs font-bold truncate leading-tight">
-              {activeTrack?.title ?? '—'}
-            </p>
-            <p className="text-[10px] text-muted-foreground truncate leading-tight">
-              {activeTrack?.artist ?? '—'}
-            </p>
-          </div>
-
-          {/* Play / Pause */}
-          <button
-            onClick={handlePlayPause}
-            disabled={isLoading}
-            aria-label={isPlaying ? 'Pause' : 'Play'}
-            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-white hover:bg-primary/90 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait"
-          >
-            {isLoading || isBuffering ? (
-              <Refresh aria-hidden="true" width={14} height={14} className="animate-spin" />
-            ) : isPlaying ? (
-              <Pause aria-hidden="true" width={14} height={14} />
-            ) : (
-              <Play aria-hidden="true" width={14} height={14} />
-            )}
-          </button>
-
-          {/* Time label — mobile only shows this, desktop shows full seek */}
-          <span className="text-[10px] font-mono text-muted-foreground shrink-0 tabular-nums sm:hidden">
-            {fmtTime(currentTime)}
-          </span>
-
-          {/* Seek slider + timestamps (desktop) */}
-          <div className="hidden sm:flex items-center gap-2 flex-1 min-w-0">
-            <span className="text-[10px] font-mono text-muted-foreground shrink-0 tabular-nums w-8 text-right">
-              {fmtTime(currentTime)}
-            </span>
-            <RekordboxPreviewWaveform
-              state={waveformState}
-              height={34}
-              variant="transport"
-              className={cn(
-                'flex-1 min-w-0 transition-opacity',
-                (isLoading || duration === 0) && 'opacity-50 pointer-events-none',
-              )}
-              activeProgress={progress}
-              onSeek={duration > 0 && !isLoading ? handleWaveformSeek : undefined}
-              onRetry={activeTrack ? () => activeWaveforms.retry([activeTrack.id]) : undefined}
-              allowTimelineSeek
-              ariaLabel={activeTrack ? `Seek ${activeTrack.title}` : 'Playback timeline'}
-            />
-            <span className="text-[10px] font-mono text-muted-foreground shrink-0 tabular-nums w-8">
-              {fmtTime(duration)}
-            </span>
-          </div>
-
-          {/* Volume (desktop) */}
-          <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-            <button
-              onClick={toggleMute}
-              aria-label={muted ? 'Unmute' : 'Mute'}
-              className="p-1 text-muted-foreground hover:text-foreground transition-colors rounded"
-            >
-              {muted || volume === 0 ? <SoundOff aria-hidden="true" width={14} height={14} /> : <SoundHigh aria-hidden="true" width={14} height={14} />}
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.02}
-              value={muted ? 0 : volume}
-              onChange={(e) => setVolume(parseFloat(e.target.value))}
-              aria-label="Volume"
-              className="w-16 h-1 accent-primary cursor-pointer"
-            />
-          </div>
-
-          {/* Shown only while streaming the cloud preview instead of the USB file */}
-          <PlaybackSourceBadge className="hidden sm:inline-flex" />
-
-          {/* USB indicator — subtle dot */}
-          {usbStatus === 'connected' && (
-            <span
-              title="USB connected"
-              className="hidden sm:block shrink-0 w-1.5 h-1.5 rounded-full bg-green-500"
-            />
-          )}
-
-          {/* Stop */}
-          <button
-            onClick={stop}
-            aria-label="Stop playback"
-            className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--color-surface-hover)] transition-all"
-          >
-            <Square aria-hidden="true" width={14} height={14} />
-          </button>
-        </>
-      )}
-    </div>
-  );
+  return <footer className="app-audio-dock adl-style-edge" aria-label="Now Playing" data-testid="application-audio-dock" data-player-mode={standard ? 'standard' : 'independent'}>
+    {failed && <div className="app-dock-status" role="alert"><WarningTriangle width={14} height={14} aria-hidden="true" /><span>{player.error}</span>
+      {usb.status !== 'connected' && <ControlButton variant="primary" onClick={() => void usb.connect()}><Usb width={13} height={13} aria-hidden="true" />Connect USB</ControlButton>}
+      <button type="button" onClick={player.clearError} aria-label="Dismiss error"><Xmark width={14} height={14} aria-hidden="true" /></button>
+    </div>}
+    {standard && player.source === 'cloud' && <div className="app-dock-source"><PlaybackSourceBadge /></div>}
+    <EssentialAudioDock transport={transport} identity={identity} timeline={timeline} metadata={metadata} output={output} />
+  </footer>;
 }

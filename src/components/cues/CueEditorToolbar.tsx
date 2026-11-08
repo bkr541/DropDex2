@@ -153,6 +153,48 @@ function IconOptionMenu<T extends string>({
   );
 }
 
+/** Shared icon controls for the timeline's beat labels and grid visibility. */
+export function TimelineGridControls({
+  gridDisplayMode,
+  onGridDisplayModeChange,
+  gridVisible,
+  onGridVisibleChange,
+}: {
+  gridDisplayMode: CueGridDisplayMode;
+  onGridDisplayModeChange: (value: CueGridDisplayMode) => void;
+  gridVisible: boolean;
+  onGridVisibleChange: (visible: boolean) => void;
+}) {
+  return (
+    <>
+      <IconOptionMenu
+        icon={<Ruler width={18} height={18} aria-hidden="true" />}
+        label="Beat Count"
+        value={gridDisplayMode}
+        onChange={onGridDisplayModeChange}
+        options={[
+          { value: 'beats', label: 'Beats' },
+          { value: 'bars', label: 'Bars' },
+          { value: '4-bars', label: '4 Bars' },
+          { value: '8-bars', label: '8 Bars' },
+          { value: '16-bars', label: '16 Bars' },
+        ]}
+      />
+      <button
+        type="button"
+        className="cue-action-icon"
+        data-label="Grid"
+        aria-label={gridVisible ? 'Hide grid' : 'Show grid'}
+        title={gridVisible ? 'Hide grid' : 'Show grid'}
+        aria-pressed={gridVisible}
+        onClick={() => onGridVisibleChange(!gridVisible)}
+      >
+        <DotsGrid3x3 width={18} height={18} aria-hidden="true" />
+      </button>
+    </>
+  );
+}
+
 /**
  * Cue editor controls that sit in the track header's top-right, beside the other
  * icon-only buttons: Snap and Beat Count, the grid toggle, repeat, and a volume
@@ -210,30 +252,12 @@ export function CueEditorToolbar({
           { value: '4-beats', label: '4 Beats' },
         ]}
       />
-      <IconOptionMenu
-        icon={<Ruler width={18} height={18} aria-hidden="true" />}
-        label="Beat Count"
-        value={gridDisplayMode}
-        onChange={onGridDisplayModeChange}
-        options={[
-          { value: 'beats', label: 'Beats' },
-          { value: 'bars', label: 'Bars' },
-          { value: '4-bars', label: '4 Bars' },
-          { value: '8-bars', label: '8 Bars' },
-          { value: '16-bars', label: '16 Bars' },
-        ]}
+      <TimelineGridControls
+        gridDisplayMode={gridDisplayMode}
+        onGridDisplayModeChange={onGridDisplayModeChange}
+        gridVisible={gridVisible}
+        onGridVisibleChange={onGridVisibleChange}
       />
-      <button
-        type="button"
-        className="cue-action-icon"
-        data-label="Grid"
-        aria-label={gridVisible ? 'Hide grid' : 'Show grid'}
-        title={gridVisible ? 'Hide grid' : 'Show grid'}
-        aria-pressed={gridVisible}
-        onClick={() => onGridVisibleChange(!gridVisible)}
-      >
-        <DotsGrid3x3 width={18} height={18} aria-hidden="true" />
-      </button>
       <button
         type="button"
         className="cue-action-icon"

@@ -295,7 +295,7 @@ export function EditProfileView({
               <span className="lgh-ring" aria-hidden="true" />
               <Avatar src={displayedAvatar} alt="Profile avatar" className="lgh-avatar" />
             </div>
-            <ControlButton variant="neutral" onClick={() => fileInputRef.current?.click()} aria-label="Choose profile avatar">
+            <ControlButton variant="secondary" onClick={() => fileInputRef.current?.click()} aria-label="Choose profile avatar">
               <Upload width={14} height={14} aria-hidden="true" />
               {pendingAvatar ? 'Change' : existingProfile?.avatar_url ? 'Replace' : 'Upload'}
             </ControlButton>
@@ -403,7 +403,7 @@ export function EditProfileView({
 
       <div className="profile-footer">
         {saveError && <NoticeCard tone="error" className="w-full">{saveError}</NoticeCard>}
-        <ControlButton variant="danger-outline" onClick={onSignOut}><LogOut width={14} height={14} aria-hidden="true" /> Sign Out</ControlButton>
+        <ControlButton variant="secondary" onClick={onSignOut}><LogOut width={14} height={14} aria-hidden="true" /> Sign Out</ControlButton>
         {(isDirty || saving) && (
           <ControlButton onClick={handleSave} disabled={saving} variant="primary">
             {saving ? <><Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> Saving…</>

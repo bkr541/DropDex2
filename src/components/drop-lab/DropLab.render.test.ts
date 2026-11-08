@@ -81,12 +81,11 @@ describe('Drop Lab timeline', () => {
     sourceSegment: segment(), candidateSegment: segment(), barCount: 8, ...props,
   }));
 
-  it('is built from the shared Cue Points lanes', () => {
+  it('uses the shared Library timeline with all five rows', () => {
     const markup = render();
-    expect(markup).toContain('cue-timeline');
-    expect(markup).toContain('cue-timeline__data-lane h-[28px]');
-    expect(markup).toContain('h-[68px] group/waveform');
-    expect(markup).toContain('cue-timeline__data-lane h-[34px]');
+    expect(markup).toContain('data-testid="track-timeline"');
+    expect([...markup.matchAll(/data-timeline-row="([a-z]+)"/g)].map((match) => match[1]))
+      .toEqual(['sections', 'timestamps', 'cues', 'waveform', 'beats']);
     expect(markup).toContain('>Selected build<');
     expect(markup).toContain('>Candidate drop<');
   });
@@ -100,16 +99,17 @@ describe('Drop Lab timeline', () => {
 
   it('takes its colors from the shared section colors for Build and Drop', () => {
     const markup = render();
-    expect(markup).toContain('--section-ink:#ff8614');
-    expect(markup).toContain('--section-ink:#ff514b');
+    expect(markup).toContain('--section-ink:#8997AE');
+    expect(markup).not.toContain('--section-ink:#F78361');
+    expect(markup.match(/--section-ink:#8997AE/g)).toHaveLength(2);
   });
 
   it('draws dashed bar and beat lines over the waveform and a beat ruler under it', () => {
     const markup = render();
     expect(markup).toContain('border-dashed border-white/[0.10]');
     expect(markup).toContain('border-white/[0.035]');
-    expect(markup.match(/h-\[14px\] w-\[2px\] bg-\[#f87171\]/g)).toHaveLength(17);
-    expect(markup).toContain('bg-[#4ade80]');
+    expect(markup.match(/track-timeline__beat-tick--bar/g)).toHaveLength(17);
+    expect(markup).toContain('track-timeline__beat-tick');
     expect(markup).toContain('−8');
     expect(markup).toContain('>8<');
   });
@@ -122,7 +122,7 @@ describe('Drop Lab timeline', () => {
     expect(markup).toContain('group-hover/waveform:opacity-100');
     expect(markup).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Zoom out"/);
     expect(markup).not.toMatch(/<button[^>]*disabled=""[^>]*aria-label="Zoom in"/);
-    expect(markup).toContain('left:0%;width:100%');
+    expect(markup).toContain('left:0%;width:50%');
   });
 
   it('no longer shows the blue cue marker, or the First and Then captions', () => {

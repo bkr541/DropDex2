@@ -1,5 +1,8 @@
 import '../ui/studio-surface.css';
-import { WaveformSectionRow } from '../ui/media/WaveformSectionRow';
+import { TrackTimeline } from '../ui/media/TrackTimeline';
+import { WaveformCueMarker } from '../ui/media/WaveformCueMarker';
+import { waveformSectionInk } from '../ui/media/waveformPresentation';
+import { timeRulerTicks } from '../audition/auditionTracks';
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import { TrackRowPlayControl } from '../player/TrackRowPlayButton';
 import { useState, useEffect, useMemo, useCallback, useRef, useDeferredValue } from 'react';
@@ -12,7 +15,6 @@ import { fetchFlipLabCandidatePools } from './flipLabCandidates';
 import type { RouletteCandidateAnalysis } from '../../features/roulette/rouletteMatching';
 import { applyFlipLabSelection, rankFlipLabSuggestions } from './flipLabMatching';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
-import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import type { RekordboxTrack } from '../../types';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
@@ -29,13 +31,11 @@ import {
   resolveFlipLabArtist,
   resolveFlipLabCamelotKey,
   trackDurationMs,
-  type FlipLabTimelineSegment,
 } from './flipLabAnalysis';
 import {
   flipLabCombinedBeatGrid,
   flipLabKeyShiftSemitones,
   formatFlipLabTime,
-  type FlipLabCombinedBeat,
   type FlipLabTimeline,
 } from './flipLabTimeline';
 import { MIN_CUE_TIMELINE_WINDOW_MS, panCueTimelineView, zoomCueTimelineView } from '../../lib/cues/cueTimelineViewport';
@@ -69,16 +69,6 @@ const CTRL_BDR = 'var(--color-control-border)';
 const PRIMARY  = 'var(--color-primary)';
 const SECONDARY = 'var(--color-secondary)';
 const ERROR_RED = '#ef4444';
-
-// ── Section colors (from CuePointsView sectionTone()) ────────────────────────
-const SECTION_COLORS = {
-  intro:  { wave: '#2997ff' },
-  verse:  { wave: '#a868f4' },
-  build:  { wave: '#ff8614' },
-  drop:   { wave: '#ff514b' },
-  chorus: { wave: '#f151a6' },
-  neutral: { wave: '#64748b' },
-};
 
 // ── Camelot color mapping (from CuePointsView) ────────────────────────────────
 const CAMELOT_COLORS: Record<number, string> = {
@@ -143,29 +133,6 @@ function useFlipLabTrackAnalysis(trackId: string | null): FlipLabTrackAnalysisSt
   }, [trackId]);
 
   return state;
-}
-
-// ── Section label row (matches CuePointsView section lane) ───────────────────
-function SectionRow({ segments, analysisStatus }: {
-  segments: FlipLabTimelineSegment[];
-  analysisStatus: FlipLabTrackAnalysisState['status'];
-}) {
-  const emptyLabel = analysisStatus === 'loading' ? 'Loading phrase data…' : 'Phrase data unavailable';
-
-  return (
-    <WaveformSectionRow
-      sections={segments.map((segment, index) => ({
-        id: segment.label + '-' + index,
-        label: segment.label,
-        color: SECTION_COLORS[segment.tone].wave,
-        leftPercent: segment.startPercent,
-        widthPercent: segment.endPercent - segment.startPercent,
-      }))}
-      message={segments.length ? undefined : (
-        <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground">{emptyLabel}</div>
-      )}
-    />
-  );
 }
 
 // ── Header stat (label + value pair, matches CuePointsView header stats) ─────
@@ -683,122 +650,6 @@ interface TimelineView {
   end: number;
 }
 
-/** Each stem's waveform row: 62px (was 88px, 30% shorter). */
-const WAVEFORM_LANE_HEIGHT = 62;
-
-function laneBox(startSec: number, spanSec: number, view: TimelineView): React.CSSProperties {
-  const range = Math.max(1, view.end - view.start);
-  return {
-    position: 'absolute', top: 0, bottom: 0,
-    left: `${((startSec * 1000 - view.start) / range) * 100}%`,
-    width: `${((spanSec * 1000) / range) * 100}%`,
-  };
-}
-
-// One beat grid for the combined track, styled like the CuePoints lane:
-// red downbeats, green beats, bar numbers.
-const MAX_BAR_LABELS = 24;
-
-function CombinedBeatGridLane({ beats, view }: { beats: FlipLabCombinedBeat[]; view: TimelineView }) {
-  const range = Math.max(1, view.end - view.start);
-  const visible = beats.filter((beat) => beat.timeSec * 1000 >= view.start && beat.timeSec * 1000 <= view.end);
-  const labeled = visible.filter((beat) => beat.downbeat && beat.bar >= 1);
-  const step = Math.max(1, Math.ceil(labeled.length / MAX_BAR_LABELS));
-  const percent = (timeSec: number) => ((timeSec * 1000 - view.start) / range) * 100;
-  return (
-    <div
-      data-testid="flip-lab-beat-grid"
-      style={{ position: 'relative', height: 30, borderBottom: `1px solid ${BORDER_F}`, background: BG, overflow: 'hidden' }}
-    >
-      {visible.length === 0 ? (
-        <div style={{
-          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 9, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase',
-        }}>No beat grid</div>
-      ) : (
-        <>
-          {visible.map((beat) => (
-            <span
-              key={`beat-${beat.timeSec.toFixed(4)}`}
-              aria-hidden="true"
-              style={{
-                position: 'absolute', left: `${percent(beat.timeSec)}%`, transform: 'translateX(-50%)', borderRadius: 999,
-                top: beat.downbeat ? 2 : 3,
-                height: beat.downbeat ? 14 : 8,
-                width: beat.downbeat ? 2 : 1.5,
-                background: beat.downbeat ? '#f87171' : '#4ade80',
-                opacity: beat.downbeat ? 1 : 0.9,
-              }}
-            />
-          ))}
-          {labeled.filter((_, index) => index % step === 0).map((beat) => (
-            <span
-              key={`bar-${beat.bar}`}
-              style={{
-                position: 'absolute', bottom: 2, left: `${percent(beat.timeSec)}%`, transform: 'translateX(-50%)',
-                fontFamily: 'monospace', fontSize: 9, fontWeight: 500, color: '#9ca5ae', fontVariantNumeric: 'tabular-nums',
-              }}
-            >{beat.bar}</span>
-          ))}
-        </>
-      )}
-    </div>
-  );
-}
-
-// A gray copy of the waveform with the normal blue one revealed left→right by
-// `fill` (0..1), so the waveform itself acts as the separation progress bar.
-function FillingWaveformLane({
-  box,
-  fill,
-  muted = false,
-  waveformState,
-  ariaLabel,
-}: {
-  box: React.CSSProperties;
-  fill: number;
-  muted?: boolean;
-  waveformState: WaveformLoadState;
-  ariaLabel: string;
-}) {
-  const hidden = `${(1 - Math.max(0, Math.min(1, fill))) * 100}%`;
-  return (
-    <div
-      data-testid={muted ? 'flip-lab-waveform-muted' : undefined}
-      style={{ height: WAVEFORM_LANE_HEIGHT, position: 'relative', overflow: 'hidden', background: BG }}
-    >
-      <div style={{
-        ...box,
-        filter: muted ? 'grayscale(1) brightness(1.6)' : undefined,
-        opacity: muted ? 0.45 : 1,
-        transition: 'filter 0.2s, opacity 0.2s',
-      }}>
-        {fill < 1 && (
-          <div aria-hidden="true" style={{ position: 'absolute', inset: 0, filter: 'grayscale(1)', opacity: 0.35 }}>
-            <RekordboxPreviewWaveform state={waveformState} height={WAVEFORM_LANE_HEIGHT} variant="detail" surface={false} />
-          </div>
-        )}
-        <div
-          data-testid="flip-lab-waveform-fill"
-          style={{
-            position: 'absolute', inset: 0,
-            clipPath: `inset(0 ${hidden} 0 0)`,
-            transition: 'clip-path 0.4s linear',
-          }}
-        >
-          <RekordboxPreviewWaveform
-            state={waveformState}
-            height={WAVEFORM_LANE_HEIGHT}
-            variant="detail"
-            surface={false}
-            ariaLabel={ariaLabel}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function FlipLabPlayheadOverlay({ progress }: { progress: number }) {
   const percent = Math.max(0, Math.min(100, progress * 100));
   return (
@@ -968,6 +819,7 @@ function TopWaveformSection({
   instrWaveformState,
   timeline,
   flipLab,
+  cueMarkersFor,
 }: {
   vocalTrack: RekordboxTrack;
   instrTrack: RekordboxTrack;
@@ -977,6 +829,7 @@ function TopWaveformSection({
   instrWaveformState: WaveformLoadState;
   timeline: FlipLabTimeline;
   flipLab: ReturnType<typeof useFlipLab>;
+  cueMarkersFor: (trackId: string) => TrackCueMarker[];
 }) {
   const { state, busy } = flipLab;
   const vocalSections = useMemo(() => (
@@ -1015,7 +868,7 @@ function TopWaveformSection({
     if (!el || totalMs <= 0) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const rect = el.getBoundingClientRect();
+      const rect = (el.querySelector('.track-timeline__content') ?? el).getBoundingClientRect();
       const current = viewRef.current;
       const range = current.end - current.start;
       const next = Math.abs(event.deltaX) > Math.abs(event.deltaY)
@@ -1055,9 +908,8 @@ function TopWaveformSection({
 
   // Click = jump the playhead. Drag = slide that stem (top lane vocal, bottom lane instrumental), paused only.
   const handleLanePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!ready || event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const stem: FlipLabStem = event.clientY < rect.top + rect.height / 2 ? 'vocal' : 'instrumental';
+    if (!ready || event.button !== 0 || (event.target as HTMLElement).closest('button') || !(event.target as HTMLElement).closest('[data-timeline-row="waveform"]')) return;
+    const stem: FlipLabStem = (event.target as HTMLElement).closest('[data-stem]')?.getAttribute('data-stem') === 'instrumental' ? 'instrumental' : 'vocal';
     dragRef.current = { stem, startX: event.clientX, lastX: event.clientX, dragging: false, blocked: false };
     event.currentTarget.setPointerCapture(event.pointerId);
   }, [ready]);
@@ -1080,7 +932,7 @@ function TopWaveformSection({
       }
       return;
     }
-    const rect = event.currentTarget.getBoundingClientRect();
+    const rect = (event.currentTarget.querySelector('.track-timeline__content') ?? event.currentTarget).getBoundingClientRect();
     if (rect.width <= 0) return;
     const range = viewRef.current.end - viewRef.current.start;
     flipLab.moveStem(drag.stem, (dx / rect.width) * (range / 1000));
@@ -1095,7 +947,7 @@ function TopWaveformSection({
       if (!drag.blocked) logger.info('fliplab.align.moved', { stem: drag.stem, offsetSec: flipLab.state.offsets[drag.stem] });
       return;
     }
-    const rect = event.currentTarget.getBoundingClientRect();
+    const rect = (event.currentTarget.querySelector('.track-timeline__content') ?? event.currentTarget).getBoundingClientRect();
     if (rect.width <= 0) return;
     const fraction = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
     const { start, end } = viewRef.current;
@@ -1120,8 +972,6 @@ function TopWaveformSection({
     instrTrack.bpm ?? 0,
   ), [instrAnalysis, instrTrack.bpm, timeline]);
 
-  const vocalBox = laneBox(timeline.vocalStartSec, timeline.vocalSpanSec, view);
-  const instrBox = laneBox(timeline.instrumentalStartSec, timeline.instrumentalSpanSec, view);
   const playheadProgress = (state.positionSec * 1000 - view.start) / Math.max(1, view.end - view.start);
   // Vocal separates first (0–50% of the combined progress), then the instrumental.
   const separating = state.phase === 'separating' || state.phase === 'error';
@@ -1143,38 +993,54 @@ function TopWaveformSection({
         solo={{ enabled: state.solo === 'vocal', disabled: busy, onToggle: () => flipLab.toggleSolo('vocal') }}
       />
 
-      <div className="waveform-section-frame">
-        <div style={{ position: 'relative', height: 32, borderBottom: `1px solid ${BORDER_F}` }}>
-          <div style={vocalBox}><SectionRow segments={vocalSections} analysisStatus={vocalAnalysis.status} /></div>
-        </div>
-
-        <div
-          ref={lanesRef}
-          data-testid="flip-lab-lanes"
-          className="group/waveform"
-          onPointerDown={handleLanePointerDown}
-          onPointerMove={handleLanePointerMove}
-          onPointerUp={handleLanePointerUp}
-          onPointerCancel={handleLanePointerCancel}
-          style={{ position: 'relative', cursor: ready ? (grabbing ? 'grabbing' : 'grab') : undefined, touchAction: 'pan-y', userSelect: 'none' }}
-        >
-          <FillingWaveformLane
-            box={vocalBox}
-            fill={vocalFill}
-            muted={state.solo === 'instrumental'}
-            waveformState={vocalWaveformState}
-            ariaLabel={`Waveform for ${vocalTrack.title}`}
-          />
-          <FillingWaveformLane
-            box={instrBox}
-            fill={instrFill}
-            muted={state.solo === 'vocal'}
-            waveformState={instrWaveformState}
-            ariaLabel={`Waveform for ${instrTrack.title}`}
-          />
-          {state.phase === 'ready' && playheadProgress >= 0 && playheadProgress <= 1 && (
-            <FlipLabPlayheadOverlay progress={playheadProgress} />
-          )}
+      <div ref={lanesRef} data-testid="flip-lab-lanes"
+        onPointerDown={handleLanePointerDown} onPointerMove={handleLanePointerMove}
+        onPointerUp={handleLanePointerUp} onPointerCancel={handleLanePointerCancel}
+        style={{ position: 'relative', cursor: ready ? (grabbing ? 'grabbing' : 'grab') : undefined, touchAction: 'pan-y', userSelect: 'none' }}>
+        {([
+          { stem: 'vocal', track: vocalTrack, analysis: vocalAnalysis, segments: vocalSections,
+            startSec: timeline.vocalStartSec, spanSec: timeline.vocalSpanSec, rate: timeline.tempoRatio,
+            waveform: vocalWaveformState, fill: vocalFill, muted: state.solo === 'instrumental' },
+          { stem: 'instrumental', track: instrTrack, analysis: instrAnalysis, segments: instrSections,
+            startSec: timeline.instrumentalStartSec, spanSec: timeline.instrumentalSpanSec, rate: 1,
+            waveform: instrWaveformState, fill: instrFill, muted: state.solo === 'vocal' },
+        ] as const).map(({ stem, track, analysis, segments, startSec, spanSec, rate, waveform, fill, muted }) => {
+          const range = Math.max(1, view.end - view.start);
+          const percent = (ms: number) => (ms - view.start) / range * 100;
+          const visibleBeats = combinedBeats.filter((beat) => beat.timeSec * 1000 >= view.start && beat.timeSec * 1000 <= view.end);
+          const bars = visibleBeats.filter((beat) => beat.downbeat && beat.bar >= 1);
+          const stride = Math.max(1, Math.ceil(bars.length / 24));
+          return <div key={stem} data-stem={stem}>
+            <TrackTimeline
+              sections={segments.map((segment, index) => ({ id: `${stem}-${index}`, label: segment.label,
+                color: waveformSectionInk(segment.label),
+                leftPercent: percent((startSec + spanSec * segment.startPercent / 100) * 1000),
+                widthPercent: spanSec * (segment.endPercent - segment.startPercent) / 100 * 1000 / range * 100,
+              }))}
+              sectionMessage={segments.length ? undefined : analysis.status === 'loading' ? 'Loading phrase data…' : 'Phrase data unavailable'}
+              start={view.start} end={view.end}
+              timeTicks={timeRulerTicks(range).map((tick) => ({ ms: view.start + tick.ms, label: formatFlipLabTime((view.start + tick.ms) / 1000) }))}
+              cues={cueMarkersFor(track.id).flatMap((cue) => {
+                const left = percent(startSec * 1000 + cue.startMs / rate);
+                return left < 0 || left > 100 ? [] : <WaveformCueMarker key={cue.id}
+                  label={cue.label ?? ''} color={cue.color} memory={!/^[A-H]$/.test(cue.label ?? '')}
+                  title={`Cue ${cue.label ?? ''} · ${formatFlipLabTime(cue.startMs / 1000)}`}
+                  role="img" aria-label={`Cue ${cue.label ?? ''}`} style={{ left: `${left}%` }} />;
+              })}
+              cueLines={cueMarkersFor(track.id).map((cue) => ({ id: cue.id, label: cue.label ?? '', color: cue.color,
+                leftPercent: percent(startSec * 1000 + cue.startMs / rate),
+              }))}
+              waveforms={[{ id: track.id, state: waveform, fill, muted,
+                leftPercent: percent(startSec * 1000), widthPercent: spanSec * 1000 / range * 100,
+                colorSegments: segments.map((segment) => ({ startFraction: segment.startPercent / 100,
+                  endFraction: segment.endPercent / 100, color: waveformSectionInk(segment.label) })),
+                ariaLabel: `Waveform for ${track.title}`,
+              }]}
+              beatTicks={visibleBeats.map((beat) => ({ key: String(beat.timeSec), leftPercent: percent(beat.timeSec * 1000), downbeat: beat.downbeat }))}
+              beatLabels={bars.filter((_, index) => index % stride === 0).map((beat) => ({ key: String(beat.timeSec), leftPercent: percent(beat.timeSec * 1000), text: beat.bar }))}
+              beatMessage={visibleBeats.length ? undefined : 'No beat grid'}
+              waveformOverlay={<>
+                {stem === 'vocal' && <>
           {pausePrompt && (
             <div
               role="alert"
@@ -1199,15 +1065,13 @@ function TopWaveformSection({
               </ControlButton>
             </div>
           )}
-          <WaveformZoomControls onZoomIn={() => handleZoom(0.75)} onZoomOut={() => handleZoom(1 / 0.75)} canZoomIn={canZoomIn} canZoomOut={canZoomOut} />
-        </div>
-
-        <div style={{ position: 'relative', height: 32, borderBottom: `1px solid ${BORDER_F}` }}>
-          <div style={instrBox}><SectionRow segments={instrSections} analysisStatus={instrAnalysis.status} /></div>
-        </div>
-
-        <CombinedBeatGridLane beats={combinedBeats} view={view} />
-
+                </>}
+              </>}
+              overlay={state.phase === 'ready' && playheadProgress >= 0 && playheadProgress <= 1 ? <FlipLabPlayheadOverlay progress={playheadProgress} /> : undefined}
+              waveformControls={<WaveformZoomControls onZoomIn={() => handleZoom(0.75)} onZoomOut={() => handleZoom(1 / 0.75)} canZoomIn={canZoomIn} canZoomOut={canZoomOut} />}
+            />
+          </div>;
+        })}
       </div>
 
       <TrackHeader
@@ -1458,6 +1322,7 @@ export function FlipLabView({ activeImport, activeImportLoading, activeImportErr
             instrAnalysis={instrAnalysis}
             vocalWaveformState={getWaveformState(selectedVocal.track.id)}
             instrWaveformState={getWaveformState(selectedInstr.track.id)}
+            cueMarkersFor={cueMarkersFor}
             timeline={flipState.timeline!}
             flipLab={flipLab}
           />

@@ -31,7 +31,7 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
       <div className="min-w-0 flex-1 basis-48">
         <div className="flex items-center gap-2 flex-wrap">
           <ControlButton
-            variant="ghost"
+            variant="secondary"
             onClick={() => onOpen(imp)}
             aria-label={`Open import ${imp.source_filename}`}
             className="profile-record-link max-w-full"
@@ -60,12 +60,12 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {!isActive && !importInFlight && !importStalled && isUsableLibrarySnapshot(imp) && importPresentation.canActivate && (
-          <ControlButton variant="neutral" onClick={() => onMakeActive(imp)}>
+          <ControlButton variant="secondary" onClick={() => onMakeActive(imp)}>
             Make Active
           </ControlButton>
         )}
         {(importPresentation.canRetry || importStalled) && (
-          <ControlButton variant="neutral" onClick={() => onResumeOrRetry(imp)}>
+          <ControlButton variant="secondary" onClick={() => onResumeOrRetry(imp)}>
             {resumable ? 'Resume' : 'Retry'}
           </ControlButton>
         )}

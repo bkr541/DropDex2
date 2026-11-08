@@ -1,3 +1,5 @@
+import { LibraryFilterRow, matchesLibrarySearch, recordOptions } from './LibraryFilterRow';
+import { useAudioDockTracks } from '../../contexts/AudioDockWorkspaceContext';
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import { useTrackPlaylistCounts } from '../../hooks/useTrackPlaylistCounts';
 import './library-studio.css';
@@ -36,12 +38,10 @@ import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { supabase } from '../../lib/supabase';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
-import { Activity, CheckCircle, Circle, Clock, ControlSlider, Dashboard, Folder, Group, Key, Label, MusicNote, NavArrowLeft, Playlist, Refresh, Reports, SineWave, Spotify, Upload, User, WarningTriangle } from 'iconoir-react/regular';
+import { Activity, CheckCircle, Circle, Clock, ControlSlider, Dashboard, Folder, Group, Key, Label, MusicNote, NavArrowLeft, Playlist, Refresh, Reports, SineWave, Upload, User, WarningTriangle } from 'iconoir-react/regular';
 import { ProfileSocialLinks } from './ProfileSocialLinks';
 import { LibraryGhostHero } from './LibraryGhostHero';
 import { ControlButton, SearchControl } from '../ui/controls';
-import { SpotifyLibraryTab } from './SpotifyLibraryTab';
-import { useSpotifyAvailability } from '../../hooks/useSpotifyAvailability';
 
 
 const TABS: { id: LibraryTab; label: string; icon: ElementType }[] = [
@@ -54,9 +54,8 @@ const TABS: { id: LibraryTab; label: string; icon: ElementType }[] = [
   { id: 'incomplete-analysis', label: 'Analysis Incomplete', icon: WarningTriangle },
 ];
 
-const SPOTIFY_TAB: { id: LibraryTab; label: string; icon: ElementType } = { id: 'spotify', label: 'Spotify', icon: Spotify };
 
-export { TABS as LIBRARY_TABS, SPOTIFY_TAB };
+export { TABS as LIBRARY_TABS };
 
 /** Columns for the insight cards, by how many are showing, so the cards share the row evenly. */
 const INSIGHT_COLUMNS: Record<number, string> = { 1: 'xl:grid-cols-1', 2: 'xl:grid-cols-2', 3: 'xl:grid-cols-3' };
@@ -70,7 +69,6 @@ interface LibraryViewProps {
   importId: string | null;
   profile: UserProfile | null;
   genres: UserGenrePreference[];
-  spotifyAccessToken: string | null;
   onTrackClick: (t: RekordboxTrack) => void;
   onImport: () => void;
   onEditProfile: () => void;
@@ -368,11 +366,12 @@ export function LibraryTrackTable({
       return sortDir === 'asc' ? cmp : -cmp;
     });
   }, [tracks, sortCol, sortDir, playlistCounts.counts]);
+  useAudioDockTracks(sortedTracks);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" />
+        <Refresh className="animate-spin text-control-primary" width={28} height={28} aria-hidden="true" />
       </div>
     );
   }
@@ -402,12 +401,24 @@ export function LibraryTrackTable({
 
 /** The Recently Added tab: the newest tracks in a table. Shared by the Library and Artist Library pages. */
 export function RecentlyAddedPanel({ tracks, loading, ...tableProps }: Omit<LibraryTrackTableProps, 'emptyText' | 'footer'>) {
+  const [search, setSearch] = useState('');
+  const [genre, setGenre] = useState('');
+  const [key, setKey] = useState('');
+  const [format, setFormat] = useState('');
+  const visible = tracks.filter((track) => matchesLibrarySearch(search, track.title, track.artist, track.genre)
+    && (!genre || track.genre === genre) && (!key || track.musical_key === key) && (!format || track.file_format === format));
   return (
     <div className="space-y-3">
+      <LibraryFilterRow search={search} onSearchChange={setSearch} label="Recently added tracks" placeholder="Search title, artist, or genre…"
+        filters={[
+          { label: 'Genre', value: genre, onChange: setGenre, options: recordOptions(tracks.map((track) => track.genre)) },
+          { label: 'Key', value: key, onChange: setKey, options: recordOptions(tracks.map((track) => track.musical_key)) },
+          { label: 'Format', value: format, onChange: setFormat, options: recordOptions(tracks.map((track) => track.file_format)) },
+        ]} />
       <p className="text-xs text-muted-foreground font-mono">
-        {loading ? 'Loading…' : `${tracks.length.toLocaleString()} recently added tracks`}
+        {loading ? 'Loading…' : `${visible.length === tracks.length ? visible.length.toLocaleString() : `${visible.length} of ${tracks.length}`} recently added tracks`}
       </p>
-      <LibraryTrackTable tracks={tracks} loading={loading} emptyText="No recently added tracks." {...tableProps} />
+      <LibraryTrackTable tracks={visible} loading={loading} emptyText={tracks.length ? "No tracks match your filters." : "No recently added tracks."} {...tableProps} />
     </div>
   );
 }
@@ -575,7 +586,6 @@ export function LibraryView({
   hiddenWidgets,
   importId,
   profile,
-  spotifyAccessToken,
   onTrackClick,
   onImport,
   onResumeAnalysis,
@@ -584,14 +594,6 @@ export function LibraryView({
   onActiveTabChange,
   onSearchQueryChange,
 }: LibraryViewProps) {
-
-  const spotifyAvailable = useSpotifyAvailability(spotifyAccessToken);
-
-  useEffect(() => {
-    if (spotifyAvailable === false && activeTab === 'spotify') {
-      onActiveTabChange('overview');
-    }
-  }, [activeTab, onActiveTabChange, spotifyAvailable]);
 
   const {
     results: searchResults,
@@ -616,6 +618,7 @@ export function LibraryView({
   );
 
   const showSearch = searchQuery.trim().length >= 2;
+  useAudioDockTracks(searchResults, null, undefined, showSearch);
 
   // ── Incomplete analysis list: opened from the Track Analysis card, with a way back to the overview ──
   const isIncompleteView = activeTab === 'incomplete-analysis';
@@ -723,7 +726,7 @@ export function LibraryView({
           >
             {importLoading && (
               <div className="flex items-center justify-center py-24">
-                <Refresh className="animate-spin text-primary" width={32} height={32} aria-hidden="true" />
+                <Refresh className="animate-spin text-control-primary" width={32} height={32} aria-hidden="true" />
               </div>
             )}
 
@@ -736,31 +739,7 @@ export function LibraryView({
 
             {!importLoading && !importError && (
               <>
-                {!latestImport && !spotifyAvailable && (
-                  <EmptyLibrary onImport={onImport} profile={profile} />
-                )}
-
-                {!latestImport && spotifyAvailable && spotifyAccessToken && (
-                  <div className="space-y-4">
-                    <div className="lib-tabs lib-sticky sticky top-0 z-20 -mx-4 px-4 md:-mx-8 md:px-8">
-                      {[TABS[0], SPOTIFY_TAB].map((tab) => (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          onClick={() => onActiveTabChange(tab.id)}
-                          role="tab"
-                          aria-selected={activeTab === tab.id}
-                          className="lib-tab"
-                        >
-                          {tab.label}
-                        </button>
-                      ))}
-                    </div>
-                    {activeTab === 'spotify'
-                      ? <SpotifyLibraryTab accessToken={spotifyAccessToken} />
-                      : <EmptyLibrary onImport={onImport} profile={profile} />}
-                  </div>
-                )}
+                {!latestImport && <EmptyLibrary onImport={onImport} profile={profile} />}
 
                 {latestImport && (
                   <>

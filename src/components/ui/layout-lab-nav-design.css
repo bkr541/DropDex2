@@ -34,7 +34,7 @@
   --color-muted-foreground: #a4adbd;
   --color-border-subtle: #ffffff12;
   --color-background: #1b1f28;
-  --color-primary: #3b91ff;
+  --color-primary: var(--color-control-primary);
 }
 .nd-look-slate {
   --nd-bg: radial-gradient(#ffffff0c 1px, transparent 1px) 0 0 / 16px 16px, linear-gradient(165deg, #262d3a 0%, #1d2330 38%, #161b25 100%);

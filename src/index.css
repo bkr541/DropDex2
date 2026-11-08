@@ -11,7 +11,7 @@
   --color-popover: #121a23;
   --color-popover-foreground: #eef3f8;
 
-  --color-primary: #3b91ff;
+  --color-primary: var(--color-control-primary);
   --color-brand-primary: #cf6b65;
   --color-primary-foreground: #ffffff;
 
@@ -19,7 +19,7 @@
   --color-brand-secondary: #e8937e;
   --color-secondary-foreground: #041217;
 
-  --color-accent: #3b91ff;
+  --color-accent: var(--color-control-primary);
   --color-accent-foreground: #ffffff;
 
   --color-muted: #151d27;
@@ -27,7 +27,7 @@
 
   --color-border: rgb(164 178 196 / 0.14);
   --color-input: #111820;
-  --color-ring: #3b91ff;
+  --color-ring: var(--color-control-primary-hover);
 
   --font-sans: 'Blinker', system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -74,7 +74,6 @@
   --color-control-border-soft: #1c2530;
   --color-control-text: #f6f8fb;
   --color-control-muted: #9ba5b2;
-  --color-control-blue: #1f7dff;
   /* Coral accents for primary controls and the Hero profile ring. */
   --color-control-primary: #f56b70;
   --color-control-primary-hover: #f78361;
@@ -91,8 +90,7 @@
   --color-control-red: #ff3647;
   --color-control-disabled: #e0e3e8;
   --color-control-disabled-text: #a8adb5;
-  --color-control-focus: #3b91ff;
-  --color-control-blue-rgb: 31 125 255;
+  --color-control-focus: var(--color-control-primary-hover);
   --color-control-cyan-rgb: 18 191 224;
   --color-control-purple-rgb: 154 66 223;
   --color-control-magenta-rgb: 239 77 208;
@@ -149,7 +147,7 @@
   --color-popover: #181e25;
   --color-popover-foreground: #e8edf3;
 
-  --color-primary: #168cff;
+  --color-primary: var(--color-control-primary);
   --color-primary-foreground: #ffffff;
   --color-secondary: #38afff;
   --color-secondary-foreground: #06121c;
@@ -160,7 +158,7 @@
   --color-muted-foreground: #8d99a6;
   --color-border: #343e48;
   --color-input: #202731;
-  --color-ring: #168cff;
+  --color-ring: var(--color-control-primary-hover);
 
   --color-panel: #0f1318;
   --color-panel-alt: #171d23;

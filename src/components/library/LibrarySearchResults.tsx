@@ -46,7 +46,7 @@ export function LibrarySearchResults({
 
       {loading && (
         <div className="flex items-center justify-center py-12">
-          <Refresh className="animate-spin text-primary" width={26} height={26} aria-hidden="true" />
+          <Refresh className="animate-spin text-control-primary" width={26} height={26} aria-hidden="true" />
         </div>
       )}
 

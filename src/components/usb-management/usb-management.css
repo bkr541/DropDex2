@@ -1,0 +1,69 @@
+/* USB accents follow the shared coral controls without changing other workspaces or themes. */
+.usb-management-workspace {
+  --color-primary: var(--color-control-primary);
+  --color-primary-rgb: var(--color-control-primary-rgb);
+  --color-secondary: var(--color-control-primary-hover);
+  --color-secondary-rgb: 247 131 97;
+  --color-ring: var(--color-control-primary-hover);
+  --color-control-focus: var(--color-control-primary-hover);
+}
+
+/* The studio gradient, rim and depth come from studio-surface.css, shared with Library and Profile. */
+.usb-management-content { padding: 16px; }
+.usb-management-studio .usb-panel {
+  background: transparent;
+  border-color: var(--color-border-subtle);
+  border-radius: 12px;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.usb-management-studio .usb-art-well { background: transparent; border-color: transparent; }
+.usb-management-studio .usb-file-list { background: transparent; border-color: var(--color-border-faint); }
+.usb-management-studio .usb-drive-title { font-size: 22px; font-weight: 300; line-height: 1.15; letter-spacing: -.04em; }
+.usb-management-studio .usb-storage-figure { font-size: 20px; font-weight: 300; line-height: 1.2; }
+.usb-management-studio .usb-storage-rail { height: 4px; background: #13161c; box-shadow: inset 0 1px 3px #000000a6, 0 1px 0 #ffffff12; }
+.usb-management-studio .usb-transfer-choice { min-width: 0; border: 1px solid var(--color-border-subtle); border-radius: 10px; background: transparent; }
+.usb-management-studio .usb-transfer-choice:hover { border-color: #ffffff26; }
+.usb-management-studio .usb-transfer-choice[data-selected="true"] { border-color: #f56b7066; background: #f56b7009; }
+.usb-management-studio .usb-destination { background: transparent; border-color: var(--color-border-subtle); border-radius: 12px; box-shadow: none; }
+.usb-management-studio .usb-destination:hover:not(:disabled) { border-color: #f56b7080; background: #f56b7009; }
+.usb-management-studio .usb-destination:focus-visible { outline: 2px solid var(--color-control-focus); outline-offset: -3px; }
+.usb-management-studio .usb-empty-state { border-style: solid; }
+.usb-management-studio :is(h2, h3) { font-weight: 400; }
+.usb-management-studio .usb-drive-title { font-weight: 300; }
+@media (max-width: 700px) {
+  .usb-management-content { padding: 12px; }
+}
+
+/* My USBs: one record per line; expansion belongs below the compact identity header. */
+.usb-device-record { width: 100%; min-width: 0; }
+.usb-device-header { display: flex; min-width: 0; align-items: flex-start; gap: 12px; }
+.usb-device-art { display: grid; flex: none; width: 40px; height: 40px; place-items: center; }
+.usb-device-header h3 { overflow-wrap: anywhere; }
+.usb-library-tracks { container-type: inline-size; max-width: 100%; background: transparent; }
+.usb-library-tracks .track-listing__table { width: 100%; min-width: 0; table-layout: fixed; }
+.usb-library-tracks .track-listing__table :is(th, td) { width: auto; max-width: none; padding-inline: 6px; white-space: normal; overflow-wrap: anywhere; }
+.usb-library-tracks .track-listing__table :is(th, td):nth-child(1) { width: 36%; }
+.usb-library-tracks .track-listing__table :is(th, td):nth-child(2),
+.usb-library-tracks .track-listing__table :is(th, td):nth-child(3),
+.usb-library-tracks .track-listing__table :is(th, td):nth-child(5),
+.usb-library-tracks .track-listing__table :is(th, td):nth-child(8) { width: 8%; }
+.usb-library-tracks .track-listing__table :is(th, td):nth-child(4) { width: 13%; }
+.usb-library-tracks .track-listing__table :is(th, td):nth-child(6) { width: 9%; }
+.usb-library-tracks .track-listing__table :is(th, td):nth-child(7) { width: 10%; }
+.usb-library-tracks .track-listing__table td:first-child > .group { flex-wrap: wrap; }
+.usb-library-tracks .track-listing__table td:first-child > .group > div:not(.track-listing__wave) { flex: 1 1 0; width: 0; min-width: 0; }
+.usb-library-tracks .track-listing__table td .truncate { white-space: normal; overflow-wrap: anywhere; }
+.usb-library-tracks .track-listing__wave { flex: 1 1 100%; width: 100%; min-width: 0; max-width: none; margin-block: 4px; }
+@container (max-width: 850px) {
+  .usb-library-tracks .track-listing__table, .usb-library-tracks .track-listing__table tbody { display: block; }
+  .usb-library-tracks .track-listing__table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .usb-library-tracks .track-listing__table tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 8px; gap: 8px 12px; }
+  .usb-library-tracks .track-listing__table tbody td:nth-child(n) { display: block; width: auto; max-width: none; height: auto; padding: 0; text-align: left; }
+  .usb-library-tracks .track-listing__table tbody td:first-child { grid-column: 1 / -1; }
+  .usb-library-tracks .track-listing__table tbody td:not(:first-child)::before { display: block; margin-bottom: 3px; content: attr(data-label); color: #9aa5b8; font-size: 9px; letter-spacing: .08em; text-transform: none; }
+}
+@media (max-width: 480px) {
+  .usb-device-header { flex-wrap: wrap; }
+  .usb-device-header > .cue-workstation__actions { margin-left: 52px; }
+}

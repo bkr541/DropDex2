@@ -125,7 +125,7 @@ export function ArtistPage({
         <div className="flex-1 min-w-0 space-y-4">
           {loading ? (
             <div className="flex items-center justify-center py-20">
-              <Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" />
+              <Refresh className="animate-spin text-control-primary" width={28} height={28} aria-hidden="true" />
             </div>
           ) : error ? (
             <div className="text-center py-12 space-y-2">

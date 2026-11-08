@@ -1,13 +1,13 @@
 import { useMemo, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Lock, LockSlash, Minus, Plus, Refresh } from 'iconoir-react/regular';
-import { RekordboxPreviewWaveform } from '../../components/library/RekordboxPreviewWaveform';
+import { TrackTimeline } from '../../components/ui/media/TrackTimeline';
+import { timeRulerTicks, formatClock } from '../../components/audition/auditionTracks';
 import { ContextMenu, ControlButton, IconControlButton, SelectControl } from '../../components/ui/controls';
-import { TimelineBeatLane, TimelineLane, TimelineSectionLane } from '../../components/ui/media';
 import { WaveformCueMarker } from '../../components/ui/media/WaveformCueMarker';
 import { useDropLabDetailWaveform } from '../../hooks/useDropLabDetailWaveform';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
-import { sectionTone } from '../../lib/music/phraseSections';
+import { waveformSectionInk } from '../../components/ui/media/waveformPresentation';
 import { durationMsForTrack } from '../../lib/music/trackTiming';
 import type { BeatGridRow, CueRow } from '../../lib/queries/analysisData';
 import { loadingWaveformState, type WaveformLoadState } from '../../lib/queries/waveformValidation';
@@ -37,7 +37,7 @@ interface TimelineActions {
 const BAR_COUNTS = [4, 8, 16] as const;
 
 function SetLabClip({
-  slot, durationMs, offsetMs, importId, selected, busy, selectionDisabled, editDisabled, data, preview, retryWaveform, actions,
+  slot, durationMs, offsetMs, importId, selected, busy, selectionDisabled, editDisabled, data, preview, retryWaveform, actions, playback,
 }: {
   slot: SetLabSlot;
   durationMs: number;
@@ -51,6 +51,7 @@ function SetLabClip({
   preview: WaveformLoadState;
   retryWaveform: () => void;
   actions: TimelineActions;
+  playback: SetLabPreview;
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number; trigger: HTMLButtonElement } | null>(null);
   const track = data.status === 'ready' ? data.tracks.get(slot.trackId) ?? null : null;
@@ -73,7 +74,7 @@ function SetLabClip({
   const phrase = slot.section.phraseType
     ? `${slot.section.phraseType}${slot.section.phraseOccurrence ? ` ${slot.section.phraseOccurrence}` : ''}`
     : 'Unclassified section';
-  const tone = sectionTone(slot.section.phraseType ?? '');
+  const ink = waveformSectionInk(slot.section.phraseType ?? '');
   const ready = !!(track && grid && ruler);
   const clipUnavailable = data.status === 'ready' && !track;
   const cueError = data.status === 'ready' && track && (!cueState || cueState.status === 'failed');
@@ -139,36 +140,31 @@ function SetLabClip({
           {(durationMs / 1000).toFixed(1)} s
         </span>
       </div>
-      <TimelineSectionLane leadIn={slot.position === 1} sections={[{ id: slot.trackId, leftPercent: 0, widthPercent: 100, label: phrase, color: tone.waveformColor }]} />
-
-      <TimelineLane heightClass="h-9" className="bg-[var(--color-background)]/30">
-        <div className="relative h-full" aria-label={`Cue markers for slot ${slot.position}`}>
+      <TrackTimeline
+        sections={[{ id: slot.trackId, leftPercent: 0, widthPercent: 100, label: phrase, color: ink }]}
+        start={slot.section.startMs} end={slot.section.endMs}
+        timeTicks={timeRulerTicks(durationMs).map((tick) => ({ ms: slot.section.startMs + tick.ms, label: formatClock(slot.section.startMs + tick.ms) }))}
+        cues={<>
           {markers.map((marker) => (
             <WaveformCueMarker key={marker.id} data-cue-family={marker.hot ? 'hot' : 'memory'} role="img"
               aria-label={marker.description} title={marker.description}
               label={marker.label} color={marker.color} memory={!marker.hot}
-              style={{ left: `${marker.leftPercent}%`, transform: marker.leftPercent === 0 ? 'none' : marker.leftPercent >= 96 ? 'translateX(-100%)' : undefined }}
+              style={{ left: `${marker.leftPercent}%` }}
             />
           ))}
           {cueError && <span className="px-2 text-[10px] text-muted-foreground">Cue markers unavailable</span>}
-        </div>
-      </TimelineLane>
-
-      <TimelineLane heightClass="h-[66px]" className="bg-[var(--color-background)]/60">
-        <RekordboxPreviewWaveform
-          state={waveform} height={66} variant="detail" appearance="rekordbox" renderMode="area"
-          surface={false} showCenterLine={false} ariaLabel={`Waveform for ${title}`}
-          colorSegments={[{ startFraction: 0, endFraction: 1, color: tone.waveformColor }]}
-        />
+        </>}
+        waveforms={[{ id: slot.trackId, state: waveform,
+          ariaLabel: `Waveform for ${title}`, colorSegments: [{ startFraction: 0, endFraction: 1, color: ink }] }]}
+        cueLines={markers.map((marker) => ({ ...marker }))}
+        overlay={<SetLabPlayhead preview={playback} durationMs={durationMs} offsetMs={offsetMs} />}
+        waveformOverlay={
         <button type="button" className="absolute inset-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
           aria-label={`Select waveform for slot ${slot.position}`} aria-pressed={selected} disabled={selectionDisabled}
           onClick={() => actions.onSelect(slot.position)} {...menuHandlers} />
-      </TimelineLane>
-
-      <TimelineBeatLane
-        ticks={ruler?.ticks ?? []}
-        labels={ruler?.labels ?? []}
-        message={ruler ? undefined : <div className="flex h-full items-center px-2 text-[10px] text-muted-foreground">{beatMessage}</div>}
+        }
+        beatTicks={ruler?.ticks ?? []} beatLabels={ruler?.labels ?? []}
+        beatMessage={ruler ? undefined : beatMessage}
       />
 
       <div className="flex h-7 items-center justify-between gap-1 px-2 text-[10px] text-muted-foreground">
@@ -238,9 +234,9 @@ export function SetLabTimeline({
       )}
       <div className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
         role="region" aria-label="Scrollable five-slot timeline" tabIndex={0}>
-        <div className="waveform-section-frame" style={{ minWidth: layout.minWidthPx * zoom, width: `${zoom * 100}%` }}>
+        <div className="min-w-0" style={{ minWidth: layout.minWidthPx * zoom, width: `${zoom * 100}%` }}>
           <div className="relative">
-            <ol className="cue-timeline grid"
+            <ol className="grid"
               style={{ '--cue-timeline-inline-inset': '0px', gridTemplateColumns: layout.columns } as CSSProperties}>
               {layout.clips.map(({ slot, durationMs, offsetMs }) => {
                 const preview = data.status === 'loading' ? loadingWaveformState(slot.trackId)
@@ -250,11 +246,10 @@ export function SetLabTimeline({
                   <SetLabClip key={`${slot.position}:${slot.trackId}`} slot={slot} durationMs={durationMs} offsetMs={offsetMs}
                     importId={scope.sourceImportId} selected={slot.position === selectedSlot} busy={busy} selectionDisabled={selectionDisabled} editDisabled={editDisabled}
                     data={data} preview={preview.status === 'idle' ? loadingWaveformState(slot.trackId) : preview}
-                    retryWaveform={() => waveforms.retry([slot.trackId])} actions={actions} />
+                    retryWaveform={() => waveforms.retry([slot.trackId])} actions={actions} playback={playback} />
                 );
               })}
             </ol>
-            <SetLabPlayhead preview={playback} durationMs={layout.totalMs} />
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
-import { Suspense } from 'react';
+import { Suspense, useMemo } from 'react';
+import { useAudioDockTracks } from '../../contexts/AudioDockWorkspaceContext';
 import { cn, formatDuration, formatPosition } from '../../lib/utils';
 import { TrackAnalysisStatusBadge } from './TrackAnalysisStatusBadge';
 import { SimilarVibesSection } from './SimilarVibesSection';
@@ -24,6 +25,8 @@ interface TrackDetailViewProps {
 }
 
 export function TrackDetailView({ track, importId, waveformState, onRetryWaveform, memberships, membershipsLoading, onTrackClick, onPlaylistClick, onOpenDropLab }: TrackDetailViewProps) {
+  const dockTracks = useMemo(() => [track], [track]);
+  useAudioDockTracks(dockTracks, track);
   const metadata = [
     { label: 'Album', value: track.album },
     { label: 'Genre', value: track.genre },

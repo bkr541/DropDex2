@@ -319,7 +319,7 @@ function addClampedGradientStop(
   gradient.addColorStop(Math.max(0, Math.min(1, offset)), rgba(color, alpha));
 }
 
-function buildTimelineWaveformGradient(
+export function buildTimelineWaveformGradient(
   context: CanvasRenderingContext2D,
   buckets: NormalizedCol[],
   width: number,

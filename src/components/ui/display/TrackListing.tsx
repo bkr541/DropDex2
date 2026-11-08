@@ -58,7 +58,7 @@ export interface TrackListingProps<T extends { id: string }> {
 }
 
 /**
- * The one track listing. A raised-nothing table in the graphite look: capital column names, hairline rows, the green status dot, a play
+ * The one track listing. A raised-nothing table in the graphite look: sentence-case column names, hairline rows, the green status dot, a play
  * button, the title and artist, a waveform with a dot above each cue, then the columns the page asks for and an Actions column at the
  * far right. The selected track has a coral edge and a faint wash.
  */
@@ -78,12 +78,12 @@ export function TrackListing<T extends { id: string }>({
     <div className={cn('track-listing', className)} data-testid={testId}>
       <div className="track-listing__scroll overflow-auto scrollbar-none" style={scrollStyle} ref={scrollRef} onScroll={onScroll}>
         <TrackTable className={cn('track-listing__table min-w-[900px]', tableClassName)} data-testid={tableTestId} aria-label={ariaLabel}>
-          <TrackTableHead>
-            <TrackTableHeadCell label={trackLabel} uppercase {...heading(trackSort)} />
+          <TrackTableHead className="normal-case">
+            <TrackTableHeadCell label={trackLabel} {...heading(trackSort)} />
             {columns.map((column) => (
-              <TrackTableHeadCell key={column.id} label={column.label} uppercase className={column.headClassName} {...heading(column.sort)} />
+              <TrackTableHeadCell key={column.id} label={column.label} className={column.headClassName} {...heading(column.sort)} />
             ))}
-            {actions && <TrackTableHeadCell label="Actions" uppercase className="w-[88px] text-center" />}
+            {actions && <TrackTableHeadCell label="Actions" className="w-[88px] text-center" />}
           </TrackTableHead>
           <TrackTableBody>
             {spacer(topSpacer)}
@@ -115,10 +115,10 @@ export function TrackListing<T extends { id: string }>({
                     {renderWaveform?.(track)}
                   </TrackNameCell>
                   {columns.map((column) => (
-                    <td key={column.id} {...column.cellProps?.(track)} className={cn('px-3 py-1.5', column.cellClassName, column.cellProps?.(track)?.className)}>{column.render(track)}</td>
+                    <td key={column.id} {...column.cellProps?.(track)} data-label={typeof column.label === 'string' ? column.label : column.id} className={cn('px-3 py-1.5', column.cellClassName, column.cellProps?.(track)?.className)}>{column.render(track)}</td>
                   ))}
                   {actions && (
-                    <td className="track-listing__actions px-3 py-1.5">
+                    <td data-label="Actions" className="track-listing__actions px-3 py-1.5">
                       {typeof actions === 'function' ? actions(track) : (
                         <button
                           type="button"

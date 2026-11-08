@@ -17,3 +17,6 @@ export { PlaybackSeekBar } from './PlaybackSeekBar';
 export type { PlaybackSeekBarProps } from './PlaybackSeekBar';
 export { TimelineBeatLane, TimelineLane, TimelineSectionLane } from './TimelineLanes';
 export type { TimelineBeatLabel, TimelineBeatTick, TimelineSectionItem } from './TimelineLanes';
+
+export { TrackTimeline, TRACK_TIMELINE_WAVEFORM_HEIGHT } from './TrackTimeline';
+export type { TrackTimelineProps, TrackTimelineWaveform } from './TrackTimeline';

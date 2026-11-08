@@ -27,13 +27,15 @@ export function AuditionTrackHeader({ track, durationMs, cueCount }: AuditionTra
           </div>
         </div>
       </div>
-      {track && <div className="audition-track-details">
+      <div className="audition-track-details">
+        {track && <>
         <div className="audition-stat"><span>{track.bpm != null ? track.bpm.toFixed(0) : '—'}</span><small>BPM</small></div>
         {cueCount !== undefined && <div className="audition-stat"><span>{cueCount}</span><small>Cues</small></div>}
         <div className="audition-stat"><span>{formatCamelotCode(track.musical_key) ?? '—'}</span><small>Key</small></div>
         <div className="audition-stat"><span title={track.genre ?? undefined}>{track.genre || '—'}</span><small>Genre</small></div>
-      </div>}
-      <div className="audition-duration"><span>{durationMs != null ? formatClock(durationMs) : '—:—'}</span><small>Duration</small></div>
+        </>}
+        <div className="audition-duration"><span>{durationMs != null ? formatClock(durationMs) : '—:—'}</span><small>Duration</small></div>
+      </div>
     </section>
   );
 }

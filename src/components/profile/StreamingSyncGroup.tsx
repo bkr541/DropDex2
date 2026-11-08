@@ -188,7 +188,7 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
               {sync.phase === 'done' && (
                 <>
                   {sync.failures.length > 0 && (
-                    <ul className="max-h-40 divide-y divide-[var(--color-control-border-soft)] overflow-y-auto rounded-[var(--radius-control)] border border-[var(--color-control-border)] bg-[var(--color-control-surface)] px-3 text-xs">
+                    <ul className="max-h-40 divide-y divide-[var(--color-control-border-soft)] overflow-y-auto rounded-[var(--radius-control)] border border-[var(--color-control-border)] bg-transparent px-3 text-xs">
                       {sync.failures.slice(0, 50).map((failure) => (
                         <li key={failure.trackId} className="py-2"><span className="font-semibold">{failure.title}</span> <span className="text-muted-foreground">— {failure.message}</span></li>
                       ))}
@@ -214,8 +214,8 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
         title="Sync your tracks to the cloud"
         onClose={() => setDialogOpen(false)}
         actions={[
-          { label: 'Cancel', variant: 'neutral', onClick: () => setDialogOpen(false) },
-          { label: 'Select Tracks', variant: 'neutral', onClick: () => void selectTracks() },
+          { label: 'Cancel', variant: 'secondary', onClick: () => setDialogOpen(false) },
+          { label: 'Select Tracks', variant: 'secondary', onClick: () => void selectTracks() },
           { label: 'Sync All', variant: 'primary', onClick: () => void syncAll() },
         ]}
       >

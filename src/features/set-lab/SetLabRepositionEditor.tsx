@@ -1,9 +1,9 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
-import { RekordboxPreviewWaveform } from '../../components/library/RekordboxPreviewWaveform';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { TrackTimeline } from '../../components/ui/media/TrackTimeline';
+import { timeRulerTicks, formatClock } from '../../components/audition/auditionTracks';
 import { ControlButton } from '../../components/ui/controls';
-import { TimelineBeatLane, TimelineLane, TimelineSectionLane } from '../../components/ui/media';
 import { WaveformCueMarker } from '../../components/ui/media/WaveformCueMarker';
-import { sectionTone } from '../../lib/music/phraseSections';
+import { waveformSectionInk } from '../../components/ui/media/waveformPresentation';
 import { formatTime } from '../../lib/music/trackTiming';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { cn } from '../../lib/utils';
@@ -34,44 +34,40 @@ function RepositionLanes({ target, data, waveform, proposed, overview = false }:
     if (end <= start) return [];
     const label = semantic.type ? `${semantic.type} ${occurrence}` : 'Unclassified phrase';
     return [{ id, label, title: `${label} · ${formatTime(startMs)}–${formatTime(endMs)}`,
-      color: sectionTone(semantic.type ?? '').waveformColor, leftPercent: percent(start), widthPercent: percent(end) - percent(start) }];
+      color: waveformSectionInk(semantic.type ?? ''), leftPercent: percent(start), widthPercent: percent(end) - percent(start) }];
   });
   const cues = setLabCueMarkers(target.cues, visible);
   const beats = target.grid.beats.filter((beat) => beat.ms >= visible.startMs && beat.ms <= visible.endMs && (!overview || beat.isDownbeat));
   const barLabelStride = Math.max(1, Math.ceil(beats.filter(({ isDownbeat }) => isDownbeat).length / (overview ? 12 : 24)));
   const section = proposed.section;
-  const height = overview ? 40 : 132;
   const display = sliceSetLabClipWaveform(waveform, visible, waveformDurationMs);
   return (
-    <div className="waveform-section-frame">
-      <div className="cue-timeline relative" style={{ '--cue-timeline-inline-inset': '0px' } as CSSProperties}>
-        <div className={overview ? undefined : 'set-lab-reposition__reveal'}>
-          <TimelineSectionLane sections={sections} message={sections.length ? undefined :
-            <p className="px-2 pt-1 text-[10px] text-muted-foreground">{data.phraseError ? 'Phrase analysis could not load' : 'No labeled phrases here'}</p>} />
-          <TimelineLane heightClass="h-9">
-            {cues.map((cue) => <WaveformCueMarker key={cue.id} role="img" aria-label={cue.description} title={cue.description}
-              label={cue.label} color={cue.color} memory={!cue.hot}
-              style={{ left: `${percent(visible.startMs) + cue.leftPercent / 100 * (percent(visible.endMs) - percent(visible.startMs))}%` }}
-            />)}
-          </TimelineLane>
-          <TimelineLane heightClass={overview ? 'h-10' : 'h-[132px]'} className="bg-[var(--color-background)]/70">
-            <div className="absolute inset-y-0"
-              style={{ left: `${percent(visible.startMs)}%`, width: `${percent(visible.endMs) - percent(visible.startMs)}%` }}>
-              <RekordboxPreviewWaveform state={display} height={height} variant="detail" appearance="rekordbox"
-                renderMode="area" surface={false} showCenterLine={false}
-                ariaLabel={overview ? 'Full track waveform' : 'Expanded source waveform'} />
-            </div>
-          </TimelineLane>
-          <TimelineBeatLane ticks={beats.map((beat) => ({
-            key: String(beat.seq), leftPercent: percent(beat.ms), downbeat: beat.isDownbeat,
-            title: `Bar ${beat.bar}, beat ${beat.beatInBar} · ${formatTime(beat.ms)}`,
-          }))} labels={beats.filter((beat) => beat.isDownbeat && (beat.bar - 1) % barLabelStride === 0).map((beat) => ({
-            key: String(beat.seq), leftPercent: percent(beat.ms), text: beat.bar,
-          }))} />
-        </div>
-        <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 rounded-sm border-2 border-primary bg-primary/[0.08]"
-          style={{ left: `${percent(section.startMs)}%`, width: `${percent(section.endMs) - percent(section.startMs)}%` }} />
-      </div>
+    <div className={overview ? undefined : 'set-lab-reposition__reveal'}>
+      <TrackTimeline
+        sections={sections} start={visible.startMs} end={visible.endMs}
+        timeTicks={timeRulerTicks(visible.endMs - visible.startMs).map((tick) => ({ ms: tick.ms + visible.startMs, label: formatClock(tick.ms + visible.startMs) }))}
+        sectionMessage={sections.length ? undefined :
+          <p className="px-2 pt-1 text-[10px] text-muted-foreground">{data.phraseError ? 'Phrase analysis could not load' : 'No labeled phrases here'}</p>}
+        cues={cues.map((cue) => <WaveformCueMarker key={cue.id} role="img" aria-label={cue.description} title={cue.description}
+          label={cue.label} color={cue.color} memory={!cue.hot} style={{ left: `${cue.leftPercent}%` }} />)}
+        cueLines={cues}
+        waveforms={[{ id: 'source', state: display, ariaLabel: overview ? 'Full track waveform' : 'Expanded source waveform',
+          colorSegments: phrases.map((phrase) => ({
+            startFraction: (phrase.startMs - visible.startMs) / (visible.endMs - visible.startMs),
+            endFraction: (phrase.endMs - visible.startMs) / (visible.endMs - visible.startMs),
+            color: waveformSectionInk(phrase.semantic.type ?? ''),
+          })),
+        }]}
+        beatTicks={beats.map((beat) => ({
+          key: String(beat.seq), leftPercent: percent(beat.ms), downbeat: beat.isDownbeat,
+          title: `Bar ${beat.bar}, beat ${beat.beatInBar} · ${formatTime(beat.ms)}`,
+        }))}
+        beatLabels={beats.filter((beat) => beat.isDownbeat && (beat.bar - 1) % barLabelStride === 0).map((beat) => ({
+          key: String(beat.seq), leftPercent: percent(beat.ms), text: beat.bar,
+        }))}
+        overlay={<div aria-hidden="true" className="pointer-events-none absolute inset-y-0 rounded-sm border-2 border-primary bg-primary/[0.08]"
+          style={{ left: `${percent(section.startMs)}%`, width: `${percent(section.endMs) - percent(section.startMs)}%` }} />}
+      />
     </div>
   );
 }
@@ -96,7 +92,7 @@ function RepositionWaveform({ target, data, waveform, index, onChange, disabled,
   }, [data.windows, onChange]);
 
   useEffect(() => {
-    const element = surface.current?.querySelector<HTMLElement>('.cue-timeline');
+    const element = surface.current?.querySelector<HTMLElement>('.track-timeline__content');
     if (!element || disabled) return;
     function wheel(event: WheelEvent) {
       const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
@@ -114,7 +110,7 @@ function RepositionWaveform({ target, data, waveform, index, onChange, disabled,
 
   function startDrag(event: PointerEvent<HTMLDivElement>) {
     if (disabled || !event.isPrimary || event.button !== 0) return;
-    const width = event.currentTarget.querySelector<HTMLElement>('.cue-timeline')?.clientWidth ?? 0;
+    const width = event.currentTarget.querySelector<HTMLElement>('.track-timeline__content')?.clientWidth ?? 0;
     if (!width) return;
     scroll.current = null;
     event.currentTarget.setPointerCapture(event.pointerId);

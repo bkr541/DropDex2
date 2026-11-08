@@ -57,8 +57,7 @@ import { PlaylistEditView } from './components/library/PlaylistEditView';
 import { TrackDetailView } from './components/library/TrackDetailView';
 import { EditProfileView } from './components/profile/EditProfileView';
 import { DeveloperTab } from './components/profile/DeveloperTab';
-import { SpotifyExternalAccount } from './components/profile/SpotifyExternalAccount';
-import { SoundCloudTab } from './components/profile/SoundCloudTab';
+import { ExternalMusicTab } from './components/profile/ExternalMusicTab';
 import { UsbConnectionProvider, useUsbConnection } from './contexts/UsbConnectionContext';
 import { FloatingSidebar } from './components/navigation/FloatingSidebar';
 import { NAV_ICONS } from './components/navigation/NavIcons';
@@ -66,8 +65,9 @@ import { StreamingSyncGroup } from './components/profile/StreamingSyncGroup';
 import { RekordboxXmlGroup } from './components/profile/RekordboxXmlGroup';
 import { FloatingLayoutLabButton } from './components/navigation/FloatingLayoutLabButton';
 import { FloatingPageHeader, type PageHeading } from './components/navigation/FloatingPageHeader';
-import { AudioPlayerProvider, useAudioPlayer } from './contexts/AudioPlayerContext';
+import { AudioPlayerProvider } from './contexts/AudioPlayerContext';
 import { NowPlayingBar } from './components/player/NowPlayingBar';
+import { AudioDockWorkspaceProvider, useAudioDockTracks } from './contexts/AudioDockWorkspaceContext';
 import { buildPlaylistIdentityKey, playlistKeyOwner } from './lib/queries/userPlaylists';
 import { useUsbDevices } from './hooks/useUsbDevices';
 import { groupImportsByUsb, UNASSIGNED_KEY } from './lib/usb/groupImportsByUsb';
@@ -102,7 +102,7 @@ const PROFILE_TABS = [
   { id: 'account', label: 'Account' },
   { id: 'appearance', label: 'Personalization' },
   { id: 'library', label: 'Library' },
-  { id: 'soundcloud', label: 'SoundCloud' },
+  { id: 'external-music', label: 'External Music' },
   { id: 'about', label: 'About' },
   { id: 'developer', label: 'Developer' },
 ] as const;
@@ -147,10 +147,14 @@ interface MobileNavProps {
   libraryLabel: string;
 }
 
+function PlaylistDockQueue({ entries, enabled }: { entries: { track: RekordboxTrack }[]; enabled: boolean }) {
+  const tracks = useMemo(() => entries.map((entry) => entry.track), [entries]);
+  useAudioDockTracks(tracks, null, undefined, enabled);
+  return null;
+}
+
 function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavProps) {
-  const { status: playerStatus } = useAudioPlayer();
   const { status: usbStatus, volumeName, connect: connectUsb, reconnect: reconnectUsb, selectNewUsb, ensurePermission } = useUsbConnection();
-  const hasPlayer = playerStatus !== 'idle';
 
   function handleUsbPress() {
     if (usbStatus === 'connected') return;
@@ -167,8 +171,7 @@ function MobileNavBar({ currentView, setCurrentView, libraryLabel }: MobileNavPr
 
   return (
     <nav className={cn(
-      'md:hidden fixed left-0 right-0 glass border-t border-[var(--color-border-subtle)] px-2 pt-4 pb-8 flex justify-between items-center z-40 transition-all duration-200',
-      hasPlayer ? 'bottom-16' : 'bottom-0',
+      'md:hidden relative shrink-0 glass border-t border-[var(--color-border-subtle)] px-2 pt-3 pb-5 flex justify-between items-center z-40',
     )}>
       <button
         onClick={() => setCurrentView('home')}
@@ -1169,8 +1172,10 @@ export default function App() {
   return (
     <UsbConnectionProvider>
     <AudioPlayerProvider imports={allImports}>
+    <AudioDockWorkspaceProvider>
     <>
     <RootFailureProbe />
+    <PlaylistDockQueue entries={playlistTracks} enabled={currentView === 'playlist'} />
     <div className="flex h-screen flex-col overflow-hidden font-sans relative">
       {/* Background ambience */}
       <div className="app-backdrop fixed inset-0 -z-10 overflow-hidden" data-testid="app-backdrop">
@@ -1198,9 +1203,9 @@ export default function App() {
         {/* Scrollable content */}
         <main className={cn(
           'flex-1',
-          currentView === 'flip-lab'
+          (currentView === 'flip-lab' || currentView === 'audition')
             ? 'flex min-h-0 flex-col overflow-hidden p-6'
-            : 'overflow-y-auto px-6 pt-6 pb-32 md:pb-6',
+            : 'min-h-0 overflow-y-auto p-6',
           (currentView === 'cues' || currentView === 'audition' || currentView === 'discovery') && 'scrollbar-none',
         )}>
           <ApplicationErrorBoundary level="feature" resetKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
@@ -1240,7 +1245,6 @@ export default function App() {
                   importId={importId}
                   profile={userProfile}
                   genres={userGenres}
-                  spotifyAccessToken={session?.access_token ?? null}
                   onTrackClick={handleTrackClick}
                   onImport={() => setIsImportModalOpen(true)}
                   onEditProfile={handleEditProfile}
@@ -1318,7 +1322,7 @@ export default function App() {
 
                 {playlistTracksLoading && (
                   <div className="flex items-center justify-center py-16">
-                    <Refresh className="animate-spin text-primary" width={32} height={32} aria-hidden="true" />
+                    <Refresh className="animate-spin text-control-primary" width={32} height={32} aria-hidden="true" />
                   </div>
                 )}
 
@@ -1536,7 +1540,6 @@ export default function App() {
                       playlistProfilesByRbId={playlistProfilesByRbId}
                       recentTracks={recentTracks}
                       recentTracksLoading={recentTracksLoading}
-                      spotifyAccessToken={session?.access_token ?? null}
                       onPlaylistClick={handlePlaylistClick}
                       onEditPlaylist={handleEditPlaylist}
                       onImport={() => setIsImportModalOpen(true)}
@@ -1564,8 +1567,8 @@ export default function App() {
                   onChange={(tab) => setSettingsTab(tab as ProfileTab)}
                 />
                 <div className="studio-surface profile-workspace">
-                  {settingsTab === 'soundcloud' && (
-                    <SoundCloudTab accessToken={session?.access_token ?? null} />
+                  {settingsTab === 'external-music' && (
+                    <ExternalMusicTab accessToken={session?.access_token ?? null} />
                   )}
 
                   {/* ── Account tab ── */}
@@ -1604,10 +1607,6 @@ export default function App() {
                         </div>
                       </section>
                       <DashboardWidgetsGroup widgets={libraryOverviewWidgets} />
-                      <section className="profile-group">
-                        <h2 className="profile-heading">External Accounts</h2>
-                        <SpotifyExternalAccount accessToken={session?.access_token ?? null} />
-                      </section>
                     </div>
                   )}
 
@@ -1637,7 +1636,7 @@ export default function App() {
                           <NoticeCard
                             tone="error"
                             title="Could not load imports"
-                            action={<ControlButton variant="neutral" onClick={refetchImportList}><Refresh width={14} height={14} aria-hidden="true" /> Retry</ControlButton>}
+                            action={<ControlButton variant="secondary" onClick={refetchImportList}><Refresh width={14} height={14} aria-hidden="true" /> Retry</ControlButton>}
                           >
                             {importsListError}
                           </NoticeCard>
@@ -1767,15 +1766,13 @@ export default function App() {
           </AnimatePresence>
           </ApplicationErrorBoundary>
         </main>
-        {/* ── Desktop NowPlaying — in-flow at bottom of content column ── */}
-        {currentView !== 'audition' && <NowPlayingBar className="hidden md:flex shrink-0" />}
       </div>
       </div>
 
-      {/* ── Mobile NowPlaying — fixed above mobile nav ── */}
-      {currentView !== 'audition' && <NowPlayingBar className="md:hidden fixed bottom-0 left-0 right-0 z-50" />}
+      <NowPlayingBar independentWorkspace={currentView === 'drop-lab' ? 'Drop Lab'
+        : currentView === 'set-lab' ? 'Set Lab' : currentView === 'flip-lab' ? 'Flip Lab' : undefined} />
 
-      {/* ── Mobile-only: bottom nav (shifts up when player is active) ── */}
+      {/* ── Mobile-only: navigation below the always-present dock ── */}
       <MobileNavBar
         currentView={currentView}
         setCurrentView={setCurrentView}
@@ -1895,6 +1892,7 @@ export default function App() {
 
     </div>
     </>
+    </AudioDockWorkspaceProvider>
     </AudioPlayerProvider>
     </UsbConnectionProvider>
   );

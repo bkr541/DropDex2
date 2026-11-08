@@ -22,8 +22,6 @@
   --color-control-border: #ffffff1a;
   --color-control-border-soft: #ffffff0a;
   --color-control-focus: #f78361;
-  --color-control-blue: #f56b70;
-  --color-control-blue-rgb: 245 107 112;
   color-scheme: dark;
   color: var(--color-foreground);
   font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;

@@ -1,0 +1,49 @@
+/* Shared by Layout Lab mockup 01 and the application bottom dock. */
+.adl-dock { display: flex; align-items: center; gap: 16px; padding: 0 20px; min-height: 72px; background: linear-gradient(180deg, #ffffff0a 0%, #ffffff00 60%), linear-gradient(165deg, #2c313c 0%, #22262f 45%, #1b1f27 100%); border-top: 1px solid #ffffff14; box-shadow: inset 0 1px 0 #ffffff0d, 0 -14px 32px #00000040; }
+.adl-identity { display: flex; align-items: center; gap: 11px; min-width: 0; flex: 0 1 265px; }
+.adl-identity-text { min-width: 0; }
+.adl-identity strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; letter-spacing: -.005em; color: #fff; }
+.adl-identity-text > span { display: block; margin-top: 3px; color: #a0aabd; font-size: 10px; }
+.adl-art { display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; border: 1px solid #ffffff26; border-radius: 10px; background: radial-gradient(circle at 25% 20%, #f56b7066, transparent 60%), linear-gradient(145deg, #3a4150, #20242d); box-shadow: inset 0 1px 0 #ffffff1f, 0 4px 10px #00000055; }
+.adl-art svg { width: 29px; height: 29px; color: #cdd3dd; stroke-width: 1.2; }
+.adl-transport, .adl-output { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+/* Buttons: plain light icons that turn coral on hover, with hairline rings on the track step buttons, and the coral play disc. */
+.adl-icon-button { display: inline-grid; place-items: center; position: relative; width: 30px; height: 30px; flex: 0 0 30px; border: 1px solid transparent; border-radius: 50%; color: #cdd3dd; cursor: pointer; transition: color 120ms, border-color 120ms, background 120ms; }
+.adl-icon-button:hover:not(:disabled) { color: var(--adl-accent-2); border-color: #f7836180; }
+.adl-icon-button:disabled { opacity: .25; cursor: not-allowed; }
+.adl-icon-button.adl-active { color: var(--adl-accent-2); border-color: #f7836166; background: #f56b7014; }
+.adl-icon-button.adl-play { width: 40px; height: 40px; flex-basis: 40px; margin-inline: 6px; color: #fff; border-color: transparent; background: linear-gradient(145deg, #f78361 0%, #f56b70 100%); box-shadow: inset 0 1px 0 #ffffff4d, 0 8px 18px -6px #f56b70b3; }
+.adl-play:hover:not(:disabled) { color: #fff; border-color: transparent; filter: brightness(1.08); }
+.adl-play:disabled { box-shadow: none; background: #ffffff14; }
+.adl-jump { display: grid; justify-items: center; }
+.adl-jump small { margin-top: -4px; font: 600 7px/1 'Helvetica Neue', Arial, sans-serif; }
+
+.adl-timeline { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 150px; }
+.adl-time { color: #bdc5d2; font: 11px ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; flex-shrink: 0; width: 34px; text-align: center; }
+.adl-seek { position: relative; display: flex; align-items: center; flex: 1; height: 24px; min-width: 50px; }
+.adl-progress-rail { position: absolute; left: 0; right: 0; height: 4px; border-radius: 4px; background: #13161c; box-shadow: inset 0 1px 3px #000000a6, 0 1px 0 #ffffff12; }
+.adl-progress-rail > span { display: block; width: var(--adl-progress); height: 100%; border-radius: inherit; background: linear-gradient(90deg, #f56b70, #f78361); box-shadow: 0 0 8px #f56b7066; }
+.adl-seek > input { position: absolute; inset: 0; margin: 0; width: 100%; height: 100%; appearance: none; background: transparent; cursor: pointer; }
+.adl-seek > input::-webkit-slider-thumb { appearance: none; width: 11px; height: 11px; border-radius: 50%; background: #f6f7fa; box-shadow: 0 0 0 3px #f56b7066, 0 2px 5px #00000080; }
+.adl-seek > input::-moz-range-thumb { width: 11px; height: 11px; border-radius: 50%; background: #f6f7fa; border: 0; box-shadow: 0 0 0 3px #f56b7066; }
+.adl-seek > input:disabled { cursor: not-allowed; }
+.adl-seek > input:disabled::-webkit-slider-thumb { background: #566074; box-shadow: none; }
+.adl-timeline-wave .adl-seek { height: 35px; }
+.adl-timeline-wave .adl-seek > input::-webkit-slider-thumb { width: 2px; height: 35px; border-radius: 0; background: var(--adl-accent-2); box-shadow: 0 0 8px #f78361b3; }
+.adl-timeline-wave .adl-seek > input::-moz-range-thumb { width: 2px; height: 35px; border-radius: 0; background: var(--adl-accent-2); }
+.adl-wave { position: absolute; inset: 0; width: 100%; height: 100%; }
+.adl-wave-unplayed { fill: #8997AE; opacity: .38; }
+.adl-wave-played { fill: #8997AE; }
+.adl-output > input { width: 64px; height: 4px; accent-color: #f56b70; cursor: pointer; }
+
+.adl-metadata, .adl-inline-metadata { display: flex; align-items: center; gap: 12px; flex-shrink: 0; font: 11px ui-monospace, 'SF Mono', Menlo, monospace; color: #f6f7fa; }
+.adl-inline-metadata { margin-top: 7px; font-size: 10px; }
+.adl-metadata small, .adl-inline-metadata small { color: #9aa5b8; font: 9px 'Helvetica Neue', Arial, sans-serif; letter-spacing: .16em; text-transform: uppercase; }
+.adl-key { color: #f6f7fa; font-size: 11px; }
+.adl-genre { color: #a4adbd; font: 11px 'Helvetica Neue', Arial, sans-serif; }
+/* 01 · Essential Strip: a true single-row band. */
+.adl-style-edge .adl-metadata .adl-genre { display: none; }
+.adl-style-edge .adl-dock { gap: 14px; }
+.adl-style-edge .adl-identity { flex-basis: 255px; }
+

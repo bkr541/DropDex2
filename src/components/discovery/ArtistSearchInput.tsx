@@ -27,7 +27,7 @@ export function ArtistSearchInput({
         placeholder={placeholder}
         aria-label={placeholder}
         className="pr-11"
-        icon={loading ? <Refresh className="animate-spin text-primary" width={16} height={16} aria-hidden="true" /> : undefined}
+        icon={loading ? <Refresh className="animate-spin text-control-primary" width={16} height={16} aria-hidden="true" /> : undefined}
       />
       {value && (
         <ControlButton variant="ghost" onClick={onClear} aria-label="Clear search" className="absolute right-4 top-1/2 -translate-y-1/2">

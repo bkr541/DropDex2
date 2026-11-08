@@ -1,3 +1,4 @@
+import { useAudioDockTracks } from '../../contexts/AudioDockWorkspaceContext';
 import { useCallback } from 'react';
 import type React from 'react';
 import { cn, formatKey } from '../../lib/utils';
@@ -224,6 +225,7 @@ export function RecentlyAddedTracksTable({
   onRetryWaveform,
   showHeader = true,
 }: RecentlyAddedTracksTableProps) {
+  useAudioDockTracks(tracks);
   return (
     <section className="space-y-3">
       {showHeader && (

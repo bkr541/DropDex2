@@ -36,7 +36,7 @@ describe('Flip Lab workflow', () => {
     expect(view).toContain("canPlay={state.phase === 'ready'}");
     expect(view).toContain('const vocalFill = separating ? Math.max(0, Math.min(1, state.progress * 2)) : 1;');
     expect(view).toContain('const instrFill = separating ? Math.max(0, Math.min(1, (state.progress - 0.5) * 2)) : 1;');
-    expect(view).toContain('clipPath: `inset(0 ${hidden} 0 0)`');
+    expect(read('src/components/ui/media/TrackTimeline.tsx')).toContain('clipPath: fill < 1');
   });
 
   it('uses an icon-only glow Flip button', () => {
@@ -59,8 +59,8 @@ describe('Flip Lab workflow', () => {
     expect(hook).toContain('const next = soloRef.current === stem ? null : stem;');
     expect(view).toContain("solo={{ enabled: state.solo === 'vocal'");
     expect(view).toContain("solo={{ enabled: state.solo === 'instrumental'");
-    expect(view).toContain("muted={state.solo === 'instrumental'}");
-    expect(view).toContain("muted={state.solo === 'vocal'}");
+    expect(view).toContain("muted: state.solo === 'instrumental'");
+    expect(view).toContain("muted: state.solo === 'vocal'");
   });
 
   it('puts vocal EQ knobs left and instrumental EQ knobs right of a centered half-width dock', () => {

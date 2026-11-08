@@ -47,7 +47,6 @@ const render = () => renderToStaticMarkup(createElement(AudioPlayerProvider, {
     playlistProfilesByRbId: new Map(),
     recentTracks: [{ id: 'r1', title: 'Fresh Track', artist: 'Someone', bpm: 150, musical_key: '2A', duration_ms: 200000 } as RekordboxTrack],
     recentTracksLoading: false,
-    spotifyAccessToken: null,
     onPlaylistClick: vi.fn(),
     onEditPlaylist: vi.fn(),
     onImport: vi.fn(),

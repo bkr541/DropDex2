@@ -19,7 +19,8 @@ describe('Cue Points in the Audition look', () => {
 
   it('keeps the top-right buttons icon-only with compact spacing and hairline dividers', () => {
     expect(css).not.toContain('content: attr(data-label)');
-    expect(css).toMatch(/button\.cue-action-icon,[\s\S]*?padding: 0 8px;[\s\S]*?border-left: 1px solid #ffffff0d/);
+    expect(css).toMatch(/button\.cue-action-icon,[\s\S]*?height: 32px;[\s\S]*?padding: 0 8px;/);
+    expect(css).toMatch(/button\.cue-action-icon::before \{[^}]*top: 50%;[^}]*height: 20px;[^}]*translateY\(-50%\)/);
     for (const label of ['Pending', 'Auto Cue', 'Apply']) expect(view).toContain(`data-label="${label}"`);
     const toolbar = read('CueEditorToolbar.tsx');
     for (const label of ['Grid', 'Repeat', 'Volume', 'State']) expect(toolbar).toContain(`data-label="${label}"`);
@@ -32,14 +33,14 @@ describe('Cue Points in the Audition look', () => {
     expect(view).toContain("from '../ui/media/WaveformCueMarker'");
     expect(read('../audition/AuditionFullSong.tsx')).toContain("from '../ui/media/WaveformCueMarker'");
     expect(view).toContain("memory={cue.family === 'memory'}");
-    expect(css).toMatch(/\.cue-wave-line \{ width: 1px;/);
+    expect(read('../ui/media/track-timeline.css')).toMatch(/\.track-timeline__cue-line \{[^}]*width: 1px;/);
     expect(read('../ui/media/waveform-sections.css')).toContain('border-bottom: 1px solid var(--section-ink)');
-    expect(css).toMatch(/\.timeline-beat-tick \{[^}]*#8997ae59/);
-    expect(css).toMatch(/\.timeline-beat-tick--bar \{[^}]*#c3ccdb99/);
+    expect(read('../ui/media/track-timeline.css')).toMatch(/\.track-timeline__beat-tick \{[^}]*#8997ae59/);
+    expect(read('../ui/media/track-timeline.css')).toMatch(/\.track-timeline__beat-tick--bar \{[^}]*#c3ccdb99/);
   });
 
   it('styles the Cue Points filter bar and delegates record rows to the shared listing', () => {
-    expect(css).toMatch(/\.cue-browser__filters p \{ color: #a5aec0; font-size: 9px/);
+    expect(css).toMatch(/\.cue-browser__filters :is\(p, \.dd-search-control__label\) \{ color: #a5aec0; font-size: 9px/);
     expect(css).not.toContain('.cue-browser__row--selected');
     expect(view).toContain('<RecordTrackListing');
   });

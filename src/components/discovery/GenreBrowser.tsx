@@ -24,7 +24,7 @@ export function GenreBrowser({ genres, loading, error, onRetry, selectedGenreId,
       <div className="discovery-genres" aria-live="polite">
         <span className="studio-label">Genre</span>
         <span className="discovery-genres-status inline-flex items-center gap-2">
-          <Refresh className="animate-spin text-primary" width={14} height={14} aria-hidden="true" /> Loading genres…
+          <Refresh className="animate-spin text-control-primary" width={14} height={14} aria-hidden="true" /> Loading genres…
         </span>
       </div>
     );

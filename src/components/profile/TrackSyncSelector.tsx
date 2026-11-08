@@ -162,7 +162,7 @@ export function TrackSyncSelector({ importId, syncedKeys, onCancel, onSync }: Tr
       </SurfaceCard>
 
       <div className="flex items-center justify-end gap-2">
-        <ControlButton variant="ghost" onClick={onCancel}>Cancel</ControlButton>
+        <ControlButton variant="secondary" onClick={onCancel}>Cancel</ControlButton>
         <ControlButton variant="primary" disabled={selected.size === 0} onClick={() => onSync([...selected.values()])} data-testid="track-sync-submit">
           Sync {selected.size.toLocaleString()} {selected.size === 1 ? 'Track' : 'Tracks'}
         </ControlButton>

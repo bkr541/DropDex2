@@ -17,13 +17,14 @@ const render = (props: Partial<Parameters<typeof TrackListing<Row>>[0]> = {}) =>
 const read = (p: string) => readFileSync(resolve(__dirname, p), 'utf8');
 
 describe('TrackListing', () => {
-  it('draws capital headings, the Track column first and an Actions column last', () => {
+  it('draws sentence-case headings, the Track column first and an Actions column last', () => {
     const markup = render();
     const head = markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'));
     expect(head.match(/<th /g)).toHaveLength(3);
     expect(head.indexOf('>Track<')).toBeLessThan(head.indexOf('>BPM<'));
     expect(head.indexOf('>BPM<')).toBeLessThan(head.indexOf('>Actions<'));
-    expect(head).not.toContain('normal-case');
+    expect(head).toContain('normal-case');
+    expect(head).not.toContain('uppercase');
   });
 
   it('shows the original status dot, the title and the artist (or the app-wide missing-artist text) in every row', () => {
@@ -74,7 +75,6 @@ describe('production record screens use the Audition table', () => {
     'flip-lab/FlipLabView.tsx',
     'profile/TrackSyncSelector.tsx',
     'usb-management/UsbDeviceLibrary.tsx',
-    'library/SpotifyLibraryTab.tsx',
     '../features/set-lab/SetLabTrackBrowser.tsx',
   ])('%s', (file) => {
     const source = src(file);

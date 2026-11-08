@@ -17,13 +17,14 @@ const cueSource = read('../cues/CuePointsView.tsx');
 describe('Artist Library tabs', () => {
   it('offers the Library tabs in the same order, without Overview and Analysis Incomplete', async () => {
     const { artistLibraryTabs } = await import('./artistLibraryTabs');
-    expect(artistLibraryTabs(false).map((tab) => tab.label)).toEqual(['Playlists', 'Recently Added', 'Tracks', 'Genres', 'Artists']);
+    expect(artistLibraryTabs().map((tab) => tab.label)).toEqual(['Playlists', 'Recently Added', 'Tracks', 'Genres', 'Artists']);
   });
 
-  it('adds Spotify after Artists only when the account can show playlists', async () => {
+  it('keeps Spotify metadata out of the Library tabs', async () => {
     const { artistLibraryTabs } = await import('./artistLibraryTabs');
-    expect(artistLibraryTabs(true).map((tab) => tab.label)).toEqual(['Playlists', 'Recently Added', 'Tracks', 'Genres', 'Artists', 'Spotify']);
-    expect(artistLibraryTabs(null).map((tab) => tab.id)).not.toContain('spotify');
+    expect(artistLibraryTabs().map((tab) => tab.id)).not.toContain('spotify');
+    expect(artistLibrarySource).not.toContain('SpotifyMetadataBrowser');
+    expect(libraryViewSource).not.toContain('SpotifyMetadataBrowser');
   });
 
   it('starts on Tracks, and keeps the Tracks table mounted so its filters survive a tab change', () => {
@@ -37,7 +38,6 @@ describe('Artist Library tabs', () => {
     expect(artistLibrarySource).toContain('<GenresPanel');
     expect(artistLibrarySource).toContain('<ArtistsPanel');
     expect(artistLibrarySource).toContain('<RecentlyAddedPanel');
-    expect(artistLibrarySource).toContain('<SpotifyLibraryTab');
     expect(libraryViewSource).not.toContain('<PlaylistsPanel');
     expect(libraryViewSource).not.toContain('<GenresPanel');
     expect(libraryViewSource).not.toContain('<ArtistsPanel');
@@ -46,9 +46,7 @@ describe('Artist Library tabs', () => {
     expect(artistLibrarySource).toContain('<LibraryTabBar');
   });
 
-  it('falls back to Tracks if the Spotify tab disappears while it is open', () => {
-    expect(artistLibrarySource).toContain("if (spotifyAvailable === false && activeTab === 'spotify') setActiveTab('tracks')");
-  });
+
 });
 
 describe('Artist Library page name and header row', () => {
@@ -62,7 +60,7 @@ describe('Artist Library page name and header row', () => {
   });
 
   it('passes the Library data the new tabs need', () => {
-    for (const prop of ['playlistsLoading', 'playlistProfilesByRbId', 'recentTracks', 'recentTracksLoading', 'spotifyAccessToken', 'onPlaylistClick', 'onEditPlaylist']) {
+    for (const prop of ['playlistsLoading', 'playlistProfilesByRbId', 'recentTracks', 'recentTracksLoading', 'onPlaylistClick', 'onEditPlaylist']) {
       expect(appSource).toMatch(new RegExp(`<ArtistLibraryView[\\s\\S]*?${prop}=\\{`));
     }
   });
@@ -104,11 +102,11 @@ describe('Library tab icons', () => {
   });
 
   it('gives every Library and Artist Library tab its own icon', async () => {
-    const { LIBRARY_TABS, SPOTIFY_TAB } = await import('./LibraryView');
+    const { LIBRARY_TABS } = await import('./LibraryView');
     const { artistLibraryTabs } = await import('./artistLibraryTabs');
-    for (const tab of [...LIBRARY_TABS, SPOTIFY_TAB]) expect(tab.icon, tab.id).toBeTruthy();
-    expect(new Set([...LIBRARY_TABS, SPOTIFY_TAB].map((tab) => tab.icon)).size).toBe(LIBRARY_TABS.length + 1);
-    for (const tab of artistLibraryTabs(true)) expect(tab.icon, tab.id).toBeTruthy();
+    for (const tab of LIBRARY_TABS) expect(tab.icon, tab.id).toBeTruthy();
+    expect(new Set(LIBRARY_TABS.map((tab) => tab.icon)).size).toBe(LIBRARY_TABS.length);
+    for (const tab of artistLibraryTabs()) expect(tab.icon, tab.id).toBeTruthy();
   });
 });
 
@@ -116,6 +114,8 @@ describe('Library tab panels', () => {
   it('shows the Genres tab with its count and a bar for each genre', () => {
     const markup = renderToStaticMarkup(createElement(GenresPanel, { genreStats: [['House', 40], ['Techno', 20]], loading: false }));
     expect(markup).toContain('2 genres');
+    expect(markup).toContain('aria-label="Search genres"');
+    expect(markup).toContain('data-testid="library-filter-row"');
     expect(markup).toContain('House');
     expect(markup).toContain('width:100%');
     expect(markup).toContain('width:50%');
@@ -124,6 +124,7 @@ describe('Library tab panels', () => {
   it('shows the Artists tab with its count and each artist\'s initial', () => {
     const markup = renderToStaticMarkup(createElement(ArtistsPanel, { artistStats: [['Nurko', 12]], loading: false }));
     expect(markup).toContain('1 artists');
+    expect(markup).toContain('aria-label="Search artists"');
     expect(markup).toContain('Nurko');
     expect(markup).toContain('>N<');
   });

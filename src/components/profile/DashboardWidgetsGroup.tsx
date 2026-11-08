@@ -21,7 +21,7 @@ export function DashboardWidgetsGroup({ widgets }: { widgets: LibraryOverviewWid
             <p className="text-sm font-bold">Choose what shows on your Library page</p>
             <p className="mt-0.5 text-xs text-muted-foreground">Turn a group off to hide it. Your choice is saved to your account, so it follows you to your other devices.</p>
           </div>
-          {hidden.size > 0 && <ControlButton variant="neutral" onClick={showAll} data-testid="dashboard-widgets-show-all">Show everything</ControlButton>}
+          {hidden.size > 0 && <ControlButton variant="secondary" onClick={showAll} data-testid="dashboard-widgets-show-all">Show everything</ControlButton>}
         </div>
         {/* Two columns on wider screens; hairlines between the rows and between the columns. */}
         <ul className="profile-records grid grid-cols-1 border-t border-[var(--color-border-faint)] md:grid-cols-2" data-testid="dashboard-widget-list">

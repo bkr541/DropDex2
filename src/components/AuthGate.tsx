@@ -89,7 +89,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (auth.status === 'loading') {
     return (
       <div className="flex h-screen items-center justify-center bg-background font-sans" aria-label="Loading authentication">
-        <Refresh className="animate-spin text-primary" width={32} height={32} aria-hidden="true" />
+        <Refresh className="animate-spin text-control-primary" width={32} height={32} aria-hidden="true" />
       </div>
     );
   }

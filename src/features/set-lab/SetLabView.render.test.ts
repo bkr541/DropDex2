@@ -137,7 +137,7 @@ describe('Set Lab component rendering', () => {
     expect(markup).toContain('grid-template-columns:minmax(0, 16000fr) minmax(0, 12800fr)');
     expect(markup).toContain('data-cue-family="hot"');
     expect(markup).toContain('data-cue-family="memory"');
-    expect(markup).toContain('timeline-beat-tick--bar');
+    expect(markup).toContain('track-timeline__beat-tick--bar');
     expect(markup).toContain('150.0 BPM');
     expect(markup).toContain('Preview waveform · Detail unavailable');
     expect(markup).toContain('Scrollable five-slot timeline');
@@ -157,7 +157,7 @@ describe('Set Lab component rendering', () => {
     const markup = renderTimeline(3, transport('playing', 40.8));
     expect(markup).toContain('aria-label="Pause Set"');
     expect(markup.match(/data-testid="set-lab-playhead"/g)).toHaveLength(1);
-    expect(markup).toContain('left:clamp(1px, 50%, calc(100% - 1px))');
+    expect(markup).toContain('left:clamp(1px, 75%, calc(100% - 1px))');
     expect(markup).toContain('40.8 / 81.6 s');
     expect(markup).not.toMatch(/aria-label="Bars for slot 3"[^>]*disabled/);
     expect(markup).not.toMatch(/aria-label="Select waveform for slot 3"[^>]*disabled/);

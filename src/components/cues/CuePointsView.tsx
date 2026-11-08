@@ -1,14 +1,17 @@
+import { useAudioDockTracks } from '../../contexts/AudioDockWorkspaceContext';
 import { AuditionTrackHeader } from '../audition/AuditionTrackHeader';
 import { formatClock, timeRulerTicks } from '../audition/auditionTracks';
-import { WaveformTimeRuler } from '../ui/media/WaveformTimeRuler';
+import { TrackTimeline } from '../ui/media/TrackTimeline';
 import { waveformSectionInk } from '../ui/media/waveformPresentation';
 import { cueFlagColor, WaveformCueMarker } from '../ui/media/WaveformCueMarker';
 import { CloudSyncIcon } from '../library/CloudSyncIcon';
 import { useSyncedPreviewKeys } from '../../hooks/useSyncedPreviewKeys';
 import { trackIdentityKey } from '../../lib/preview/trackIdentity';
+import { GenreEditPopover } from './GenreEditPopover';
+import { TrackSourceTabs } from './TrackSourceTabs';
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Clock, DatabaseExport, DotsGrid3x3, EditPencil, FloppyDisk, Label, LightBulb, MusicNote, NavArrowDown, Palette, Pause, Play, Refresh, Repeat, SoundHigh, SoundOff, TaskList, Timer, Undo, Upload, WarningTriangle, Xmark } from 'iconoir-react/regular';
+import { Clock, DatabaseExport, EditPencil, FloppyDisk, Label, LightBulb, MusicNote, NavArrowDown, Palette, Pause, Play, Refresh, TaskList, Timer, Undo, Upload, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { cn, formatKey } from '../../lib/utils';
 import { isUsableBeatGrid } from '../../lib/music/beatGridHelpers';
 import { barLabelBeats, beatRulerTicks, timelineGridLines } from '../../lib/cues/beatRuler';
@@ -47,16 +50,14 @@ import {
   type PhraseRow,
   type VocalAnalysisRow,
 } from '../../lib/queries/analysisData';
-import { RekordboxPreviewWaveform, type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
-import { CueEditorToolbar, CueStateIcon } from './CueEditorToolbar';
+import { type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
+import { CueEditorToolbar, CueStateIcon, TimelineGridControls } from './CueEditorToolbar';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
 import { ControlButton, DualRangeSlider, FilterDropdown, SearchControl, SelectControl, TextControl } from '../ui/controls';
-import { TabNavigation } from '../ui/display/TabNavigation';
-import { AudioDock, MediaTransportControlGroup, PlaybackSeekBar, TransportButton, TimelineBeatLane, TimelineSectionLane, WaveformZoomControls } from '../ui/media';
-import { PlaybackSourceBadge } from '../player/PlaybackSourceBadge';
+import { WaveformZoomControls } from '../ui/media';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
-import { clampCueTransportTime, cueAdjacentTrackIndex, cuePlaybackPlayheadPercent } from '../../lib/cues/cuePlaybackTransport';
+import { cuePlaybackPlayheadPercent } from '../../lib/cues/cuePlaybackTransport';
 import type { RekordboxTrack } from '../../types';
 import { buildTimelineSections } from '../../lib/music/phraseSections';
 import { durationMsForTrack, formatTime } from '../../lib/music/trackTiming';
@@ -310,199 +311,6 @@ function CueEditorPlaybackPlayhead({
         <span className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 -translate-y-[2px] rotate-45 rounded-[1px] bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]" />
       </span>
     </div>
-  );
-}
-
-function CuePointsAudioDock({
-  audition = false,
-  showBrowserSource = true,
-  regionLabel,
-  selectedTrack,
-  orderedTracks,
-  onSelectTrack,
-  gridDisplayMode,
-  onGridDisplayModeChange,
-  gridVisible,
-  onGridVisibleChange,
-  browserSource,
-  onBrowserSourceChange,
-}: {
-  selectedTrack: RekordboxTrack | null;
-  orderedTracks: RekordboxTrack[];
-  onSelectTrack: (track: RekordboxTrack) => void;
-  gridDisplayMode: CueGridDisplayMode;
-  onGridDisplayModeChange: (v: CueGridDisplayMode) => void;
-  gridVisible: boolean;
-  onGridVisibleChange: (v: boolean) => void;
-  browserSource: BrowserSource;
-  onBrowserSourceChange: (v: BrowserSource) => void;
-  audition?: boolean;
-  showBrowserSource?: boolean;
-  regionLabel?: string;
-}) {
-  const {
-    activeTrack,
-    status,
-    playIntent,
-    volume,
-    muted,
-    repeat,
-    error,
-    playTrack,
-    toggleTrack,
-    seek,
-    setVolume,
-    toggleMute,
-    toggleRepeat,
-    getAudioElement,
-  } = useAudioPlayer();
-  const label = regionLabel ?? (audition ? 'Audition' : 'Cue Points');
-  const transportTrack = selectedTrack ?? activeTrack;
-  const transportIsActive = activeTrack?.id === transportTrack?.id;
-  const playbackProgress = useWaveformProgress(transportTrack?.id);
-  const orderedTrackIds = useMemo(() => orderedTracks.map((track) => track.id), [orderedTracks]);
-  const previousIndex = cueAdjacentTrackIndex(orderedTrackIds, transportTrack?.id, selectedTrack?.id, -1);
-  const nextIndex = cueAdjacentTrackIndex(orderedTrackIds, transportTrack?.id, selectedTrack?.id, 1);
-  const audio = getAudioElement();
-  const durationSeconds = transportIsActive && audio && Number.isFinite(audio.duration) && audio.duration > 0
-    ? audio.duration
-    : transportTrack ? (durationMsForTrack(transportTrack, null) ?? 0) / 1000 : 0;
-  const fallbackCurrentTime = playbackProgress != null && durationSeconds > 0 ? playbackProgress * durationSeconds : 0;
-  const currentSeconds = transportIsActive && audio && Number.isFinite(audio.currentTime) ? audio.currentTime : fallbackCurrentTime;
-  const loading = transportIsActive && (status === 'resolving' || status === 'loading');
-  const hasTransportTrack = Boolean(activeTrack ?? selectedTrack);
-  const transportBlocked = !hasTransportTrack || loading;
-  const seekable = Boolean(transportIsActive && audio && Number.isFinite(audio.duration) && audio.duration > 0 && status !== 'error' && !transportBlocked);
-  const playing = Boolean(transportIsActive && activeTrack && playIntent && status !== 'error');
-
-  const playAdjacent = useCallback((index: number | null) => {
-    if (transportBlocked || index == null) return;
-    const destination = orderedTracks[index];
-    if (!destination) return;
-    onSelectTrack(destination);
-    void playTrack(destination);
-  }, [onSelectTrack, orderedTracks, playTrack, transportBlocked]);
-
-  const handleTogglePlay = useCallback(() => {
-    const target = transportTrack;
-    if (!target || transportBlocked) return;
-    void toggleTrack(target);
-  }, [transportTrack, toggleTrack, transportBlocked]);
-
-  const handleSeekBy = useCallback((deltaSeconds: number) => {
-    if (!seekable) return;
-    seek(clampCueTransportTime(currentSeconds, durationSeconds, deltaSeconds));
-  }, [currentSeconds, durationSeconds, seek, seekable]);
-
-  const volumeControls = (<>
-        <TransportButton label={muted ? 'Unmute' : 'Mute'} tone="mute" size="compact" active={muted} onClick={toggleMute}>
-          {muted || volume === 0 ? <SoundOff width={16} height={16} aria-hidden="true" /> : <SoundHigh width={16} height={16} aria-hidden="true" />}
-        </TransportButton>
-        <input type="range" min={0} max={1} step={0.01} value={muted ? 0 : volume}
-          onChange={(event) => setVolume(Number(event.target.value))}
-          aria-label={`${label} playback volume`} className="h-1.5 w-20 cursor-pointer accent-primary" />
-  </>);
-
-  return (
-    <AudioDock
-      data-testid="cue-audio-dock"
-      className={audition ? 'flex-row items-center overflow-x-auto' : 'flex-col xl:flex-row xl:items-center'}
-      aria-label={`${label} audio dock`}
-    >
-      {showBrowserSource && <div className="flex min-w-0 shrink-0 self-stretch xl:w-[190px]">
-        <TabNavigation
-          ariaLabel={`${label} browser source`}
-          variant="primary"
-          value={browserSource}
-          onChange={(value) => onBrowserSourceChange(value as BrowserSource)}
-          options={[
-            { id: 'library', label: 'Library' },
-            { id: 'playlists', label: 'Playlists' },
-          ]}
-        />
-      </div>}
-
-      <MediaTransportControlGroup
-        compact
-        ariaLabel={`${label} transport controls`}
-        playing={playing}
-        onPrevious={() => playAdjacent(previousIndex)}
-        onRewind={() => handleSeekBy(-10)}
-        onTogglePlay={handleTogglePlay}
-        onForward={() => handleSeekBy(10)}
-        onNext={() => playAdjacent(nextIndex)}
-        previousDisabled={transportBlocked || previousIndex == null}
-        rewindDisabled={!seekable}
-        playDisabled={transportBlocked}
-        forwardDisabled={!seekable}
-        nextDisabled={transportBlocked || nextIndex == null}
-      />
-
-      <PlaybackSeekBar
-        className="cue-dock__seek"
-        currentSeconds={currentSeconds}
-        durationSeconds={durationSeconds}
-        seekable={seekable}
-        onSeek={seek}
-        ariaLabel={`${label} playback position`}
-      />
-
-      <PlaybackSourceBadge />
-
-      {audition && (
-        <>
-      <div className="cue-dock__grid-count flex shrink-0 items-center gap-3 border-l border-white/10 pl-4">
-        <FilterDropdown
-          label="Beat Count"
-          value={gridDisplayMode}
-          onChange={(v) => onGridDisplayModeChange(v as CueGridDisplayMode)}
-          className="min-w-[80px]"
-          options={[
-            { value: 'beats', label: 'Beats' },
-            { value: 'bars', label: 'Bars' },
-            { value: '4-bars', label: '4 Bars' },
-            { value: '8-bars', label: '8 Bars' },
-            { value: '16-bars', label: '16 Bars' },
-          ]}
-        />
-      </div>
-
-      <div className="cue-dock__options flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          aria-label={gridVisible ? 'Hide grid' : 'Show grid'}
-          aria-pressed={gridVisible}
-          onClick={() => onGridVisibleChange(!gridVisible)}
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-md border transition-colors',
-            gridVisible
-              ? 'border-primary/40 bg-primary/15 text-primary'
-              : 'border-[var(--color-border-subtle)] bg-[var(--color-card)] text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <DotsGrid3x3 width={14} height={14} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          aria-label={repeat ? 'Disable repeat' : 'Repeat current track'}
-          aria-pressed={repeat}
-          disabled={!activeTrack || transportBlocked}
-          onClick={toggleRepeat}
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-35',
-            repeat
-              ? 'border-primary/40 bg-primary/15 text-primary'
-              : 'border-[var(--color-border-subtle)] bg-[var(--color-card)] text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <Repeat width={14} height={14} aria-hidden="true" />
-        </button>
-        {volumeControls}
-      </div>
-        </>
-      )}
-      {!audition && <div className="cue-dock__options flex shrink-0 items-center gap-2 border-l border-white/10 pl-3">{volumeControls}</div>}
-    </AudioDock>
   );
 }
 
@@ -864,8 +672,6 @@ type CueContextMenuState =
 
 function CueWaveformPanel({
   audition = false,
-  compact = false,
-  cuesAboveWaveform = false,
   track,
   beatGrid,
   cues,
@@ -908,8 +714,6 @@ function CueWaveformPanel({
   onGridVisibleChange,
 }: {
   audition?: boolean;
-  compact?: boolean;
-  cuesAboveWaveform?: boolean;
   track: RekordboxTrack | null;
   beatGrid: BeatGridRow | null;
   cues: WorkingCue[];
@@ -1203,38 +1007,6 @@ function CueWaveformPanel({
   const applyTrackDisabled = !applyTrackAvailable || applying;
   const applyAllDisabled = applyAllCount === 0 || applying;
 
-  const sectionAndRuler = (
-    <>
-      <TimelineSectionLane
-        message={phraseLoading ? (
-          <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
-        ) : sections.length === 0 ? (
-          <div className="absolute inset-0 flex items-center px-2">
-            <div className="h-[30px] w-full rounded-[5px] border border-white/[0.035] bg-white/[0.015]" />
-            <span className="absolute left-4 text-[10px] font-medium uppercase tracking-[0.12em] text-[#66717b]">
-              Sections unavailable
-            </span>
-          </div>
-        ) : undefined}
-        sections={sections.map((section) => {
-          const left = percentageAt(section.startMs, viewStart, effectiveViewEnd);
-          const right = percentageAt(section.endMs, viewStart, effectiveViewEnd);
-          return {
-            id: section.id,
-            label: section.label,
-            color: waveformSectionInk(section.label),
-            leftPercent: left,
-            widthPercent: Math.max(0, right - left),
-            title: `${section.label} · ${formatTime(section.startMs)}–${formatTime(section.endMs)}`,
-          };
-        })}
-      />
-
-      <div className="cue-timeline__data-lane">
-        <WaveformTimeRuler ticks={timeTicks} startMs={viewStart} endMs={effectiveViewEnd} />
-      </div>
-    </>
-  );
 
   return (
     <section className="cue-workstation relative overflow-visible" data-testid="cue-points-workstation">
@@ -1243,6 +1015,16 @@ function CueWaveformPanel({
         durationMs={durationMs}
         cueCount={audition ? undefined : cueLoading ? '…' : cueLoadStatus === 'failed' ? '!' : String(cues.length)}
       />
+      {audition && <div className="cue-workstation__toolbar" role="group" aria-label="Track timeline controls">
+        <div className="cue-workstation__actions flex shrink-0 items-center gap-0.5">
+          <TimelineGridControls
+            gridDisplayMode={gridDisplayMode}
+            onGridDisplayModeChange={onGridDisplayModeChange}
+            gridVisible={gridVisible}
+            onGridVisibleChange={onGridVisibleChange}
+          />
+        </div>
+      </div>}
       {!audition && <div className="cue-workstation__toolbar">
         <div className="cue-workstation__actions flex shrink-0 items-center gap-0.5">
           <CueStateIcon state={draftStatus} />
@@ -1386,19 +1168,34 @@ function CueWaveformPanel({
         </div>
       )}
 
-      <div className={cn('cue-workstation__timeline px-4 lg:px-5', compact ? 'py-1.5' : 'pb-0 pt-0')}>
+      <div className="cue-workstation__timeline">
         <div className="overflow-x-auto">
-          <div className="waveform-section-frame min-w-[920px]">
-            <div className="cue-timeline relative bg-[var(--color-background)]">
-              <CueEditorPlaybackPlayhead
-                trackId={track.id}
-                viewStartMs={viewStart}
-                viewEndMs={effectiveViewEnd}
-              />
-            <div className="grid gap-0 grid-cols-[minmax(0,1fr)]">
-              {cuesAboveWaveform && sectionAndRuler}
-              <div className="cue-timeline__cues cue-timeline__data-lane h-9 overflow-hidden">
-                <div className="relative h-full overflow-visible">
+          <div className="min-w-[920px]">
+            <TrackTimeline
+              sectionMessage={phraseLoading ? (
+                <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading track sections…</div>
+              ) : sections.length === 0 ? (
+                <div className="absolute inset-0 flex items-center px-2">
+                  <div className="h-[30px] w-full rounded-[5px] border border-white/[0.035] bg-white/[0.015]" />
+                  <span className="absolute left-4 text-[10px] font-medium uppercase tracking-[0.12em] text-[#66717b]">
+                    Sections unavailable
+                  </span>
+                </div>
+              ) : undefined}
+              sections={sections.map((section) => {
+                const left = percentageAt(section.startMs, viewStart, effectiveViewEnd);
+                const right = percentageAt(section.endMs, viewStart, effectiveViewEnd);
+                return {
+                  id: section.id,
+                  label: section.label,
+                  color: waveformSectionInk(section.label),
+                  leftPercent: left,
+                  widthPercent: Math.max(0, right - left),
+                  title: `${section.label} · ${formatTime(section.startMs)}–${formatTime(section.endMs)}`,
+                };
+              })}
+              start={viewStart} end={effectiveViewEnd} timeTicks={timeTicks}
+              cues={<>
                 {cueLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading cue points…</div>
                 ) : cueLoadStatus === 'failed' ? (
@@ -1413,7 +1210,7 @@ function CueWaveformPanel({
                     </button>
                   </div>
                 ) : positionedCues.length === 0 ? (
-                  <div className="flex h-full items-center px-5 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">
+                  <div className="flex h-full items-center justify-center px-5 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">
                     No cue points
                   </div>
                 ) : (
@@ -1487,56 +1284,25 @@ function CueWaveformPanel({
                     })}
                   </>
                 )}
-                </div>
-              </div>
-
-              {!cuesAboveWaveform && sectionAndRuler}
-              <div className={cn('cue-timeline__data-lane relative group/waveform' , compact ? 'h-[56px]' : 'h-[72px]')}>
-              <div
-                ref={waveformDivRef}
-                className={cn('relative h-full overflow-hidden', audition ? 'cursor-pointer' : 'cursor-crosshair')}
-                onClick={audition && panelActiveTrack?.id === track.id ? (event) => {
+              </>}
+              waveforms={[{
+                id: track.id, state: waveformState, colorSegments: waveformColorSegments,
+                leftPercent: durationMs > 0 ? -viewStart / (effectiveViewEnd - viewStart) * 100 : 0,
+                widthPercent: durationMs > 0 ? durationMs / (effectiveViewEnd - viewStart) * 100 : 100,
+                onRetry: onRetryWaveform, ariaLabel: `Cue point waveform for ${track.title}`,
+              }]}
+              waveformRef={waveformDivRef}
+              waveformProps={{
+                className: audition ? 'cursor-pointer' : 'cursor-crosshair',
+                onClick: audition && panelActiveTrack?.id === track.id ? (event) => {
                   const requestedMs = timeAtClientX(event.clientX, event.currentTarget);
                   if (requestedMs != null) seekPlayback(requestedMs / 1000);
-                } : undefined}
-                onContextMenu={audition ? undefined : handleWaveformContextMenu}
-                title={audition ? undefined : snapResolution !== 'off' ? `Right-click to add a ${cueSnapResolutionLabel(snapResolution)} snapped cue` : 'Right-click to add an exact millisecond cue'}
-              >
-                {durationMs != null && durationMs > 0 ? (() => {
-                  const wScale = durationMs / (effectiveViewEnd - viewStart);
-                  const wLeft = -(viewStart / durationMs) * wScale * 100;
-                  return (
-                    <div className="absolute inset-y-0" style={{ left: `${wLeft}%`, width: `${wScale * 100}%` }}>
-                      <RekordboxPreviewWaveform
-                        state={waveformState}
-                        height={compact ? 54 : 72}
-                        variant="detail"
-                        appearance="rekordbox"
-                        renderMode="area"
-                        showCenterLine={false}
-                        surface={false}
-                        colorSegments={waveformColorSegments}
-                        onRetry={onRetryWaveform}
-                        ariaLabel={`Cue point waveform for ${track.title}`}
-                        className="absolute inset-x-0 top-0 w-full"
-                      />
-                    </div>
-                  );
-                })() : (
-                  <RekordboxPreviewWaveform
-                    state={waveformState}
-                    height={compact ? 54 : 72}
-                    variant="detail"
-                    appearance="rekordbox"
-                    renderMode="area"
-                    showCenterLine={false}
-                    surface={false}
-                    colorSegments={waveformColorSegments}
-                    onRetry={onRetryWaveform}
-                    ariaLabel={`Cue point waveform for ${track.title}`}
-                    className="absolute inset-x-0 top-0"
-                  />
-                )}
+                } : undefined,
+                onContextMenu: audition ? undefined : handleWaveformContextMenu,
+                title: audition ? undefined : snapResolution !== 'off' ? `Right-click to add a ${cueSnapResolutionLabel(snapResolution)} snapped cue` : 'Right-click to add an exact millisecond cue',
+              }}
+              cueLines={positionedCues.map((cue) => ({ id: cue.editorId, leftPercent: percentageAt(cue.startMs ?? 0, viewStart, effectiveViewEnd), label: cue.markerLabel, color: cue.markerColor }))}
+              waveformOverlay={<>
                 {durationMs != null && durationMs > 0 && (
                   <div className="pointer-events-none absolute inset-0" aria-hidden="true">
                     {activeSection && (() => {
@@ -1558,10 +1324,6 @@ function CueWaveformPanel({
                         )}
                         style={{ left: `${percentageAt(beat.ms, viewStart, effectiveViewEnd)}%` }}
                       />
-                    ))}
-                    {timeTicks.slice(1).map((tick) => (
-                      <span key={`time-grid-${tick.ms}`} className="absolute bottom-0 top-0 w-px bg-white/[0.06]"
-                        style={{ left: `${percentageAt(tick.ms, viewStart, effectiveViewEnd)}%` }} />
                     ))}
                     {gridVisible && effectiveViewEnd - viewStart < durationMs && sections.slice(1).map((section) => (
                       <span
@@ -1590,15 +1352,7 @@ function CueWaveformPanel({
                               <span className="absolute bottom-0 right-0 top-0 w-px" style={{ backgroundColor: markerColor }} />
                             </span>
                           )}
-                          <span
-                            className="cue-wave-line absolute bottom-0 top-0 w-[2px] opacity-75"
-                            style={{
-                              left: `${percentageAt(cue.startMs ?? 0, viewStart, effectiveViewEnd)}%`,
-                              '--cue-ink': markerColor,
-                              backgroundColor: markerColor,
-                              boxShadow: `0 0 5px ${markerColor}55`,
-                            } as CSSProperties}
-                          />
+
                         </span>
                       );
                     })}
@@ -1612,18 +1366,16 @@ function CueWaveformPanel({
                     {editorMessage ?? persistenceMessage}
                   </div>
                 )}
-              </div>
+              </>}
+              waveformControls={
               <WaveformZoomControls
                 onZoomIn={() => handleZoom(0.75)}
                 onZoomOut={() => handleZoom(1 / 0.75)}
                 canZoomIn={zoom.canZoomIn}
                 canZoomOut={zoom.canZoomOut}
               />
-              </div>
-
-              <TimelineBeatLane className="cue-timeline__beats"
-                extendLeft={cuesAboveWaveform}
-                message={!gridVisible ? (
+              }
+                beatMessage={!gridVisible ? (
                   <div className="flex h-full items-center px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]">Grid hidden</div>
                 ) : beatGridLoading ? (
                   <div className="flex h-full items-center px-2 text-[11px] font-medium text-[#707b85]">Loading beat grid…</div>
@@ -1632,20 +1384,19 @@ function CueWaveformPanel({
                     No beat grid
                   </div>
                 ) : undefined}
-                ticks={rulerTicks.map((beat) => ({
+                beatTicks={rulerTicks.map((beat) => ({
                   key: `ruler-${beat.seq}`,
                   leftPercent: percentageAt(beat.ms, viewStart, effectiveViewEnd),
                   downbeat: beat.isDownbeat || beat.beatInBar === 1,
                   title: `Bar ${beat.bar}, beat ${beat.beatInBar} · ${formatTime(beat.ms)}`,
                 }))}
-                labels={rulerLabels.map((beat) => ({
+                beatLabels={rulerLabels.map((beat) => ({
                   key: `bar-label-${beat.seq}`,
                   leftPercent: percentageAt(beat.ms, viewStart, effectiveViewEnd),
                   text: beat.bar,
                 }))}
-              />
-            </div>
-            </div>
+              overlay={<CueEditorPlaybackPlayhead trackId={track.id} viewStartMs={viewStart} viewEndMs={effectiveViewEnd} />}
+            />
           </div>
         </div>
       </div>
@@ -1730,11 +1481,10 @@ function CueWaveformPanel({
 }
 
 /** Focused, read-only use of the production Cue Points timeline for track details. */
-export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform, cuesAboveWaveform = false }: {
+export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform }: {
   track: RekordboxTrack;
   waveformState: WaveformLoadState;
   onRetryWaveform?: () => void;
-  cuesAboveWaveform?: boolean;
 }) {
   const auth = useAuthSession();
   const userId = auth.status === 'authenticated' ? auth.session.user.id : null;
@@ -1785,7 +1535,7 @@ export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform, cue
   const noop = () => {};
   return (
     <section className="studio-surface cue-studio cue-track-panel" aria-label="Track timeline">
-      <CueWaveformPanel audition cuesAboveWaveform={cuesAboveWaveform} track={track} beatGrid={beatGrid} cues={cues} phrases={phrases}
+      <CueWaveformPanel audition track={track} beatGrid={beatGrid} cues={cues} phrases={phrases}
         cueLoading={loading} cueLoadStatus={cueStatus} cueLoadError={cueError} cueIntegrity={null}
         beatGridLoading={loading} phraseLoading={loading} waveformState={waveformState}
         dirty={false} draftStatus="Original" baselineProofRefreshNeeded={false} saving={false}
@@ -1799,10 +1549,6 @@ export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform, cue
       {analysisError && <div role="status" className="flex items-center justify-between gap-3 px-5 py-2 text-xs text-muted-foreground">
         <span>{analysisError}</span><ControlButton variant="ghost" onClick={retryAnalysis}>Retry analysis</ControlButton>
       </div>}
-      <CuePointsAudioDock audition regionLabel="Track" showBrowserSource={false} selectedTrack={track}
-        orderedTracks={[track]} onSelectTrack={noop}
-        gridDisplayMode={gridDisplayMode} onGridDisplayModeChange={setGridDisplayMode}
-        gridVisible={gridVisible} onGridVisibleChange={setGridVisible} browserSource="library" onBrowserSourceChange={noop} />
     </section>
   );
 }
@@ -1823,6 +1569,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
   const [bpmRange, setBpmRange] = useState<[number, number] | null>(null);
   const [editingGenreTrackId, setEditingGenreTrackId] = useState<string | null>(null);
   const [editingGenreValue, setEditingGenreValue] = useState('');
+  const [genreEditAnchor, setGenreEditAnchor] = useState<HTMLElement | null>(null);
   const [genreDraftsByTrackId, setGenreDraftsByTrackId] = useState<Map<string, TrackMetadataDraftRow>>(new Map());
   const [metadataDraftLoadStatus, setMetadataDraftLoadStatus] = useState<MetadataDraftLoadStatus>('idle');
   const [metadataDraftLoadError, setMetadataDraftLoadError] = useState<string | null>(null);
@@ -2928,6 +2675,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
   // follows the active source, current playlist, filters, sort order, and only the
   // records currently loaded by the existing query hooks.
   const orderedVisibleTracks = sortedTracks;
+  useAudioDockTracks(orderedVisibleTracks, selectedTrack, setSelectedTrack);
 
   const cueSummaryFailureCount = useMemo(
     () => [...cueSummaryStates.values()].filter((state) => state.status === 'failed').length,
@@ -3905,16 +3653,61 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
     const genreRecoveryLocked = Boolean(genreDraft && isTrackMetadataDraftRecoveryLocked(genreDraft));
     const genreRuntimeBlocked = Boolean(metadataCloudOutcome && metadataCloudOutcome.state !== 'finalized');
     const genreEditingAvailable = metadataDraftLoadStatus === 'loaded' && !genreRecoveryLocked && !genreRuntimeBlocked;
-    return (
+    return audition ? (
+      <span className="block min-w-0 whitespace-normal [overflow-wrap:anywhere]">{effectiveGenre ?? '—'}</span>
+    ) : (
       <>
-{audition ? (
-                            <span className="block min-w-0 truncate">{effectiveGenre ?? '—'}</span>
-                          ) : editingGenreTrackId === track.id ? (
+                            <div
+                              className="group flex min-w-0 flex-wrap items-center gap-1.5"
+                            >
+                              <span className="block min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">{effectiveGenre ?? '—'}</span>
+                              {genreDraft && (
+                                <span
+                                  className="max-w-full break-words rounded-full border border-amber-300/25 bg-amber-300/[0.08] px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-amber-200"
+                                  title={genreRecoveryLocked
+                                    ? 'Rekordbox Genre is already locally verified; cloud finalization recovery is required.'
+                                    : 'Pending Genre change. Not yet applied to Rekordbox.'}
+                                  aria-label={genreRecoveryLocked
+                                    ? 'Genre cloud finalization recovery required'
+                                    : 'Pending Genre change, not yet applied to Rekordbox'}
+                                >
+                                  {genreRecoveryLocked ? 'Recovery' : 'Pending'}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-foreground transition-all disabled:cursor-not-allowed disabled:opacity-20 group-hover:disabled:opacity-20"
+                                title={genreEditingAvailable
+                                  ? 'Edit Genre'
+                                  : genreRecoveryLocked
+                                    ? 'Genre editing is locked until metadata cloud recovery completes'
+                                    : genreRuntimeBlocked
+                                      ? 'Genre editing is blocked while the current metadata Apply outcome is unresolved'
+                                      : 'Pending Genre changes must finish loading before editing'}
+                                aria-label={`Edit Genre for ${track.title}`}
+                                disabled={!genreEditingAvailable}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!genreEditingAvailable) return;
+                                  setGenreEditAnchor(e.currentTarget.closest('td'));
+                                  setEditingGenreTrackId(track.id);
+                                  setEditingGenreValue(effectiveGenre ?? '');
+                                  setGenreSaveError(null);
+                                }}
+                              >
+                                <EditPencil width={12} height={12} aria-hidden="true" />
+                              </button>
+                            </div>
+        {editingGenreTrackId === track.id && genreEditAnchor && (
+          <GenreEditPopover anchor={genreEditAnchor} onClose={() => {
+            if (genreSaving) return;
+            setEditingGenreTrackId(null);
+            setGenreSaveError(null);
+          }}>
                             <div className="space-y-1.5" onClick={(event) => event.stopPropagation()}>
                               <div className="flex items-center gap-1.5">
-                                <div className="flex-1">
+                                <div className="min-w-0 flex-1">
                                   <TextControl
-                                    icon={<Label width={15} height={15} aria-hidden="true" />}
                                     type="text"
                                     autoFocus
                                     maxLength={REKORDBOX_GENRE_MAX_LENGTH}
@@ -3936,7 +3729,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                                     }}
                                     disabled={genreSaving || !genreEditingAvailable}
                                     aria-label={`Genre for ${track.title}`}
-                                    className="disabled:opacity-60"
+                                    className="cue-genre-input disabled:opacity-60"
                                     placeholder="Genre…"
                                   />
                                 </div>
@@ -3988,56 +3781,14 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
                                 </div>
                               )}
                             </div>
-                          ) : (
-                            <div
-                              className="group flex items-center gap-1.5"
-                              onMouseLeave={() => {}}
-                            >
-                              <span className="block min-w-0 truncate">{effectiveGenre ?? '—'}</span>
-                              {genreDraft && (
-                                <span
-                                  className="shrink-0 rounded-full border border-amber-300/25 bg-amber-300/[0.08] px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-amber-200"
-                                  title={genreRecoveryLocked
-                                    ? 'Rekordbox Genre is already locally verified; cloud finalization recovery is required.'
-                                    : 'Pending Genre change. Not yet applied to Rekordbox.'}
-                                  aria-label={genreRecoveryLocked
-                                    ? 'Genre cloud finalization recovery required'
-                                    : 'Pending Genre change, not yet applied to Rekordbox'}
-                                >
-                                  {genreRecoveryLocked ? 'Recovery' : 'Pending'}
-                                </span>
-                              )}
-                              <button
-                                type="button"
-                                className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all disabled:cursor-not-allowed disabled:opacity-20 group-hover:disabled:opacity-20"
-                                title={genreEditingAvailable
-                                  ? 'Edit Genre'
-                                  : genreRecoveryLocked
-                                    ? 'Genre editing is locked until metadata cloud recovery completes'
-                                    : genreRuntimeBlocked
-                                      ? 'Genre editing is blocked while the current metadata Apply outcome is unresolved'
-                                      : 'Pending Genre changes must finish loading before editing'}
-                                aria-label={`Edit Genre for ${track.title}`}
-                                disabled={!genreEditingAvailable}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!genreEditingAvailable) return;
-                                  setEditingGenreTrackId(track.id);
-                                  setEditingGenreValue(effectiveGenre ?? '');
-                                  setGenreSaveError(null);
-                                }}
-                              >
-                                <EditPencil width={12} height={12} aria-hidden="true" />
-                              </button>
-                            </div>
-                          )}
-
+          </GenreEditPopover>
+        )}
       </>
     );
   };
 
   return (
-    <div className={cn('flex w-full flex-col pb-10', mode === 'audition' ? 'gap-1' : 'gap-4', mode === 'cues' && 'studio-surface cue-studio')} data-testid={mode === 'cues' ? 'cue-studio' : undefined}>
+    <div className={cn('flex w-full flex-col pb-10', mode === 'audition' ? 'gap-1' : 'gap-4', mode === 'cues' && 'studio-surface', mode !== 'audition' && 'cue-studio')} data-testid={mode === 'cues' ? 'cue-studio' : undefined}>
       {!audition && <PendingMetadataChangesReview
         open={pendingMetadataReviewOpen}
         pendingCount={pendingMetadataCount}
@@ -4070,7 +3821,6 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
 
       {!artistLibrary && <div ref={waveformPanelWrapperRef} className="cue-studio__sticky sticky top-0 z-30 bg-[var(--color-background)]">
       <CueWaveformPanel
-        compact={mode === 'audition'}
         audition={audition}
         track={selectedTrack}
         beatGrid={beatGrid}
@@ -4236,27 +3986,10 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
       <section className={cn('cue-browser', artistLibrary ? 'artist-library-browser' : 'border-y border-[var(--color-border-faint)]')} style={{ overflow: 'clip' }}>
         <div ref={filterRowRef} className="cue-browser__chrome sticky z-20 border-b border-[var(--color-border-faint)]" style={{ top: waveformPanelHeight }}>
           <div className="flex flex-col">
-            {!artistLibrary && <div className="cue-browser__transport-row w-full">
-              <CuePointsAudioDock
-                showBrowserSource={false}
-                audition={audition}
-                selectedTrack={selectedTrack}
-                orderedTracks={orderedVisibleTracks}
-                onSelectTrack={setSelectedTrack}
-                gridDisplayMode={gridDisplayMode}
-                onGridDisplayModeChange={setGridDisplayMode}
-                gridVisible={gridVisible}
-                onGridVisibleChange={setGridVisible}
-                browserSource={browserSource}
-                onBrowserSourceChange={setBrowserSource}
-              />
-            </div>}
             <div className="cue-browser__filters flex flex-wrap items-stretch gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] px-4 py-2.5 md:px-5" data-testid="cue-browser-filters">
-              {!artistLibrary && mode !== 'audition' && <div data-testid="cue-browser-source-tabs" className="cue-browser__source-tabs">
-                <TabNavigation ariaLabel="Cue Points browser source" variant="primary" value={browserSource}
-                  onChange={(value) => setBrowserSource(value as BrowserSource)}
-                  options={[{ id: 'library', label: 'Library' }, { id: 'playlists', label: 'Playlists' }]} />
-              </div>}
+              {!artistLibrary && mode !== 'audition' && <TrackSourceTabs value={browserSource} onChange={setBrowserSource} />}
+
+
               <div className="flex min-w-[200px] max-w-[320px] flex-1 flex-col justify-end" data-testid="cue-browser-search">
                 <SearchControl
                   value={search}
@@ -4391,7 +4124,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
           </div>
         ) : activeSourceLoading ? (
           <div className="flex items-center justify-center gap-3 py-16 text-sm text-muted-foreground">
-            <Refresh className="animate-spin text-primary" width={22} height={22} aria-hidden="true" />
+            <Refresh className="animate-spin text-control-primary" width={22} height={22} aria-hidden="true" />
             {browserSource === 'library' ? 'Loading library tracks…' : 'Loading playlist tracks…'}
           </div>
         ) : browserSource === 'playlists' && selectablePlaylists.length === 0 ? (

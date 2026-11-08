@@ -32,9 +32,11 @@ export function SetLabTransport({ preview, durationMs, disabled }: {
   );
 }
 
-export function SetLabPlayhead({ preview, durationMs }: { preview: SetLabPreview; durationMs: number }) {
+export function SetLabPlayhead({ preview, durationMs, offsetMs = 0 }: { preview: SetLabPreview; durationMs: number; offsetMs?: number }) {
   const { positionSeconds } = useSyncExternalStore(preview.subscribe, preview.getSnapshot, preview.getSnapshot);
-  const percent = Math.min(100, Math.max(0, positionSeconds * 1000 / durationMs * 100));
+  const localMs = positionSeconds * 1000 - offsetMs;
+  if (localMs < 0 || localMs > durationMs) return null;
+  const percent = Math.min(100, Math.max(0, localMs / durationMs * 100));
   return (
     <span data-testid="set-lab-playhead" aria-hidden="true"
       className="pointer-events-none absolute inset-y-0 z-10 w-px -translate-x-1/2 bg-primary"

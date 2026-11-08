@@ -1,3 +1,4 @@
+import { LibraryFilterRow, useLibraryCollectionFilters } from './LibraryFilterRow';
 import { Refresh } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
@@ -14,11 +15,16 @@ export function PlaylistsPanel({
   onPlaylistClick: (playlist: PlaylistWithCount) => void;
   onEditPlaylist: (playlist: PlaylistWithCount) => void;
 }) {
+  const { visible, ...filterRow } = useLibraryCollectionFilters(playlists,
+    (playlist) => profilesByRbId.get(playlist.rekordbox_playlist_id)?.display_name || playlist.name,
+    (playlist) => playlist.track_count,
+    { playlists: true, searchText: (playlist) => `${profilesByRbId.get(playlist.rekordbox_playlist_id)?.display_name ?? ''} ${playlist.name} ${playlist.top_genres?.join(' ') ?? ''}` });
   return (
     <section className="space-y-3">
+      <LibraryFilterRow {...filterRow} label="Playlists" placeholder="Search playlists or genres…" />
       <div className="flex items-center justify-between">
         <p className="lib-label">
-          {loading ? '…' : `${playlists.length} items`}
+          {loading ? '…' : `${visible.length === playlists.length ? visible.length : `${visible.length} of ${playlists.length}`} items`}
         </p>
       </div>
       {loading ? (
@@ -29,9 +35,11 @@ export function PlaylistsPanel({
         <div className="text-center py-10 border border-dashed border-[#ffffff1a] rounded-[20px]">
           <p className="text-muted-foreground text-sm">No playlists in this import.</p>
         </div>
+      ) : visible.length === 0 ? (
+        <p className="py-10 text-center text-sm text-muted-foreground">No playlists match your filters.</p>
       ) : (
         <div className="flex flex-wrap gap-3">
-          {playlists.map((playlist) => {
+          {visible.map((playlist) => {
             const prof = profilesByRbId.get(playlist.rekordbox_playlist_id);
             return (
               <div key={playlist.id} className="w-[304px]">
@@ -53,20 +61,25 @@ export function PlaylistsPanel({
 
 /** The Genres tab: how many tracks are in each genre. */
 export function GenresPanel({ genreStats, loading }: { genreStats: ReadonlyArray<readonly [string, number]>; loading: boolean }) {
+  const { visible, ...filterRow } = useLibraryCollectionFilters(genreStats, ([name]) => name, ([, count]) => count);
+  const largestGenre = genreStats.reduce((largest, [, count]) => Math.max(largest, count), 1);
   return (
     <div className="space-y-3">
+      <LibraryFilterRow {...filterRow} label="Genres" placeholder="Search genres…" />
       <p className="lib-label">
-        {loading ? 'Loading…' : `${genreStats.length} genres`}
+        {loading ? 'Loading…' : `${visible.length === genreStats.length ? visible.length : `${visible.length} of ${genreStats.length}`} genres`}
       </p>
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" />
+          <Refresh className="animate-spin text-control-primary" width={28} height={28} aria-hidden="true" />
         </div>
       ) : genreStats.length === 0 ? (
         <p className="text-center py-12 text-muted-foreground italic text-sm">No genre data in this library.</p>
+      ) : visible.length === 0 ? (
+        <p className="py-12 text-center text-sm text-muted-foreground">No genres match your filters.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-          {genreStats.map(([genre, count]) => (
+          {visible.map(([genre, count]) => (
             <div
               key={genre}
               className="lib-card lib-card--hover p-4"
@@ -77,7 +90,7 @@ export function GenresPanel({ genreStats, loading }: { genreStats: ReadonlyArray
                   {count.toLocaleString()}
                 </span>
               </div>
-              <div className="lib-bar"><span style={{ width: `${(count / genreStats[0][1]) * 100}%` }} /></div>
+              <div className="lib-bar"><span style={{ width: `${(count / largestGenre) * 100}%` }} /></div>
               <p className="lib-label mt-2">tracks</p>
             </div>
           ))}
@@ -89,17 +102,21 @@ export function GenresPanel({ genreStats, loading }: { genreStats: ReadonlyArray
 
 /** The Artists tab: how many tracks each artist has. */
 export function ArtistsPanel({ artistStats, loading }: { artistStats: ReadonlyArray<readonly [string, number]>; loading: boolean }) {
+  const { visible, ...filterRow } = useLibraryCollectionFilters(artistStats, ([name]) => name, ([, count]) => count);
   return (
     <div className="space-y-3">
+      <LibraryFilterRow {...filterRow} label="Artists" placeholder="Search artists…" />
       <p className="lib-label">
-        {loading ? 'Loading…' : `${artistStats.length.toLocaleString()} artists`}
+        {loading ? 'Loading…' : `${visible.length === artistStats.length ? visible.length.toLocaleString() : `${visible.length} of ${artistStats.length}`} artists`}
       </p>
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" />
+          <Refresh className="animate-spin text-control-primary" width={28} height={28} aria-hidden="true" />
         </div>
       ) : artistStats.length === 0 ? (
         <p className="text-center py-12 text-muted-foreground italic text-sm">No artist data in this library.</p>
+      ) : visible.length === 0 ? (
+        <p className="py-12 text-center text-sm text-muted-foreground">No artists match your filters.</p>
       ) : (
         <div className="lib-panel">
           <div className="lib-list-head hidden sm:grid grid-cols-[auto_1fr_80px]">
@@ -110,7 +127,7 @@ export function ArtistsPanel({ artistStats, loading }: { artistStats: ReadonlyAr
             ))}
           </div>
           <div>
-            {artistStats.map(([artist, count]) => (
+            {visible.map(([artist, count]) => (
               <div
                 key={artist}
                 className="lib-list-row grid-cols-[auto_1fr_80px]"

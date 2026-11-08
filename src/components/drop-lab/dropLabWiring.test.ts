@@ -45,7 +45,7 @@ describe('Drop Lab waveform zoom', () => {
   it('uses the same zoom and pan hook as Cue Points, with the shared hover buttons', () => {
     expect(waveform).toContain('useTimelineZoom(');
     expect(waveform).toContain('<WaveformZoomControls');
-    expect(waveform).toContain('contentRef={zoom.containerRef}');
+    expect(waveform).toContain('waveformRef={zoom.containerRef}');
     expect(read('../cues/CuePointsView.tsx')).toContain('useTimelineZoom(durationMs)');
     expect(read('../../hooks/useTimelineZoom.ts')).toContain("addEventListener('wheel'");
   });
@@ -65,9 +65,8 @@ describe('Drop Lab waveform zoom', () => {
 describe('Drop Lab uses the shared Cue Points components', () => {
   it('header, timeline, dock, table and menus come from the shared modules', () => {
     expect(header).toContain('<TrackIdentity');
-    expect(waveform).toContain('<TimelineSectionLane');
-    expect(waveform).toContain('<TimelineBeatLane');
-    expect(waveform).toContain('<RekordboxPreviewWaveform');
+    expect(waveform).toContain('<TrackTimeline');
+    expect(waveform).not.toContain('<RekordboxPreviewWaveform');
     expect(controls).toContain('<AudioDock');
     expect(controls).toContain('<PlaybackSeekBar');
     expect(controls).toContain('<MediaTransportControlGroup');
@@ -85,8 +84,8 @@ describe('Drop Lab uses the shared Cue Points components', () => {
   });
 
   it('takes the build and drop colors from the shared section colors, not hardcoded values', () => {
-    expect(waveform).toContain("sectionTone('Build')");
-    expect(waveform).toContain("sectionTone('Drop')");
+    expect(waveform).toContain("waveformSectionInk('Build')");
+    expect(waveform).toContain("waveformSectionInk('Drop')");
     expect(waveform).not.toContain('#ff8a1f');
     expect(waveform).not.toContain('#ff5a4f');
   });

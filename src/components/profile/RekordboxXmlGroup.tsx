@@ -75,12 +75,12 @@ function SavedFileRow({ record, onRemove, onDownload }: { record: RekordboxXmlRe
           <ControlButton variant="danger" onClick={() => void remove()} disabled={busy}>
             {busy ? <Refresh className="animate-spin" width={14} height={14} aria-hidden="true" /> : <Trash width={14} height={14} aria-hidden="true" />} Remove
           </ControlButton>
-          <ControlButton variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>Keep</ControlButton>
+          <ControlButton variant="secondary" onClick={() => setConfirming(false)} disabled={busy}>Keep</ControlButton>
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <ControlButton variant="neutral" onClick={() => void onDownload(record)}><Download width={14} height={14} aria-hidden="true" /> Download</ControlButton>
-          <ControlButton variant="ghost" onClick={() => setConfirming(true)} aria-label={`Remove ${record.fileName}`}><Trash width={14} height={14} aria-hidden="true" /></ControlButton>
+          <ControlButton variant="secondary" onClick={() => void onDownload(record)}><Download width={14} height={14} aria-hidden="true" /> Download</ControlButton>
+          <ControlButton variant="secondary" onClick={() => setConfirming(true)} aria-label={`Remove ${record.fileName}`}><Trash width={14} height={14} aria-hidden="true" /></ControlButton>
         </div>
       )}
     </li>
@@ -181,7 +181,7 @@ export function RekordboxXmlGroup({ userId }: { userId: string | null }) {
                   data-testid="rekordbox-xml-path"
                   containerClassName="min-w-0 flex-1"
                 />
-                <ControlButton variant="neutral" onClick={() => inputRef.current?.click()} disabled={xml.saving}>
+                <ControlButton variant="secondary" onClick={() => inputRef.current?.click()} disabled={xml.saving}>
                   <Folder width={14} height={14} aria-hidden="true" /> Browse…
                 </ControlButton>
                 <input

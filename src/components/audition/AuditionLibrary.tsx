@@ -97,7 +97,7 @@ export function AuditionLibrary({
         </div>
       ) : loading ? (
         <div className="flex items-center justify-center gap-3 border-t border-[var(--color-border-faint)] py-14 text-sm text-muted-foreground" role="status">
-          <Refresh className="animate-spin text-primary" width={22} height={22} aria-hidden="true" />
+          <Refresh className="animate-spin text-control-primary" width={22} height={22} aria-hidden="true" />
           Loading your library…
         </div>
       ) : tracks.length === 0 ? (

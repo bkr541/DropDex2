@@ -1777,7 +1777,7 @@ export function ImportLibraryModal({
                     </button>
                     {phase === 'scanning_usb' ? (
                       <div className="flex-1 mb-4 px-4 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                        <Refresh width={20} height={20} aria-hidden="true" className="animate-spin text-primary" />
+                        <Refresh width={20} height={20} aria-hidden="true" className="animate-spin text-control-primary" />
                         <p className="text-sm">Scanning folder…</p>
                       </div>
                     ) : phase === 'database_selected' && folderScan ? (
@@ -1940,7 +1940,7 @@ export function ImportLibraryModal({
                     {localUsbStage === 'uploading_bundle' && 'Uploading Bundle…'}
                   </h2>
                   <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-                    <Refresh className="animate-spin text-primary" width={24} height={24} aria-hidden="true" />
+                    <Refresh className="animate-spin text-control-primary" width={24} height={24} aria-hidden="true" />
                   </div>
                 </div>
 
@@ -2121,7 +2121,7 @@ export function ImportLibraryModal({
             {phase === 'parsing_cloud_data' && (
               <div className="text-center">
                 <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Refresh className="animate-spin text-primary" width={24} height={24} aria-hidden="true" />
+                  <Refresh className="animate-spin text-control-primary" width={24} height={24} aria-hidden="true" />
                 </div>
                 <h2 className="text-xl font-bold mb-3">Analysis Running</h2>
                 <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3 text-left text-xs mb-0">

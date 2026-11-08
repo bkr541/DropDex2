@@ -2,7 +2,7 @@
    clear without turning every state into a glowing hardware surface. */
 .dd-tone-success { --dd-semantic: var(--color-control-green); --dd-semantic-rgb: var(--color-control-green-rgb); }
 .dd-tone-online { --dd-semantic: var(--color-control-cyan); --dd-semantic-rgb: var(--color-control-cyan-rgb); }
-.dd-tone-active { --dd-semantic: var(--color-control-blue); --dd-semantic-rgb: var(--color-control-blue-rgb); }
+.dd-tone-active { --dd-semantic: var(--color-control-primary); --dd-semantic-rgb: var(--color-control-primary-rgb); }
 .dd-tone-purple { --dd-semantic: var(--color-control-purple); --dd-semantic-rgb: var(--color-control-purple-rgb); }
 .dd-tone-pink { --dd-semantic: var(--color-control-magenta); --dd-semantic-rgb: var(--color-control-magenta-rgb); }
 .dd-tone-amber { --dd-semantic: var(--color-control-orange); --dd-semantic-rgb: var(--color-control-orange-rgb); }
@@ -105,7 +105,7 @@
 .dd-feedback-button { min-height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 13px; border-radius: 4px; font-size: 9px; font-weight: 780; letter-spacing: .04em; white-space: nowrap; transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease; }
 .dd-feedback-button--ghost { border: 1px solid var(--color-control-border); background: var(--color-control-surface); color: #dce3eb; }
 .dd-feedback-button--ghost:hover { background: var(--color-control-surface-hover); }
-.dd-feedback-button--primary { border: 1px solid var(--color-control-blue); background: var(--color-control-blue); color: white; box-shadow: none; }
+.dd-feedback-button--primary { border: 1px solid var(--color-control-primary); background: var(--color-control-primary); color: white; box-shadow: none; }
 .dd-feedback-button--warning { border: 1px solid rgb(255 189 19 / .55); background: rgb(255 189 19 / .07); color: #ffe086; }
 .dd-feedback-button--danger { border: 1px solid rgb(var(--color-control-red-rgb) / .62); background: rgb(var(--color-control-red-rgb) / .14); color: #ff7b87; }
 .dd-feedback-button:focus-visible, .dd-toast__close:focus-visible, .dd-icon-dismiss:focus-visible { outline: 2px solid var(--color-control-focus); outline-offset: 2px; }
@@ -161,7 +161,7 @@
 .dd-upload-button--primary:hover { border-color: var(--color-control-primary-hover); background: rgb(var(--color-control-primary-rgb) / .1); color: var(--color-control-primary-hover); }
 
 .dd-dropzone { min-height: 209px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 18px; border: 1px dashed #596675; border-radius: var(--radius-control); background: var(--color-feedback-surface); color: #edf1f5; text-align: center; box-shadow: none; cursor: pointer; transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease; }
-.dd-dropzone:hover, .dd-dropzone--dragging { border-color: var(--color-control-blue); background: rgb(var(--color-control-blue-rgb) / .055); box-shadow: 0 0 0 2px rgb(var(--color-control-blue-rgb) / .10); }
+.dd-dropzone:hover, .dd-dropzone--dragging { border-color: var(--color-control-primary); background: rgb(var(--color-control-primary-rgb) / .055); box-shadow: 0 0 0 2px rgb(var(--color-control-primary-rgb) / .10); }
 .dd-dropzone > svg { color: #2485ff; }
 .dd-dropzone strong { font-size: 11px; }
 .dd-dropzone > span:not(.dd-feedback-button) { color: #8f9aa7; font-size: 9px; }
@@ -185,7 +185,7 @@
 .dd-dialog__body select { width: 100%; min-height: 34px; margin-bottom: 11px; padding: 0 10px; border: 1px solid #27313d; border-radius: 4px; background: #0b1118; color: #edf2f7; }
 .dd-dialog__checks { display: grid; gap: 5px; }
 .dd-dialog__checks label { display: flex; align-items: center; gap: 7px; margin: 0; }
-.dd-dialog__checks input { accent-color: var(--color-control-blue); }
+.dd-dialog__checks input { accent-color: var(--color-control-primary); }
 .dd-dialog > footer { display: flex; justify-content: flex-end; gap: 7px; padding: 10px 14px; border-top: 1px solid #212a34; }
 .dd-dialog > footer .dd-feedback-button { min-width: 92px; }
 .dd-dialog--destructive { border-color: rgb(var(--color-control-red-rgb) / .46); background: var(--color-feedback-surface-raised); box-shadow: 0 20px 54px rgb(0 0 0 / .46); }

@@ -1,0 +1,22 @@
+/* The live dock uses Layout Lab 01's composition; these rules handle app placement and narrow windows. */
+.app-audio-dock { --adl-accent: #f56b70; --adl-accent-2: #f78361; position: relative; z-index: 50; flex: none; min-width: 0; color: #f6f7fa; color-scheme: dark; font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; }
+.app-audio-dock .adl-dock { min-width: 0; }
+.app-audio-dock .adl-identity-text > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-audio-dock .adl-icon-button:focus-visible, .app-audio-dock input:focus-visible { outline: 2px solid #f78361; outline-offset: 3px; }
+.app-audio-dock .adl-art { color: #cdd3dd; }
+.app-audio-dock .app-dock-waveform { position: absolute; inset: 0; width: 100%; }
+.app-dock-status { display: flex; align-items: center; gap: 8px; padding: 6px 20px; background: #2a2620; color: #f0b35a; font-size: 11px; }
+.app-dock-status > span { flex: 1; }
+.app-dock-status button { display: inline-flex; align-items: center; gap: 6px; padding: 4px; cursor: pointer; }
+.app-dock-source { padding: 5px 20px; background: #22262f; }
+@media (max-width: 1100px) {
+  .app-audio-dock .adl-metadata { display: none; }
+  .app-audio-dock .adl-identity { flex-basis: 200px; }
+}
+@media (max-width: 767px) {
+  .app-audio-dock .adl-dock { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; padding: 10px 12px; }
+  .app-audio-dock .adl-identity { min-width: 0; }
+  .app-audio-dock .adl-timeline { grid-column: 1 / -1; grid-row: 2; }
+  .app-audio-dock .adl-output { grid-column: 1 / -1; justify-content: center; }
+  .app-audio-dock .adl-art { display: none; }
+}

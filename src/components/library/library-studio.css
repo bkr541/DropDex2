@@ -93,12 +93,6 @@
   letter-spacing: -.04em;
 }
 
-/* The flag has about 7px of inset in its 36px lane. The extra pixel matches the
-   visible gap from the section underline to the time labels. */
-.artist-library-studio .cue-track-panel .cue-workstation__timeline { padding-top: 0; }
-.artist-library-studio .cue-track-panel .cue-timeline__cues { margin-block: 1px; }
-.artist-library-studio .cue-timeline__cues .waveform-cue-marker { place-items: center; }
-
 /* A section heading: icon and spaced capitals. */
 .lib-heading { display: flex; align-items: center; gap: 8px; color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
 

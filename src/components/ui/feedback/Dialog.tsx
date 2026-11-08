@@ -7,7 +7,7 @@ import '../dropdex-feedback.css';
 export interface DialogAction {
   label: string;
   onClick: () => void;
-  variant?: 'primary' | 'neutral' | 'danger';
+  variant?: 'primary' | 'secondary' | 'neutral' | 'danger';
   disabled?: boolean;
 }
 
@@ -73,7 +73,9 @@ export function Dialog({
       <div className="dd-dialog__body">{children}</div>
       {actions && actions.length > 0 && <footer>{actions.map((action) => action.variant === 'primary'
         ? <ControlButton key={action.label} variant="primary" disabled={action.disabled} onClick={action.onClick}>{action.label}</ControlButton>
-        : <button key={action.label} type="button" disabled={action.disabled} className={cn('dd-feedback-button', action.variant === 'danger' ? 'dd-feedback-button--danger' : 'dd-feedback-button--ghost')} onClick={action.onClick}>{action.label}</button>)}</footer>}
+        : action.variant === 'secondary'
+          ? <ControlButton key={action.label} variant="secondary" disabled={action.disabled} onClick={action.onClick}>{action.label}</ControlButton>
+          : <button key={action.label} type="button" disabled={action.disabled} className={cn('dd-feedback-button', action.variant === 'danger' ? 'dd-feedback-button--danger' : 'dd-feedback-button--ghost')} onClick={action.onClick}>{action.label}</button>)}</footer>}
     </section>
   );
   if (inline) return surface;

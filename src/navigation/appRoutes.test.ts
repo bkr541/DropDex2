@@ -53,11 +53,7 @@ describe('app routes', () => {
     });
     expect(routeToUrl({ name: 'library', tab: 'tracks', search: 'Artist One' }))
       .toBe('/library/tracks?q=Artist+One');
-    expect(parseAppRoute('/library/spotify')).toEqual({
-      name: 'library',
-      tab: 'spotify',
-      search: '',
-    });
+    expect(parseAppRoute('/library/spotify')).toEqual({ name: 'settings' });
   });
 
   it('opens Drop Lab from the nav without a source track, and keeps the source in the URL once picked', () => {

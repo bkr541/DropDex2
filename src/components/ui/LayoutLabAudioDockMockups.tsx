@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties, type ElementType, type ReactNo
 import { CheckCircle, CompactDisc, Redo, Undo, Headset, MusicNote, NavArrowDown, NavArrowUp, Pause, Play, Refresh, Repeat, SkipNext, SkipPrev, SoundHigh, SoundOff, Square, Usb, WarningTriangle } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import './layout-lab-audio-dock.css';
+import { EssentialAudioDock } from '../player/EssentialAudioDock';
 
 type PreviewState = 'ready' | 'empty' | 'loading' | 'disconnected';
 type DockKind = 'edge' | 'center' | 'capsule' | 'waveform' | 'islands' | 'console' | 'editorial' | 'vinyl' | 'shelf' | 'compact' | 'fshelf' | 'frail' | 'fwave' | 'fflip';
@@ -134,7 +135,6 @@ function DockPreview({ concept, state, context }: { concept: typeof CONCEPTS[num
 
   function dockContent() {
     switch (concept.kind) {
-      case 'edge': return <>{transport()}{identity()}{timeline(true)}<div className="adl-metadata">{stats()}</div>{output()}</>;
       case 'center': return <><div className="adl-left-group">{transport()}{identity(true, true)}</div><div className="adl-center-stack">{timeline()}</div><div className="adl-right-stack">{source()}{output()}</div></>;
       case 'capsule': return <><div className="adl-capsule-top">{transport()}{identity()}<div className="adl-metadata">{stats()}</div>{output()}</div>{timeline()}</>;
       case 'waveform': return <>{timeline(true)}<div className="adl-waveform-bottom">{transport()}{identity()}<div className="adl-metadata">{stats()}</div>{output()}</div></>;
@@ -160,7 +160,9 @@ function DockPreview({ concept, state, context }: { concept: typeof CONCEPTS[num
           <span>{disconnected ? 'USB disconnected. Reconnect DVYDRMNG to continue listening.' : state === 'loading' ? 'Resolving the audio source…' : 'Ready when you are. Select a track to start listening.'}</span>
           {disconnected && <button type="button" onClick={() => setReconnected(true)}>Simulate reconnect <Usb width={12} height={12} aria-hidden="true" /></button>}
         </div>}
-        <div className={cn('adl-dock', concept.kind.startsWith('f') && 'adl-float', !available && 'adl-unavailable')} aria-label={`${concept.name} audio dock`}>{dockContent()}</div>
+        {concept.kind === 'edge' ? <EssentialAudioDock transport={transport()} identity={identity()} timeline={timeline(true)} metadata={stats()} output={output()}
+          className={cn(!available && 'adl-unavailable')} aria-label={`${concept.name} audio dock`} />
+          : <div className={cn('adl-dock', concept.kind.startsWith('f') && 'adl-float', !available && 'adl-unavailable')} aria-label={`${concept.name} audio dock`}>{dockContent()}</div>}
       </div>
     </div>
   </div>;

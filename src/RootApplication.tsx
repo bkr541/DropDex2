@@ -46,7 +46,7 @@ function ApplicationLoadingScreen() {
       role="status"
     >
       <div className="text-center">
-        <Refresh className="mx-auto animate-spin text-primary" width={32} height={32} aria-hidden="true" />
+        <Refresh className="mx-auto animate-spin text-control-primary" width={32} height={32} aria-hidden="true" />
         <p className="mt-3 text-sm font-bold text-muted-foreground">Loading DropDex…</p>
       </div>
     </div>

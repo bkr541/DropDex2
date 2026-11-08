@@ -23,20 +23,28 @@
 /* Top-right icon buttons use compact spacing and hairlines between neighbours. */
 .cue-studio .cue-workstation__actions { align-self: center; margin-top: 0; gap: 0; align-items: center; }
 .cue-studio .cue-workstation__actions > span[aria-hidden="true"] { display: none; }
+/* Menu wrappers must be flex boxes too, so inline SVG baselines cannot shift their buttons. */
+.cue-studio .cue-workstation__actions > div { display: inline-flex; align-items: center; height: 32px; }
 .cue-studio .cue-workstation__actions button.cue-action-icon,
 .cue-studio .cue-workstation__actions [data-testid="cue-state-icon"] {
   position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  width: auto; height: auto; min-height: 0; padding: 0 8px; border: 0; border-left: 1px solid #ffffff0d; border-radius: 0; background: transparent; box-shadow: none;
+  width: 32px; height: 32px; min-height: 32px; padding: 0 8px; border: 0; border-radius: 0; background: transparent; box-shadow: none;
   color: #f6f7fa; cursor: pointer;
 }
-.cue-studio .cue-workstation__actions [data-testid="cue-state-icon"] { cursor: default; border-left: 0; }
+.cue-studio .cue-workstation__actions [data-testid="cue-state-icon"] { cursor: default; }
+/* One centered divider geometry, independent of icon size or button contents. */
+.cue-studio .cue-workstation__actions button.cue-action-icon::before {
+  content: ''; position: absolute; left: 0; top: 50%; width: 1px; height: 20px;
+  transform: translateY(-50%); background: #ffffff0d; pointer-events: none;
+}
 .cue-studio .cue-workstation__actions button.cue-action-icon > svg, .cue-studio .cue-workstation__actions [data-testid="cue-state-icon"] > svg { width: 16px; height: 16px; color: inherit; }
 .cue-studio [data-testid="cue-apply-menu"] { align-items: center; }
 .cue-studio .cue-workstation__actions button.cue-action-icon:hover:not(:disabled) { background: transparent; color: #f78361; }
 .cue-studio .cue-workstation__actions button.cue-action-icon[aria-pressed="true"]:not(:disabled) { color: #f78361; }
 .cue-studio .cue-workstation__actions button.cue-action-icon--accent:not(:disabled) { color: #f78361; }
 .cue-studio .cue-workstation__actions button.cue-action-icon:disabled { opacity: .3; }
-.cue-studio .cue-workstation__actions button.cue-action-icon--narrow { width: auto; padding: 0 4px; border-left: 0; }
+.cue-studio .cue-workstation__actions button.cue-action-icon--narrow { width: 24px; padding: 0 4px; }
+.cue-studio .cue-workstation__actions button.cue-action-icon--narrow::before { display: none; }
 .cue-studio .cue-workstation__actions button.cue-action-icon--narrow + * { margin-left: 0; }
 .cue-studio .cue-action-icon__badge { top: -4px; right: 4px; background: #f56b70; }
 .cue-studio [role="menu"] { border-color: #465166; border-radius: 10px; background: #252b38; }
@@ -44,12 +52,6 @@
 /* The timeline: a dark ground, a lane for cues, sections, the waveform and the beat grid. */
 .cue-studio .cue-timeline { background: #00000012; border-top: 1px solid #ffffff0d; }
 .cue-studio .cue-timeline__rail { background: transparent; }
-/* The line through the waveform: one pixel, the cue's colour, no glow. */
-.cue-studio .cue-wave-line { width: 1px; background: var(--cue-ink) !important; box-shadow: none !important; opacity: .7; }
-/* Beat grid: Audition's quiet slate ticks, a taller one on each bar, and 10px numbers. */
-.cue-studio .timeline-beat-tick { width: 1px !important; height: 6px !important; border-radius: 0; background: #8997ae59 !important; opacity: 1; }
-.cue-studio .timeline-beat-tick--bar { height: 11px !important; background: #c3ccdb99 !important; }
-.cue-studio .timeline-beat-label { color: #9ba5b6; font-family: inherit; font-size: 10px; font-weight: 400; }
 
 /* The audio dock row: a faint wash and hairlines, like Audition's transport. */
 .cue-studio .cue-audio-dock { border-color: #ffffff09; background: #ffffff02; }
@@ -64,19 +66,17 @@
 .cue-studio .cue-audio-dock .dd-media-button--play .dd-media-button__content { width: auto; height: auto; border: 0; border-radius: 0; background: transparent; color: #fff; }
 .cue-studio .cue-audio-dock .dd-media-button:disabled { opacity: .25; }
 .cue-studio .cue-browser__filters { gap: 16px; padding: 8px 16px; border-top: 0; }
-.cue-studio .cue-browser__source-tabs { display: flex; flex: 0 0 176px; align-self: stretch; margin-left: -16px; }
-.cue-studio .cue-browser__source-tabs .dd-tab-nav { flex: 1; }
-.cue-studio .cue-browser__source-tabs .dd-tab-nav__item { flex: 1 1 0; min-width: 0; align-items: flex-end; padding-top: 0; padding-bottom: 8px; line-height: 20px; }
-.cue-studio .cue-browser__source-tabs .dd-tab-nav__item[aria-selected="true"]::after { left: 0; right: 0; }
+.cue-studio .cue-browser__source-tabs { display: flex; flex: 0 0 auto; min-width: 0; align-self: stretch; align-items: stretch; padding: 0; }
 .cue-studio .cue-browser__filter--key { flex: 0 0 72px; width: 72px; min-width: 72px; }
 .cue-studio .cue-browser__filter--cues { flex: 0 0 88px; width: 88px; min-width: 88px; }
 .cue-studio .cue-browser__filter--genre [role="listbox"] { width: 280px; max-width: calc(100vw - 32px); }
 .cue-studio .cue-browser__filter--analysis [role="listbox"] { width: 220px; max-width: calc(100vw - 32px); }
 .cue-studio .cue-browser__filter:focus-within > div:first-child { border-bottom-color: #f78361; }
 .cue-studio .cue-browser__filter > div:first-child button:focus-visible { outline: none; box-shadow: none; }
-.cue-studio .cue-browser__filters .dd-text-control:focus-visible { outline: none; box-shadow: none; border-bottom-color: #f78361; }
+.cue-studio .cue-browser__filters .dd-text-control:focus-visible,
+.cue-studio .cue-genre-input:focus-visible { outline: none; box-shadow: none; border-bottom-color: #f78361; }
 .cue-studio .cue-browser__filters > [data-testid="cue-browser-search"] { max-width: 420px; }
-.cue-studio .cue-browser__filters p { color: #a5aec0; font-size: 9px; font-weight: 500; letter-spacing: .14em; }
+.cue-studio .cue-browser__filters :is(p, .dd-search-control__label) { color: #a5aec0; font-size: 9px; font-weight: 500; letter-spacing: .14em; }
 .cue-studio .cue-browser__filters button > span { font-size: 12px; font-weight: 400; }
 .cue-studio .dd-text-control { min-height: 32px; color: #e0e4ed; font-family: inherit; font-size: 12px; border-bottom-color: #ffffff26; }
 .cue-studio .dd-text-control::placeholder { color: #a1aabc; font-weight: 300; letter-spacing: .025em; }
@@ -90,7 +90,7 @@
 /* The read-only detail panel uses the same studio controls as Cue Points.
    Carry the waveform wash across the full band instead of drawing an inset box. */
 .cue-studio .cue-workstation__timeline {
-  padding: 8px 16px 0;
+  padding: 0;
   border-top: 1px solid #ffffff0d;
   background: #00000012;
 }
@@ -107,17 +107,34 @@
 .cue-studio .cue-dock__options > button[aria-pressed="true"] { color: #f78361; }
 .cue-studio .cue-dock__options > input { height: 3px; width: 64px; accent-color: #f78361; }
 @media (max-width: 700px) {
-  .cue-studio .cue-workstation__timeline { padding-inline: 12px; }
   .cue-studio .cue-audio-dock { padding-inline: 12px; }
 }
 
 /* The identity row is AuditionTrackHeader; editing tools get their own compact band. */
 .cue-studio .cue-workstation__toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 6px 16px; border-top: 1px solid #ffffff0d; }
-.cue-studio .cue-timeline__cues { margin-bottom: 4px; }
-.cue-studio .cue-timeline__data-lane:has(> .waveform-section-row) { height: 32px; }
-.cue-studio .cue-timeline__beats { height: 26px; margin-top: 4px; }
-.cue-studio .timeline-beat-label { bottom: 1px; }
 @media (max-width: 700px) {
   .cue-studio .cue-workstation__toolbar { flex-wrap: wrap; padding-inline: 12px; }
   .cue-studio .cue-workstation__actions { flex-wrap: wrap; row-gap: 8px; }
+}
+
+/* A full-size genre editor overlays the listing; the narrow cell keeps its display geometry. */
+.cue-studio.cue-genre-popover {
+  --color-primary: #f56b70;
+  --color-foreground: #f6f7fa;
+  --color-muted-foreground: #a4adbd;
+  --color-control-focus: #f78361;
+  position: fixed;
+  z-index: 150;
+  width: 260px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  padding: 10px;
+  border: 1px solid #465166;
+  border-radius: 10px;
+  background: #252b38;
+  color: #f6f7fa;
+  font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+  box-shadow: 0 8px 24px #00000059;
 }

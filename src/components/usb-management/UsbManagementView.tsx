@@ -8,6 +8,8 @@ import { UsbDevicesTab } from './UsbDevicesTab';
 import { UsbHistoryTab } from './UsbHistoryTab';
 import { UsbOverviewTab } from './UsbOverviewTab';
 import { UsbTransferTab } from './UsbTransferTab';
+import '../ui/studio-surface.css';
+import './usb-management.css';
 
 type UsbTab = 'overview' | 'transfer' | 'history' | 'devices';
 
@@ -36,28 +38,32 @@ export function UsbManagementView() {
   }, [details, usb.status, remember]);
 
   return (
-    <div data-testid="usb-management-view" className="w-full space-y-5">
+    <div data-testid="usb-management-view" className="usb-management-workspace w-full space-y-5">
       <LibraryTabBar<UsbTab> tabs={USB_TABS} activeTab={tab} onChange={setTab} ariaLabel="USB management sections" />
-      {tab === 'overview' && <UsbOverviewTab desktopAvailable={desktopAvailable} />}
-      {tab === 'transfer' && (
-        desktopAvailable
-          ? <UsbTransferTab onFinished={library.saveTransfer} onShowHistory={() => setTab('history')} />
-          : <p className="glass rounded-3xl border border-[var(--color-border-subtle)] p-8 text-sm text-muted-foreground">Copying between USBs needs the DropDex desktop app, because it has to read and write the drives directly.</p>
-      )}
-      {tab === 'history' && <UsbHistoryTab transfers={library.transfers} loading={library.loading} error={library.error} onRetry={library.refresh} />}
-      {tab === 'devices' && (
-        <UsbDevicesTab
-          devices={library.devices}
-          loading={library.loading}
-          error={library.error}
-          connectedLabels={details ? [details.volumeName] : usb.volumeName ? [usb.volumeName] : []}
-          onRetry={library.refresh}
-          onRename={library.rename}
-          onSetRetired={library.setRetired}
-          libraries={library.libraries}
-          onMakeLibraryActive={library.makeLibraryActive}
-        />
-      )}
+      <div className="studio-surface usb-management-studio">
+        <div className="usb-management-content">
+          {tab === 'overview' && <UsbOverviewTab desktopAvailable={desktopAvailable} />}
+          {tab === 'transfer' && (
+            desktopAvailable
+              ? <UsbTransferTab onFinished={library.saveTransfer} onShowHistory={() => setTab('history')} />
+              : <p className="usb-empty-state p-8 text-sm text-muted-foreground">Copying between USBs needs the DropDex desktop app, because it has to read and write the drives directly.</p>
+          )}
+          {tab === 'history' && <UsbHistoryTab transfers={library.transfers} loading={library.loading} error={library.error} onRetry={library.refresh} />}
+          {tab === 'devices' && (
+            <UsbDevicesTab
+              devices={library.devices}
+              loading={library.loading}
+              error={library.error}
+              connectedLabels={details ? [details.volumeName] : usb.volumeName ? [usb.volumeName] : []}
+              onRetry={library.refresh}
+              onRename={library.rename}
+              onSetRetired={library.setRetired}
+              libraries={library.libraries}
+              onMakeLibraryActive={library.makeLibraryActive}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

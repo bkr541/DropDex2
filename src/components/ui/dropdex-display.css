@@ -44,10 +44,10 @@
   flex: 1 1 0;
   min-width: 3px;
   border-radius: 2px 2px 0 0;
-  background: linear-gradient(180deg, var(--color-control-cyan), var(--color-control-blue));
-  box-shadow: 0 0 9px rgb(var(--color-control-blue-rgb) / .18);
+  background: linear-gradient(180deg, var(--color-control-cyan), var(--color-control-primary));
+  box-shadow: 0 0 9px rgb(var(--color-control-primary-rgb) / .18);
 }
-.dd-stat-tile__chart i:nth-child(3n) { background: linear-gradient(180deg, var(--color-control-purple), var(--color-control-blue)); }
+.dd-stat-tile__chart i:nth-child(3n) { background: linear-gradient(180deg, var(--color-control-purple), var(--color-control-primary)); }
 .dd-stat-tile__chart .dd-stat-tile__bar--accent { background: linear-gradient(180deg, var(--color-control-purple), var(--color-control-magenta)); }
 .dd-stat-tile__caption { margin: 9px 0 0; color: #929ca8; font-size: 9px; }
 
@@ -179,8 +179,8 @@
   border-color: transparent;
   background:
     linear-gradient(#101720, #101720) padding-box,
-    conic-gradient(from 210deg, #703bea, #246fff, #19a8ff, #623ae8, #246fff) border-box;
-  box-shadow: 0 0 0 2px rgb(var(--color-control-blue-rgb) / .16), 0 4px 14px rgb(15 23 42 / .18);
+    conic-gradient(from 210deg, var(--color-control-primary), var(--color-control-primary-hover), var(--color-control-primary)) border-box;
+  box-shadow: 0 0 0 2px rgb(var(--color-control-primary-rgb) / .16), 0 4px 14px rgb(15 23 42 / .18);
 }
 .dd-avatar--ring-spectrum {
   border-color: transparent;
@@ -219,15 +219,15 @@
   line-height: 1.65;
 }
 .dd-type--brand { font-size: 14px; font-weight: 650; }
-.dd-type--brand-primary { color: var(--color-control-blue); }
+.dd-type--brand-primary { color: var(--color-control-primary); }
 .dd-type--brand-secondary { color: var(--color-control-purple); }
 .dd-type--brand-success { color: var(--color-control-green); }
 .dd-type--brand-warning { color: var(--color-control-orange); }
 .dd-type--brand-danger { color: var(--color-control-red); }
 .dd-type--gradient {
   display: inline-block;
-  background: linear-gradient(100deg, var(--color-control-blue) 0%, var(--color-control-purple) 32%, var(--color-control-magenta) 61%, var(--color-control-orange) 82%, var(--color-control-amber) 100%);
-  color: var(--color-control-blue);
+  background: linear-gradient(100deg, var(--color-control-primary) 0%, var(--color-control-purple) 32%, var(--color-control-magenta) 61%, var(--color-control-orange) 82%, var(--color-control-amber) 100%);
+  color: var(--color-control-primary);
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -236,7 +236,7 @@
 .dd-divider { width: 100%; height: 1px; border: 0; background: #aeb7c2; }
 .dd-divider--dotted { background: repeating-linear-gradient(90deg, #aeb7c2 0 2px, transparent 2px 6px); }
 .dd-divider--dashed { background: repeating-linear-gradient(90deg, #aeb7c2 0 8px, transparent 8px 13px); }
-.dd-divider--accent { height: 2px; background: linear-gradient(90deg, var(--color-control-blue), var(--color-control-purple) 48%, var(--color-control-magenta)); }
+.dd-divider--accent { height: 2px; background: linear-gradient(90deg, var(--color-control-primary), var(--color-control-purple) 48%, var(--color-control-magenta)); }
 
 .dd-sidebar-nav-item {
   position: relative;
@@ -256,7 +256,7 @@
   transition: background-color 130ms ease, color 130ms ease;
 }
 .dd-sidebar-nav-item:hover { background: var(--color-control-surface-hover); color: #f4f6f8; }
-.dd-sidebar-nav-item--selected { background: rgb(var(--color-control-blue-rgb) / .08); color: #f5f7fa; }
+.dd-sidebar-nav-item--selected { background: rgb(var(--color-control-primary-rgb) / .08); color: #f5f7fa; }
 .dd-sidebar-nav-item__edge {
   position: absolute;
   inset: 3px auto 3px 0;
@@ -264,7 +264,7 @@
   border-radius: 0 2px 2px 0;
   background: transparent;
 }
-.dd-sidebar-nav-item--selected .dd-sidebar-nav-item__edge { background: var(--color-control-blue); box-shadow: none; }
+.dd-sidebar-nav-item--selected .dd-sidebar-nav-item__edge { background: var(--color-control-primary); box-shadow: none; }
 .dd-sidebar-nav-item__icon { display: grid; place-items: center; color: #adb7c1; }
 .dd-sidebar-nav-item--selected .dd-sidebar-nav-item__icon { color: #f0f5fa; }
 .dd-sidebar-nav-item__icon svg { width: 14px; height: 14px; }
@@ -308,7 +308,7 @@
   right: 14px;
   bottom: -1px;
   height: 2px;
-  background: var(--color-control-blue);
+  background: var(--color-control-primary);
 }
 .dd-tab-nav--compact { border-bottom-color: var(--color-border-faint); }
 .dd-tab-nav--compact .dd-tab-nav__item { flex: 0 0 auto; padding: 8px 13px 7px; font-size: 10px; }
@@ -318,9 +318,9 @@
 .dd-tab-nav--filter { gap: 4px; padding: 4px; border: 1px solid var(--color-control-border-soft); border-radius: var(--radius-control); background: var(--color-control-surface); }
 .dd-tab-nav--filter .dd-tab-nav__item { min-height: 31px; padding: 6px 15px; border-radius: 5px; font-size: 9px; }
 .dd-tab-nav--filter .dd-tab-nav__item[aria-selected="true"] {
-  background: rgb(var(--color-control-blue-rgb) / .13);
+  background: rgb(var(--color-control-primary-rgb) / .13);
   color: #e2efff;
-  box-shadow: inset 0 0 0 1px rgb(var(--color-control-blue-rgb) / .28);
+  box-shadow: inset 0 0 0 1px rgb(var(--color-control-primary-rgb) / .28);
 }
 
 .dd-view-mode-nav {
@@ -350,7 +350,7 @@
 }
 .dd-view-mode-nav__icon { display: grid; place-items: center; }
 .dd-view-mode-nav__icon svg { width: 15px; height: 15px; }
-.dd-view-mode-nav__item[aria-checked="true"] { background: rgb(var(--color-control-blue-rgb) / .10); color: #6bb1ff; box-shadow: inset 0 0 0 1px rgb(var(--color-control-blue-rgb) / .18); }
+.dd-view-mode-nav__item[aria-checked="true"] { background: rgb(var(--color-control-primary-rgb) / .10); color: var(--color-control-primary); box-shadow: inset 0 0 0 1px rgb(var(--color-control-primary-rgb) / .18); }
 .dd-view-mode-nav__item:hover { color: #eef3f7; }
 .dd-view-mode-nav__item:focus-visible { outline: 2px solid var(--color-control-focus); outline-offset: -2px; }
 
@@ -431,12 +431,12 @@
 }
 
 .cue-browser__row--selected {
-  background: rgb(var(--color-control-blue-rgb) / 0.055);
-  box-shadow: inset 2px 0 0 rgb(var(--color-control-blue-rgb) / 0.9);
+  background: rgb(var(--color-control-primary-rgb) / 0.055);
+  box-shadow: inset 2px 0 0 rgb(var(--color-control-primary-rgb) / 0.9);
 }
 
 .cue-browser__row--selected:hover {
-  background: rgb(var(--color-control-blue-rgb) / 0.075);
+  background: rgb(var(--color-control-primary-rgb) / 0.075);
 }
 
 /* A tighter table: 10px each side of every cell instead of 12px, so columns sit 4px closer. */

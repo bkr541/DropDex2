@@ -18,15 +18,15 @@
 .dd-media-button__content { position: relative; z-index: 1; display: grid; place-items: center; }
 .dd-media-button:hover:not(:disabled) { color: white; border-color: rgb(164 178 196 / .26); background: var(--color-control-surface-hover); }
 .dd-media-button:active:not(:disabled) { background: var(--color-control-surface-raised); }
-.dd-media-button:focus-visible { outline: 0; border-color: var(--color-control-focus); box-shadow: 0 0 0 2px rgb(var(--color-control-blue-rgb) / .16); }
+.dd-media-button:focus-visible { outline: 0; border-color: var(--color-control-focus); box-shadow: 0 0 0 2px rgb(var(--color-control-primary-rgb) / .16); }
 .dd-media-button:disabled { cursor: not-allowed; opacity: .42; }
 .dd-media-button--compact { --dd-media-width: 42px; --dd-media-height: 38px; }
 .dd-media-button--standard { --dd-media-width: 54px; --dd-media-height: 48px; }
 .dd-media-button--hero { --dd-media-width: 60px; --dd-media-height: 54px; }
-.dd-media-button--play { color: #f7f9fb; border-color: rgb(var(--color-control-blue-rgb) / .30); }
-.dd-media-button--play .dd-media-button__content { width: 34px; height: 34px; border: 1px solid rgb(var(--color-control-blue-rgb) / .66); border-radius: 50%; background: rgb(var(--color-control-blue-rgb) / .08); color: #dcebff; }
-.dd-media-button--play[data-active="true"] { border-color: rgb(var(--color-control-blue-rgb) / .44); background: rgb(var(--color-control-blue-rgb) / .05); }
-.dd-media-button--play[data-active="true"] .dd-media-button__content { background: rgb(var(--color-control-blue-rgb) / .15); color: #fff; }
+.dd-media-button--play { color: #f7f9fb; border-color: rgb(var(--color-control-primary-rgb) / .30); }
+.dd-media-button--play .dd-media-button__content { width: 34px; height: 34px; border: 1px solid rgb(var(--color-control-primary-rgb) / .66); border-radius: 50%; background: rgb(var(--color-control-primary-rgb) / .08); color: var(--color-control-text); }
+.dd-media-button--play[data-active="true"] { border-color: rgb(var(--color-control-primary-rgb) / .44); background: rgb(var(--color-control-primary-rgb) / .05); }
+.dd-media-button--play[data-active="true"] .dd-media-button__content { background: rgb(var(--color-control-primary-rgb) / .15); color: #fff; }
 .dd-media-button--stop[data-active="true"] { color: #82b8ff; }
 .dd-media-button--mute[data-active="true"] { color: #67ee9f; border-color: rgb(var(--color-control-green-rgb) / .30); background: rgb(var(--color-control-green-rgb) / .06); }
 
@@ -72,7 +72,7 @@
   box-shadow: none;
 }
 .dd-media-listbox__trigger:hover { border-color: rgb(164 178 196 / .26); background: var(--color-control-surface-hover); }
-.dd-media-listbox__trigger:focus-visible { outline: 0; border-color: var(--color-control-focus); box-shadow: 0 0 0 2px rgb(var(--color-control-blue-rgb) / .16); }
+.dd-media-listbox__trigger:focus-visible { outline: 0; border-color: var(--color-control-focus); box-shadow: 0 0 0 2px rgb(var(--color-control-primary-rgb) / .16); }
 .dd-media-listbox__label { color: #f0f3f7; font-size: 12px; font-weight: 620; }
 .dd-media-listbox__selection { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
 .dd-media-listbox__selection small { color: #738092; font-size: 8px; font-weight: 760; text-transform: uppercase; letter-spacing: .08em; }
@@ -83,7 +83,7 @@
 .dd-media-listbox__option small { color: #758191; font-size: 8px; text-transform: uppercase; }
 .dd-media-listbox__option:hover,
 .dd-media-listbox__option[data-active="true"] { background: var(--color-control-surface-hover); color: white; }
-.dd-media-listbox__option[aria-selected="true"] { background: rgb(var(--color-control-blue-rgb) / .12); color: white; box-shadow: inset 2px 0 0 var(--color-control-blue); }
+.dd-media-listbox__option[aria-selected="true"] { background: rgb(var(--color-control-primary-rgb) / .12); color: white; box-shadow: inset 2px 0 0 var(--color-control-primary); }
 
 /* Timeline lanes and audio dock (Cue Points style), shared with Drop Lab. */
 .cue-timeline {
@@ -140,5 +140,5 @@
 }
 
 .cue-audio-dock .dd-media-button--play {
-  background: rgb(var(--color-control-blue-rgb) / 0.035);
+  background: rgb(var(--color-control-primary-rgb) / 0.035);
 }

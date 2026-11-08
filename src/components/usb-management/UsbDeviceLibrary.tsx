@@ -1,10 +1,10 @@
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import { useEffect, useState } from 'react';
-import { MusicNote, Playlist, Refresh } from 'iconoir-react/regular';
+import { CheckCircle, MusicNote, Playlist, Refresh } from 'iconoir-react/regular';
 import { logger } from '../../lib/logger';
 import { fetchUsbPlaylists, fetchUsbTracks, type UsbLibrarySummary, type UsbPlaylistRow, type UsbTrackRow } from '../../lib/queries/usbLibraries';
 import { StatusBadge } from '../ui/feedback';
-import { ControlButton } from '../ui/controls';
+import { ToolbarIconButton, ToolbarIconGroup } from '../ui/controls';
 
 type Panel = 'playlists' | 'tracks' | null;
 
@@ -32,24 +32,26 @@ function LibraryList({ importId, panel }: { importId: string; panel: 'playlists'
 
   const rows = panel === 'playlists' ? playlists : tracks;
   if (failed) return <p className="mt-3 text-xs text-red-400" role="alert">Couldn&apos;t load this list. Close it and try again.</p>;
-  if (!rows) return <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><Refresh className="animate-spin text-primary" width={12} height={12} aria-hidden="true" /> Loading…</p>;
+  if (!rows) return <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><Refresh className="animate-spin text-control-primary" width={12} height={12} aria-hidden="true" /> Loading…</p>;
   if (rows.length === 0) return <p className="mt-3 text-xs text-muted-foreground">{panel === 'playlists' ? 'No playlists on this USB.' : 'No tracks on this USB.'}</p>;
   if (panel === 'tracks' && tracks) return (
     <RecordTrackListing
       tracks={tracks.map((track) => ({ ...track, musical_key: track.musicalKey }))}
       importId={importId}
       playback={false}
-      className="mt-3 rounded-xl border border-[var(--color-border-subtle)]"
-      scrollStyle={{ maxHeight: '14rem' }}
+      className="usb-library-tracks mt-3 min-w-0 rounded-xl border border-[var(--color-border-subtle)]"
+      scrollStyle={{ maxHeight: '20rem', overflowX: 'hidden' }}
+      renderLeading={() => null}
+      actions={() => '—'}
       data-testid="usb-library-tracks"
       ariaLabel="Tracks on this USB"
     />
   );
   return (
-    <ul className="mt-3 max-h-56 divide-y divide-[var(--color-border-faint)] overflow-y-auto rounded-xl border border-[var(--color-border-subtle)] text-xs" data-testid={`usb-library-${panel}`}>
+    <ul className="usb-library-playlists mt-3 max-h-80 min-w-0 divide-y divide-[var(--color-border-faint)] overflow-y-auto overflow-x-hidden rounded-xl border border-[var(--color-border-subtle)] text-xs" data-testid={`usb-library-${panel}`}>
       {playlists?.map((playlist) => (
-          <li key={playlist.id} className="flex items-center justify-between gap-3 px-3 py-1.5">
-            <span className="truncate font-medium">{playlist.name}</span>
+          <li key={playlist.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-3 py-2">
+            <span className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">{playlist.name}</span>
             <span className="shrink-0 text-muted-foreground">{playlist.isFolder ? 'Folder' : `${playlist.trackCount.toLocaleString()} ${playlist.trackCount === 1 ? 'track' : 'tracks'}`}</span>
           </li>
         ))}
@@ -63,34 +65,33 @@ export function UsbDeviceLibrary({ summary, onMakeActive }: { summary: UsbLibrar
   const [activating, setActivating] = useState(false);
 
   if (!summary) {
-    return <p className="mt-3 text-[11px] text-muted-foreground" data-testid="usb-library-empty">No library imported from this USB yet.</p>;
+    return <p className="text-[11px] text-muted-foreground" data-testid="usb-library-empty">No library imported from this USB yet.</p>;
   }
   const { library } = summary;
   const toggle = (next: Exclude<Panel, null>) => setPanel((current) => (current === next ? null : next));
 
   return (
-    <div className="mt-3 border-t border-[var(--color-border-faint)] pt-3" data-testid="usb-library">
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="text-xs font-bold">
-          {library.trackCount.toLocaleString()} {library.trackCount === 1 ? 'track' : 'tracks'} · {library.playlistCount.toLocaleString()} {library.playlistCount === 1 ? 'playlist' : 'playlists'}
-        </p>
-        {summary.isActive && <StatusBadge tone="online">Active library</StatusBadge>}
-      </div>
-      <p className="mt-0.5 text-[11px] text-muted-foreground">
-        Imported {formatImported(library.importedAt)}{summary.snapshotCount > 1 ? ` · ${summary.snapshotCount} imports of this USB` : ''}
-      </p>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <ControlButton variant="neutral" onClick={() => toggle('playlists')} aria-expanded={panel === 'playlists'}><Playlist width={14} height={14} aria-hidden="true" /> Playlists</ControlButton>
-        <ControlButton variant="neutral" onClick={() => toggle('tracks')} aria-expanded={panel === 'tracks'}><MusicNote width={14} height={14} aria-hidden="true" /> Tracks</ControlButton>
-        {!summary.isActive && (
-          <ControlButton
-            variant="primary"
-            disabled={activating}
-            onClick={() => { setActivating(true); void onMakeActive(library.importId).finally(() => setActivating(false)); }}
-          >
-            {activating ? <Refresh className="animate-spin" width={14} height={14} aria-hidden="true" /> : null} Use this library
-          </ControlButton>
-        )}
+    <div className="usb-device-library min-w-0 border-t border-[var(--color-border-faint)] pt-3" data-testid="usb-library">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-medium">
+              {library.trackCount.toLocaleString()} {library.trackCount === 1 ? 'track' : 'tracks'} · {library.playlistCount.toLocaleString()} {library.playlistCount === 1 ? 'playlist' : 'playlists'}
+            </p>
+            {summary.isActive && <StatusBadge tone="online">Active library</StatusBadge>}
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Imported {formatImported(library.importedAt)}{summary.snapshotCount > 1 ? ` · ${summary.snapshotCount} imports of this USB` : ''}
+          </p>
+        </div>
+        <ToolbarIconGroup aria-label="USB library actions">
+          <ToolbarIconButton label="Playlists" aria-expanded={panel === 'playlists'} aria-pressed={panel === 'playlists'} onClick={() => toggle('playlists')}><Playlist width={18} height={18} aria-hidden="true" /></ToolbarIconButton>
+          <ToolbarIconButton label="Tracks" aria-expanded={panel === 'tracks'} aria-pressed={panel === 'tracks'} onClick={() => toggle('tracks')}><MusicNote width={18} height={18} aria-hidden="true" /></ToolbarIconButton>
+          {!summary.isActive && <ToolbarIconButton label="Use this library" disabled={activating}
+            onClick={() => { setActivating(true); void onMakeActive(library.importId).finally(() => setActivating(false)); }}>
+            {activating ? <Refresh className="animate-spin" width={18} height={18} aria-hidden="true" /> : <CheckCircle width={18} height={18} aria-hidden="true" />}
+          </ToolbarIconButton>}
+        </ToolbarIconGroup>
       </div>
       {panel && <LibraryList importId={library.importId} panel={panel} />}
     </div>

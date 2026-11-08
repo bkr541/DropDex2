@@ -1,11 +1,10 @@
 import './library-studio.css';
 import '../ui/studio-surface.css';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { MusicNote, Upload } from 'iconoir-react/regular';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useLibraryStats } from '../../hooks/useRekordboxTracks';
-import { useSpotifyAvailability } from '../../hooks/useSpotifyAvailability';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { RekordboxTrack, UserPlaylistProfile } from '../../types';
@@ -15,7 +14,6 @@ import { RecentlyAddedPanel } from './LibraryView';
 import { LibraryTabBar } from './LibraryTabBar';
 import { ArtistsPanel, GenresPanel, PlaylistsPanel } from './LibraryTabPanels';
 import { artistLibraryTabs, type ArtistLibraryTab } from './artistLibraryTabs';
-import { SpotifyLibraryTab } from './SpotifyLibraryTab';
 
 export interface ArtistLibraryViewProps {
   importId: string;
@@ -24,7 +22,6 @@ export interface ArtistLibraryViewProps {
   playlistProfilesByRbId: Map<string, UserPlaylistProfile>;
   recentTracks: RekordboxTrack[];
   recentTracksLoading: boolean;
-  spotifyAccessToken: string | null;
   onPlaylistClick: (playlist: PlaylistWithCount) => void;
   onEditPlaylist: (playlist: PlaylistWithCount) => void;
   onImport: () => void;
@@ -57,20 +54,15 @@ function ReviewRecentlyAdded({
 
 export function ArtistLibraryView({
   importId, playlists, playlistsLoading, playlistProfilesByRbId, recentTracks, recentTracksLoading,
-  spotifyAccessToken, onPlaylistClick, onEditPlaylist, onImport, onTrackClick,
+  onPlaylistClick, onEditPlaylist, onImport, onTrackClick,
 }: ArtistLibraryViewProps) {
   const { stats, loading: statsLoading } = useLibraryStats(importId);
   const [activeTab, setActiveTab] = useState<ArtistLibraryTab>('tracks');
-  const spotifyAvailable = useSpotifyAvailability(spotifyAccessToken);
   // The track picked in the Tracks table. The table selects the first track on load.
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
   const panelTrackIds = useMemo(() => (selectedTrack ? [selectedTrack.id] : []), [selectedTrack]);
   const panelWaveforms = useTrackPreviewWaveforms(importId, panelTrackIds);
-  const tabs = useMemo(() => artistLibraryTabs(spotifyAvailable), [spotifyAvailable]);
-
-  useEffect(() => {
-    if (spotifyAvailable === false && activeTab === 'spotify') setActiveTab('tracks');
-  }, [activeTab, spotifyAvailable]);
+  const tabs = useMemo(() => artistLibraryTabs(), []);
 
   const genreStats = useMemo(() => (stats?.genreTotals ?? []).map(({ name, count }) => [name, count] as const), [stats?.genreTotals]);
   const artistStats = useMemo(() => (stats?.artistTotals ?? []).map(({ name, count }) => [name, count] as const), [stats?.artistTotals]);
@@ -82,7 +74,6 @@ export function ArtistLibraryView({
         <CuePointsTrackPanel
           key={selectedTrack.id}
           track={selectedTrack}
-          cuesAboveWaveform
           waveformState={panelWaveforms.getState(selectedTrack.id)}
           onRetryWaveform={() => panelWaveforms.retry([selectedTrack.id])}
         />
@@ -108,7 +99,6 @@ export function ArtistLibraryView({
       </div>
       {activeTab === 'genres' && <GenresPanel genreStats={genreStats} loading={statsLoading} />}
       {activeTab === 'artists' && <ArtistsPanel artistStats={artistStats} loading={statsLoading} />}
-      {activeTab === 'spotify' && spotifyAvailable && spotifyAccessToken && <SpotifyLibraryTab accessToken={spotifyAccessToken} />}
     </div>
   );
 }

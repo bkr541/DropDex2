@@ -57,9 +57,9 @@ export function RecordTrackListing<T extends TrackRecord>({
   const counts = playlistCounts ?? loadedCounts;
 
   const columns: TrackListingColumn<T>[] = [
-    { id: 'bpm', label: 'BPM', sort: 'bpm', cellClassName: 'font-mono tabular-nums', render: (track) => track.bpm?.toFixed(1) ?? '—' },
+    { id: 'bpm', label: 'Bpm', sort: 'bpm', cellClassName: 'font-mono tabular-nums', render: (track) => track.bpm?.toFixed(1) ?? '—' },
     { id: 'key', label: 'Key', sort: 'key', render: (track) => formatCamelotCode(track.camelot_key || track.musical_key) || '—' },
-    { id: 'genre', label: 'Genre', sort: 'genre', headClassName: 'w-[178px]', cellClassName: 'w-[178px] max-w-[178px]', render: renderGenre ?? ((track) => <span className="block truncate">{track.genre ?? '—'}</span>) },
+    { id: 'genre', label: 'Genre', sort: 'genre', headClassName: 'w-[83.2px] max-w-[83.2px]', cellClassName: 'w-[83.2px] max-w-[83.2px] whitespace-normal [overflow-wrap:anywhere]', render: renderGenre ?? ((track) => <span className="block whitespace-normal [overflow-wrap:anywhere]">{track.genre ?? '—'}</span>) },
     { id: 'format', label: 'Format', sort: 'format', cellClassName: 'whitespace-nowrap', render: (track) => track.file_format ?? '—' },
     {
       id: 'playlists', label: 'Playlists', sort: 'playlists', cellClassName: 'whitespace-nowrap tabular-nums',

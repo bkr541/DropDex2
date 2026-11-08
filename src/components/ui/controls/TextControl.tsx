@@ -7,7 +7,7 @@ function inputClass(error?: boolean) {
 }
 
 export interface TextControlProps extends InputHTMLAttributes<HTMLInputElement> {
-  icon: ReactNode;
+  icon?: ReactNode;
   containerClassName?: string;
   endAdornment?: ReactNode;
 }
@@ -19,11 +19,12 @@ export const TextControl = forwardRef<HTMLInputElement, TextControlProps>(functi
   icon,
   ...props
 }, ref) {
+  const hasIcon = icon != null && icon !== false;
   const invalid = props['aria-invalid'] === true || props['aria-invalid'] === 'true';
   return (
     <div className={cn('dd-control-wrap', containerClassName)}>
-      <span className="dd-control-start-icon" aria-hidden="true">{icon}</span>
-      <input ref={ref} className={cn(inputClass(invalid), 'dd-text-control--with-start-icon', className)} {...props} />
+      {hasIcon && <span className="dd-control-start-icon" aria-hidden="true">{icon}</span>}
+      <input ref={ref} className={cn(inputClass(invalid), hasIcon && 'dd-text-control--with-start-icon', className)} {...props} />
       {endAdornment}
     </div>
   );

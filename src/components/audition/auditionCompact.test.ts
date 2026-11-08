@@ -13,7 +13,7 @@ describe('compact Audition layout', () => {
     expect(css).toMatch(/\.audition-header h2 \{[^}]*font-size: 20px/);
     expect(css).toMatch(/\.audition-duration > span, \.audition-stat > span \{[^}]*font-size: 20px/);
     expect(css).toMatch(/\.audition-cover \{[^}]*width: 48px; height: 48px/);
-    expect(song).toContain('const WAVEFORM_HEIGHT = 72;');
+    expect(read('../ui/media/TrackTimeline.tsx')).toContain('TRACK_TIMELINE_WAVEFORM_HEIGHT = 72;');
   });
 
   it('has tighter spacing: 16px page padding, 40px table rows and 32px filter controls', () => {
@@ -46,14 +46,17 @@ describe('compact Audition layout', () => {
     expect(css).toMatch(/\.audition-meta \{[^}]*display: flex/);
   });
 
-  it('lets the track list fill the rest of the window instead of a fixed height', () => {
-    expect(css).toMatch(/\.audition-studio \{[^}]*height: calc\(100vh - 3rem\)/);
+  it('lets the track list fill the space above the application dock', () => {
+    expect(css).toMatch(/\.audition-studio \{[^}]*height: 100%/);
     expect(css).toMatch(/\.audition-table-scroll \{[^}]*flex: 1 1 auto/);
     expect(library).not.toContain('max-h-[calc(100vh-18rem)]');
   });
 
-  it('hides the app\'s bottom player bar on the Audition page, since it has its own transport', () => {
-    expect(app).toContain("{currentView !== 'audition' && <NowPlayingBar className=\"hidden md:flex shrink-0\" />}");
-    expect(app).toContain("{currentView !== 'audition' && <NowPlayingBar className=\"md:hidden fixed bottom-0 left-0 right-0 z-50\" />}");
+  it('mounts one application dock for every screen, including Audition', () => {
+    expect(app.match(/<NowPlayingBar\b/g)).toHaveLength(1);
+    expect(app).not.toContain("currentView !== 'audition' && <NowPlayingBar");
+    expect(app).toContain("currentView === 'drop-lab' ? 'Drop Lab'");
+    expect(app).toContain("currentView === 'set-lab' ? 'Set Lab'");
+    expect(app).toContain("currentView === 'flip-lab' ? 'Flip Lab'");
   });
 });

@@ -8,7 +8,7 @@ import { AudioDockMockupsContent } from './LayoutLabAudioDockMockups';
 vi.mock('../../lib/supabase', () => ({ supabase: {} }));
 
 const read = (p: string) => readFileSync(resolve(__dirname, p), 'utf8');
-const css = read('./layout-lab-audio-dock.css');
+const css = read('./layout-lab-audio-dock.css') + read('../player/essential-audio-dock.css');
 const markup = renderToStaticMarkup(createElement(AudioDockMockupsContent));
 
 describe('Layout Lab Audio Dock tab, in the graphite look', () => {
@@ -75,7 +75,7 @@ describe('Layout Lab Audio Dock tab, in the graphite look', () => {
     it('lists the controls first in the source of every concept', () => {
       const src = read('./LayoutLabAudioDockMockups.tsx');
       const cases = src.slice(src.indexOf('function dockContent'), src.indexOf('return <div className="adl-preview-scroll"'));
-      expect(cases).toContain("case 'edge': return <>{transport()}{identity()}");
+      expect(src).toContain("<EssentialAudioDock transport={transport()} identity={identity()} timeline={timeline(true)}");
       expect(cases).toContain('<div className="adl-left-group">{transport()}{identity(true, true)}</div>');
       expect(cases).toContain('<div className="adl-capsule-top">{transport()}{identity()}');
       expect(cases).toContain('<div className="adl-waveform-bottom">{transport()}{identity()}');

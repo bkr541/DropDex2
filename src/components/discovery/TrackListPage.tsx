@@ -234,7 +234,7 @@ export function TrackListPage({ setlist, accessToken, onBack }: TrackListPagePro
       {showSkeleton && (
         <div className="glass rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden">
           <div className="px-5 py-4 border-b border-[var(--color-border-faint)] flex items-center gap-2">
-            <Refresh width={14} height={14} aria-hidden="true" className="animate-spin text-primary" />
+            <Refresh width={14} height={14} aria-hidden="true" className="animate-spin text-control-primary" />
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
               {loading || waitingForAuth ? 'Loading tracks…' : 'Extracting tracks from this set…'}
             </span>

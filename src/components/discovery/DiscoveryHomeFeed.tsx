@@ -49,7 +49,7 @@ export function DiscoveryHomeFeed({ feed, forYou, genres, onSelectArtist, onOpen
   if (feed.loading && forYou.loading) {
     return (
       <div className="studio-empty" role="status">
-        <Refresh className="animate-spin text-primary" width={24} height={24} aria-hidden="true" />
+        <Refresh className="animate-spin text-control-primary" width={24} height={24} aria-hidden="true" />
       </div>
     );
   }

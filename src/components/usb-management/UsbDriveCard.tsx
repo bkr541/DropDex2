@@ -16,7 +16,7 @@ export function UsbStickArt({ lit = true, size = 112, className }: { lit?: boole
 }
 
 const SEGMENTS: { id: 'tracks' | 'rekordbox' | 'other'; label: string; color: string }[] = [
-  { id: 'tracks', label: 'Tracks', color: '#0a91ff' },
+  { id: 'tracks', label: 'Tracks', color: 'var(--color-primary)' },
   { id: 'rekordbox', label: 'Rekordbox library', color: '#a855f7' },
   { id: 'other', label: 'Other files', color: '#f59e0b' },
 ];
@@ -34,17 +34,17 @@ export function StorageBar({ details, scan }: { details: DesktopUsbDetails; scan
   return (
     <div>
       <div className="flex items-baseline justify-between">
-        <p className="text-sm font-black tabular-nums">{formatBytes(details.freeBytes)} <span className="text-xs font-semibold text-muted-foreground">free of {formatBytes(total)}</span></p>
+        <p className="usb-storage-figure tabular-nums">{formatBytes(details.freeBytes)} <span className="text-xs font-normal text-muted-foreground">free of {formatBytes(total)}</span></p>
         {pct != null && <span className="font-mono text-[11px] font-bold text-muted-foreground">{pct}% full</span>}
       </div>
-      <div className="mt-1.5 flex h-2.5 w-full overflow-hidden rounded-full bg-white/[0.07]" role="img" aria-label={`${pct ?? 0} percent full`}>
+      <div className="usb-storage-rail mt-1.5 flex w-full overflow-hidden rounded-full" role="img" aria-label={`${pct ?? 0} percent full`}>
         {known.length > 0 ? (
           <>
             {known.map((segment) => <div key={segment.id} title={`${segment.label}: ${formatBytes(segment.bytes)}`} style={{ width: `${(segment.bytes / total) * 100}%`, background: segment.color }} />)}
             {otherUsed > 0 && <div title={`System and unknown: ${formatBytes(otherUsed)}`} style={{ width: `${(otherUsed / total) * 100}%`, background: '#64748b' }} />}
           </>
         ) : (
-          <div style={{ width: `${pct ?? 0}%`, background: '#0a91ff' }} />
+          <div style={{ width: `${pct ?? 0}%`, background: 'var(--color-primary)' }} />
         )}
       </div>
       {known.length > 0 && (
@@ -63,8 +63,8 @@ export function StorageBar({ details, scan }: { details: DesktopUsbDetails; scan
 function Fact({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div className="min-w-0">
-      <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
-      <p className="mt-0.5 truncate text-sm font-bold" title={value ?? undefined}>{value || 'Unknown'}</p>
+      <p className="text-[9px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <p className="mt-0.5 truncate text-xs font-normal" title={value ?? undefined}>{value || 'Unknown'}</p>
     </div>
   );
 }
@@ -93,7 +93,7 @@ export function UsbDriveCard({ details, eyebrow, scan, compact = false, actions,
   const heading = (
     <>
       <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{eyebrow}</p>
-      <h2 className={cn('mt-1 truncate font-black tracking-tight', compact ? 'text-2xl' : 'text-3xl')} title={details.volumeName}>{details.volumeName}</h2>
+      <h2 className={cn('usb-drive-title mt-1 truncate', compact ? 'text-2xl' : 'text-3xl')} title={details.volumeName}>{details.volumeName}</h2>
       {model && <p className="mt-0.5 truncate text-sm text-muted-foreground">{model}</p>}
     </>
   );
@@ -101,12 +101,11 @@ export function UsbDriveCard({ details, eyebrow, scan, compact = false, actions,
   return (
     <section
       data-testid="usb-drive-card"
-      className={cn('glass relative overflow-hidden rounded-3xl border border-[var(--color-border-subtle)] px-5 py-4', className)}
+      className={cn('usb-panel usb-drive-card relative overflow-hidden rounded-xl border border-[var(--color-border-subtle)] px-5 py-4', className)}
     >
-      <div className="pointer-events-none absolute -left-10 -top-16 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
       <div className={cn('relative flex gap-4', compact ? 'flex-col sm:flex-row' : 'flex-col md:flex-row')}>
         <div className={cn(
-          'flex shrink-0 items-center rounded-2xl border border-white/10 bg-black/25 px-5 py-3',
+          'usb-art-well flex shrink-0 items-center px-5 py-3',
           compact ? 'justify-center' : 'flex-col gap-2 text-center md:w-48',
         )}>
           {!compact && (

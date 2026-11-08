@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { cn } from '../../lib/utils';
+import './library-studio.css';
 
 export interface LibraryTabBarItem<T extends string = string> {
   id: T;

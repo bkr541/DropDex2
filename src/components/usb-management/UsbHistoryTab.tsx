@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ArrowRight, Clock, NavArrowDown, NavArrowUp, Refresh } from 'iconoir-react/regular';
 import { describeCategories, formatBytes } from '../../lib/usb/usbFormat';
 import type { UsbTransferRecord } from '../../lib/queries/usbDevices';
-import { StatusBadge } from '../ui/feedback';
+import { NoticeCard, StatusBadge } from '../ui/feedback';
 import { ControlButton } from '../ui/controls';
 
 const STATUS: Record<UsbTransferRecord['status'], { label: string; tone: 'success' | 'warning' | 'error' | 'neutral' }> = {
@@ -24,9 +24,9 @@ function TransferRow({ transfer }: { transfer: UsbTransferRecord }) {
   const [shown, setShown] = useState(FILE_PAGE);
   const status = STATUS[transfer.status];
   return (
-    <li className="glass overflow-hidden rounded-2xl border border-[var(--color-border-subtle)]" data-testid="usb-history-row">
+    <li className="usb-panel overflow-hidden rounded-xl border border-[var(--color-border-subtle)]" data-testid="usb-history-row">
       <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="flex w-full flex-wrap items-center gap-x-5 gap-y-2 px-5 py-4 text-left hover:bg-white/[0.03]">
-        <div className="flex min-w-0 items-center gap-2 text-sm font-black">
+        <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
           <span className="truncate">{transfer.sourceLabel}</span><ArrowRight width={14} height={14} className="shrink-0 text-muted-foreground" aria-label="to" /><span className="truncate">{transfer.destinationLabel}</span>
         </div>
         <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
@@ -49,7 +49,7 @@ function TransferRow({ transfer }: { transfer: UsbTransferRecord }) {
             <p className="mt-3 text-xs italic text-muted-foreground">No file list was kept for this transfer.</p>
           ) : (
             <>
-              <ul className="mt-3 max-h-72 divide-y divide-white/[0.06] overflow-y-auto rounded-xl border border-white/10 bg-black/20 font-mono text-[11px]">
+              <ul className="mt-3 max-h-72 divide-y divide-white/[0.06] overflow-y-auto rounded-xl border border-white/10 usb-file-list font-mono text-[11px]">
                 {transfer.files.slice(0, shown).map((file) => (
                   <li key={file.path} className="flex items-center gap-3 px-3 py-1.5">
                     <span className="min-w-0 flex-1 truncate" title={file.path}>{file.path}</span>
@@ -60,7 +60,7 @@ function TransferRow({ transfer }: { transfer: UsbTransferRecord }) {
               </ul>
               <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
                 <span>Showing {Math.min(shown, transfer.files.length).toLocaleString()} of {transfer.files.length.toLocaleString()}{transfer.filesTruncated ? ' (the list was limited to the first 2,000 files)' : ''}</span>
-                {shown < transfer.files.length && <button type="button" className="font-bold text-primary hover:underline" onClick={() => setShown((n) => n + FILE_PAGE)}>Show more</button>}
+                {shown < transfer.files.length && <ControlButton variant="secondary" onClick={() => setShown((n) => n + FILE_PAGE)}>Show more</ControlButton>}
               </div>
             </>
           )}
@@ -72,20 +72,20 @@ function TransferRow({ transfer }: { transfer: UsbTransferRecord }) {
 
 /** Every transfer made between USBs, newest first, with the files that moved. */
 export function UsbHistoryTab({ transfers, loading, error, onRetry }: { transfers: UsbTransferRecord[]; loading: boolean; error: string | null; onRetry: () => void }) {
-  if (loading) return <div className="flex items-center justify-center py-24"><Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" /></div>;
+  if (loading) return <div className="flex items-center justify-center py-24"><Refresh className="animate-spin text-control-primary" width={28} height={28} aria-hidden="true" /></div>;
   if (error) {
     return (
-      <div className="space-y-3 py-16 text-center">
-        <p className="text-sm font-bold text-red-400">{error}</p>
-        <ControlButton variant="neutral" onClick={onRetry}><Refresh width={14} height={14} aria-hidden="true" /> Try again</ControlButton>
-      </div>
+      <NoticeCard tone="error" title="Could not load transfer history"
+        action={<ControlButton variant="secondary" onClick={onRetry}><Refresh width={14} height={14} aria-hidden="true" /> Try again</ControlButton>}>
+        {error}
+      </NoticeCard>
     );
   }
   if (transfers.length === 0) {
     return (
-      <div className="glass flex flex-col items-center gap-3 rounded-3xl border border-dashed border-[var(--color-border-subtle)] px-8 py-16 text-center" data-testid="usb-history-empty">
+      <div className="usb-panel flex flex-col items-center gap-3 rounded-xl border border-dashed border-[var(--color-border-subtle)] px-8 py-16 text-center" data-testid="usb-history-empty">
         <Clock width={32} height={32} aria-hidden="true" className="text-muted-foreground" />
-        <h2 className="text-lg font-black">No transfers yet</h2>
+        <h2 className="text-lg font-medium">No transfers yet</h2>
         <p className="max-w-sm text-sm text-muted-foreground">When you copy tracks and your Rekordbox library from one USB to another, each transfer is listed here with the files that moved.</p>
       </div>
     );

@@ -13,7 +13,10 @@ import { NoticeCard, StatusBadge } from '../ui/feedback';
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 120_000;
 
-export function SpotifyExternalAccount({ accessToken }: { accessToken: string | null }) {
+export function SpotifyExternalAccount({ accessToken, onAvailabilityChange }: {
+  accessToken: string | null;
+  onAvailabilityChange?: (available: boolean) => void;
+}) {
   const [account, setAccount] = useState<SpotifyAccountStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,8 +25,9 @@ export function SpotifyExternalAccount({ accessToken }: { accessToken: string | 
     if (!accessToken) return null;
     const next = await fetchSpotifyAccountStatus(accessToken, signal);
     setAccount(next);
+    onAvailabilityChange?.(next.status === 'linked' && next.playlist_access);
     return next;
-  }, [accessToken]);
+  }, [accessToken, onAvailabilityChange]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -82,6 +86,7 @@ export function SpotifyExternalAccount({ accessToken }: { accessToken: string | 
         linked_at: account?.linked_at ?? null,
         playlist_access: false,
       });
+      onAvailabilityChange?.(false);
       window.open(authorizationUrl, '_blank', 'noopener,noreferrer');
     } catch (reason) {
       setAccount((current) => current ? { ...current, status: 'failed' } : {
@@ -103,6 +108,7 @@ export function SpotifyExternalAccount({ accessToken }: { accessToken: string | 
     setLoading(true);
     try {
       await unlinkSpotifyAccount(accessToken);
+      onAvailabilityChange?.(false);
       setAccount({
         provider: 'spotify',
         status: 'failed',
@@ -151,7 +157,7 @@ export function SpotifyExternalAccount({ accessToken }: { accessToken: string | 
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <ControlButton
-            variant={isLinked ? 'neutral' : 'primary'}
+            variant={isLinked ? 'secondary' : 'primary'}
             onClick={() => void linkSpotify()}
             disabled={!accessToken || loading || isPending}
           >

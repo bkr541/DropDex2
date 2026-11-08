@@ -33,9 +33,9 @@ describe('PlaybackSourceBadge', () => {
     }
   });
 
-  it('is on the bottom player, the Audition player and the Cue Points player', () => {
+  it('is on the one shared bottom player used by standard playback screens', () => {
     expect(read('./NowPlayingBar.tsx')).toContain('<PlaybackSourceBadge');
-    expect(read('../audition/AuditionTransport.tsx')).toContain('<PlaybackSourceBadge />');
-    expect(read('../cues/CuePointsView.tsx')).toContain('<PlaybackSourceBadge />');
+    expect(read('../audition/AuditionTransport.tsx')).not.toContain('<PlaybackSourceBadge');
+    expect(read('../cues/CuePointsView.tsx')).not.toContain('<PlaybackSourceBadge');
   });
 });

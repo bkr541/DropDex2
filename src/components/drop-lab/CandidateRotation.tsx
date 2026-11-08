@@ -67,7 +67,7 @@ export function CandidateRotation({ candidates, analyses, activeCandidateId, loa
 
       {loading && candidates.length === 0 ? (
         <div className="flex items-center justify-center gap-3 py-12 text-sm text-muted-foreground" role="status">
-          <Refresh className="animate-spin text-primary" width={22} height={22} aria-hidden="true" />
+          <Refresh className="animate-spin text-control-primary" width={22} height={22} aria-hidden="true" />
           Finding candidates…
         </div>
       ) : rows.length === 0 ? (

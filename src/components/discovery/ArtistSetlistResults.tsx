@@ -20,7 +20,7 @@ export function ArtistSetlistResults({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Refresh className="animate-spin text-primary" width={28} height={28} aria-hidden="true" />
+        <Refresh className="animate-spin text-control-primary" width={28} height={28} aria-hidden="true" />
       </div>
     );
   }

@@ -5,7 +5,7 @@ export function RouteLoadingState({ label = 'Loading screen…' }: { label?: str
   return (
     <div className="flex min-h-[260px] items-center justify-center py-16" role="status" aria-live="polite">
       <div className="text-center">
-        <Refresh className="mx-auto animate-spin text-primary" width={30} height={30} aria-hidden="true" />
+        <Refresh className="mx-auto animate-spin text-control-primary" width={30} height={30} aria-hidden="true" />
         <p className="mt-3 text-sm font-bold text-muted-foreground">{label}</p>
       </div>
     </div>

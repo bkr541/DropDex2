@@ -1,3 +1,4 @@
+import { useAudioDockTracks } from '../../contexts/AudioDockWorkspaceContext';
 import { useEffect, useMemo, useState } from 'react';
 import { MusicNote, Upload } from 'iconoir-react/regular';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
@@ -93,6 +94,8 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
     [analysis.phrases, analysis.beatGrid, durationMs],
   );
 
+  useAudioDockTracks(visibleTracks, selectedTrack, setSelectedTrack);
+
   const selectedIndex = visibleTracks.findIndex((track) => track.id === selectedTrackId);
   const previousTrack = selectedIndex > 0 ? visibleTracks[selectedIndex - 1] : null;
   const nextTrack = selectedIndex >= 0 && selectedIndex < visibleTracks.length - 1 ? visibleTracks[selectedIndex + 1] : null;
@@ -164,10 +167,6 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
       >
         <AuditionTransport
           track={selectedTrack}
-          fallbackDurationMs={durationMs}
-          previousTrack={previousTrack}
-          nextTrack={nextTrack}
-          onSelectTrack={selectTrack}
           positionLabel={positionLabel}
           onStepPrevious={previousTrack ? () => stepTo(previousTrack) : null}
           onStepNext={nextTrack ? () => stepTo(nextTrack) : null}

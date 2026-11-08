@@ -181,10 +181,12 @@ describe('Audition track header', () => {
     expect(markup).toContain('Coming soon');
   });
 
-  it('puts them at the end of the transport row, to the right of the volume slider', () => {
+  it('keeps decisions and navigation in the workspace while the bottom dock owns playback', () => {
     const transport = readFileSync(new URL('./AuditionTransport.tsx', import.meta.url), 'utf8');
-    expect(transport.indexOf('aria-label="Volume"')).toBeGreaterThan(-1);
-    expect(transport.indexOf('aria-label="Volume"')).toBeLessThan(transport.indexOf('<AuditionDecisions />'));
+    expect(transport).toContain('<AuditionDecisions />');
+    expect(transport).toContain('<AuditionTrackNavigation');
+    expect(transport).not.toContain('<MediaTransportControlGroup');
+    expect(transport).not.toContain('aria-label="Volume"');
   });
 
   it('asks the user to pick a track when nothing is selected', () => {
@@ -236,23 +238,23 @@ describe('Audition full song', () => {
     expect(markup).toContain('title="Cue B · 1:33"');
     expect(markup).toContain('title="Memory cue · 3:06"');
     expect(markup).toContain('left:25%');
-    expect(markup.match(/audition-cue-line/g)).toHaveLength(2);
+    expect(markup.match(/track-timeline__cue-line/g)).toHaveLength(2);
     for (const color of ['#5aa9d1', '#d2a35b']) {
       expect(markup.match(new RegExp(`--waveform-cue-ink:${color}`, 'g'))).toHaveLength(2);
     }
-    // The markers come before the ruler and waveform.
-    expect(markup.indexOf('data-testid="audition-cues"')).toBeLessThan(markup.indexOf('audition-song-ruler'));
+    expect(markup.indexOf('waveform-time-ruler')).toBeLessThan(markup.indexOf('data-testid="audition-cues"'));
   });
 
-  it('puts the track sections directly under the cue point row, above the ruler and the waveform', () => {
+  it('uses Library row order: sections, timestamps, cues, waveform, then beats', () => {
     const markup = render({ cues: [{ id: 'c1', startMs: 93_000, color: '#2997ff', label: 'B' }] });
     const cues = markup.indexOf('data-testid="audition-cues"');
     const sectionsAt = markup.indexOf('data-testid="audition-sections"');
-    const ruler = markup.indexOf('audition-song-ruler');
+    const ruler = markup.indexOf('waveform-time-ruler');
     expect(cues).toBeGreaterThan(-1);
-    expect(sectionsAt).toBeGreaterThan(cues);
+    expect(sectionsAt).toBeLessThan(cues);
     expect(sectionsAt).toBeLessThan(ruler);
-    expect(ruler).toBeLessThan(markup.indexOf('aria-label="Full waveform'));
+    expect(ruler).toBeLessThan(cues);
+    expect(cues).toBeLessThan(markup.indexOf('aria-label="Full waveform'));
   });
 
   it('ends the sections row with a blank section, in the same background and gray as the other sections that fills the rest of the width', () => {
@@ -284,20 +286,20 @@ describe('Audition full song', () => {
     expect(markup).toContain('data-testid="audition-beat-lead"');
     const lead = /<span data-testid="audition-beat-lead"[^>]*><\/span>/.exec(markup)?.[0] ?? '';
     expect(lead).not.toMatch(/>\s*\d/);
-    expect(markup.match(/class="audition-lane/g)).toHaveLength(2);
-    const css = readFileSync(new URL('./AuditionView.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.audition-song-timeline \{[^}]*padding: 8px 16px 0 calc\(16px \+ var\(--audition-lead\)\)/);
-    expect(css).toMatch(/\.audition-lane \{[^}]*margin-left: calc\(-1 \* var\(--audition-lead\)\)/);
+    const css = readFileSync(new URL('../ui/media/track-timeline.css', import.meta.url), 'utf8');
+    expect(css).toContain('padding: 12px;');
+    expect(css).toContain('margin-left: var(--waveform-timeline-lead)');
+
   });
 
   it('makes the sections row taller, with each name centred in its section', () => {
     const markup = render();
-    expect(markup).toContain('waveform-section-row relative h-7 audition-song-sections');
+    expect(markup).toContain('waveform-section-row relative h-7');
     expect(markup).toMatch(/waveform-section absolute top-0 flex h-full items-center justify-center/);
   });
 
-  it('shows no marker row for a track without cue points', () => {
-    expect(render({ cues: [] })).not.toContain('data-testid="audition-cues"');
+  it('reserves the cue row for a track without cue points', () => {
+    expect(render({ cues: [] })).toContain('data-testid="audition-cues"');
   });
 
   it('says so plainly when a track has no sections', () => {
@@ -391,7 +393,7 @@ describe('Audition library rows', () => {
     const markup = wrap(createElement(AuditionLibrary, libraryProps() as never));
     expect(markup).not.toContain('Sample Rate');
     expect(markup).not.toContain('Bit Rate');
-    expect(markup).toContain('<td class="px-3 py-1.5">08A</td>');
+    expect(markup).toMatch(/<td[^>]*data-label="Key"[^>]*>08A<\/td>/);
   });
 
   it('shows no artwork and no selection bar in front of the title, and keeps the selected row highlighted', async () => {
