@@ -8,7 +8,7 @@ vi.mock('../../lib/api/externalAccounts', () => ({
   fetchSpotifyPlaylists: vi.fn(), fetchSpotifyPlaylistTracks: vi.fn(),
   beginSpotifyAccountLink: vi.fn(), fetchSpotifyAccountStatus: vi.fn(), unlinkSpotifyAccount: vi.fn(),
 }));
-vi.mock('../../lib/api/soundcloud', () => ({ fetchIlleniumTrackTitles: vi.fn() }));
+vi.mock('../../lib/api/soundcloud', () => ({ fetchSoundCloudFavoriteArtists: vi.fn(() => new Promise(() => undefined)), fetchSoundCloudArtistTrackTitles: vi.fn() }));
 
 describe('External Music', () => {
   it('starts with two accessible service cards instead of loading either data view', () => {

@@ -52,22 +52,76 @@ def test_parser_ignores_missing_titles_and_unrelated_content():
     assert parse_track_titles(SEARCH_HTML.replace('class="soundTitle__title"', 'class="other"')) == []
 
 
-def test_fixed_search_returns_only_titles(client, monkeypatch):
-    scrape = AsyncMock(return_value=["Forever", "In My Arms"])
-    monkeypatch.setattr(soundcloud, "scrape_artist_track_titles", scrape)
-    response = client.get("/api/discovery/soundcloud/illenium/tracks?q=another-artist")
+FAVORITES = [soundcloud.FavoriteArtist(id="a1", name="ILLENIUM"), soundcloud.FavoriteArtist(id="a2", name="Zoë & Dabin/Nurko")]
+
+
+def test_favorite_artists_are_returned_in_saved_order(client, monkeypatch):
+    monkeypatch.setattr(soundcloud, "fetch_top_favorite_artists", AsyncMock(return_value=FAVORITES))
+    response = client.get("/api/discovery/soundcloud/favorite-artists")
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
+    assert [a["name"] for a in response.json()] == ["ILLENIUM", "Zoë & Dabin/Nurko"]
+
+
+@pytest.mark.asyncio
+async def test_top_favorites_query_orders_by_position_limits_to_five_and_scopes_to_the_user(monkeypatch):
+    seen = {}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, params, headers):
+            seen.update(url=url, params=params)
+            rows = [{"artist": {"id": str(i), "name": f"Artist {i}"}} for i in range(7)] + [{"artist": None}]
+            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: rows)
+
+    monkeypatch.setattr(soundcloud.httpx, "AsyncClient", FakeClient)
+    artists = await soundcloud.fetch_top_favorite_artists("user-1")
+    assert seen["url"].endswith("/rest/v1/user_artists")
+    assert seen["params"]["user_id"] == "eq.user-1"
+    assert seen["params"]["order"] == "position.asc"
+    assert seen["params"]["limit"] == "5"
+    assert [a.name for a in artists] == [f"Artist {i}" for i in range(5)]
+
+
+def test_search_uses_the_saved_artist_name_not_anything_from_the_request(client, monkeypatch):
+    monkeypatch.setattr(soundcloud, "fetch_top_favorite_artists", AsyncMock(return_value=FAVORITES))
+    scrape = AsyncMock(return_value=["Forever", "In My Arms"])
+    monkeypatch.setattr(soundcloud, "scrape_artist_track_titles", scrape)
+    response = client.get("/api/discovery/soundcloud/artists/a2/tracks?q=other&artist=other")
+    assert response.status_code == 200
     assert response.json() == ["Forever", "In My Arms"]
-    scrape.assert_awaited_once_with("ILLENIUM", limit=20)
+    scrape.assert_awaited_once_with("Zoë & Dabin/Nurko", limit=20)
+
+
+def test_search_rejects_an_artist_that_is_not_a_top_favorite(client, monkeypatch):
+    monkeypatch.setattr(soundcloud, "fetch_top_favorite_artists", AsyncMock(return_value=FAVORITES))
+    scrape = AsyncMock()
+    monkeypatch.setattr(soundcloud, "scrape_artist_track_titles", scrape)
+    assert client.get("/api/discovery/soundcloud/artists/not-mine/tracks").status_code == 404
+    scrape.assert_not_awaited()
+
+
+def test_no_hard_coded_artist_remains_in_the_runtime_code():
+    import pathlib
+    root = pathlib.Path(soundcloud.__file__).parent
+    for path in [root / "soundcloud.py", root / "scrapers" / "soundcloud" / "browser_client.py"]:
+        assert "illenium" not in path.read_text().lower()
 
 
 def test_browser_errors_are_sanitized(client, monkeypatch):
+    monkeypatch.setattr(soundcloud, "fetch_top_favorite_artists", AsyncMock(return_value=FAVORITES))
     monkeypatch.setattr(soundcloud, "scrape_artist_track_titles", AsyncMock(side_effect=RuntimeError("internal details")))
-    response = client.get("/api/discovery/soundcloud/illenium/tracks")
+    response = client.get("/api/discovery/soundcloud/artists/a1/tracks")
     assert response.status_code == 503
     assert "could not load" in response.json()["detail"]
     assert "internal details" not in response.text
+
+
+def test_special_characters_are_url_encoded_in_the_search_query():
+    from urllib.parse import urlencode
+    assert urlencode({"q": "Zoë & Dabin/Nurko"}) == "q=Zo%C3%AB+%26+Dabin%2FNurko"
 
 
 @pytest.mark.asyncio
@@ -103,7 +157,8 @@ def test_route_requires_dropdex_authentication():
     app = FastAPI()
     app.include_router(soundcloud.router)
     response = TestClient(app).get(
-        "/api/discovery/soundcloud/illenium/tracks", headers={"Authorization": "invalid"},
+        "/api/discovery/soundcloud/artists/a1/tracks", headers={"Authorization": "invalid"},
     )
     assert response.status_code == 401
+    assert TestClient(app).get("/api/discovery/soundcloud/favorite-artists", headers={"Authorization": "invalid"}).status_code == 401
 

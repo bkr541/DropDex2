@@ -28,10 +28,7 @@ export function ExternalMusicTab({ accessToken }: { accessToken: string | null }
   const [service, setService] = useState<'soundcloud' | 'spotify' | null>(null);
   const back = () => setService(null);
 
-  if (service === 'soundcloud') return <div className="profile-stack">
-    <div className="profile-group"><BackToServices onBack={back} /></div>
-    <SoundCloudTab accessToken={accessToken} />
-  </div>;
+  if (service === 'soundcloud') return <div className="profile-stack"><SoundCloudTab accessToken={accessToken} onBackToServices={back} /></div>;
   if (service === 'spotify') return <SpotifyMusicPanel accessToken={accessToken} onBack={back} />;
 
   return <section className="profile-group" aria-label="External Music services">

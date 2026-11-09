@@ -1,29 +1,33 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchIlleniumTrackTitles } from './soundcloud';
+import { fetchSoundCloudArtistTrackTitles, fetchSoundCloudFavoriteArtists } from './soundcloud';
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('SoundCloud title search', () => {
-  it('uses the fixed search endpoint with authentication and cancellation', async () => {
+describe('SoundCloud artist search', () => {
+  it('loads the favorite artists with authentication and cancellation', async () => {
     const controller = new AbortController();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify([{ id: 'a1', name: 'ILLENIUM' }, { id: 'a2', name: 'Zoë & Dabin' }])));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(fetchSoundCloudFavoriteArtists('token', controller.signal)).resolves.toEqual([{ id: 'a1', name: 'ILLENIUM' }, { id: 'a2', name: 'Zoë & Dabin' }]);
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/discovery/soundcloud/favorite-artists'), { headers: { Authorization: 'Bearer token' }, cache: 'no-store', signal: controller.signal });
+  });
+
+  it('searches by artist id only, encoded, never by a name from the browser', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify(['Forever', 'In My Arms'])));
     vi.stubGlobal('fetch', fetchMock);
-    await expect(fetchIlleniumTrackTitles('token', controller.signal)).resolves.toEqual(['Forever', 'In My Arms']);
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/api/discovery/soundcloud/illenium/tracks'),
-      { headers: { Authorization: 'Bearer token' }, cache: 'no-store', signal: controller.signal },
-    );
+    await expect(fetchSoundCloudArtistTrackTitles('token', 'id/with space')).resolves.toEqual(['Forever', 'In My Arms']);
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/discovery/soundcloud/artists/id%2Fwith%20space/tracks'), expect.anything());
   });
 
-  it('rejects malformed title lists', async () => {
+  it('rejects malformed responses', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([{ title: 'Forever' }]))));
-    await expect(fetchIlleniumTrackTitles('token')).rejects.toThrow('unexpected SoundCloud track titles response');
+    await expect(fetchSoundCloudArtistTrackTitles('token', 'a1')).rejects.toThrow('unexpected SoundCloud track titles response');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([{ id: 'a1' }]))));
+    await expect(fetchSoundCloudFavoriteArtists('token')).rejects.toThrow();
   });
 
-  it('surfaces browser search failures', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(
-      JSON.stringify({ detail: 'SoundCloud search could not load. Please try again.' }), { status: 503 },
-    )));
-    await expect(fetchIlleniumTrackTitles('token')).rejects.toThrow('SoundCloud search could not load.');
+  it('surfaces failures', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ detail: 'SoundCloud search could not load. Please try again.' }), { status: 503 })));
+    await expect(fetchSoundCloudArtistTrackTitles('token', 'a1')).rejects.toThrow('SoundCloud search could not load.');
   });
 });
