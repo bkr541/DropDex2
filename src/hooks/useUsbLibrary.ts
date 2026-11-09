@@ -5,7 +5,7 @@ import {
   fetchUsbDevices, fetchUsbTransfers, recordUsbTransfer, rememberUsbDevice, renameUsbDevice, setUsbDeviceRetired,
   type UsbDeviceRecord, type UsbTransferRecord,
 } from '../lib/queries/usbDevices';
-import { fetchUsbSnapshots, summarizeUsbLibraries, type UsbLibrarySummary } from '../lib/queries/usbLibraries';
+import { fetchUsbSnapshots, summarizeUsbLibraries, type UsbLibrarySummary, type UsbSnapshot } from '../lib/queries/usbLibraries';
 import { setActiveImport } from '../lib/queries/rekordbox';
 import type { DesktopTransferResult, DesktopUsbDetails } from '../types/dropdex-desktop';
 
@@ -15,6 +15,7 @@ export function useUsbLibrary() {
   const userId = session?.user.id ?? null;
   const [devices, setDevices] = useState<UsbDeviceRecord[]>([]);
   const [transfers, setTransfers] = useState<UsbTransferRecord[]>([]);
+  const [snapshots, setSnapshots] = useState<UsbSnapshot[]>([]);
   const [libraries, setLibraries] = useState<ReadonlyMap<string, UsbLibrarySummary>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +34,7 @@ export function useUsbLibrary() {
         if (cancelled) return;
         setDevices(deviceRows);
         setTransfers(transferRows);
+        setSnapshots(snapshots);
         setLibraries(summarizeUsbLibraries(snapshots));
       })
       .catch((err: unknown) => {
@@ -85,6 +87,19 @@ export function useUsbLibrary() {
     }
   }, [userId, remember]);
 
+  /** Logs a single-file copy against the already selected USB records, without changing device or library identity. */
+  const saveAudioCopy = useCallback(async (result: DesktopTransferResult, sourceDeviceId: string, destinationDeviceId: string): Promise<boolean> => {
+    if (!userId) return false;
+    try {
+      await recordUsbTransfer(userId, result, sourceDeviceId, destinationDeviceId);
+      setTransfers(await fetchUsbTransfers());
+      return true;
+    } catch (err: unknown) {
+      logger.error('usb.audio_copy.history_failed', { message: err instanceof Error ? err.message : String(err) });
+      return false;
+    }
+  }, [userId]);
+
   const rename = useCallback(async (deviceId: string, nickname: string | null) => {
     try {
       await renameUsbDevice(deviceId, nickname);
@@ -107,5 +122,5 @@ export function useUsbLibrary() {
     }
   }, []);
 
-  return { devices, transfers, libraries, loading, error, refresh, remember, saveTransfer, rename, setRetired, makeLibraryActive };
+  return { devices, transfers, libraries, snapshots, loading, error, refresh, remember, saveTransfer, saveAudioCopy, rename, setRetired, makeLibraryActive };
 }

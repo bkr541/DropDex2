@@ -101,12 +101,12 @@ describe('sortAuditionTracks', () => {
 });
 
 describe('nextAuditionSort', () => {
-  it('cycles ascending, descending, then off', () => {
+  it('alternates ascending and descending', () => {
     const first = nextAuditionSort(null, 'bpm');
     expect(first).toEqual({ column: 'bpm', direction: 'asc' });
     const second = nextAuditionSort(first, 'bpm');
     expect(second).toEqual({ column: 'bpm', direction: 'desc' });
-    expect(nextAuditionSort(second, 'bpm')).toBeNull();
+    expect(nextAuditionSort(second, 'bpm')).toEqual({ column: 'bpm', direction: 'asc' });
   });
 
   it('starts ascending when a different column is chosen', () => {

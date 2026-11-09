@@ -5,12 +5,15 @@ import { MoreHoriz } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import { TrackNameCell, TrackTable, TrackTableBody, TrackTableHead, TrackTableHeadCell, TrackTableRow, type TrackTableSort, type TrackTableStatus } from './TrackTable';
 import './track-listing.css';
+import type { RecordSortValue } from './recordTrackSorting';
 
 export interface TrackListingColumn<T> {
   id: string;
   label: ReactNode;
   /** Makes the heading a sort button, and is passed to `onSort`. */
   sort?: string;
+  /** Raw value used by RecordTrackListing when sorting a workflow metadata column. */
+  sortValue?: (track: T) => RecordSortValue;
   headClassName?: string;
   cellClassName?: string;
   /** What goes inside the cell. */

@@ -59,7 +59,7 @@ export function UsbCardsSection({ groups, activeImportId, onOpen, onMakeActive, 
               </div>
 
               {group.imports.length > 0 && (
-                <div className="divide-y divide-[var(--color-border-faint)] border-t border-[var(--color-border-faint)]" data-testid="usb-card-snapshots">
+                <div className="ml-12 divide-y divide-[var(--color-border-faint)] border-t border-[var(--color-border-faint)]" data-testid="usb-card-snapshots">
                   {group.imports.map((snapshot) => (
                     <ImportSnapshotRow
                       key={snapshot.id}

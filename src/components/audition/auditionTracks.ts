@@ -1,9 +1,8 @@
-import { formatCamelotCode } from '../ui/display/camelotKey';
+import { nextRecordSort, sortRecordTracks } from '../ui/display/recordTrackSorting';
 import { formatKey } from '../../lib/utils';
-import { durationMsForTrack } from '../../lib/music/trackTiming';
 import type { RekordboxTrack } from '../../types';
 
-export type AuditionSortColumn = 'title' | 'artist' | 'genre' | 'key' | 'bpm' | 'length' | 'format' | 'sampleRate' | 'bitRate' | 'playlists';
+export type AuditionSortColumn = 'title' | 'artist' | 'genre' | 'key' | 'bpm' | 'length' | 'format' | 'sampleRate' | 'bitRate' | 'playlists' | 'date-added';
 export type AuditionSortDirection = 'asc' | 'desc';
 
 export interface AuditionSort {
@@ -28,44 +27,14 @@ export function filterAuditionTracks(tracks: readonly RekordboxTrack[], filters:
   });
 }
 
-function sortValue(track: RekordboxTrack, column: AuditionSortColumn, playlistCounts?: ReadonlyMap<string, number>): string | number | null {
-  switch (column) {
-    case 'title': return track.title ?? '';
-    case 'artist': return track.artist ?? '';
-    case 'genre': return track.genre ?? '';
-    case 'key': return formatCamelotCode(track.camelot_key || track.musical_key);
-    case 'bpm': return track.bpm;
-    case 'length': return durationMsForTrack(track, null);
-    case 'format': return track.file_format ?? '';
-    case 'sampleRate': return track.sample_rate_hz > 0 ? track.sample_rate_hz : null;
-    case 'bitRate': return track.bitrate_kbps > 0 ? track.bitrate_kbps : null;
-    // Tracks whose count has not loaded yet have no value, so they sort last.
-    case 'playlists': return playlistCounts?.get(track.id) ?? null;
-  }
-}
-
-/** Returns a new list. Tracks with no value for the column always sort last. */
+/** Shared record ordering also keeps the Audition playback queue aligned with the table. */
 export function sortAuditionTracks(tracks: readonly RekordboxTrack[], sort: AuditionSort | null, playlistCounts?: ReadonlyMap<string, number>): RekordboxTrack[] {
-  if (!sort) return [...tracks];
-  const direction = sort.direction === 'asc' ? 1 : -1;
-  return [...tracks].sort((a, b) => {
-    const av = sortValue(a, sort.column, playlistCounts);
-    const bv = sortValue(b, sort.column, playlistCounts);
-    const aMissing = av === null || av === '';
-    const bMissing = bv === null || bv === '';
-    if (aMissing && bMissing) return 0;
-    if (aMissing) return 1;
-    if (bMissing) return -1;
-    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * direction;
-    return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' }) * direction;
-  });
+  return sortRecordTracks(tracks, sort, playlistCounts);
 }
 
-/** Header click cycle: ascending, then descending, then back to the library order. */
-export function nextAuditionSort(current: AuditionSort | null, column: AuditionSortColumn): AuditionSort | null {
-  if (!current || current.column !== column) return { column, direction: 'asc' };
-  if (current.direction === 'asc') return { column, direction: 'desc' };
-  return null;
+/** Header clicks alternate ascending and descending. */
+export function nextAuditionSort(current: AuditionSort | null, column: AuditionSortColumn): AuditionSort {
+  return nextRecordSort(current, column);
 }
 
 export interface TimeRulerTick {

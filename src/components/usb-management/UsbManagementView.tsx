@@ -1,27 +1,30 @@
 import { useEffect, useState } from 'react';
-import { ArrowSeparate, Clock, Laptop, Usb } from 'iconoir-react/regular';
+import { ArrowSeparate, Clock, Database, Laptop, Usb } from 'iconoir-react/regular';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { getDesktopBridge, usePrimaryUsbDetails } from '../../hooks/useDesktopUsb';
 import { useUsbLibrary } from '../../hooks/useUsbLibrary';
 import { LibraryTabBar } from '../library/LibraryTabBar';
 import { UsbDevicesTab } from './UsbDevicesTab';
+import { UsbBrowseTab } from './UsbBrowseTab';
 import { UsbHistoryTab } from './UsbHistoryTab';
 import { UsbOverviewTab } from './UsbOverviewTab';
 import { UsbTransferTab } from './UsbTransferTab';
 import '../ui/studio-surface.css';
 import './usb-management.css';
 
-type UsbTab = 'overview' | 'transfer' | 'history' | 'devices';
+type UsbTab = 'overview' | 'browse' | 'transfer' | 'history' | 'devices';
 
 const USB_TABS = [
   { id: 'overview', label: 'My USB', icon: Usb },
+  { id: 'browse', label: 'Browse USBs', icon: Database },
   { id: 'transfer', label: 'Transfer', icon: ArrowSeparate },
   { id: 'history', label: 'History', icon: Clock },
   { id: 'devices', label: 'My USBs', icon: Laptop },
 ] as const;
 
 /**
- * USB Management. My USB shows the drive you play from; Transfer copies it onto a second drive; History lists every
+ * USB Management. Browse USBs inspects saved snapshots without activation. My USB shows the drive you play from;
+ * Transfer copies it onto a second drive; History lists every
  * transfer; My USBs keeps track of all the drives you DJ with.
  */
 export function UsbManagementView() {
@@ -43,6 +46,8 @@ export function UsbManagementView() {
       <div className="studio-surface usb-management-studio">
         <div className="usb-management-content">
           {tab === 'overview' && <UsbOverviewTab desktopAvailable={desktopAvailable} />}
+          {tab === 'browse' && <UsbBrowseTab devices={library.devices} snapshots={library.snapshots} loading={library.loading} error={library.error} onRetry={library.refresh} transfers={library.transfers} onCopyFinished={(result, source, destination) => library.saveAudioCopy(result, source.deviceId, destination.deviceId)} />}
+
           {tab === 'transfer' && (
             desktopAvailable
               ? <UsbTransferTab onFinished={library.saveTransfer} onShowHistory={() => setTab('history')} />

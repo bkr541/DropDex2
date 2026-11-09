@@ -1,3 +1,4 @@
+import { sortRecordTracks } from '../ui/display/recordTrackSorting';
 import { LibraryFilterRow, matchesLibrarySearch, recordOptions } from './LibraryFilterRow';
 import { useAudioDockTracks } from '../../contexts/AudioDockWorkspaceContext';
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
@@ -299,7 +300,7 @@ function DesktopLibraryInfoCard({
 
 // ── Library track table (shared by Tracks, Recently Added, Analysis Incomplete tabs) ──
 
-type LibrarySortCol = 'title' | 'bpm' | 'key' | 'genre' | 'format' | 'playlists' | 'length';
+type LibrarySortCol = 'title' | 'bpm' | 'key' | 'genre' | 'format' | 'playlists' | 'date-added' | 'length';
 
 export interface LibraryTrackTableProps {
   tracks: RekordboxTrack[];
@@ -332,7 +333,7 @@ export function LibraryTrackTable({
   function handleColClick(col: LibrarySortCol) {
     if (sortCol === col) {
       if (sortDir === 'asc') setSortDir('desc');
-      else { setSortCol(null); setSortDir('asc'); }
+      else setSortDir('asc');
     } else {
       setSortCol(col);
       setSortDir('asc');
@@ -341,31 +342,10 @@ export function LibraryTrackTable({
 
   const ids = useMemo(() => tracks.map((track) => track.id), [tracks]);
   const playlistCounts = useTrackPlaylistCounts(ids);
-  const sortedTracks = useMemo(() => {
-    if (!sortCol) return tracks;
-    return [...tracks].sort((a, b) => {
-      let av: string | number | null = null;
-      let bv: string | number | null = null;
-      if (sortCol === 'title') { av = a.title ?? ''; bv = b.title ?? ''; }
-      else if (sortCol === 'bpm') { av = a.bpm ?? -1; bv = b.bpm ?? -1; }
-      else if (sortCol === 'key') { av = formatCamelotKey(a.camelot_key || a.musical_key); bv = formatCamelotKey(b.camelot_key || b.musical_key); }
-      else if (sortCol === 'genre') { av = a.genre ?? ''; bv = b.genre ?? ''; }
-      else if (sortCol === 'format') { av = a.file_format ?? ''; bv = b.file_format ?? ''; }
-      else if (sortCol === 'playlists') {
-        const ac = playlistCounts.counts.get(a.id);
-        const bc = playlistCounts.counts.get(b.id);
-        if (ac == null || bc == null) return ac == null ? Number(bc != null) : -1;
-        av = ac; bv = bc;
-      }
-      else if (sortCol === 'length') {
-        av = a.duration_ms ?? (a.duration_seconds != null ? a.duration_seconds * 1000 : -1);
-        bv = b.duration_ms ?? (b.duration_seconds != null ? b.duration_seconds * 1000 : -1);
-      }
-      if (av === null || av === bv) return 0;
-      const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
-      return sortDir === 'asc' ? cmp : -cmp;
-    });
-  }, [tracks, sortCol, sortDir, playlistCounts.counts]);
+  const sortedTracks = useMemo(() => sortRecordTracks(tracks,
+    sortCol ? { column: sortCol, direction: sortDir } : null, playlistCounts.counts),
+    [tracks, sortCol, sortDir, playlistCounts.counts]);
+
   useAudioDockTracks(sortedTracks);
 
   if (loading) {

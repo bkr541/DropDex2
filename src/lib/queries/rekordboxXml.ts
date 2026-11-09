@@ -76,3 +76,10 @@ export async function createXmlDownloadUrl(record: RekordboxXmlRecord): Promise<
   if (error || !data?.signedUrl) throw new Error(error?.message ?? 'The download link could not be created.');
   return data.signedUrl;
 }
+
+/** Reads a private saved XML snapshot without needing the source USB or local audio files. */
+export async function readRekordboxXml(record: RekordboxXmlRecord): Promise<string> {
+  const { data, error } = await supabase.storage.from(XML_BUCKET).download(record.storagePath);
+  if (error || !data) throw new Error('The saved XML file could not be read. Check your connection and try again.');
+  return data.text();
+}

@@ -17,7 +17,7 @@
 
 ## Audio record lists
 
-Use RecordTrackListing for production lists of user audio records. The Audition table is the visual reference. Its shared columns, in order, are Track, BPM, Key, Genre, Format, Playlists, Duration and Actions. Use its built-in waveform and cue dots. Put workflow details and actions in the shared Actions slot. Use a dash for unavailable metadata and keep the same column layout. Scope screen styles to the surrounding workspace.
+Use RecordTrackListing for production lists of user audio records. The Audition table is the visual reference. Its shared columns, in order, are Track, BPM, Key, Genre, Format, Playlists, Date added, Duration and Actions. Use its built-in waveform and cue dots. Put workflow details and actions in the shared Actions slot. Use a dash for unavailable metadata and keep the same column layout. Scope screen styles to the surrounding workspace.
 
 ## Discovery retrieval
 

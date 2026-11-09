@@ -42,11 +42,14 @@ describe('FloatingSidebar wiring', () => {
     expect(src).toContain('transition-[max-width,padding,opacity]');
     expect(src).toContain('aria-label={label}');
   });
-  it('has no Layout Lab entry in the nav; Layout Lab is a floating button at the bottom right', () => {
+  it('places the Layout Lab button at the content bottom right above the audio dock', () => {
     expect(src).not.toContain('Layout Lab');
     expect(src).not.toContain('PaintBrush');
     const button = read('./FloatingLayoutLabButton.tsx');
-    expect(button).toContain('fixed bottom-6 right-6');
+    expect(button).toContain('absolute bottom-6 right-6');
+    const app = read('../../App.tsx');
+    expect(app.indexOf('<FloatingLayoutLabButton')).toBeGreaterThan(app.indexOf('</main>'));
+    expect(app.indexOf('<FloatingLayoutLabButton')).toBeLessThan(app.indexOf('<NowPlayingBar'));
     expect(read('../../App.tsx')).toContain('<FloatingLayoutLabButton onOpen={openLayoutLab} />');
   });
   it('spaces every entry evenly, with no divider lines between groups', () => {

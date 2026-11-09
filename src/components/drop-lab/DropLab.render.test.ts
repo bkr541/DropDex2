@@ -229,9 +229,9 @@ describe('Drop Lab candidate list', () => {
     expect(markup).toContain('aria-label="Actions for First Candidate"');
   });
 
-  it('uses all eight record columns and provides the row Actions menu', () => {
+  it('uses all nine record columns and provides the row Actions menu', () => {
     const markup = render();
-    expect(markup.match(/<th [^>]*>/g)).toHaveLength(8);
+    expect(markup.match(/<th [^>]*>/g)).toHaveLength(9);
     expect(markup).toContain('aria-label="Actions for First Candidate" aria-haspopup="menu"');
   });
 

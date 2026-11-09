@@ -19,6 +19,9 @@ const { getOrCreateInstallationId } = require('./installationIdentity.cjs');
 const { readUsbDetails } = require('./usbDetails.cjs');
 const { assertSafeTransferPaths, runTransfer, scanTransferSource } = require('./usbTransfer.cjs');
 const { encodePreview } = require('./previewEncoder.cjs');
+const { AudioTrackCopyService } = require('./audioTrackCopy.cjs');
+const audioTrackCopies = new AudioTrackCopyService();
+let choosingAudioCopyUsb = false;
 
 const APP_SCHEME = 'dropdex-media';
 const USB_CONFIG_FILE = 'usb-connection.json';
@@ -451,6 +454,7 @@ async function handleMediaRequest(request) {
 }
 
 async function releaseUsbAccess({ disconnect = false } = {}) {
+  await audioTrackCopies.cancelAndWait();
   // Close the admission gate before invalidating tokens so a concurrent IPC
   // request cannot mint a fresh USB media URL during release.
   const connectionMetadata = usbConnection
@@ -664,29 +668,26 @@ async function selectTransferDestination() {
 }
 
 async function startTransfer(sender, categories) {
-  if (activeTransfer) return { ok: false, error: 'A transfer is already running.' };
+  if (activeTransfer || audioTrackCopies.active) return { ok: false, error: 'A transfer is already running.' };
   const sourceRoot = transferSourceRoot();
   if (!sourceRoot) return { ok: false, error: 'Connect the USB you want to copy from first.' };
   if (!transferDestination) return { ok: false, error: 'Choose the drive you want to copy to first.' };
-
-  const startedAt = new Date().toISOString();
-  const scan = await scanTransferSource(sourceRoot);
-  const chosen = Array.isArray(categories) ? categories.filter((id) => scan[id]) : [];
-  const neededBytes = chosen.reduce((sum, id) => sum + scan[id].totalBytes, 0);
-  const destination = await transferDestinationInfo();
-  if (!destination) return { ok: false, error: 'The destination drive is no longer available.' };
-  if (destination.freeBytes != null && neededBytes > destination.freeBytes) {
-    return { ok: false, error: 'There is not enough free space on the destination drive.', neededBytes, freeBytes: destination.freeBytes };
-  }
-
+  const sourceVolumeName = usbConnection?.volumeName ?? null;
+  const destinationVolumeName = transferDestination.volumeName;
   const control = { cancelled: false };
+  // Reserve before any asynchronous scan, including the preparation period.
   activeTransfer = control;
-  let lastSent = 0;
   try {
+    const startedAt = new Date().toISOString();
+    const scan = await scanTransferSource(sourceRoot);
+    const chosen = Array.isArray(categories) ? categories.filter((id) => scan[id]) : [];
+    const neededBytes = chosen.reduce((sum, id) => sum + scan[id].totalBytes, 0);
+    const destination = await transferDestinationInfo();
+    if (!destination) return { ok: false, error: 'The destination drive is no longer available.' };
+    if (destination.freeBytes != null && neededBytes > destination.freeBytes) return { ok: false, error: 'There is not enough free space on the destination drive.', neededBytes, freeBytes: destination.freeBytes };
+    let lastSent = 0;
     const result = await runTransfer({
-      sourceRoot,
-      destinationRoot: transferDestination.rootPath,
-      categories: chosen,
+      sourceRoot, destinationRoot: transferDestination.rootPath, categories: chosen,
       isCancelled: () => control.cancelled,
       onProgress: (progress) => {
         const now = Date.now();
@@ -695,25 +696,32 @@ async function startTransfer(sender, categories) {
         if (!sender.isDestroyed()) sender.send('dropdex:transfer-progress', { ...progress, neededBytes });
       },
     });
-    return {
-      ok: true,
-      result: {
-        ...result,
-        categories: chosen,
-        neededBytes,
-        startedAt,
-        finishedAt: new Date().toISOString(),
-        sourceVolumeName: usbConnection?.volumeName ?? null,
-        destinationVolumeName: transferDestination?.volumeName ?? null,
-      },
-    };
+    return { ok: true, result: { ...result, categories: chosen, neededBytes, startedAt, finishedAt: new Date().toISOString(), sourceVolumeName, destinationVolumeName } };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'The transfer failed.' };
-  } finally {
-    activeTransfer = null;
-  }
+  } finally { activeTransfer = null; }
 }
 
+
+// Explicitly approved drive capabilities for per-track copying. These never change usbConnection.
+function assertAudioCopySender(event) {
+  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Audio copying is only available from the main application.');
+}
+async function audioCopyRequest(event, run) {
+  try { assertAudioCopySender(event); return { ok: true, ...await run() }; }
+  catch (error) { return { ok: false, error: error.code === 'ENOENT' ? 'The selected USB or audio file could not be found. Check the USBs and track path.' : error.code === 'EACCES' || error.code === 'EROFS' ? 'USB access was denied or the drive is read-only.' : error instanceof Error ? error.message : 'Audio copy request failed.' }; }
+}
+async function chooseAudioCopyUsb(expected) {
+  assertExactObject(expected, ['deviceId', 'deviceKey', 'label'], 'USB selection');
+  if (![expected.deviceId, expected.deviceKey, expected.label].every((value) => typeof value === 'string' && value.length > 0 && value.length <= 512)) throw new Error('Choose a saved USB first.');
+  if (choosingAudioCopyUsb || activeTransfer || audioTrackCopies.active) throw new Error('Finish or stop the current transfer first.');
+  choosingAudioCopyUsb = true;
+  try {
+    const selection = await dialog.showOpenDialog(mainWindow, { title: `Locate mounted USB: ${expected.label}`, buttonLabel: 'Use this USB', properties: ['openDirectory'] });
+    if (selection.canceled || !selection.filePaths[0]) return { cancelled: true, binding: null };
+    return { cancelled: false, binding: await audioTrackCopies.bind(selection.filePaths[0], expected) };
+  } finally { choosingAudioCopyUsb = false; }
+}
 
 // ── Cloud previews ───────────────────────────────────────────────────────────
 
@@ -764,6 +772,26 @@ function assertExactObject(value, allowedKeys, label) {
 }
 
 function registerIpcHandlers() {
+  ipcMain.handle('dropdex:choose-audio-copy-usb', (event, expected) => audioCopyRequest(event, () => chooseAudioCopyUsb(expected)));
+  ipcMain.handle('dropdex:prepare-audio-copy', (event, request) => audioCopyRequest(event, async () => {
+    if (activeTransfer || choosingAudioCopyUsb) throw new Error('Finish the current USB operation first.');
+    return { plan: await audioTrackCopies.prepare(request) };
+  }));
+  ipcMain.handle('dropdex:start-audio-copy', (event, id) => audioCopyRequest(event, async () => {
+    if (activeTransfer || choosingAudioCopyUsb) throw new Error('Finish the current USB operation first.');
+    if (typeof id !== 'string' || id.length > 128) throw new Error('Invalid copy review.');
+    let lastSent = 0;
+    const completed = await audioTrackCopies.start(id, (progress) => {
+      if (Date.now() - lastSent < 150 && progress.percent !== 100) return;
+      lastSent = Date.now();
+      if (!event.sender.isDestroyed()) event.sender.send('dropdex:audio-copy-progress', progress);
+    });
+    return completed;
+  }));
+  ipcMain.handle('dropdex:cancel-audio-copy', (event, id) => audioCopyRequest(event, async () => {
+    if (typeof id !== 'string' || id.length > 128) throw new Error('Invalid copy review.');
+    return { cancelled: audioTrackCopies.cancel(id) };
+  }));
   ipcMain.handle('dropdex:runtime-info', () => ({ platform: process.platform, version: app.getVersion() }));
   ipcMain.handle('dropdex:installation-id', () => getInstallationId());
   ipcMain.handle('dropdex:roulette-runtime-health', () => stemSeparationBridge.health({ refresh: true }));
@@ -1099,6 +1127,7 @@ function createMainWindow() {
   }
 
   mainWindow.on('closed', () => {
+    void audioTrackCopies.cancelAndWait().catch(() => {});
     mainWindow = null;
   });
 }
@@ -1148,7 +1177,7 @@ app.on('before-quit', (event) => {
   stemSeparationBridge.close();
   if (quittingAfterUsbRelease) return;
   const activity = usbStreams.snapshot();
-  if (activity.activeStreamCount === 0 && activity.pendingRequestCount === 0) return;
+  if (activity.activeStreamCount === 0 && activity.pendingRequestCount === 0 && !audioTrackCopies.active) return;
   event.preventDefault();
   quittingAfterUsbRelease = true;
   void releaseUsbAccess({ disconnect: false }).finally(() => app.exit(0));

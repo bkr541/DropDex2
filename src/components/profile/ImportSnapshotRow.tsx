@@ -1,3 +1,5 @@
+import { Trash } from 'iconoir-react/regular';
+import { ToolbarIconButton, ToolbarIconGroup } from '../ui/controls/ToolbarIconButton';
 import { getImportHistoryPresentation } from '../../lib/rekordbox/importHistoryPresentation';
 import { isPendingHardDelete, isUsableLibrarySnapshot } from '../../lib/rekordbox/libraryDeletion';
 import { getImportProgress, isImportInFlight, isImportStalled } from '../../lib/rekordbox/importLifecycle';
@@ -27,17 +29,22 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
   const resumable = imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted';
 
   return (
-    <div data-testid={`import-history-row-${imp.id}`} className="profile-record flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
-      <div className="min-w-0 flex-1 basis-48">
+    <div data-testid={`import-history-row-${imp.id}`} className="profile-record grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5">
+      <div className="min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <ControlButton
-            variant="secondary"
-            onClick={() => onOpen(imp)}
+          <a
+            href={`/imports/${encodeURIComponent(imp.id)}`}
+            onClick={(event) => {
+              if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+                event.preventDefault();
+                onOpen(imp);
+              }
+            }}
             aria-label={`Open import ${imp.source_filename}`}
-            className="profile-record-link max-w-full"
+            className="min-w-0 break-all text-sm font-medium hover:text-[var(--color-control-primary-hover)] focus-visible:outline-2 focus-visible:outline-[var(--color-control-focus)] focus-visible:outline-offset-2"
           >
-            <span className="truncate">{imp.source_filename}</span>
-          </ControlButton>
+            {imp.source_filename}
+          </a>
           {isActive && <StatusBadge tone="success">Active</StatusBadge>}
           {showStatusBadge && (
             <StatusBadge tone={importStalled ? 'warning' : statusTone}>
@@ -58,7 +65,7 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
           <NoticeCard tone="error" className="mt-1">{imp.error_message}</NoticeCard>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-end justify-self-end gap-2">
         {!isActive && !importInFlight && !importStalled && isUsableLibrarySnapshot(imp) && importPresentation.canActivate && (
           <ControlButton variant="secondary" onClick={() => onMakeActive(imp)}>
             Make Active
@@ -70,9 +77,13 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
           </ControlButton>
         )}
         {(!importInFlight || imp.retryable || isPendingHardDelete(imp)) && (
-          <ControlButton variant="danger-outline" onClick={() => onDelete(imp)}>
-            {isPendingHardDelete(imp) ? 'Retry Delete' : 'Delete'}
-          </ControlButton>
+          <div className="cue-studio">
+            <ToolbarIconGroup>
+              <ToolbarIconButton label={`${isPendingHardDelete(imp) ? 'Retry delete' : 'Delete'} import ${imp.source_filename}`} onClick={() => onDelete(imp)}>
+                <Trash width={16} height={16} aria-hidden="true" />
+              </ToolbarIconButton>
+            </ToolbarIconGroup>
+          </div>
         )}
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { nextRecordSort } from '../ui/display/recordTrackSorting';
 import { useTrackPlaylistCounts } from '../../hooks/useTrackPlaylistCounts';
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import type { TrackTableSort } from '../ui/display';
@@ -34,10 +35,7 @@ export function CandidateRotation({ candidates, analyses, activeCandidateId, loa
   const candidatesById = useMemo(() => new Map(rows.map((candidate) => [candidate.track.id, candidate])), [rows]);
 
   function handleSort(column: CandidateSortColumn) {
-    setSort((current) => {
-      if (!current || current.column !== column) return { column, direction: 'asc' };
-      return current.direction === 'asc' ? { column, direction: 'desc' } : null;
-    });
+    setSort((current) => nextRecordSort(current, column));
   }
 
   function openMenu(event: MouseEvent<HTMLTableRowElement>, track: DropLabCandidate['track']) {

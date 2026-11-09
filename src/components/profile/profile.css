@@ -274,3 +274,28 @@
 @media (max-width: 640px) {
   .profile-workspace .profile-external-services { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* XML snapshot metadata stays readable within Profile without an audio/USB dependency. */
+.profile-workspace .profile-xml-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }
+.profile-workspace .profile-xml-table th { color: var(--profile-muted); font-size: 10px; font-weight: 500; }
+.profile-workspace .profile-xml-table :is(th, td) { padding: 8px 6px; vertical-align: top; overflow-wrap: anywhere; }
+.profile-workspace .profile-xml-table td { font-size: 12px; }
+.profile-workspace .profile-xml-table :is(th, td):nth-child(1) { width: 24%; }
+.profile-workspace .profile-xml-table :is(th, td):nth-child(2) { width: 16%; }
+.profile-workspace .profile-xml-table :is(th, td):nth-child(3) { width: 15%; }
+.profile-workspace .profile-xml-table :is(th, td):nth-child(4) { width: 35%; }
+.profile-workspace .profile-xml-table :is(th, td):nth-child(5) { width: 10%; }
+.profile-workspace .profile-xml-summary, .profile-workspace .profile-xml-table thead { border-bottom: 1px solid var(--profile-rule); }
+.profile-workspace .profile-xml-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-block: 8px; }
+.profile-workspace .profile-xml-values dt { color: var(--profile-muted); font-size: 10px; }
+.profile-workspace .profile-xml-values dd { margin-top: 3px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .profile-workspace .profile-xml-table, .profile-workspace .profile-xml-table tbody { display: block; }
+  .profile-workspace .profile-xml-table thead { display: none; }
+  .profile-workspace .profile-xml-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .profile-workspace .profile-xml-table td { display: block; width: auto !important; }
+  .profile-workspace .profile-xml-summary td::before { content: attr(data-label); display: block; margin-bottom: 3px; color: var(--profile-muted); font-size: 10px; }
+  .profile-workspace .profile-xml-summary td[data-label="File location"] { grid-column: 1 / -1; }
+  .profile-workspace .profile-xml-details { display: block; }
+  .profile-workspace .profile-xml-values { grid-template-columns: minmax(0, 1fr); }
+}

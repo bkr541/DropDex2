@@ -38,11 +38,11 @@ beforeEach(() => {
 });
 
 describe('USB Management page', () => {
-  it('opens on My USB with four tabs', async () => {
+  it('opens on My USB with the read-only Browse USBs tab available', async () => {
     const { UsbManagementView } = await import('./UsbManagementView');
     const markup = renderToStaticMarkup(createElement(UsbManagementView));
     expect(markup).toContain('data-testid="usb-management-view"');
-    for (const label of ['My USB', 'Transfer', 'History', 'My USBs']) expect(markup).toContain(label);
+    for (const label of ['My USB', 'Browse USBs', 'Transfer', 'History', 'My USBs']) expect(markup).toContain(label);
   });
 
   it('shows the primary USB: name, make and model, size, free space and format', async () => {

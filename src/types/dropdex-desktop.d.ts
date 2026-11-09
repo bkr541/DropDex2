@@ -89,6 +89,7 @@ export interface DesktopTransferFile {
   path: string;
   size: number;
   status: 'copied' | 'skipped' | 'failed';
+  sha256?: string;
 }
 
 export interface DesktopTransferResult {
@@ -563,6 +564,15 @@ export interface DesktopMetadataRecoveryVerificationResult {
   blockers: Array<{ code: string; message: string }>;
 }
 
+export interface DesktopAudioCopyBinding { token: string; deviceId: string; details: DesktopUsbDetails }
+export interface DesktopAudioCopyPlan {
+  id: string; source: DesktopAudioCopyBinding; destination: DesktopAudioCopyBinding;
+  sourcePath: string; destinationPath: string; sizeBytes: number; requiredBytes: number; exists: boolean; expiresAt: number;
+}
+export interface DesktopAudioCopyProgress { planId: string; phase: 'copying' | 'verifying'; bytes: number; totalBytes: number; percent: number }
+export interface DesktopAudioCopyOutcome { status: 'copied' | 'skipped' | 'cancelled' | 'failed'; bytes: number; sha256: string | null; destinationPath: string; error: string | null; cleanupIncomplete: boolean }
+export type DesktopAudioCopyReply<T> = ({ ok: true } & T) | { ok: false; error: string };
+
 export interface DropDexDesktopBridge {
   readonly isElectron: true;
   /** Where a file the user chose lives on this computer, or '' if that cannot be read. */
@@ -581,6 +591,11 @@ export interface DropDexDesktopBridge {
     previous: { sourceSize: number; sourceMtimeMs: number } | null;
   }): Promise<DesktopEncodePreviewResult>;
   getUsbDetails(): Promise<DesktopUsbDetails | null>;
+  chooseAudioCopyUsb(expected: { deviceId: string; deviceKey: string; label: string }): Promise<DesktopAudioCopyReply<{ cancelled: boolean; binding: DesktopAudioCopyBinding | null }>>;
+  prepareAudioCopy(request: { sourceToken: string; destinationToken: string; segments: string[] }): Promise<DesktopAudioCopyReply<{ plan: DesktopAudioCopyPlan }>>;
+  startAudioCopy(planId: string): Promise<DesktopAudioCopyReply<{ result: DesktopAudioCopyOutcome; startedAt: string; finishedAt: string }>>;
+  cancelAudioCopy(planId: string): Promise<DesktopAudioCopyReply<{ cancelled: boolean }>>;
+  onAudioCopyProgress(listener: (progress: DesktopAudioCopyProgress) => void): () => void;
   getTransferDestination(): Promise<DesktopUsbDetails | null>;
   selectTransferDestination(): Promise<{ cancelled: boolean; destination: DesktopUsbDetails | null; error?: string }>;
   clearTransferDestination(): Promise<null>;

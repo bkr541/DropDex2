@@ -101,6 +101,10 @@ describe('Library tab in the profile', () => {
     // The snapshot's own actions come with it.
     expect(markup).toContain('Make Active');
     expect(markup).toContain('Delete');
+    expect(markup).toMatch(/<a[^>]*aria-label="Open import exportLibrary.db"/);
+    const deleteAction = markup.match(/<button[^>]*aria-label="Delete import exportLibrary.db"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    expect(deleteAction).toContain('<svg');
+    expect(deleteAction?.replace(/<[^>]*>/g, '').trim()).toBe('');
   });
 
   it('keeps each USB card compact: the USB and its library summary share one line, and the rows are tight', async () => {

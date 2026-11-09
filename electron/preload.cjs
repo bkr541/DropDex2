@@ -21,6 +21,15 @@ contextBridge.exposeInMainWorld('dropdexDesktop', Object.freeze({
   disconnectUsb: () => ipcRenderer.invoke('dropdex:disconnect-usb'),
   encodePreview: (input) => ipcRenderer.invoke('dropdex:encode-preview', input),
   getUsbDetails: () => ipcRenderer.invoke('dropdex:usb-details'),
+  chooseAudioCopyUsb: (expected) => ipcRenderer.invoke('dropdex:choose-audio-copy-usb', expected),
+  prepareAudioCopy: (request) => ipcRenderer.invoke('dropdex:prepare-audio-copy', request),
+  startAudioCopy: (planId) => ipcRenderer.invoke('dropdex:start-audio-copy', planId),
+  cancelAudioCopy: (planId) => ipcRenderer.invoke('dropdex:cancel-audio-copy', planId),
+  onAudioCopyProgress: (listener) => {
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on('dropdex:audio-copy-progress', handler);
+    return () => ipcRenderer.removeListener('dropdex:audio-copy-progress', handler);
+  },
   getTransferDestination: () => ipcRenderer.invoke('dropdex:transfer-destination'),
   selectTransferDestination: () => ipcRenderer.invoke('dropdex:select-transfer-destination'),
   clearTransferDestination: () => ipcRenderer.invoke('dropdex:clear-transfer-destination'),

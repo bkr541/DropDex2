@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Play } from 'iconoir-react/regular';
 import type { RekordboxTrack } from '../../../types';
 import { cueAnalysisReady } from '../../../lib/cues/cueReadiness';
@@ -14,9 +14,11 @@ import { cueMarkersFromState, type TrackCueMarker } from '../media/trackCueMarke
 import { formatCamelotCode } from './camelotKey';
 import { TrackListing, type TrackListingColumn, type TrackListingProps } from './TrackListing';
 import { TrackListingWaveform } from './TrackListingWaveform';
+import { nextRecordSort, sortRecordTracks } from './recordTrackSorting';
+import type { TrackTableSort } from './TrackTable';
 
 type TrackRecord = Pick<RekordboxTrack, 'id' | 'title' | 'artist'> &
-  Partial<Pick<RekordboxTrack, 'bpm' | 'musical_key' | 'camelot_key' | 'genre' | 'file_format' | 'duration_ms' | 'duration_seconds' | 'import_id'>>;
+  Partial<Pick<RekordboxTrack, 'bpm' | 'musical_key' | 'camelot_key' | 'genre' | 'file_format' | 'date_added' | 'duration_ms' | 'duration_seconds' | 'import_id'>>;
 
 type PlaylistCounts = Pick<TrackPlaylistCounts, 'error' | 'retry'> & { counts: ReadonlyMap<string, number> };
 
@@ -29,6 +31,8 @@ type Props<T extends TrackRecord> = Omit<TrackListingProps<T>,
   onRetryWaveform?: (trackId: string) => void;
   playlistCounts?: PlaylistCounts;
   renderGenre?: (track: T) => ReactNode;
+  /** Optional workflow metadata columns, after the standard metadata and before Actions. */
+  additionalColumns?: readonly TrackListingColumn<T>[];
   followPlayback?: boolean;
   playback?: boolean;
 };
@@ -48,13 +52,28 @@ const NO_IDS: string[] = [];
 /** Production audio record table. Audition defines the column order and row presentation. */
 export function RecordTrackListing<T extends TrackRecord>({
   tracks, importId = tracks[0]?.import_id ?? null, cueStates, getCueMarkers, getWaveformState, onRetryWaveform,
-  playlistCounts, renderGenre, renderLeading, followPlayback = false, playback = true, ...props
+  playlistCounts, renderGenre, additionalColumns = [], renderLeading, followPlayback = false, playback = true, sort, onSort, ...props
 }: Props<T>) {
   const ids = useMemo(() => tracks.map(({ id }) => id), [tracks]);
   const loadedCues = useTrackRowCues(importId && !cueStates && !getCueMarkers ? ids : NO_IDS);
   const waveforms = useTrackPreviewWaveforms(getWaveformState ? null : importId, getWaveformState ? NO_IDS : ids);
   const loadedCounts = useTrackPlaylistCounts(playlistCounts || !importId ? NO_IDS : ids);
   const counts = playlistCounts ?? loadedCounts;
+  const [localSort, setLocalSort] = useState<TrackTableSort | null>(() => sort ?? null);
+  const activeSort = onSort && sort !== undefined ? sort : localSort;
+  const handleSort = (column: string) => {
+    setLocalSort(nextRecordSort(activeSort, column));
+    onSort?.(column);
+  };
+  const extraColumn = additionalColumns.find((column) => (column.sort ?? column.id) === activeSort?.column);
+  const sortedTracks = useMemo(() => sortRecordTracks(tracks, activeSort, counts.counts, extraColumn
+    ? (track) => {
+        if (extraColumn.sortValue) return extraColumn.sortValue(track);
+        const value = extraColumn.render(track);
+        return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? value : null;
+      }
+    : undefined), [tracks, activeSort, counts.counts, extraColumn]);
+
 
   const columns: TrackListingColumn<T>[] = [
     { id: 'bpm', label: 'Bpm', sort: 'bpm', cellClassName: 'font-mono tabular-nums', render: (track) => track.bpm?.toFixed(1) ?? '—' },
@@ -79,15 +98,20 @@ export function RecordTrackListing<T extends TrackRecord>({
         return importId || playlistCounts ? '…' : '—';
       },
     },
+    { id: 'date-added', label: 'Date added', sort: 'date-added', headClassName: 'w-[104px]', cellClassName: 'w-[104px] whitespace-nowrap tabular-nums',
+      render: (track) => track.date_added ? <time dateTime={track.date_added}>{track.date_added}</time> : '—' },
     { id: 'length', label: 'Duration', sort: 'length', headClassName: 'w-[80px]', cellClassName: 'w-[80px] whitespace-nowrap font-mono tabular-nums',
       render: (track) => formatTime(durationMsForTrack({ duration_ms: track.duration_ms, duration_seconds: track.duration_seconds ?? null }, null)) },
+    ...additionalColumns.map((column) => ({ ...column, sort: column.sort ?? column.id })),
   ];
 
   return (
     <TrackListing
       {...props}
-      tracks={tracks}
+      tracks={sortedTracks}
       columns={columns}
+      sort={activeSort}
+      onSort={handleSort}
       trackSort="title"
       getTitle={(track) => track.title}
       getArtist={(track) => track.artist}

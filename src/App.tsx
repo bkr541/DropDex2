@@ -24,15 +24,13 @@ import { ImportLibraryModal } from './components/ImportLibraryModal';
 import { BackgroundImportPanel } from './components/BackgroundImportPanel';
 import { DeleteLibraryModal } from './components/DeleteLibraryModal';
 import { DeleteAllLibrariesModal } from './components/DeleteAllLibrariesModal';
-import { getImportHistoryPresentation } from './lib/rekordbox/importHistoryPresentation';
 import {
   getNextUsableLibrarySnapshot,
   getPersistedDeleteStrategy,
   isPendingHardDelete,
-  isUsableLibrarySnapshot,
   type DeleteActiveStrategy,
 } from './lib/rekordbox/libraryDeletion';
-import { getImportProgress, getInFlightImport, isImportInFlight, isImportStalled } from './lib/rekordbox/importLifecycle';
+import { getInFlightImport, isImportInFlight } from './lib/rekordbox/importLifecycle';
 import { ResumeAnalysisModal } from './components/ResumeAnalysisModal';
 import { ImportActivityBanner } from './components/imports/ImportActivityBanner';
 import { ApplicationErrorBoundary } from './components/errors/ApplicationErrorBoundary';
@@ -53,6 +51,7 @@ const DropLabView = lazyWithRecovery('drop-lab', () => import('./components/drop
 const SetLabView = lazyWithRecovery('set-lab', () => import('./features/set-lab/SetLabView').then(m => ({ default: m.SetLabView })));
 
 import { LibraryView } from './components/library/LibraryView';
+import { ImportLibraryView } from './components/library/ImportLibraryView';
 import { PlaylistEditView } from './components/library/PlaylistEditView';
 import { TrackDetailView } from './components/library/TrackDetailView';
 import { EditProfileView } from './components/profile/EditProfileView';
@@ -102,6 +101,7 @@ const PROFILE_TABS = [
   { id: 'account', label: 'Account' },
   { id: 'appearance', label: 'Personalization' },
   { id: 'library', label: 'Library' },
+  { id: 'rekordbox', label: 'Rekordbox' },
   { id: 'external-music', label: 'External Music' },
   { id: 'about', label: 'About' },
   { id: 'developer', label: 'Developer' },
@@ -323,141 +323,6 @@ function RootFailureProbe() {
     throw new Error('E2E root boundary probe');
   }
   return null;
-}
-
-function ImportStatusView({
-  item,
-  isActive,
-  onResume,
-  onRetryImport,
-  onMakeActive,
-  onRetryDelete,
-  onBack,
-}: {
-  item: RekordboxImport;
-  isActive: boolean;
-  onResume: () => void;
-  onRetryImport: () => void;
-  onMakeActive: () => void;
-  onRetryDelete?: () => void;
-  onBack?: () => void;
-}) {
-  const presentation = getImportHistoryPresentation(
-    item.status,
-    Boolean(item.retryable),
-    item.analysis_status,
-  );
-  const progress = getImportProgress(item);
-  const inFlight = isImportInFlight(item);
-  const stalled = isImportStalled(item);
-  const statusLabel = stalled ? 'Interrupted' : presentation.label;
-  const statusTone = stalled ? 'warning' : presentation.tone;
-  const analysisCanResume = (item.status === 'completed' || item.status === 'paused' || item.status === 'interrupted')
-    && !inFlight
-    && item.analysis_status !== 'completed'
-    && item.analysis_status !== 'not_requested';
-
-  return (
-    <section className="space-y-5" data-testid="import-status-screen">
-      <div className="glass rounded-3xl border border-[var(--color-border-subtle)] p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-              <Database className="text-primary" width={20} height={20} aria-hidden="true" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-xl font-bold truncate">{item.source_filename}</h2>
-              <p className="font-mono text-xs text-muted-foreground truncate">{item.id}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0 ml-3">
-            <span className={cn(
-              'rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest',
-              statusTone === 'error' ? 'bg-red-500/10 text-red-400' :
-              statusTone === 'warning' ? 'bg-amber-500/10 text-amber-400' :
-              statusTone === 'success' ? 'bg-emerald-500/10 text-emerald-400' :
-              'bg-blue-500/10 text-blue-400',
-            )}>
-              {statusLabel}
-            </span>
-            {onBack && (
-              <ControlButton variant="ghost" onClick={onBack}>
-                <Xmark width={18} height={18} aria-hidden="true" />
-              </ControlButton>
-            )}
-          </div>
-        </div>
-
-        {stalled && (
-          <div className="mb-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
-            <p className="text-sm font-bold text-amber-300">This import stopped reporting progress</p>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              DropDex will no longer treat this historical job as active. Retry the import, or resume analysis when the metadata snapshot is complete.
-            </p>
-          </div>
-        )}
-
-        {inFlight && (
-          <div className="mb-5 rounded-2xl border border-primary/20 bg-primary/5 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-bold">Analysis is continuing in the background</p>
-              <span className="font-mono text-xs font-bold text-primary">{progress.percent}%</span>
-            </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--color-surface)]">
-              <div
-                className="h-full rounded-full bg-primary transition-[width] duration-500"
-                style={{ width: `${progress.percent}%` }}
-              />
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {progress.processed.toLocaleString()} / {progress.total.toLocaleString()} tracks
-              {progress.currentTrackLabel ? ` · ${progress.currentTrackLabel}` : ''}
-            </p>
-            {!isActive && (
-              <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-                Your previous active library remains visible until this snapshot reaches a terminal state. A successful snapshot will become active automatically.
-              </p>
-            )}
-          </div>
-        )}
-
-        <dl className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div><dt className="text-[9px] uppercase text-muted-foreground">Tracks</dt><dd className="font-mono font-bold">{item.track_count.toLocaleString()}</dd></div>
-          <div><dt className="text-[9px] uppercase text-muted-foreground">Playlists</dt><dd className="font-mono font-bold">{item.playlist_count.toLocaleString()}</dd></div>
-          <div><dt className="text-[9px] uppercase text-muted-foreground">Imported</dt><dd className="font-mono text-xs font-bold">{new Date(item.imported_at).toLocaleDateString()}</dd></div>
-          <div><dt className="text-[9px] uppercase text-muted-foreground">Book</dt><dd className="font-mono text-xs font-bold">{isActive ? 'Active' : inFlight ? 'Pending' : 'Snapshot'}</dd></div>
-        </dl>
-
-        {item.error_message && (
-          <p className="mt-5 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-300">{item.error_message}</p>
-        )}
-
-        <div className="mt-6 flex justify-center gap-3">
-          {!isActive && !inFlight && !stalled && isUsableLibrarySnapshot(item) && presentation.canActivate && (
-            <ControlButton type="button" variant="primary" onClick={onMakeActive}>
-              <CheckCircle width={16} height={16} aria-hidden="true" /> Make Active
-            </ControlButton>
-          )}
-          {analysisCanResume && (
-            <ControlButton type="button" variant="primary" onClick={onResume}>
-              <Refresh width={16} height={16} aria-hidden="true" /> Resume Analysis
-            </ControlButton>
-          )}
-          {(presentation.canRetry || stalled) && !analysisCanResume && (
-            <ControlButton type="button" variant="primary" onClick={onRetryImport}>
-              <Upload width={16} height={16} aria-hidden="true" /> Retry Import
-            </ControlButton>
-          )}
-          {isPendingHardDelete(item) && onRetryDelete && (
-            <ControlButton type="button" variant="danger-outline" onClick={onRetryDelete}>
-              Retry Delete
-            </ControlButton>
-          )}
-        </div>
-      </div>
-    </section>
-  );
 }
 
 type ConfirmedDeleteExecutor = (strategy: DeleteActiveStrategy) => Promise<void>;
@@ -1113,7 +978,7 @@ export default function App() {
   const pageHeading: PageHeading | null = (() => {
     if (currentView === 'not-found') return null;
     if (currentView === 'playlist-edit') return editingPlaylist ? titledPage(editingPlaylist.name) : null;
-    if (currentView === 'import') return titledPage('Import Status');
+    if (currentView === 'import') return titledPage('Imported Library');
     if (routeBlocked) return null;
     switch (currentView) {
       case 'home': return titledPage(libraryLabel, null);
@@ -1195,8 +1060,6 @@ export default function App() {
         onOpenProfile={() => navigate({ name: 'profile' })}
         profile={userProfile}
       />
-
-      <FloatingLayoutLabButton onOpen={openLayoutLab} />
 
       {/* ── Main content column ── */}
       <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
@@ -1478,7 +1341,7 @@ export default function App() {
                 exit={{ opacity: 0, y: 16 }}
                 className="min-w-0"
               >
-                <ImportStatusView
+                <ImportLibraryView
                   item={selectedImport}
                   isActive={selectedImport.id === latestImport?.id}
                   onMakeActive={() => { void handleSetActiveImport(selectedImport.id); }}
@@ -1567,6 +1430,10 @@ export default function App() {
                   onChange={(tab) => setSettingsTab(tab as ProfileTab)}
                 />
                 <div className="studio-surface profile-workspace">
+                  {settingsTab === 'rekordbox' && (
+                    <RekordboxXmlGroup userId={userId} />
+                  )}
+
                   {settingsTab === 'external-music' && (
                     <ExternalMusicTab accessToken={session?.access_token ?? null} />
                   )}
@@ -1659,8 +1526,6 @@ export default function App() {
                       </section>
 
                       <StreamingSyncGroup importId={latestImport?.id ?? null} trackCount={latestImport?.track_count ?? null} sourceName={latestImport?.device_name ?? latestImport?.source_filename ?? null} deviceName={latestImport?.device_name ?? null} />
-
-                      <RekordboxXmlGroup userId={userId} />
 
                       {/* Danger zone */}
                       <section className="profile-group">
@@ -1766,6 +1631,7 @@ export default function App() {
           </AnimatePresence>
           </ApplicationErrorBoundary>
         </main>
+        <FloatingLayoutLabButton onOpen={openLayoutLab} />
       </div>
       </div>
 

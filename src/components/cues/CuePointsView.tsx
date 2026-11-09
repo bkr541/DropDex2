@@ -1,3 +1,4 @@
+import { sortRecordTracks } from '../ui/display/recordTrackSorting';
 import { useAudioDockTracks } from '../../contexts/AudioDockWorkspaceContext';
 import { AuditionTrackHeader } from '../audition/AuditionTrackHeader';
 import { formatClock, timeRulerTicks } from '../audition/auditionTracks';
@@ -2643,33 +2644,9 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
     return true;
   }), [analysisFilter, bpmRange, cueFilter, cueSummaryStates, keyFilter, sourceSearchFilteredTracks, statusFilter]);
 
-  const sortedTracks = useMemo(() => {
-    if (!sortCol) return filteredTracks;
-    return [...filteredTracks].sort((a, b) => {
-      let av: string | number | null = null;
-      let bv: string | number | null = null;
-      if (sortCol === 'title') { av = a.title ?? ''; bv = b.title ?? ''; }
-      else if (sortCol === 'artist') { av = a.artist ?? ''; bv = b.artist ?? ''; }
-      else if (sortCol === 'bpm') { av = a.bpm ?? -1; bv = b.bpm ?? -1; }
-      else if (sortCol === 'key') { av = formatCamelotKey(a.camelot_key || a.musical_key); bv = formatCamelotKey(b.camelot_key || b.musical_key); }
-      else if (sortCol === 'genre') { av = a.genre ?? ''; bv = b.genre ?? ''; }
-      else if (sortCol === 'format') { av = a.file_format ?? ''; bv = b.file_format ?? ''; }
-      else if (sortCol === 'playlists') {
-        const ac = playlistCounts.counts.get(a.id);
-        const bc = playlistCounts.counts.get(b.id);
-        if (ac == null || bc == null) return ac == null ? Number(bc != null) : -1;
-        av = ac; bv = bc;
-      }
-      else if (sortCol === 'analysis') { av = analysisReady(a) ? 1 : 0; bv = analysisReady(b) ? 1 : 0; }
-      else if (sortCol === 'length') {
-        av = a.duration_ms ?? (a.duration_seconds != null ? a.duration_seconds * 1000 : -1);
-        bv = b.duration_ms ?? (b.duration_seconds != null ? b.duration_seconds * 1000 : -1);
-      }
-      if (av === null || av === bv) return 0;
-      const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
-      return sortDir === 'asc' ? cmp : -cmp;
-    });
-  }, [filteredTracks, sortCol, sortDir, playlistCounts.counts]);
+  const sortedTracks = useMemo(() => sortRecordTracks(filteredTracks,
+    sortCol ? { column: sortCol, direction: sortDir } : null, playlistCounts.counts),
+    [filteredTracks, sortCol, sortDir, playlistCounts.counts]);
 
   // Stage 3 consumes this derived list for Previous/Next playback. It intentionally
   // follows the active source, current playlist, filters, sort order, and only the
@@ -2685,7 +2662,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
   function handleColClick(col: string) {
     if (sortCol === col) {
       if (sortDir === 'asc') setSortDir('desc');
-      else { setSortCol(null); setSortDir('asc'); }
+      else setSortDir('asc');
     } else {
       setSortCol(col);
       setSortDir('asc');

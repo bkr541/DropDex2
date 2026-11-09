@@ -59,8 +59,8 @@ describe('friendlyXmlUploadError', () => {
   });
 });
 
-describe('Rekordbox group in the Library tab', () => {
-  it('is its own group labelled "Rekordbox", with a Sync Rekordbox XML switch that starts off', async () => {
+describe('Rekordbox group in Profile', () => {
+  it('keeps the local viewer and saved copies visible when XML cloud sync is off', async () => {
     const { RekordboxXmlGroup } = await import('../../components/profile/RekordboxXmlGroup');
     const markup = renderToStaticMarkup(createElement(RekordboxXmlGroup, { userId: 'u1' }));
     expect(markup).toContain('data-testid="rekordbox-xml-group"');
@@ -68,9 +68,18 @@ describe('Rekordbox group in the Library tab', () => {
     expect(markup).toContain('Sync Rekordbox XML');
     expect(markup).toContain('data-testid="rekordbox-xml-toggle"');
     expect(markup).toContain('aria-checked="false"');
-    // Off: no file chooser and no saved list.
-    expect(markup).not.toContain('rekordbox-xml-panel');
-    expect(markup).not.toContain('rekordbox-xml-saved');
+    expect(markup).toContain('rekordbox-xml-panel');
+    expect(markup).toContain('rekordbox-xml-saved');
+    expect(markup).toContain('aria-label="Browse Rekordbox XML file"');
+    expect(markup).toContain('View tracks');
+    expect(markup).toContain('Saved copies · 1');
+    expect(markup).toContain('rekordbox.xml');
+    expect(markup).toContain('Enable Sync Rekordbox XML to save a cloud copy');
+    expect(markup).toContain('dd-form-field__label');
+    const browse = markup.match(/<button[^>]*aria-label="Browse Rekordbox XML file"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    expect(browse).toContain('cue-action-icon');
+    expect(browse?.replace(/<[^>]*>/g, '').trim()).toBe('');
+    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*data-testid="rekordbox-xml-save"|<button[^>]*data-testid="rekordbox-xml-save"[^>]*disabled/);
   });
 
   it('with the switch on, shows a file location, a Browse button and a save button, and the saved copies', async () => {
@@ -80,8 +89,9 @@ describe('Rekordbox group in the Library tab', () => {
     expect(markup).toContain('aria-checked="true"');
     expect(markup).toContain('data-testid="rekordbox-xml-path"');
     expect(markup).toContain('placeholder="No file chosen"');
-    expect(markup).toContain('Browse…');
+    expect(markup).toContain('aria-label="Browse Rekordbox XML file"');
     expect(markup).toContain('Save to DropDex');
+    expect(markup).toContain('View tracks');
     // Nothing is chosen yet, so saving is switched off.
     expect(markup).toMatch(/<button[^>]*disabled=""[^>]*data-testid="rekordbox-xml-save"|<button[^>]*data-testid="rekordbox-xml-save"[^>]*disabled/);
     expect(markup).toContain('accept=".xml,text/xml,application/xml"');
@@ -93,10 +103,11 @@ describe('Rekordbox group in the Library tab', () => {
     vi.unstubAllGlobals();
   });
 
-  it('sits in the Library tab of the profile, after Streaming', () => {
+  it('has its own Rekordbox Profile tab instead of appearing in Library', () => {
     const app = read('../../App.tsx');
-    expect(app.indexOf('<StreamingSyncGroup')).toBeLessThan(app.indexOf('<RekordboxXmlGroup'));
-    expect(app.indexOf('<RekordboxXmlGroup')).toBeLessThan(app.indexOf('Danger zone'));
+    expect(app).toContain("{ id: 'rekordbox', label: 'Rekordbox' }");
+    expect(app).toMatch(/settingsTab === 'rekordbox' && \(\s*<RekordboxXmlGroup userId=\{userId\}/);
+    expect(app.match(/<RekordboxXmlGroup /g)).toHaveLength(1);
   });
 });
 
