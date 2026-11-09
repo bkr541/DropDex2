@@ -1,7 +1,6 @@
 import type { ElementType, ReactNode } from 'react';
 import { User } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
-import { UsbConnectionButton } from '../usb/UsbConnectionButton';
 import { activeSidebarKey } from './sidebarGroups';
 import './FloatingSidebar.css';
 
@@ -25,7 +24,6 @@ interface FloatingSidebarProps {
 type Entry =
   | { key: 'logo'; kind: 'logo' }
   | { key: string; kind: 'nav'; item: FloatingSidebarItem }
-  | { key: 'usb-connect'; kind: 'usb' }
   | { key: 'profile'; kind: 'profile' };
 
 /**
@@ -70,7 +68,6 @@ export function FloatingSidebar({ items, currentView, onSelectView, onOpenProfil
   const entries: Entry[] = [
     { key: 'logo', kind: 'logo' },
     ...items.map((item) => ({ key: item.view, kind: 'nav', item }) as Entry),
-    { key: 'usb-connect', kind: 'usb' },
     { key: 'profile', kind: 'profile' },
   ];
   const activeKey = activeSidebarKey(currentView, items.map((item) => item.view));
@@ -94,8 +91,6 @@ export function FloatingSidebar({ items, currentView, onSelectView, onOpenProfil
           </NavSlot>
         );
       }
-      case 'usb':
-        return <div className="flex h-12 w-12 items-center justify-center"><UsbConnectionButton collapsed /></div>;
       case 'profile':
         return (
           <NavSlot label={profile?.display_name ?? 'Profile'} active={isActive} onClick={onOpenProfile}>

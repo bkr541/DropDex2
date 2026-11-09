@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ElementType, type ReactNode } from 'react';
-import { CompactDisc, Pause, Play, Redo, Refresh, Repeat, SkipNext, SkipPrev, SoundHigh, SoundOff, Square, Undo, Usb, WarningTriangle, Xmark } from 'iconoir-react/regular';
+import { CompactDisc, Pause, Play, Refresh, Repeat, SkipNext, SkipPrev, SoundHigh, SoundOff, Eject, Usb, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useAudioDockWorkspace } from '../../contexts/AudioDockWorkspaceContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
@@ -10,6 +10,7 @@ import { RekordboxPreviewWaveform } from '../library/RekordboxPreviewWaveform';
 import { Artwork } from '../ui/display/Artwork';
 import { ControlButton } from '../ui/controls/ControlButton';
 import { EssentialAudioDock } from './EssentialAudioDock';
+import { UsbConnectionButton } from '../usb/UsbConnectionButton';
 import { PlaybackSourceBadge } from './PlaybackSourceBadge';
 import './application-audio-dock.css';
 
@@ -40,11 +41,11 @@ function usePlayerTime(getAudioElement: () => HTMLAudioElement | null, trackId: 
   return clock.trackId === trackId ? clock : { trackId, position: 0, duration: 0 };
 }
 
-function DockButton({ icon: Icon, label, active, children, primary, loading, ...props }: {
+function DockButton({ icon: Icon, label, active, children, primary, loading, className, ...props }: {
   icon?: ElementType; label: string; active?: boolean; primary?: boolean; loading?: boolean; children?: ReactNode;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return <button {...props} type="button" title={label} aria-label={label} aria-pressed={active}
-    className={`adl-icon-button${primary ? ' adl-play' : ''}${active ? ' adl-active' : ''}`}>
+    className={`adl-icon-button${primary ? ' adl-play' : ''}${active ? ' adl-active' : ''}${className ? ` ${className}` : ''}`}>
     {Icon && <Icon width={17} height={17} aria-hidden="true" className={loading ? 'animate-spin' : undefined} />}{children}
   </button>;
 }
@@ -96,11 +97,12 @@ export function NowPlayingBar({ independentWorkspace }: NowPlayingBarProps) {
   }
 
   const transport = <div className="adl-transport" role="group" aria-label="Playback controls">
+    <span className="adl-usb" data-testid="dock-usb"><UsbConnectionButton collapsed />
+    <DockButton className="adl-eject" icon={Eject} label="Eject (stop playback)" disabled={!standard || player.status === 'idle'} onClick={() => { if (standard) player.stop(); }} />
+    </span>
     <DockButton icon={SkipPrev} label="Previous track" disabled={blocked || !previous} onClick={() => adjacent(previous)} />
-    <DockButton label="Rewind 10 seconds" disabled={!seekable} onClick={() => seek(position - 10)}><span className="adl-jump" aria-hidden="true"><Undo width={21} height={21} /><small>10</small></span></DockButton>
     <DockButton icon={loading || buffering ? Refresh : playing ? Pause : Play} label={loading ? 'Loading audio' : failed ? 'Retry playback' : playing ? 'Pause' : 'Play'}
       primary loading={loading || buffering} active={playing} disabled={blocked} onClick={togglePlay} />
-    <DockButton label="Forward 10 seconds" disabled={!seekable} onClick={() => seek(position + 10)}><span className="adl-jump" aria-hidden="true"><Redo width={21} height={21} /><small>10</small></span></DockButton>
     <DockButton icon={SkipNext} label="Next track" disabled={blocked || !next} onClick={() => adjacent(next)} />
   </div>;
   const identity = <div className="adl-identity">
@@ -126,7 +128,6 @@ export function NowPlayingBar({ independentWorkspace }: NowPlayingBarProps) {
       active={standard && player.muted} disabled={!standard} onClick={() => { if (standard) player.toggleMute(); }} />
     <input type="range" min={0} max={1} step={0.01} value={standard && !player.muted ? player.volume : 0} aria-label="Volume" disabled={!standard}
       onChange={(event) => { if (standard) { player.setVolume(Number(event.target.value)); if (player.muted) player.toggleMute(); } }} />
-    <DockButton icon={Square} label="Stop playback" disabled={!standard || player.status === 'idle'} onClick={() => { if (standard) player.stop(); }} />
   </div>;
 
   return <footer className="app-audio-dock adl-style-edge" aria-label="Now Playing" data-testid="application-audio-dock" data-player-mode={standard ? 'standard' : 'independent'}>

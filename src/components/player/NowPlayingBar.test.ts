@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({ player: null as unknown as AudioPlayerContextV
   waveforms: vi.fn(), connect: vi.fn() }));
 vi.mock('../../contexts/AudioPlayerContext', () => ({ useAudioPlayer: () => state.player }));
 vi.mock('../../contexts/AudioDockWorkspaceContext', () => ({ useAudioDockWorkspace: () => state.workspace }));
+vi.mock('../usb/UsbConnectionButton', () => ({ UsbConnectionButton: () => null }));
 vi.mock('../../contexts/UsbConnectionContext', () => ({ useUsbConnection: () => ({ status: 'disconnected', connect: state.connect }) }));
 vi.mock('../../hooks/useTrackPreviewWaveforms', () => ({ useTrackPreviewWaveforms: (importId: unknown, ids: string[]) => {
   state.waveforms(importId, ids);
@@ -27,7 +28,7 @@ const tracks = [1, 2, 3].map((number) => ({ id: `t${number}`, title: `Track ${nu
 const audio = { currentTime: 42, duration: 120 };
 const render = (independentWorkspace?: string) => renderToStaticMarkup(createElement(NowPlayingBar, { independentWorkspace }));
 const children = (node: unknown): ReactElement<any>[] => (node as ReactElement<any>).props.children;
-const button = (label: string) => [...children(state.props.transport), ...children(state.props.output)]
+const button = (label: string) => [...children(state.props.transport), ...children(state.props.transport).flatMap((node) => (Array.isArray(node?.props?.children) ? node.props.children as ReactElement<any>[] : [])), ...children(state.props.output)]
   .find((node) => node.props.label === label)!.props;
 const seekInput = () => children(children(state.props.timeline)[1]).find((node) => node?.type === 'input')!.props;
 const volumeInput = () => children(state.props.output).find((node) => node.type === 'input')!.props;
@@ -90,13 +91,11 @@ describe('application Essential Strip audio dock', () => {
     expect(button('Next track').disabled).toBe(true);
   });
 
-  it('seeks with the waveform slider and clamps the 10-second jumps to the audio duration', () => {
+  it('seeks with the waveform slider, clamps to the audio duration, and has no 10-second jump buttons', () => {
     audio.currentTime = 115; render();
     expect(seekInput()['aria-valuetext']).toBe('1:55 of 2:00');
-    button('Forward 10 seconds').onClick();
-    expect(state.player.seek).toHaveBeenLastCalledWith(120);
-    button('Rewind 10 seconds').onClick();
-    expect(state.player.seek).toHaveBeenLastCalledWith(105);
+    expect(() => button('Forward 10 seconds')).toThrow();
+    expect(() => button('Rewind 10 seconds')).toThrow();
     seekInput().onChange({ target: { value: '300' } });
     expect(state.player.seek).toHaveBeenLastCalledWith(120);
   });
@@ -110,7 +109,7 @@ describe('application Essential Strip audio dock', () => {
     expect(state.player.toggleMute).toHaveBeenCalledOnce();
     button('Unmute').onClick();
     expect(state.player.toggleMute).toHaveBeenCalledTimes(2);
-    button('Stop playback').onClick();
+    button('Eject (stop playback)').onClick();
     expect(state.player.stop).toHaveBeenCalledOnce();
   });
 
@@ -119,7 +118,7 @@ describe('application Essential Strip audio dock', () => {
     expect(button('Loading audio').disabled).toBe(true);
     expect(button('Next track').disabled).toBe(true);
     expect(seekInput().disabled).toBe(true);
-    button('Loading audio').onClick(); button('Forward 10 seconds').onClick();
+    button('Loading audio').onClick();
     expect(state.player.resume).not.toHaveBeenCalled();
     expect(state.player.seek).not.toHaveBeenCalled();
   });
@@ -135,7 +134,7 @@ describe('application Essential Strip audio dock', () => {
     expect(markup).toContain(`${workspace} playback`);
     expect(markup).not.toContain('Track 2');
     for (const group of [state.props.transport, state.props.output]) {
-      for (const child of children(group)) {
+      for (const child of children(group).filter((node) => node.props['data-testid'] !== 'dock-usb')) {
         expect(child.props.disabled).toBe(true);
         child.props.onClick?.();
       }
