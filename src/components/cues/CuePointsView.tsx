@@ -1622,6 +1622,9 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
   const applyGenerationRef = useRef(0);
   const waveformPanelWrapperRef = useRef<HTMLDivElement>(null);
   const filterRowRef = useRef<HTMLDivElement>(null);
+  const listingRef = useRef<HTMLDivElement>(null);
+  // The record listing is the only thing that scrolls: it gets exactly the height left below everything above it, so nothing above it moves.
+  const [listingMaxHeight, setListingMaxHeight] = useState<number | null>(null);
   const [waveformPanelHeight, setWaveformPanelHeight] = useState(0);
   const [filterRowHeight, setFilterRowHeight] = useState(0);
   const [workingCues, setWorkingCues] = useState<WorkingCue[]>([]);
@@ -3604,6 +3607,20 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    const measure = () => {
+      const el = listingRef.current;
+      if (!el) return;
+      setListingMaxHeight(Math.max(280, Math.floor(window.innerHeight - el.getBoundingClientRect().top - 16)));
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(document.body);
+    if (filterRowRef.current) observer.observe(filterRowRef.current);
+    return () => { window.removeEventListener('resize', measure); observer.disconnect(); };
+  }, [waveformPanelHeight, filterRowHeight, importId]);
+
   if (!importId) {
     return (
       <div className="mx-auto max-w-3xl pt-8">
@@ -4116,6 +4133,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
           </div>
         ) : (
           <>
+            <div ref={listingRef}>
             <RecordTrackListing<RekordboxTrack>
               tracks={orderedVisibleTracks}
               selectedId={selectedTrackId}
@@ -4148,10 +4166,11 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
               })}
               sort={sortCol ? { column: sortCol, direction: sortDir } : null}
               onSort={(column) => handleColClick(column as typeof sortCol & string)}
-              scrollStyle={{ maxHeight: `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}
+              scrollStyle={{ maxHeight: listingMaxHeight ?? `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}
               tableTestId="cue-browser-track-table"
               ariaLabel="Cue Points browser tracks"
             />
+            </div>
 
             <div className="flex flex-col gap-3 border-t border-[var(--color-border-subtle)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-5">
               <div className="space-y-0.5 text-xs text-muted-foreground">
