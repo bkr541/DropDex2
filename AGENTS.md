@@ -44,3 +44,7 @@ Cue Points' Tracks/Playlists source switch is its own `TrackSourceTabs` componen
 ## Accent tokens
 
 Use `--color-control-primary` and `--color-control-primary-rgb` for the standard coral-red UI accent, and `--color-control-primary-hover` for hover/focus. Do not reintroduce `--color-control-blue` tokens or local blue-to-red overrides.
+
+## Icon toolbar rows
+
+Use `ToolbarRow` (`src/components/ui/controls/ToolbarRow.tsx`) for any band of icon-only toolbar buttons. It owns the band (right-justified, 16px side padding, hairline) and the shared icon-button look in `toolbar-row.css`. Cue Points and Audition's Keep / Maybe / Remove both use it. Do not rebuild the band or scope its styles to a screen class.

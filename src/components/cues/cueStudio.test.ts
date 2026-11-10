@@ -19,8 +19,9 @@ describe('Cue Points in the Audition look', () => {
 
   it('keeps the top-right buttons icon-only with compact spacing and hairline dividers', () => {
     expect(css).not.toContain('content: attr(data-label)');
-    expect(css).toMatch(/button\.cue-action-icon,[\s\S]*?height: 32px;[\s\S]*?padding: 0 8px;/);
-    expect(css).toMatch(/button\.cue-action-icon::before \{[^}]*top: 50%;[^}]*height: 20px;[^}]*translateY\(-50%\)/);
+    const toolbarCss = read('../ui/controls/toolbar-row.css');
+    expect(toolbarCss).toMatch(/button\.cue-action-icon,[\s\S]*?height: 32px;[\s\S]*?padding: 0 8px;/);
+    expect(toolbarCss).toMatch(/button\.cue-action-icon::before \{[^}]*top: 50%;[^}]*height: 20px;[^}]*translateY\(-50%\)/);
     for (const label of ['Pending', 'Auto Cue', 'Apply']) expect(view).toContain(`data-label="${label}"`);
     const toolbar = read('CueEditorToolbar.tsx');
     for (const label of ['Grid', 'Repeat', 'Volume', 'State']) expect(toolbar).toContain(`data-label="${label}"`);

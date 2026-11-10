@@ -28,13 +28,15 @@ interface AuditionFullSongProps {
   /** Plain-language reason the sections could not be loaded, if that happened. */
   sectionsError: string | null;
   onRetrySections: () => void;
+  /** A ToolbarRow above the timeline (Keep, Maybe and Remove). */
+  toolbar?: ReactNode;
   /** Playback controls, shown along the bottom of the panel. */
   children?: ReactNode;
 }
 
 
 export function AuditionFullSong({
-  track, durationMs, waveformState, onRetryWaveform, sections, sectionsLoading, sectionsError, onRetrySections, cues = [], beatGrid = null, children,
+  track, durationMs, waveformState, onRetryWaveform, sections, sectionsLoading, sectionsError, onRetrySections, cues = [], beatGrid = null, toolbar, children,
 }: AuditionFullSongProps) {
   const { activeTrack, seek, getAudioElement } = useAudioPlayer();
   const progress = useWaveformProgress(track?.id);
@@ -69,6 +71,7 @@ export function AuditionFullSong({
       aria-label="Full song"
       className="audition-song"
     >
+      {toolbar}
       <TrackTimeline
         highlightDrops
         start={0} end={durationMs ?? 0} timeTicks={hasDuration ? ticks : []}

@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { logger } from '../../lib/logger';
 import type { RekordboxTrack } from '../../types';
-import { AuditionDecisions } from './AuditionDecisions';
 import { AuditionTrackNavigation } from './AuditionTrackNavigation';
 
 interface AuditionTransportProps {
@@ -29,8 +28,7 @@ export function AuditionTransport({ track, positionLabel, onStepPrevious, onStep
   }, [playbackError, track]);
 
   return (
-    <div data-testid="audition-transport" role="group" aria-label="Audition decisions and navigation" className="audition-workflow-controls flex items-center justify-between gap-4">
-      <AuditionDecisions />
+    <div data-testid="audition-transport" role="group" aria-label="Audition navigation" className="audition-workflow-controls flex items-center justify-end gap-4">
       <AuditionTrackNavigation positionLabel={positionLabel} onPrevious={onStepPrevious} onNext={onStepNext} />
       {playbackError ? <p role="alert" className="text-xs text-red-300">{playbackError}</p> : null}
     </div>

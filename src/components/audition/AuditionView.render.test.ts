@@ -118,7 +118,7 @@ describe('Audition page', () => {
   it('does not render side panels or the Cue Points editor', () => {
     libraryFixture.tracks = [track({})];
     const markup = wrap(createElement(AuditionView, { importId: 'import-test', onImport: vi.fn() }));
-    expect(markup).not.toContain('cue-workstation');
+    expect(markup).not.toMatch(/cue-workstation(?!__actions|__toolbar)/);
     expect(markup).not.toContain('data-testid="cue-browser-track-table"');
     expect(markup).not.toContain('Save Draft');
   });
@@ -140,15 +140,15 @@ describe('Audition track header', () => {
     expect(markup).not.toContain('14 of 387');
   });
 
-  it('puts the position and the previous and next arrows after Keep, Maybe and Remove, not in the header', async () => {
+  it('puts the position and the previous and next arrows in the transport row, and Keep, Maybe and Remove in an icon row above the timeline', async () => {
     const { AuditionTrackNavigation } = await import('./AuditionTrackNavigation');
     const markup = renderToStaticMarkup(createElement(AuditionTrackNavigation, { positionLabel: '14 of 387', onPrevious: () => undefined, onNext: null }));
     expect(markup).toContain('14 of 387');
     expect(markup).toMatch(/aria-label="Next track"[^>]*disabled=""/);
     expect(markup).not.toMatch(/aria-label="Previous track"[^>]*disabled=""/);
     const transport = readFileSync(new URL('./AuditionTransport.tsx', import.meta.url), 'utf8');
-    expect(transport.indexOf('<AuditionDecisions />')).toBeGreaterThan(-1);
-    expect(transport.indexOf('<AuditionDecisions />')).toBeLessThan(transport.indexOf('<AuditionTrackNavigation'));
+    expect(transport).not.toContain('<AuditionDecisions');
+    expect(transport).toContain('<AuditionTrackNavigation');
     const css = readFileSync(new URL('./AuditionView.css', import.meta.url), 'utf8');
     expect(css).toMatch(/\.audition-transport \{[^}]*grid-template-columns: auto minmax\(160px, 1fr\) auto auto auto/);
   });
@@ -172,18 +172,25 @@ describe('Audition track header', () => {
     expect(markup).not.toContain('audition-decision');
   });
 
-  it('keeps Keep, Maybe and Remove visible but switched off until they are connected', async () => {
+  it('shows Keep, Maybe and Remove as icon-only toolbar buttons, switched off until they are connected, right-justified above the timeline', async () => {
     const { AuditionDecisions } = await import('./AuditionDecisions');
     const markup = renderToStaticMarkup(createElement(AuditionDecisions));
     for (const id of ['keep', 'maybe', 'remove']) {
-      expect(markup).toMatch(new RegExp(`<button[^>]*disabled=""[^>]*data-testid="audition-decision-${id}"`));
+      expect(markup).toMatch(new RegExp(`<button[^>]*aria-disabled="true"[^>]*data-testid="audition-decision-${id}"`));
     }
     expect(markup).toContain('Coming soon');
+    expect(markup).toContain('cue-action-icon');
+    expect(markup).not.toMatch(/<button[^>]*>[^<]*(Keep|Maybe|Remove)<\/button>/);
+    const song = readFileSync(new URL('./AuditionFullSong.tsx', import.meta.url), 'utf8');
+    expect(song.indexOf('{toolbar}')).toBeLessThan(song.indexOf('<TrackTimeline'));
+    expect(readFileSync(new URL('./AuditionDecisions.tsx', import.meta.url), 'utf8')).toContain('<ToolbarRow');
+    expect(readFileSync(new URL('../ui/controls/toolbar-row.css', import.meta.url), 'utf8')).toMatch(/\.toolbar-row \{[^}]*justify-content: flex-end/);
   });
 
   it('keeps decisions and navigation in the workspace while the bottom dock owns playback', () => {
     const transport = readFileSync(new URL('./AuditionTransport.tsx', import.meta.url), 'utf8');
-    expect(transport).toContain('<AuditionDecisions />');
+    const view = readFileSync(new URL('./AuditionView.tsx', import.meta.url), 'utf8');
+    expect(view).toContain('toolbar={<AuditionDecisions />}');
     expect(transport).toContain('<AuditionTrackNavigation');
     expect(transport).not.toContain('<MediaTransportControlGroup');
     expect(transport).not.toContain('aria-label="Volume"');

@@ -20,32 +20,8 @@
 .cue-studio .track-identity__stat-value { margin: 0; color: #f6f7fa; font-size: 20px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -.04em; }
 .cue-studio .track-identity__stat-label { color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; }
 
-/* Top-right icon buttons use compact spacing and hairlines between neighbours. */
-.cue-studio .cue-workstation__actions { align-self: center; margin-top: 0; gap: 0; align-items: center; }
-.cue-studio .cue-workstation__actions > span[aria-hidden="true"] { display: none; }
-/* Menu wrappers must be flex boxes too, so inline SVG baselines cannot shift their buttons. */
-.cue-studio .cue-workstation__actions > div { display: inline-flex; align-items: center; height: 32px; }
-.cue-studio .cue-workstation__actions button.cue-action-icon,
-.cue-studio .cue-workstation__actions [data-testid="cue-state-icon"] {
-  position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  width: 32px; height: 32px; min-height: 32px; padding: 0 8px; border: 0; border-radius: 0; background: transparent; box-shadow: none;
-  color: #f6f7fa; cursor: pointer;
-}
-.cue-studio .cue-workstation__actions [data-testid="cue-state-icon"] { cursor: default; }
-/* One centered divider geometry, independent of icon size or button contents. */
-.cue-studio .cue-workstation__actions button.cue-action-icon::before {
-  content: ''; position: absolute; left: 0; top: 50%; width: 1px; height: 20px;
-  transform: translateY(-50%); background: #ffffff0d; pointer-events: none;
-}
-.cue-studio .cue-workstation__actions button.cue-action-icon > svg, .cue-studio .cue-workstation__actions [data-testid="cue-state-icon"] > svg { width: 16px; height: 16px; color: inherit; }
+/* The icon toolbar's look lives in ui/controls/toolbar-row.css, shared by every screen that uses a ToolbarRow. */
 .cue-studio [data-testid="cue-apply-menu"] { align-items: center; }
-.cue-studio .cue-workstation__actions button.cue-action-icon:hover:not(:disabled) { background: transparent; color: #f78361; }
-.cue-studio .cue-workstation__actions button.cue-action-icon[aria-pressed="true"]:not(:disabled) { color: #f78361; }
-.cue-studio .cue-workstation__actions button.cue-action-icon--accent:not(:disabled) { color: #f78361; }
-.cue-studio .cue-workstation__actions button.cue-action-icon:disabled { opacity: .3; }
-.cue-studio .cue-workstation__actions button.cue-action-icon--narrow { width: 24px; padding: 0 4px; }
-.cue-studio .cue-workstation__actions button.cue-action-icon--narrow::before { display: none; }
-.cue-studio .cue-workstation__actions button.cue-action-icon--narrow + * { margin-left: 0; }
 .cue-studio .cue-action-icon__badge { top: -4px; right: 4px; background: #f56b70; }
 .cue-studio [role="menu"] { border-color: #465166; border-radius: 10px; background: #252b38; }
 
@@ -110,13 +86,6 @@
   .cue-studio .cue-audio-dock { padding-inline: 12px; }
 }
 
-/* The identity row is AuditionTrackHeader; editing tools get their own compact band. */
-.cue-studio .cue-workstation__toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 0 16px; border-top: 1px solid #ffffff0d; }
-@media (max-width: 700px) {
-  .cue-studio .cue-workstation__toolbar { flex-wrap: wrap; padding-inline: 12px; }
-  .cue-studio .cue-workstation__actions { flex-wrap: wrap; row-gap: 8px; }
-}
-
 /* A full-size genre editor overlays the listing; the narrow cell keeps its display geometry. */
 .cue-studio.cue-genre-popover {
   --color-primary: #f56b70;
@@ -138,15 +107,4 @@
   font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
   box-shadow: 0 8px 24px #00000059;
 }
-/* The track title and artist mirror the figures on the right: the title is set like a value (20px, light, tabular, tight), the artist like a label
-   (9px, spaced capitals), and the gap between them is the 3px gap between a value and its label. */
-.cue-studio .audition-header h2 { font-size: 20px; font-weight: 300; letter-spacing: -.04em; font-variant-numeric: tabular-nums; color: #f6f7fa; }
-.cue-studio .audition-meta { margin-top: 3px; gap: 0; }
-.cue-studio .audition-artist,
-.cue-studio .audition-header :is(.audition-stat, .audition-duration) > small { margin: 0; color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; line-height: 1; text-transform: uppercase; }
-/* Letters are never clipped: the title and the figures on the right share one line height (24px for 20px type, enough for descenders like g, p and y)
-   and 2px of side room (the tight letter spacing and the overflow clip would otherwise shave the first and last letter). */
-.cue-studio .audition-header h2, .cue-studio .audition-header .audition-stat > span, .cue-studio .audition-header .audition-duration > span { line-height: 1.2; padding-inline: 2px; }
-/* The album art is exactly as tall as the title and artist together: 24px title + 3px gap + 9px artist = 36px. */
-.cue-studio .audition-header .audition-cover { width: 36px; height: 36px; }
-.cue-studio .audition-header-identity { gap: 12px; }
+/* The track header (title, artist, figures, cover) takes its look from AuditionTrackHeader.css, so Cue Points and Audition always match. */

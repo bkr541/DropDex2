@@ -59,7 +59,7 @@ import {
 import { type WaveformColorSegment } from '../library/RekordboxPreviewWaveform';
 import { CueEditorToolbar, CueStateIcon, TimelineGridControls } from './CueEditorToolbar';
 import type { WaveformLoadState } from '../../lib/queries/waveformValidation';
-import { ControlButton, DualRangeSlider, FilterDropdown, SearchControl, SelectControl, TextControl } from '../ui/controls';
+import { ControlButton, DualRangeSlider, FilterDropdown, SearchControl, SelectControl, TextControl, ToolbarRow } from '../ui/controls';
 import { WaveformZoomControls } from '../ui/media';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useWaveformProgress } from '../../hooks/useWaveformProgress';
@@ -1027,18 +1027,15 @@ function CueWaveformPanel({
         durationMs={durationMs}
         cueCount={audition ? undefined : cueLoading ? '…' : cueLoadStatus === 'failed' ? '!' : String(cues.length)}
       />
-      {audition && <div className="cue-workstation__toolbar" role="group" aria-label="Track timeline controls">
-        <div className="cue-workstation__actions flex shrink-0 items-center gap-0.5">
-          <TimelineGridControls
-            gridDisplayMode={gridDisplayMode}
-            onGridDisplayModeChange={onGridDisplayModeChange}
-            gridVisible={gridVisible}
-            onGridVisibleChange={onGridVisibleChange}
-          />
-        </div>
-      </div>}
-      {!audition && <div className="cue-workstation__toolbar">
-        <div className="cue-workstation__actions flex shrink-0 items-center gap-0.5">
+      {audition && <ToolbarRow role="group" aria-label="Track timeline controls">
+        <TimelineGridControls
+          gridDisplayMode={gridDisplayMode}
+          onGridDisplayModeChange={onGridDisplayModeChange}
+          gridVisible={gridVisible}
+          onGridVisibleChange={onGridVisibleChange}
+        />
+      </ToolbarRow>}
+      {!audition && <ToolbarRow>
           <CueStateIcon state={draftStatus} />
           <span className="mx-1.5 h-5 w-px bg-white/10" aria-hidden="true" />
           <CueEditorToolbar
@@ -1120,8 +1117,7 @@ function CueWaveformPanel({
               />
             )}
           </div>
-        </div>
-      </div>}
+      </ToolbarRow>}
 
       {!audition && cueBaselineComplete && cueIntegrity && cueIntegrity.status !== 'valid' && (
         <div className="mx-5 mt-3 flex items-start justify-between gap-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.06] px-3 py-2 text-amber-100" role="status">

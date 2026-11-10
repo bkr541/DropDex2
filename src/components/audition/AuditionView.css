@@ -15,15 +15,20 @@
 .audition-track-step { display: grid; place-items: center; width: 28px; height: 28px; color: #cdd3dd; border: 1px solid #ffffff1c; border-radius: 50%; cursor: pointer; transition: color 120ms, border-color 120ms; }
 .audition-track-step:hover:not(:disabled) { color: #f78361; border-color: #f7836180; }
 .audition-track-step:disabled { opacity: .25; cursor: not-allowed; }
-.audition-decisions { display: flex; align-items: center; gap: 10px; }
 .audition-cue-line { background: var(--waveform-cue-ink); opacity: .7; z-index: 1; }
-.audition-decision { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding-block: 6px; color: #a7afbd; border-bottom: 1px solid #ffffff14; font-size: 10px; font-weight: 400; cursor: not-allowed; opacity: .55; }
 
 .audition-song { flex: none; border-top: 1px solid #ffffff0d; background: #00000012; }
+.toolbar-row.audition-song-toolbar { border-top: 0; border-bottom: 1px solid #ffffff0d; }
+/* Each decision's icon carries its meaning: green to keep, amber for maybe, soft red to remove. */
+.toolbar-row .cue-workstation__actions button.cue-action-icon.audition-decision--keep { color: #22c55e; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon.audition-decision--keep:hover:not(:disabled) { color: #4ade80; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon.audition-decision--maybe { color: #fbbf24; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon.audition-decision--maybe:hover:not(:disabled) { color: #fcd34d; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon.audition-decision--remove { color: #eb8d97; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon.audition-decision--remove:hover:not(:disabled) { color: #ffb3ba; }
 .audition-song-transport { margin-top: 8px; padding: 6px 16px; border-top: 1px solid #ffffff09; background: #ffffff02; }
 .audition-transport { display: grid; grid-template-columns: auto minmax(160px, 1fr) auto auto auto auto; align-items: center; gap: 14px; }
-.audition-transport > .audition-decisions { padding-left: 14px; border-left: 1px solid #ffffff10; }
-.audition-transport > [role="alert"] { grid-column: 1 / -1; }
+.audition-transport > .audition-transport > [role="alert"] { grid-column: 1 / -1; }
 .audition-studio .dd-media-transport-group { overflow: visible; min-height: 36px; border: 0; border-radius: 0; background: transparent; gap: 4px; }
 .audition-studio .dd-media-transport-group > .dd-media-button { width: 28px; flex-basis: 28px; height: 36px; border: 0; background: transparent; color: #c7ceda; }
 .audition-studio .dd-media-transport-group > .dd-media-button:hover:not(:disabled) { color: #fff; }
@@ -56,9 +61,7 @@
 }
 @media (max-width: 700px) {
   .audition-studio { height: auto; min-height: 0; overflow: visible; border-radius: 16px; }
-  .audition-decisions { gap: 8px; }
-  .audition-transport > .audition-decisions { grid-column: 1 / -1; padding-left: 0; border-left: 0; justify-content: space-between; }
-  .audition-transport > .audition-track-navigation { grid-column: 1 / -1; padding-left: 0; border-left: 0; justify-content: center; }
+    .audition-transport >   .audition-transport > .audition-track-navigation { grid-column: 1 / -1; padding-left: 0; border-left: 0; justify-content: center; }
   .audition-track-navigation { gap: 5px; }
   .audition-track-navigation > span { min-width: 50px; font-size: 10px; }
   .audition-studio { --audition-lead: 24px; }

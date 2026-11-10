@@ -8,6 +8,7 @@ import { logger } from '../../lib/logger';
 import { buildTimelineSections } from '../../lib/music/phraseSections';
 import { durationMsForTrack } from '../../lib/music/trackTiming';
 import { ControlButton } from '../ui/controls';
+import { AuditionDecisions } from './AuditionDecisions';
 import { AuditionFullSong } from './AuditionFullSong';
 import { AuditionLibrary } from './AuditionLibrary';
 import { AuditionTrackHeader } from './AuditionTrackHeader';
@@ -164,6 +165,7 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
         sectionsLoading={analysis.loading}
         sectionsError={analysis.error}
         onRetrySections={() => setAnalysisRetry((value) => value + 1)}
+        toolbar={<AuditionDecisions />}
       >
         <AuditionTransport
           track={selectedTrack}

@@ -1,0 +1,33 @@
+/* The icon toolbar: a band of icon-only buttons, right-justified, with hairlines between neighbours. Cue Points and Audition share it. */
+.toolbar-row .cue-workstation__actions { align-self: center; margin-top: 0; gap: 0; align-items: center; }
+.toolbar-row .cue-workstation__actions > span[aria-hidden="true"] { display: none; }
+/* Menu wrappers must be flex boxes too, so inline SVG baselines cannot shift their buttons. */
+.toolbar-row .cue-workstation__actions > div { display: inline-flex; align-items: center; height: 32px; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon,
+.toolbar-row .cue-workstation__actions [data-testid="cue-state-icon"] {
+  position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  width: 32px; height: 32px; min-height: 32px; padding: 0 8px; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  color: #f6f7fa; cursor: pointer;
+}
+.toolbar-row .cue-workstation__actions [data-testid="cue-state-icon"] { cursor: default; }
+/* One centered divider geometry, independent of icon size or button contents. */
+.toolbar-row .cue-workstation__actions button.cue-action-icon::before {
+  content: ''; position: absolute; left: 0; top: 50%; width: 1px; height: 20px;
+  transform: translateY(-50%); background: #ffffff0d; pointer-events: none;
+}
+.toolbar-row .cue-workstation__actions button.cue-action-icon > svg, .toolbar-row .cue-workstation__actions [data-testid="cue-state-icon"] > svg { width: 16px; height: 16px; color: inherit; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon:hover:not(:disabled) { background: transparent; color: #f78361; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon[aria-pressed="true"]:not(:disabled) { color: #f78361; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon--accent:not(:disabled) { color: #f78361; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon:disabled { opacity: .3; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon--narrow { width: 24px; padding: 0 4px; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon--narrow::before { display: none; }
+.toolbar-row .cue-workstation__actions button.cue-action-icon--narrow + * { margin-left: 0; }
+
+/* The band the icons sit in. */
+.toolbar-row { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 0 16px; border-top: 1px solid #ffffff0d; }
+@media (max-width: 700px) {
+  .toolbar-row { flex-wrap: wrap; padding-inline: 12px; }
+  .toolbar-row .cue-workstation__actions { flex-wrap: wrap; row-gap: 8px; }
+}
+
