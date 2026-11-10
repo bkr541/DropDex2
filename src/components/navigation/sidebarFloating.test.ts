@@ -149,7 +149,6 @@ describe('Left nav spacing', () => {
     // Ten entries (the logo, eight pages, the USB button and the profile): nine gaps, six pixels less each, 54px less in all.
     const entries = (src.match(/kind: '(logo|nav|usb|profile)'/g) ?? []).length;
     expect(entries).toBeGreaterThan(0);
-    expect(read('../ui/layout-lab-nav-design.css')).toMatch(/\.nd-preview \.nd-capsule \{[^}]*flex-direction: column; gap: 2px;/);
   });
 });
 

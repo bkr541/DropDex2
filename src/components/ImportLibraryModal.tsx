@@ -56,7 +56,7 @@ import {
   type UsbImportPhase,
   verifyUsbReleased,
 } from '../lib/rekordbox/localUsbLifecycle';
-import { ArrowLeft, ArrowRight, CheckCircle, Database, Eye, Folder, NavArrowDown, Package, Pause, Refresh, Trash, Upload, WarningTriangle, Xmark } from 'iconoir-react/regular';
+import { ArrowLeft, ArrowRight, CheckCircle, Database, Folder, NavArrowDown, Package, Pause, Refresh, Trash, Upload, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { ControlButton } from './ui/controls';
 import { ImportProgressModal, issueBadgeLabel, trackExpandedDetail, userFriendlyIssueReason } from './ImportProgressModal';
 import type { ImportUiStep } from './ImportStageProgress';
@@ -1738,7 +1738,7 @@ export function ImportLibraryModal({
                 {/* Mode selector */}
                 <div className={cn(
                   'flex gap-1.5 p-1 rounded-xl border border-[var(--color-border-subtle)] mb-4 transition-colors shrink-0',
-                  isReady ? 'bg-green-500/10' : 'bg-[var(--color-surface)]',
+                  isReady ? 'bg-[rgb(var(--color-control-primary-rgb)/0.1)]' : 'bg-[var(--color-surface)]',
                 )}>
                   {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
                     <button
@@ -1748,7 +1748,7 @@ export function ImportLibraryModal({
                         'flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-semibold transition-all',
                         mode === m
                           ? isReady
-                            ? 'bg-green-500 text-white shadow-sm'
+                            ? 'bg-[var(--color-control-primary)] text-white shadow-sm'
                             : 'bg-[var(--color-control-primary)] text-white shadow-sm'
                           : 'text-muted-foreground hover:text-foreground',
                       )}
@@ -1780,18 +1780,18 @@ export function ImportLibraryModal({
                     </button>
                     {phase === 'scanning_usb' ? (
                       <div className="flex-1 mb-3 px-4 rounded-xl border-2 border-dashed border-[var(--color-border-subtle)] flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                        <Refresh width={20} height={20} aria-hidden="true" className="animate-spin text-green-500" />
+                        <Refresh width={20} height={20} aria-hidden="true" className="animate-spin text-[var(--color-control-primary)]" />
                         <p className="text-sm">Scanning folder…</p>
                       </div>
                     ) : phase === 'database_selected' && folderScan ? (
-                      <div className="import-group import-group--green flex-1 text-left">
+                      <div className="import-group import-group--accent flex-1 text-left">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                           {folderScan.folderName}
                         </p>
                         <div className="space-y-2">
                           {folderScan.dbFile ? (
                             <div className="flex items-center gap-2 text-sm">
-                              <CheckCircle width={14} height={14} aria-hidden="true" className="text-green-500 shrink-0" />
+                              <CheckCircle width={14} height={14} aria-hidden="true" className="text-[var(--color-control-primary)] shrink-0" />
                               <span className="font-mono text-xs truncate">
                                 {folderScan.dbFile.name}
                               </span>
@@ -1808,13 +1808,13 @@ export function ImportLibraryModal({
                           <div className="flex items-center gap-2 text-sm">
                             {folderScan.targetedResolver ? (
                               <>
-                                <CheckCircle width={14} height={14} aria-hidden="true" className="text-green-500 shrink-0" />
+                                <CheckCircle width={14} height={14} aria-hidden="true" className="text-[var(--color-control-primary)] shrink-0" />
                                 <span className="text-xs">
                                   Analysis files will be opened only when requested by the library manifest
                                 </span>
                               </>
                             ) : folderScan.anlzFiles.length > 0 ? (
-                              <CheckCircle width={14} height={14} aria-hidden="true" className="text-green-500 shrink-0" />
+                              <CheckCircle width={14} height={14} aria-hidden="true" className="text-[var(--color-control-primary)] shrink-0" />
                             ) : (
                               <WarningTriangle width={14} height={14} aria-hidden="true" className="text-amber-400 shrink-0" />
                             )}
@@ -1831,7 +1831,7 @@ export function ImportLibraryModal({
                       /* idle: button fills all available space between tip and buttons */
                       <button
                         onClick={() => void handleUsbSourceSelect()}
-                        className="flex-1 w-full mb-3 px-4 rounded-xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-green-500/40 hover:bg-green-500/5 transition-all flex flex-col items-center justify-center gap-2 text-muted-foreground"
+                        className="flex-1 w-full mb-3 px-4 rounded-xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-[#ffffff33] hover:bg-white/[0.04] transition-all flex flex-col items-center justify-center gap-2 text-muted-foreground"
                       >
                         <Folder width={20} height={20} aria-hidden="true" />
                         <p className="text-sm">Click to select USB drive folder</p>
@@ -1855,7 +1855,6 @@ export function ImportLibraryModal({
                         variant="primary"
                         onClick={handleImport}
                         disabled={!folderScan?.dbFile}
-                        className={folderScan?.dbFile ? 'dd-control-button--ready' : ''}
                       >
                         <span key={folderScan?.dbFile ? 'ready' : 'idle'} className="dd-icon-pop">
                           {folderScan?.dbFile ? <CheckCircle width={16} height={16} aria-hidden="true" /> : <Upload width={16} height={16} aria-hidden="true" />}
@@ -1870,7 +1869,7 @@ export function ImportLibraryModal({
                 {(mode === 'zip_bundle' || mode === 'database_only') && (
                   <>
                     {selectedFile ? (
-                      <div className="import-group import-group--green cursor-pointer text-center"
+                      <div className="import-group import-group--accent cursor-pointer text-center"
                         onClick={() => fileInputRef.current?.click()}
                         role="button"
                         tabIndex={0}
@@ -1885,7 +1884,7 @@ export function ImportLibraryModal({
                       /* no file yet: button fills all available space */
                       <button
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex-1 w-full mb-3 px-4 rounded-xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-green-500/40 hover:bg-green-500/5 transition-all flex flex-col items-center justify-center gap-2 text-muted-foreground"
+                        className="flex-1 w-full mb-3 px-4 rounded-xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-[#ffffff33] hover:bg-white/[0.04] transition-all flex flex-col items-center justify-center gap-2 text-muted-foreground"
                       >
                         <Upload width={20} height={20} aria-hidden="true" />
                         <p className="text-sm">
@@ -1935,9 +1934,9 @@ export function ImportLibraryModal({
             {phase === 'uploading_usb_data' && (
               <div className="flex flex-col h-full">
                 {/* Heading + spinner */}
-                <div className="import-group import-group--green text-center shrink-0">
+                <div className="import-group import-group--accent text-center shrink-0">
                   <div className="import-status-icon">
-                    <Refresh className="animate-spin text-green-500" width={24} height={24} aria-hidden="true" />
+                    <Refresh className="animate-spin text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
                   </div>
                   <h2 className="import-heading">
                     {localUsbStage === 'uploading_database' && 'Uploading Rekordbox Database…'}
@@ -2011,7 +2010,7 @@ export function ImportLibraryModal({
                   <div className="shrink-0">
                     <div className="w-full h-1.5 bg-[var(--color-surface)] rounded-full overflow-hidden mb-1.5">
                       <div
-                        className="h-full bg-green-500 rounded-full transition-all duration-300"
+                        className="h-full bg-[var(--color-control-primary)] rounded-full transition-all duration-300"
                         style={{ width: `${uploadPct}%` }}
                       />
                     </div>
@@ -2042,9 +2041,9 @@ export function ImportLibraryModal({
             {/* ── ANALYSIS FILES → ANALYZE: USB teardown / USB released ── */}
             {phase === 'usb_released' && !cancelRequestedRef.current && (
               <div className="flex flex-col h-full text-center">
-                <div className="import-group import-group--green shrink-0">
+                <div className="import-group import-group--accent shrink-0">
                   <div className="import-status-icon">
-                    <CheckCircle className="text-green-500" width={24} height={24} aria-hidden="true" />
+                    <CheckCircle className="text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
                   </div>
                   <h2 className="import-heading">USB Access Released</h2>
                 </div>
@@ -2059,7 +2058,7 @@ export function ImportLibraryModal({
               phase === 'deleting_import' ||
               phase === 'pausing_cloud_work') && (
               <div className="flex flex-col h-full">
-                <div className="import-group import-group--green shrink-0 text-center">
+                <div className="import-group import-group--accent shrink-0 text-center">
                   {(() => {
                     const cloudStepActive = cloudCancellationStarted || phase === 'deleting_import' || phase === 'pausing_cloud_work';
                     const showSpinner = !usbReleaseConfirmed || cloudStepActive;
@@ -2067,9 +2066,9 @@ export function ImportLibraryModal({
                       <>
                         <div className="import-status-icon">
                           {showSpinner ? (
-                            <Refresh className="animate-spin text-green-500" width={24} height={24} aria-hidden="true" />
+                            <Refresh className="animate-spin text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
                           ) : (
-                            <CheckCircle className="text-green-500" width={24} height={24} aria-hidden="true" />
+                            <CheckCircle className="text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
                           )}
                         </div>
                         <h2 className="import-heading">
@@ -2121,9 +2120,9 @@ export function ImportLibraryModal({
             {/* ── ANALYZE: cloud analysis running ── */}
             {phase === 'parsing_cloud_data' && (
               <div className="flex flex-col h-full text-center">
-                <div className="import-group import-group--green shrink-0">
+                <div className="import-group import-group--accent shrink-0">
                   <div className="import-status-icon">
-                    <Refresh className="animate-spin text-green-500" width={24} height={24} aria-hidden="true" />
+                    <Refresh className="animate-spin text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
                   </div>
                   <h2 className="import-heading">Analysis Running</h2>
                 </div>
@@ -2166,7 +2165,7 @@ export function ImportLibraryModal({
                 <div className="mt-3">
                   <div className="w-full h-1.5 bg-[var(--color-surface)] rounded-full overflow-hidden mb-1.5">
                     <div
-                      className="h-full bg-green-500 rounded-full transition-all duration-500"
+                      className="h-full bg-[var(--color-control-primary)] rounded-full transition-all duration-500"
                       style={{ width: `${parseProgress.percent}%` }}
                     />
                   </div>
@@ -2211,9 +2210,9 @@ export function ImportLibraryModal({
                   </div>
                   <h2 className="import-heading">Analysis Paused Safely</h2>
                 </div>
-                <div className="import-group import-group--green flex items-start gap-3 text-left">
-                  <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-green-500" />
-                  <p className="text-xs leading-relaxed text-green-100">
+                <div className="import-group import-group--accent flex items-start gap-3 text-left">
+                  <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--color-control-primary)]" />
+                  <p className="text-xs leading-relaxed text-[var(--color-control-primary-hover)]">
                     Your progress is saved. You can pick up where you left off at any time from Import History.
                   </p>
                 </div>
@@ -2251,9 +2250,9 @@ export function ImportLibraryModal({
             {/* ── COMPLETE: success ── */}
             {phase === 'completed' && (
               <div className="flex flex-col h-full text-center">
-                <div className="import-group import-group--green shrink-0">
+                <div className="import-group import-group--accent shrink-0">
                   <div className="import-status-icon">
-                    <CheckCircle className="text-green-500" width={24} height={24} aria-hidden="true" />
+                    <CheckCircle className="text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
                   </div>
                   <h2 className="import-heading">
                     {withAnalysis ? 'Library Imported with Analysis!' : 'Library Imported!'}
@@ -2261,9 +2260,9 @@ export function ImportLibraryModal({
                 </div>
 
                 {usbReleaseConfirmed && (
-                  <div className="flex items-start gap-3 import-group import-group--green text-left">
-                    <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-green-500" />
-                    <p className="text-xs leading-relaxed text-green-100">
+                  <div className="flex items-start gap-3 import-group import-group--accent text-left">
+                    <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--color-control-primary)]" />
+                    <p className="text-xs leading-relaxed text-[var(--color-control-primary-hover)]">
                       USB reading is complete. DropDex no longer needs the USB.
                     </p>
                   </div>
@@ -2392,9 +2391,9 @@ export function ImportLibraryModal({
                       className="flex flex-col h-full"
                     >
                       {usbReleaseConfirmed && (
-                        <div className="mb-3 flex items-start gap-3 import-group import-group--green">
-                          <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-green-500" />
-                          <p className="text-xs leading-relaxed text-green-100">
+                        <div className="mb-3 flex items-start gap-3 import-group import-group--accent">
+                          <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--color-control-primary)]" />
+                          <p className="text-xs leading-relaxed text-[var(--color-control-primary-hover)]">
                             USB reading is complete. DropDex no longer needs the USB.
                           </p>
                         </div>
@@ -2404,7 +2403,7 @@ export function ImportLibraryModal({
                         const issueCount = withAnalysis.partial_count + withAnalysis.failed_count + withAnalysis.missing_required_count;
                         return (
                           <>
-                            <div className="flex items-center gap-2 mb-3">
+                            <div className="flex items-center justify-between gap-2 mb-3">
                               <p className="text-sm text-muted-foreground">
                                 {withAnalysis.completed_count.toLocaleString()} tracks fully parsed
                               </p>
@@ -2433,7 +2432,7 @@ export function ImportLibraryModal({
                                   className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300 transition-colors hover:bg-amber-400/20"
                                 >
                                   <span>{issueCount.toLocaleString()} {issueCount === 1 ? 'Issue' : 'Issues'}</span>
-                                  <Eye width={13} height={13} aria-hidden="true" />
+                                  <ArrowRight width={13} height={13} aria-hidden="true" />
                                 </button>
                               )}
                             </div>
@@ -2678,7 +2677,7 @@ function SafetyStep({
   return (
     <div className="flex items-center gap-3 text-left">
       {complete ? (
-        <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-green-500" />
+        <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-[var(--color-control-primary)]" />
       ) : active ? (
         <Refresh width={16} height={16} aria-hidden="true" className="shrink-0 animate-spin text-amber-400" />
       ) : (

@@ -15,9 +15,7 @@ describe('The one primary button', () => {
     expect(controlsCss).toMatch(/\.dd-control-button--primary\.dd-control-button--ready:not\(:disabled\) \{[^}]*--dd-plate-text: var\(--color-control-green\);/);
   });
 
-  it('sets its text like the artist name in the Hero mockups (light, capitals, 0.1em spacing)', () => {
-    const mockup = read('../LayoutLabHeroMockups.tsx');
-    expect(mockup).toMatch(/<h2 className="truncate text-\[28px\] font-light uppercase leading-none tracking-\[0\.1em\]"[^>]*>\{HERO\.name\}<\/h2>/);
+  it('sets its text in the shared button font (0.1em spacing)', () => {
     expect(raisedPlate).toMatch(/font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;[^}]*font-weight: 400;[^}]*letter-spacing: \.1em;[^}]*text-transform: uppercase;/);
     expect(feedbackCss).toMatch(/\.dd-upload-button--primary \{[^}]*font-weight: 300; letter-spacing: \.1em; text-transform: uppercase;/);
   });

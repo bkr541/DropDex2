@@ -78,7 +78,7 @@ import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
-import { CheckCircle, CompactDisc, Database, EditPencil, GraphUp, HalfMoon, MusicNote, Refresh, SunLight, Upload, Usb, User, WarningTriangle, Xmark } from 'iconoir-react/regular';
+import { CheckCircle, CompactDisc, Database, EditPencil, GraphUp, HalfMoon, InfoCircle, MusicNote, Refresh, SunLight, Upload, Usb, User, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { openLayoutLab } from './components/ui/openLayoutLab';
 import { ControlButton } from './components/ui/controls';
 import { LogOut } from 'iconoir-react/regular';
@@ -1569,21 +1569,16 @@ export default function App() {
 
                   {/* ── About tab ── */}
                   {settingsTab === 'about' && (
-                    <section className="profile-group">
-                      <h2 className="profile-heading">App Information</h2>
-                      <SurfaceCard as="dl" className="profile-records divide-y divide-[var(--color-border-faint)]">
-                        {[
-                          { label: 'Version', value: '2.0.0' },
-                          { label: 'Book Source', value: 'Supabase (rekordbox USB)' },
-                          { label: 'Import ID', value: latestImport?.id?.slice(0, 8) ?? '—' },
-                        ].map(({ label, value }) => (
-                          <div key={label} className="profile-record flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                            <dt className="text-xs text-muted-foreground">{label}</dt>
-                            <dd className="font-mono text-xs">{value}</dd>
-                          </div>
-                        ))}
-                      </SurfaceCard>
-                    </section>
+                    <div className="profile-stack">
+                      <section className="profile-group">
+                        <h2 className="profile-heading"><InfoCircle width={14} height={14} aria-hidden="true" />App Information</h2>
+                        <div className="profile-stats">
+                          <StatTile label="Version" value="2.0.0" />
+                          <StatTile label="Library Source" value="Supabase (Rekordbox USB)" />
+                          <StatTile label="Import ID" value={latestImport?.id?.slice(0, 8) ?? '—'} />
+                        </div>
+                      </section>
+                    </div>
                   )}
 
                   {/* ── Developer tab ── */}

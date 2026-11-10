@@ -161,8 +161,8 @@ export function BackgroundImportPanel({
       </div>
 
       {usbReleased ? (
-        <div className="import-group import-group--green mt-3 flex items-center gap-3 text-xs text-green-100">
-          <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-green-500" />
+        <div className="import-group import-group--accent mt-3 flex items-center gap-3 text-xs text-[var(--color-control-primary-hover)]">
+          <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-[var(--color-control-primary)]" />
           USB released. The library is ready to browse.
         </div>
       ) : (

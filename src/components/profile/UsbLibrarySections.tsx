@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { NavArrowDown, Usb } from 'iconoir-react/regular';
+import { NavArrowDown } from 'iconoir-react/regular';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import type { UsbImportGroup } from '../../lib/usb/groupImportsByUsb';
 import type { RekordboxImport } from '../../types';
 import { EmptyState, StatusBadge } from '../ui/feedback';
 import { ImportSnapshotRow } from './ImportSnapshotRow';
+import { UsbDriveIcon } from './UsbDriveIcon';
 import { UsbStat, UsbStats } from './UsbStat';
 
 const formatDate = (iso: string) => {
@@ -58,7 +59,7 @@ function UsbCard({ group, connected, activeImportId, onOpen, onMakeActive, onRes
     <li data-testid="usb-card" data-usb={group.key}>
       <div className="profile-usb-record">
         <button type="button" className="profile-collapse profile-record profile-usb-head flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 text-left" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-          <Usb width={16} height={16} aria-hidden="true" className="shrink-0 text-muted-foreground" />
+          <UsbDriveIcon width={18} height={18} className="shrink-0 text-muted-foreground" />
           <span className="profile-usb-name min-w-0 max-w-full truncate" title={group.name}>{group.name}</span>
           {group.hasActive && <StatusBadge tone="online">Active library</StatusBadge>}
           {connected && <StatusBadge tone="online">Connected now</StatusBadge>}

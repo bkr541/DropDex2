@@ -547,10 +547,10 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
     </div>
   );
   const hero = (title: string, kind: 'spin' | 'done' | 'warn' | 'error' = 'spin') => (
-    <div className={`import-group shrink-0 text-center ${kind === 'warn' ? 'import-group--amber' : kind === 'error' ? '' : 'import-group--green'}`}>
+    <div className={`import-group shrink-0 text-center ${kind === 'warn' ? 'import-group--amber' : kind === 'error' ? '' : 'import-group--accent'}`}>
       <div className="import-status-icon">
-        {kind === 'spin' && <Refresh className="animate-spin text-green-500" width={24} height={24} aria-hidden="true" />}
-        {kind === 'done' && <CheckCircle className="text-green-500" width={24} height={24} aria-hidden="true" />}
+        {kind === 'spin' && <Refresh className="animate-spin text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />}
+        {kind === 'done' && <CheckCircle className="text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />}
         {kind === 'warn' && <WarningTriangle className="text-amber-400" width={24} height={24} aria-hidden="true" />}
         {kind === 'error' && <WarningTriangle className="text-red-400" width={24} height={24} aria-hidden="true" />}
       </div>
@@ -671,9 +671,9 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
             {phase === 'parsing' && (
               <div className="flex h-full flex-col text-center">
                 {hero('Reprocessing Tracks…')}
-                <div className="import-group import-group--green flex items-center gap-3 text-left">
-                  <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-green-500" />
-                  <p className="text-xs leading-relaxed text-green-100">USB released. Reprocessing uses uploaded copies only.</p>
+                <div className="import-group import-group--accent flex items-center gap-3 text-left">
+                  <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-[var(--color-control-primary)]" />
+                  <p className="text-xs leading-relaxed text-[var(--color-control-primary-hover)]">USB released. Reprocessing uses uploaded copies only.</p>
                 </div>
               </div>
             )}

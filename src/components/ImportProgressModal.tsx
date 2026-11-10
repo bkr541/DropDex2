@@ -42,7 +42,7 @@ export function ImportProgressModal({
   stagePercent?: number;
   /** `failed` turns the progress display red. */
   status?: QuietProgressStatus;
-  /** A source has been chosen: the progress accent and header icon turn green. */
+  /** A source has been chosen: the notices and choices take the accent tint. */
   ready?: boolean;
   /** Safety-aware close handler — must be handleClose from ImportLibraryModal. */
   onClose: () => void;
@@ -80,7 +80,7 @@ export function ImportProgressModal({
       {/* Shared header — identical on every phase */}
       <div className="flex items-center justify-between px-7 pt-5 pb-0 shrink-0">
         <div className="flex items-center gap-2">
-          <Database className={ready ? 'shrink-0 text-green-500' : 'shrink-0 text-[var(--color-control-primary)]'} width={24} height={24} aria-hidden />
+          <Database className="shrink-0 text-[var(--color-control-primary)]" width={24} height={24} aria-hidden />
           <h2 id="import-progress-title" className="import-modal__title text-[26px] leading-tight">
             {title}
           </h2>

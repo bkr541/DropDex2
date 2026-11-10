@@ -17,7 +17,6 @@ describe('library insights helpers', () => {
 describe('the Home hero is the Ghost Banner (the seventh Layout Lab hero mockup)', () => {
   const ghost = readFileSync(resolve(__dirname, './LibraryGhostHero.tsx'), 'utf8');
   const css = readFileSync(resolve(__dirname, './library-ghost-hero.css'), 'utf8');
-  const mockupCss = readFileSync(resolve(__dirname, '../ui/layout-lab-hero.css'), 'utf8');
 
   it('replaces the old profile card and hero on desktop, and keeps the compact hero below it', () => {
     expect(hero).toContain('<LibraryGhostHero');
@@ -27,15 +26,11 @@ describe('the Home hero is the Ghost Banner (the seventh Layout Lab hero mockup)
     expect(hero).toContain('genreCount={libraryStats ? libraryStats.genreTotals.length : null}');
   });
 
-  it('is the mockup\'s look: the same frame, the name rising from the bottom edge, and a 218px height', () => {
-    const frame = mockupCss.match(/\.lh-f-ghost \{([^}]*)\}/)![1];
+  it('has the Ghost Banner look: the same frame, the name rising from the bottom edge, and a 218px height', () => {
     for (const part of ['radial-gradient(ellipse at 50% 120%, #00000066, transparent 60%)', 'repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px)', 'linear-gradient(165deg, #2a2e38 0%, #1f2229 55%, #16191f 100%)']) {
-      expect(frame).toContain(part);
       expect(css).toContain(part);
     }
-    const mark = mockupCss.match(/\.lh-wm-up \{([^}]*)\}/)![1];
     for (const part of ['bottom: -58px', 'font-size: 280px', 'mask-image: linear-gradient(0deg, #000 0%, transparent 78%)']) {
-      expect(mark).toContain(part);
       expect(css).toContain(part);
     }
     expect(css).toMatch(/\.lgh \{ position: relative; height: 218px;/);

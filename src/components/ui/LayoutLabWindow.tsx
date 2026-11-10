@@ -1,16 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { EditPencil, Maximize, Minus, Plus, Xmark } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
-import { HeroMockupsContent } from './LayoutLabHeroMockups';
-import { UiComponentsContent } from './LayoutLabUiComponents';
-import { NavDesignMockupsContent } from './LayoutLabNavDesignMockups';
-import { AudioDockMockupsContent } from './LayoutLabAudioDockMockups';
-import { DiscoveryMockupsContent } from './LayoutLabDiscoveryMockups';
-import { NestedGroupMockupsContent } from './LayoutLabNestedGroupMockups';
-import { ImportMockupsContent } from './LayoutLabImportMockups';
-import { NoticeCardMockupsContent } from './LayoutLabNoticeCardMockups';
-import { NoticeComponentMockupsContent } from './LayoutLabNoticeComponentMockups';
-import { CueMarkerMockupsContent } from './LayoutLabCueMarkerMockups';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,16 +23,7 @@ const TAB_BAR_HEIGHT = 36;
 const DEFAULT_TABS: Tab[] = [
   { id: 'ui-components', label: 'UI Components' },
   { id: 'scratch-pad',   label: 'Scratch Pad'   },
-  { id: 'hero',          label: 'Hero'          },
-  { id: 'nav-design',    label: 'Nav Design'    },
-  { id: 'audio-dock',    label: 'Audio Dock'    },
   { id: 'icons', label: 'Icons' },
-  { id: 'discovery', label: 'Discovery' },
-  { id: 'notice-card', label: 'Notice Card' },
-  { id: 'notice-component', label: 'Notice Component' },
-  { id: 'cue-markers', label: 'Cue Markers' },
-  { id: 'import', label: 'Import' },
-  { id: 'nested-groups', label: 'Nested Groups' },
 ];
 
 let tabCounter = 0;
@@ -358,29 +339,7 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
       {/* Canvas */}
       {!minimized && (
         <div className="relative flex-1 overflow-hidden" style={{ height: canvasHeight }}>
-          {activeId === 'hero' ? (
-            <HeroMockupsContent />
-          ) : activeId === 'nav-design' ? (
-            <NavDesignMockupsContent />
-          ) : activeId === 'audio-dock' ? (
-            <AudioDockMockupsContent />
-          ) : activeId === 'discovery' ? (
-            <DiscoveryMockupsContent />
-          ) : activeId === 'notice-card' ? (
-            <NoticeCardMockupsContent />
-          ) : activeId === 'notice-component' ? (
-            <NoticeComponentMockupsContent />
-          ) : activeId === 'cue-markers' ? (
-            <CueMarkerMockupsContent />
-          ) : activeId === 'nested-groups' ? (
-            <NestedGroupMockupsContent />
-          ) : activeId === 'import' ? (
-            <ImportMockupsContent />
-          ) : activeId === 'ui-components' ? (
-            <UiComponentsContent />
-          ) : (
-            <BlankCanvas />
-          )}
+          <BlankCanvas />
         </div>
       )}
     </div>
