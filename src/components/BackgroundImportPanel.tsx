@@ -137,10 +137,10 @@ export function BackgroundImportPanel({
   };
 
   return (
-    <aside className="fixed bottom-20 right-4 z-[75] w-[min(390px,calc(100vw-2rem))] rounded-2xl border border-[var(--color-border-subtle)] bg-background/95 p-4 shadow-2xl backdrop-blur-xl md:bottom-4">
+    <aside className="studio-surface profile-modal import-modal fixed bottom-20 right-4 z-[75] w-[min(390px,calc(100vw-2rem))] p-4 md:bottom-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-black">Rekordbox Import</p>
+          <h2 className="import-heading !m-0 !text-base">Rekordbox Import</h2>
           <p className="mt-0.5 text-[11px] capitalize text-muted-foreground">
             {(status?.readiness_stage ?? 'library_metadata_ready').replaceAll('_', ' ')}
           </p>
@@ -161,17 +161,17 @@ export function BackgroundImportPanel({
       </div>
 
       {usbReleased ? (
-        <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-2.5 text-xs text-emerald-100">
-          <CheckCircle width={15} height={15} aria-hidden="true" className="shrink-0 text-emerald-400" />
+        <div className="import-group import-group--green mt-3 flex items-center gap-3 text-xs text-green-100">
+          <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-green-500" />
           USB released. The library is ready to browse.
         </div>
       ) : (
-        <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
-          <div className="flex items-start gap-2">
-            <WarningTriangle width={15} height={15} aria-hidden="true" className="mt-0.5 shrink-0 text-amber-400" />
+        <div className="import-group import-group--amber mt-3 text-xs text-amber-100">
+          <div className="flex items-start gap-3">
+            <WarningTriangle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-amber-400" />
             <p>Book metadata is ready. DropDex is still reading required DAT/EXT files, so keep the USB connected and Rekordbox closed.</p>
           </div>
-          <ControlButton type="button" variant="neutral" onClick={onManageLocalUpload} className="mt-3 w-full">
+          <ControlButton type="button" variant="secondary" onClick={onManageLocalUpload} className="mt-3 w-full">
             <Upload width={14} height={14} aria-hidden="true" /> Manage USB Upload
           </ControlButton>
         </div>
@@ -210,12 +210,12 @@ export function BackgroundImportPanel({
       {usbReleased && (
         <div className="mt-4 grid grid-cols-2 gap-2">
           {!terminal && !resumable && (
-            <ControlButton type="button" variant="neutral" disabled={action !== null} onClick={() => void runAction('pause')}>
+            <ControlButton type="button" variant="secondary" disabled={action !== null} onClick={() => void runAction('pause')}>
               {action === 'pause' ? <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> : <Pause width={13} height={13} aria-hidden="true" />} Pause
             </ControlButton>
           )}
           {resumable && (
-            <ControlButton type="button" variant="primary" disabled={action !== null} onClick={() => void runAction('resume')} className="w-auto px-3 py-2 text-xs min-h-0">
+            <ControlButton type="button" variant="primary" disabled={action !== null} onClick={() => void runAction('resume')}>
               {action === 'resume' ? <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> : <Play width={13} height={13} aria-hidden="true" />} Resume
             </ControlButton>
           )}

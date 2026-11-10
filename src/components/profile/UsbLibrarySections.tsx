@@ -3,7 +3,6 @@ import { NavArrowDown, Usb } from 'iconoir-react/regular';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import type { UsbImportGroup } from '../../lib/usb/groupImportsByUsb';
 import type { RekordboxImport } from '../../types';
-import { SurfaceCard } from '../ui/display/SurfaceCard';
 import { EmptyState, StatusBadge } from '../ui/feedback';
 import { ImportSnapshotRow } from './ImportSnapshotRow';
 import { UsbStat, UsbStats } from './UsbStat';
@@ -40,7 +39,7 @@ export function UsbCardsSection({ groups, activeImportId, onOpen, onMakeActive, 
     );
   }
   return (
-    <ul className="profile-records" data-testid="usb-cards">
+    <ul className="profile-records profile-usb-records" data-testid="usb-cards">
       {groups.map((group) => {
         const connected = Boolean(volumeName && group.device && group.device.label.trim().toLowerCase() === volumeName.trim().toLowerCase());
         return (
@@ -57,10 +56,10 @@ function UsbCard({ group, connected, activeImportId, onOpen, onMakeActive, onRes
   const [filesOpen, setFilesOpen] = useState(true);
   return (
     <li data-testid="usb-card" data-usb={group.key}>
-      <SurfaceCard as="div">
-        <button type="button" className="profile-collapse profile-record flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-left" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <div className="profile-usb-record">
+        <button type="button" className="profile-collapse profile-record profile-usb-head flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 text-left" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
           <Usb width={16} height={16} aria-hidden="true" className="shrink-0 text-muted-foreground" />
-          <span className="min-w-0 max-w-full truncate text-xs font-medium" title={group.name}>{group.name}</span>
+          <span className="profile-usb-name min-w-0 max-w-full truncate" title={group.name}>{group.name}</span>
           {group.hasActive && <StatusBadge tone="online">Active library</StatusBadge>}
           {connected && <StatusBadge tone="online">Connected now</StatusBadge>}
           {group.retired && <StatusBadge tone="disabled">No longer used</StatusBadge>}
@@ -86,12 +85,12 @@ function UsbCard({ group, connected, activeImportId, onOpen, onMakeActive, onRes
 
             {group.imports.length > 0 && (
               <div className="profile-usb-nested" data-testid="usb-card-snapshots">
-                <button type="button" className="profile-collapse flex w-full items-center gap-2 px-4 py-2 text-left" aria-expanded={filesOpen} onClick={() => setFilesOpen((value) => !value)}>
-                  <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Export library</span>
+                <button type="button" className="profile-collapse flex w-full items-center gap-2 text-left" aria-expanded={filesOpen} onClick={() => setFilesOpen((value) => !value)}>
+                  <span className="profile-usb-label">Export library</span>
                   <NavArrowDown width={14} height={14} aria-hidden="true" className={`ml-auto shrink-0 text-muted-foreground transition-transform ${filesOpen ? '' : '-rotate-90'}`} />
                 </button>
                 {filesOpen && (
-                  <div className="divide-y divide-[var(--color-border-faint)]">
+                  <div className="profile-usb-files">
                     {group.imports.map((snapshot) => (
                       <ImportSnapshotRow key={snapshot.id} snapshot={snapshot} isActive={snapshot.id === activeImportId} onOpen={onOpen} onMakeActive={onMakeActive} onResumeOrRetry={onResumeOrRetry} onDelete={onDelete} />
                     ))}
@@ -101,7 +100,7 @@ function UsbCard({ group, connected, activeImportId, onOpen, onMakeActive, onRes
             )}
           </div>
         )}
-      </SurfaceCard>
+      </div>
     </li>
   );
 }

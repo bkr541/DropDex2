@@ -1,4 +1,4 @@
-import { Trash } from 'iconoir-react/regular';
+import { Database, Trash } from 'iconoir-react/regular';
 import { UsbStat, UsbStats } from './UsbStat';
 import { getImportHistoryPresentation } from '../../lib/rekordbox/importHistoryPresentation';
 import { isPendingHardDelete, isUsableLibrarySnapshot } from '../../lib/rekordbox/libraryDeletion';
@@ -29,61 +29,60 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
   const resumable = imp.status === 'completed' || imp.status === 'paused' || imp.status === 'interrupted';
 
   return (
-    <div data-testid={`import-history-row-${imp.id}`} className="profile-record grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <a
-            href={`/imports/${encodeURIComponent(imp.id)}`}
-            onClick={(event) => {
-              if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
-                event.preventDefault();
-                onOpen(imp);
-              }
-            }}
-            aria-label={`Open import ${imp.source_filename}`}
-            className="min-w-0 break-all text-sm font-medium hover:text-[var(--color-control-primary-hover)] focus-visible:outline-2 focus-visible:outline-[var(--color-control-focus)] focus-visible:outline-offset-2"
-          >
-            {imp.source_filename}
-          </a>
-          {isActive && <StatusBadge tone="success">Active</StatusBadge>}
-          {showStatusBadge && (
-            <StatusBadge tone={importStalled ? 'warning' : statusTone}>
-              {importStalled ? 'Interrupted' : importPresentation.label}
-            </StatusBadge>
+    <div data-testid={`import-history-row-${imp.id}`} className="profile-usb-file">
+      <div className="flex flex-wrap items-center gap-2">
+        <Database width={14} height={14} aria-hidden="true" className="shrink-0 text-muted-foreground" />
+        <a
+          href={`/imports/${encodeURIComponent(imp.id)}`}
+          onClick={(event) => {
+            if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+              event.preventDefault();
+              onOpen(imp);
+            }
+          }}
+          aria-label={`Open import ${imp.source_filename}`}
+          className="profile-usb-file__name min-w-0 break-all hover:text-[var(--color-control-primary-hover)] focus-visible:outline-2 focus-visible:outline-[var(--color-control-focus)] focus-visible:outline-offset-2"
+        >
+          {imp.source_filename}
+        </a>
+        {isActive && <StatusBadge tone="success">Active</StatusBadge>}
+        {showStatusBadge && (
+          <StatusBadge tone={importStalled ? 'warning' : statusTone}>
+            {importStalled ? 'Interrupted' : importPresentation.label}
+          </StatusBadge>
+        )}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {!isActive && !importInFlight && !importStalled && isUsableLibrarySnapshot(imp) && importPresentation.canActivate && (
+            <ControlButton variant="secondary" onClick={() => onMakeActive(imp)}>
+              Make Active
+            </ControlButton>
+          )}
+          {(importPresentation.canRetry || importStalled) && (
+            <ControlButton variant="secondary" onClick={() => onResumeOrRetry(imp)}>
+              {resumable ? 'Resume' : 'Retry'}
+            </ControlButton>
+          )}
+          {(!importInFlight || imp.retryable || isPendingHardDelete(imp)) && (
+            <ControlButton variant="danger-outline" aria-label={`${isPendingHardDelete(imp) ? 'Retry delete' : 'Delete'} import ${imp.source_filename}`} title={`${isPendingHardDelete(imp) ? 'Retry delete' : 'Delete'} import`} onClick={() => onDelete(imp)}>
+              <Trash width={16} height={16} aria-hidden="true" />
+            </ControlButton>
           )}
         </div>
-        <UsbStats className="mt-2">
-          <UsbStat label="Imported" value={new Date(imp.imported_at).toLocaleDateString(undefined, { dateStyle: 'medium' })} />
-          <UsbStat label="Tracks" value={imp.track_count.toLocaleString()} />
-          <UsbStat label="Playlists" value={imp.playlist_count.toLocaleString()} />
-        </UsbStats>
-        {importInFlight && (
-          <div className="mt-2 max-w-md">
-            <p className="mb-1 truncate text-xs text-muted-foreground">{importProgress.currentTrackLabel || 'Preparing current track…'}</p>
-            <ProgressBar value={importProgress.percent} label="Import progress" showValue />
-          </div>
-        )}
-        {(imp.status === 'failed' || imp.status === 'cancelled') && imp.error_message && (
-          <NoticeCard tone="error" className="mt-1">{imp.error_message}</NoticeCard>
-        )}
       </div>
-      <div className="flex flex-wrap items-center justify-end justify-self-end gap-2">
-        {!isActive && !importInFlight && !importStalled && isUsableLibrarySnapshot(imp) && importPresentation.canActivate && (
-          <ControlButton variant="secondary" onClick={() => onMakeActive(imp)}>
-            Make Active
-          </ControlButton>
-        )}
-        {(importPresentation.canRetry || importStalled) && (
-          <ControlButton variant="secondary" onClick={() => onResumeOrRetry(imp)}>
-            {resumable ? 'Resume' : 'Retry'}
-          </ControlButton>
-        )}
-        {(!importInFlight || imp.retryable || isPendingHardDelete(imp)) && (
-          <ControlButton variant="danger-outline" aria-label={`${isPendingHardDelete(imp) ? 'Retry delete' : 'Delete'} import ${imp.source_filename}`} title={`${isPendingHardDelete(imp) ? 'Retry delete' : 'Delete'} import`} onClick={() => onDelete(imp)}>
-            <Trash width={16} height={16} aria-hidden="true" />
-          </ControlButton>
-        )}
-      </div>
+      <UsbStats className="mt-1.5">
+        <UsbStat label="Imported" value={new Date(imp.imported_at).toLocaleDateString(undefined, { dateStyle: 'medium' })} />
+        <UsbStat label="Tracks" value={imp.track_count.toLocaleString()} />
+        <UsbStat label="Playlists" value={imp.playlist_count.toLocaleString()} />
+      </UsbStats>
+      {importInFlight && (
+        <div className="mt-2 max-w-md">
+          <p className="mb-1 truncate text-xs text-muted-foreground">{importProgress.currentTrackLabel || 'Preparing current track…'}</p>
+          <ProgressBar value={importProgress.percent} label="Import progress" showValue />
+        </div>
+      )}
+      {(imp.status === 'failed' || imp.status === 'cancelled') && imp.error_message && (
+        <NoticeCard tone="error" className="mt-1">{imp.error_message}</NoticeCard>
+      )}
     </div>
   );
 }

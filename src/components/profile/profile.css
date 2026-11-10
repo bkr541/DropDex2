@@ -301,13 +301,20 @@
   .profile-workspace .profile-xml-values { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* Counts under a USB and under each of its library files: label left, value right (as on the About tab), two to a row. */
-.profile-usb-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; margin: 0; }
-.profile-usb-stat { padding: 7px 0; border-bottom: 1px solid #ffffff26; }
-.profile-usb-stats > .profile-usb-stat:nth-last-child(-n+2):nth-child(odd), .profile-usb-stats > .profile-usb-stat:last-child { border-bottom: 0; }
-/* A group nested inside a USB: its own faint border and a slightly lighter surface, indented the same as the USB header's edge, with space between groups. */
-.profile-usb-nested { margin: 0 16px 12px; padding: 4px 16px; border: 1px solid #ffffff14; border-radius: 10px; background: #ffffff08; }
-.profile-usb-nested .profile-record, .profile-usb-nested .profile-collapse { background: transparent; padding-inline: 0; }
+/* USB records use the "Hairline Boxes" style from Layout Lab / Nested Groups: plain records, nested groups outlined by a hairline,
+   label-and-value pairs two to a row, nested groups indented under the USB name. */
+.profile-usb-records { display: flex; flex-direction: column; gap: 12px; }
+.profile-usb-record { display: flex; flex-direction: column; gap: 8px; }
+.profile-usb-head { padding: 0; min-height: 0; }
+.profile-usb-head .profile-usb-name { color: var(--profile-ink); font-size: 16px; font-weight: 600; letter-spacing: .03em; }
+.profile-usb-label { color: var(--profile-muted); font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
+.profile-usb-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 28px; margin: 0; }
+.profile-usb-stat { padding: 0; }
+.profile-usb-stat dd { margin: 0; color: var(--profile-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.profile-usb-nested { padding: 8px 14px; border: 1px solid var(--color-border-subtle); border-radius: 12px; background: transparent; }
+.profile-usb-nested .profile-record, .profile-usb-nested .profile-collapse { background: transparent; padding-inline: 0; min-height: 0; }
+.profile-usb-files > .profile-usb-file { padding: 6px 0 0; }
+.profile-usb-file__name { color: #cfd5df; font-size: 13px; font-weight: 400; }
 .profile-collapse { cursor: pointer; }
 .profile-collapse:focus-visible { outline: 2px solid var(--profile-focus); outline-offset: -2px; }
 
@@ -323,12 +330,6 @@
 .profile-workspace .dd-selectable-card--row > .dd-selectable-card__hero { overflow: hidden; }
 .profile-workspace .profile-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 @media (max-width: 900px) { .profile-workspace .profile-choice-grid { grid-template-columns: 1fr; } }
-/* Row dividers in the USB groups are the same colour as the underlines on the Account tab's fields (#ffffff26). */
-.profile-usb-nested .divide-y > * + * { border-color: #ffffff26; }
-.profile-workspace [data-testid="usb-card-snapshots"] .profile-collapse + div { border-top: 1px solid #ffffff26; }
-/* Even spacing inside an open USB: 12px between the header and the first group, between groups, and below the last one. */
-.usb-card-body { padding: 2px 0 12px; }
-.usb-card-body > .profile-usb-nested:last-child { margin-bottom: 0; }
 
 /* Import popover groups share the parent studio surface, like Delete All. */
 .import-modal [class*="bg-[var(--color-surface)]"]:not(.rounded-full):not(.rounded-lg) {
@@ -356,3 +357,7 @@
 /* Stats groups are never shorter than two rows, and a lone row spans the group, so the Database upload matches the other screens. */
 .import-modal .import-stats { min-height: 74px; align-content: start; }
 .import-modal .import-stats > div:only-child { grid-column: 1 / -1; }
+.import-modal .import-group__label { margin: 0 0 8px; color: var(--color-muted-foreground); font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
+
+/* Inside an open USB: groups indent under the USB name and sit 8px apart. */
+.usb-card-body { display: flex; flex-direction: column; gap: 8px; margin-left: 26px; padding: 0; }

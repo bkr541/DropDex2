@@ -81,7 +81,7 @@ describe('Library tab in the profile', () => {
     const { UsbCardsSection } = await import('../../components/profile/UsbLibrarySections');
     const markup = renderToStaticMarkup(createElement(UsbCardsSection, { ...props, defaultOpen: true }));
     expect(markup.match(/data-testid="usb-card"/g)).toHaveLength(3);
-    for (const text of ['LUMA', 'Festival stick', 'EMPTY STICK', 'Active library', 'Connected now', 'Tracks</dt><dd class="font-mono text-xs">2,283</dd>', 'Playlists</dt><dd class="font-mono text-xs">4</dd>', 'No library imported from this USB yet.']) expect(markup).toContain(text);
+    for (const text of ['LUMA', 'Festival stick', 'EMPTY STICK', 'Active library', 'Connected now', 'Tracks</dt><dd class="text-xs">2,283</dd>', 'Playlists</dt><dd class="text-xs">4</dd>', 'No library imported from this USB yet.']) expect(markup).toContain(text);
   });
 
   it('puts each USB\'s exportLibrary.db snapshots inside that USB\'s own card', async () => {
@@ -94,7 +94,7 @@ describe('Library tab in the profile', () => {
     expect(luma).toContain('exportLibrary.db');
     expect(luma).not.toContain('second.db');
     expect(festival).toContain('second.db');
-    expect(festival).toContain('Import</dt><dd class="font-mono text-xs">1</dd>');
+    expect(festival).toContain('Import</dt><dd class="text-xs">1</dd>');
     expect(festival).toContain('Export library');
     expect(festival).toContain('data-testid="import-history-row-b"');
     // A USB with no snapshots has no snapshot list.
@@ -108,10 +108,11 @@ describe('Library tab in the profile', () => {
     expect(deleteAction?.replace(/<[^>]*>/g, '').trim()).toBe('');
   });
 
-  it('keeps each USB card compact: the USB and its library summary share one line, and the rows are tight', async () => {
+  it('uses the Hairline Boxes style: a plain record with an indented, outlined group for its counts and one for its files', async () => {
     const { UsbCardsSection } = await import('../../components/profile/UsbLibrarySections');
     const markup = renderToStaticMarkup(createElement(UsbCardsSection, { ...props, defaultOpen: true }));
-    expect(markup).toContain('px-4 py-2.5');
+    expect(markup).toContain('profile-usb-head');
+    expect(markup).toContain('profile-usb-nested');
     expect(markup).toContain('data-testid="usb-card-summary"');
     // Name, badges and the summary sit in one row, not stacked blocks.
     const header = markup.slice(markup.indexOf('data-testid="usb-card"'), markup.indexOf('data-testid="usb-card-snapshots"'));
@@ -119,7 +120,7 @@ describe('Library tab in the profile', () => {
     expect(header).not.toContain('flex-col gap-2 p-4');
     expect(header).not.toContain('Library snapshots ·');
     const row = readFileSync(resolve(__dirname, '../../components/profile/ImportSnapshotRow.tsx'), 'utf8');
-    expect(row).toContain('px-4 py-2');
+    expect(row).toContain('profile-usb-file');
     expect(row).not.toContain('p-4 flex items-start');
   });
 

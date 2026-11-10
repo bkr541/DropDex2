@@ -7,7 +7,7 @@ declare module 'react' {
 }
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence } from 'motion/react';
 import { useUsbConnection } from '../contexts/UsbConnectionContext';
 import { supabase } from '../lib/supabase';
 import {
@@ -32,6 +32,7 @@ import { runCancellableUploadQueue, UploadQueueRuntime } from '../lib/rekordbox/
 import { IdempotentUsbCleanup, verifyUsbReleased } from '../lib/rekordbox/localUsbLifecycle';
 import { CheckCircle, Folder, Refresh, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { ControlButton } from './ui/controls';
+import { ImportProgressModal } from './ImportProgressModal';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -526,281 +527,211 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
   if (!isOpen) return null;
 
+  const stageIndex: Record<ResumePhase, number> = {
+    fetching_status: 0, scan_prompt: 0, uploading: 1, stopping_usb_reads: 2, parsing: 3, done: 4, done_partial: 4, error: 0,
+  };
+  const uploadPct = progress.filesTotal > 0 ? (progress.filesUploaded / progress.filesTotal) * 100 : 0;
+  const headline: Partial<Record<ResumePhase, string>> = {
+    fetching_status: 'Checking which analysis files are missing.',
+    scan_prompt: 'Choose the USB that holds the missing files.',
+    uploading: 'Uploading the missing files.',
+    stopping_usb_reads: 'Stopping USB reads.',
+    parsing: 'Reprocessing waveform, cue and beat data.',
+    done: 'Your analysis is up to date.',
+    done_partial: 'Some tracks still need attention.',
+  };
+  const keepClosed = (
+    <div className="import-group import-group--amber flex items-center gap-3 text-left">
+      <WarningTriangle width={16} height={16} aria-hidden="true" className="shrink-0 text-amber-400" />
+      <p className="whitespace-nowrap text-[11px] leading-snug text-amber-100">Keep Rekordbox closed. Do not eject the drive until DropDex confirms.</p>
+    </div>
+  );
+  const hero = (title: string, kind: 'spin' | 'done' | 'warn' | 'error' = 'spin') => (
+    <div className={`import-group shrink-0 text-center ${kind === 'warn' ? 'import-group--amber' : kind === 'error' ? '' : 'import-group--green'}`}>
+      <div className="import-status-icon">
+        {kind === 'spin' && <Refresh className="animate-spin text-green-500" width={24} height={24} aria-hidden="true" />}
+        {kind === 'done' && <CheckCircle className="text-green-500" width={24} height={24} aria-hidden="true" />}
+        {kind === 'warn' && <WarningTriangle className="text-amber-400" width={24} height={24} aria-hidden="true" />}
+        {kind === 'error' && <WarningTriangle className="text-red-400" width={24} height={24} aria-hidden="true" />}
+      </div>
+      <h2 className="import-heading">{title}</h2>
+    </div>
+  );
+  const footer = (children: React.ReactNode) => <div className="mt-auto flex justify-center gap-3 pt-4">{children}</div>;
+
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={handleClose}
-          />
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-            className="relative z-10 w-full max-w-2xl glass rounded-3xl p-6 shadow-2xl border border-[var(--color-border-subtle)]"
-          >
-            {/* Close button */}
-            {(phase === 'scan_prompt' || phase === 'error' || phase === 'done_partial') && (
-              <ControlButton variant="ghost" onClick={handleClose} className="absolute top-5 right-5">
-                <Xmark width={18} height={18} aria-hidden="true" />
-              </ControlButton>
-            )}
-
-            {/* ── Fetching status ── */}
-            {phase === 'fetching_status' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) handleClose(); }}>
+          <ImportProgressModal
+            title="Resume Analysis"
+            stepKey={phase}
+            ready={phase !== 'error'}
+            status={phase === 'error' ? 'failed' : undefined}
+            onClose={handleClose}
+            progress={(
               <QuietProgress
                 title="Resume analysis"
                 phases={RESUME_PHASES}
-                activeIndex={0}
-                percent={quietOverallPercent(0, RESUME_PHASES.length)}
-                headline="Checking which analysis files are missing…"
+                activeIndex={stageIndex[phase]}
+                stagePercent={phase === 'uploading' ? uploadPct : undefined}
+                percent={quietOverallPercent(stageIndex[phase], RESUME_PHASES.length, phase === 'uploading' ? uploadPct : 0, phase === 'done')}
+                status={phase === 'error' ? 'failed' : phase === 'done' ? 'done' : 'running'}
+                headline={phase === 'error' ? 'The resume stopped before it finished.' : headline[phase]}
               />
             )}
+          >
+            {phase === 'fetching_status' && (
+              <div className="flex h-full flex-col text-center">{hero('Checking Analysis Files…')}</div>
+            )}
 
-            {/* ── Scan prompt ── */}
             {phase === 'scan_prompt' && status && (
-              <div>
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center shrink-0">
-                    <Refresh className="text-amber-400" width={22} height={22} aria-hidden="true" />
-                  </div>
-                  <h2 className="text-xl font-bold">Resume Analysis</h2>
-                </div>
-
-                {/* Grouped status summary */}
+              <div className="flex h-full flex-col">
                 {statusSummary && (
-                  <div className="text-left space-y-1.5 mb-5 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)]">
-                    {statusSummary.missingRequired > 0 && (
-                      <SummaryRow label="Required DAT files missing" value={statusSummary.missingRequired} warn />
-                    )}
-                    {statusSummary.uploadFailed > 0 && (
-                      <SummaryRow label="Upload failures (retryable)" value={statusSummary.uploadFailed} warn />
-                    )}
-                    {statusSummary.parseFailed > 0 && (
-                      <SummaryRow label="Parse failures" value={statusSummary.parseFailed} warn />
-                    )}
-                    {statusSummary.missingOptional > 0 && (
-                      <SummaryRow label="Optional color/detail files" value={statusSummary.missingOptional} />
-                    )}
-                    {statusSummary.affectedTracks > 0 && (
-                      <SummaryRow label="Affected tracks" value={statusSummary.affectedTracks} />
-                    )}
+                  <div className="import-group import-stats text-left text-xs">
+                    {statusSummary.missingRequired > 0 && <SummaryRow label="Required DAT files missing" value={statusSummary.missingRequired} warn />}
+                    {statusSummary.uploadFailed > 0 && <SummaryRow label="Upload failures (retryable)" value={statusSummary.uploadFailed} warn />}
+                    {statusSummary.parseFailed > 0 && <SummaryRow label="Parse failures" value={statusSummary.parseFailed} warn />}
+                    {statusSummary.missingOptional > 0 && <SummaryRow label="Optional color/detail files" value={statusSummary.missingOptional} />}
+                    {statusSummary.affectedTracks > 0 && <SummaryRow label="Affected tracks" value={statusSummary.affectedTracks} />}
                   </div>
                 )}
 
-                {/* Legacy fallback for backends without structured targets */}
                 {!statusSummary && (
-                  <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
-                    {targets.filter((t) => t.required).length > 0 && (
-                      <span className="text-amber-400 font-semibold">
-                        {targets.filter((t) => t.required).length} required DAT file{targets.filter((t) => t.required).length !== 1 ? 's' : ''} missing
-                      </span>
-                    )}
-                    {targets.filter((t) => t.required).length > 0 && targets.filter((t) => !t.required).length > 0 && ' · '}
-                    {targets.filter((t) => !t.required).length > 0 && (
-                      <span>
-                        {targets.filter((t) => !t.required).length} optional file{targets.filter((t) => !t.required).length !== 1 ? 's' : ''} missing
-                      </span>
-                    )}
-                  </p>
+                  <div className="import-group text-left">
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      {targets.filter((t) => t.required).length > 0 && (
+                        <span className="font-semibold text-amber-400">
+                          {targets.filter((t) => t.required).length} required DAT file{targets.filter((t) => t.required).length !== 1 ? 's' : ''} missing
+                        </span>
+                      )}
+                      {targets.filter((t) => t.required).length > 0 && targets.filter((t) => !t.required).length > 0 && ' · '}
+                      {targets.filter((t) => !t.required).length > 0 && (
+                        <span>{targets.filter((t) => !t.required).length} optional file{targets.filter((t) => !t.required).length !== 1 ? 's' : ''} missing</span>
+                      )}
+                    </p>
+                  </div>
                 )}
 
                 {wrongDrive && (
-                  <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-left">
-                    <p className="text-xs text-red-400 font-semibold mb-1">No matching files found</p>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      The selected folder doesn't contain any of the missing ANLZ files. Make sure you're selecting the PIONEER folder on the correct USB drive.
+                  <div className="import-group text-left">
+                    <p className="mb-1 text-xs font-semibold text-red-400">No matching files found</p>
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      The selected folder doesn&apos;t contain any of the missing ANLZ files. Make sure you&apos;re selecting the PIONEER folder on the correct USB drive.
                     </p>
                   </div>
                 )}
 
                 {matchSummary && !wrongDrive && (
-                  <div className="mb-4 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-left space-y-1.5">
-                    <StatusRow label="Found on USB" value={matchSummary.matched} />
-                    {matchSummary.stillMissingRequired > 0 && (
-                      <StatusRow label="Still missing (required)" value={matchSummary.stillMissingRequired} warn />
-                    )}
-                    {matchSummary.stillMissingOptional > 0 && (
-                      <StatusRow label="Still missing (optional)" value={matchSummary.stillMissingOptional} />
-                    )}
+                  <div className="import-group import-stats text-left text-xs">
+                    <SummaryRow label="Found on USB" value={matchSummary.matched} />
+                    {matchSummary.stillMissingRequired > 0 && <SummaryRow label="Still missing (required)" value={matchSummary.stillMissingRequired} warn />}
+                    {matchSummary.stillMissingOptional > 0 && <SummaryRow label="Still missing (optional)" value={matchSummary.stillMissingOptional} />}
                   </div>
                 )}
 
-                <input
-                  ref={folderInputRef}
-                  type="file"
-                  webkitdirectory=""
-                  multiple
-                  className="hidden"
-                  onChange={handleFolderChange}
-                />
-                <ControlButton
-                  variant="primary"
-                  onClick={() => void handleUsbFolderSelect()}
-                >
-                  <Folder width={16} height={16} aria-hidden="true" />
-                  {wrongDrive ? 'Select Different Folder' : 'Select PIONEER Folder on USB'}
-                </ControlButton>
-                <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
+                <p className="text-sm leading-relaxed text-muted-foreground">
                   Only the {pluralFiles(targets.length)} listed as missing will be uploaded. Your music files are not read.
                 </p>
+
+                <input ref={folderInputRef} type="file" webkitdirectory="" multiple className="hidden" onChange={handleFolderChange} />
+                {footer(
+                  <>
+                    <ControlButton variant="secondary" onClick={handleClose}>
+                      <Xmark width={16} height={16} aria-hidden="true" /> Cancel
+                    </ControlButton>
+                    <ControlButton variant="primary" onClick={() => void handleUsbFolderSelect()}>
+                      <Folder width={16} height={16} aria-hidden="true" />
+                      {wrongDrive ? 'Select Different Folder' : 'Select PIONEER Folder'}
+                    </ControlButton>
+                  </>,
+                )}
               </div>
             )}
 
-            {/* ── Uploading ── */}
             {phase === 'uploading' && (
-              <QuietProgress
-                title="Resume analysis"
-                phases={RESUME_PHASES}
-                activeIndex={1}
-                stagePercent={progress.filesTotal > 0 ? (progress.filesUploaded / progress.filesTotal) * 100 : 0}
-                percent={quietOverallPercent(1, RESUME_PHASES.length, progress.filesTotal > 0 ? (progress.filesUploaded / progress.filesTotal) * 100 : 0)}
-                headline="Uploading missing files. Keep Rekordbox closed and do not eject the drive."
-                figures={[
-                  { label: 'Files', value: `${progress.filesUploaded.toLocaleString()} / ${progress.filesTotal.toLocaleString()}` },
-                  ...(progress.bytesTotal > 0 ? [{ label: 'Data', value: `${fmtBytes(progress.bytesUploaded)} / ${fmtBytes(progress.bytesTotal)}` }] : []),
-                  ...(retryingCount > 0 ? [{ label: 'Retrying', value: retryingCount.toLocaleString() }] : []),
-                ]}
-              />
-            )}
-
-            {/* ── Stopping local USB reads ── */}
-            {phase === 'stopping_usb_reads' && (
-              <QuietProgress
-                title="Resume analysis"
-                phases={RESUME_PHASES}
-                activeIndex={2}
-                percent={quietOverallPercent(2, RESUME_PHASES.length)}
-                headline="Stopping USB reads. Keep Rekordbox closed until this window closes."
-              />
-            )}
-
-            {/* ── Parsing ── */}
-            {phase === 'parsing' && (
-              <QuietProgress
-                title="Resume analysis"
-                phases={RESUME_PHASES}
-                activeIndex={3}
-                percent={quietOverallPercent(3, RESUME_PHASES.length)}
-                headline="Reprocessing waveform, cue, and beat data for affected tracks."
-              >
-                <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
-                  <CheckCircle width={14} height={14} aria-hidden="true" className="shrink-0 text-emerald-400" />
-                  <p className="text-xs text-emerald-100">USB released — reprocessing uses uploaded copies only.</p>
+              <div className="flex h-full flex-col text-center">
+                {hero('Uploading Missing Files…')}
+                {keepClosed}
+                <div className="import-group import-stats text-left text-xs">
+                  <SummaryRow label="Files" value={`${progress.filesUploaded.toLocaleString()} / ${progress.filesTotal.toLocaleString()}`} />
+                  {progress.bytesTotal > 0 && <SummaryRow label="Data uploaded" value={`${fmtBytes(progress.bytesUploaded)} / ${fmtBytes(progress.bytesTotal)}`} />}
+                  {retryingCount > 0 && <SummaryRow label="Retrying" value={retryingCount} warn />}
                 </div>
-              </QuietProgress>
-            )}
-
-            {/* ── Done (completed) ── */}
-            {phase === 'done' && completeResp && (
-              <div>
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-12 h-12 bg-emerald-500/10 rounded-full flex items-center justify-center shrink-0">
-                    <CheckCircle className="text-emerald-400" width={24} height={24} aria-hidden="true" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold">Analysis Complete</h2>
-                    <p className="text-xs text-muted-foreground mt-0.5">{completeResp.completed_count.toLocaleString()} tracks fully parsed.</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 mb-4">
-                  {[
-                    { label: 'Tracks', value: completeResp.total_tracks.toLocaleString() },
-                    { label: 'Parsed', value: completeResp.completed_count.toLocaleString() },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="glass rounded-xl p-3">
-                      <p className="text-lg font-black font-mono">{value}</p>
-                      <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">{label}</p>
-                    </div>
-                  ))}
-                </div>
-                <ControlButton variant="primary" onClick={handleDone}>
-                  <CheckCircle width={16} height={16} aria-hidden="true" />
-                  Done
-                </ControlButton>
               </div>
             )}
 
-            {/* ── Done partial ── */}
-            {phase === 'done_partial' && completeResp && (
-              <div>
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center shrink-0">
-                    <WarningTriangle className="text-amber-400" width={24} height={24} aria-hidden="true" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold">Analysis Updated</h2>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {completeResp.completed_count.toLocaleString()} tracks ready
-                      {completeResp.missing_required_count > 0 && ` · ${completeResp.missing_required_count.toLocaleString()} still need attention`}.
-                    </p>
-                  </div>
+            {phase === 'stopping_usb_reads' && (
+              <div className="flex h-full flex-col text-center">
+                {hero('Stopping USB Reads…')}
+                {keepClosed}
+              </div>
+            )}
+
+            {phase === 'parsing' && (
+              <div className="flex h-full flex-col text-center">
+                {hero('Reprocessing Tracks…')}
+                <div className="import-group import-group--green flex items-center gap-3 text-left">
+                  <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-green-500" />
+                  <p className="text-xs leading-relaxed text-green-100">USB released. Reprocessing uses uploaded copies only.</p>
                 </div>
-                <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 text-left text-xs mb-4">
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Tracks Ready</span>
-                    <span className="font-semibold text-foreground">{completeResp.completed_count.toLocaleString()}</span>
-                  </div>
-                  <div className="mt-2 flex justify-between gap-4">
-                    <span className="text-muted-foreground">Tracks with Issues</span>
-                    <span className={`font-semibold ${completeResp.partial_count > 0 ? 'text-amber-400' : 'text-foreground'}`}>{completeResp.partial_count.toLocaleString()}</span>
-                  </div>
-                  <div className="mt-2 flex justify-between gap-4">
-                    <span className="text-muted-foreground">Tracks Not Processed</span>
-                    <span className={`font-semibold ${completeResp.failed_count > 0 ? 'text-amber-400' : 'text-foreground'}`}>{completeResp.failed_count.toLocaleString()}</span>
-                  </div>
-                  <div className="mt-2 flex justify-between gap-4">
-                    <span className="text-muted-foreground">Missing Analysis Files</span>
-                    <span className={`font-semibold ${completeResp.missing_required_count > 0 ? 'text-amber-400' : 'text-foreground'}`}>{completeResp.missing_required_count.toLocaleString()}</span>
-                  </div>
+              </div>
+            )}
+
+            {phase === 'done' && completeResp && (
+              <div className="flex h-full flex-col text-center">
+                {hero('Analysis Complete', 'done')}
+                <div className="import-group import-stats text-left text-xs">
+                  <SummaryRow label="Tracks" value={completeResp.total_tracks} />
+                  <SummaryRow label="Parsed" value={completeResp.completed_count} />
+                </div>
+                {footer(
+                  <ControlButton variant="primary" onClick={handleDone}>
+                    <CheckCircle width={16} height={16} aria-hidden="true" /> Done
+                  </ControlButton>,
+                )}
+              </div>
+            )}
+
+            {phase === 'done_partial' && completeResp && (
+              <div className="flex h-full flex-col text-center">
+                {hero('Analysis Updated', 'warn')}
+                <div className="import-group import-stats text-left text-xs">
+                  <SummaryRow label="Tracks Ready" value={completeResp.completed_count} />
+                  <SummaryRow label="Tracks with Issues" value={completeResp.partial_count} warn={completeResp.partial_count > 0} />
+                  <SummaryRow label="Tracks Not Processed" value={completeResp.failed_count} warn={completeResp.failed_count > 0} />
+                  <SummaryRow label="Missing Analysis Files" value={completeResp.missing_required_count} warn={completeResp.missing_required_count > 0} />
                 </div>
                 {completeResp.missing_required_count > 0 && (
-                  <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
                     Reconnect the USB and run Resume Analysis again to retry the {completeResp.missing_required_count.toLocaleString()} track{completeResp.missing_required_count !== 1 ? 's' : ''} still missing analysis files.
                   </p>
                 )}
-                <ControlButton variant="primary" onClick={handleDone}>
-                  <CheckCircle width={16} height={16} aria-hidden="true" />
-                  Done
-                </ControlButton>
+                {footer(
+                  <ControlButton variant="primary" onClick={handleDone}>
+                    <CheckCircle width={16} height={16} aria-hidden="true" /> Done
+                  </ControlButton>,
+                )}
               </div>
             )}
 
-            {/* ── Error ── */}
             {phase === 'error' && (
-              <div>
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center shrink-0">
-                    <WarningTriangle className="text-red-400" width={24} height={24} aria-hidden="true" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold">Resume Failed</h2>
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{errorMessage}</p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <ControlButton
-                    variant="primary"
-                    onClick={() => {
-                      setPhase('fetching_status');
-                      setErrorMessage('');
-                    }}
-                  >
-                    <Refresh width={16} height={16} aria-hidden="true" />
-                    Retry
-                  </ControlButton>
-                  <ControlButton variant="neutral" onClick={handleClose} className="flex-1">
-                    <Xmark width={16} height={16} aria-hidden="true" /> Cancel
-                  </ControlButton>
-                </div>
+              <div className="flex h-full flex-col text-center">
+                {hero('Resume Failed', 'error')}
+                <p className="px-2 text-sm leading-relaxed text-muted-foreground">{errorMessage}</p>
+                {footer(
+                  <>
+                    <ControlButton variant="secondary" onClick={handleClose}>
+                      <Xmark width={16} height={16} aria-hidden="true" /> Cancel
+                    </ControlButton>
+                    <ControlButton variant="primary" onClick={() => { setPhase('fetching_status'); setErrorMessage(''); }}>
+                      <Refresh width={16} height={16} aria-hidden="true" /> Retry
+                    </ControlButton>
+                  </>,
+                )}
               </div>
             )}
-          </motion.div>
+          </ImportProgressModal>
         </div>
       )}
     </AnimatePresence>
@@ -809,23 +740,12 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function StatusRow({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
+function SummaryRow({ label, value, warn }: { label: string; value: number | string; warn?: boolean }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={`text-xs font-mono font-bold ${warn ? 'text-amber-400' : 'text-foreground/70'}`}>
-        {value.toLocaleString()}
-      </span>
-    </div>
-  );
-}
-
-function SummaryRow({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={`text-xs font-mono font-bold tabular-nums ${warn ? 'text-amber-400' : 'text-foreground/60'}`}>
-        {value.toLocaleString()}
+    <div className="flex justify-between gap-4">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`font-semibold ${warn ? 'text-amber-400' : 'text-foreground'}`}>
+        {typeof value === 'number' ? value.toLocaleString() : value}
       </span>
     </div>
   );

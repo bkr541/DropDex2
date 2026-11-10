@@ -20,7 +20,10 @@ export type { ImportUiStep };
  * all content.
  */
 export function ImportProgressModal({
-  currentStep,
+  currentStep = 'source',
+  title = 'Import Rekordbox Library',
+  progress,
+  stepKey,
   stagePercent,
   status,
   ready,
@@ -28,7 +31,13 @@ export function ImportProgressModal({
   abortOverlay,
   children,
 }: {
-  currentStep: ImportUiStep;
+  currentStep?: ImportUiStep;
+  /** The popover title. Defaults to the import's. */
+  title?: string;
+  /** Another process (Resume Analysis) can supply its own progress display in place of the import's five phases. */
+  progress?: React.ReactNode;
+  /** Changes whenever the body should slide to a new screen. Defaults to the current step. */
+  stepKey?: string;
   /** How far through the current phase the import is (0 to 100), which gives the overall percentage. */
   stagePercent?: number;
   /** `failed` turns the progress display red. */
@@ -73,7 +82,7 @@ export function ImportProgressModal({
         <div className="flex items-center gap-2">
           <Database className={ready ? 'shrink-0 text-green-500' : 'shrink-0 text-[var(--color-control-primary)]'} width={24} height={24} aria-hidden />
           <h2 id="import-progress-title" className="import-modal__title text-[26px] leading-tight">
-            Import Rekordbox Library
+            {title}
           </h2>
         </div>
         <ControlButton variant="ghost" className="!absolute right-3 top-3 z-20" onClick={onClose} aria-label="Close">
@@ -83,14 +92,14 @@ export function ImportProgressModal({
 
       {/* The shared progress display: percentage, five numbered phases, one sentence */}
       <div className="px-7 pt-5 pb-0 shrink-0" data-testid="import-progress">
-        <ImportStageProgress currentStep={currentStep} stagePercent={stagePercent} status={status} />
+        {progress ?? <ImportStageProgress currentStep={currentStep} stagePercent={stagePercent} status={status} />}
       </div>
 
       {/* Scrollable phase body — overflow-hidden clips x so the slide is visible */}
       <div className="flex-1 min-h-0 overflow-hidden">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
-            key={currentStep}
+            key={stepKey ?? currentStep}
             initial={{ opacity: 0, x: 18 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -18 }}

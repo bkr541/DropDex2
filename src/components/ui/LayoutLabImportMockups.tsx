@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { ArrowRight, CheckCircle, Database, Folder, Pause, Refresh, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { ControlButton } from './controls/ControlButton';
 import { ImportProgressModal, type ImportUiStep } from '../ImportProgressModal';
+import { QuietProgress, quietOverallPercent, type QuietPhase } from './feedback';
 import '../profile/profile.css';
 
 // Layout Lab / Import: every screen of the Rekordbox import popover, built on the real popover shell and the shared import-group,
@@ -64,14 +65,19 @@ function Hero({ title, spinner = true }: { title: string; spinner?: boolean }) {
 const Body = ({ children }: { children: ReactNode }) => <div className="flex h-full flex-col">{children}</div>;
 const Center = ({ children }: { children: ReactNode }) => <div className="flex h-full flex-col text-center">{children}</div>;
 
-interface Screen { name: string; step: ImportUiStep; pct: number; ready?: boolean; status?: 'failed'; body: ReactNode }
+interface Screen { name: string; step: ImportUiStep; pct: number; ready?: boolean; status?: 'failed'; body: ReactNode; title?: string; progress?: ReactNode; abort?: ReactNode }
+
+const RESUME: QuietPhase[] = [{ id: 'check', label: 'Check' }, { id: 'upload', label: 'Upload' }, { id: 'release', label: 'Release USB' }, { id: 'parse', label: 'Parse' }, { id: 'done', label: 'Complete' }];
+const resumeProgress = (index: number, headline: string, status?: 'failed' | 'done', stage = 0) => (
+  <QuietProgress title="Resume analysis" phases={RESUME} activeIndex={index} stagePercent={stage} percent={quietOverallPercent(index, RESUME.length, stage, status === 'done')} status={status ?? 'running'} headline={headline} />
+);
 
 const SCREENS: Screen[] = [
   { name: 'Source: nothing chosen', step: 'source', pct: 0, body: (
     <Body>
       <Choices active={0} ready={false} />
       <p className="mb-3 text-sm leading-relaxed text-muted-foreground">Select your USB drive root (e.g. &quot;My USB&quot;). DropDex will find exportLibrary.db automatically. Your music files are not uploaded.</p>
-      <div className="mb-4 flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--color-border-subtle)] px-4 text-muted-foreground">
+      <div className="mb-3 flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--color-border-subtle)] px-4 text-muted-foreground">
         <Folder width={20} height={20} aria-hidden="true" /><p className="text-sm">Click to select USB drive folder</p>
       </div>
       <Footer><ControlButton variant="secondary"><Xmark width={16} height={16} aria-hidden="true" /> Cancel</ControlButton><ControlButton variant="primary" disabled>Import</ControlButton></Footer>
@@ -131,7 +137,7 @@ const SCREENS: Screen[] = [
   { name: 'Analysis paused', step: 'analyze', pct: 77, ready: true, body: (
     <Center>
       <div className="import-group import-group--amber shrink-0"><div className="import-status-icon"><CheckCircle className="text-amber-300" width={24} height={24} aria-hidden="true" /></div><h2 className="import-heading">Analysis Paused Safely</h2></div>
-      <div className="import-group import-group--green flex items-start gap-3 text-left"><CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-green-500" /><p className="text-xs leading-relaxed text-emerald-100">Your progress is saved. You can pick up where you left off at any time from Import History.</p></div>
+      <div className="import-group import-group--green flex items-start gap-3 text-left"><CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-green-500" /><p className="text-xs leading-relaxed text-green-100">Your progress is saved. You can pick up where you left off at any time from Import History.</p></div>
       <Footer><ControlButton variant="primary"><CheckCircle width={16} height={16} aria-hidden="true" /> Done</ControlButton></Footer>
     </Center>) },
   { name: 'Analysis interrupted', step: 'analyze', pct: 77, ready: true, body: (
@@ -154,6 +160,92 @@ const SCREENS: Screen[] = [
     </Center>) },
 ];
 
+const MORE: Screen[] = [
+  { name: 'Source: ZIP bundle chosen', step: 'source', pct: 0, ready: true, body: (
+    <Body>
+      <Choices active={1} ready />
+      <p className="mb-3 text-sm leading-relaxed text-muted-foreground">Select a DropDex .zip bundle that already holds your library and analysis files.</p>
+      <div className="import-group import-group--green cursor-pointer text-center"><p className="truncate font-mono text-sm font-bold">rekordbox-bundle.zip</p><p className="mt-1 text-[10px] text-muted-foreground">318.0 MB · Click to change</p></div>
+      <Footer><ControlButton variant="secondary"><Xmark width={16} height={16} aria-hidden="true" /> Cancel</ControlButton><ControlButton variant="primary"><CheckCircle width={16} height={16} aria-hidden="true" /> Import</ControlButton></Footer>
+    </Body>) },
+  { name: 'Complete: with issues', step: 'complete', pct: 100, ready: true, body: (
+    <Body>
+      <div className="import-group import-group--green flex items-start gap-3 text-left"><CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-green-500" /><p className="text-xs leading-relaxed text-green-100">USB reading is complete. DropDex no longer needs the USB.</p></div>
+      <div className="mb-3 flex items-center gap-2"><p className="text-sm text-muted-foreground">358 tracks fully parsed</p><span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300">1 Issue</span></div>
+      <div className="import-group import-stats text-left text-xs"><Row label="Tracks Ready" value="358" /><Row label="Tracks with Issues" value="1" tone="amber" /><Row label="Tracks Not Processed" value="0" tone="amber" /><Row label="Missing Analysis Files" value="0" tone="amber" /></div>
+      <Footer><ControlButton variant="primary"><CheckCircle width={16} height={16} aria-hidden="true" /> Done</ControlButton></Footer>
+    </Body>) },
+  { name: 'Complete: track issues', step: 'complete', pct: 100, ready: true, body: (
+    <Body>
+      <div className="mb-3 flex shrink-0 items-center gap-2"><h2 className="import-heading !m-0 text-left">Track Issues</h2></div>
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-[var(--color-border-subtle)] divide-y divide-[var(--color-border-subtle)]">
+        <div className="flex items-start justify-between gap-3 px-3 py-2.5 text-left"><div><p className="text-xs font-semibold text-foreground">Pop Lock And Drop It</p><p className="text-[10px] text-muted-foreground">Sidequest</p><p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">Some waveform detail is missing.</p></div><span className="rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-300">Needs Review</span></div>
+      </div>
+      <Footer><ControlButton variant="primary"><CheckCircle width={16} height={16} aria-hidden="true" /> Done</ControlButton></Footer>
+    </Body>) },
+  { name: 'Import deleted', step: 'analyze', pct: 77, ready: true, body: (
+    <Center>
+      <div className="import-group import-group--amber shrink-0"><div className="import-status-icon"><WarningTriangle className="text-amber-400" width={24} height={24} aria-hidden="true" /></div><h2 className="import-heading">Import Deleted</h2></div>
+      <p className="text-sm text-muted-foreground">The Rekordbox import and its DropDex cloud data were permanently deleted. USB access is released.</p>
+      <Footer><ControlButton variant="primary"><Refresh width={16} height={16} aria-hidden="true" /> Start another import</ControlButton></Footer>
+    </Center>) },
+  { name: 'Confirm: delete import', step: 'analyze', pct: 77, ready: true, abort: (
+    <div className="import-group w-full max-w-sm bg-[var(--color-panel)] text-center">
+      <div className="import-status-icon"><WarningTriangle className="text-amber-400" width={24} height={24} aria-hidden="true" /></div>
+      <h2 className="import-heading">Permanently delete import?</h2>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">This permanently deletes this import and all of its uploaded data. This cannot be undone.</p>
+      <div className="flex flex-row-reverse gap-3"><ControlButton variant="danger" className="flex-1"><Pause width={16} height={16} aria-hidden="true" /> Delete Import and Data</ControlButton><ControlButton variant="secondary" className="flex-1"><ArrowRight width={16} height={16} aria-hidden="true" /> Keep going</ControlButton></div>
+    </div>), body: <Center>{null}</Center> },
+  { name: 'Resume: choose USB', step: 'source', pct: 0, title: 'Resume Analysis', ready: true, progress: resumeProgress(0, 'Choose the USB that holds the missing files.'), body: (
+    <Body>
+      <div className="import-group import-stats text-left text-xs"><Row label="Required DAT files missing" value="12" tone="amber" /><Row label="Upload failures (retryable)" value="3" tone="amber" /><Row label="Optional color/detail files" value="40" /><Row label="Affected tracks" value="15" /></div>
+      <p className="text-sm leading-relaxed text-muted-foreground">Only the 55 files listed as missing will be uploaded. Your music files are not read.</p>
+      <Footer><ControlButton variant="secondary"><Xmark width={16} height={16} aria-hidden="true" /> Cancel</ControlButton><ControlButton variant="primary"><Folder width={16} height={16} aria-hidden="true" /> Select PIONEER Folder</ControlButton></Footer>
+    </Body>) },
+  { name: 'Resume: uploading', step: 'source', pct: 0, title: 'Resume Analysis', ready: true, progress: resumeProgress(1, 'Uploading the missing files.', undefined, 40), body: (
+    <Center>
+      <Hero title="Uploading Missing Files…" />
+      {warning}
+      <div className="import-group import-stats text-left text-xs"><Row label="Files" value="22 / 55" /><Row label="Data uploaded" value="6.1 MB / 15.3 MB" /></div>
+    </Center>) },
+  { name: 'Resume: updated', step: 'source', pct: 0, title: 'Resume Analysis', ready: true, progress: resumeProgress(4, 'Some tracks still need attention.', 'done'), body: (
+    <Center>
+      <div className="import-group import-group--amber shrink-0"><div className="import-status-icon"><WarningTriangle className="text-amber-400" width={24} height={24} aria-hidden="true" /></div><h2 className="import-heading">Analysis Updated</h2></div>
+      <div className="import-group import-stats text-left text-xs"><Row label="Tracks Ready" value="350" /><Row label="Tracks with Issues" value="2" tone="amber" /><Row label="Tracks Not Processed" value="0" /><Row label="Missing Analysis Files" value="8" tone="amber" /></div>
+      <Footer><ControlButton variant="primary"><CheckCircle width={16} height={16} aria-hidden="true" /> Done</ControlButton></Footer>
+    </Center>) },
+  { name: 'Resume: failed', step: 'source', pct: 0, title: 'Resume Analysis', status: 'failed', progress: resumeProgress(0, 'The resume stopped before it finished.', 'failed'), body: (
+    <Center>
+      <div className="import-group shrink-0"><div className="import-status-icon"><WarningTriangle className="text-red-400" width={24} height={24} aria-hidden="true" /></div><h2 className="import-heading">Resume Failed</h2></div>
+      <p className="px-2 text-sm leading-relaxed text-muted-foreground">Could not reach the server. Check your connection and try again.</p>
+      <Footer><ControlButton variant="secondary"><Xmark width={16} height={16} aria-hidden="true" /> Cancel</ControlButton><ControlButton variant="primary"><Refresh width={16} height={16} aria-hidden="true" /> Retry</ControlButton></Footer>
+    </Center>) },
+];
+SCREENS.push(...MORE);
+
+const PANEL: QuietPhase[] = [{ id: 'library', label: 'Library' }, { id: 'files', label: 'Read files' }, { id: 'analysis', label: 'Analyze' }, { id: 'complete', label: 'Complete' }];
+
+function BackgroundPanel({ released }: { released: boolean }) {
+  return (
+    <aside className="studio-surface profile-modal import-modal relative w-[390px] p-4" data-ready="true">
+      <div className="flex items-start justify-between gap-3">
+        <div><h2 className="import-heading !m-0 !text-base">Rekordbox Import</h2><p className="mt-0.5 text-[11px] capitalize text-muted-foreground">analysis running</p></div>
+        {released ? <Xmark width={16} height={16} aria-hidden="true" className="text-muted-foreground" /> : <span className="rounded-full border border-amber-400/30 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-amber-200">Keep open</span>}
+      </div>
+      {released ? (
+        <div className="import-group import-group--green mt-3 flex items-center gap-3 text-xs text-green-100"><CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-green-500" />USB released. The library is ready to browse.</div>
+      ) : (
+        <div className="import-group import-group--amber mt-3 text-xs text-amber-100">
+          <div className="flex items-start gap-3"><WarningTriangle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-amber-400" /><p>Library metadata is ready. DropDex is still reading required files, so keep the USB connected and Rekordbox closed.</p></div>
+          <ControlButton variant="secondary" className="mt-3 w-full">Manage USB Upload</ControlButton>
+        </div>
+      )}
+      <QuietProgress className="mt-4" title="Rekordbox import" phases={PANEL} activeIndex={2} stagePercent={9} percent={quietOverallPercent(2, PANEL.length, 9)} figures={[{ label: 'Tracks ready', value: '32' }, { label: 'Remaining', value: '327' }, { label: 'Estimate', value: 'About 4 min' }]} />
+      {released && <div className="mt-4 grid grid-cols-2 gap-2"><ControlButton variant="secondary"><Pause width={13} height={13} aria-hidden="true" /> Pause</ControlButton><ControlButton variant="danger-outline">Delete Import</ControlButton></div>}
+    </aside>
+  );
+}
+
 export function ImportMockupsContent() {
   return (
     <div className="h-full overflow-y-auto p-8" data-testid="import-mockups" style={{ background: '#111419' }}>
@@ -167,10 +259,18 @@ export function ImportMockupsContent() {
           <div key={s.name}>
             <p className="mb-3 text-xs text-[#a4adbd]"><span className="mr-2 text-[#f6f7fa]">{String(i + 1).padStart(2, '0')}</span>{s.name}</p>
             <div className="relative" style={{ width: 624 }}>
-              <ImportProgressModal currentStep={s.step} stagePercent={s.pct} status={s.status} ready={s.ready} onClose={noop}>{s.body}</ImportProgressModal>
+              <ImportProgressModal currentStep={s.step} title={s.title} progress={s.progress} abortOverlay={s.abort} stagePercent={s.pct} status={s.status} ready={s.ready} onClose={noop}>{s.body}</ImportProgressModal>
             </div>
           </div>
         ))}
+        <div>
+          <p className="mb-3 text-xs text-[#a4adbd]"><span className="mr-2 text-[#f6f7fa]">{String(SCREENS.length + 1).padStart(2, '0')}</span>Background panel: USB still reading</p>
+          <BackgroundPanel released={false} />
+        </div>
+        <div>
+          <p className="mb-3 text-xs text-[#a4adbd]"><span className="mr-2 text-[#f6f7fa]">{String(SCREENS.length + 2).padStart(2, '0')}</span>Background panel: USB released</p>
+          <BackgroundPanel released />
+        </div>
       </div>
     </div>
   );

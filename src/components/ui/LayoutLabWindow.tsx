@@ -6,6 +6,7 @@ import { UiComponentsContent } from './LayoutLabUiComponents';
 import { NavDesignMockupsContent } from './LayoutLabNavDesignMockups';
 import { AudioDockMockupsContent } from './LayoutLabAudioDockMockups';
 import { DiscoveryMockupsContent } from './LayoutLabDiscoveryMockups';
+import { NestedGroupMockupsContent } from './LayoutLabNestedGroupMockups';
 import { ImportMockupsContent } from './LayoutLabImportMockups';
 import { NoticeCardMockupsContent } from './LayoutLabNoticeCardMockups';
 import { NoticeComponentMockupsContent } from './LayoutLabNoticeComponentMockups';
@@ -41,6 +42,7 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'notice-component', label: 'Notice Component' },
   { id: 'cue-markers', label: 'Cue Markers' },
   { id: 'import', label: 'Import' },
+  { id: 'nested-groups', label: 'Nested Groups' },
 ];
 
 let tabCounter = 0;
@@ -370,6 +372,8 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
             <NoticeComponentMockupsContent />
           ) : activeId === 'cue-markers' ? (
             <CueMarkerMockupsContent />
+          ) : activeId === 'nested-groups' ? (
+            <NestedGroupMockupsContent />
           ) : activeId === 'import' ? (
             <ImportMockupsContent />
           ) : activeId === 'ui-components' ? (
