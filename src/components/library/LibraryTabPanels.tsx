@@ -1,11 +1,61 @@
+import type { ReactNode } from 'react';
+import { EditPencil, Folder, MusicNote, Refresh } from 'iconoir-react/regular';
 import { LibraryFilterRow, useLibraryCollectionFilters } from './LibraryFilterRow';
-import { Refresh } from 'iconoir-react/regular';
-import { cn } from '../../lib/utils';
-import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
+import { useLibraryListingViewport } from './useLibraryListingViewport';
+import type { GenreSummary, PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { UserPlaylistProfile } from '../../types';
-import { PlaylistOverviewCard } from './PlaylistOverviewCard';
+import { Artwork } from '../ui/display/Artwork';
+import { TrackTable, TrackTableBody, TrackTableHead, TrackTableHeadCell, TrackTableRow } from '../ui/display/TrackTable';
+import '../ui/display/track-listing.css';
 
-/** The Playlists tab: a card for every playlist. Shared by the Library and Artist Library pages. */
+function LibraryCollectionTable({ label, hasActions, children }: {
+  label: 'Playlist' | 'Artist';
+  hasActions?: boolean;
+  children: ReactNode;
+}) {
+  const { listingRef, maxHeight } = useLibraryListingViewport();
+  return (
+    <div className="track-listing" ref={listingRef}>
+      <div className="track-listing__scroll overflow-auto scrollbar-none" style={{ maxHeight }}>
+        <TrackTable className="track-listing__table table-fixed" aria-label={`${label} listing`}>
+          <TrackTableHead className="normal-case">
+            <TrackTableHeadCell label={label} className="tracking-[.12em]" />
+            <TrackTableHeadCell label="Tracks" className="w-[88px] text-center tracking-[.12em]" />
+            {hasActions && <TrackTableHeadCell label="Actions" className="w-[88px] text-center" />}
+          </TrackTableHead>
+          <TrackTableBody>{children}</TrackTableBody>
+        </TrackTable>
+      </div>
+    </div>
+  );
+}
+
+function LibraryCollectionRow({ name, label, leading, trackCount, onOpen, actions }: {
+  name: string;
+  label: string;
+  leading: ReactNode;
+  trackCount: number;
+  onOpen: () => void;
+  actions?: ReactNode;
+}) {
+  return (
+    <TrackTableRow aria-label={label} onClick={onOpen} onKeyDown={(event) => {
+      if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+      event.preventDefault();
+      onOpen();
+    }}>
+      <td className="px-3 py-1.5">
+        <div className="flex min-w-0 items-center gap-2">
+          {leading}
+          <span className="min-w-0 truncate text-xs text-[#edf0f6]" title={name}>{name}</span>
+        </div>
+      </td>
+      <td className="px-3 py-1.5 tabular-nums">{trackCount.toLocaleString()}</td>
+      {actions !== undefined && <td className="track-listing__actions px-3 py-1.5">{actions}</td>}
+    </TrackTableRow>
+  );
+}
+
 export function PlaylistsPanel({
   playlists, loading, profilesByRbId, onPlaylistClick, onEditPlaylist,
 }: {
@@ -20,128 +70,156 @@ export function PlaylistsPanel({
     (playlist) => playlist.track_count,
     { playlists: true, searchText: (playlist) => `${profilesByRbId.get(playlist.rekordbox_playlist_id)?.display_name ?? ''} ${playlist.name} ${playlist.top_genres?.join(' ') ?? ''}` });
   return (
-    <section className="space-y-3">
+    <section className="pb-10" aria-label="Library playlists">
       <LibraryFilterRow {...filterRow} label="Playlists" placeholder="Search playlists or genres…" />
-      <div className="flex items-center justify-between">
-        <p className="lib-label">
-          {loading ? '…' : `${visible.length === playlists.length ? visible.length : `${visible.length} of ${playlists.length}`} items`}
-        </p>
-      </div>
       {loading ? (
-        <div className="flex items-center justify-center py-10">
-          <Refresh className="animate-spin text-muted-foreground" width={20} height={20} aria-hidden="true" />
-        </div>
-      ) : playlists.length === 0 ? (
-        <div className="text-center py-10 border border-dashed border-[#ffffff1a] rounded-[20px]">
-          <p className="text-muted-foreground text-sm">No playlists in this import.</p>
+        <div className="flex items-center justify-center gap-3 py-16 text-sm text-muted-foreground">
+          <Refresh className="animate-spin text-control-primary" width={22} height={22} aria-hidden="true" />
+          Loading playlists…
         </div>
       ) : visible.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">No playlists match your filters.</p>
+        <p className="px-5 py-14 text-center text-sm text-muted-foreground">
+          {playlists.length === 0 ? 'No playlists in this import.' : 'No playlists match your filters.'}
+        </p>
       ) : (
-        <div className="flex flex-wrap gap-3">
+        <LibraryCollectionTable label="Playlist" hasActions>
           {visible.map((playlist) => {
-            const prof = profilesByRbId.get(playlist.rekordbox_playlist_id);
+            const profile = profilesByRbId.get(playlist.rekordbox_playlist_id);
+            const name = profile?.display_name || playlist.name;
+            const Icon = playlist.is_folder ? Folder : MusicNote;
             return (
-              <div key={playlist.id} className="w-[304px]">
-                <PlaylistOverviewCard
-                  playlist={playlist}
-                  artworkUrl={prof?.artwork_url}
-                  displayName={prof?.display_name}
-                  onClick={() => onPlaylistClick(playlist)}
-                  onEdit={() => onEditPlaylist(playlist)}
-                />
-              </div>
+              <LibraryCollectionRow
+                key={playlist.id}
+                name={name}
+                label={`Open ${name}`}
+                leading={profile?.artwork_url
+                  ? <Artwork src={profile.artwork_url} alt="" className="size-6 shrink-0 rounded" />
+                  : <span className="lib-list-mark" aria-hidden="true"><Icon width={13} height={13} /></span>}
+                trackCount={playlist.track_count}
+                onOpen={() => onPlaylistClick(playlist)}
+                actions={playlist.is_folder ? null : (
+                  <button type="button" className="track-listing__actions-button" aria-label={`Edit ${name}`} onClick={(event) => {
+                    event.stopPropagation();
+                    onEditPlaylist(playlist);
+                  }}>
+                    <EditPencil width={15} height={15} aria-hidden="true" />
+                  </button>
+                )}
+              />
             );
           })}
-        </div>
+        </LibraryCollectionTable>
       )}
     </section>
   );
 }
 
-/** The Genres tab: how many tracks are in each genre. */
-export function GenresPanel({ genreStats, loading }: { genreStats: ReadonlyArray<readonly [string, number]>; loading: boolean }) {
-  const { visible, ...filterRow } = useLibraryCollectionFilters(genreStats, ([name]) => name, ([, count]) => count);
-  const largestGenre = genreStats.reduce((largest, [, count]) => Math.max(largest, count), 1);
+const genreShareFormat = new Intl.NumberFormat(undefined, { style: 'percent', maximumFractionDigits: 1 });
+const genreBpmFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
+
+export function GenresPanel({ genreStats, loading, onGenreClick }: {
+  genreStats: readonly GenreSummary[];
+  loading: boolean;
+  onGenreClick: (genre: string | null) => void;
+}) {
+  const { visible, ...filterRow } = useLibraryCollectionFilters(genreStats, ({ name }) => name ?? 'Untagged', ({ count }) => count);
+  const taggedGenres = genreStats.filter(({ name }) => name !== null);
+  const taggedTrackCount = taggedGenres.reduce((total, { count }) => total + count, 0);
+
   return (
-    <div className="space-y-3">
-      <LibraryFilterRow {...filterRow} label="Genres" placeholder="Search genres…" />
-      <p className="lib-label">
-        {loading ? 'Loading…' : `${visible.length === genreStats.length ? visible.length : `${visible.length} of ${genreStats.length}`} genres`}
-      </p>
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Refresh className="animate-spin text-control-primary" width={28} height={28} aria-hidden="true" />
-        </div>
-      ) : genreStats.length === 0 ? (
-        <p className="text-center py-12 text-muted-foreground italic text-sm">No genre data in this library.</p>
-      ) : visible.length === 0 ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">No genres match your filters.</p>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-          {visible.map(([genre, count]) => (
-            <div
-              key={genre}
-              className="lib-card lib-card--hover p-4"
-            >
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <p className="text-[13px] font-medium leading-snug text-[#edf0f6]">{genre}</p>
-                <span className="lib-figure shrink-0 text-[20px]">
-                  {count.toLocaleString()}
-                </span>
-              </div>
-              <div className="lib-bar"><span style={{ width: `${(count / largestGenre) * 100}%` }} /></div>
-              <p className="lib-label mt-2">tracks</p>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    <section className="pb-10" aria-label="Library genres">
+      <div className="border-b border-[var(--color-border-faint)]">
+        <LibraryFilterRow {...filterRow} label="Genres" placeholder="Search genres…" />
+      </div>
+      <div className="space-y-3 px-4 pt-3" data-testid="library-genre-content">
+        {loading ? (
+          <div className="flex items-center justify-center gap-3 py-16 text-sm text-muted-foreground" role="status">
+            <Refresh className="animate-spin text-control-primary" width={22} height={22} aria-hidden="true" />
+            Loading genres…
+          </div>
+        ) : genreStats.length === 0 ? (
+          <p className="py-12 text-center text-sm italic text-muted-foreground">No genre data in this library.</p>
+        ) : visible.length === 0 ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">No genres match your filters.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+            {visible.map(({ name, count, minBpm, maxBpm, artistCount }) => {
+              const label = name ?? 'Untagged';
+              const share = taggedTrackCount > 0 ? count / taggedTrackCount : 0;
+              const bpm = minBpm === null || maxBpm === null ? '—' : minBpm === maxBpm
+                ? genreBpmFormat.format(minBpm)
+                : `${genreBpmFormat.format(minBpm)}–${genreBpmFormat.format(maxBpm)}`;
+
+              return (
+                <button
+                  key={name ?? ''}
+                  type="button"
+                  className="lib-card lib-card--hover flex min-w-0 cursor-pointer flex-col gap-2 p-4 text-left"
+                  onClick={() => onGenreClick(name)}
+                  aria-label={name === null ? 'View untagged tracks' : `View ${name} tracks`}
+                >
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="min-w-0 break-words text-[13px] font-medium leading-snug">{label}</span>
+                    <span className="shrink-0 whitespace-nowrap">
+                      <span className="lib-figure text-[20px]">{count.toLocaleString()}</span>{' '}
+                      <span className="lib-label">{count === 1 ? 'track' : 'tracks'}</span>
+                    </span>
+                  </span>
+                  <span className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                    <span>{bpm} BPM</span>
+                    <span>{artistCount?.toLocaleString() ?? '—'} {artistCount === 1 ? 'artist' : 'artists'}</span>
+                  </span>
+                  {name === null ? (
+                    <span className="lib-label">Missing genre tag</span>
+                  ) : (
+                    <>
+                      <span className="lib-bar" aria-hidden="true"><span style={{ width: `${share * 100}%` }} /></span>
+                      <span className="lib-label">{genreShareFormat.format(share)} of tagged tracks</span>
+                    </>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
 /** The Artists tab: how many tracks each artist has. */
-export function ArtistsPanel({ artistStats, loading }: { artistStats: ReadonlyArray<readonly [string, number]>; loading: boolean }) {
+export function ArtistsPanel({ artistStats, loading, onArtistClick }: {
+  artistStats: ReadonlyArray<readonly [string, number]>;
+  loading: boolean;
+  onArtistClick: (artist: string) => void;
+}) {
   const { visible, ...filterRow } = useLibraryCollectionFilters(artistStats, ([name]) => name, ([, count]) => count);
   return (
-    <div className="space-y-3">
+    <section className="pb-10" aria-label="Library artists">
       <LibraryFilterRow {...filterRow} label="Artists" placeholder="Search artists…" />
-      <p className="lib-label">
-        {loading ? 'Loading…' : `${visible.length === artistStats.length ? visible.length.toLocaleString() : `${visible.length} of ${artistStats.length}`} artists`}
-      </p>
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Refresh className="animate-spin text-control-primary" width={28} height={28} aria-hidden="true" />
+        <div className="flex items-center justify-center gap-3 py-16 text-sm text-muted-foreground">
+          <Refresh className="animate-spin text-control-primary" width={22} height={22} aria-hidden="true" />
+          Loading artists…
         </div>
-      ) : artistStats.length === 0 ? (
-        <p className="text-center py-12 text-muted-foreground italic text-sm">No artist data in this library.</p>
       ) : visible.length === 0 ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">No artists match your filters.</p>
+        <p className="px-5 py-14 text-center text-sm text-muted-foreground">
+          {artistStats.length === 0 ? 'No artist data in this library.' : 'No artists match your filters.'}
+        </p>
       ) : (
-        <div className="lib-panel">
-          <div className="lib-list-head hidden sm:grid grid-cols-[auto_1fr_80px]">
-            {['', 'Artist', 'Tracks'].map((col, i) => (
-              <p key={i} className={cn('lib-label', i === 2 && 'text-right')}>
-                {col}
-              </p>
-            ))}
-          </div>
-          <div>
-            {visible.map(([artist, count]) => (
-              <div
-                key={artist}
-                className="lib-list-row grid-cols-[auto_1fr_80px]"
-              >
-                <div className="lib-avatar mr-3">{artist[0]?.toUpperCase() ?? '?'}</div>
-                <span className="truncate text-[13px] font-normal text-[#edf0f6]">{artist}</span>
-                <span className="lib-figure text-right text-[16px]">
-                  {count.toLocaleString()}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <LibraryCollectionTable label="Artist">
+          {visible.map(([artist, count]) => (
+            <LibraryCollectionRow
+              key={artist}
+              name={artist}
+              label={`View tracks by ${artist}`}
+              leading={<span className="lib-list-mark" aria-hidden="true">{artist[0]?.toUpperCase() ?? '?'}</span>}
+              trackCount={count}
+              onOpen={() => onArtistClick(artist)}
+            />
+          ))}
+        </LibraryCollectionTable>
       )}
-    </div>
+    </section>
   );
 }

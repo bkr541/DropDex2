@@ -4,7 +4,6 @@ import type { DiscoveryFeed } from '../../hooks/useDiscoveryFeed';
 import type { DiscoveryForYou } from '../../hooks/useDiscoveryForYou';
 import { ArtistCard } from './ArtistCard';
 import { ArtistFeedRow } from './ArtistFeedRow';
-import { DiscoveryHero } from './DiscoveryHero';
 import { DiscoveryShelf } from './DiscoveryShelf';
 import { GenreTile } from './GenreTile';
 import { SetlistFeedCard } from './SetlistFeedCard';
@@ -56,8 +55,6 @@ export function DiscoveryHomeFeed({ feed, forYou, genres, onSelectArtist, onOpen
 
   return (
     <div data-testid="discovery-feed">
-      <DiscoveryHero feed={feed} forYou={forYou} genres={genres} onSelectArtist={onSelectArtist} onOpenSetlist={onOpenSetlist} />
-
       {forYou.error && (
         <div className="discovery-notice" role="alert">
           <span className="text-red-300">{forYou.error}</span>
@@ -73,7 +70,7 @@ export function DiscoveryHomeFeed({ feed, forYou, genres, onSelectArtist, onOpen
       )}
 
       {forYou.favoriteGenres.length > 0 && (
-        <DiscoveryShelf title="Your genres" caption="From your profile" testId="discovery-your-genres">
+        <DiscoveryShelf title="Your genres" testId="discovery-your-genres">
           {forYou.favoriteGenres.map((genre) => <GenreTile key={genre.id} name={genre.name} artistCount={genre.artistCount} favorite onOpen={() => onSelectGenre(genre.id)} />)}
         </DiscoveryShelf>
       )}
@@ -128,9 +125,9 @@ export function DiscoveryHomeFeed({ feed, forYou, genres, onSelectArtist, onOpen
 
       {!feed.error && artists.length > 0 && (
         <section aria-label="Latest sets by artist" data-testid="discovery-artist-rows">
-          <div className="discovery-section-head">
+          <div className="discovery-section-head discovery-shelf-heading">
             <h3 className="studio-title">Latest sets by artist</h3>
-            <span className="studio-label">{artists.length} {artists.length === 1 ? 'artist' : 'artists'}</span>
+            <span className="discovery-shelf-caption">{artists.length} {artists.length === 1 ? 'artist' : 'artists'}</span>
           </div>
           {artists.map((artist) => {
             const setlists = setlistsByArtist.get(artist.id);

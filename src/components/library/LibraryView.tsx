@@ -1,5 +1,6 @@
 import { sortRecordTracks } from '../ui/display/recordTrackSorting';
 import { LibraryFilterRow, matchesLibrarySearch, recordOptions } from './LibraryFilterRow';
+import { useLibraryListingViewport } from './useLibraryListingViewport';
 import { useAudioDockTracks } from '../../contexts/AudioDockWorkspaceContext';
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import { useTrackPlaylistCounts } from '../../hooks/useTrackPlaylistCounts';
@@ -315,6 +316,7 @@ export interface LibraryTrackTableProps {
   onTrackClick: (t: RekordboxTrack) => void;
   onPlay: (t: RekordboxTrack, e: React.MouseEvent | React.KeyboardEvent) => void;
   footer?: React.ReactNode;
+  framed?: boolean;
 }
 
 export function LibraryTrackTable({
@@ -326,6 +328,7 @@ export function LibraryTrackTable({
   activeTrack,
   onTrackClick,
   footer,
+  framed = true,
 }: LibraryTrackTableProps) {
   const [sortCol, setSortCol] = useState<LibrarySortCol | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -347,6 +350,7 @@ export function LibraryTrackTable({
     [tracks, sortCol, sortDir, playlistCounts.counts]);
 
   useAudioDockTracks(sortedTracks);
+  const { listingRef, maxHeight } = useLibraryListingViewport();
 
   if (loading) {
     return (
@@ -360,9 +364,10 @@ export function LibraryTrackTable({
   }
 
   return (
-    <div className="lib-panel">
+    <div className={framed ? 'lib-panel' : undefined} ref={framed ? undefined : listingRef}>
       <RecordTrackListing
         tracks={sortedTracks}
+        scrollStyle={framed ? undefined : { maxHeight }}
         selectedId={activeTrack?.id ?? null}
         onSelect={onTrackClick}
         getWaveformState={getWaveformState}
@@ -380,7 +385,7 @@ export function LibraryTrackTable({
 }
 
 /** The Recently Added tab: the newest tracks in a table. Shared by the Library and Artist Library pages. */
-export function RecentlyAddedPanel({ tracks, loading, ...tableProps }: Omit<LibraryTrackTableProps, 'emptyText' | 'footer'>) {
+export function RecentlyAddedPanel({ tracks, loading, ...tableProps }: Omit<LibraryTrackTableProps, 'emptyText' | 'footer' | 'framed'>) {
   const [search, setSearch] = useState('');
   const [genre, setGenre] = useState('');
   const [key, setKey] = useState('');
@@ -388,18 +393,21 @@ export function RecentlyAddedPanel({ tracks, loading, ...tableProps }: Omit<Libr
   const visible = tracks.filter((track) => matchesLibrarySearch(search, track.title, track.artist, track.genre)
     && (!genre || track.genre === genre) && (!key || track.musical_key === key) && (!format || track.file_format === format));
   return (
-    <div className="space-y-3">
+    <section className="pb-10" aria-label="Recently added tracks">
       <LibraryFilterRow search={search} onSearchChange={setSearch} label="Recently added tracks" placeholder="Search title, artist, or genre…"
         filters={[
           { label: 'Genre', value: genre, onChange: setGenre, options: recordOptions(tracks.map((track) => track.genre)) },
           { label: 'Key', value: key, onChange: setKey, options: recordOptions(tracks.map((track) => track.musical_key)) },
           { label: 'Format', value: format, onChange: setFormat, options: recordOptions(tracks.map((track) => track.file_format)) },
         ]} />
-      <p className="text-xs text-muted-foreground font-mono">
-        {loading ? 'Loading…' : `${visible.length === tracks.length ? visible.length.toLocaleString() : `${visible.length} of ${tracks.length}`} recently added tracks`}
-      </p>
-      <LibraryTrackTable tracks={visible} loading={loading} emptyText={tracks.length ? "No tracks match your filters." : "No recently added tracks."} {...tableProps} />
-    </div>
+      <LibraryTrackTable
+        {...tableProps}
+        tracks={visible}
+        loading={loading}
+        emptyText={tracks.length ? 'No tracks match your filters.' : 'No recently added tracks.'}
+        framed={false}
+      />
+    </section>
   );
 }
 

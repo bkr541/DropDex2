@@ -7,6 +7,8 @@ export function EssentialAudioDock({ transport, identity, timeline, metadata, ou
   transport: ReactNode; identity: ReactNode; timeline: ReactNode; metadata: ReactNode; output: ReactNode;
 } & HTMLAttributes<HTMLDivElement>) {
   return <div {...props} className={cn('adl-dock', className)}>
-    {transport}{identity}{timeline}<div className="adl-metadata">{metadata}</div>{output}
+    <div className="adl-side">{transport}{identity}</div>
+    {timeline}
+    <div className="adl-side adl-side--trailing"><div className="adl-metadata">{metadata}</div>{output}</div>
   </div>;
 }

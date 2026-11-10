@@ -41,10 +41,16 @@ describe('Discovery uses the Audition look', () => {
     }
   });
 
-  it('is one panel: header band, genre band, then a body that scrolls', () => {
+  it('places the search and genre filters together below the hero inside the scrolling panel', () => {
     expect(view).toContain('className="studio discovery-studio');
-    expect(view.indexOf('data-testid="discovery-header"')).toBeLessThan(view.indexOf('<GenreBrowser'));
-    expect(view.indexOf('<GenreBrowser')).toBeLessThan(view.indexOf('data-testid="discovery-body"'));
+    const body = view.indexOf('data-testid="discovery-body"');
+    const hero = view.indexOf('<DiscoveryHero');
+    const filters = view.indexOf('data-testid="discovery-filters"');
+    expect(body).toBeLessThan(hero);
+    expect(hero).toBeLessThan(filters);
+    expect(filters).toBeLessThan(view.indexOf('<ArtistSearchInput'));
+    expect(filters).toBeLessThan(view.indexOf('<GenreBrowser'));
+    expect(view.indexOf('<GenreBrowser')).toBeLessThan(view.indexOf('<DiscoveryHomeFeed'));
     expect(studioCss).toMatch(/\.studio-body \{[^}]*overflow-y: auto/);
   });
 
@@ -59,10 +65,11 @@ describe('Discovery uses the Audition look', () => {
     expect(studioCss).toMatch(/\.studio-stat > span \{[^}]*font-size: 20px[^}]*font-weight: 300/);
   });
 
-  it('uses no filled pills or cards for genres: underlined tabs with a coral underline when picked', () => {
-    const genres = read('./GenreBrowser.tsx');
-    expect(genres).not.toContain('rounded-full');
-    expect(discoveryCss).toMatch(/\.discovery-genre-tab\[aria-pressed="true"\] \{[^}]*border-bottom-color: #f56b70/);
+  it('uses the same searchable genre dropdown as Audition', () => {
+    for (const component of ['./GenreBrowser.tsx', '../audition/AuditionLibrary.tsx']) {
+      expect(read(component)).toMatch(/<FilterDropdown\s+label="Genre"[\s\S]*?searchable/);
+    }
+    expect(discoveryCss).toMatch(/\.discovery-filters \{[^}]*align-items: stretch/);
   });
 });
 
@@ -84,7 +91,7 @@ describe('Discovery pieces', () => {
     expect(markup.indexOf('discovery-feed-row')).toBeLessThan(markup.indexOf('discovery-feed-row', markup.indexOf('discovery-feed-row') + 1));
     expect(markup.indexOf('data-testid="artist-card"', markup.indexOf('discovery-feed-row'))).toBeLessThan(markup.indexOf('Main Stage 2025', markup.indexOf('discovery-feed-row')));
     expect(markup).toContain('Melodic Dubstep · Future Bass');
-    expect(markup).toContain('<span>1,234</span><small>Sets</small>');
+    expect(markup).toContain('<small>1,234 sets</small>');
     expect(markup).toContain('2025-06-01 · 80%');
     // Fresh sets name the artist, since that row mixes artists.
     expect(markup).toContain('Alpha Artist · 2025-06-01 · 80%');
@@ -96,13 +103,18 @@ describe('Discovery pieces', () => {
     expect(css).toMatch(/\.discovery-artist-card \{[^}]*width: 216px/);
   });
 
-  it('builds the artist cards from scratch: large photo, name over genres, and a footer with the set count', async () => {
+  it('places the larger artist name over the full portrait, directly above the View artist footer', async () => {
     const { ArtistCard } = await import('./ArtistCard');
-    const markup = renderToStaticMarkup(createElement(ArtistCard, { name: 'Zed', imageUrl: null, subtitle: 'Trap', setCount: 1, onOpen: vi.fn() }));
-    expect(markup).toContain('studio-avatar studio-avatar--xl');
-    expect(markup).toMatch(/discovery-artist-card-name">Zed<\/span><span class="discovery-artist-card-sub">Trap</);
-    expect(markup).toContain('<span>1</span><small>Set</small>');
+    const markup = renderToStaticMarkup(createElement(ArtistCard, {
+      name: 'Zed', imageUrl: '/portrait.jpg', subtitle: 'Trap', setCount: 1, onOpen: vi.fn(),
+    }));
+    expect(markup).toMatch(/<img[^>]*src="\/portrait.jpg"[^>]*discovery-artist-card-photo/);
+    expect(markup).toContain('discovery-artist-card-sub">Trap</span><span class="discovery-artist-card-name">Zed');
+    expect(markup.indexOf('discovery-artist-card-name')).toBeLessThan(markup.indexOf('View artist'));
+    expect(markup).toContain('<small>1 set</small>');
+    expect(discoveryCss).toMatch(/\.discovery-artist-card-photo \{[^}]*width: 100%; height: 100%/);
     const bare = renderToStaticMarkup(createElement(ArtistCard, { name: 'Zed', imageUrl: null, onOpen: vi.fn() }));
+    expect(bare).toContain('aria-hidden="true">Z</span>');
     expect(bare).toContain('View artist');
   });
 
@@ -127,35 +139,30 @@ describe('Discovery pieces', () => {
     expect(markup).toContain('Try again');
   });
 
-  it('shows genres as tabs with their artist counts, highlighted ones first', async () => {
+  it('shows the chosen genre and an All option for returning to the full feed', async () => {
     const { GenreBrowser } = await import('./GenreBrowser');
-    const markup = renderToStaticMarkup(createElement(GenreBrowser, {
-      genres: [{ id: '1', name: 'Trap', artistCount: 9 }, { id: '2', name: 'Future Bass', artistCount: 4 }],
-      loading: false, error: null, onRetry: vi.fn(), selectedGenreId: '1', onSelectGenre: vi.fn(),
-    }));
-    expect(markup.indexOf('Future Bass')).toBeLessThan(markup.indexOf('Trap'));
-    expect(markup).toContain('discovery-genre-tab discovery-genre-tab--highlight');
-    expect(markup).toMatch(/aria-pressed="true"[^>]*>Trap<small>9<\/small>/);
+    const props = {
+      genres: [{ id: '1', name: 'Trap', artistCount: 9 }, { id: '2', name: 'House', artistCount: 4 }],
+      loading: false, error: null, onRetry: vi.fn(), onSelectGenre: vi.fn(),
+    };
+    const none = renderToStaticMarkup(createElement(GenreBrowser, { ...props, selectedGenreId: null }));
+    expect(none).toContain('aria-haspopup="listbox"');
+    expect(none).toContain('>All</span>');
+    expect(none).not.toContain('Clear Genre filter');
+    const picked = renderToStaticMarkup(createElement(GenreBrowser, { ...props, selectedGenreId: '2' }));
+    expect(picked).toContain('>House (4)</span>');
+    expect(picked).toContain('aria-label="Clear Genre filter"');
+    expect(picked).not.toContain('genre-scroll-row');
   });
 
-  it('puts every genre in one row that scrolls sideways, with All first and a Clear button while one is picked', async () => {
-    const { GenreBrowser } = await import('./GenreBrowser');
-    const props = { genres: [{ id: '1', name: 'Trap', artistCount: 9 }, { id: '2', name: 'House', artistCount: 4 }], loading: false, error: null, onRetry: vi.fn(), onSelectGenre: vi.fn() };
-    const none = renderToStaticMarkup(createElement(GenreBrowser, { ...props, selectedGenreId: null }));
-    expect(none).toContain('data-testid="genre-scroll-row"');
-    expect(none).toMatch(/aria-pressed="true" class="discovery-genre-tab">All</);
-    expect(none).not.toContain('Clear genre filter');
-    expect(none).not.toContain('Show all');
-    const picked = renderToStaticMarkup(createElement(GenreBrowser, { ...props, selectedGenreId: '2' }));
-    expect(picked).toContain('aria-label="Clear genre filter"');
-    expect(picked).toMatch(/aria-pressed="false" class="discovery-genre-tab">All</);
-    const source = read('./GenreBrowser.tsx');
-    expect(source).toContain('<HorizontalScroller');
-    expect(source).toContain('wheel');
-    const scroller = read('./HorizontalScroller.tsx');
-    expect(scroller).toContain("addEventListener('wheel'");
-    expect(scroller).toContain('aria-label="Scroll right"');
-    expect(discoveryCss).toMatch(/\.discovery-scroller-row \{[^}]*overflow-x: auto/);
+  it('uses sentence case and tighter spacing for shelf headings', async () => {
+    const { DiscoveryShelf } = await import('./DiscoveryShelf');
+    const markup = renderToStaticMarkup(createElement(DiscoveryShelf, {
+      title: 'fresh sets', caption: 'Newest first', children: 'Set',
+    }));
+    expect(markup).toContain('<h3 class="studio-title">Fresh sets</h3>');
+    expect(markup).toContain('class="discovery-shelf-caption">Newest first');
+    expect(discoveryCss).toContain('.discovery-shelf-heading { padding-bottom: 2px; }');
   });
 
   it('has a Back to Discovery button on the artist page that returns to where the artist was picked', () => {
@@ -180,7 +187,7 @@ describe('Discovery rows built from the user\'s favorites', () => {
     hasTaste: true,
     favoriteGenres: [{ id: 'g1', name: 'Melodic Dubstep', artistCount: 40 }],
     shelves: [
-      { id: 'favorites', kind: 'favorites', title: 'Your artists', caption: 'From your profile', artists: [shelfArtist('a1', 'NGHTMRE', 'Your favorite')] },
+      { id: 'favorites', kind: 'favorites', title: 'Your artists', artists: [shelfArtist('a1', 'NGHTMRE')] },
       { id: 'because-a1', kind: 'because', title: 'If you like NGHTMRE', caption: 'Shared genres', artists: [shelfArtist('a2', 'Wooli', 'Dubstep')] },
       { id: 'genre-g1', kind: 'genre', title: 'More Melodic Dubstep', caption: '40 artists', artists: [shelfArtist('a3', 'Seven Lions', 'Melodic Dubstep')], genreId: 'g1' },
     ],
@@ -195,7 +202,9 @@ describe('Discovery rows built from the user\'s favorites', () => {
     const order = ['Your genres', 'Your artists', 'If you like NGHTMRE', 'More Melodic Dubstep', 'Trending artists', 'Popular genres', 'Latest sets by artist'].map((title) => markup.indexOf(title));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(markup).toContain('Your favorite');
+    expect(markup).not.toContain('Your favorite');
+    expect(markup).not.toContain('From your profile');
+    expect(read('../../hooks/useDiscoveryForYou.ts')).not.toMatch(/Your favorite|From your profile/);
     expect(markup).toContain('See all');
     expect(markup).not.toContain('discovery-taste-prompt');
     // Popular genres are the biggest first.

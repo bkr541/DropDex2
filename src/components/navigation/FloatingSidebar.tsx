@@ -1,7 +1,8 @@
-import type { ElementType, ReactNode } from 'react';
+import { useId, type CSSProperties, type ElementType, type ReactNode } from 'react';
 import { User } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
 import { activeSidebarKey } from './sidebarGroups';
+import { FILLED_NAV_ICONS, FilledProfileIcon } from './NavIcons';
 import './FloatingSidebar.css';
 
 // The same soft shadow as the page-name tab at the top middle.
@@ -28,13 +29,17 @@ type Entry =
 
 /**
  * One round button. On hover or keyboard focus it grows to the right into a pill that slides the page name open
- * beside the icon. The current page has no circle: its icon is larger, bolder and lifted off the card by a shadow and a red glow,
- * with a small colour tab on the card's edge.
+ * beside the icon. The current page uses a red gradient fill and a small red tab on the card's edge.
  */
 function NavSlot({ label, active, onClick, children }: { label: string; active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <div className="group relative h-12 w-12" data-testid="sidebar-slot">
-      {active && <span aria-hidden="true" className="absolute -left-2 top-3 h-6 w-1.5 rounded-r-full" style={{ background: 'var(--gradient-logo)' }} />}
+      {active && (
+        <svg aria-hidden="true" viewBox="0 0 24 24" preserveAspectRatio="none"
+          className="sidebar-active-marker absolute -left-2 top-3 h-6 w-1.5 overflow-hidden rounded-r-full">
+          <rect width="24" height="24" />
+        </svg>
+      )}
       <button
         type="button"
         onClick={onClick}
@@ -61,10 +66,10 @@ function NavSlot({ label, active, onClick, children }: { label: string; active: 
 }
 
 /**
- * The left nav: a slim floating capsule of round icon buttons. The current page is a tinted circle with a tab on the
- * edge; hovering any button slides its page name open beside it.
+ * The left nav is a slim floating capsule of round icon buttons. Hovering a button reveals its page name.
  */
 export function FloatingSidebar({ items, currentView, onSelectView, onOpenProfile, profile }: FloatingSidebarProps) {
+  const gradientId = useId();
   const entries: Entry[] = [
     { key: 'logo', kind: 'logo' },
     ...items.map((item) => ({ key: item.view, kind: 'nav', item }) as Entry),
@@ -81,33 +86,42 @@ export function FloatingSidebar({ items, currentView, onSelectView, onOpenProfil
           </div>
         );
       case 'nav': {
-        const Icon = entry.item.icon;
+        const Icon = isActive ? FILLED_NAV_ICONS.get(entry.item.icon) ?? entry.item.icon : entry.item.icon;
         return (
           <NavSlot label={entry.item.label} active={isActive} onClick={() => onSelectView(entry.item.view)}>
-            <Icon
-              width={24} height={24} aria-hidden="true"
-              className={cn('nav-icon shrink-0 origin-center transition-transform duration-300 ease-out', isActive ? 'logo-gradient-icon scale-[1.4]' : 'scale-100')}
-            />
+            <Icon width={24} height={24} aria-hidden="true" className="nav-icon shrink-0" />
           </NavSlot>
         );
       }
-      case 'profile':
+      case 'profile': {
+        const Icon = isActive ? FilledProfileIcon : User;
         return (
           <NavSlot label={profile?.display_name ?? 'Profile'} active={isActive} onClick={onOpenProfile}>
-            <span className="sidebar-avatar flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] transition-transform duration-300 ease-out">
+            <span className="sidebar-avatar flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
               ) : (
-                <User width={22} height={22} aria-hidden="true" className="shrink-0 text-muted-foreground" />
+                <Icon width={22} height={22} aria-hidden="true" className="nav-icon shrink-0 text-muted-foreground" />
               )}
             </span>
           </NavSlot>
         );
+      }
     }
   };
 
   return (
-    <aside className="pointer-events-none relative z-40 hidden w-[88px] shrink-0 md:block">
+    <aside className="pointer-events-none relative z-40 hidden w-[88px] shrink-0 md:block"
+      style={{ '--sidebar-active-paint': `url("#${gradientId}") var(--color-logo-red)` } as CSSProperties}>
+      <svg className="absolute" width={0} height={0} aria-hidden="true">
+        <defs>
+          <linearGradient id={gradientId} className="sidebar-icon-gradient" gradientUnits="userSpaceOnUse" x1="2" y1="2" x2="22" y2="22">
+            <stop offset="0%" stopColor="#fa2830" />
+            <stop offset="50%" stopColor="var(--color-logo-red)" />
+            <stop offset="100%" stopColor="#fb7974" />
+          </linearGradient>
+        </defs>
+      </svg>
       <div className="absolute inset-y-0 left-0 flex flex-col justify-center py-3 pl-6">
         <div
           data-testid="sidebar-card"

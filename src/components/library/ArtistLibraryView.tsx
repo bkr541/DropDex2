@@ -1,7 +1,7 @@
 import './library-studio.css';
 import '../ui/studio-surface.css';
 import { useMemo, useState } from 'react';
-import { MusicNote, Upload } from 'iconoir-react/regular';
+import { MusicNote, Upload, Xmark } from 'iconoir-react/regular';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import { useLibraryStats } from '../../hooks/useRekordboxTracks';
@@ -58,13 +58,14 @@ export function ArtistLibraryView({
 }: ArtistLibraryViewProps) {
   const { stats, loading: statsLoading } = useLibraryStats(importId);
   const [activeTab, setActiveTab] = useState<ArtistLibraryTab>('tracks');
+  const [artistFilter, setArtistFilter] = useState<string | null>(null);
+  const [genreFilter, setGenreFilter] = useState<string | null>('');
   // The track picked in the Tracks table. The table selects the first track on load.
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
   const panelTrackIds = useMemo(() => (selectedTrack ? [selectedTrack.id] : []), [selectedTrack]);
   const panelWaveforms = useTrackPreviewWaveforms(importId, panelTrackIds);
   const tabs = useMemo(() => artistLibraryTabs(), []);
 
-  const genreStats = useMemo(() => (stats?.genreTotals ?? []).map(({ name, count }) => [name, count] as const), [stats?.genreTotals]);
   const artistStats = useMemo(() => (stats?.artistTotals ?? []).map(({ name, count }) => [name, count] as const), [stats?.artistTotals]);
 
   return (
@@ -95,10 +96,45 @@ export function ArtistLibraryView({
       )}
       {/* Kept mounted so its search and filters are still there when you come back to Tracks. */}
       <div className={activeTab === 'tracks' ? undefined : 'hidden'} data-testid="artist-library-tracks-panel">
-        <CuePointsView mode="artist-library" importId={importId} onImport={onImport} onTrackOpen={onTrackClick} onSelectedTrackChange={setSelectedTrack} />
+        {artistFilter && (
+          <div className="flex items-center gap-2 px-4 py-2">
+            <span className="text-sm">Tracks by <strong>{artistFilter}</strong></span>
+            <ControlButton variant="ghost" onClick={() => setArtistFilter(null)} aria-label="Clear artist filter">
+              <Xmark width={14} height={14} aria-hidden="true" />
+            </ControlButton>
+          </div>
+        )}
+        <CuePointsView
+          mode="artist-library"
+          importId={importId}
+          artistFilter={artistFilter}
+          genreFilter={genreFilter}
+          onGenreFilterChange={setGenreFilter}
+          onImport={onImport}
+          onTrackOpen={onTrackClick}
+          onSelectedTrackChange={setSelectedTrack}
+        />
       </div>
-      {activeTab === 'genres' && <GenresPanel genreStats={genreStats} loading={statsLoading} />}
-      {activeTab === 'artists' && <ArtistsPanel artistStats={artistStats} loading={statsLoading} />}
+      {activeTab === 'genres' && (
+        <GenresPanel
+          genreStats={stats?.genreSummaries ?? []}
+          loading={statsLoading}
+          onGenreClick={(name) => {
+            setGenreFilter(name);
+            setActiveTab('tracks');
+          }}
+        />
+      )}
+      {activeTab === 'artists' && (
+        <ArtistsPanel
+          artistStats={artistStats}
+          loading={statsLoading}
+          onArtistClick={(name) => {
+            setArtistFilter(name);
+            setActiveTab('tracks');
+          }}
+        />
+      )}
     </div>
   );
 }

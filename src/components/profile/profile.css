@@ -161,32 +161,14 @@
 .profile-workspace .dd-chip button:hover { color: var(--profile-focus); }
 
 .profile-workspace .profile-theme-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
-:is(.profile-workspace, .profile-modal) .dd-selectable-card {
-  min-height: 72px;
-  padding: 8px 12px;
-  border: 0;
-  border-bottom: 1px solid var(--color-control-border);
-  border-radius: 0;
-  background: transparent;
-  color: var(--profile-ink);
-  box-shadow: none;
-}
-.profile-workspace .dd-selectable-card--selected { border-bottom-color: var(--color-control-primary); }
-.profile-workspace .dd-selectable-card:hover { border-bottom-color: var(--profile-focus); }
-.profile-workspace .dd-selectable-card__top { margin-bottom: 4px; }
-.profile-workspace .dd-selectable-card__icon { color: var(--profile-muted); }
-.profile-workspace .dd-selectable-card--selected .dd-selectable-card__icon { color: var(--profile-focus); }
-.profile-workspace .dd-selectable-card__radio { width: 14px; height: 14px; }
-.profile-workspace .dd-selectable-card > strong { font-size: 12px; font-weight: 500; }
-.profile-workspace .dd-selectable-card > span:not(.dd-selectable-card__top) { margin-top: 2px; color: var(--profile-muted); font-size: 11px; }
 
 .profile-workspace .profile-stats { display: flex; flex-wrap: wrap; justify-content: center; }
 .profile-workspace .dd-stat-tile { display: flex; min-width: 70px; flex-direction: column-reverse; align-items: center; gap: 3px; padding: 4px 14px; }
 .profile-workspace .dd-stat-tile + .dd-stat-tile { border-inline-start: 1px solid var(--profile-rule); }
 .profile-workspace .dd-stat-tile__label { margin: 0; color: var(--profile-muted); font-size: 9px; font-weight: 400; letter-spacing: .16em; }
 .profile-workspace .dd-stat-tile__headline > strong { color: var(--profile-ink); font-size: 26px; font-weight: 300; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-.profile-workspace .dd-empty-state { min-height: 100px; border: 0; color: var(--profile-ink); }
-.profile-workspace .dd-empty-state > span { color: var(--profile-muted); font-size: 12px; }
+.profile-workspace .dd-empty-state { min-height: 100px; border: 0; background: transparent; color: var(--profile-ink); box-shadow: none; }
+.profile-workspace .dd-empty-state > span { color: var(--profile-muted); }
 .profile-workspace .profile-log-row:focus-visible { outline: 2px solid var(--profile-focus); outline-offset: -2px; }
 
 :is(.profile-workspace, .profile-modal) .nc {
@@ -318,16 +300,6 @@
 .profile-collapse { cursor: pointer; }
 .profile-collapse:focus-visible { outline: 2px solid var(--profile-focus); outline-offset: -2px; }
 
-/* Choice cards with a hero (Theme, Display): a real card, the choice shown in the header, then one centred row of name | supporting text. */
-.profile-workspace .dd-selectable-card.dd-selectable-card--hero { min-height: 0; padding: 0; border: 1px solid #ffffff2e; border-radius: 12px; background: transparent; box-shadow: none; }
-.profile-workspace .dd-selectable-card.dd-selectable-card--hero:hover { border-color: var(--profile-focus); }
-.profile-workspace .dd-selectable-card.dd-selectable-card--hero.dd-selectable-card--selected { border-color: var(--color-control-primary); box-shadow: none; }
-.profile-workspace .profile-theme-options:has(.dd-selectable-card--hero) { gap: 12px; }
-.profile-workspace .dd-selectable-card--hero .dd-selectable-card__label > strong { color: var(--profile-ink); font-size: 15px; font-weight: 500; }
-.profile-workspace .dd-selectable-card--hero .dd-selectable-card__label > .dd-selectable-card__description { color: var(--profile-muted); font-size: 11px; }
-
-.profile-workspace .dd-selectable-card.dd-selectable-card--row { padding: 10px 12px; border-radius: 10px; }
-.profile-workspace .dd-selectable-card--row > .dd-selectable-card__hero { overflow: hidden; }
 .profile-workspace .profile-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 @media (max-width: 900px) { .profile-workspace .profile-choice-grid { grid-template-columns: 1fr; } }
 

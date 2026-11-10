@@ -23,11 +23,10 @@ const TITLE_BAR_HEIGHT = 44;
 const TAB_BAR_HEIGHT = 36;
 
 const DEFAULT_TABS: Tab[] = [
-  { id: 'ui-components', label: 'UI Components' },
   { id: 'scratch-pad',   label: 'Scratch Pad'   },
   { id: 'icons', label: 'Icons' },
   { id: 'popover', label: 'Popover' },
-  { id: 'reusable', label: 'Reusable' },
+  { id: 'reusable', label: 'Reusable UI Components' },
 ];
 
 let tabCounter = 0;

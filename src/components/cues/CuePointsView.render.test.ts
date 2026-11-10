@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { RekordboxTrack } from '../../types';
 
-const libraryFixture = vi.hoisted(() => ({ tracks: [] as RekordboxTrack[] }));
+const libraryFixture = vi.hoisted(() => ({ tracks: [] as RekordboxTrack[], hasMore: false }));
 const playlistCountFixture = vi.hoisted(() => ({ counts: new Map<string, number>(), error: null as string | null }));
 
 vi.mock('../../hooks/useTrackPlaylistCounts', () => ({
@@ -39,7 +39,7 @@ vi.mock('../../hooks/useRekordboxTracks', () => ({
     loading: false,
     loadingMore: false,
     error: null,
-    hasMore: false,
+    hasMore: libraryFixture.hasMore,
     loadMore: vi.fn(),
     refresh: vi.fn(),
   }),
@@ -180,6 +180,29 @@ describe('Review shared browser and focused track timeline', () => {
       expect(markup).not.toContain('Edit Genre');
     } finally {
       libraryFixture.tracks = [];
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(['House', null])('shows the selected genre in the filter row without a result count or load button', (genreFilter) => {
+    vi.stubGlobal('window', { devicePixelRatio: 1 });
+    libraryFixture.tracks = [track];
+    libraryFixture.hasMore = true;
+    try {
+      const markup = renderToStaticMarkup(createElement(AudioPlayerProvider, {
+        imports: [], children: createElement(CuePointsView, {
+          mode: 'artist-library', importId: 'import-test', genreFilter, onImport: vi.fn(),
+        }),
+      }));
+      const filterRow = markup.slice(markup.indexOf('data-testid="cue-browser-filters"'), markup.indexOf('<table'));
+      expect(filterRow).toContain('>' + (genreFilter ?? 'Untagged') + '</span>');
+      expect(filterRow).toContain('aria-label="Clear Genre filter"');
+      expect(markup).toMatch(/<\/table><div class="h-px" aria-hidden="true"><\/div>/);
+      expect(markup).not.toContain('visible rows');
+      expect(markup).not.toContain('Load more tracks');
+    } finally {
+      libraryFixture.tracks = [];
+      libraryFixture.hasMore = false;
       vi.unstubAllGlobals();
     }
   });

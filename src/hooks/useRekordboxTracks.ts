@@ -83,6 +83,7 @@ export function useLibraryTracks(
   {
     search = null,
     genre = null,
+    untaggedGenre = false,
     artist = null,
     enabled = true,
     debounceMs = 0,
@@ -107,6 +108,7 @@ export function useLibraryTracks(
     void fetchLibraryTracksPage(importId, 0, Math.max(pageSize, tracks.length), {
       search: normalizedSearch,
       genre: normalizedGenre,
+      untaggedGenre,
       artist: normalizedArtist,
     }).then((page) => {
       if (generation !== generationRef.current) return;
@@ -118,6 +120,7 @@ export function useLibraryTracks(
     importId,
     normalizedArtist,
     normalizedGenre,
+    untaggedGenre,
     normalizedSearch,
     pageSize,
     tracks.length,
@@ -146,6 +149,7 @@ export function useLibraryTracks(
       fetchLibraryTracksPage(importId, 0, pageSize, {
         search: normalizedSearch,
         genre: normalizedGenre,
+        untaggedGenre,
         artist: normalizedArtist,
       })
         .then((page) => {
@@ -173,6 +177,7 @@ export function useLibraryTracks(
     enabled,
     normalizedSearch,
     normalizedGenre,
+    untaggedGenre,
     normalizedArtist,
     debounceMs,
     pageSize,
@@ -188,6 +193,7 @@ export function useLibraryTracks(
       const page = await fetchLibraryTracksPage(importId, tracks.length, pageSize, {
         search: normalizedSearch,
         genre: normalizedGenre,
+        untaggedGenre,
         artist: normalizedArtist,
       });
       if (generation !== generationRef.current) return;
@@ -210,6 +216,7 @@ export function useLibraryTracks(
     pageSize,
     normalizedSearch,
     normalizedGenre,
+    untaggedGenre,
     normalizedArtist,
   ]);
 

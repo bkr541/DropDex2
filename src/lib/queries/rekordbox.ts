@@ -41,12 +41,21 @@ export interface PaginatedResult<T> {
 export interface LibraryTrackFilters {
   search?: string | null;
   genre?: string | null;
+  untaggedGenre?: boolean;
   artist?: string | null;
 }
 
 export interface NamedStatTotal {
   name: string;
   count: number;
+}
+
+export interface GenreSummary {
+  name: string | null;
+  count: number;
+  minBpm: number | null;
+  maxBpm: number | null;
+  artistCount: number | null;
 }
 
 export interface BpmStatTotal {
@@ -61,6 +70,7 @@ export interface LibraryStats {
   mostCommonBpm: number | null;
   mostCommonKey: string | null;
   genreTotals: NamedStatTotal[];
+  genreSummaries: GenreSummary[];
   artistTotals: NamedStatTotal[];
   bpmTotals: BpmStatTotal[];
   keyTotals: NamedStatTotal[];
@@ -94,6 +104,28 @@ function parseNamedTotals(value: unknown): NamedStatTotal[] {
     const name = typeof row.name === 'string' ? row.name : '';
     if (!name) return [];
     return [{ name, count: asFiniteNumber(row.count) }];
+  });
+}
+
+function parseGenreSummaries(value: unknown, untagged: unknown): GenreSummary[] {
+  const rows = Array.isArray(value) ? value.map(asRecord) : [];
+  const untaggedRow = asRecord(untagged);
+  if (asFiniteNumber(untaggedRow.count) > 0) rows.push({ ...untaggedRow, name: null });
+
+  const numberOrNull = (field: unknown) => {
+    if (field == null) return null;
+    const value = asFiniteNumber(field, Number.NaN);
+    return Number.isFinite(value) ? value : null;
+  };
+  return rows.flatMap((row) => {
+    if (row.name !== null && (typeof row.name !== 'string' || !row.name)) return [];
+    return [{
+      name: row.name,
+      count: asFiniteNumber(row.count),
+      minBpm: numberOrNull(row.min_bpm),
+      maxBpm: numberOrNull(row.max_bpm),
+      artistCount: numberOrNull(row.artist_count),
+    }];
   });
 }
 
@@ -276,7 +308,7 @@ export async function fetchLibraryTracksPage(
     p_offset: offset,
     p_limit: limit,
     p_search: filters.search?.trim() || null,
-    p_genre: filters.genre?.trim() || null,
+    p_genre: filters.untaggedGenre ? '' : filters.genre?.trim() || null,
     p_artist: filters.artist?.trim() || null,
   });
   const { data, error } = await (signal ? query.abortSignal(signal) : query);
@@ -377,6 +409,7 @@ export async function fetchLibraryStats(importId: string): Promise<LibraryStats>
     mostCommonBpm: mostCommonBpm != null && Number.isFinite(mostCommonBpm) ? mostCommonBpm : null,
     mostCommonKey: typeof row.most_common_key === 'string' ? row.most_common_key : null,
     genreTotals: parseNamedTotals(row.genre_totals),
+    genreSummaries: parseGenreSummaries(row.genre_totals, row.untagged_genre),
     artistTotals: parseNamedTotals(row.artist_totals),
     bpmTotals: parseBpmTotals(row.bpm_totals),
     keyTotals: parseNamedTotals(row.key_totals),

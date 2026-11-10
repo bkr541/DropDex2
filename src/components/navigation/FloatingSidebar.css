@@ -57,14 +57,27 @@
 .sidebar-capsule > *:hover,
 .sidebar-capsule > *:focus-within { z-index: 2; }
 
-/* The current page: no circle. Its icon is bigger and bolder (scale is set in FloatingSidebar.tsx), and lifted off the card by a dark
-   shadow underneath and a soft red glow around it. */
+/* Iconoir paths declare their own stroke, so apply the same paint to those paths as to the SVG. */
 .sidebar-capsule [data-active="true"] { background: transparent; box-shadow: none; }
-.sidebar-capsule .nav-icon.logo-gradient-icon {
-  stroke-width: 1.9;
-  filter: drop-shadow(0 3px 3px #000000b3) drop-shadow(0 0 7px #ff4e4f80);
+.sidebar-capsule [data-active="true"] .nav-icon,
+.sidebar-capsule [data-active="true"] .nav-icon [stroke="currentColor"] {
+  stroke: var(--sidebar-active-paint);
 }
-.sidebar-capsule [data-active="true"] .sidebar-avatar { transform: scale(1.25); border-color: #ff4e4f66; box-shadow: 0 4px 8px #000000b3, 0 0 9px #ff4e4f66; }
+.sidebar-capsule [data-active="true"] .nav-icon [fill="currentColor"] { fill: var(--sidebar-active-paint); }
+.sidebar-active-marker { fill: var(--sidebar-active-paint); }
+.sidebar-capsule [data-active="true"] .sidebar-avatar { border-color: #ff4e4f66; }
+
+@keyframes sidebar-icon-gradient-shift {
+  0%, 100% { stop-color: #fa2830; }
+  33.333% { stop-color: var(--color-logo-red); }
+  66.667% { stop-color: #fb7974; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sidebar-icon-gradient stop { animation: sidebar-icon-gradient-shift 4.8s linear infinite; }
+  .sidebar-icon-gradient stop:nth-child(2) { animation-delay: -1.6s; }
+  .sidebar-icon-gradient stop:nth-child(3) { animation-delay: -3.2s; }
+}
 
 /* Hovering any other button raises it into a graphite pill. */
 .sidebar-capsule [data-testid="sidebar-slot"]:hover > button:not([data-active="true"]),

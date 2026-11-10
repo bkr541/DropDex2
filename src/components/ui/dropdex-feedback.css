@@ -64,13 +64,10 @@
 @keyframes dd-loader-dots { 0%, 100% { transform: translateY(0); opacity: .45; } 50% { transform: translateY(-4px); opacity: 1; } }
 
 .dd-toast,
-.dd-activity-banner,
 .dd-alert-banner,
 .dd-floating-activity,
 .dd-progress-panel,
 .dd-dialog,
-.dd-empty-state,
-.dd-selectable-card,
 .dd-dropzone,
 .dd-upload-button {
   font-family: var(--font-sans);
@@ -91,13 +88,32 @@
 .dd-circular-progress__value { stroke: currentColor; stroke-linecap: round; }
 .dd-circular-progress strong { color: #edf2f7; font-size: 10px; }
 
-.dd-activity-banner { display: flex; align-items: center; gap: 13px; min-height: 72px; padding: 11px 14px; border: 1px solid var(--color-feedback-border); border-radius: var(--radius-control); background: var(--color-feedback-surface-raised); color: #eef2f7; box-shadow: none; }
-.dd-activity-banner__copy { min-width: 0; display: grid; flex: 1; gap: 3px; }
-.dd-activity-banner__copy strong { font-size: 11px; }
-.dd-activity-banner__copy span { color: #a3adba; font-size: 9px; }
-.dd-activity-banner__copy small { overflow: hidden; color: #8793a0; font: 500 8px/1.15 var(--font-mono, monospace); text-overflow: ellipsis; white-space: nowrap; }
-.dd-activity-banner__copy .dd-activity-banner__source { color: #438fff; }
-.dd-activity-banner__remaining { color: #9da7b3; font-size: 9px; white-space: nowrap; }
+.dd-activity-banner,
+.dd-empty-state,
+.dd-selectable-card {
+  border: 1px solid #ffffff1f;
+  border-radius: 12px;
+  background: linear-gradient(165deg, #303540 0%, #272c36 36%, #212630 100%);
+  color: #f6f7fa;
+  box-shadow: inset 0 1px 0 #ffffff08, 0 12px 28px #00000059;
+  font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+}
+
+.dd-activity-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 13px; min-height: 72px; padding: 11px 14px; }
+.dd-activity-banner__copy { min-width: 0; display: grid; flex: 1 1 10rem; gap: 3px; overflow-wrap: anywhere; }
+.dd-activity-banner__copy strong,
+.dd-empty-state > strong,
+.dd-selectable-card > strong,
+.dd-selectable-card__label > strong { font-size: 15px; font-weight: 500; line-height: 1.25; }
+.dd-activity-banner__copy span,
+.dd-activity-banner__copy small,
+.dd-activity-banner__remaining,
+.dd-empty-state > span,
+.dd-selectable-card__description,
+.dd-selectable-card > small { color: #a4adbd; font-size: 12px; line-height: 1.45; }
+.dd-activity-banner__copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd-activity-banner__copy .dd-activity-banner__source { color: var(--color-control-primary); }
+.dd-activity-banner__remaining { white-space: nowrap; }
 
 .dd-feedback-button { min-height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 13px; border-radius: 4px; font-size: 9px; font-weight: 780; letter-spacing: .04em; white-space: nowrap; transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease; }
 .dd-feedback-button--ghost { border: 1px solid var(--color-control-border); background: var(--color-control-surface); color: #dce3eb; }
@@ -114,12 +130,10 @@
 .dd-alert-banner__copy strong { font-size: 11px; }
 .dd-alert-banner__copy span { color: #cbc2a2; font-size: 9px; }
 
-.dd-empty-state { min-height: 181px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 18px; border: 1px solid var(--color-feedback-border); border-radius: var(--radius-control); background: var(--color-feedback-surface); color: #eff3f7; text-align: center; box-shadow: none; }
-.dd-empty-state__icon { position: relative; color: #77818d; }
+.dd-empty-state { min-height: 181px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 18px; text-align: center; }
+.dd-empty-state__icon { position: relative; color: #a4adbd; }
 .dd-empty-state__icon svg:last-child { position: absolute; right: -7px; bottom: -4px; color: #c8cfd8; }
-.dd-empty-state strong { margin-top: 2px; font-size: 12px; }
-.dd-empty-state > span { color: #8d97a4; font-size: 9px; }
-.dd-empty-state .dd-feedback-button { margin-top: 5px; }
+.dd-empty-state > .dd-control-button { margin-top: 5px; }
 
 .dd-notification__title { margin: 0; font-size: 20px; font-weight: 300; letter-spacing: -.02em; line-height: 1.2; color: var(--color-foreground, #f6f7fa); }
 /* The floating activity panel is a small import popover: coral icon and light title, a hairline group of rows, a centred secondary button. */
@@ -193,24 +207,24 @@
 .dd-dialog > footer { display: flex; justify-content: center; gap: 12px; padding: 20px 0 0; }
 .dd-dialog--right-sheet > footer { flex: 0 0 auto; padding-top: 16px; }
 
-.dd-selectable-card { min-height: 145px; display: flex; flex-direction: column; align-items: stretch; padding: 12px; border: 1px solid var(--color-control-border); border-radius: var(--radius-control); background: var(--color-feedback-surface-raised); color: #eff3f7; text-align: left; box-shadow: none; transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease; }
-.dd-selectable-card:hover { border-color: rgb(164 178 196 / .28); background: var(--color-control-surface-hover); }
-.dd-selectable-card--selected { border-color: rgb(var(--dd-semantic-rgb) / .70); box-shadow: inset 3px 0 0 var(--dd-semantic); }
+.dd-selectable-card { min-width: 0; min-height: 145px; display: flex; flex-direction: column; align-items: stretch; padding: 12px; text-align: left; cursor: pointer; transition: border-color 120ms ease; }
+.dd-selectable-card:hover { border-color: var(--color-control-primary-hover); }
+.dd-selectable-card--selected { border-color: var(--dd-semantic); }
+.dd-selectable-card:focus-visible { outline: 2px solid var(--color-control-focus); outline-offset: 2px; }
 .dd-selectable-card__top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
 .dd-selectable-card__icon { color: var(--dd-semantic); }
 .dd-selectable-card__radio { width: 18px; height: 18px; display: grid; place-items: center; border: 1px solid #7b8794; border-radius: 50%; color: white; }
 .dd-selectable-card--selected .dd-selectable-card__radio { border-color: var(--dd-semantic); background: var(--dd-semantic); }
-.dd-selectable-card > strong { font-size: 10px; }
-.dd-selectable-card > span:not(.dd-selectable-card__top) { margin-top: 4px; color: #a8b1bd; font-size: 8px; }
-.dd-selectable-card > small { margin-top: 3px; color: #c3cad2; font-size: 8px; }
+.dd-selectable-card > .dd-selectable-card__description { margin-top: 4px; }
+.dd-selectable-card > small { margin-top: 3px; }
 /* With a hero: a header area over one centred row, the name, a |, and a line of supporting text. The selected card is shown by its border alone. */
-.dd-selectable-card--hero { font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; min-height: 0; padding: 0; justify-content: flex-start; overflow: hidden; text-align: left; }
+.dd-selectable-card--hero { min-height: 0; padding: 0; justify-content: flex-start; overflow: hidden; text-align: left; }
 .dd-selectable-card__hero { display: grid; place-items: center; height: 52px; border-bottom: 1px solid #ffffff12; }
 .dd-selectable-card__label { display: flex; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; height: 40px; padding: 0 12px; }
-.dd-selectable-card__label > strong { flex: none; font-size: 15px; font-weight: 500; }
+.dd-selectable-card__label > strong { flex: none; }
 .dd-selectable-card__label > i { flex: none; color: #ffffff40; font-style: normal; }
 .dd-selectable-card__label > .dd-selectable-card__description { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The row layout: the hero is a small swatch at the left, and the name | text sit beside it. */
 .dd-selectable-card--row { flex-direction: row; align-items: center; gap: 12px; padding: 10px 12px; }
-.dd-selectable-card--row > .dd-selectable-card__hero { flex: none; width: 64px; height: 40px; border: 0; border-radius: 8px; }
+.dd-selectable-card--row > .dd-selectable-card__hero { flex: none; width: 64px; height: 40px; overflow: hidden; border: 0; border-radius: 8px; }
 .dd-selectable-card--row > .dd-selectable-card__label { flex: 1; height: auto; padding: 0; }

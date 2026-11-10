@@ -9,7 +9,7 @@ interface ArtistSearchInputProps {
   placeholder?: string;
 }
 
-/** The search field in the Discovery header band. */
+/** The artist search field in the Discovery filter row. */
 export function ArtistSearchInput({
   value,
   onChange,
@@ -18,9 +18,7 @@ export function ArtistSearchInput({
   placeholder = 'Search DropDex artists…',
 }: ArtistSearchInputProps) {
   return (
-    // mx-[3px] my-[3px]: gives the focus ring (outset box-shadow) room to render
-    // without being clipped by any ancestor overflow boundary.
-    <div className="discovery-search relative mx-[3px] my-[3px]" data-testid="discovery-search">
+    <div className="discovery-search relative" data-testid="discovery-search">
       <SearchControl
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -30,7 +28,7 @@ export function ArtistSearchInput({
         icon={loading ? <Refresh className="animate-spin text-control-primary" width={16} height={16} aria-hidden="true" /> : undefined}
       />
       {value && (
-        <ControlButton variant="ghost" onClick={onClear} aria-label="Clear search" className="absolute right-4 top-1/2 -translate-y-1/2">
+        <ControlButton variant="ghost" onClick={onClear} aria-label="Clear search" className="absolute bottom-0 right-0">
           <Xmark width={16} height={16} aria-hidden="true" />
         </ControlButton>
       )}

@@ -181,6 +181,13 @@ describe('library pagination at the 1,000-row boundary', () => {
     expect(page.items[0].id).toBe('track-1500');
   });
 
+  it('distinguishes a request for untagged tracks from an empty genre dropdown', async () => {
+    await fetchLibraryTracksPage('import-owner', 0, 1, { genre: '' });
+    expect(rpcMock).toHaveBeenLastCalledWith('get_rekordbox_library_track_page', expect.objectContaining({ p_genre: null }));
+    await fetchLibraryTracksPage('import-owner', 0, 1, { untaggedGenre: true });
+    expect(rpcMock).toHaveBeenLastCalledWith('get_rekordbox_library_track_page', expect.objectContaining({ p_genre: '' }));
+  });
+
   it('applies filters across the complete library', async () => {
     const page = await fetchLibraryTracksPage('import-owner', 0, 200, {
       genre: 'Beyond First Thousand',
@@ -230,6 +237,23 @@ describe('database aggregate contracts', () => {
     expect(stats.genreTotals).toContainEqual({ name: 'Beyond First Thousand', count: 1 });
     expect(stats.bpmTotals).toContainEqual({ bpm: 150, count: 1 });
     expect(stats.keyTotals).toContainEqual({ name: '12A', count: 1 });
+  });
+
+  it('parses enhanced genre summaries and keeps untagged separate from genre dropdowns', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: {
+        genre_totals: [{ name: 'House', count: 4, min_bpm: 120, max_bpm: 130, artist_count: 3 }],
+        untagged_genre: { count: 2, min_bpm: null, max_bpm: null, artist_count: 2 },
+      },
+      error: null,
+    });
+
+    const stats = await fetchLibraryStats('import-owner');
+    expect(stats.genreTotals).toEqual([{ name: 'House', count: 4 }]);
+    expect(stats.genreSummaries).toEqual([
+      { name: 'House', count: 4, minBpm: 120, maxBpm: 130, artistCount: 3 },
+      { name: null, count: 2, minBpm: null, maxBpm: null, artistCount: 2 },
+    ]);
   });
 
   it('playlist statistics include all 1,501 placements', async () => {

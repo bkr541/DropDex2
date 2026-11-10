@@ -49,7 +49,7 @@ export function useDiscoveryForYou(userId: string | null, catalogGenres: Catalog
 
       const favoriteArtists: ShelfArtist[] = artistPrefs
         .filter((pref) => pref.artist)
-        .map((pref) => ({ id: String(pref.artist!.id), name: pref.artist!.name, normalized_name: pref.artist!.normalized_name, profile_image_url: pref.artist!.profile_image_url, subtitle: 'Your favorite' }));
+        .map((pref) => ({ id: String(pref.artist!.id), name: pref.artist!.name, normalized_name: pref.artist!.normalized_name, profile_image_url: pref.artist!.profile_image_url, subtitle: null }));
       const favoriteGenres = genrePrefs
         .map((pref) => genreById.get(String(pref.genre_id)))
         .filter((genre): genre is CatalogGenre => !!genre);
@@ -57,7 +57,7 @@ export function useDiscoveryForYou(userId: string | null, catalogGenres: Catalog
 
       const shelves: ForYouShelf[] = [];
       if (favoriteArtists.length > 0) {
-        shelves.push({ id: 'favorites', kind: 'favorites', title: 'Your artists', caption: 'From your profile', artists: favoriteArtists });
+        shelves.push({ id: 'favorites', kind: 'favorites', title: 'Your artists', artists: favoriteArtists });
       }
 
       // Artists like the favorites: look in each favorite's narrowest genres, then rank by what they share.

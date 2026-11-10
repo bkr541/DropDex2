@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ElementType, type ReactNode } from 'react';
-import { CompactDisc, Pause, Play, Refresh, Repeat, SkipNext, SkipPrev, SoundHigh, SoundOff, Eject, Usb, WarningTriangle, Xmark } from 'iconoir-react/regular';
+import { CompactDisc, MoreHoriz, Pause, Play, Refresh, Repeat, SkipNext, SkipPrev, SoundHigh, SoundOff, Eject, Usb, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
 import { useAudioDockWorkspace } from '../../contexts/AudioDockWorkspaceContext';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
@@ -121,13 +121,20 @@ export function NowPlayingBar({ independentWorkspace }: NowPlayingBarProps) {
         aria-label="Playback position" aria-valuetext={`${time(position)} of ${time(duration)}`} onChange={(event) => seek(Number(event.target.value))} />
     </div><span className="adl-time">{time(duration)}</span>
   </div>;
-  const metadata = <><span>{track?.bpm ? track.bpm.toFixed(1) : '—'} <small>BPM</small></span><span className="adl-key">{track?.musical_key ? formatKey(track.musical_key) : '—'}</span></>;
+  const key = track?.musical_key ? formatKey(track.musical_key) : '—';
+  const metadata = <>
+    <span><strong>{track?.bpm ? track.bpm.toFixed(1) : '—'}</strong><small>BPM</small></span>
+    <span><strong title={key}>{key}</strong><small>Key</small></span>
+  </>;
   const output = <div className="adl-output" role="group" aria-label="Output controls">
     <DockButton icon={Repeat} label="Repeat track" active={standard && player.repeat} disabled={blocked} onClick={() => { if (!blocked) player.toggleRepeat(); }} />
     <DockButton icon={player.muted || player.volume === 0 ? SoundOff : SoundHigh} label={player.muted ? 'Unmute' : 'Mute'}
       active={standard && player.muted} disabled={!standard} onClick={() => { if (standard) player.toggleMute(); }} />
     <input type="range" min={0} max={1} step={0.01} value={standard && !player.muted ? player.volume : 0} aria-label="Volume" disabled={!standard}
       onChange={(event) => { if (standard) { player.setVolume(Number(event.target.value)); if (player.muted) player.toggleMute(); } }} />
+    <DockButton icon={MoreHoriz} label="Reserved control 1" className="adl-placeholder" disabled />
+    <DockButton icon={MoreHoriz} label="Reserved control 2" className="adl-placeholder" disabled />
+    <DockButton icon={MoreHoriz} label="Reserved control 3" className="adl-placeholder" disabled />
   </div>;
 
   return <footer className="app-audio-dock adl-style-edge" aria-label="Now Playing" data-testid="application-audio-dock" data-player-mode={standard ? 'standard' : 'independent'}>

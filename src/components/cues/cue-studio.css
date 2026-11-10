@@ -140,9 +140,10 @@
 }
 /* The track title and artist mirror the figures on the right: the title is set like a value (20px, light, tabular, tight), the artist like a label
    (9px, spaced capitals), and the gap between them is the 3px gap between a value and its label. */
-.cue-studio .audition-header h2 { font-size: 20px; font-weight: 300; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; color: #f6f7fa; }
+.cue-studio .audition-header h2 { font-size: 20px; font-weight: 300; letter-spacing: -.04em; font-variant-numeric: tabular-nums; color: #f6f7fa; }
 .cue-studio .audition-meta { margin-top: 3px; gap: 0; }
-.cue-studio .audition-artist { margin: 0; color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; line-height: 1; text-transform: uppercase; }
+.cue-studio .audition-artist,
+.cue-studio .audition-header :is(.audition-stat, .audition-duration) > small { margin: 0; color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; line-height: 1; text-transform: uppercase; }
 /* Letters are never clipped: the title and the figures on the right share one line height (24px for 20px type, enough for descenders like g, p and y)
    and 2px of side room (the tight letter spacing and the overflow clip would otherwise shave the first and last letter). */
 .cue-studio .audition-header h2, .cue-studio .audition-header .audition-stat > span, .cue-studio .audition-header .audition-duration > span { line-height: 1.2; padding-inline: 2px; }

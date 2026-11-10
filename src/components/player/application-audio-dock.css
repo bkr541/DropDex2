@@ -9,12 +9,14 @@
 .app-dock-status > span { flex: 1; }
 .app-dock-status button { display: inline-flex; align-items: center; gap: 6px; padding: 4px; cursor: pointer; }
 .app-dock-source { padding: 5px 20px; background: #22262f; }
-@media (max-width: 1100px) {
+@media (max-width: 967px) {
+  .app-audio-dock .adl-dock { --adl-side-width: 270px; }
   .app-audio-dock .adl-metadata { display: none; }
   .app-audio-dock .adl-identity { flex-basis: 200px; }
 }
 @media (max-width: 767px) {
-  .app-audio-dock .adl-dock { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; padding: 10px 12px; }
+  .app-audio-dock .adl-dock { grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; padding: 10px 12px; }
+  .app-audio-dock .adl-side { display: contents; }
   .app-audio-dock .adl-identity { min-width: 0; }
   .app-audio-dock .adl-timeline { grid-column: 1 / -1; grid-row: 2; }
   .app-audio-dock .adl-output { grid-column: 1 / -1; justify-content: center; }

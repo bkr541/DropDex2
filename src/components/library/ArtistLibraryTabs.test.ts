@@ -111,28 +111,56 @@ describe('Library tab icons', () => {
 });
 
 describe('Library tab panels', () => {
-  it('shows the Genres tab with its count and a bar for each genre', () => {
-    const markup = renderToStaticMarkup(createElement(GenresPanel, { genreStats: [['House', 40], ['Techno', 20]], loading: false }));
-    expect(markup).toContain('2 genres');
+  it('shows tagged-track shares, genre summaries and an untagged drill-down', () => {
+    const markup = renderToStaticMarkup(createElement(GenresPanel, {
+      genreStats: [
+        { name: 'House', count: 30, minBpm: 120, maxBpm: 130, artistCount: 12 },
+        { name: 'Techno', count: 10, minBpm: 138, maxBpm: 138, artistCount: 5 },
+        { name: null, count: 20, minBpm: null, maxBpm: null, artistCount: 8 },
+      ],
+      loading: false,
+      onGenreClick: vi.fn(),
+    }));
+    expect(markup).not.toContain('2 genres');
     expect(markup).toContain('aria-label="Search genres"');
     expect(markup).toContain('data-testid="library-filter-row"');
     expect(markup).toContain('House');
-    expect(markup).toContain('width:100%');
-    expect(markup).toContain('width:50%');
+    expect(markup).toContain('width:75%');
+    expect(markup).toContain('width:25%');
+    expect(markup).toContain('75% of tagged tracks');
+    expect(markup).toContain('120–130 BPM');
+    expect(markup).toContain('12 artists');
+    expect(markup).toContain('aria-label="View House tracks"');
+    expect(markup).toContain('aria-label="View untagged tracks"');
   });
 
-  it('shows the Artists tab with its count and each artist\'s initial', () => {
-    const markup = renderToStaticMarkup(createElement(ArtistsPanel, { artistStats: [['Nurko', 12]], loading: false }));
-    expect(markup).toContain('1 artists');
+  it('shows the Artists tab with each artist\'s initial', () => {
+    const markup = renderToStaticMarkup(createElement(ArtistsPanel, { artistStats: [['Nurko', 12]], loading: false, onArtistClick: vi.fn() }));
+    expect(markup).not.toContain('Showing 1 of 1 artist');
+    expect(markup).toContain('class="track-listing"');
     expect(markup).toContain('aria-label="Search artists"');
     expect(markup).toContain('Nurko');
     expect(markup).toContain('>N<');
   });
 
+  it('renders playlist records as compact table rows and includes the edit action', () => {
+    const markup = renderToStaticMarkup(createElement(PlaylistsPanel, {
+      playlists: [{
+        id: 'playlist-1', import_id: 'import-1', rekordbox_playlist_id: 'rb-playlist-1', name: 'Open Decks',
+        parent_playlist_id: null, sort_order: 0, is_folder: false, created_at: '', track_count: 106, top_genres: [],
+      }],
+      loading: false, profilesByRbId: new Map(), onPlaylistClick: vi.fn(), onEditPlaylist: vi.fn(),
+    }));
+    expect(markup).toContain('class="track-listing"');
+    expect(markup).toContain('aria-label="Open Open Decks"');
+    expect(markup).toContain('aria-label="Edit Open Decks"');
+    expect(markup).not.toContain('Showing 1 of 1 playlist');
+  });
+
   it('shows plain loading and empty messages', () => {
-    expect(renderToStaticMarkup(createElement(GenresPanel, { genreStats: [], loading: true }))).toContain('Loading…');
-    expect(renderToStaticMarkup(createElement(GenresPanel, { genreStats: [], loading: false }))).toContain('No genre data in this library.');
-    expect(renderToStaticMarkup(createElement(ArtistsPanel, { artistStats: [], loading: false }))).toContain('No artist data in this library.');
+    expect(renderToStaticMarkup(createElement(GenresPanel, { genreStats: [], loading: true, onGenreClick: vi.fn() }))).toContain('Loading genres…');
+    expect(renderToStaticMarkup(createElement(GenresPanel, { genreStats: [], loading: false, onGenreClick: vi.fn() }))).toContain('No genre data in this library.');
+    expect(renderToStaticMarkup(createElement(ArtistsPanel, { artistStats: [], loading: false, onArtistClick: vi.fn() }))).toContain('No artist data in this library.');
     expect(renderToStaticMarkup(createElement(PlaylistsPanel, { playlists: [], loading: false, profilesByRbId: new Map(), onPlaylistClick: vi.fn(), onEditPlaylist: vi.fn() })))
       .toContain('No playlists in this import.');
   });

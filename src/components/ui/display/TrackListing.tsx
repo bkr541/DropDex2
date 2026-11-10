@@ -53,6 +53,8 @@ export interface TrackListingProps<T extends { id: string }> {
   scrollStyle?: React.CSSProperties;
   scrollRef?: Ref<HTMLDivElement>;
   onScroll?: UIEventHandler<HTMLDivElement>;
+  /** A marker after the last row, inside the scroll viewport. */
+  endRef?: Ref<HTMLDivElement>;
   topSpacer?: number;
   bottomSpacer?: number;
   'data-testid'?: string;
@@ -67,7 +69,7 @@ export interface TrackListingProps<T extends { id: string }> {
  */
 export function TrackListing<T extends { id: string }>({
   tracks, columns, selectedId, selectedIds, onSelect, getTitle, getArtist, getStatus, renderLeading, renderWaveform, nameClassName = 'w-[340px] shrink-0',
-  actions = true, getActions, sort, onSort, trackSort, trackLabel = 'Track', rowProps, rowKey, className, tableClassName, scrollStyle, scrollRef, onScroll, topSpacer, bottomSpacer, 'data-testid': testId, tableTestId, ariaLabel,
+  actions = true, getActions, sort, onSort, trackSort, trackLabel = 'Track', rowProps, rowKey, className, tableClassName, scrollStyle, scrollRef, onScroll, endRef, topSpacer, bottomSpacer, 'data-testid': testId, tableTestId, ariaLabel,
 }: TrackListingProps<T>) {
   const [menu, setMenu] = useState<{ track: T; anchor: HTMLButtonElement } | null>(null);
   const menuTrack = menu && tracks.find((track) => track.id === menu.track.id);
@@ -146,6 +148,7 @@ export function TrackListing<T extends { id: string }>({
             {spacer(bottomSpacer)}
           </TrackTableBody>
         </TrackTable>
+        {endRef && <div ref={endRef} className="h-px" aria-hidden="true" />}
       </div>
       {menu && items.length > 0 && createPortal(
         <ContextMenu

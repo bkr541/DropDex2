@@ -1,2 +1,2 @@
-/* Active navigation and page header icons use the logo red for their outlines. */
+/* Page header icons use the solid logo red for their outlines. */
 .nav-icon.logo-gradient-icon { fill: none; color: var(--color-logo-red); }

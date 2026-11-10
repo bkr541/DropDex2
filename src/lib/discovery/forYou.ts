@@ -20,7 +20,7 @@ export interface ForYouShelf {
   id: string;
   kind: ShelfKind;
   title: string;
-  caption: string;
+  caption?: string;
   artists: ShelfArtist[];
   /** Set on a genre shelf, so "See all" can open the whole genre. */
   genreId?: string;

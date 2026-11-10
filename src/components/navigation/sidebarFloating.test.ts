@@ -23,7 +23,7 @@ describe('FloatingSidebar wiring', () => {
     expect(src).not.toContain('logo-gradient-border');
   });
   it('is a fixed slim rail with no expanded mode', () => {
-    expect(src).toMatch(/<aside className="pointer-events-none relative z-40 hidden w-\[88px\] shrink-0 md:block">/);
+    expect(src).toContain('<aside className="pointer-events-none relative z-40 hidden w-[88px] shrink-0 md:block"');
     expect(src).toContain('absolute inset-y-0 left-0');
     expect(src).not.toContain('Expand sidebar');
     expect(src).not.toContain('w-[264px]');
@@ -55,11 +55,12 @@ describe('FloatingSidebar wiring', () => {
   it('spaces every entry evenly, with no divider lines between groups', () => {
     expect(src).not.toContain('divider');
   });
-  it('shows the current page as a larger, bolder icon with depth and a tab on the edge, and no circle', () => {
-    expect(src).toContain("'logo-gradient-icon scale-[1.4]'");
-    expect(src).toContain("'scale-100'");
+  it('marks the current page with the same gradient on the icon and the edge marker', () => {
+    expect(src).toContain('--sidebar-active-paint');
+    expect(src).toContain('aria-current={active ? \'page\' : undefined}');
     expect(src).not.toContain('bg-[rgb(255_78_79/0.14)]');
-    expect(src).toContain("background: 'var(--gradient-logo)'");
+    expect(src).toContain('className="sidebar-active-marker ');
+    expect(read('./FloatingSidebar.css')).toContain('.sidebar-active-marker { fill: var(--sidebar-active-paint); }');
   });
   it('is used by App', () => {
     expect(read('../../App.tsx')).toContain('<FloatingSidebar');
@@ -71,7 +72,6 @@ describe('Left nav icons', () => {
   const wanted = {
     home: 'BookStack',
     'artist-library': 'AlbumList',
-    cues: 'TriangleFlag',
     audition: 'Headset',
     discovery: 'Globe',
     'drop-lab': 'Flask',
@@ -80,7 +80,7 @@ describe('Left nav icons', () => {
     usb: 'HardDrive',
   } as const;
 
-  it('uses the corresponding Iconoir Regular icon for every page', async () => {
+  it('uses the corresponding Iconoir Regular icon for the other pages', async () => {
     const regular = await import('iconoir-react/regular');
     const { NAV_ICONS } = await import('./NavIcons');
     for (const view of Object.keys(wanted) as Array<keyof typeof wanted>) {
@@ -89,10 +89,23 @@ describe('Left nav icons', () => {
     }
   });
 
-  it('no longer uses the old carbon icons or the old Cue Points drawing in the nav', () => {
+  it('uses a custom Fine Outline cue marker with a downward point and an A label', async () => {
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { createElement } = await import('react');
+    const { TriangleFlag } = await import('iconoir-react/regular');
+    const { NAV_ICONS } = await import('./NavIcons');
+    const markup = renderToStaticMarkup(createElement(NAV_ICONS.cues, { className: 'nav-icon', 'aria-hidden': true }));
+    expect(NAV_ICONS.cues).not.toBe(TriangleFlag);
+    expect(app).toContain("icon: NAV_ICONS.cues, label: 'Cue Points'");
+    expect(markup).toContain('viewBox="0 0 24 24"');
+    expect(markup).toContain('stroke="currentColor" stroke-width="1.5"');
+    expect(markup.match(/<path\b/g)).toHaveLength(2);
+    expect(markup).toContain('m8.5 14 3.5-7 3.5 7M9.75 11.5h4.5');
+  });
+
+  it('no longer uses the old carbon icons in the nav', () => {
     const items = app.slice(app.indexOf('const sidebarNavItems'), app.indexOf('const titledPage'));
-    for (const old of ['Music', 'Growth', 'Headphones', 'Radio', 'Chemistry', 'Shuffle', 'Usb', 'CuePointsNavIcon']) expect(items).not.toMatch(new RegExp(`icon: ${old}\\b`));
-    expect(app).not.toContain('function CuePointsNavIcon');
+    for (const old of ['Music', 'Growth', 'Headphones', 'Radio', 'Chemistry', 'Shuffle', 'Usb']) expect(items).not.toMatch(new RegExp(`icon: ${old}\\b`));
   });
 
   it('draws each as strokes that take the button colour, and shows the current page in the logo red', async () => {
@@ -124,7 +137,7 @@ describe('Left nav capsule styling', () => {
     expect(css).toContain('feTurbulence');
     expect(css).toContain('mix-blend-mode: overlay');
   });
-  it('lifts the current page icon with a shadow and a glow, and a hovered button into a raised pill', () => {
+  it('raises hovered inactive buttons into pills', () => {
     expect(css).toContain('.sidebar-capsule [data-active="true"]');
     expect(css).not.toContain('0 6px 18px -4px #ff4e4f59');
     expect(css).toMatch(/\[data-testid="sidebar-slot"\]:hover > button:not\(\[data-active="true"\]\)/);
@@ -155,18 +168,38 @@ describe('Left nav spacing', () => {
 describe('Left nav current page icon', () => {
   const css = read('./FloatingSidebar.css');
   const src = read('./FloatingSidebar.tsx');
-  it('has no circle: no tinted disc, no ring around it, no fill', () => {
+  it('keeps the button background transparent around the filled icon', () => {
     expect(css).toMatch(/\.sidebar-capsule \[data-active="true"\] \{ background: transparent; box-shadow: none; \}/);
     expect(css).not.toMatch(/\[data-active="true"\] \{[^}]*(0 0 0 1px|ff4e4f4d|ff4e4f1f)/);
     expect(src).not.toContain('bg-[rgb(255_78_79/0.14)]');
   });
-  it('is larger and has a slightly thicker line', () => {
-    expect(src).toContain("'logo-gradient-icon scale-[1.4]'");
-    expect(css).toMatch(/\.sidebar-capsule \.nav-icon\.logo-gradient-icon \{[^}]*stroke-width: 1\.9;/);
+  it('uses a filled counterpart for each active sidebar icon', async () => {
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { createElement } = await import('react');
+    const { NAV_ICONS, FILLED_NAV_ICONS, FilledProfileIcon } = await import('./NavIcons');
+    for (const outline of Object.values(NAV_ICONS)) {
+      const FilledIcon = FILLED_NAV_ICONS.get(outline);
+      expect(FilledIcon).toBeDefined();
+      if (!FilledIcon) throw new Error('Missing filled icon');
+      expect(renderToStaticMarkup(createElement(FilledIcon))).toContain('fill="currentColor"');
+    }
+    expect(renderToStaticMarkup(createElement(FilledProfileIcon))).toContain('fill="currentColor"');
+    expect(src).toContain('isActive ? FILLED_NAV_ICONS.get(entry.item.icon)');
+    expect(css).toContain('[data-active="true"] .nav-icon [fill="currentColor"] { fill: var(--sidebar-active-paint); }');
   });
-  it('has depth: a dark shadow underneath and a red glow around the icon, and the same lift on the profile picture', () => {
-    expect(css).toMatch(/filter: drop-shadow\(0 3px 3px #000000b3\) drop-shadow\(0 0 7px #ff4e4f80\);/);
-    expect(css).toContain('[data-active="true"] .sidebar-avatar { transform: scale(1.25);');
+  it('paints the active icon paths with a gradient and keeps the original stroke weight and size', () => {
+    expect(src).toContain('<Icon width={24} height={24} aria-hidden="true" className="nav-icon shrink-0" />');
+    expect(src).toContain('gradientUnits="userSpaceOnUse"');
+    expect(src).not.toContain('scale-[');
+    expect(css).toMatch(/\[data-active="true"\] \.nav-icon \[stroke="currentColor"\] \{\s*stroke: var\(--sidebar-active-paint\);/);
+    expect(css).not.toContain('stroke-width:');
+  });
+  it('keeps active icons and the profile picture free of shadows', () => {
+    expect(css).not.toContain('drop-shadow(');
+    expect(css).not.toMatch(/\[data-active="true"\] \.sidebar-avatar \{[^}]*(?:box-shadow|transform):/);
     expect(src).toContain('sidebar-avatar');
+  });
+  it('animates the gradient stops when reduced motion is disabled', () => {
+    expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{\s*\.sidebar-icon-gradient stop \{ animation: sidebar-icon-gradient-shift/);
   });
 });

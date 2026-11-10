@@ -14,6 +14,7 @@ import { DiscoveryScrapeProgressModal } from './DiscoveryScrapeProgressModal';
 import { ArtistPage } from './ArtistPage';
 import { TrackListPage } from './TrackListPage';
 import { DiscoveryHomeFeed } from './DiscoveryHomeFeed';
+import { DiscoveryHero } from './DiscoveryHero';
 import { GenreBrowser } from './GenreBrowser';
 import { GenreArtistGrid } from './GenreArtistGrid';
 import { useCatalogGenres } from '../../hooks/useCatalogGenres';
@@ -183,6 +184,7 @@ export function DiscoveryView({ accessToken, userId = null, onEditTaste }: Disco
   };
 
   const showSearchResults = query.trim().length >= 2;
+  const showHomeFeed = !showSearchResults && !selectedGenre && !selectedArtist;
 
   return (
     <div className="studio discovery-studio min-w-0" data-testid="discovery-view">
@@ -194,40 +196,45 @@ export function DiscoveryView({ accessToken, userId = null, onEditTaste }: Disco
         pollingError={scrapePollingError}
       />
 
-      {/* Header and genre bands — hidden while viewing a set's track list */}
       {!selectedSetlistForDetail && (
-        <>
-          <header className="studio-band discovery-header" data-testid="discovery-header">
-            <ArtistSearchInput
-              value={query}
-              onChange={setQuery}
-              onClear={() => setQuery('')}
-              loading={searchLoading}
-              placeholder={
-                selectedArtist && showArtistPage
-                  ? `Search for a different artist…`
-                  : 'Search DropDex artists…'
-              }
-            />
-            <div className="studio-stats" data-testid="discovery-stats">
-              <div className="studio-stat"><span>{genresLoading ? '—' : catalogGenres.length.toLocaleString()}</span><small>Genres</small></div>
-              <div className="studio-stat"><span>{feed.loading ? '—' : feed.artists.length.toLocaleString()}</span><small>Top artists</small></div>
-              <div className="studio-stat"><span>{feed.loading ? '—' : feedSetCount.toLocaleString()}</span><small>Sets</small></div>
-            </div>
-          </header>
-          <GenreBrowser
-            genres={catalogGenres}
-            loading={genresLoading}
-            error={genresError}
-            onRetry={retryGenres}
-            selectedGenreId={selectedGenreId}
-            onSelectGenre={setSelectedGenreId}
-          />
-        </>
+        <header className="studio-band discovery-header" data-testid="discovery-header">
+          <div className="studio-stats" data-testid="discovery-stats">
+            <div className="studio-stat"><span>{genresLoading ? '—' : catalogGenres.length.toLocaleString()}</span><small>Genres</small></div>
+            <div className="studio-stat"><span>{feed.loading ? '—' : feed.artists.length.toLocaleString()}</span><small>Top artists</small></div>
+            <div className="studio-stat"><span>{feed.loading ? '—' : feedSetCount.toLocaleString()}</span><small>Sets</small></div>
+          </div>
+        </header>
       )}
 
-      {/* Body: scrolls on its own */}
       <div className="studio-body scrollbar-none" data-testid="discovery-body">
+        {!selectedSetlistForDetail && (
+          <>
+            {showHomeFeed && (
+              <DiscoveryHero feed={feed} forYou={forYou} genres={catalogGenres}
+                onSelectArtist={handleArtistSelect} onOpenSetlist={handleOpenSetlist} />
+            )}
+            <div className="discovery-filters" data-testid="discovery-filters" role="group" aria-label="Discovery search and filters">
+              <ArtistSearchInput
+                value={query}
+                onChange={setQuery}
+                onClear={() => setQuery('')}
+                loading={searchLoading}
+                placeholder={selectedArtist && showArtistPage ? 'Search for a different artist…' : 'Search DropDex artists…'}
+              />
+              <GenreBrowser
+                genres={catalogGenres}
+                loading={genresLoading}
+                error={genresError}
+                onRetry={retryGenres}
+                selectedGenreId={selectedGenreId}
+                onSelectGenre={(genreId) => {
+                  setSelectedGenreId(genreId);
+                  if (genreId) setQuery('');
+                }}
+              />
+            </div>
+          </>
+        )}
         {selectedSetlistForDetail ? (
           <div className="p-4">
             <TrackListPage
@@ -282,7 +289,7 @@ export function DiscoveryView({ accessToken, userId = null, onEditTaste }: Disco
               onBack={handleBackFromArtist}
             />
           </motion.div>
-        ) : !selectedArtist ? (
+        ) : showHomeFeed ? (
           <DiscoveryHomeFeed
             feed={feed}
             forYou={forYou}

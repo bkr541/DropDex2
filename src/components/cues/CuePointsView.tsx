@@ -6,6 +6,9 @@ import { TrackTimeline } from '../ui/media/TrackTimeline';
 import { waveformSectionInk } from '../ui/media/waveformPresentation';
 import { cueFlagColor, WaveformCueMarker } from '../ui/media/WaveformCueMarker';
 import { CloudSyncIcon } from '../library/CloudSyncIcon';
+import { LibraryListingFooter } from '../library/LibraryListingFooter';
+import { useLibraryListingViewport } from '../library/useLibraryListingViewport';
+import { useLibraryInfiniteScroll } from '../library/useLibraryInfiniteScroll';
 import { useSyncedPreviewKeys } from '../../hooks/useSyncedPreviewKeys';
 import { trackIdentityKey } from '../../lib/preview/trackIdentity';
 import { GenreEditPopover, GenreEditorContent } from './GenreEditPopover';
@@ -126,6 +129,10 @@ import type {
 
 interface CuePointsViewProps {
   mode?: 'cues' | 'audition' | 'artist-library';
+  artistFilter?: string | null;
+  /** Null selects untagged tracks, and the empty string selects all genres. */
+  genreFilter?: string | null;
+  onGenreFilterChange?: (genre: string | null) => void;
   onTrackOpen?: (track: RekordboxTrack) => void;
   /** Library page only: told whenever the selected track changes, so the page can show that track's waveform. */
   onSelectedTrackChange?: (track: RekordboxTrack | null) => void;
@@ -187,6 +194,8 @@ interface CueRebaseRecoveryState {
 }
 
 const CUE_PAGE_SIZE = 100;
+// PostgreSQL text cannot contain NUL, so this option cannot collide with an imported genre.
+const UNTAGGED_GENRE_OPTION = '\u0000untagged';
 
 function formatCamelotKey(key: string | null | undefined): string {
   const raw = formatKey(key);
@@ -1519,7 +1528,7 @@ export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform }: {
   );
 }
 
-export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, onSelectedTrackChange }: CuePointsViewProps) {
+export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter, genreFilter, onGenreFilterChange, onTrackOpen, onSelectedTrackChange }: CuePointsViewProps) {
   const artistLibrary = mode === 'artist-library';
   const audition = mode !== 'cues';
   const auth = useAuthSession();
@@ -1527,7 +1536,8 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
   const [browserSource, setBrowserSource] = useState<BrowserSource>('library');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [genre, setGenre] = useState('');
+  const [localGenre, setLocalGenre] = useState<string | null>('');
+  const genre = genreFilter === undefined ? localGenre : genreFilter;
   const [keyFilter, setKeyFilter] = useState('');
   const [cueFilter, setCueFilter] = useState<CueFilter>('all');
   const [analysisFilter, setAnalysisFilter] = useState<AnalysisFilter>('all');
@@ -1587,9 +1597,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
   const applyGenerationRef = useRef(0);
   const waveformPanelWrapperRef = useRef<HTMLDivElement>(null);
   const filterRowRef = useRef<HTMLDivElement>(null);
-  const listingRef = useRef<HTMLDivElement>(null);
-  // The record listing is the only thing that scrolls: it gets exactly the height left below everything above it, so nothing above it moves.
-  const [listingMaxHeight, setListingMaxHeight] = useState<number | null>(null);
+  const { listingRef, maxHeight: listingMaxHeight } = useLibraryListingViewport();
   const [waveformPanelHeight, setWaveformPanelHeight] = useState(0);
   const [filterRowHeight, setFilterRowHeight] = useState(0);
   const [workingCues, setWorkingCues] = useState<WorkingCue[]>([]);
@@ -1627,6 +1635,16 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
   selectedImportIdRef.current = importId;
   workingCuesRef.current = workingCues;
   const { stats, refresh: refreshLibraryStats } = useLibraryStats(importId);
+  const genreOptions = [
+    { value: '', label: 'All' },
+    ...(stats?.genreTotals ?? []).map(({ name, count }) => ({ value: name, label: `${name} (${count})` })),
+  ];
+  if (genre === null || (artistLibrary && stats?.genreSummaries?.some(({ name }) => name === null))) {
+    genreOptions.push({ value: UNTAGGED_GENRE_OPTION, label: 'Untagged' });
+  }
+  if (genre && !genreOptions.some(({ value }) => value === genre)) {
+    genreOptions.push({ value: genre, label: genre });
+  }
   const bpmBounds = useMemo((): [number, number] => {
     const bpms = (stats?.bpmTotals ?? []).map((t) => t.bpm).filter((b) => b > 0);
     if (bpms.length === 0) return [60, 200];
@@ -1646,6 +1664,8 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
   } = useLibraryTracks(importId, {
     search,
     genre: genre || null,
+    untaggedGenre: genre === null,
+    artist: artistFilter,
     debounceMs: 220,
     pageSize: CUE_PAGE_SIZE,
   });
@@ -2543,6 +2563,10 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
   const activeSourceError = browserSource === 'library' ? error : playlistsError ?? playlistTracksError;
   const activeSourceHasMore = browserSource === 'library' ? hasMore : playlistTracksHaveMore;
   const loadMoreActiveSource = browserSource === 'library' ? loadMore : loadMorePlaylistTracks;
+  const autoPaginate = artistLibrary && activeSourceHasMore;
+  const canLoadNextPage = autoPaginate && !activeSourceLoading && !activeSourceLoadingMore && !activeSourceError;
+  const listingEndRef = useLibraryInfiniteScroll(canLoadNextPage ? loadMoreActiveSource : null);
+  const nextPageError = autoPaginate && activeSourceTracks.length > 0 ? activeSourceError : null;
 
   const trackIdsKey = useMemo(
     () => [...new Set(activeSourceTracks.map((track) => track.id))].join(','),
@@ -2680,8 +2704,11 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
   useEffect(() => {
     if (selectedTrackId == null && orderedVisibleTracks.length > 0) {
       setSelectedTrack(orderedVisibleTracks[0]);
+    } else if (artistLibrary && selectedTrackId && !activeSourceLoading
+      && !activeSourceTracks.some((track) => track.id === selectedTrackId)) {
+      setSelectedTrack(orderedVisibleTracks[0] ?? null);
     }
-  }, [orderedVisibleTracks, selectedTrackId]);
+  }, [activeSourceLoading, activeSourceTracks, artistLibrary, orderedVisibleTracks, selectedTrackId]);
 
   const selectedTrackChangeRef = useRef(onSelectedTrackChange);
   selectedTrackChangeRef.current = onSelectedTrackChange;
@@ -3572,20 +3599,6 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const measure = () => {
-      const el = listingRef.current;
-      if (!el) return;
-      setListingMaxHeight(Math.max(280, Math.floor(window.innerHeight - el.getBoundingClientRect().top - 16)));
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    const observer = new ResizeObserver(measure);
-    observer.observe(document.body);
-    if (filterRowRef.current) observer.observe(filterRowRef.current);
-    return () => { window.removeEventListener('resize', measure); observer.disconnect(); };
-  }, [waveformPanelHeight, filterRowHeight, importId]);
-
   if (!importId) {
     return (
       <div className="mx-auto max-w-3xl pt-8">
@@ -3914,14 +3927,11 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
               />
               <FilterDropdown
                 label="Genre"
-                value={genre}
-                onChange={setGenre}
+                value={genre ?? UNTAGGED_GENRE_OPTION}
+                onChange={(value) => (onGenreFilterChange ?? setLocalGenre)(value === UNTAGGED_GENRE_OPTION ? null : value)}
                 searchable
                 className="cue-browser__filter cue-browser__filter--genre min-w-[100px]"
-                options={[
-                  { value: '', label: 'All' },
-                  ...(stats?.genreTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
-                ]}
+                options={genreOptions}
               />
               <FilterDropdown
                 label="Key"
@@ -4018,7 +4028,14 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
           </div>
         )}
 
-        {activeSourceError ? (
+        {nextPageError && (
+          <div className="flex items-center gap-3 px-5 py-2.5 text-xs text-red-200" role="alert">
+            <span>{nextPageError}</span>
+            <ControlButton variant="ghost" onClick={() => void loadMoreActiveSource()}>Retry</ControlButton>
+          </div>
+        )}
+
+        {activeSourceError && !nextPageError ? (
           <div className="flex items-center gap-3 px-5 py-8 text-sm text-red-300">
             <WarningTriangle width={20} height={20} aria-hidden="true" />
             <span>{activeSourceError}</span>
@@ -4035,8 +4052,17 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
           </div>
         ) : filteredTracks.length === 0 ? (
           <div className="px-5 py-14 text-center">
-            <p className="font-bold">No tracks match these filters.</p>
-            <p className="mt-1 text-sm text-muted-foreground">Try clearing a search or filter to widen the current source.</p>
+            {autoPaginate ? (
+              <>
+                {!nextPageError && <p className="text-sm text-muted-foreground" role="status">Finding matching tracks…</p>}
+                <div ref={listingEndRef} className="h-px" aria-hidden="true" />
+              </>
+            ) : (
+              <>
+                <p className="font-bold">No tracks match these filters.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Try clearing a search or filter to widen the current source.</p>
+              </>
+            )}
           </div>
         ) : (
           <>
@@ -4074,26 +4100,29 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
               sort={sortCol ? { column: sortCol, direction: sortDir } : null}
               onSort={(column) => handleColClick(column as typeof sortCol & string)}
               scrollStyle={{ maxHeight: listingMaxHeight ?? `calc(100vh - ${waveformPanelHeight + filterRowHeight + 16}px)` }}
+              endRef={autoPaginate ? listingEndRef : undefined}
               tableTestId="cue-browser-track-table"
               ariaLabel="Cue Points browser tracks"
             />
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-[var(--color-border-subtle)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-5">
-              <div className="space-y-0.5 text-xs text-muted-foreground">
+            {artistLibrary && activeSourceLoadingMore && (
+              <p className="px-4 py-2 text-xs text-muted-foreground" role="status">Loading tracks…</p>
+            )}
+            {!artistLibrary && (
+              <LibraryListingFooter action={activeSourceHasMore && (
+                <ControlButton variant="surface" onClick={() => void loadMoreActiveSource()} disabled={activeSourceLoadingMore}>
+                  {activeSourceLoadingMore ? 'Loading…' : 'Load more tracks'}
+                </ControlButton>
+              )}>
                 <p>
                   Showing {orderedVisibleTracks.length.toLocaleString()} visible rows · {activeSourceTotal.toLocaleString()} tracks in the active source query
                 </p>
                 {browserSource === 'playlists' && activeSourceHasMore && (
                   <p>Playlist search and filters apply to currently loaded tracks; load more to widen the filtered result set.</p>
                 )}
-              </div>
-              {activeSourceHasMore && (
-                <ControlButton variant="surface" onClick={() => void loadMoreActiveSource()} disabled={activeSourceLoadingMore}>
-                  {activeSourceLoadingMore ? 'Loading…' : 'Load more tracks'}
-                </ControlButton>
-              )}
-            </div>
+              </LibraryListingFooter>
+            )}
           </>
         )}
       </section>
