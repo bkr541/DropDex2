@@ -1,5 +1,5 @@
 import { Trash } from 'iconoir-react/regular';
-import { ToolbarIconButton, ToolbarIconGroup } from '../ui/controls/ToolbarIconButton';
+import { UsbStat, UsbStats } from './UsbStat';
 import { getImportHistoryPresentation } from '../../lib/rekordbox/importHistoryPresentation';
 import { isPendingHardDelete, isUsableLibrarySnapshot } from '../../lib/rekordbox/libraryDeletion';
 import { getImportProgress, isImportInFlight, isImportStalled } from '../../lib/rekordbox/importLifecycle';
@@ -52,9 +52,11 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
             </StatusBadge>
           )}
         </div>
-        <p className="text-[10px] text-muted-foreground font-mono">
-          {new Date(imp.imported_at).toLocaleDateString()} · {imp.track_count.toLocaleString()} tracks · {imp.playlist_count} playlists
-        </p>
+        <UsbStats className="mt-2">
+          <UsbStat label="Imported" value={new Date(imp.imported_at).toLocaleDateString(undefined, { dateStyle: 'medium' })} />
+          <UsbStat label="Tracks" value={imp.track_count.toLocaleString()} />
+          <UsbStat label="Playlists" value={imp.playlist_count.toLocaleString()} />
+        </UsbStats>
         {importInFlight && (
           <div className="mt-2 max-w-md">
             <p className="mb-1 truncate text-xs text-muted-foreground">{importProgress.currentTrackLabel || 'Preparing current track…'}</p>
@@ -77,13 +79,9 @@ export function ImportSnapshotRow({ snapshot: imp, isActive, onOpen, onMakeActiv
           </ControlButton>
         )}
         {(!importInFlight || imp.retryable || isPendingHardDelete(imp)) && (
-          <div className="cue-studio">
-            <ToolbarIconGroup>
-              <ToolbarIconButton label={`${isPendingHardDelete(imp) ? 'Retry delete' : 'Delete'} import ${imp.source_filename}`} onClick={() => onDelete(imp)}>
-                <Trash width={16} height={16} aria-hidden="true" />
-              </ToolbarIconButton>
-            </ToolbarIconGroup>
-          </div>
+          <ControlButton variant="danger-outline" aria-label={`${isPendingHardDelete(imp) ? 'Retry delete' : 'Delete'} import ${imp.source_filename}`} title={`${isPendingHardDelete(imp) ? 'Retry delete' : 'Delete'} import`} onClick={() => onDelete(imp)}>
+            <Trash width={16} height={16} aria-hidden="true" />
+          </ControlButton>
         )}
       </div>
     </div>

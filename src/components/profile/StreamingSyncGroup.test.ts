@@ -22,7 +22,7 @@ describe('Streaming group in the Library tab', () => {
   it('starts with the switch off and no sync button', async () => {
     const { StreamingSyncGroup } = await import('./StreamingSyncGroup');
     const markup = renderToStaticMarkup(createElement(StreamingSyncGroup, { importId: 'i1', trackCount: 2283, sourceName: 'DJ STICK', deviceName: 'DJ STICK' }));
-    expect(markup).toContain('Sync my music to the DropDex cloud');
+    expect(markup).toContain('Sync my music to the DropDex Cloud');
     expect(markup).toContain('aria-checked="false"');
     expect(markup).not.toContain('streaming-sync-button');
   });

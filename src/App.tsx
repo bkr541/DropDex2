@@ -73,6 +73,7 @@ import { groupImportsByUsb, UNASSIGNED_KEY } from './lib/usb/groupImportsByUsb';
 import { UsbCardsSection } from './components/profile/UsbLibrarySections';
 import { useLibraryOverviewWidgets } from './hooks/useLibraryOverviewWidgets';
 import { DashboardWidgetsGroup } from './components/profile/DashboardWidgetsGroup';
+import { DisplayPreferencesGroup } from './components/profile/DisplayPreferencesGroup';
 import type { PlaylistWithCount } from './lib/queries/rekordbox';
 import type { RekordboxTrack, RekordboxImport, UserPlaylistProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
@@ -80,6 +81,7 @@ import type { ThemeId } from './theme/theme';
 import { CheckCircle, CompactDisc, Database, EditPencil, GraphUp, HalfMoon, MusicNote, Refresh, SunLight, Upload, Usb, User, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { openLayoutLab } from './components/ui/openLayoutLab';
 import { ControlButton } from './components/ui/controls';
+import { LogOut } from 'iconoir-react/regular';
 import { StatTile, SurfaceCard, TabNavigation } from './components/ui/display';
 import { NoticeCard, SelectableOptionCard, StatusLoader } from './components/ui/feedback';
 import './components/profile/profile.css';
@@ -96,6 +98,12 @@ const THEME_OPTIONS: ThemeOption[] = [
   { id: 'light', label: 'Light', description: 'High contrast', icon: SunLight },
   { id: 'cdj', label: 'CDJ', description: 'Performance deck', icon: CompactDisc },
 ];
+
+const THEME_HERO: Record<ThemeId, { background: string; ink: string }> = {
+  dark: { background: 'linear-gradient(165deg, #292d37, #191d25)', ink: '#cdd3dd' },
+  light: { background: 'linear-gradient(165deg, #f7f4f2, #e8e3df)', ink: '#3a3f4b' },
+  cdj: { background: 'linear-gradient(165deg, #12171d, #0b0e12)', ink: '#8fb4d8' },
+};
 
 const PROFILE_TABS = [
   { id: 'account', label: 'Account' },
@@ -1448,7 +1456,6 @@ export default function App() {
                         void refetchUserProfile();
                         void refetchUserGenres();
                       }}
-                      onSignOut={() => void supabase.auth.signOut()}
                     />
                   )}
 
@@ -1458,15 +1465,18 @@ export default function App() {
                       <section className="profile-group">
                         <h2 className="profile-heading">Theme</h2>
                         <div>
-                          <p className="mb-2 text-xs text-muted-foreground">Choose your preferred color scheme</p>
-                          <div className="profile-theme-options" role="radiogroup" aria-label="Theme">
+                          <p className="text-sm font-bold">Choose your color scheme</p>
+                          <p className="mb-3 mt-0.5 text-xs text-muted-foreground">Dark is the default. Light has higher contrast, and CDJ is built for a performance deck.</p>
+                          <div className="profile-choice-grid" role="radiogroup" aria-label="Theme">
                             {THEME_OPTIONS.map(({ id, label, description, icon: Icon }) => (
                               <SelectableOptionCard
                                 key={id}
                                 selected={theme === id}
                                 title={label}
                                 description={description}
-                                icon={<Icon width={20} height={20} aria-hidden="true" />}
+                                hero={<Icon width={26} height={26} aria-hidden="true" style={{ color: THEME_HERO[id].ink }} />}
+                                heroBackground={THEME_HERO[id].background}
+                                horizontal
                                 onSelect={() => setTheme(id)}
                               />
                             ))}
@@ -1474,6 +1484,7 @@ export default function App() {
                         </div>
                       </section>
                       <DashboardWidgetsGroup widgets={libraryOverviewWidgets} />
+                      <DisplayPreferencesGroup />
                     </div>
                   )}
 
@@ -1578,6 +1589,11 @@ export default function App() {
                   {/* ── Developer tab ── */}
                   {settingsTab === 'developer' && <DeveloperTab />}
                 </div>
+                {settingsTab === 'account' && userId && (
+                  <div className="profile-signout">
+                    <ControlButton variant="secondary" onClick={() => void supabase.auth.signOut()}><LogOut width={14} height={14} aria-hidden="true" /> Sign Out</ControlButton>
+                  </div>
+                )}
               </motion.div>
             )}
 

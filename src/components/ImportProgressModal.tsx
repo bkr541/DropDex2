@@ -23,6 +23,7 @@ export function ImportProgressModal({
   currentStep,
   stagePercent,
   status,
+  ready,
   onClose,
   abortOverlay,
   children,
@@ -32,6 +33,8 @@ export function ImportProgressModal({
   stagePercent?: number;
   /** `failed` turns the progress display red. */
   status?: QuietProgressStatus;
+  /** A source has been chosen: the progress accent and header icon turn green. */
+  ready?: boolean;
   /** Safety-aware close handler — must be handleClose from ImportLibraryModal. */
   onClose: () => void;
   /** When truthy, rendered as a full-modal blocking overlay. */
@@ -44,8 +47,9 @@ export function ImportProgressModal({
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0.9, opacity: 0 }}
-      className="relative w-full max-w-[624px] h-[600px] max-h-[calc(100dvh-2rem)] overflow-hidden bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-3xl shadow-2xl flex flex-col"
+      className="studio-surface profile-modal import-modal relative w-full max-w-[624px] h-[600px] max-h-[calc(100dvh-2rem)] !overflow-hidden flex flex-col"
       role="dialog"
+      data-ready={ready ? 'true' : undefined}
       aria-modal="true"
       aria-labelledby="import-progress-title"
     >
@@ -66,21 +70,19 @@ export function ImportProgressModal({
 
       {/* Shared header — identical on every phase */}
       <div className="flex items-center justify-between px-7 pt-5 pb-0 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-            <Database className="text-primary" width={24} height={24} aria-hidden />
-          </div>
-          <h2 id="import-progress-title" className="text-xl font-bold leading-tight">
+        <div className="flex items-center gap-2">
+          <Database className={ready ? 'shrink-0 text-green-500' : 'shrink-0 text-[var(--color-control-primary)]'} width={24} height={24} aria-hidden />
+          <h2 id="import-progress-title" className="import-modal__title text-[26px] leading-tight">
             Import Rekordbox Library
           </h2>
         </div>
-        <ControlButton variant="ghost" onClick={onClose} aria-label="Close">
+        <ControlButton variant="ghost" className="!absolute right-3 top-3 z-20" onClick={onClose} aria-label="Close">
           <Xmark width={18} height={18} aria-hidden="true" />
         </ControlButton>
       </div>
 
       {/* The shared progress display: percentage, five numbered phases, one sentence */}
-      <div className="px-7 pt-5 pb-1 shrink-0" data-testid="import-progress">
+      <div className="px-7 pt-5 pb-0 shrink-0" data-testid="import-progress">
         <ImportStageProgress currentStep={currentStep} stagePercent={stagePercent} status={status} />
       </div>
 
@@ -93,7 +95,7 @@ export function ImportProgressModal({
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -18 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className="h-full overflow-y-auto px-7 py-4"
+            className="h-full overflow-y-auto px-7 pt-3 pb-4"
           >
             {children}
           </motion.div>

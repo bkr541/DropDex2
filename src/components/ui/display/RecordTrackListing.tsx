@@ -98,7 +98,7 @@ export function RecordTrackListing<T extends TrackRecord>({
         return importId || playlistCounts ? '…' : '—';
       },
     },
-    { id: 'date-added', label: 'Date added', sort: 'date-added', headClassName: 'w-[104px]', cellClassName: 'w-[104px] whitespace-nowrap tabular-nums',
+    { id: 'date-added', label: 'Added On', sort: 'date-added', headClassName: 'w-[104px]', cellClassName: 'w-[104px] whitespace-nowrap tabular-nums',
       render: (track) => track.date_added ? <time dateTime={track.date_added}>{track.date_added}</time> : '—' },
     { id: 'length', label: 'Duration', sort: 'length', headClassName: 'w-[80px]', cellClassName: 'w-[80px] whitespace-nowrap font-mono tabular-nums',
       render: (track) => formatTime(durationMsForTrack({ duration_ms: track.duration_ms, duration_seconds: track.duration_seconds ?? null }, null)) },

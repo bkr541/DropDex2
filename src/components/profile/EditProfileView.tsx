@@ -12,7 +12,7 @@ import {
   searchArtistsByName,
 } from '../../lib/queries/userPreferences';
 import type { UserProfile, UserGenrePreference, UserArtistPreference } from '../../types';
-import { AlignLeft, AtSign, Cloud, Globe, Instagram, LogOut, Refresh, Spotify, Tiktok, Upload, Xmark, Youtube } from 'iconoir-react/regular';
+import { AlignLeft, AtSign, Cloud, Globe, Instagram, Refresh, Spotify, Tiktok, Upload, Xmark, Youtube } from 'iconoir-react/regular';
 import { ControlButton, FormField, SearchControl, TextareaControl, TextControl } from '../ui/controls';
 import { Avatar } from '../ui/display';
 import { NoticeCard } from '../ui/feedback';
@@ -151,7 +151,6 @@ interface EditProfileViewProps {
   existingProfile: UserProfile | null;
   onPreferencesChanged: () => void;
   onSaved: (profile: UserProfile) => void;
-  onSignOut: () => void;
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -162,7 +161,6 @@ export function EditProfileView({
   existingProfile,
   onPreferencesChanged,
   onSaved,
-  onSignOut,
 }: EditProfileViewProps) {
   // Profile fields
   const [displayName, setDisplayName] = useState(existingProfile?.display_name ?? '');
@@ -290,7 +288,7 @@ export function EditProfileView({
       <section className="lgh profile-identity-hero" aria-label="Identity">
         <span aria-hidden="true" className="lgh-watermark">{displayName.trim() || 'Profile'}</span>
         <div className="profile-identity">
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-5">
             <div className="relative flex">
               <span className="lgh-ring" aria-hidden="true" />
               <Avatar src={displayedAvatar} alt="Profile avatar" className="lgh-avatar" />
@@ -403,7 +401,6 @@ export function EditProfileView({
 
       <div className="profile-footer">
         {saveError && <NoticeCard tone="error" className="w-full">{saveError}</NoticeCard>}
-        <ControlButton variant="secondary" onClick={onSignOut}><LogOut width={14} height={14} aria-hidden="true" /> Sign Out</ControlButton>
         {(isDirty || saving) && (
           <ControlButton onClick={handleSave} disabled={saving} variant="primary">
             {saving ? <><Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> Saving…</>

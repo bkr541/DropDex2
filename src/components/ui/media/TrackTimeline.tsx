@@ -5,12 +5,12 @@ import { WaveformTimeRuler } from './WaveformTimeRuler';
 import type { TimelineBeatLabel, TimelineBeatTick } from './TimelineLanes';
 import { cueFlagColor } from './WaveformCueMarker';
 import { waveformSectionInk } from './waveformPresentation';
+import { useWaveformStyle } from '../../../lib/preferences/displayPreferences';
 import './track-timeline.css';
 
 /** Library geometry. Workflow adapters may position audio, but cannot change its presentation. */
 export const TRACK_TIMELINE_WAVEFORM_HEIGHT = 72;
 // An explicit segment prevents the Rekordbox area renderer from using spectral source colors.
-const STANDARD_COLOR_SEGMENTS = [{ startFraction: 0, endFraction: 1, color: '#8997AE' }];
 export interface TrackTimelineWaveform extends Pick<RekordboxPreviewWaveformProps,
   'state' | 'colorSegments' | 'activeProgress' | 'onSeek' | 'onRetry' | 'ariaLabel'> {
   id: string;
@@ -52,6 +52,10 @@ export function TrackTimeline({
   cueLines = [], waveformOverlay, waveformControls, waveformRef, waveformProps, beatTicks, beatLabels,
   beatMessage, overlay, testIds,
 }: TrackTimelineProps) {
+  // The user's chosen waveform style (Personalization). The default is one plain colour, drawn as an explicit full-track segment so the area
+  // renderer cannot use the source's spectral colours; the other styles colour each part of the track by frequency or loudness.
+  const waveformStyle = useWaveformStyle();
+  const standardSegments = waveformStyle.colorFor ? undefined : [{ startFraction: 0, endFraction: 1, color: '#8997AE' }];
   const first = beatTicks[0];
   const period = beatTicks[1]?.leftPercent - (first?.leftPercent ?? 0);
   return (
@@ -76,13 +80,13 @@ export function TrackTimeline({
                 filter: muted ? 'grayscale(1) brightness(1.6)' : undefined, opacity: muted ? 0.45 : undefined,
               }} data-testid={muted ? 'flip-lab-waveform-muted' : undefined}>
                 {fill < 1 && <div className="track-timeline__unfilled" aria-hidden="true">
-                  <RekordboxPreviewWaveform {...props} colorSegments={highlightDrops && props.colorSegments?.length ? props.colorSegments : STANDARD_COLOR_SEGMENTS} height={TRACK_TIMELINE_WAVEFORM_HEIGHT} variant="detail"
-                    appearance="rekordbox" renderMode="area" surface={false} showCenterLine={false} tint="#8997AE" />
+                  <RekordboxPreviewWaveform {...props} colorSegments={highlightDrops && props.colorSegments?.length ? props.colorSegments : standardSegments} height={TRACK_TIMELINE_WAVEFORM_HEIGHT} variant="detail"
+                    appearance="rekordbox" renderMode="area" surface={false} showCenterLine={false} tint="#8997AE" waveformStyle={waveformStyle} />
                 </div>}
                 <div className="track-timeline__fill" data-testid={fill < 1 ? 'flip-lab-waveform-fill' : undefined}
                   style={{ clipPath: fill < 1 ? `inset(0 ${(1 - Math.max(0, Math.min(1, fill))) * 100}% 0 0)` : undefined }}>
-                  <RekordboxPreviewWaveform {...props} colorSegments={highlightDrops && props.colorSegments?.length ? props.colorSegments : STANDARD_COLOR_SEGMENTS} height={TRACK_TIMELINE_WAVEFORM_HEIGHT} variant="detail"
-                    appearance="rekordbox" renderMode="area" surface={false} showCenterLine={false} tint="#8997AE" />
+                  <RekordboxPreviewWaveform {...props} colorSegments={highlightDrops && props.colorSegments?.length ? props.colorSegments : standardSegments} height={TRACK_TIMELINE_WAVEFORM_HEIGHT} variant="detail"
+                    appearance="rekordbox" renderMode="area" surface={false} showCenterLine={false} tint="#8997AE" waveformStyle={waveformStyle} />
                 </div>
               </div>
             ))}

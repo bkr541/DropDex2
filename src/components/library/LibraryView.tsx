@@ -118,7 +118,7 @@ function EmptyLibrary({ onImport, profile }: { onImport: () => void; profile: Us
       {/* Empty state */}
       <h2 className="text-lg font-bold">No Rekordbox Library Imported Yet</h2>
       <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
-        Connect your rekordbox USB drive, then import your library to get started.
+        Connect your Rekordbox USB drive, then import your library to get started.
       </p>
       <ControlButton variant="primary" onClick={onImport} className="w-auto">
         <Upload width={16} height={16} aria-hidden="true" />

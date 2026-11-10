@@ -78,7 +78,7 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
   const openSync = () => {
     setMessage(null);
     if (!desktop) { setMessage('Syncing needs the DropDex desktop app, because it reads the files from your USB.'); return; }
-    if (usb.status !== 'connected') { setMessage('Connect your USB first. DropDex reads your tracks from it to make the cloud copies. You can do that on the USB Management page.'); return; }
+    if (usb.status !== 'connected') { setMessage('Connect your USB first. DropDex reads your tracks from it to make the Cloud copies. You can do that on the USB Management page.'); return; }
     setDialogOpen(true);
   };
 
@@ -119,9 +119,9 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
       <SurfaceCard as="div" className="profile-records divide-y divide-[var(--color-border-faint)]">
         <div className="profile-record flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <p id="streaming-sync-label" className="text-xs font-medium">Sync my music to the DropDex cloud</p>
+            <p id="streaming-sync-label" className="text-xs font-medium">Sync my music to the DropDex Cloud</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Lets you listen to your tracks and audition them away from your USB, on any device you sign in on. DropDex stores a smaller preview of each track in your own private cloud folder and leaves your original files exactly as they are.
+              Lets you listen to your tracks and audition them away from your USB, on any device you sign in on. DropDex stores a smaller preview of each track in your own private Cloud folder and leaves your original files exactly as they are.
             </p>
           </div>
           <ProfileSwitch
@@ -140,7 +140,7 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
                 <p className="text-sm font-bold">{trackCount != null ? `${trackCount.toLocaleString()} tracks in your library` : 'Import your library first'}</p>
                 <p className="text-xs text-muted-foreground">
                   {trackCount != null
-                    ? `${sourceName ? `From ${sourceName}. ` : ''}Syncing all of them would take ${approxSize(trackCount)} in your cloud (a rough estimate).`
+                    ? `${sourceName ? `From ${sourceName}. ` : ''}Syncing all of them would take ${approxSize(trackCount)} in your Cloud (a rough estimate).`
                     : 'Once your Rekordbox library is imported, you can sync its tracks here.'}
                 </p>
               </div>
@@ -211,7 +211,7 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
 
       <Dialog
         open={dialogOpen}
-        title="Sync your tracks to the cloud"
+        title="Sync your tracks to the Cloud"
         onClose={() => setDialogOpen(false)}
         actions={[
           { label: 'Cancel', variant: 'secondary', onClick: () => setDialogOpen(false) },
@@ -219,7 +219,7 @@ export function StreamingSyncGroup({ importId, trackCount, sourceName, deviceNam
           { label: 'Sync All', variant: 'primary', onClick: () => void syncAll() },
         ]}
       >
-        <p>DropDex makes a smaller 160 kbps copy of each track and uploads it to your private cloud folder. Your original files are never changed. Tracks that are already synced and haven't changed are skipped.</p>
+        <p>DropDex makes a smaller 160 kbps copy of each track and uploads it to your private Cloud folder. Your original files are never changed. Tracks that are already synced and haven't changed are skipped.</p>
         <p className="mt-2 text-muted-foreground">Sync all {trackCount != null ? trackCount.toLocaleString() : ''} tracks, or choose which ones to sync.</p>
       </Dialog>
     </section>

@@ -31,7 +31,7 @@ function FlipLabStemCachePanel() {
       </h2>
       <SurfaceCard as="div" className="flex flex-wrap items-center gap-3 p-4">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">Empty Stem Cache</p>
+          <p className="text-sm font-semibold">Empty Cache</p>
           <p className="text-xs text-muted-foreground">
             Deletes every vocal and instrumental stem Flip Lab has saved on this computer. Tracks will be separated again the next time you press Flip.
           </p>
@@ -42,7 +42,7 @@ function FlipLabStemCachePanel() {
           onClick={() => { void handleEmpty(); }}
           disabled={status === 'clearing'}
         >
-          <Trash width={14} height={14} aria-hidden="true" /> {status === 'clearing' ? 'Emptying…' : 'Empty Stem Cache'}
+          <Trash width={14} height={14} aria-hidden="true" /> {status === 'clearing' ? 'Emptying…' : 'Empty Cache'}
         </ControlButton>
       </SurfaceCard>
       {message && <NoticeCard tone={status === 'error' ? 'error' : 'success'}>{message}</NoticeCard>}
@@ -233,11 +233,6 @@ export function DeveloperTab() {
             const enabled = !disabledEvents.has(key);
             return (
               <div key={key} className="profile-record flex items-center gap-3">
-                <ProfileSwitch
-                  checked={enabled}
-                  aria-label={label}
-                  onClick={() => toggleEvent(key)}
-                />
                 <div className="min-w-0 flex-1">
                   <p className={cn('text-xs font-semibold leading-tight', enabled ? 'text-foreground' : 'text-muted-foreground')}>
                     {label}
@@ -245,9 +240,11 @@ export function DeveloperTab() {
                   </p>
                   <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">{description}</p>
                 </div>
-                <span className={cn('text-[9px] font-bold uppercase tracking-wider shrink-0', enabled ? 'text-primary' : 'text-muted-foreground/40')}>
-                  {enabled ? 'On' : 'Off'}
-                </span>
+                <ProfileSwitch
+                  checked={enabled}
+                  aria-label={label}
+                  onClick={() => toggleEvent(key)}
+                />
               </div>
             );
           })}
@@ -262,11 +259,14 @@ export function DeveloperTab() {
         <h2 className="profile-heading">
           <span className="w-2 h-2 rounded-full bg-primary/60 inline-block" />
           Logger
+          <span className="ml-auto text-[9px] font-mono font-normal tracking-normal text-muted-foreground opacity-60 shrink-0">
+            {filtered.length} / {entries.length}
+          </span>
         </h2>
 
         <SurfaceCard as="div" className="profile-records">
           {/* Filter row */}
-          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--color-border-faint)] flex-wrap">
+          <div className="flex items-end gap-2 px-3 py-2.5 border-b border-[var(--color-border-faint)] flex-wrap">
             {/* Search */}
             <div className="flex-1 min-w-40">
               <SearchControl
@@ -279,7 +279,8 @@ export function DeveloperTab() {
 
             {/* Component dropdown */}
             <div className="min-w-36">
-              <SelectControl aria-label="Log component" value={component} onChange={(e) => setComponent(e.target.value as LogComponent)}>
+              <label htmlFor="log-component" className="mb-1 block text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Component</label>
+              <SelectControl id="log-component" aria-label="Log component" value={component} onChange={(e) => setComponent(e.target.value as LogComponent)}>
                 {COMPONENTS.map((c) => (
                   <option key={c} value={c}>{c === 'All' ? 'All Components' : c}</option>
                 ))}
@@ -288,7 +289,8 @@ export function DeveloperTab() {
 
             {/* Level dropdown */}
             <div className="min-w-28">
-              <SelectControl aria-label="Log level" value={level} onChange={(e) => setLevel(e.target.value as 'All' | LogLevel)}>
+              <label htmlFor="log-level" className="mb-1 block text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Level</label>
+              <SelectControl id="log-level" aria-label="Log level" value={level} onChange={(e) => setLevel(e.target.value as 'All' | LogLevel)}>
                 {LEVEL_OPTIONS.map((l) => (
                   <option key={l} value={l}>{LEVEL_LABELS[l]}</option>
                 ))}
@@ -304,10 +306,6 @@ export function DeveloperTab() {
               <Trash width={14} height={14} aria-hidden="true" />
               Clear
             </ControlButton>
-
-            <span className="text-[9px] font-mono text-muted-foreground opacity-60 shrink-0">
-              {filtered.length} / {entries.length}
-            </span>
           </div>
 
           {/* Log list */}

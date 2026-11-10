@@ -53,7 +53,7 @@ describe('imported database browser', () => {
     expect(markup).toContain('aria-label="View all metadata for Imported Track"');
     expect(markup).not.toContain('aria-label="Play Imported Track"');
     const headings = markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'));
-    for (const label of ['Track', 'Bpm', 'Key', 'Genre', 'Format', 'Playlists', 'Date added', 'Duration', 'Album', 'Actions']) {
+    for (const label of ['Track', 'Bpm', 'Key', 'Genre', 'Format', 'Playlists', 'Added On', 'Duration', 'Album', 'Actions']) {
       expect(headings).toContain(`>${label}<`);
     }
   });

@@ -7,6 +7,7 @@
  * canvas renderer reused from compact rows through the main transport.
  */
 
+import type { WaveformStyle, WaveformStyleSource } from '../../lib/preferences/waveformStyles';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/utils';
 import { ControlButton } from '../ui/controls';
@@ -57,6 +58,8 @@ export interface RekordboxPreviewWaveformProps {
   surface?: boolean;
   /** Draw the bars in this one colour (a hex value) instead of the theme's waveform colours. */
   tint?: string;
+  /** Colour the timeline area by this style (RGB, 3-Band, …) instead of the source's own spectral colours. Not used with `colorSegments`. */
+  waveformStyle?: WaveformStyle | null;
 }
 
 type RgbColor = [number, number, number];
@@ -325,6 +328,7 @@ export function buildTimelineWaveformGradient(
   width: number,
   monoColor: RgbColor,
   colorSegments: ResolvedWaveformColorSegment[],
+  style?: WaveformStyle | null,
 ): CanvasGradient {
   const gradient = context.createLinearGradient(0, 0, width, 0);
 
@@ -350,7 +354,7 @@ export function buildTimelineWaveformGradient(
   for (let sample = 0; sample < sampleCount; sample += 1) {
     const fraction = sample / (sampleCount - 1);
     const index = Math.min(buckets.length - 1, Math.round(fraction * (buckets.length - 1)));
-    addClampedGradientStop(gradient, fraction, waveformColumnColor(buckets[index], monoColor), 0.98);
+    addClampedGradientStop(gradient, fraction, style?.colorFor ? style.colorFor(buckets[index] as WaveformStyleSource) : waveformColumnColor(buckets[index], monoColor), 0.98);
   }
   return gradient;
 }
@@ -392,6 +396,7 @@ function drawTimelineAreaWaveform(
     gridColor: RgbColor;
     playheadColor: RgbColor;
     colorSegments: ResolvedWaveformColorSegment[];
+    style?: WaveformStyle | null;
   },
 ) {
   const center = height / 2;
@@ -402,6 +407,7 @@ function drawTimelineAreaWaveform(
     width,
     options.monoColor,
     options.colorSegments,
+    options.style,
   );
 
   if (options.showCenterLine) {
@@ -455,6 +461,7 @@ export function RekordboxPreviewWaveform({
   colorSegments,
   surface = true,
   tint,
+  waveformStyle,
 }: RekordboxPreviewWaveformProps) {
   const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -538,6 +545,7 @@ export function RekordboxPreviewWaveform({
         gridColor,
         playheadColor,
         colorSegments: resolvedColorSegments,
+        style: waveformStyle,
       });
     } else {
       drawRekordboxWaveform(context, buckets, width, height, {
@@ -553,7 +561,7 @@ export function RekordboxPreviewWaveform({
       });
     }
     context.restore();
-  }, [buckets, containerWidth, dimmed, dpr, height, hoverFraction, normalized, onSeek, progress, renderMode, resolvedAppearance, resolvedColorSegments, showCenterLine, theme, tint, variant]);
+  }, [buckets, containerWidth, dimmed, dpr, height, hoverFraction, normalized, onSeek, progress, renderMode, resolvedAppearance, resolvedColorSegments, showCenterLine, theme, tint, variant, waveformStyle]);
 
   function seekFractionFromPointer(clientX: number, element: HTMLDivElement): number {
     const rect = element.getBoundingClientRect();

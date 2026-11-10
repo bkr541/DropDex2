@@ -18,7 +18,7 @@ const PHASES: readonly QuietPhase[] = [
   { id: 'complete', label: 'Complete' },
 ];
 
-const HEADLINES: Record<ImportUiStep, string> = {
+const HEADLINES: Partial<Record<ImportUiStep, string>> = {
   source: 'Choose where your Rekordbox library is.',
   database: 'Saving your library to DropDex.',
   'analysis-files': 'Uploading your analysis files.',

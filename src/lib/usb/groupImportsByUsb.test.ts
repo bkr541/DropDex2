@@ -79,14 +79,14 @@ describe('Library tab in the profile', () => {
 
   it('shows every USB as a card, not only the primary one', async () => {
     const { UsbCardsSection } = await import('../../components/profile/UsbLibrarySections');
-    const markup = renderToStaticMarkup(createElement(UsbCardsSection, props));
+    const markup = renderToStaticMarkup(createElement(UsbCardsSection, { ...props, defaultOpen: true }));
     expect(markup.match(/data-testid="usb-card"/g)).toHaveLength(3);
-    for (const text of ['LUMA', 'Festival stick', 'EMPTY STICK', 'Active library', 'Connected now', '2,283 tracks · 4 playlists', 'No library imported from this USB yet.']) expect(markup).toContain(text);
+    for (const text of ['LUMA', 'Festival stick', 'EMPTY STICK', 'Active library', 'Connected now', 'Tracks</dt><dd class="font-mono text-xs">2,283</dd>', 'Playlists</dt><dd class="font-mono text-xs">4</dd>', 'No library imported from this USB yet.']) expect(markup).toContain(text);
   });
 
   it('puts each USB\'s exportLibrary.db snapshots inside that USB\'s own card', async () => {
     const { UsbCardsSection } = await import('../../components/profile/UsbLibrarySections');
-    const markup = renderToStaticMarkup(createElement(UsbCardsSection, props));
+    const markup = renderToStaticMarkup(createElement(UsbCardsSection, { ...props, defaultOpen: true }));
     const cards = markup.split('data-testid="usb-card"').slice(1);
     const luma = cards.find((card) => card.includes('LUMA') && !card.includes('Festival stick'));
     const festival = cards.find((card) => card.includes('Festival stick'));
@@ -94,7 +94,8 @@ describe('Library tab in the profile', () => {
     expect(luma).toContain('exportLibrary.db');
     expect(luma).not.toContain('second.db');
     expect(festival).toContain('second.db');
-    expect(festival).toContain('1 import');
+    expect(festival).toContain('Import</dt><dd class="font-mono text-xs">1</dd>');
+    expect(festival).toContain('Export library');
     expect(festival).toContain('data-testid="import-history-row-b"');
     // A USB with no snapshots has no snapshot list.
     expect(empty).not.toContain('usb-card-snapshots');
@@ -109,7 +110,7 @@ describe('Library tab in the profile', () => {
 
   it('keeps each USB card compact: the USB and its library summary share one line, and the rows are tight', async () => {
     const { UsbCardsSection } = await import('../../components/profile/UsbLibrarySections');
-    const markup = renderToStaticMarkup(createElement(UsbCardsSection, props));
+    const markup = renderToStaticMarkup(createElement(UsbCardsSection, { ...props, defaultOpen: true }));
     expect(markup).toContain('px-4 py-2.5');
     expect(markup).toContain('data-testid="usb-card-summary"');
     // Name, badges and the summary sit in one row, not stacked blocks.
@@ -142,5 +143,13 @@ describe('Library tab in the profile', () => {
     expect(tab.indexOf('label="Tracks"')).toBeLessThan(tab.indexOf('label="Playlists"'));
     expect(app).toContain("group.key !== UNASSIGNED_KEY && !group.retired");
     expect(app).toContain('groupImportsByUsb(allImports, usbDevices, latestImport?.id ?? null)');
+  });
+});
+
+describe('USB cards start closed', () => {
+  it('shows only each USB\'s name and badges until it is opened', async () => {
+    const { UsbCardsSection } = await import('../../components/profile/UsbLibrarySections');
+    const markup = renderToStaticMarkup(createElement(UsbCardsSection, { groups: [], activeImportId: null, onOpen: () => undefined, onMakeActive: () => undefined, onResumeOrRetry: () => undefined, onDelete: () => undefined }));
+    expect(markup).not.toContain('usb-card-body');
   });
 });

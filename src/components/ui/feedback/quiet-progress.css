@@ -2,7 +2,7 @@
 .qp { --qp-accent: #f56b70; --qp-done: #34d399; --qp-failed: #f27d96; --qp-idle: #566074; --qp-muted: #9aa5b8; display: flex; flex-direction: column; gap: 14px; color: #f6f7fa; font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; }
 .qp-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .qp-percent { margin: 0; font-size: 34px; font-weight: 300; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-.qp-percent > span { font-size: 16px; color: var(--qp-muted); }
+.qp-percent > span { margin-left: 2px; font-size: 16px; color: var(--qp-muted); }
 .qp-label { margin: 0 0 4px; color: var(--qp-muted); font-size: 9px; font-weight: 500; letter-spacing: .16em; text-align: right; text-transform: uppercase; }
 .qp-phases { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .qp-phases > li { min-width: 0; flex: 1; }

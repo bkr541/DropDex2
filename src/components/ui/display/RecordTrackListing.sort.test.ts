@@ -23,7 +23,7 @@ const render = (sort?: TrackTableSort) => renderToStaticMarkup(createElement(Rec
 describe('RecordTrackListing sortable headers', () => {
   it('makes every data column sortable without requiring callers to supply a sort handler', () => {
     const markup = render();
-    for (const label of ['Track', 'Bpm', 'Key', 'Genre', 'Format', 'Playlists', 'Date added', 'Duration']) {
+    for (const label of ['Track', 'Bpm', 'Key', 'Genre', 'Format', 'Playlists', 'Added On', 'Duration']) {
       expect(markup).toContain(`aria-label="Sort by ${label}"`);
     }
     expect(markup).not.toContain('aria-label="Sort by Actions"');

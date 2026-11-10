@@ -13,7 +13,7 @@ describe('page header', () => {
 
   it('is a small group floating at the top middle of the window, taking no space and never catching clicks', () => {
     expect(markup).toContain('<header');
-    expect(markup).toContain('fixed top-1.5');
+    expect(markup).toContain('fixed top-0');
     expect(markup).toContain('left-1/2');
     expect(markup).toContain('-translate-x-1/2');
     expect(markup).toContain('pointer-events-none');
@@ -29,30 +29,24 @@ describe('page header', () => {
   });
 
   it('can sit inside a mockup instead of the window', () => {
-    expect(renderToStaticMarkup(createElement(FloatingPageHeader, { title: 'Drop Lab', anchor: 'container' }))).toContain('absolute top-1.5');
+    expect(renderToStaticMarkup(createElement(FloatingPageHeader, { title: 'Drop Lab', anchor: 'container' }))).toContain('absolute top-0');
   });
 
   it('leaves its positioning to the component, so a style rule cannot override fixed or absolute', () => {
     expect(css).not.toMatch(/\.page-header-float \{[^}]*position:/);
   });
 
-  it('is finished like the left nav: layered shadows, a lit rim, a lighter top-lit surface and a fine grain', () => {
-    expect(css).toMatch(/box-shadow:[^;]*inset 0 1px 0 #ffffff24[^;]*0 1px 2px #00000080[^;]*0 8px 18px -6px #0000008c[^;]*0 20px 44px -12px #000000a6;/);
-    expect(css).toContain('.page-header-float::after');
-    expect(css).toContain('linear-gradient(155deg, #ffffff47 0%');
-    expect(css).toContain('.page-header-float::before');
-    expect(css).toContain('feTurbulence');
-    expect(css).toContain('linear-gradient(165deg, #363c49');
+  it('is a raised tab hanging from the top edge: 18px curves at the bottom corners and 18px concave flares at the top, the mirror of the tab the dock had', () => {
+    expect(css).toContain('border-radius: 0 0 18px 18px;');
+    expect(css).toMatch(/\.page-header-float::before \{ right: 100%; background: radial-gradient\(circle at 0 100%, transparent 17\.5px, var\(--tab\) 18px\); \}/);
+    expect(css).toMatch(/\.page-header-float::after \{ left: 100%; background: radial-gradient\(circle at 100% 100%, transparent 17\.5px, var\(--tab\) 18px\); \}/);
+    expect(css).toContain('--tab: #272b35;');
+    expect(css).toMatch(/box-shadow:[^;]*inset 0 -1px 0 #ffffff24[^;]*0 8px 18px -8px #0000008c;/);
   });
 
-  it('is rendered once, by App, outside the page layout, and the old full-width row is gone', () => {
+  it('is rendered by App at the top, not by the audio dock', () => {
     expect(app.match(/<FloatingPageHeader/g)).toHaveLength(1);
-    expect(app).not.toContain('PageNameTab');
-    const root = app.indexOf('className="flex h-screen flex-col overflow-hidden font-sans relative"');
-    const header = app.indexOf('<FloatingPageHeader', root);
-    const row = app.indexOf('<div className="flex min-h-0 flex-1">', root);
-    expect(header).toBeGreaterThan(root);
-    expect(header).toBeLessThan(row);
+    expect(read('../player/NowPlayingBar.tsx')).not.toContain('app-dock-tab');
   });
 
   it('no longer reserves any height for a header: pages fill the whole window', () => {

@@ -65,7 +65,7 @@ export function ImportTrackBrowser({ importId, compact = false, label = 'Importe
     { label: 'Sort', value: sort?.column ?? '', onChange: (column) => setSort(column ? { column, direction: 'asc' } : null), options: [
       { value: '', label: 'Library order' }, { value: 'title', label: 'Track' }, { value: 'artist', label: 'Artist' }, { value: 'bpm', label: 'Bpm' },
       { value: 'key', label: 'Key' }, { value: 'genre', label: 'Genre' }, { value: 'format', label: 'Format' },
-      { value: 'playlists', label: 'Playlists' }, { value: 'date-added', label: 'Date added' }, { value: 'length', label: 'Duration' },
+      { value: 'playlists', label: 'Playlists' }, { value: 'date-added', label: 'Added On' }, { value: 'length', label: 'Duration' },
       ...(field ? [{ value: 'metadata', label: 'Selected metadata' }] : []),
     ] },
     { label: 'Order', value: sort?.direction ?? 'asc', onChange: (direction) => setSort({ column: sort?.column ?? 'title', direction: direction as 'asc' | 'desc' }),

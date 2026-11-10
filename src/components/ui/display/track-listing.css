@@ -27,3 +27,11 @@
 .track-listing__actions-button { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: #b4bdcb; cursor: default; transition: color 120ms, background 120ms; }
 .track-listing__actions-button:hover { background: #ffffff0d; color: #f6f7fa; }
 @media (prefers-reduced-motion: reduce) { .track-listing__actions-button { transition: none; } }
+/* Every data column after the track is centred, heading and value, so each heading sits over its values. */
+.track-listing .track-listing__table thead th:not(:first-child),
+.track-listing .track-listing__table tbody td:not(:first-child) { text-align: center; }
+/* A sortable heading is centred on its label alone: the sort arrow hangs off the right edge instead of pushing the label left. */
+.track-listing .track-listing__table thead th:not(:first-child) > button { position: relative; display: inline-flex; justify-content: center; }
+.track-listing .track-listing__table thead th:not(:first-child) > button > svg[aria-hidden="true"] { position: absolute; left: 100%; margin-left: 4px; }
+/* The Genre column is a fixed 83.2px, which leaves only 59px inside the heading's padding: "Genre" in spaced capitals is wider than that and spilled to the right. Less padding on its heading lets the label fit and centre. */
+.track-listing .track-listing__table thead th[class*="w-[83.2px]"] { padding-inline: 2px; }

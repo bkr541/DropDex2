@@ -1,52 +1,32 @@
-/* The page header: a small raised graphite capsule floating at the top middle, finished like the left nav (see
-   FloatingSidebar.css): layered shadows that lift it off the page, a lit rim, a surface a step lighter than the backdrop that is
-   brightest at the top, a fine grain, and a highlight and dark line just inside the edge. */
+/* The page header: a raised graphite tab hanging from the top edge of the window. Its bottom corners curve down (18px), and concave flares
+   (18px) sweep out to the edge where it joins, the same curve as the tab that rose from the audio dock. Layered shadows lift it off the page. */
 .page-header-float {
-  /* No `position` here: the component sets fixed (window) or absolute (mockup), which also anchors the rim and grain. */
+  /* No `position` here: the component sets fixed (window) or absolute (mockup), which also anchors the flares. */
+  --tab: #272b35;
+  font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
   isolation: isolate;
   display: flex;
   align-items: center;
   gap: 10px;
   height: 32px;
   max-width: min(60vw, 560px);
-  padding: 0 20px;
-  border-radius: 999px;
+  padding: 0 26px;
+  border-radius: 0 0 18px 18px;
   color: #f6f7fa;
   background:
-    linear-gradient(180deg, #ffffff12 0%, #ffffff00 55%),
-    linear-gradient(165deg, #363c49 0%, #2a2f3a 55%, #20242d 100%);
+    linear-gradient(0deg, #ffffff12 0%, #ffffff00 70%),
+    var(--tab);
   box-shadow:
-    inset 0 1px 0 #ffffff24,
-    inset 0 -1px 0 #00000059,
-    0 1px 2px #00000080,
-    0 8px 18px -6px #0000008c,
-    0 20px 44px -12px #000000a6;
+    inset 0 -1px 0 #ffffff24,
+    0 8px 18px -8px #0000008c;
 }
-
-/* The lit rim. */
+.page-header-float::before,
 .page-header-float::after {
   content: '';
   position: absolute;
-  inset: 0;
-  z-index: -1;
-  padding: 1px;
-  border-radius: inherit;
-  background: linear-gradient(155deg, #ffffff47 0%, #ffffff12 30%, #ffffff05 60%, #00000066 100%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  pointer-events: none;
+  top: 0;
+  width: 18px;
+  height: 18px;
 }
-
-/* The grain. */
-.page-header-float::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-  mix-blend-mode: overlay;
-  opacity: .42;
-  pointer-events: none;
-}
+.page-header-float::before { right: 100%; background: radial-gradient(circle at 0 100%, transparent 17.5px, var(--tab) 18px); }
+.page-header-float::after { left: 100%; background: radial-gradient(circle at 100% 100%, transparent 17.5px, var(--tab) 18px); }

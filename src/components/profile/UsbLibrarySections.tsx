@@ -1,10 +1,12 @@
-import { Usb } from 'iconoir-react/regular';
+import { useState } from 'react';
+import { NavArrowDown, Usb } from 'iconoir-react/regular';
 import { useUsbConnection } from '../../contexts/UsbConnectionContext';
 import type { UsbImportGroup } from '../../lib/usb/groupImportsByUsb';
 import type { RekordboxImport } from '../../types';
 import { SurfaceCard } from '../ui/display/SurfaceCard';
 import { EmptyState, StatusBadge } from '../ui/feedback';
 import { ImportSnapshotRow } from './ImportSnapshotRow';
+import { UsbStat, UsbStats } from './UsbStat';
 
 const formatDate = (iso: string) => {
   const date = new Date(iso);
@@ -20,13 +22,15 @@ interface UsbCardsProps {
   onMakeActive: (snapshot: RekordboxImport) => void;
   onResumeOrRetry: (snapshot: RekordboxImport) => void;
   onDelete: (snapshot: RekordboxImport) => void;
+  /** Start every USB opened. USBs start closed unless told otherwise. */
+  defaultOpen?: boolean;
 }
 
 /**
  * One card per USB. The top of the card is the USB itself: its name, badges, and the size of the library that stands for it.
  * Under that are the library snapshots (exportLibrary.db imports) that came from this USB.
  */
-export function UsbCardsSection({ groups, activeImportId, onOpen, onMakeActive, onResumeOrRetry, onDelete }: UsbCardsProps) {
+export function UsbCardsSection({ groups, activeImportId, onOpen, onMakeActive, onResumeOrRetry, onDelete, defaultOpen = false }: UsbCardsProps) {
   const { volumeName } = useUsbConnection();
   if (groups.length === 0) {
     return (
@@ -36,47 +40,68 @@ export function UsbCardsSection({ groups, activeImportId, onOpen, onMakeActive, 
     );
   }
   return (
-    <ul className="profile-records divide-y divide-[var(--color-border-faint)]" data-testid="usb-cards">
+    <ul className="profile-records" data-testid="usb-cards">
       {groups.map((group) => {
         const connected = Boolean(volumeName && group.device && group.device.label.trim().toLowerCase() === volumeName.trim().toLowerCase());
         return (
-          <li key={group.key} data-testid="usb-card" data-usb={group.key}>
-            <SurfaceCard as="div">
-              {/* The USB on one line: its name and badges on the left, what its library holds on the right. */}
-              <div className="profile-record flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
-                <Usb width={16} height={16} aria-hidden="true" className="shrink-0 text-muted-foreground" />
-                <p className="min-w-0 max-w-full truncate text-xs font-medium" title={group.name}>{group.name}</p>
-                {group.hasActive && <StatusBadge tone="online">Active library</StatusBadge>}
-                {connected && <StatusBadge tone="online">Connected now</StatusBadge>}
-                {group.retired && <StatusBadge tone="disabled">No longer used</StatusBadge>}
-                <p className="ml-auto text-[11px] tabular-nums text-muted-foreground" data-testid="usb-card-summary">
-                  {group.library
-                    ? <><span className="font-bold text-foreground">{plural(group.library.track_count, 'track', 'tracks')} · {plural(group.library.playlist_count, 'playlist', 'playlists')}</span> · Imported {formatDate(group.library.imported_at)} · {plural(group.imports.length, 'import', 'imports')}</>
-                    : group.imports.length > 0
-                      ? `${plural(group.imports.length, 'import', 'imports')}, none ready to use yet`
-                      : 'No library imported from this USB yet.'}
-                </p>
-              </div>
-
-              {group.imports.length > 0 && (
-                <div className="ml-12 divide-y divide-[var(--color-border-faint)] border-t border-[var(--color-border-faint)]" data-testid="usb-card-snapshots">
-                  {group.imports.map((snapshot) => (
-                    <ImportSnapshotRow
-                      key={snapshot.id}
-                      snapshot={snapshot}
-                      isActive={snapshot.id === activeImportId}
-                      onOpen={onOpen}
-                      onMakeActive={onMakeActive}
-                      onResumeOrRetry={onResumeOrRetry}
-                      onDelete={onDelete}
-                    />
-                  ))}
-                </div>
-              )}
-            </SurfaceCard>
-          </li>
+          <UsbCard key={group.key} group={group} connected={connected} activeImportId={activeImportId} onOpen={onOpen} onMakeActive={onMakeActive} onResumeOrRetry={onResumeOrRetry} onDelete={onDelete} defaultOpen={defaultOpen} />
         );
       })}
     </ul>
+  );
+}
+
+/** One USB. Its header is a button that opens and closes it; inside are its figures, then its library files in a group of their own that also opens and closes. */
+function UsbCard({ group, connected, activeImportId, onOpen, onMakeActive, onResumeOrRetry, onDelete, defaultOpen = false }: Omit<UsbCardsProps, 'groups'> & { group: UsbImportGroup; connected: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [filesOpen, setFilesOpen] = useState(true);
+  return (
+    <li data-testid="usb-card" data-usb={group.key}>
+      <SurfaceCard as="div">
+        <button type="button" className="profile-collapse profile-record flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-left" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+          <Usb width={16} height={16} aria-hidden="true" className="shrink-0 text-muted-foreground" />
+          <span className="min-w-0 max-w-full truncate text-xs font-medium" title={group.name}>{group.name}</span>
+          {group.hasActive && <StatusBadge tone="online">Active library</StatusBadge>}
+          {connected && <StatusBadge tone="online">Connected now</StatusBadge>}
+          {group.retired && <StatusBadge tone="disabled">No longer used</StatusBadge>}
+          <NavArrowDown width={14} height={14} aria-hidden="true" className={`ml-auto shrink-0 text-muted-foreground transition-transform ${open ? '' : '-rotate-90'}`} />
+        </button>
+
+        {open && (
+          <div className="usb-card-body" data-testid="usb-card-body">
+            <div data-testid="usb-card-summary" className={group.library ? 'profile-usb-nested' : ''}>
+              {group.library ? (
+                <UsbStats>
+                  <UsbStat label="Tracks" value={group.library.track_count.toLocaleString()} />
+                  <UsbStat label="Playlists" value={group.library.playlist_count.toLocaleString()} />
+                  <UsbStat label="Imported" value={formatDate(group.library.imported_at)} />
+                  <UsbStat label={group.imports.length === 1 ? 'Import' : 'Imports'} value={group.imports.length.toLocaleString()} />
+                </UsbStats>
+              ) : (
+                <p className="px-5 py-3 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-[#5e6973]" data-testid="usb-empty">
+                  {group.imports.length > 0 ? `${plural(group.imports.length, 'import', 'imports')}, none ready to use yet` : 'No library imported from this USB yet.'}
+                </p>
+              )}
+            </div>
+
+            {group.imports.length > 0 && (
+              <div className="profile-usb-nested" data-testid="usb-card-snapshots">
+                <button type="button" className="profile-collapse flex w-full items-center gap-2 px-4 py-2 text-left" aria-expanded={filesOpen} onClick={() => setFilesOpen((value) => !value)}>
+                  <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Export library</span>
+                  <NavArrowDown width={14} height={14} aria-hidden="true" className={`ml-auto shrink-0 text-muted-foreground transition-transform ${filesOpen ? '' : '-rotate-90'}`} />
+                </button>
+                {filesOpen && (
+                  <div className="divide-y divide-[var(--color-border-faint)]">
+                    {group.imports.map((snapshot) => (
+                      <ImportSnapshotRow key={snapshot.id} snapshot={snapshot} isActive={snapshot.id === activeImportId} onOpen={onOpen} onMakeActive={onMakeActive} onResumeOrRetry={onResumeOrRetry} onDelete={onDelete} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </SurfaceCard>
+    </li>
   );
 }

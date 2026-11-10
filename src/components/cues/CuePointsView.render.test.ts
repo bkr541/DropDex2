@@ -129,7 +129,7 @@ describe('Audition workspace', () => {
       expect(audition).toContain('Audition Track');
       expect(audition).toContain('Test Artist');
       expect(audition).toMatch(/<td[^>]*>WAV<\/td>/);
-      expect(audition).toMatch(/data-label="Date added"[^>]*>—<\/td>/);
+      expect(audition).toMatch(/data-label="Added On"[^>]*>—<\/td>/);
       expect(audition).toContain('aria-label="Search audition tracks"');
       expect(audition).toContain('data-testid="cue-browser-filters"');
       expect(audition).not.toContain('data-label="Beat Count"');
@@ -254,7 +254,7 @@ describe('Review shared browser and focused track timeline', () => {
     };
     const review = table('artist-library');
     const cues = table('cues');
-    const headers = ['Track', 'Bpm', 'Key', 'Genre', 'Format', 'Playlists', 'Date added', 'Duration', 'Actions'];
+    const headers = ['Track', 'Bpm', 'Key', 'Genre', 'Format', 'Playlists', 'Added On', 'Duration', 'Actions'];
     for (const markup of [review, cues]) {
       const head = markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'));
       expect(head.match(/<th /g)).toHaveLength(headers.length);

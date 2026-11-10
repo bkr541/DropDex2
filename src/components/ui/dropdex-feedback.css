@@ -206,31 +206,14 @@
 .dd-selectable-card > strong { font-size: 10px; }
 .dd-selectable-card > span:not(.dd-selectable-card__top) { margin-top: 4px; color: #a8b1bd; font-size: 8px; }
 .dd-selectable-card > small { margin-top: 3px; color: #c3cad2; font-size: 8px; }
-.dd-selectable-card > em { margin-top: auto; padding-top: 8px; color: var(--dd-semantic); font-size: 7px; font-style: normal; font-weight: 780; }
-
-.dd-skeleton { display: block; min-height: 8px; border-radius: 4px; background: linear-gradient(90deg, #202934 0%, #2b3642 50%, #202934 100%); background-size: 180% 100%; animation: dd-skeleton-shift 2.2s ease-in-out infinite; }
-@keyframes dd-skeleton-shift { 0%, 100% { background-position: 100% 0; } 50% { background-position: 0 0; } }
-.dd-skeleton-row { min-height: 32px; display: grid; grid-template-columns: 22px minmax(0,1fr) 22px 22px 38px; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--color-control-border-soft); border-radius: 6px; background: var(--color-feedback-surface); }
-.dd-skeleton-row__lead { width: 20px; height: 20px; }
-.dd-skeleton-row > div { display: grid; gap: 4px; }
-.dd-skeleton-row > div .dd-skeleton:first-child { width: 55%; }
-.dd-skeleton-row > div .dd-skeleton:last-child { width: 30%; height: 6px; }
-.dd-skeleton-row__mini { width: 20px; height: 7px; }
-.dd-skeleton-row__tail { width: 35px; height: 14px; border-radius: 999px; }
-.dd-skeleton-card { min-height: 120px; display: grid; gap: 7px; padding: 8px; border: 1px solid var(--color-control-border-soft); border-radius: 6px; background: var(--color-feedback-surface); }
-.dd-skeleton-card__image { width: 100%; height: 62px; background: #202934; }
-.dd-skeleton-card > .dd-skeleton:not(.dd-skeleton-card__image) { width: 70%; }
-.dd-skeleton-card > .dd-skeleton.dd-skeleton-card__short { width: 42%; height: 6px; }
-.dd-skeleton-card > div { display: flex; align-items: center; justify-content: space-between; }
-.dd-skeleton-card__chip { width: 28px; height: 6px; }
-.dd-skeleton-card__dot { width: 8px; height: 8px; border-radius: 50%; }
-.dd-skeleton-chip { min-width: 67px; height: 28px; display: inline-grid; place-items: center; padding: 0 10px; border-radius: 999px; background: #202934; }
-.dd-skeleton-chip--wide { min-width: 103px; }
-.dd-skeleton-chip .dd-skeleton { width: 100%; height: 8px; background: #2b3642; }
-
-@media (prefers-reduced-motion: reduce) {
-  .dd-status-dot--pulse::after,
-  .dd-loader *,
-  .dd-spin,
-  .dd-skeleton { animation: none !important; }
-}
+/* With a hero: a header area over one centred row, the name, a |, and a line of supporting text. The selected card is shown by its border alone. */
+.dd-selectable-card--hero { font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; min-height: 0; padding: 0; justify-content: flex-start; overflow: hidden; text-align: left; }
+.dd-selectable-card__hero { display: grid; place-items: center; height: 52px; border-bottom: 1px solid #ffffff12; }
+.dd-selectable-card__label { display: flex; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; height: 40px; padding: 0 12px; }
+.dd-selectable-card__label > strong { flex: none; font-size: 15px; font-weight: 500; }
+.dd-selectable-card__label > i { flex: none; color: #ffffff40; font-style: normal; }
+.dd-selectable-card__label > .dd-selectable-card__description { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The row layout: the hero is a small swatch at the left, and the name | text sit beside it. */
+.dd-selectable-card--row { flex-direction: row; align-items: center; gap: 12px; padding: 10px 12px; }
+.dd-selectable-card--row > .dd-selectable-card__hero { flex: none; width: 64px; height: 40px; border: 0; border-radius: 8px; }
+.dd-selectable-card--row > .dd-selectable-card__label { flex: 1; height: auto; padding: 0; }

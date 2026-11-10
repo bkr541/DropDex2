@@ -111,7 +111,7 @@
 }
 
 /* The identity row is AuditionTrackHeader; editing tools get their own compact band. */
-.cue-studio .cue-workstation__toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 6px 16px; border-top: 1px solid #ffffff0d; }
+.cue-studio .cue-workstation__toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 0 16px; border-top: 1px solid #ffffff0d; }
 @media (max-width: 700px) {
   .cue-studio .cue-workstation__toolbar { flex-wrap: wrap; padding-inline: 12px; }
   .cue-studio .cue-workstation__actions { flex-wrap: wrap; row-gap: 8px; }
@@ -138,3 +138,14 @@
   font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
   box-shadow: 0 8px 24px #00000059;
 }
+/* The track title and artist mirror the figures on the right: the title is set like a value (20px, light, tabular, tight), the artist like a label
+   (9px, spaced capitals), and the gap between them is the 3px gap between a value and its label. */
+.cue-studio .audition-header h2 { font-size: 20px; font-weight: 300; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; color: #f6f7fa; }
+.cue-studio .audition-meta { margin-top: 3px; gap: 0; }
+.cue-studio .audition-artist { margin: 0; color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; line-height: 1; text-transform: uppercase; }
+/* Letters are never clipped: the title and the figures on the right share one line height (24px for 20px type, enough for descenders like g, p and y)
+   and 2px of side room (the tight letter spacing and the overflow clip would otherwise shave the first and last letter). */
+.cue-studio .audition-header h2, .cue-studio .audition-header .audition-stat > span, .cue-studio .audition-header .audition-duration > span { line-height: 1.2; padding-inline: 2px; }
+/* The album art is exactly as tall as the title and artist together: 24px title + 3px gap + 9px artist = 36px. */
+.cue-studio .audition-header .audition-cover { width: 36px; height: 36px; }
+.cue-studio .audition-header-identity { gap: 12px; }

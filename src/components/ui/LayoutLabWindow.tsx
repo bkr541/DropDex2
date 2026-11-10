@@ -6,6 +6,7 @@ import { UiComponentsContent } from './LayoutLabUiComponents';
 import { NavDesignMockupsContent } from './LayoutLabNavDesignMockups';
 import { AudioDockMockupsContent } from './LayoutLabAudioDockMockups';
 import { DiscoveryMockupsContent } from './LayoutLabDiscoveryMockups';
+import { ImportMockupsContent } from './LayoutLabImportMockups';
 import { NoticeCardMockupsContent } from './LayoutLabNoticeCardMockups';
 import { NoticeComponentMockupsContent } from './LayoutLabNoticeComponentMockups';
 import { CueMarkerMockupsContent } from './LayoutLabCueMarkerMockups';
@@ -39,6 +40,7 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'notice-card', label: 'Notice Card' },
   { id: 'notice-component', label: 'Notice Component' },
   { id: 'cue-markers', label: 'Cue Markers' },
+  { id: 'import', label: 'Import' },
 ];
 
 let tabCounter = 0;
@@ -368,6 +370,8 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
             <NoticeComponentMockupsContent />
           ) : activeId === 'cue-markers' ? (
             <CueMarkerMockupsContent />
+          ) : activeId === 'import' ? (
+            <ImportMockupsContent />
           ) : activeId === 'ui-components' ? (
             <UiComponentsContent />
           ) : (

@@ -23,7 +23,7 @@
   padding-top: 16px;
 }
 .profile-layout .profile-tabs {
-  margin-bottom: 10px;
+  margin-bottom: 24px;
   border-bottom-color: #ffffff0d;
   font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
 }
@@ -54,7 +54,8 @@
   letter-spacing: .14em;
   text-transform: uppercase;
 }
-.profile-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px var(--profile-inset); background: transparent; }
+.profile-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; padding: 10px var(--profile-inset); background: transparent; }
+.profile-signout { display: flex; justify-content: center; padding: 16px 0 8px; }
 
 :is(.profile-workspace, .profile-modal) .dd-display-card {
   overflow: visible;
@@ -95,7 +96,7 @@
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: clamp(16px, 2.5vw, 28px);
-  padding: clamp(16px, 2.5vw, 28px);
+  padding: clamp(16px, 2.5vw, 28px) clamp(16px, 2.5vw, 28px) clamp(4px, 0.8vw, 8px);
 }
 .profile-identity .lgh-avatar { --dd-avatar-size: clamp(72px, 10vw, 120px); padding: 0; }
 .profile-identity-fields { display: grid; min-width: 0; gap: 8px; }
@@ -179,11 +180,11 @@
 .profile-workspace .dd-selectable-card > strong { font-size: 12px; font-weight: 500; }
 .profile-workspace .dd-selectable-card > span:not(.dd-selectable-card__top) { margin-top: 2px; color: var(--profile-muted); font-size: 11px; }
 
-.profile-workspace .profile-stats { display: flex; flex-wrap: wrap; }
+.profile-workspace .profile-stats { display: flex; flex-wrap: wrap; justify-content: center; }
 .profile-workspace .dd-stat-tile { display: flex; min-width: 70px; flex-direction: column-reverse; align-items: center; gap: 3px; padding: 4px 14px; }
 .profile-workspace .dd-stat-tile + .dd-stat-tile { border-inline-start: 1px solid var(--profile-rule); }
 .profile-workspace .dd-stat-tile__label { margin: 0; color: var(--profile-muted); font-size: 9px; font-weight: 400; letter-spacing: .16em; }
-.profile-workspace .dd-stat-tile__headline > strong { color: var(--profile-ink); font-size: 20px; font-weight: 300; font-variant-numeric: tabular-nums; }
+.profile-workspace .dd-stat-tile__headline > strong { color: var(--profile-ink); font-size: 26px; font-weight: 300; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .profile-workspace .dd-empty-state { min-height: 100px; border: 0; color: var(--profile-ink); }
 .profile-workspace .dd-empty-state > span { color: var(--profile-muted); font-size: 12px; }
 .profile-workspace .profile-log-row:focus-visible { outline: 2px solid var(--profile-focus); outline-offset: -2px; }
@@ -299,3 +300,59 @@
   .profile-workspace .profile-xml-details { display: block; }
   .profile-workspace .profile-xml-values { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Counts under a USB and under each of its library files: label left, value right (as on the About tab), two to a row. */
+.profile-usb-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; margin: 0; }
+.profile-usb-stat { padding: 7px 0; border-bottom: 1px solid #ffffff26; }
+.profile-usb-stats > .profile-usb-stat:nth-last-child(-n+2):nth-child(odd), .profile-usb-stats > .profile-usb-stat:last-child { border-bottom: 0; }
+/* A group nested inside a USB: its own faint border and a slightly lighter surface, indented the same as the USB header's edge, with space between groups. */
+.profile-usb-nested { margin: 0 16px 12px; padding: 4px 16px; border: 1px solid #ffffff14; border-radius: 10px; background: #ffffff08; }
+.profile-usb-nested .profile-record, .profile-usb-nested .profile-collapse { background: transparent; padding-inline: 0; }
+.profile-collapse { cursor: pointer; }
+.profile-collapse:focus-visible { outline: 2px solid var(--profile-focus); outline-offset: -2px; }
+
+/* Choice cards with a hero (Theme, Display): a real card, the choice shown in the header, then one centred row of name | supporting text. */
+.profile-workspace .dd-selectable-card.dd-selectable-card--hero { min-height: 0; padding: 0; border: 1px solid #ffffff2e; border-radius: 12px; background: transparent; box-shadow: none; }
+.profile-workspace .dd-selectable-card.dd-selectable-card--hero:hover { border-color: var(--profile-focus); }
+.profile-workspace .dd-selectable-card.dd-selectable-card--hero.dd-selectable-card--selected { border-color: var(--color-control-primary); box-shadow: none; }
+.profile-workspace .profile-theme-options:has(.dd-selectable-card--hero) { gap: 12px; }
+.profile-workspace .dd-selectable-card--hero .dd-selectable-card__label > strong { color: var(--profile-ink); font-size: 15px; font-weight: 500; }
+.profile-workspace .dd-selectable-card--hero .dd-selectable-card__label > .dd-selectable-card__description { color: var(--profile-muted); font-size: 11px; }
+
+.profile-workspace .dd-selectable-card.dd-selectable-card--row { padding: 10px 12px; border-radius: 10px; }
+.profile-workspace .dd-selectable-card--row > .dd-selectable-card__hero { overflow: hidden; }
+.profile-workspace .profile-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 900px) { .profile-workspace .profile-choice-grid { grid-template-columns: 1fr; } }
+/* Row dividers in the USB groups are the same colour as the underlines on the Account tab's fields (#ffffff26). */
+.profile-usb-nested .divide-y > * + * { border-color: #ffffff26; }
+.profile-workspace [data-testid="usb-card-snapshots"] .profile-collapse + div { border-top: 1px solid #ffffff26; }
+/* Even spacing inside an open USB: 12px between the header and the first group, between groups, and below the last one. */
+.usb-card-body { padding: 2px 0 12px; }
+.usb-card-body > .profile-usb-nested:last-child { margin-bottom: 0; }
+
+/* Import popover groups share the parent studio surface, like Delete All. */
+.import-modal [class*="bg-[var(--color-surface)]"]:not(.rounded-full):not(.rounded-lg) {
+  background: transparent;
+  border-color: var(--color-border-subtle);
+}
+.import-modal .import-modal__title { font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; font-weight: 300; letter-spacing: -.02em; }
+/* Once a source is chosen the progress accent matches the green ready state. */
+.import-modal[data-ready="true"] .qp-phases { --qp-bar-accent: var(--color-green-500) !important; }
+.import-modal .qp-headline { margin-top: 10px; color: var(--color-muted-foreground); font-size: 14px; line-height: 1.625; }
+
+/* Import popover: one group, heading, icon and spacing standard for every screen. */
+.import-modal .import-heading { margin: 0 0 12px; font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; font-size: 20px; font-weight: 300; letter-spacing: -.02em; line-height: 1.2; }
+.import-modal .import-status-icon { display: flex; justify-content: center; margin-inline: auto; }
+.import-modal .import-group { margin-bottom: 12px; padding: 16px; border: 1px solid var(--color-border-subtle); border-radius: 12px; background: transparent; }
+.import-modal .import-group--green { background: rgb(34 197 94 / .1); }
+.import-modal .import-group--amber { border-color: rgb(245 158 11 / .3); background: rgb(245 158 11 / .1); }
+.import-modal .import-group > .import-heading:last-child { margin-bottom: 0; }
+.import-modal .import-status-icon { margin-bottom: 12px; }
+.import-modal .import-group > .import-status-icon:only-of-type:last-child, .import-modal .import-group > .import-heading:last-child { margin-bottom: 0; }
+.import-modal .import-group--green > .import-status-icon { margin-bottom: 12px; }
+/* Label/value rows in the import popover run in two columns so every screen's buttons stay in view. */
+.import-modal .import-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 32px; }
+.import-modal .import-stats > div { margin-top: 0; min-width: 0; }
+/* Stats groups are never shorter than two rows, and a lone row spans the group, so the Database upload matches the other screens. */
+.import-modal .import-stats { min-height: 74px; align-content: start; }
+.import-modal .import-stats > div:only-child { grid-column: 1 / -1; }
