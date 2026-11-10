@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { SlideToDelete } from './SlideToDelete';
 import { ArrowLeft, ArrowRight, CheckCircle, Database, Folder, NavArrowDown, Package, Pause, Refresh, Trash, Upload, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { cn } from '../lib/utils';
 import type { CompleteResponse, ImportResult, ReuseStats } from '../lib/api/rekordboxImport';
@@ -362,38 +363,55 @@ export function ImportCancelledScreen({ errorMessage, onReset }: { errorMessage:
 
 export type AbortIntent = 'pause' | 'close' | 'delete';
 
-/** The confirmation that covers the whole import popover before a pause or delete. */
+/**
+ * The confirmation that covers the whole import popover before a pause or delete. A delete is confirmed the same way as Delete All:
+ * an amber notice and the Slide to Delete control. A pause only needs a button.
+ */
 export function ImportAbortDialog({ intent, localUsbAccessActive, onConfirm, onKeepGoing }: {
   intent: AbortIntent;
   localUsbAccessActive: boolean;
   onConfirm: () => void;
   onKeepGoing: () => void;
 }) {
+  const [confirmed, setConfirmed] = useState(false);
+  const destructive = intent !== 'pause';
   return (
-    <div className="import-group w-full max-w-sm bg-[var(--color-panel)] text-center">
-      <div className="import-status-icon">
-        <WarningTriangle className="text-amber-400" width={24} height={24} aria-hidden="true" />
+    <div className="studio-surface profile-modal import-modal relative w-full max-w-[560px] px-7 pb-6 pt-5">
+      <ControlButton variant="ghost" className="!absolute right-3 top-3 z-20" onClick={onKeepGoing} aria-label="Close">
+        <Xmark width={18} height={18} aria-hidden="true" />
+      </ControlButton>
+      <div className="flex items-center gap-2 pr-10">
+        <WarningTriangle width={24} height={24} aria-hidden="true" className="shrink-0 text-[var(--color-control-primary)]" />
+        <h2 className="import-modal__title text-[26px] leading-tight">
+          {intent === 'pause' ? 'Pause analysis?' : intent === 'close' ? 'Close and delete import?' : 'Permanently delete import?'}
+        </h2>
       </div>
-      <h2 className="import-heading">
-        {intent === 'pause' ? 'Pause analysis?' : intent === 'close' ? 'Close and delete import?' : 'Permanently delete import?'}
-      </h2>
-      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
         {intent === 'pause'
           ? 'Your progress is saved and the USB is no longer needed. DropDex will stop analysis at a safe point so you can resume later.'
           : localUsbAccessActive
             ? 'DropDex will safely finish reading from the USB, release the drive, then delete this import and all its uploaded data.'
-            : 'This permanently deletes this import and all of its uploaded data. This cannot be undone.'}
+            : 'This permanently deletes this import and all of its uploaded data.'}
       </p>
-      <div className="flex flex-row-reverse justify-center gap-3">
-        <ControlButton onClick={onConfirm} variant={intent === 'pause' ? 'primary' : 'danger'} className="whitespace-nowrap">
-          {intent === 'pause' ? (
-            <><Pause width={16} height={16} aria-hidden="true" /> Pause</>
-          ) : (
-            <><Trash width={16} height={16} aria-hidden="true" /> {intent === 'close' ? 'Stop and delete' : 'Delete Import and Data'}</>
-          )}
-        </ControlButton>
+      {destructive && (
+        <>
+          <div className="import-group import-group--amber mt-3 flex items-center gap-3 text-left">
+            <WarningTriangle width={16} height={16} aria-hidden="true" className="shrink-0 text-amber-400" />
+            <p className="text-[11px] leading-snug text-amber-100">This is a permanent action and cannot be undone.</p>
+          </div>
+          <SlideToDelete onChange={setConfirmed} />
+        </>
+      )}
+      <div className="flex justify-center gap-3 pt-5">
         <ControlButton onClick={onKeepGoing} variant="secondary" className="whitespace-nowrap">
           <ArrowRight width={16} height={16} aria-hidden="true" /> Keep going
+        </ControlButton>
+        <ControlButton onClick={onConfirm} variant={destructive ? 'danger' : 'primary'} disabled={destructive && !confirmed} className="whitespace-nowrap">
+          {destructive ? (
+            <><Trash width={16} height={16} aria-hidden="true" /> {intent === 'close' ? 'Stop and delete' : 'Delete Import and Data'}</>
+          ) : (
+            <><Pause width={16} height={16} aria-hidden="true" /> Pause</>
+          )}
         </ControlButton>
       </div>
     </div>

@@ -25,12 +25,12 @@ export function ToastNotification({
   className?: string;
 }) {
   const icon = tone === 'success'
-    ? <CheckCircle aria-hidden="true" width={18} height={18} />
+    ? <CheckCircle aria-hidden="true" width={24} height={24} />
     : tone === 'warning'
-      ? <WarningTriangle aria-hidden="true" width={18} height={18} />
+      ? <WarningTriangle aria-hidden="true" width={24} height={24} />
       : tone === 'error'
-        ? <XmarkCircle aria-hidden="true" width={18} height={18} />
-        : <InfoCircle aria-hidden="true" width={18} height={18} />;
+        ? <XmarkCircle aria-hidden="true" width={24} height={24} />
+        : <InfoCircle aria-hidden="true" width={24} height={24} />;
   return (
     <div className={cn('dd-toast', `dd-toast--${tone}`, className)} role={tone === 'error' || tone === 'warning' ? 'alert' : 'status'}>
       <span className={cn('dd-toast__icon', toneClass[toastTone[tone]])}>{icon}</span>

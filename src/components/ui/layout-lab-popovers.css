@@ -14,7 +14,9 @@
 /* Each specimen sits in a stage that grows to fit its popover, so nothing is cropped or scaled. Overlays that are fixed to the window
    in the app (backdrops, menus) are placed in the flow here instead. */
 .pop-stage { position: relative; padding: 24px; border: 1px solid #ffffff12; border-radius: 12px; background: #0b0e13; }
-.pop-stage .fixed { position: relative !important; inset: auto !important; z-index: auto !important; width: fit-content; padding: 0 !important; background: transparent !important; backdrop-filter: none !important; }
+.pop-stage .fixed { position: relative !important; inset: auto !important; z-index: auto !important; }
+/* Only backdrops lose their dimming and padding here; a popover that is itself fixed (the background panel) keeps its own surface. */
+.pop-stage .fixed:not(.studio-surface):not(.dd-popup-surface) { width: fit-content; padding: 0 !important; background: transparent !important; backdrop-filter: none !important; }
 .pop-stage .fixed[role="menu"] { width: max-content; }
 .pop-stack { display: flex; flex-direction: column; gap: 10px; }
 .pop-anchor, .pop-corner, .pop-abs { position: static; }

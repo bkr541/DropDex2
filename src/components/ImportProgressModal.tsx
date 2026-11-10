@@ -26,6 +26,8 @@ export function ImportProgressModal({
   progress,
   stepKey,
   compact = false,
+  floating = false,
+  hideClose = false,
   stagePercent,
   status,
   ready,
@@ -42,6 +44,10 @@ export function ImportProgressModal({
   progress?: React.ReactNode;
   /** Fits the popover to its content instead of the fixed 600px height. For short, single-purpose popovers. */
   compact?: boolean;
+  /** Sits in the bottom-right corner of the window instead of centred over a backdrop (the background import panel). */
+  floating?: boolean;
+  /** Hides the close button, for a panel that must stay open. */
+  hideClose?: boolean;
   /** Changes whenever the body should slide to a new screen. Defaults to the current step. */
   stepKey?: string;
   /** How far through the current phase the import is (0 to 100), which gives the overall percentage. */
@@ -62,10 +68,10 @@ export function ImportProgressModal({
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0.9, opacity: 0 }}
-      className={`studio-surface profile-modal import-modal relative w-full max-w-[624px] !overflow-hidden flex flex-col${compact ? '' : ' h-[600px] max-h-[calc(100dvh-2rem)]'}`}
-      role="dialog"
+      className={`studio-surface profile-modal import-modal ${floating ? 'fixed bottom-20 right-4 z-[75] w-[min(624px,calc(100vw-2rem))] md:bottom-4' : 'relative w-full max-w-[624px]'} !overflow-hidden flex flex-col${compact ? '' : ' h-[600px] max-h-[calc(100dvh-2rem)]'}`}
+      role={floating ? 'region' : 'dialog'}
       data-ready={ready ? 'true' : undefined}
-      aria-modal="true"
+      aria-modal={floating ? undefined : true}
       aria-labelledby="import-progress-title"
     >
       {/* Full-modal abort overlay — covers header, stepper, and body */}
@@ -91,9 +97,11 @@ export function ImportProgressModal({
             {title}
           </h2>
         </div>
-        <ControlButton variant="ghost" className="!absolute right-3 top-3 z-20" onClick={onClose} aria-label="Close">
-          <Xmark width={18} height={18} aria-hidden="true" />
-        </ControlButton>
+        {!hideClose && (
+          <ControlButton variant="ghost" className="!absolute right-3 top-3 z-20" onClick={onClose} aria-label={floating ? 'Hide import panel' : 'Close'}>
+            <Xmark width={18} height={18} aria-hidden="true" />
+          </ControlButton>
+        )}
       </div>
 
       {/* The shared progress display: percentage, five numbered phases, one sentence */}

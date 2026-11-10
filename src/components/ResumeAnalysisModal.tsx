@@ -776,7 +776,7 @@ export function ResumeAnalysisView({
 
             {phase === 'error' && (
               <div className="flex h-full flex-col text-center">
-                {hero('Resume Failed', 'error')}
+                {hero('Resume Failed', 'warn')}
                 <p className="px-2 text-sm leading-relaxed text-muted-foreground">{errorMessage}</p>
                 {footer(
                   <>

@@ -112,7 +112,7 @@ export function GenreEditorContent({ title, value, maxLength, dirty, saving, ava
         {dirty && (
           <button
             type="button"
-            className="shrink-0 text-primary hover:text-primary/80 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            className="shrink-0 text-green-500 hover:text-green-400 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
             title="Save pending Genre change"
             aria-label={`Save pending Genre change for ${title}`}
             disabled={saving || !available}

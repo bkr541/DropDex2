@@ -8,8 +8,9 @@ import {
 } from '../lib/api/rekordboxImport';
 import { announceRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
 import { QuietProgress, quietOverallPercent, type QuietPhase } from './ui/feedback';
-import { CheckCircle, Pause, Play, Refresh, Trash, Upload, WarningTriangle, Xmark } from 'iconoir-react/regular';
+import { CheckCircle, Pause, Play, Refresh, Trash, Upload, WarningTriangle } from 'iconoir-react/regular';
 import { ControlButton } from './ui/controls';
+import { ImportProgressModal } from './ImportProgressModal';
 
 const POLL_MS = 2500;
 
@@ -167,95 +168,89 @@ export function BackgroundImportPanelView({
   const progress = status?.progress_percent ?? 0;
   const activeIndex = terminal ? IMPORT_PHASES.length - 1 : usbReleased ? 2 : 1;
 
+  const stageSentence = (() => {
+    const text = (status?.readiness_stage ?? 'library_metadata_ready').replaceAll('_', ' ');
+    return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
+  })();
+
   return (
-    <aside className="studio-surface profile-modal import-modal fixed bottom-20 right-4 z-[75] w-[min(390px,calc(100vw-2rem))] p-4 md:bottom-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="import-heading !m-0 !text-base">Rekordbox Import</h2>
-          <p className="mt-0.5 text-[11px] capitalize text-muted-foreground">
-            {(status?.readiness_stage ?? 'library_metadata_ready').replaceAll('_', ' ')}
-          </p>
-        </div>
+    <ImportProgressModal
+      floating
+      compact
+      hideClose={!usbReleased}
+      title="Rekordbox Import"
+      stepKey="background-panel"
+      onClose={onClose}
+      progress={(
+        <QuietProgress
+          title="Rekordbox import"
+          phases={IMPORT_PHASES}
+          activeIndex={activeIndex}
+          stagePercent={progress}
+          percent={quietOverallPercent(activeIndex, IMPORT_PHASES.length, progress, terminal && status?.analysis_status === 'completed')}
+          status={status?.analysis_status === 'failed' ? 'failed' : terminal ? 'done' : 'running'}
+          headline={paused ? 'Paused. Resume to keep analyzing tracks.' : interrupted ? 'Interrupted. Resume to pick up where it stopped.' : stageSentence}
+          figures={[
+            { label: 'Tracks ready', value: (status?.tracks_ready_count ?? status?.parsed_track_count ?? 0).toLocaleString() },
+            { label: 'Remaining', value: (status?.tracks_remaining_count ?? 0).toLocaleString() },
+            { label: 'Estimate', value: estimateLabel(status?.estimated_seconds_remaining) },
+            { label: 'Raw archive', value: <span className="capitalize">{status?.raw_archival_status ?? 'skipped'}</span> },
+          ]}
+        />
+      )}
+    >
+      <div className="flex flex-col">
         {usbReleased ? (
-          <ControlButton type="button" variant="ghost" onClick={onClose} aria-label="Hide import panel">
-            <Xmark width={16} height={16} aria-hidden="true" />
-          </ControlButton>
-        ) : (
-          <span
-            role="status"
-            aria-label="USB reading is still active; this panel cannot be hidden"
-            className="rounded-full border border-amber-400/30 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-amber-200"
-          >
-            Keep open
-          </span>
-        )}
-      </div>
-
-      {usbReleased ? (
-        <div className="import-group import-group--success mt-3 flex items-center gap-3 text-xs text-green-100">
-          <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-green-500" />
-          USB released. The library is ready to browse.
-        </div>
-      ) : (
-        <div className="import-group import-group--amber mt-3 text-xs text-amber-100">
-          <div className="flex items-start gap-3">
-            <WarningTriangle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-amber-400" />
-            <p>Book metadata is ready. DropDex is still reading required DAT/EXT files, so keep the USB connected and Rekordbox closed.</p>
+          <div className="import-group import-group--success flex items-center gap-3 text-left">
+            <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-green-500" />
+            <p className="text-[11px] leading-snug text-green-100">USB released. The library is ready to browse.</p>
           </div>
-          <ControlButton type="button" variant="secondary" onClick={onManageLocalUpload} className="mt-3 w-full">
-            <Upload width={14} height={14} aria-hidden="true" /> Manage USB Upload
-          </ControlButton>
-        </div>
-      )}
+        ) : (
+          <div role="status" aria-label="USB reading is still active; this panel cannot be hidden" className="import-group import-group--amber flex items-center gap-3 text-left">
+            <WarningTriangle width={16} height={16} aria-hidden="true" className="shrink-0 text-amber-400" />
+            <p className="text-[11px] leading-snug text-amber-100">Library metadata is ready. Keep the USB connected and Rekordbox closed while DropDex reads the remaining files.</p>
+          </div>
+        )}
 
-      <QuietProgress
-        className="mt-4"
-        title="Rekordbox import"
-        phases={IMPORT_PHASES}
-        activeIndex={activeIndex}
-        stagePercent={progress}
-        percent={quietOverallPercent(activeIndex, IMPORT_PHASES.length, progress, terminal && status?.analysis_status === 'completed')}
-        status={status?.analysis_status === 'failed' ? 'failed' : terminal ? 'done' : 'running'}
-        headline={paused ? 'Paused. Resume to keep analyzing tracks.' : interrupted ? 'Interrupted. Resume to pick up where it stopped.' : undefined}
-        figures={[
-          { label: 'Tracks ready', value: (status?.tracks_ready_count ?? status?.parsed_track_count ?? 0).toLocaleString() },
-          { label: 'Remaining', value: (status?.tracks_remaining_count ?? 0).toLocaleString() },
-          { label: 'Estimate', value: estimateLabel(status?.estimated_seconds_remaining) },
-          { label: 'Raw archive', value: <span className="capitalize">{status?.raw_archival_status ?? 'skipped'}</span> },
-        ]}
-      />
+        {status?.optional_archival_status && status.optional_archival_status !== 'skipped' && (
+          <p className="mb-3 text-xs text-muted-foreground">
+            Operator-enabled .2EX archival: <span className="font-bold capitalize">{status.optional_archival_status}</span>. It never blocks library readiness.
+          </p>
+        )}
+        {error && <div className="import-group text-left text-xs leading-relaxed text-red-300">{error}</div>}
+        {(status?.failed_track_count ?? 0) > 0 && (
+          <div className="import-group import-group--amber flex items-center gap-3 text-left">
+            <WarningTriangle width={16} height={16} aria-hidden="true" className="shrink-0 text-amber-400" />
+            <p className="text-[11px] leading-snug text-amber-100">
+              {(status?.failed_track_count ?? 0).toLocaleString()} track{status?.failed_track_count === 1 ? '' : 's'} need attention. Other tracks remain usable.
+            </p>
+          </div>
+        )}
 
-      {status?.optional_archival_status && status.optional_archival_status !== 'skipped' && (
-        <p className="mt-3 text-xs text-muted-foreground">
-          Operator-enabled .2EX archival: <span className="font-bold capitalize">{status.optional_archival_status}</span>. It never blocks library readiness.
-        </p>
-      )}
-      {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
-      {(status?.failed_track_count ?? 0) > 0 && (
-        <p className="mt-3 text-xs text-amber-300">
-          {(status?.failed_track_count ?? 0).toLocaleString()} track
-          {status?.failed_track_count === 1 ? '' : 's'} need attention. Other tracks remain usable.
-        </p>
-      )}
-
-      {usbReleased && (
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          {!terminal && !resumable && (
+        <div className="flex justify-center gap-3 pt-4">
+          {!usbReleased && (
+            <ControlButton type="button" variant="secondary" onClick={onManageLocalUpload}>
+              <Upload width={14} height={14} aria-hidden="true" /> Manage USB Upload
+            </ControlButton>
+          )}
+          {usbReleased && !terminal && !resumable && (
             <ControlButton type="button" variant="secondary" disabled={action !== null} onClick={() => onPause()}>
-              {action === 'pause' ? <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> : <Pause width={13} height={13} aria-hidden="true" />} Pause
+              {action === 'pause' ? <Refresh width={14} height={14} aria-hidden="true" className="animate-spin" /> : <Pause width={14} height={14} aria-hidden="true" />} Pause
             </ControlButton>
           )}
-          {resumable && (
+          {usbReleased && resumable && (
             <ControlButton type="button" variant="primary" disabled={action !== null} onClick={() => onResume()}>
-              {action === 'resume' ? <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> : <Play width={13} height={13} aria-hidden="true" />} Resume
+              {action === 'resume' ? <Refresh width={14} height={14} aria-hidden="true" className="animate-spin" /> : <Play width={14} height={14} aria-hidden="true" />} Resume
             </ControlButton>
           )}
-          <ControlButton type="button" variant="danger-outline" disabled={action !== null || deletionPending} onClick={onRequestDelete}>
-            {deletionPending ? <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> : <Trash width={13} height={13} aria-hidden="true" />} {deletionPending ? 'Deleting…' : 'Delete Import'}
-          </ControlButton>
+          {usbReleased && (
+            <ControlButton type="button" variant="danger" disabled={action !== null || deletionPending} onClick={onRequestDelete}>
+              {deletionPending ? <Refresh width={14} height={14} aria-hidden="true" className="animate-spin" /> : <Trash width={14} height={14} aria-hidden="true" />} {deletionPending ? 'Deleting…' : 'Delete Import'}
+            </ControlButton>
+          )}
         </div>
-      )}
-    </aside>
+      </div>
+    </ImportProgressModal>
   );
 }
 

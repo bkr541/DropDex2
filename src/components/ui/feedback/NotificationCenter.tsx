@@ -13,9 +13,10 @@ export interface AppNotification {
   message: string;
 }
 
+// The icon follows the import popover's: 24px, coral for an error and amber for a warning, with no tinted circle.
 const TONE = {
-  error: { bar: 'bg-[#f43f5e]', icon: 'text-[#f43f5e] bg-[#f43f5e]/15', button: 'bg-[#f43f5e] shadow-[0_12px_32px_rgb(244_63_94_/_0.45)]' },
-  warning: { bar: 'bg-[#f59e0b]', icon: 'text-[#f59e0b] bg-[#f59e0b]/15', button: 'bg-[#f59e0b] shadow-[0_12px_32px_rgb(245_158_11_/_0.45)]' },
+  error: { icon: 'text-[var(--color-control-primary)]', button: 'bg-[var(--color-control-primary)] shadow-[0_12px_32px_rgb(var(--color-control-primary-rgb)_/_0.45)]' },
+  warning: { icon: 'text-amber-400', button: 'bg-[#f59e0b] shadow-[0_12px_32px_rgb(245_158_11_/_0.45)]' },
 } as const;
 
 export function NotificationCard({
@@ -31,26 +32,19 @@ export function NotificationCard({
   return (
     <div
       role={notification.tone === 'error' ? 'alert' : 'status'}
-      className={cn(
-        'dd-popup-surface relative flex w-[400px] max-w-[calc(100vw-48px)] items-start gap-4',
-        'py-4 pl-4 pr-11',
-        className,
-      )}
+      className={cn('dd-popup-surface relative flex w-[400px] max-w-[calc(100vw-48px)] flex-col px-5 pb-4 pt-4', className)}
     >
-      <span aria-hidden="true" className={cn('w-1 self-stretch shrink-0 rounded-full', tone.bar)} />
-      <span aria-hidden="true" className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-full', tone.icon)}>
-        <WarningCircle aria-hidden="true" width={24} height={24} />
-      </span>
-      <div className="min-w-0 flex-1 pt-0.5">
-        <p className="text-[15px] font-semibold leading-snug text-slate-100">{notification.title}</p>
-        <p className="mt-1 text-[13px] leading-relaxed text-slate-400">{notification.message}</p>
+      <div className="flex items-center gap-2 pr-8">
+        <WarningCircle aria-hidden="true" width={24} height={24} className={cn('shrink-0', tone.icon)} />
+        <p className="dd-notification__title">{notification.title}</p>
       </div>
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{notification.message}</p>
       {onDismiss && (
         <button
           type="button"
           onClick={() => onDismiss(notification.id)}
           aria-label={`Dismiss ${notification.title}`}
-          className="absolute right-3 top-3 rounded-md p-1 text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-100"
+          className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
         >
           <Xmark aria-hidden="true" width={18} height={18} />
         </button>
