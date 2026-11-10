@@ -5,6 +5,8 @@ import {
   AnalysisStatusBadge, CircularProgress, Dialog, EmptyState, ImportActivityBanner, NoticeCard, NotificationCard, ProgressBar, QuietProgress, SelectableOptionCard,
   SkeletonBlock, SkeletonRow, StatusBadge, StatusDot, StatusLoader, quietOverallPercent,
 } from './feedback';
+import { RecordTrackListing } from './display/RecordTrackListing';
+import type { RekordboxTrack } from '../../types';
 import { Artwork, Avatar, Divider, StatTile, SurfaceCard, TabNavigation, TrackIdentity, TrackNameCell, TrackTable, TrackTableBody, TrackTableHead, TrackTableHeadCell } from './display';
 import {
   AudioDock, MediaTransportControlGroup, PlaybackSeekBar, TimelineBeatLane, TimelineSectionLane, TransportButton, WaveformZoomControls,
@@ -112,6 +114,12 @@ function Row({ rowNumber, file, children, overlay = false }: { rowNumber: number
   );
 }
 
+const SAMPLE_TRACKS = [
+  { id: 'sample-1', import_id: 'sample-import', rekordbox_content_id: '1001', title: 'Pop Lock And Drop It', artist: 'Sidequest', album: 'Warm Up', genre: 'Progressive House', bpm: 128, camelot_key: '8A', musical_key: 'Am', file_format: 'MP3', date_added: '2026-11-09', duration_ms: 372000, file_path: '/Contents/Sidequest/Pop Lock And Drop It.mp3', comments: 'Opener', rating: 4, analysis_parse_status: 'completed', created_at: '2026-11-09T00:00:00Z' },
+  { id: 'sample-2', import_id: 'sample-import', rekordbox_content_id: '1002', title: 'Midnight Run', artist: 'Lumen', album: null, genre: 'Techno', bpm: 132, camelot_key: '5A', musical_key: 'Cm', file_format: 'WAV', date_added: '2026-11-08', duration_ms: 410000, file_path: '/Contents/Lumen/Midnight Run.wav', comments: null, rating: 3, analysis_parse_status: 'partial', created_at: '2026-11-08T00:00:00Z' },
+] as unknown as RekordboxTrack[];
+const SAMPLE_COUNTS = { counts: new Map([['sample-1', 2], ['sample-2', 0]]), loading: false, error: null, retry: noop };
+
 const PHASES = [{ id: 'a', label: 'Source' }, { id: 'b', label: 'Upload' }, { id: 'c', label: 'Analyze' }, { id: 'd', label: 'Complete' }] as const;
 const BADGES: AnalysisBadgeState[] = ['not-analyzed', 'analyzing', 'bpm', 'waveform', 'key', 'complete', 'failed', 'partial', 'reused'];
 const LOADERS: LoaderVariant[] = ['spinner', 'dual-ring', 'pulse', 'bars', 'wave', 'dots'];
@@ -196,7 +204,8 @@ export function ReusableMockupsContent() {
       <Row rowNumber={43} file="WaveformTimeRuler.tsx"><div className="rb-field rb-wide"><WaveformTimeRuler endMs={300000} ticks={[{ ms: 0, label: '0:00' }, { ms: 100000, label: '1:40' }, { ms: 200000, label: '3:20' }, { ms: 300000, label: '5:00' }]} /></div></Row>
       <Row rowNumber={44} file="TimelineLanes.tsx"><div className="rb-field rb-wide"><TimelineSectionLane sections={SECTIONS} leadIn={false} /><TimelineBeatLane ticks={[{ key: '1', leftPercent: 5, downbeat: true }, { key: '2', leftPercent: 10, downbeat: false }, { key: '3', leftPercent: 15, downbeat: false }, { key: '4', leftPercent: 20, downbeat: true }]} labels={[{ key: '1', leftPercent: 5, text: '1' }, { key: '2', leftPercent: 20, text: '5' }]} /></div></Row>
       <Row rowNumber={45} file="WaveformZoomControls.tsx"><div className="group/waveform relative rb-field" style={{ height: 80 }}><WaveformZoomControls onZoomIn={noop} onZoomOut={noop} canZoomIn canZoomOut /><span className="rb-pad">Hover this row to show the zoom controls</span></div></Row>
-      <p className="rb-note"><Bell width={12} height={12} aria-hidden="true" /> Not shown: RecordTrackListing, TrackListing, TrackTimeline and the waveform components, which need live library data and the audio player.</p>
+      <Row rowNumber={46} file="RecordTrackListing.tsx"><div className="rb-listing"><RecordTrackListing tracks={SAMPLE_TRACKS} importId={null} playback={false} playlistCounts={SAMPLE_COUNTS} getCueMarkers={() => []} getWaveformState={(id) => ({ status: 'unavailable', trackId: id })} ariaLabel="Sample tracks" /></div></Row>
+      <p className="rb-note"><Bell width={12} height={12} aria-hidden="true" /> Not shown: TrackListing, TrackTimeline and the waveform components, which need live library data and the audio player. The RecordTrackListing row uses two sample tracks.</p>
     </div>
   );
 }

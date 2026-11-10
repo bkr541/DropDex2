@@ -1,0 +1,19 @@
+/* The track details window: sections of label-and-value rows in hairline groups, matching the import popover's groups. */
+.td { display: flex; flex-direction: column; gap: 12px; }
+.td-artist { margin: 0; color: var(--color-muted-foreground, #a4adbd); font-size: 14px; }
+.td-section { padding: 12px 14px; border: 1px solid var(--color-border-subtle, #ffffff12); border-radius: 12px; }
+.td-heading { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--color-muted-foreground, #a4adbd); font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
+.td-heading span { padding: 0 6px; border: 1px solid #ffffff1f; border-radius: 999px; font-size: 9px; letter-spacing: 0; }
+.td-rows { display: grid; gap: 6px; margin: 0; }
+.td-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; font-size: 12px; }
+.td-row dt { color: var(--color-muted-foreground, #a4adbd); }
+.td-row dd { margin: 0; color: var(--color-foreground, #f6f7fa); font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.td-json { margin: 0; max-height: 160px; overflow: auto; font: 500 11px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
+.td-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.td-list li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.td-list strong { color: var(--color-foreground, #f6f7fa); font-weight: 600; }
+.td-list span { color: var(--color-muted-foreground, #a4adbd); font-variant-numeric: tabular-nums; }
+.td-list em { color: var(--color-muted-foreground, #a4adbd); font-style: normal; }
+.td-swatch { align-self: center; width: 10px; height: 10px; border-radius: 3px; }
+.td-empty { margin: 0; color: var(--color-muted-foreground, #a4adbd); font-size: 12px; }
+.td-error { margin: 0; color: #fca5a5; font-size: 12px; }

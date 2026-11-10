@@ -24,6 +24,7 @@
 .track-listing__cues { position: relative; height: 11px; margin-bottom: 2px; pointer-events: none; }
 /* Actions: three dots, floating in the middle of the row. */
 .track-listing .track-listing__actions { text-align: center; vertical-align: middle; }
+.track-listing__actions-row { display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
 .track-listing__actions-button { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: #b4bdcb; cursor: default; transition: color 120ms, background 120ms; }
 .track-listing__actions-button:hover { background: #ffffff0d; color: #f6f7fa; }
 @media (prefers-reduced-motion: reduce) { .track-listing__actions-button { transition: none; } }

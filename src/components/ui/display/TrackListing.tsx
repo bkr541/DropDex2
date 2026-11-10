@@ -39,6 +39,8 @@ export interface TrackListingProps<T extends { id: string }> {
   nameClassName?: string;
   /** The far-right Actions column. Its three dots do nothing yet. Pass a function to put something else there. */
   actions?: boolean | ((track: T) => ReactNode);
+  /** Icons that come first in the Actions column on every row, before `actions`. Giving this puts the column in even when `actions` is false. */
+  leadingActions?: (track: T) => ReactNode;
   getActions?: (track: T) => ContextMenuItem[];
   sort?: TrackTableSort | null;
   onSort?: (key: string) => void;
@@ -69,12 +71,13 @@ export interface TrackListingProps<T extends { id: string }> {
  */
 export function TrackListing<T extends { id: string }>({
   tracks, columns, selectedId, selectedIds, onSelect, getTitle, getArtist, getStatus, renderLeading, renderWaveform, nameClassName = 'w-[340px] shrink-0',
-  actions = true, getActions, sort, onSort, trackSort, trackLabel = 'Track', rowProps, rowKey, className, tableClassName, scrollStyle, scrollRef, onScroll, endRef, topSpacer, bottomSpacer, 'data-testid': testId, tableTestId, ariaLabel,
+  actions = true, leadingActions, getActions, sort, onSort, trackSort, trackLabel = 'Track', rowProps, rowKey, className, tableClassName, scrollStyle, scrollRef, onScroll, endRef, topSpacer, bottomSpacer, 'data-testid': testId, tableTestId, ariaLabel,
 }: TrackListingProps<T>) {
   const [menu, setMenu] = useState<{ track: T; anchor: HTMLButtonElement } | null>(null);
   const menuTrack = menu && tracks.find((track) => track.id === menu.track.id);
   const items = menuTrack && getActions ? getActions(menuTrack) : [];
-  const columnCount = 1 + columns.length + Number(Boolean(actions));
+  const showActions = Boolean(actions) || Boolean(leadingActions);
+  const columnCount = 1 + columns.length + Number(showActions);
   const spacer = (height?: number) => height ? (
     <tr className="track-listing__spacer" aria-hidden="true"><td colSpan={columnCount} style={{ height }} /></tr>
   ) : null;
@@ -88,7 +91,7 @@ export function TrackListing<T extends { id: string }>({
             {columns.map((column) => (
               <TrackTableHeadCell key={column.id} label={column.label} className={column.headClassName} {...heading(column.sort)} />
             ))}
-            {actions && <TrackTableHeadCell label="Actions" className="w-[88px] text-center" />}
+            {showActions && <TrackTableHeadCell label="Actions" className="w-[96px] text-center" />}
           </TrackTableHead>
           <TrackTableBody>
             {spacer(topSpacer)}
@@ -122,9 +125,11 @@ export function TrackListing<T extends { id: string }>({
                   {columns.map((column) => (
                     <td key={column.id} {...column.cellProps?.(track)} data-label={typeof column.label === 'string' ? column.label : column.id} className={cn('px-3 py-1.5', column.cellClassName, column.cellProps?.(track)?.className)}>{column.render(track)}</td>
                   ))}
-                  {actions && (
+                  {showActions && (
                     <td data-label="Actions" className="track-listing__actions px-3 py-1.5">
-                      {typeof actions === 'function' ? actions(track) : (
+                      <div className="track-listing__actions-row">
+                      {leadingActions?.(track)}
+                      {typeof actions === 'function' ? actions(track) : actions && (
                         <button
                           type="button"
                           className="track-listing__actions-button"
@@ -140,6 +145,7 @@ export function TrackListing<T extends { id: string }>({
                           <MoreHoriz width={18} height={18} aria-hidden="true" />
                         </button>
                       )}
+                      </div>
                     </td>
                   )}
                 </TrackTableRow>

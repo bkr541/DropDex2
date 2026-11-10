@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Play } from 'iconoir-react/regular';
+import { InfoCircle, Play } from 'iconoir-react/regular';
 import type { RekordboxTrack } from '../../../types';
 import { cueAnalysisReady } from '../../../lib/cues/cueReadiness';
 import { durationMsForTrack, formatTime } from '../../../lib/music/trackTiming';
@@ -14,6 +14,7 @@ import { cueMarkersFromState, type TrackCueMarker } from '../media/trackCueMarke
 import { formatCamelotCode } from './camelotKey';
 import { TrackListing, type TrackListingColumn, type TrackListingProps } from './TrackListing';
 import { TrackListingWaveform } from './TrackListingWaveform';
+import { TrackDetailsSheet } from './TrackDetailsSheet';
 import { nextRecordSort, sortRecordTracks } from './recordTrackSorting';
 import type { TrackTableSort } from './TrackTable';
 
@@ -54,6 +55,7 @@ export function RecordTrackListing<T extends TrackRecord>({
   tracks, importId = tracks[0]?.import_id ?? null, cueStates, getCueMarkers, getWaveformState, onRetryWaveform,
   playlistCounts, renderGenre, additionalColumns = [], renderLeading, followPlayback = false, playback = true, sort, onSort, ...props
 }: Props<T>) {
+  const [detailsTrack, setDetailsTrack] = useState<TrackRecord | null>(null);
   const ids = useMemo(() => tracks.map(({ id }) => id), [tracks]);
   const loadedCues = useTrackRowCues(importId && !cueStates && !getCueMarkers ? ids : NO_IDS);
   const waveforms = useTrackPreviewWaveforms(getWaveformState ? null : importId, getWaveformState ? NO_IDS : ids);
@@ -106,8 +108,22 @@ export function RecordTrackListing<T extends TrackRecord>({
   ];
 
   return (
+    <>
     <TrackListing
       {...props}
+      leadingActions={(track) => (
+        <button
+          type="button"
+          className="track-listing__actions-button"
+          aria-label={`Details for ${track.title}`}
+          title="Track details"
+          data-testid="track-details-button"
+          onClick={(event) => { event.stopPropagation(); setDetailsTrack(track); }}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <InfoCircle width={18} height={18} aria-hidden="true" />
+        </button>
+      )}
       tracks={sortedTracks}
       columns={columns}
       sort={activeSort}
@@ -136,5 +152,7 @@ export function RecordTrackListing<T extends TrackRecord>({
         );
       }}
     />
+    {detailsTrack && <TrackDetailsSheet track={detailsTrack as unknown as Record<string, unknown> & { id: string; title: string }} onClose={() => setDetailsTrack(null)} />}
+    </>
   );
 }
