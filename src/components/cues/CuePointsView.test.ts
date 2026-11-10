@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const source = readFileSync(new URL('./CuePointsView.tsx', import.meta.url), 'utf8');
+const applyMenuSource = readFileSync(new URL('./CueApplyMenu.tsx', import.meta.url), 'utf8');
+const genreEditorSource = readFileSync(new URL('./GenreEditPopover.tsx', import.meta.url), 'utf8');
 const waveformSource = readFileSync(new URL('../library/RekordboxPreviewWaveform.tsx', import.meta.url), 'utf8');
 const appSource = readFileSync(new URL('../../App.tsx', import.meta.url), 'utf8');
 const trackTimingSource = readFileSync(new URL('../../lib/music/trackTiming.ts', import.meta.url), 'utf8');
@@ -26,8 +28,8 @@ describe('Cue Points Stage 1 workstation redesign', () => {
     expect(source).toContain('cue-workstation__toolbar');
     expect(source).toContain("cueLoadStatus === 'failed' ? '!' : String(cues.length)");
     expect(source).toContain('data-label="Auto Cue"');
-    expect(source).toContain('<span>Discard Changes</span>');
-    expect(source).toContain('<span>Save Draft</span>');
+    expect(applyMenuSource).toContain('<span>Discard Changes</span>');
+    expect(applyMenuSource).toContain('<span>Save Draft</span>');
     expect(source).not.toContain('<Undo size={17} />');
   });
 
@@ -117,7 +119,7 @@ describe('Cue Points production editor wiring', () => {
     expect(source).toContain('expectedRevision');
     expect(source).toContain('setSavedCueBaseline(hydrated)');
     expect(source).toContain('const saveDisabled = (!dirty && !baselineProofRefreshNeeded) || !cueEditingAllowed || saving;');
-    expect(source).toContain('disabled={saveDisabled}');
+    expect(source).toContain('saveDisabled={saveDisabled}');
   });
 
   it('uses cue-feature truth for Ready and refreshes missing legacy baseline proof without trusting old applied bookkeeping', () => {
@@ -161,12 +163,12 @@ describe('Cue Points production editor wiring', () => {
   });
 
   it('keeps Apply Track distinct from Apply All behind the consolidated guarded Apply menu', () => {
-    expect(source).toContain('<span>Apply Track</span>');
-    expect(source).toContain('<span>Apply All ({applyAllCount})</span>');
+    expect(applyMenuSource).toContain('<span>Apply Track</span>');
+    expect(applyMenuSource).toContain('<span>Apply All ({applyAllCount})</span>');
     expect(source).toContain('data-testid="cue-apply-menu"');
-    expect(source).toContain('<span>Save Draft</span>');
-    expect(source).toContain('<span>Discard Changes</span>');
-    expect(source).toContain('aria-label="Cue draft and Apply actions"');
+    expect(applyMenuSource).toContain('<span>Save Draft</span>');
+    expect(applyMenuSource).toContain('<span>Discard Changes</span>');
+    expect(applyMenuSource).toContain('aria-label="Cue draft and Apply actions"');
     expect(source).toContain("handleApplyPreflight('track')");
     expect(source).toContain("handleApplyPreflight('all')");
     expect(source).toContain("resolveCueApplySelection(applyRows, scope)");
@@ -276,17 +278,17 @@ describe('Cue Points production editor wiring', () => {
   });
 
   it('keeps Genre editor keyboard, retry, pending, and stale-revision behavior explicit and recoverable', () => {
-    expect(source).toContain("event.key === 'Escape'");
-    expect(source).toContain("event.key === 'Enter' && !event.repeat && genreEditingDirty && !genreSaving");
+    expect(genreEditorSource).toContain("event.key === 'Escape'");
+    expect(genreEditorSource).toContain("event.key === 'Enter' && !event.repeat && dirty && !saving");
     expect(source).toContain('genreSaveInFlightRef.current.has(inFlightKey)');
     expect(source).toContain('error instanceof TrackMetadataDraftRevisionConflictError');
-    expect(source).toContain('Reload pending Genre');
+    expect(genreEditorSource).toContain('Reload pending Genre');
     expect(source).toContain('setMetadataDraftRetryNonce((value) => value + 1)');
     expect(source).toContain('Pending Genre change. Not yet applied to Rekordbox.');
     expect(source).toContain('Pending Genre changes could not be loaded:');
     expect(source).toContain('pending state is unknown until this succeeds');
     expect(source).toContain('maxLength={REKORDBOX_GENRE_MAX_LENGTH}');
-    expect(source).toContain('onClick={(event) => event.stopPropagation()}');
+    expect(genreEditorSource).toContain('onClick={(event) => event.stopPropagation()}');
   });
 
   it('loads Genre drafts by complete-set queries instead of issuing per-row metadata queries', () => {

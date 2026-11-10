@@ -22,7 +22,7 @@ export function DropLabSourcePicker({
     <div
       role="dialog"
       aria-label="Choose a source track"
-      className="absolute right-4 top-12 z-50 w-[960px] max-w-[calc(100%-2rem)] overflow-hidden rounded-md border border-[var(--color-control-border)] bg-[var(--color-control-surface)] shadow-[0_12px_28px_rgba(0,0,0,0.4)]"
+      className="absolute right-4 top-12 z-50 w-[960px] max-w-[calc(100%-2rem)] overflow-hidden dd-popup-surface"
     >
       <div className="flex items-center gap-2 border-b border-[var(--color-border-subtle)] p-2">
         <div className="min-w-0 flex-1"><SearchControl underline autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search title or artist…" aria-label="Search source tracks" /></div>

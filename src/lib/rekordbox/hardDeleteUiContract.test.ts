@@ -27,13 +27,11 @@ describe('Rekordbox hard-delete production UI contract', () => {
     expect(background).toContain('hardDeleteCompleteRef.current = true');
   });
 
-  it('keeps exact case-sensitive DELETE validation centralized in DeleteLibraryModal', () => {
+  it('confirms a single library delete with the shared Slide to Delete control', () => {
     const modal = readFileSync('src/components/DeleteLibraryModal.tsx', 'utf8');
-    const decisions = readFileSync('src/lib/rekordbox/libraryDeletion.ts', 'utf8');
 
-    expect(modal).toContain('isDeleteConfirmationValid(confirmation)');
+    expect(modal).toContain('<SlideToDelete');
     expect(modal).toContain('disabled={deleting || !confirmationValid}');
-    expect(decisions).toContain("return value === 'DELETE';");
   });
   it('exposes a true Delete All reset that uses a dedicated backend delete-all endpoint', () => {
     const app = readFileSync('src/App.tsx', 'utf8');

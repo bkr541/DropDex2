@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { EditPencil, Maximize, Minus, Plus, Xmark } from 'iconoir-react/regular';
 import { cn } from '../../lib/utils';
+import { PopoverMockupsContent } from './LayoutLabPopoverMockups';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,7 @@ const DEFAULT_TABS: Tab[] = [
   { id: 'ui-components', label: 'UI Components' },
   { id: 'scratch-pad',   label: 'Scratch Pad'   },
   { id: 'icons', label: 'Icons' },
+  { id: 'popover', label: 'Popover' },
 ];
 
 let tabCounter = 0;
@@ -339,7 +341,7 @@ export function LayoutLabWindow({ onClose, standalone = false }: LayoutLabWindow
       {/* Canvas */}
       {!minimized && (
         <div className="relative flex-1 overflow-hidden" style={{ height: canvasHeight }}>
-          <BlankCanvas />
+          {activeId === 'popover' ? <PopoverMockupsContent /> : <BlankCanvas />}
         </div>
       )}
     </div>

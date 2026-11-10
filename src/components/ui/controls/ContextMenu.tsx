@@ -69,7 +69,7 @@ export function ContextMenu({
         role="menu"
         tabIndex={-1}
         aria-label={ariaLabel}
-        className="fixed min-w-[190px] overflow-hidden rounded-lg border border-[#34414b] bg-[#11181e] p-1.5 shadow-2xl"
+        className="fixed min-w-[190px] overflow-hidden dd-popup-surface p-1.5"
         style={position}
         onPointerDown={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}

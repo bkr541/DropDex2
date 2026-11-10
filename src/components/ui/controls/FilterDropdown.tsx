@@ -20,6 +20,8 @@ export function FilterDropdown({
   options,
   searchable = false,
   className,
+  defaultOpen = false,
+  keepOpen = false,
 }: {
   label: string;
   value: string;
@@ -27,8 +29,12 @@ export function FilterDropdown({
   options: FilterDropdownOption[];
   searchable?: boolean;
   className?: string;
+  /** Starts with the list showing (Layout Lab). */
+  defaultOpen?: boolean;
+  /** The list ignores outside clicks and Escape, so it can be shown in Layout Lab. */
+  keepOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -56,10 +62,10 @@ export function FilterDropdown({
       }
     }, 0);
     function onPointerDown(e: PointerEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (!keepOpen && ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !keepOpen) {
         e.preventDefault();
         closeAndRestoreFocus();
       }
@@ -71,7 +77,7 @@ export function FilterDropdown({
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [closeAndRestoreFocus, open, searchable]);
+  }, [closeAndRestoreFocus, keepOpen, open, searchable]);
 
   function handleListboxKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
@@ -136,7 +142,7 @@ export function FilterDropdown({
           role="listbox"
           aria-label={`${label} filter options`}
           onKeyDown={handleListboxKeyDown}
-          className="absolute top-full left-0 mt-1.5 z-50 min-w-full overflow-y-auto overscroll-contain rounded-md border border-[var(--color-control-border)] bg-[var(--color-control-surface)] shadow-[0_12px_28px_rgba(0,0,0,0.32)] max-h-[320px]"
+          className="absolute top-full left-0 mt-1.5 z-50 min-w-full overflow-y-auto overscroll-contain dd-popup-surface max-h-[320px]"
         >
           {searchable && (
             <div className="sticky top-0 p-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-card)]">

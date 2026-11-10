@@ -44,7 +44,7 @@ const RESUME_PHASES: QuietPhase[] = [
   { id: 'parse', label: 'Parse' },
   { id: 'done', label: 'Complete' },
 ];
-type ResumePhase =
+export type ResumePhase =
   | 'fetching_status'
   | 'scan_prompt'
   | 'uploading'
@@ -54,13 +54,13 @@ type ResumePhase =
   | 'done_partial'
   | 'error';
 
-interface ResumeMatchSummary {
+export interface ResumeMatchSummary {
   matched: number;
   stillMissingRequired: number;
   stillMissingOptional: number;
 }
 
-interface ResumeProgress {
+export interface ResumeProgress {
   filesUploaded: number;
   filesTotal: number;
   bytesUploaded: number;
@@ -527,6 +527,68 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
 
   if (!isOpen) return null;
 
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) handleClose(); }}>
+          <ResumeAnalysisView
+            phase={phase}
+            hasStatus={Boolean(status)}
+            statusSummary={statusSummary}
+            targets={targets}
+            matchSummary={matchSummary}
+            wrongDrive={wrongDrive}
+            progress={progress}
+            retryingCount={retryingCount}
+            completeResp={completeResp}
+            errorMessage={errorMessage}
+            hiddenInput={<input ref={folderInputRef} type="file" webkitdirectory="" multiple className="hidden" onChange={handleFolderChange} />}
+            onClose={handleClose}
+            onDone={handleDone}
+            onSelectFolder={() => void handleUsbFolderSelect()}
+            onRetry={() => { setPhase('fetching_status'); setErrorMessage(''); }}
+          />
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
+
+function SummaryRow({ label, value, warn }: { label: string; value: number | string; warn?: boolean }) {
+  return (
+    <div className="flex justify-between gap-4">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`font-semibold ${warn ? 'text-amber-400' : 'text-foreground'}`}>
+        {typeof value === 'number' ? value.toLocaleString() : value}
+      </span>
+    </div>
+  );
+}
+
+/** Every screen of the Resume Analysis popover. The live popover and Layout Lab render this same view. */
+export function ResumeAnalysisView({
+  phase, hasStatus, statusSummary, targets, matchSummary, wrongDrive, progress, retryingCount, completeResp, errorMessage, hiddenInput,
+  onClose, onDone, onSelectFolder, onRetry,
+}: {
+  phase: ResumePhase;
+  hasStatus: boolean;
+  statusSummary: ResumeStatusSummary | null;
+  targets: Array<{ required: boolean }>;
+  matchSummary: ResumeMatchSummary | null;
+  wrongDrive: boolean;
+  progress: ResumeProgress;
+  retryingCount: number;
+  completeResp: CompleteResponse | null;
+  errorMessage: string;
+  /** The folder input the screen opens. Layout Lab has none. */
+  hiddenInput?: React.ReactNode;
+  onClose: () => void;
+  onDone: () => void;
+  onSelectFolder: () => void;
+  onRetry: () => void;
+}) {
   const stageIndex: Record<ResumePhase, number> = {
     fetching_status: 0, scan_prompt: 0, uploading: 1, stopping_usb_reads: 2, parsing: 3, done: 4, done_partial: 4, error: 0,
   };
@@ -560,15 +622,12 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
   const footer = (children: React.ReactNode) => <div className="mt-auto flex justify-center gap-3 pt-4">{children}</div>;
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) handleClose(); }}>
           <ImportProgressModal
             title="Resume Analysis"
             stepKey={phase}
             ready={phase !== 'error'}
             status={phase === 'error' ? 'failed' : undefined}
-            onClose={handleClose}
+            onClose={onClose}
             progress={(
               <QuietProgress
                 title="Resume analysis"
@@ -585,7 +644,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
               <div className="flex h-full flex-col text-center">{hero('Checking Analysis Files…')}</div>
             )}
 
-            {phase === 'scan_prompt' && status && (
+            {phase === 'scan_prompt' && hasStatus && (
               <div className="flex h-full flex-col">
                 {statusSummary && (
                   <div className="import-group import-stats text-left text-xs">
@@ -634,13 +693,13 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   Only the {pluralFiles(targets.length)} listed as missing will be uploaded. Your music files are not read.
                 </p>
 
-                <input ref={folderInputRef} type="file" webkitdirectory="" multiple className="hidden" onChange={handleFolderChange} />
+                {hiddenInput}
                 {footer(
                   <>
-                    <ControlButton variant="secondary" onClick={handleClose}>
+                    <ControlButton variant="secondary" onClick={onClose}>
                       <Xmark width={16} height={16} aria-hidden="true" /> Cancel
                     </ControlButton>
-                    <ControlButton variant="primary" onClick={() => void handleUsbFolderSelect()}>
+                    <ControlButton variant="primary" onClick={() => onSelectFolder()}>
                       <Folder width={16} height={16} aria-hidden="true" />
                       {wrongDrive ? 'Select Different Folder' : 'Select PIONEER Folder'}
                     </ControlButton>
@@ -671,9 +730,9 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
             {phase === 'parsing' && (
               <div className="flex h-full flex-col text-center">
                 {hero('Reprocessing Tracks…')}
-                <div className="import-group import-group--accent flex items-center gap-3 text-left">
-                  <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-[var(--color-control-primary)]" />
-                  <p className="text-xs leading-relaxed text-[var(--color-control-primary-hover)]">USB released. Reprocessing uses uploaded copies only.</p>
+                <div className="import-group import-group--success flex items-center gap-3 text-left">
+                  <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-green-500" />
+                  <p className="text-xs leading-relaxed text-green-100">USB released. Reprocessing uses uploaded copies only.</p>
                 </div>
               </div>
             )}
@@ -686,7 +745,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   <SummaryRow label="Parsed" value={completeResp.completed_count} />
                 </div>
                 {footer(
-                  <ControlButton variant="primary" onClick={handleDone}>
+                  <ControlButton variant="primary" onClick={onDone}>
                     <CheckCircle width={16} height={16} aria-hidden="true" /> Done
                   </ControlButton>,
                 )}
@@ -708,7 +767,7 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                   </p>
                 )}
                 {footer(
-                  <ControlButton variant="primary" onClick={handleDone}>
+                  <ControlButton variant="primary" onClick={onDone}>
                     <CheckCircle width={16} height={16} aria-hidden="true" /> Done
                   </ControlButton>,
                 )}
@@ -721,10 +780,10 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
                 <p className="px-2 text-sm leading-relaxed text-muted-foreground">{errorMessage}</p>
                 {footer(
                   <>
-                    <ControlButton variant="secondary" onClick={handleClose}>
+                    <ControlButton variant="secondary" onClick={onClose}>
                       <Xmark width={16} height={16} aria-hidden="true" /> Cancel
                     </ControlButton>
-                    <ControlButton variant="primary" onClick={() => { setPhase('fetching_status'); setErrorMessage(''); }}>
+                    <ControlButton variant="primary" onClick={onRetry}>
                       <Refresh width={16} height={16} aria-hidden="true" /> Retry
                     </ControlButton>
                   </>,
@@ -732,21 +791,5 @@ export function ResumeAnalysisModal({ isOpen, importId, onClose, onSuccess }: Pr
               </div>
             )}
           </ImportProgressModal>
-        </div>
-      )}
-    </AnimatePresence>
-  );
-}
-
-// ── Sub-components ─────────────────────────────────────────────────────────────
-
-function SummaryRow({ label, value, warn }: { label: string; value: number | string; warn?: boolean }) {
-  return (
-    <div className="flex justify-between gap-4">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={`font-semibold ${warn ? 'text-amber-400' : 'text-foreground'}`}>
-        {typeof value === 'number' ? value.toLocaleString() : value}
-      </span>
-    </div>
   );
 }

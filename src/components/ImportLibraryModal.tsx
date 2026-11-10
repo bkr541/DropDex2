@@ -10,7 +10,6 @@ import { resolveImportUsbDeviceId } from '../lib/usb/importUsbDevice';
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useUsbConnection, type UsbConnectionContextValue } from '../contexts/UsbConnectionContext';
-import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import {
   completeRekordboxImport,
@@ -56,14 +55,12 @@ import {
   type UsbImportPhase,
   verifyUsbReleased,
 } from '../lib/rekordbox/localUsbLifecycle';
-import { ArrowLeft, ArrowRight, CheckCircle, Database, Folder, NavArrowDown, Package, Pause, Refresh, Trash, Upload, WarningTriangle, Xmark } from 'iconoir-react/regular';
-import { ControlButton } from './ui/controls';
-import { ImportProgressModal, issueBadgeLabel, trackExpandedDetail, userFriendlyIssueReason } from './ImportProgressModal';
+import { ImportAbortDialog, ImportSourceScreen, ImportAnalysisScreen, ImportCancelledScreen, ImportFailedScreen, ImportInterruptedScreen, ImportPausedScreen, ImportStoppingScreen, ImportUploadScreen, ImportUsbReleasedScreen, ImportCompleteScreen, ImportPartialSummary, ImportIssuesScreen, type Mode, type UploadStage } from './ImportScreens';
+import { ImportProgressModal } from './ImportProgressModal';
 import type { ImportUiStep } from './ImportStageProgress';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Mode = 'usb_folder' | 'zip_bundle' | 'database_only';
 
 export type LocalUsbStage = 'uploading_database' | 'matching_analysis' | 'uploading_analysis' | 'uploading_bundle';
 
@@ -193,31 +190,9 @@ const PARSE_STATUS_MAX_TRANSIENT_FAILURES = 3;
 const CLOUD_CANCEL_POLL_MS = 1000;
 const CLOUD_CANCEL_MAX_POLLS = 30;
 
-const MODE_LABELS: Record<Mode, { label: string; icon: React.ReactNode; tip: string }> = {
-  usb_folder: {
-    label: 'USB Folder',
-    icon: <Folder width={14} height={14} aria-hidden="true" />,
-    tip: 'Select your USB drive root (e.g. "My USB"). DropDex will find exportLibrary.db automatically. Your music files are not uploaded.',
-  },
-  zip_bundle: {
-    label: 'ZIP Bundle',
-    icon: <Package width={14} height={14} aria-hidden="true" />,
-    tip: 'Upload a ZIP archive containing exportLibrary.db and ANLZ files.',
-  },
-  database_only: {
-    label: 'Database Only',
-    icon: <Database width={14} height={14} aria-hidden="true" />,
-    tip: 'Upload exportLibrary.db to import playlists and track metadata without analysis data.',
-  },
-};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function extractError(err: unknown): { message: string; structured: ImportWriteError | null } {
   if (err instanceof RekordboxImportError) {
@@ -244,14 +219,6 @@ function clampPct(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function fmtEta(seconds: number): string {
-  if (seconds < 60) return 'under a minute';
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `about ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return remainder ? `about ${hours} hr ${remainder} min` : `about ${hours} hr`;
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -1670,47 +1637,36 @@ export function ImportLibraryModal({
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
+  const openIssueView = async () => {
+    if (!withAnalysis) return;
+
+    setIssueViewOpen(true);
+    if (!issueTracks) {
+      setIssueTracksLoading(true);
+      try {
+        const { data } = await supabase
+          .from('rekordbox_tracks')
+          .select('id, title, artist, analysis_parse_status, analysis_failure_reason, analysis_parse_warnings')
+          .eq('import_id', withAnalysis.import_id)
+          .in('analysis_parse_status', ['partial', 'failed', 'missing_required'])
+          .order('title', { ascending: true });
+        setIssueTracks(data ?? []);
+      } catch {
+        setIssueTracks([]);
+      } finally {
+        setIssueTracksLoading(false);
+      }
+    }
+  };
+
   // Abort confirmation overlay — projects into ImportProgressModal covering header+stepper+body
   const abortDialogContent = showAbortDialog ? (
-    <div className="import-group w-full max-w-sm bg-[var(--color-panel)] text-center">
-      <div className="import-status-icon">
-        <WarningTriangle className="text-amber-400" width={24} height={24} aria-hidden="true" />
-      </div>
-      <h2 className="import-heading">
-        {abortDialogIntent === 'pause'
-          ? 'Pause analysis?'
-          : abortDialogIntent === 'close'
-            ? 'Close and delete import?'
-            : 'Permanently delete import?'}
-      </h2>
-      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
-        {abortDialogIntent === 'pause'
-          ? 'Your progress is saved and the USB is no longer needed. DropDex will stop analysis at a safe point so you can resume later.'
-          : localUsbAccessActive
-            ? 'DropDex will safely finish reading from the USB, release the drive, then delete this import and all its uploaded data.'
-            : 'This permanently deletes this import and all of its uploaded data. This cannot be undone.'}
-      </p>
-      <div className="flex flex-row-reverse gap-3">
-        <ControlButton
-          onClick={confirmAbort}
-          variant={abortDialogIntent === 'pause' ? 'primary' : 'danger'}
-          className="flex-1 whitespace-nowrap"
-        >
-          {abortDialogIntent === 'pause' ? (
-            <><Pause width={16} height={16} aria-hidden="true" /> Pause</>
-          ) : (
-            <><Trash width={16} height={16} aria-hidden="true" /> {abortDialogIntent === 'close' ? 'Stop and delete' : 'Delete Import and Data'}</>
-          )}
-        </ControlButton>
-        <ControlButton
-          onClick={() => setShowAbortDialog(false)}
-          variant="secondary"
-          className="flex-1 whitespace-nowrap"
-        >
-          <ArrowRight width={16} height={16} aria-hidden="true" /> Keep going
-        </ControlButton>
-      </div>
-    </div>
+    <ImportAbortDialog
+      intent={abortDialogIntent}
+      localUsbAccessActive={localUsbAccessActive}
+      onConfirm={confirmAbort}
+      onKeepGoing={() => setShowAbortDialog(false)}
+    />
   ) : undefined;
 
   const currentStep = phaseToStep(phase, localUsbStage, Boolean(importIdRef.current));
@@ -1734,647 +1690,74 @@ export function ImportLibraryModal({
 
             {/* ── SOURCE: mode selection, folder/file picker ── */}
             {isSelectionPhase && (
-              <div className="flex flex-col h-full">
-                {/* Mode selector */}
-                <div className={cn(
-                  'flex gap-1.5 p-1 rounded-xl border border-[var(--color-border-subtle)] mb-4 transition-colors shrink-0',
-                  isReady ? 'bg-[rgb(var(--color-control-primary-rgb)/0.1)]' : 'bg-[var(--color-surface)]',
-                )}>
-                  {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => switchMode(m)}
-                      className={cn(
-                        'flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-semibold transition-all',
-                        mode === m
-                          ? isReady
-                            ? 'bg-[var(--color-control-primary)] text-white shadow-sm'
-                            : 'bg-[var(--color-control-primary)] text-white shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground',
-                      )}
-                    >
-                      {MODE_LABELS[m].icon}
-                      {MODE_LABELS[m].label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mb-3 shrink-0">
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {MODE_LABELS[mode].tip}
-                  </p>
-                </div>
-
-                {/* USB Folder picker */}
-                {mode === 'usb_folder' && (
+              <ImportSourceScreen
+                mode={mode}
+                onModeChange={switchMode}
+                isReady={isReady}
+                scanning={phase === 'scanning_usb'}
+                folderScan={phase === 'database_selected' ? folderScan : null}
+                folderAllowsImport={Boolean(folderScan?.dbFile)}
+                selectedFile={selectedFile}
+                unexpectedDbName={Boolean(unexpectedDbName)}
+                onSelectFolder={() => void handleUsbSourceSelect()}
+                onPickFile={() => fileInputRef.current?.click()}
+                onImport={handleImport}
+                onCancel={handleClose}
+                hiddenInputs={(
                   <>
-                    <button
-                      onClick={() => void handleUsbSourceSelect()}
-                      className={cn(
-                        'flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors mb-2 shrink-0',
-                        !(phase === 'database_selected' && folderScan) && 'invisible pointer-events-none',
-                      )}
-                    >
-                      <ArrowRight width={10} height={10} aria-hidden="true" className="rotate-180 shrink-0" />
-                      Choose different folder
-                    </button>
-                    {phase === 'scanning_usb' ? (
-                      <div className="flex-1 mb-3 px-4 rounded-xl border-2 border-dashed border-[var(--color-border-subtle)] flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                        <Refresh width={20} height={20} aria-hidden="true" className="animate-spin text-[var(--color-control-primary)]" />
-                        <p className="text-sm">Scanning folder…</p>
-                      </div>
-                    ) : phase === 'database_selected' && folderScan ? (
-                      <div className="import-group import-group--accent flex-1 text-left">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                          {folderScan.folderName}
-                        </p>
-                        <div className="space-y-2">
-                          {folderScan.dbFile ? (
-                            <div className="flex items-center gap-2 text-sm">
-                              <CheckCircle width={14} height={14} aria-hidden="true" className="text-[var(--color-control-primary)] shrink-0" />
-                              <span className="font-mono text-xs truncate">
-                                {folderScan.dbFile.name}
-                              </span>
-                              <span className="text-muted-foreground text-xs shrink-0">
-                                {fmtBytes(folderScan.dbFile.size)}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 text-sm">
-                              <WarningTriangle width={14} height={14} aria-hidden="true" className="text-red-400 shrink-0" />
-                              <span className="text-red-400 text-xs">exportLibrary.db not found</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 text-sm">
-                            {folderScan.targetedResolver ? (
-                              <>
-                                <CheckCircle width={14} height={14} aria-hidden="true" className="text-[var(--color-control-primary)] shrink-0" />
-                                <span className="text-xs">
-                                  Analysis files will be opened only when requested by the library manifest
-                                </span>
-                              </>
-                            ) : folderScan.anlzFiles.length > 0 ? (
-                              <CheckCircle width={14} height={14} aria-hidden="true" className="text-[var(--color-control-primary)] shrink-0" />
-                            ) : (
-                              <WarningTriangle width={14} height={14} aria-hidden="true" className="text-amber-400 shrink-0" />
-                            )}
-                            {!folderScan.targetedResolver && (
-                              <span className="text-xs">
-                                {folderScan.anlzFiles.length.toLocaleString()} required DAT/EXT analysis file
-                                {folderScan.anlzFiles.length !== 1 ? 's' : ''} found
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      /* idle: button fills all available space between tip and buttons */
-                      <button
-                        onClick={() => void handleUsbSourceSelect()}
-                        className="flex-1 w-full mb-3 px-4 rounded-xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-[#ffffff33] hover:bg-white/[0.04] transition-all flex flex-col items-center justify-center gap-2 text-muted-foreground"
-                      >
-                        <Folder width={20} height={20} aria-hidden="true" />
-                        <p className="text-sm">Click to select USB drive folder</p>
-                      </button>
-                    )}
-
-                    <input
-                      ref={folderInputRef}
-                      type="file"
-                      webkitdirectory=""
-                      multiple
-                      className="hidden"
-                      onChange={handleFolderChange}
-                    />
-
-                    <div className="mt-auto flex justify-center gap-3 pt-4">
-                      <ControlButton variant="secondary" onClick={handleClose}>
-                        <Xmark width={16} height={16} aria-hidden="true" /> Cancel
-                      </ControlButton>
-                      <ControlButton
-                        variant="primary"
-                        onClick={handleImport}
-                        disabled={!folderScan?.dbFile}
-                      >
-                        <span key={folderScan?.dbFile ? 'ready' : 'idle'} className="dd-icon-pop">
-                          {folderScan?.dbFile ? <CheckCircle width={16} height={16} aria-hidden="true" /> : <Upload width={16} height={16} aria-hidden="true" />}
-                        </span>
-                        Import
-                      </ControlButton>
-                    </div>
+                    <input ref={folderInputRef} type="file" webkitdirectory="" multiple className="hidden" onChange={handleFolderChange} />
+                    <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept={mode === 'zip_bundle' ? '.zip' : '.db'} />
                   </>
                 )}
-
-                {/* ZIP Bundle / Database Only picker */}
-                {(mode === 'zip_bundle' || mode === 'database_only') && (
-                  <>
-                    {selectedFile ? (
-                      <div className="import-group import-group--accent cursor-pointer text-center"
-                        onClick={() => fileInputRef.current?.click()}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
-                      >
-                        <p className="text-sm font-bold font-mono truncate">{selectedFile.name}</p>
-                        <p className="text-[10px] text-muted-foreground mt-1">
-                          {fmtBytes(selectedFile.size)} · Click to change
-                        </p>
-                      </div>
-                    ) : (
-                      /* no file yet: button fills all available space */
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex-1 w-full mb-3 px-4 rounded-xl border-2 border-dashed border-[var(--color-border-subtle)] hover:border-[#ffffff33] hover:bg-white/[0.04] transition-all flex flex-col items-center justify-center gap-2 text-muted-foreground"
-                      >
-                        <Upload width={20} height={20} aria-hidden="true" />
-                        <p className="text-sm">
-                          Click to select {mode === 'zip_bundle' ? '.zip bundle' : 'exportLibrary.db'}
-                        </p>
-                      </button>
-                    )}
-
-                    {unexpectedDbName && (
-                      <div className="import-group import-group--amber flex items-start gap-3 text-left shrink-0">
-                        <WarningTriangle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-amber-400" />
-                        <p className="text-xs leading-relaxed text-amber-100">
-                          Unexpected filename. The standard Rekordbox database is named{' '}
-                          <code className="font-mono">exportLibrary.db</code>. You can still try
-                          importing.
-                        </p>
-                      </div>
-                    )}
-
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
-                      className="hidden"
-                      accept={mode === 'zip_bundle' ? '.zip' : '.db'}
-                    />
-
-                    <div className="mt-auto flex justify-center gap-3 pt-4">
-                      <ControlButton variant="secondary" onClick={handleClose}>
-                        <Xmark width={16} height={16} aria-hidden="true" /> Cancel
-                      </ControlButton>
-                      <ControlButton
-                        variant="primary"
-                        onClick={handleImport}
-                        disabled={!selectedFile}
-                      >
-                        <Upload width={16} height={16} aria-hidden="true" />
-                        Import
-                      </ControlButton>
-                    </div>
-                  </>
-                )}
-              </div>
+              />
             )}
 
             {/* ── DATABASE / ANALYSIS FILES: local USB upload ── */}
             {phase === 'uploading_usb_data' && (
-              <div className="flex flex-col h-full">
-                {/* Heading + spinner */}
-                <div className="import-group import-group--accent text-center shrink-0">
-                  <div className="import-status-icon">
-                    <Refresh className="animate-spin text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
-                  </div>
-                  <h2 className="import-heading">
-                    {localUsbStage === 'uploading_database' && 'Uploading Rekordbox Database…'}
-                    {localUsbStage === 'matching_analysis' && 'Matching Analysis Files…'}
-                    {localUsbStage === 'uploading_analysis' && 'Uploading Analysis Files…'}
-                    {localUsbStage === 'uploading_bundle' && 'Uploading Bundle…'}
-                  </h2>
-                </div>
-
-                {/* USB safety warning */}
-                <div className="mb-3 flex items-center gap-3 import-group import-group--amber text-left shrink-0">
-                  <WarningTriangle width={16} height={16} aria-hidden="true" className="shrink-0 text-amber-400" />
-                  <p className="whitespace-nowrap text-[11px] leading-snug text-amber-100">
-                    Keep Rekordbox closed. Do not eject the drive until DropDex confirms.
-                  </p>
-                </div>
-
-                {/* Stats box — always visible, mirrors the Analysis Running info grid */}
-                <div className="import-group import-stats text-left text-xs mb-3">
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Stage</span>
-                    <span className="font-semibold text-foreground capitalize">
-                      {localUsbStage === 'uploading_database' && 'Uploading database'}
-                      {localUsbStage === 'matching_analysis' && 'Matching analysis files'}
-                      {localUsbStage === 'uploading_analysis' && 'Uploading analysis files'}
-                      {localUsbStage === 'uploading_bundle' && 'Uploading bundle'}
-                    </span>
-                  </div>
-                  {(localUsbStage === 'uploading_analysis' || localUsbStage === 'uploading_bundle') && (
-                    <>
-                      {mode !== 'zip_bundle' && progress.filesTotal > 0 && (
-                        <div className="mt-2 flex justify-between gap-4">
-                          <span className="text-muted-foreground">Files accepted</span>
-                          <span className="font-semibold text-foreground">
-                            {progress.filesUploaded.toLocaleString()} / {progress.filesTotal.toLocaleString()}
-                          </span>
-                        </div>
-                      )}
-                      {progress.bytesTotal > 0 && (
-                        <div className="mt-2 flex justify-between gap-4">
-                          <span className="text-muted-foreground">Data uploaded</span>
-                          <span className="font-semibold text-foreground">
-                            {fmtBytes(progress.bytesUploaded)} / {fmtBytes(progress.bytesTotal)}
-                          </span>
-                        </div>
-                      )}
-                      {mode === 'zip_bundle' && selectedFile && (
-                        <div className="mt-2 flex justify-between gap-4">
-                          <span className="text-muted-foreground">Bundle size</span>
-                          <span className="font-semibold text-foreground">{fmtBytes(selectedFile.size)}</span>
-                        </div>
-                      )}
-                      {rejectedCount > 0 && (
-                        <div className="mt-2 flex justify-between gap-4">
-                          <span className="text-muted-foreground">Rejected</span>
-                          <span className="font-semibold text-amber-400">{rejectedCount.toLocaleString()}</span>
-                        </div>
-                      )}
-                      {retryingCount > 0 && (
-                        <div className="mt-2 flex justify-between gap-4">
-                          <span className="text-muted-foreground">Retrying</span>
-                          <span className="font-semibold text-amber-400">{retryingCount.toLocaleString()}</span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Progress bar */}
-                {(localUsbStage === 'uploading_analysis' || localUsbStage === 'uploading_bundle') && (
-                  <div className="shrink-0">
-                    <div className="w-full h-1.5 bg-[var(--color-surface)] rounded-full overflow-hidden mb-1.5">
-                      <div
-                        className="h-full bg-[var(--color-control-primary)] rounded-full transition-all duration-300"
-                        style={{ width: `${uploadPct}%` }}
-                      />
-                    </div>
-                    <p className="text-sm text-center text-muted-foreground">{uploadPct}%</p>
-                  </div>
-                )}
-
-                {/* Buttons pinned to bottom */}
-                <div className="mt-auto flex justify-center gap-3 pt-2">
-                  <ControlButton variant="secondary" onClick={() => openAbortDialog('delete')} className="whitespace-nowrap">
-                    <Xmark width={16} height={16} aria-hidden="true" /> Cancel import
-                  </ControlButton>
-                  {mode === 'usb_folder' && libraryMetadataReady && (
-                    <ControlButton
-                      type="button"
-                      variant="primary"
-                      onClick={handleContinueInBackground}
-                      className="whitespace-nowrap"
-                    >
-                      <ArrowRight width={16} height={16} aria-hidden="true" />
-                      Browse in Background
-                    </ControlButton>
-                  )}
-                </div>
-              </div>
+              <ImportUploadScreen
+                stage={localUsbStage as UploadStage}
+                zipBundle={mode === 'zip_bundle'}
+                progress={progress}
+                bundleSize={selectedFile?.size ?? null}
+                rejectedCount={rejectedCount}
+                retryingCount={retryingCount}
+                uploadPct={uploadPct}
+                onCancel={() => openAbortDialog('delete')}
+                onBackground={mode === 'usb_folder' && libraryMetadataReady ? handleContinueInBackground : undefined}
+              />
             )}
 
             {/* ── ANALYSIS FILES → ANALYZE: USB teardown / USB released ── */}
-            {phase === 'usb_released' && !cancelRequestedRef.current && (
-              <div className="flex flex-col h-full text-center">
-                <div className="import-group import-group--accent shrink-0">
-                  <div className="import-status-icon">
-                    <CheckCircle className="text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
-                  </div>
-                  <h2 className="import-heading">USB Access Released</h2>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  USB reading is complete. DropDex is continuing from uploaded copies and no longer needs the USB.
-                </p>
-              </div>
-            )}
+            {phase === 'usb_released' && !cancelRequestedRef.current && <ImportUsbReleasedScreen />}
 
             {(phase === 'stopping_usb_reads' ||
               (phase === 'usb_released' && cancelRequestedRef.current) ||
               phase === 'deleting_import' ||
               phase === 'pausing_cloud_work') && (
-              <div className="flex flex-col h-full">
-                <div className="import-group import-group--accent shrink-0 text-center">
-                  {(() => {
-                    const cloudStepActive = cloudCancellationStarted || phase === 'deleting_import' || phase === 'pausing_cloud_work';
-                    const showSpinner = !usbReleaseConfirmed || cloudStepActive;
-                    return (
-                      <>
-                        <div className="import-status-icon">
-                          {showSpinner ? (
-                            <Refresh className="animate-spin text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
-                          ) : (
-                            <CheckCircle className="text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
-                          )}
-                        </div>
-                        <h2 className="import-heading">
-                          {!usbReleaseConfirmed
-                            ? 'Stopping USB Reads…'
-                            : cloudStepActive
-                              ? 'Stopping Cloud Analysis…'
-                              : 'USB Access Released'}
-                        </h2>
-                      </>
-                    );
-                  })()}
-                </div>
-
-                {!usbReleaseConfirmed && (
-                  <div className="flex items-center gap-3 import-group import-group--amber text-left">
-                    <WarningTriangle width={16} height={16} aria-hidden="true" className="shrink-0 text-amber-400" />
-                    <p className="whitespace-nowrap text-[11px] leading-snug text-amber-100">
-                      Keep Rekordbox closed. Do not eject the drive until DropDex confirms.
-                    </p>
-                  </div>
-                )}
-
-                <div className="space-y-2 import-group text-left">
-                  <SafetyStep
-                    label="Stopping local USB reads"
-                    complete={usbReleaseConfirmed}
-                    active={!usbReleaseConfirmed}
-                  />
-                  <SafetyStep
-                    label="USB access released"
-                    complete={usbReleaseConfirmed}
-                    active={false}
-                  />
-                  <SafetyStep
-                    label={phase === 'deleting_import' ? 'Stopping worker before delete' : 'Stopping cloud analysis'}
-                    complete={false}
-                    active={
-                      cloudCancellationStarted
-                      || phase === 'deleting_import'
-                      || phase === 'pausing_cloud_work'
-                    }
-                  />
-                </div>
-
-              </div>
+              <ImportStoppingScreen
+                usbReleaseConfirmed={usbReleaseConfirmed}
+                cloudStepActive={cloudCancellationStarted || phase === 'deleting_import' || phase === 'pausing_cloud_work'}
+                deleting={phase === 'deleting_import'}
+              />
             )}
 
             {/* ── ANALYZE: cloud analysis running ── */}
             {phase === 'parsing_cloud_data' && (
-              <div className="flex flex-col h-full text-center">
-                <div className="import-group import-group--accent shrink-0">
-                  <div className="import-status-icon">
-                    <Refresh className="animate-spin text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
-                  </div>
-                  <h2 className="import-heading">Analysis Running</h2>
-                </div>
-                <div className="import-group import-stats text-left text-xs">
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Current stage</span>
-                    <span className="font-semibold capitalize text-foreground">{progressiveReadiness.stage}</span>
-                  </div>
-                  <div className="mt-2 flex justify-between gap-4">
-                    <span className="text-muted-foreground">Tracks ready</span>
-                    <span className="font-semibold text-foreground">{progressiveReadiness.tracksReady.toLocaleString()}</span>
-                  </div>
-                  <div className="mt-2 flex justify-between gap-4">
-                    <span className="text-muted-foreground">Tracks remaining</span>
-                    <span className="font-semibold text-foreground">{progressiveReadiness.tracksRemaining.toLocaleString()}</span>
-                  </div>
-                  <div className="mt-2 flex justify-between gap-4">
-                    <span className="text-muted-foreground">Estimate</span>
-                    <span className="font-semibold text-foreground">
-                      {progressiveReadiness.estimatedSecondsRemaining != null
-                        ? fmtEta(progressiveReadiness.estimatedSecondsRemaining)
-                        : 'Measuring throughput…'}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex justify-between gap-4">
-                    <span className="text-muted-foreground">Raw DAT/EXT archive</span>
-                    <span className="font-semibold capitalize text-foreground">{progressiveReadiness.rawArchivalStatus}</span>
-                  </div>
-                  {progressiveReadiness.optionalArchivalStatus !== 'skipped' && progressiveReadiness.optionalArchivalStatus !== 'not needed' && (
-                    <div className="mt-2 flex justify-between gap-4">
-                      <span className="text-muted-foreground">Operator-enabled .2EX archive</span>
-                      <span className="font-semibold capitalize text-foreground">{progressiveReadiness.optionalArchivalStatus}</span>
-                    </div>
-                  )}
-                </div>
-                <p className="mt-3 text-xs uppercase tracking-widest text-muted-foreground">Processing</p>
-                <p className="mt-0.5 text-sm font-semibold text-foreground leading-snug">
-                  {parseProgress.currentTrackLabel || 'queued tracks…'}
-                </p>
-                <div className="mt-3">
-                  <div className="w-full h-1.5 bg-[var(--color-surface)] rounded-full overflow-hidden mb-1.5">
-                    <div
-                      className="h-full bg-[var(--color-control-primary)] rounded-full transition-all duration-500"
-                      style={{ width: `${parseProgress.percent}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {parseProgress.percent}%
-                    {parseProgress.totalTracks > 0 && (
-                      <>
-                        {' '}·{' '}
-                        {Math.min(parseProgress.parsedTracks, parseProgress.totalTracks).toLocaleString()}
-                        {' '} / {parseProgress.totalTracks.toLocaleString()} tracks
-                      </>
-                    )}
-                  </p>
-                </div>
-                <div className="mt-auto flex justify-center gap-3 pt-4 flex-nowrap">
-                  <ControlButton
-                    type="button"
-                    variant="secondary"
-                    onClick={() => openAbortDialog('pause')}
-                    className="whitespace-nowrap shrink-0"
-                  >
-                    <Pause width={16} height={16} aria-hidden="true" /> Pause Import
-                  </ControlButton>
-                  <ControlButton
-                    type="button"
-                    variant="primary"
-                    onClick={handleContinueInBackground}
-                    className="whitespace-nowrap shrink-0"
-                  >
-                    <ArrowRight width={16} height={16} aria-hidden="true" />
-                    Continue in Background
-                  </ControlButton>
-                </div>
-              </div>
+              <ImportAnalysisScreen
+                readiness={progressiveReadiness}
+                parse={parseProgress}
+                onPause={() => openAbortDialog('pause')}
+                onBackground={handleContinueInBackground}
+              />
             )}
 
-            {phase === 'paused' && (
-              <div className="flex flex-col h-full text-center">
-                <div className="import-group import-group--amber shrink-0">
-                  <div className="import-status-icon">
-                    <CheckCircle className="text-amber-300" width={24} height={24} aria-hidden="true" />
-                  </div>
-                  <h2 className="import-heading">Analysis Paused Safely</h2>
-                </div>
-                <div className="import-group import-group--accent flex items-start gap-3 text-left">
-                  <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--color-control-primary)]" />
-                  <p className="text-xs leading-relaxed text-[var(--color-control-primary-hover)]">
-                    Your progress is saved. You can pick up where you left off at any time from Import History.
-                  </p>
-                </div>
-                <div className="mt-auto flex justify-center gap-3 pt-4">
-                  <ControlButton type="button" variant="primary" onClick={handleDone}>
-                    <CheckCircle width={16} height={16} aria-hidden="true" />
-                    Done
-                  </ControlButton>
-                </div>
-              </div>
-            )}
+            {phase === 'paused' && <ImportPausedScreen onDone={handleDone} />}
 
-            {phase === 'interrupted' && (
-              <div className="flex flex-col h-full text-center">
-                <div className="import-group import-group--amber shrink-0">
-                  <div className="import-status-icon">
-                    <WarningTriangle className="text-amber-400" width={24} height={24} aria-hidden="true" />
-                  </div>
-                  <h2 className="import-heading">Analysis Interrupted</h2>
-                </div>
-                <div className="import-group text-left">
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    {errorMessage ?? 'Background analysis stopped unexpectedly.'} Open Import History or the background import panel and choose Resume. Completed work will not be repeated.
-                  </p>
-                </div>
-                <div className="mt-auto flex justify-center gap-3 pt-4">
-                  <ControlButton type="button" variant="primary" onClick={handleDone}>
-                    <CheckCircle width={16} height={16} aria-hidden="true" />
-                    Done
-                  </ControlButton>
-                </div>
-              </div>
-            )}
+            {phase === 'interrupted' && <ImportInterruptedScreen message={errorMessage} onDone={handleDone} />}
 
             {/* ── COMPLETE: success ── */}
             {phase === 'completed' && (
-              <div className="flex flex-col h-full text-center">
-                <div className="import-group import-group--accent shrink-0">
-                  <div className="import-status-icon">
-                    <CheckCircle className="text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
-                  </div>
-                  <h2 className="import-heading">
-                    {withAnalysis ? 'Library Imported with Analysis!' : 'Library Imported!'}
-                  </h2>
-                </div>
-
-                {usbReleaseConfirmed && (
-                  <div className="flex items-start gap-3 import-group import-group--accent text-left">
-                    <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--color-control-primary)]" />
-                    <p className="text-xs leading-relaxed text-[var(--color-control-primary-hover)]">
-                      USB reading is complete. DropDex no longer needs the USB.
-                    </p>
-                  </div>
-                )}
-
-                {withAnalysis && (
-                  <p className="mb-3 text-sm text-muted-foreground">
-                    {withAnalysis.completed_count.toLocaleString()} tracks fully analysed.
-                  </p>
-                )}
-                {libraryOnly && (
-                  <p className="mb-3 text-sm text-muted-foreground">
-                    <code className="font-mono text-xs">{libraryOnly.source_filename}</code> imported
-                    successfully.
-                  </p>
-                )}
-
-                {withAnalysis && (
-                  <div className="import-group import-stats text-left text-xs">
-                    {[
-                      { label: 'Tracks', value: withAnalysis.total_tracks.toLocaleString() },
-                      { label: 'Analysed', value: withAnalysis.completed_count.toLocaleString() },
-                      { label: 'Parser', value: withAnalysis.parser_version },
-                    ].map(({ label, value }) => (
-                      <div key={label} className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">{label}</span>
-                        <span className="truncate font-semibold text-foreground" title={String(value)}>{value}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {withAnalysis && (withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
-                  <div className="mb-3 import-group import-group--amber text-left">
-                    <p className="import-group__label">
-                      Optional Waveforms
-                    </p>
-                    <div className="space-y-1">
-                      {withAnalysis.missing_optional_ext_count > 0 && (
-                        <SummaryRow label="Missing color waveform (EXT)" value={withAnalysis.missing_optional_ext_count} />
-                      )}
-                      {withAnalysis.missing_optional_2ex_count > 0 && (
-                        <SummaryRow label="Optional .2EX not archived" value={withAnalysis.missing_optional_2ex_count} />
-                      )}
-                    </div>
-                    <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
-                      Optional assets do not affect library readiness or track analysis.
-                    </p>
-                  </div>
-                )}
-
-                {reuseStats && reuseStats.tracksReused > 0 && (
-                  <div className="mb-4 import-group text-left">
-                    <p className="import-group__label">
-                      Reuse Summary
-                    </p>
-                    <div className="space-y-1">
-                      {reuseStats.tracksReused > 0 && (
-                        <ReuseRow label="Reused unchanged" value={reuseStats.tracksReused} />
-                      )}
-                      {reuseStats.tracksNeedingUpload > 0 && (
-                        <ReuseRow label="Uploaded" value={reuseStats.tracksNeedingUpload} />
-                      )}
-                      {reuseStats.tracksReparsedFromRetained > 0 && (
-                        <ReuseRow label="Reparsed from retained" value={reuseStats.tracksReparsedFromRetained} />
-                      )}
-                      {reuseStats.tracksMetadataOnly > 0 && (
-                        <ReuseRow label="Metadata refreshed" value={reuseStats.tracksMetadataOnly} />
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {libraryOnly && (
-                  <>
-                    <div className="import-group import-stats text-left text-xs">
-                      {[
-                        { label: 'Tracks', value: libraryOnly.track_count.toLocaleString() },
-                        { label: 'Playlists', value: libraryOnly.playlist_count },
-                      ].map(({ label, value }) => (
-                        <div key={label} className="flex justify-between gap-4">
-                          <span className="text-muted-foreground">{label}</span>
-                          <span className="font-semibold text-foreground">{value}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {libraryOnly.playlists.length > 0 && (
-                      <div className="mb-3 max-h-36 space-y-1 overflow-y-auto pr-1 text-left">
-                        {libraryOnly.playlists.map((pl) => (
-                          <div
-                            key={`${pl.name}-${pl.track_count}`}
-                            className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-[var(--color-surface)]"
-                          >
-                            <span className="text-xs font-medium truncate">{pl.name}</span>
-                            <span className="text-[10px] font-mono text-muted-foreground shrink-0 ml-2">
-                              {pl.track_count.toLocaleString()}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                <div className="mt-auto flex justify-center gap-3 pt-4">
-                  <ControlButton variant="primary" onClick={handleDone}>
-                    <CheckCircle width={16} height={16} aria-hidden="true" />
-                    Done
-                  </ControlButton>
-                </div>
-              </div>
+              <ImportCompleteScreen usbReleaseConfirmed={usbReleaseConfirmed} withAnalysis={withAnalysis} libraryOnly={libraryOnly} reuseStats={reuseStats} onDone={handleDone} />
             )}
 
             {/* ── COMPLETE: partial success (summary + track issues sub-view) ── */}
@@ -2390,99 +1773,7 @@ export function ImportLibraryModal({
                       transition={{ duration: 0.22, ease: 'easeInOut' }}
                       className="flex flex-col h-full"
                     >
-                      {usbReleaseConfirmed && (
-                        <div className="mb-3 flex items-start gap-3 import-group import-group--accent">
-                          <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--color-control-primary)]" />
-                          <p className="text-xs leading-relaxed text-[var(--color-control-primary-hover)]">
-                            USB reading is complete. DropDex no longer needs the USB.
-                          </p>
-                        </div>
-                      )}
-
-                      {withAnalysis && (() => {
-                        const issueCount = withAnalysis.partial_count + withAnalysis.failed_count + withAnalysis.missing_required_count;
-                        return (
-                          <>
-                            <div className="flex items-center justify-between gap-2 mb-3">
-                              <p className="text-sm text-muted-foreground">
-                                {withAnalysis.completed_count.toLocaleString()} tracks fully parsed
-                              </p>
-                              {issueCount > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    setIssueViewOpen(true);
-                                    if (!issueTracks) {
-                                      setIssueTracksLoading(true);
-                                      try {
-                                        const { data } = await supabase
-                                          .from('rekordbox_tracks')
-                                          .select('id, title, artist, analysis_parse_status, analysis_failure_reason, analysis_parse_warnings')
-                                          .eq('import_id', withAnalysis.import_id)
-                                          .in('analysis_parse_status', ['partial', 'failed', 'missing_required'])
-                                          .order('title', { ascending: true });
-                                        setIssueTracks(data ?? []);
-                                      } catch {
-                                        setIssueTracks([]);
-                                      } finally {
-                                        setIssueTracksLoading(false);
-                                      }
-                                    }
-                                  }}
-                                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300 transition-colors hover:bg-amber-400/20"
-                                >
-                                  <span>{issueCount.toLocaleString()} {issueCount === 1 ? 'Issue' : 'Issues'}</span>
-                                  <ArrowRight width={13} height={13} aria-hidden="true" />
-                                </button>
-                              )}
-                            </div>
-
-                            <div className="import-group import-stats text-left text-xs">
-                              <div className="flex justify-between gap-4">
-                                <span className="text-muted-foreground">Tracks Ready</span>
-                                <span className="font-semibold text-foreground">{withAnalysis.completed_count.toLocaleString()}</span>
-                              </div>
-                              <div className="mt-2 flex justify-between gap-4">
-                                <span className="text-muted-foreground">Tracks with Issues</span>
-                                <span className="font-semibold text-amber-400">{withAnalysis.partial_count.toLocaleString()}</span>
-                              </div>
-                              <div className="mt-2 flex justify-between gap-4">
-                                <span className="text-muted-foreground">Tracks Not Processed</span>
-                                <span className="font-semibold text-amber-400">{withAnalysis.failed_count.toLocaleString()}</span>
-                              </div>
-                              <div className="mt-2 flex justify-between gap-4">
-                                <span className="text-muted-foreground">Missing Analysis Files</span>
-                                <span className="font-semibold text-amber-400">{withAnalysis.missing_required_count.toLocaleString()}</span>
-                              </div>
-                            </div>
-
-                            {reconciliation && (reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0 || withAnalysis.missing_optional_ext_count > 0 || withAnalysis.missing_optional_2ex_count > 0) && (
-                              <div className="mb-3 import-group">
-                                <p className="import-group__label">File Summary</p>
-                                <div className="space-y-1">
-                                  <SummaryRow label="Uploaded" value={reconciliation.successfullyUploadedFiles} />
-                                  {reconciliation.failedFiles > 0 && <SummaryRow label="Failed after retries" value={reconciliation.failedFiles} warn />}
-                                  {reconciliation.missingFiles > 0 && <SummaryRow label="Not found on USB" value={reconciliation.missingFiles} warn />}
-                                  {withAnalysis.missing_optional_ext_count > 0 && <SummaryRow label="Missing color waveform (EXT)" value={withAnalysis.missing_optional_ext_count} />}
-                                  {withAnalysis.missing_optional_2ex_count > 0 && <SummaryRow label="Optional .2EX not archived" value={withAnalysis.missing_optional_2ex_count} />}
-                                </div>
-                                {(reconciliation.failedFiles > 0 || reconciliation.missingFiles > 0) && (
-                                  <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
-                                    Re-import from the same USB to retry — already-uploaded files are skipped.
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
-
-                      <div className="mt-auto flex justify-center gap-3 pt-4">
-                        <ControlButton variant="primary" onClick={handleDone}>
-                          <CheckCircle width={16} height={16} aria-hidden="true" />
-                          Done
-                        </ControlButton>
-                      </div>
+                      <ImportPartialSummary usbReleaseConfirmed={usbReleaseConfirmed} withAnalysis={withAnalysis} reconciliation={reconciliation} onOpenIssues={() => void openIssueView()} onDone={handleDone} />
                     </motion.div>
                   ) : (
                     <motion.div
@@ -2493,101 +1784,14 @@ export function ImportLibraryModal({
                       transition={{ duration: 0.22, ease: 'easeInOut' }}
                       className="flex flex-col h-full"
                     >
-                      {/* Issues sub-heading with back navigation — not a modal header */}
-                      <div className="flex items-center gap-2 mb-4 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setIssueViewOpen(false)}
-                          className="flex items-center justify-center rounded-lg p-1 text-muted-foreground transition-colors hover:text-foreground hover:bg-white/[0.06]"
-                          aria-label="Back to summary"
-                        >
-                          <ArrowLeft width={20} height={20} aria-hidden="true" />
-                        </button>
-                        <h2 className="import-heading !m-0 text-left">Track Issues</h2>
-                      </div>
-
-                      {issueTracksLoading && (
-                        <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
-                          <Refresh className="animate-spin" width={16} height={16} aria-hidden="true" />
-                          Loading affected tracks…
-                        </div>
-                      )}
-
-                      {!issueTracksLoading && issueTracks && issueTracks.length === 0 && (
-                        <p className="text-sm text-muted-foreground">No track details available.</p>
-                      )}
-
-                      {!issueTracksLoading && issueTracks && issueTracks.length > 0 && (
-                        <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-[var(--color-border-subtle)] divide-y divide-[var(--color-border-subtle)]">
-                          {issueTracks.map((track) => {
-                            const issueLabel = issueBadgeLabel(track.analysis_parse_status ?? '');
-                            const isWarning = track.analysis_parse_status === 'partial';
-                            const reason = userFriendlyIssueReason(
-                              track.analysis_parse_status ?? '',
-                              track.analysis_failure_reason,
-                            );
-                            const isExpanded = expandedTrackIds.has(track.id);
-                            const detail = trackExpandedDetail(
-                              track.analysis_parse_status ?? '',
-                              track.analysis_failure_reason,
-                              track.analysis_parse_warnings,
-                            );
-                            return (
-                              <div key={track.id}>
-                                <button
-                                  type="button"
-                                  onClick={() => setExpandedTrackIds(prev => {
-                                    const next = new Set(prev);
-                                    if (next.has(track.id)) next.delete(track.id);
-                                    else next.add(track.id);
-                                    return next;
-                                  })}
-                                  className="w-full flex items-start justify-between gap-3 px-3 py-2.5 text-left hover:bg-white/[0.03] transition-colors"
-                                >
-                                  <div className="min-w-0">
-                                    <p className="truncate text-xs font-semibold text-foreground">{track.title}</p>
-                                    {track.artist && (
-                                      <p className="truncate text-[10px] text-muted-foreground">{track.artist}</p>
-                                    )}
-                                    <p className="mt-0.5 text-[10px] text-muted-foreground leading-snug">{reason}</p>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 shrink-0">
-                                    <span className={cn(
-                                      'rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap',
-                                      isWarning
-                                        ? 'border border-amber-400/25 bg-amber-400/10 text-amber-300'
-                                        : 'border border-red-400/25 bg-red-400/10 text-red-300',
-                                    )}>
-                                      {issueLabel}
-                                    </span>
-                                    <NavArrowDown
-                                      width={12} height={12} aria-hidden="true"
-                                      className={cn(
-                                        'text-muted-foreground transition-transform duration-200',
-                                        isExpanded && 'rotate-180',
-                                      )}
-                                    />
-                                  </div>
-                                </button>
-                                {isExpanded && (
-                                  <div className="px-3 pb-3 pt-0">
-                                    <p className="text-[11px] text-muted-foreground leading-relaxed rounded-lg bg-white/[0.04] px-3 py-2.5">
-                                      {detail}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      <div className="mt-auto flex justify-center gap-3 pt-4 shrink-0">
-                        <ControlButton variant="primary" onClick={handleDone}>
-                          <CheckCircle width={16} height={16} aria-hidden="true" />
-                          Done
-                        </ControlButton>
-                      </div>
+                      <ImportIssuesScreen
+                        tracks={issueTracks}
+                        loading={issueTracksLoading}
+                        expandedIds={expandedTrackIds}
+                        onToggle={(id) => setExpandedTrackIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
+                        onBack={() => setIssueViewOpen(false)}
+                        onDone={handleDone}
+                      />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -2595,117 +1799,22 @@ export function ImportLibraryModal({
             )}
 
             {/* ── Cancellation ── */}
-            {phase === 'cancelled' && (
-              <div className="flex flex-col h-full text-center">
-                <div className="import-group import-group--amber shrink-0">
-                  <div className="import-status-icon">
-                    <WarningTriangle width={24} height={24} aria-hidden="true" className="text-amber-400" />
-                  </div>
-                  <h2 className="import-heading">Import Deleted</h2>
-                </div>
-                <div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    The Rekordbox import and its DropDex cloud data were permanently deleted. USB access is released.
-                  </p>
-                  {errorMessage && <p className="mt-2 text-sm text-destructive">{errorMessage}</p>}
-                </div>
-                <div className="mt-auto flex justify-center gap-3 pt-4">
-                  <ControlButton type="button" variant="primary" onClick={reset} className="whitespace-nowrap">
-                    <Refresh width={16} height={16} aria-hidden="true" /> Start another import
-                  </ControlButton>
-                </div>
-              </div>
-            )}
+            {phase === 'cancelled' && <ImportCancelledScreen errorMessage={errorMessage} onReset={reset} />}
 
             {phase === 'failed' && (
-              <div className="flex flex-col h-full text-center">
-                <div className="import-group shrink-0">
-                  <div className="import-status-icon">
-                    <WarningTriangle className="text-red-400" width={24} height={24} aria-hidden="true" />
-                  </div>
-                  <h2 className="import-heading">
-                    {errorStructured ? 'Library Parsed, Save Failed' : 'Import Failed'}
-                  </h2>
-                </div>
-                <p className="px-2 text-sm text-muted-foreground leading-relaxed">
-                  {errorMessage}
-                </p>
-                {errorStructured?.stage && (
-                  <div className="mt-3 text-left import-group import-stats text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">Stage:</span>
-                      <code className="font-mono text-amber-300">{errorStructured.stage}</code>
-                    </div>
-                    {errorStructured.diagnostic && (
-                      <div className="flex items-start gap-2">
-                        <span className="text-muted-foreground shrink-0">Hint:</span>
-                        <span className="text-foreground">{errorStructured.diagnostic}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-                <div className="mt-auto flex justify-center gap-3 pt-4">
-                  <ControlButton variant="secondary" onClick={() => { reset(); onClose(); }} className="whitespace-nowrap">
-                    <Xmark width={16} height={16} aria-hidden="true" />
-                    Cancel
-                  </ControlButton>
-                  <ControlButton variant="primary" onClick={reset} className="whitespace-nowrap">
-                    <Refresh width={16} height={16} aria-hidden="true" />
-                    Retry
-                  </ControlButton>
-                </div>
-              </div>
+              <ImportFailedScreen
+                saveFailed={Boolean(errorStructured)}
+                message={errorMessage}
+                stage={errorStructured?.stage}
+                diagnostic={errorStructured?.diagnostic}
+                onRetry={reset}
+                onCancel={() => { reset(); onClose(); }}
+              />
             )}
 
           </ImportProgressModal>
         </div>
       )}
     </AnimatePresence>
-  );
-}
-
-
-function SafetyStep({
-  label,
-  complete,
-  active,
-}: {
-  label: string;
-  complete: boolean;
-  active: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-3 text-left">
-      {complete ? (
-        <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-[var(--color-control-primary)]" />
-      ) : active ? (
-        <Refresh width={16} height={16} aria-hidden="true" className="shrink-0 animate-spin text-amber-400" />
-      ) : (
-        <div className="h-4 w-4 shrink-0 rounded-full border border-[var(--color-border-subtle)]" />
-      )}
-      <span className={cn('text-xs', complete ? 'text-foreground' : 'text-muted-foreground')}>
-        {label}
-      </span>
-    </div>
-  );
-}
-
-function ReuseRow({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs font-semibold text-foreground">{value.toLocaleString()}</span>
-    </div>
-  );
-}
-
-function SummaryRow({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={`text-xs font-semibold ${warn ? 'text-amber-400' : 'text-foreground'}`}>
-        {value.toLocaleString()}
-      </span>
-    </div>
   );
 }

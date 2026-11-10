@@ -32,8 +32,8 @@ export function NotificationCard({
     <div
       role={notification.tone === 'error' ? 'alert' : 'status'}
       className={cn(
-        'relative flex w-[400px] max-w-[calc(100vw-48px)] items-start gap-4 rounded-2xl border border-white/10',
-        'bg-[#1b2230]/95 py-4 pl-4 pr-11 shadow-[0_16px_40px_rgb(0_0_0_/_0.45)]',
+        'dd-popup-surface relative flex w-[400px] max-w-[calc(100vw-48px)] items-start gap-4',
+        'py-4 pl-4 pr-11',
         className,
       )}
     >

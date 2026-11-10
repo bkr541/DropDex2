@@ -1,8 +1,9 @@
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence } from 'motion/react';
 import { ArrowRight, CheckCircle, Search, Xmark, XmarkCircle } from 'iconoir-react/regular';
 import type { DiscoveryScrapeJob } from '../../types';
 import { ControlButton } from '../ui/controls';
 import { QuietProgress } from '../ui/feedback';
+import { ImportProgressModal } from '../ImportProgressModal';
 import { SCRAPE_PHASES, scrapeOverallPercent, scrapeStageIndex, scrapeStagePercent } from './scrapeStages';
 
 interface DiscoveryScrapeProgressModalProps {
@@ -44,38 +45,19 @@ export function DiscoveryScrapeProgressModal({ isOpen, onClose, job, pollingErro
   return (
     <AnimatePresence>
       {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          role="presentation"
           onClick={(e) => { if (e.target === e.currentTarget && !isActive) onClose(); }}
         >
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            className="relative w-full max-w-[624px] overflow-hidden bg-[var(--color-panel)] border border-[var(--color-border-subtle)] rounded-3xl shadow-2xl flex flex-col"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="discovery-scrape-title"
-            data-testid="discovery-scrape-modal"
-          >
-            <div className="flex items-center justify-between px-7 pt-5 pb-0 shrink-0">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-                  <Search className="text-primary" width={24} height={24} aria-hidden />
-                </div>
-                <h2 id="discovery-scrape-title" className="truncate text-xl font-bold leading-tight">
-                  {job?.artist_name ? `Find ${job.artist_name}’s Sets` : 'Find Sets'}
-                </h2>
-              </div>
-              <ControlButton variant="ghost" onClick={onClose} aria-label={isActive ? 'Run in background' : 'Close'}>
-                <Xmark width={18} height={18} aria-hidden="true" />
-              </ControlButton>
-            </div>
-
-            <div className="px-7 pt-5 pb-2">
+          <ImportProgressModal
+            title={job?.artist_name ? `Find ${job.artist_name}’s Sets` : 'Find Sets'}
+            icon={<Search className="shrink-0 text-[var(--color-control-primary)]" width={24} height={24} aria-hidden />}
+            stepKey={`scrape-${stageIndex}-${status}`}
+            status={isFailed || isUnavailable ? 'failed' : undefined}
+            onClose={onClose}
+            compact
+            progress={(
               <QuietProgress
                 title="Set search"
                 phases={SCRAPE_PHASES}
@@ -86,33 +68,34 @@ export function DiscoveryScrapeProgressModal({ isOpen, onClose, job, pollingErro
                 headline={headline}
                 caption={isFailed ? 'Stopped' : isUnavailable ? 'Unavailable' : undefined}
                 figures={figures}
-              >
-                {isCompleted && (
-                  <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left">
-                    <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-emerald-400" />
-                    <p className="text-xs leading-relaxed text-emerald-100">The sets are saved. You can browse them on the artist page.</p>
-                  </div>
-                )}
-                {isFailed && (
-                  <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-left">
-                    <XmarkCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-red-400" />
-                    <p className="text-xs leading-relaxed text-red-100 break-words">{job?.error_message || 'The search could not finish. Please try again.'}</p>
-                  </div>
-                )}
-              </QuietProgress>
-            </div>
-
-            <div className="flex justify-center px-7 pb-6 pt-3 shrink-0">
-              {isCompleted ? (
-                <ControlButton variant="primary" onClick={onClose}><CheckCircle width={16} height={16} aria-hidden="true" /> Done</ControlButton>
-              ) : (
-                <ControlButton variant="secondary" onClick={onClose}>
-                  {isActive ? <><ArrowRight width={16} height={16} aria-hidden="true" /> Run in Background</> : <><Xmark width={16} height={16} aria-hidden="true" /> Close</>}
-                </ControlButton>
+              />
+            )}
+          >
+            <div className="flex h-full flex-col" data-testid="discovery-scrape-modal">
+              {isCompleted && (
+                <div className="import-group import-group--success flex items-start gap-3 text-left">
+                  <CheckCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-green-500" />
+                  <p className="text-xs leading-relaxed text-green-100">The sets are saved. You can browse them on the artist page.</p>
+                </div>
               )}
+              {isFailed && (
+                <div className="import-group flex items-start gap-3 text-left">
+                  <XmarkCircle width={16} height={16} aria-hidden="true" className="mt-0.5 shrink-0 text-red-400" />
+                  <p className="break-words text-xs leading-relaxed text-red-100">{job?.error_message || 'The search could not finish. Please try again.'}</p>
+                </div>
+              )}
+              <div className="mt-auto flex justify-center gap-3 pt-4">
+                {isCompleted ? (
+                  <ControlButton variant="primary" onClick={onClose}><CheckCircle width={16} height={16} aria-hidden="true" /> Done</ControlButton>
+                ) : (
+                  <ControlButton variant="secondary" onClick={onClose}>
+                    {isActive ? <><ArrowRight width={16} height={16} aria-hidden="true" /> Run in Background</> : <><Xmark width={16} height={16} aria-hidden="true" /> Close</>}
+                  </ControlButton>
+                )}
+              </div>
             </div>
-          </motion.div>
-        </motion.div>
+          </ImportProgressModal>
+        </div>
       )}
     </AnimatePresence>
   );

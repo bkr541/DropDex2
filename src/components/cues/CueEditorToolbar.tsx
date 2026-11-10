@@ -41,13 +41,15 @@ export function CueStateIcon({ state }: { state: CueDraftState }) {
  * Icon-only button that opens a small list of choices. The current choice is
  * marked in the list and named in the tooltip.
  */
-function IconOptionMenu<T extends string>({
+export function IconOptionMenu<T extends string>({
   icon,
   label,
   value,
   options,
   onChange,
   active = false,
+  defaultOpen = false,
+  keepOpen = false,
 }: {
   icon: ReactNode;
   label: string;
@@ -56,8 +58,12 @@ function IconOptionMenu<T extends string>({
   onChange: (value: T) => void;
   /** Colors the icon (like a pressed toggle) when the setting is doing something. */
   active?: boolean;
+  /** Starts with the list showing (Layout Lab). */
+  defaultOpen?: boolean;
+  /** The list ignores outside clicks and Escape, so it can be shown in Layout Lab. */
+  keepOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -70,10 +76,10 @@ function IconOptionMenu<T extends string>({
       (listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]') ?? items?.[0])?.focus();
     }, 0);
     const onPointerDown = (event: PointerEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+      if (!keepOpen && ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !keepOpen) {
         event.preventDefault();
         setOpen(false);
         triggerRef.current?.focus();
@@ -86,7 +92,7 @@ function IconOptionMenu<T extends string>({
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [open]);
+  }, [keepOpen, open]);
 
   const onListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
@@ -124,7 +130,7 @@ function IconOptionMenu<T extends string>({
           role="listbox"
           aria-label={`${label} options`}
           onKeyDown={onListKeyDown}
-          className="absolute right-0 top-full z-50 mt-1.5 min-w-[120px] overflow-hidden rounded-md border border-[var(--color-control-border)] bg-[var(--color-control-surface)] shadow-[0_12px_28px_rgba(0,0,0,0.32)]"
+          className="absolute right-0 top-full z-50 mt-1.5 min-w-[120px] overflow-hidden dd-popup-surface"
         >
           <p className="px-3 pb-1 pt-2 text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">{label}</p>
           {options.map((option) => {
@@ -192,6 +198,43 @@ export function TimelineGridControls({
         <DotsGrid3x3 width={18} height={18} aria-hidden="true" />
       </button>
     </>
+  );
+}
+
+/** The small slider popover that opens from the toolbar's volume button. */
+export function VolumePopover({ volume, muted, silent, onToggleMute, onVolumeChange }: {
+  volume: number;
+  muted: boolean;
+  silent: boolean;
+  onToggleMute: () => void;
+  onVolumeChange: (value: number) => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-label="Playback volume"
+      className="absolute right-0 top-full z-50 mt-1.5 flex items-center gap-2.5 dd-popup-surface px-3 py-2.5"
+    >
+      <button
+        type="button"
+        onClick={onToggleMute}
+        aria-label={muted ? 'Unmute' : 'Mute'}
+        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none"
+      >
+        {silent ? <SoundOff width={16} height={16} aria-hidden="true" /> : <SoundHigh width={16} height={16} aria-hidden="true" />}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.02}
+        value={muted ? 0 : volume}
+        onChange={(event) => onVolumeChange(Number(event.target.value))}
+        aria-label="Playback volume"
+        className="h-1.5 w-32 cursor-pointer accent-primary"
+      />
+      <span className="w-8 text-right font-mono text-[10px] tabular-nums text-muted-foreground">{Math.round((muted ? 0 : volume) * 100)}%</span>
+    </div>
   );
 }
 
@@ -285,31 +328,7 @@ export function CueEditorToolbar({
           {silent ? <SoundOff width={20} height={20} aria-hidden="true" /> : <SoundHigh width={20} height={20} aria-hidden="true" />}
         </button>
         {volumeOpen && (
-          <div
-            role="dialog"
-            aria-label="Playback volume"
-            className="absolute right-0 top-full z-50 mt-1.5 flex items-center gap-2.5 rounded-md border border-[var(--color-control-border)] bg-[var(--color-control-surface)] px-3 py-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.32)]"
-          >
-            <button
-              type="button"
-              onClick={toggleMute}
-              aria-label={muted ? 'Unmute' : 'Mute'}
-              className="shrink-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none"
-            >
-              {silent ? <SoundOff width={16} height={16} aria-hidden="true" /> : <SoundHigh width={16} height={16} aria-hidden="true" />}
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.02}
-              value={muted ? 0 : volume}
-              onChange={(event) => setVolume(Number(event.target.value))}
-              aria-label="Playback volume"
-              className="h-1.5 w-32 cursor-pointer accent-primary"
-            />
-            <span className="w-8 text-right font-mono text-[10px] tabular-nums text-muted-foreground">{Math.round((muted ? 0 : volume) * 100)}%</span>
-          </div>
+          <VolumePopover volume={volume} muted={muted} silent={silent} onToggleMute={toggleMute} onVolumeChange={setVolume} />
         )}
       </div>
     </>

@@ -1,8 +1,8 @@
-import { SLIDER_TRACK_HEIGHT, THUMB_SIZE, TRACK_BORDER, TRACK_PAD, sliderTravel } from './deleteAllSlider';
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, Check, Refresh, Trash, WarningTriangle, Xmark } from 'iconoir-react/regular';
+import { Refresh, Trash, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { ControlButton } from './ui/controls';
+import { SlideToDelete } from './SlideToDelete';
 
 interface DeleteAllLibrariesModalProps {
   open: boolean;
@@ -35,9 +35,7 @@ export function DeleteAllLibrariesModal({
   onClose,
   onConfirm,
 }: DeleteAllLibrariesModalProps) {
-  const [progress, setProgress] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const trackRef = useRef<HTMLDivElement>(null);
+  const [confirmed, setConfirmed] = useState(false);
 
   // Time estimation for the deletion progress
   const deleteStartRef = useRef<number | null>(null);
@@ -45,8 +43,7 @@ export function DeleteAllLibrariesModal({
 
   useEffect(() => {
     if (open) {
-      setProgress(0);
-      setDragging(false);
+      setConfirmed(false);
       deleteStartRef.current = null;
       setEstimatedSecondsRemaining(null);
     }
@@ -75,33 +72,8 @@ export function DeleteAllLibrariesModal({
 
   if (!open) return null;
 
-  const confirmed = progress >= 1;
-
-  const maxOffset = trackRef.current ? sliderTravel(trackRef.current.offsetWidth) : 0;
-  const thumbX = progress * maxOffset;
-
   const deletedCount = Math.max(0, initialCount - remainingCount);
   const deletePct = initialCount > 0 ? Math.round((deletedCount / initialCount) * 100) : 0;
-
-  function handleThumbPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    if (deleting || confirmed) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    setDragging(true);
-  }
-
-  function handleThumbPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!dragging || !trackRef.current) return;
-    const rect = trackRef.current.getBoundingClientRect();
-    const max = sliderTravel(trackRef.current.offsetWidth);
-    const raw = e.clientX - rect.left - TRACK_BORDER - THUMB_SIZE / 2 - TRACK_PAD;
-    setProgress(Math.max(0, Math.min(1, max > 0 ? raw / max : 0)));
-  }
-
-  function handleThumbPointerUp() {
-    if (!dragging) return;
-    setDragging(false);
-    setProgress(prev => (prev >= 0.9 ? 1 : 0));
-  }
 
   return (
     <AnimatePresence>
@@ -123,31 +95,32 @@ export function DeleteAllLibrariesModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-all-libraries-title"
-          className="studio-surface profile-modal relative w-full max-w-2xl p-4 sm:p-5"
+          className="studio-surface profile-modal import-modal relative w-full max-w-[624px] px-7 pb-6 pt-5"
         >
           {deleting ? (
             /* ── Deletion in progress: progress view ── */
-            <div className="py-2 text-center">
-              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-                <Refresh className="animate-spin text-red-400" width={28} height={28} aria-hidden="true" />
+            <div className="text-center">
+              <div className="import-group shrink-0">
+                <div className="import-status-icon">
+                  <Refresh className="animate-spin text-[var(--color-control-primary)]" width={24} height={24} aria-hidden="true" />
+                </div>
+                <h2 id="delete-all-libraries-title" className="import-heading">Deleting Rekordbox Libraries…</h2>
               </div>
-              <h2 id="delete-all-libraries-title" className="text-xl font-black mb-1">
-                Deleting Rekordbox Libraries…
-              </h2>
-              <p className="text-xs text-muted-foreground mb-6">
-                Do not close this window until deletion is complete.
-              </p>
+              <div className="import-group import-group--amber mb-3 flex items-center gap-3 text-left">
+                <WarningTriangle width={16} height={16} aria-hidden="true" className="shrink-0 text-amber-400" />
+                <p className="text-[11px] leading-snug text-amber-100">Do not close this window until deletion is complete.</p>
+              </div>
 
               {/* Progress bar */}
-              <div className="mt-3 mb-2 h-2 w-full overflow-hidden rounded-full bg-[var(--color-surface)]">
+              <div className="mb-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface)]">
                 <div
-                  className="h-full rounded-full bg-red-500 transition-all duration-500"
+                  className="h-full rounded-full bg-[var(--color-control-primary)] transition-all duration-500"
                   style={{ width: `${deletePct}%` }}
                 />
               </div>
 
               <div className="mt-3 flex items-baseline justify-between text-sm">
-                <span className="font-black text-red-400">{deletePct}%</span>
+                <span className="font-semibold text-foreground">{deletePct}%</span>
                 {estimatedSecondsRemaining != null ? (
                   <span className="text-xs text-muted-foreground">
                     {formatSecondsRemaining(estimatedSecondsRemaining)}
@@ -164,7 +137,7 @@ export function DeleteAllLibrariesModal({
               )}
 
               {error && (
-                <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs leading-relaxed text-red-300 text-left">
+                <div className="import-group mt-4 text-left text-xs leading-relaxed text-red-300">
                   {error}
                 </div>
               )}
@@ -172,104 +145,40 @@ export function DeleteAllLibrariesModal({
           ) : (
             /* ── Confirmation view ── */
             <>
-              <button
-                type="button"
-                onClick={onClose}
-                className="absolute top-4 right-4 flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-white/[0.06]"
-                aria-label="Close"
-              >
+              <ControlButton variant="ghost" className="!absolute right-3 top-3 z-20" onClick={onClose} aria-label="Close">
                 <Xmark width={18} height={18} aria-hidden="true" />
-              </button>
-              <div className="flex min-w-0 items-start gap-4">
-                <div className="shrink-0 rounded-2xl bg-red-500/10 p-3 text-red-400">
-                  <WarningTriangle width={22} height={22} aria-hidden="true" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-400">Permanent action</p>
-                  <h2 id="delete-all-libraries-title" className="mt-1 text-xl font-black">
-                    Delete all <span className="text-red-400">{visibleSnapshotCount.toLocaleString()}</span> Rekordbox libraries?
-                  </h2>
-                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    Permanently removes all snapshots and their imported tracks, playlists, analysis data, and assets. Your account, profile, and app preferences are not affected.
-                  </p>
-                </div>
+              </ControlButton>
+              <div className="flex items-center gap-2 pr-10">
+                <WarningTriangle width={24} height={24} aria-hidden="true" className="shrink-0 text-[var(--color-control-primary)]" />
+                <h2 id="delete-all-libraries-title" className="import-modal__title text-[26px] leading-tight">
+                  Delete all {visibleSnapshotCount.toLocaleString()} Rekordbox libraries?
+                </h2>
+              </div>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                Permanently removes all snapshots and their imported tracks, playlists, analysis data, and assets. Your account, profile, and app preferences are not affected.
+              </p>
+              <div className="import-group import-group--amber mt-3 flex items-center gap-3 text-left">
+                <WarningTriangle width={16} height={16} aria-hidden="true" className="shrink-0 text-amber-400" />
+                <p className="text-[11px] leading-snug text-amber-100">This is a permanent action and cannot be undone.</p>
               </div>
 
-              {/* Drag-to-confirm slider */}
-              <div className="mt-5">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-                  Slide to delete
-                </p>
-                <div
-                  ref={trackRef}
-                  className="relative overflow-hidden rounded-full border border-red-500/50 select-none"
-                  style={{ height: SLIDER_TRACK_HEIGHT, borderWidth: TRACK_BORDER }}
-                >
-                  {/* Fill — only visible when confirmed */}
-                  {confirmed && (
-                    <div
-                      className="pointer-events-none absolute inset-0"
-                      style={{ background: 'linear-gradient(90deg, #dc2626 0%, #ef4444 100%)' }}
-                    />
-                  )}
-                  {/* Idle label */}
-                  <div
-                    className="pointer-events-none absolute inset-0 flex items-center justify-center"
-                    style={{ opacity: Math.max(0, 1 - progress * 2.5) }}
-                  >
-                    <span className="text-[11px] font-semibold tracking-wider text-red-400/70">
-                      Drag to confirm
-                    </span>
-                  </div>
-                  {/* Confirmed label */}
-                  {confirmed && (
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                      <span className="text-[11px] font-semibold tracking-wider text-white/90">
-                        Ready for Delete
-                      </span>
-                    </div>
-                  )}
-                  {/* Thumb */}
-                  <div
-                    onPointerDown={handleThumbPointerDown}
-                    onPointerMove={handleThumbPointerMove}
-                    onPointerUp={handleThumbPointerUp}
-                    className="absolute flex items-center justify-center rounded-full bg-red-400"
-                    style={{
-                      left: TRACK_PAD,
-                      top: TRACK_PAD,
-                      width: THUMB_SIZE,
-                      height: THUMB_SIZE,
-                      transform: `translateX(${thumbX}px)`,
-                      transition: dragging ? 'none' : 'transform 220ms ease',
-                      cursor: confirmed ? 'default' : dragging ? 'grabbing' : 'grab',
-                    }}
-                  >
-                    {confirmed ? (
-                      <Check width={18} height={18} color="rgba(255,200,200,0.9)" strokeWidth={2.5} aria-hidden="true" />
-                    ) : (
-                      <ArrowRight width={18} height={18} aria-hidden="true" className="text-white" />
-                    )}
-                  </div>
-                </div>
-              </div>
+              <SlideToDelete disabled={deleting} onChange={setConfirmed} />
 
               {error && (
-                <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs leading-relaxed text-red-300">
+                <div className="import-group mt-3 text-xs leading-relaxed text-red-300">
                   {error}
                 </div>
               )}
 
-              <div className="mt-4 flex gap-3">
-                <ControlButton type="button" variant="neutral" onClick={onClose} className="flex-1">
+              <div className="mt-auto flex justify-center gap-3 pt-5">
+                <ControlButton type="button" variant="secondary" onClick={onClose}>
                   <Xmark width={16} height={16} aria-hidden="true" /> Cancel
                 </ControlButton>
                 <ControlButton
                   type="button"
-                  variant="danger-outline"
+                  variant="danger"
                   disabled={!confirmed}
                   onClick={onConfirm}
-                  className="flex-1"
                 >
                   <Trash width={16} height={16} aria-hidden="true" /> Delete All
                 </ControlButton>

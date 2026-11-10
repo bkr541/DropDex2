@@ -1,0 +1,31 @@
+/* Layout Lab / Popover. Each specimen sits in a stage that contains fixed-position overlays (a transformed box is the containing block). */
+.pop-lab { height: 100%; overflow-y: auto; padding: 32px; background: #111419; font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; color: #f6f7fa; }
+.pop-intro { max-width: 600px; margin-bottom: 24px; }
+.pop-intro span { color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
+.pop-intro h1 { margin: 8px 0 0; font-size: 24px; font-weight: 300; letter-spacing: -.02em; }
+.pop-intro p { margin: 8px 0 0; color: #a4adbd; font-size: 13px; line-height: 1.5; }
+.pop-group { margin: 32px 0 16px; color: #9aa5b8; font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
+.pop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(720px, 1fr)); gap: 32px 28px; }
+.pop-caption { margin: 0 0 10px; font-size: 13px; color: #f6f7fa; }
+.pop-caption b { margin-right: 8px; font-weight: 500; }
+.pop-caption small { display: block; margin-top: 3px; color: #9aa5b8; font-size: 11px; font-family: ui-monospace, Menlo, monospace; }
+.pop-kind { margin-left: 10px; padding: 1px 8px; border: 1px solid #ffffff26; border-radius: 999px; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: #a4adbd; }
+.pop-kind--shared { border-color: rgb(245 107 112 / .5); color: #f78361; }
+/* Each specimen sits in a stage that grows to fit its popover, so nothing is cropped or scaled. Overlays that are fixed to the window
+   in the app (backdrops, menus) are placed in the flow here instead. */
+.pop-stage { position: relative; padding: 24px; border: 1px solid #ffffff12; border-radius: 12px; background: #0b0e13; }
+.pop-stage .fixed { position: relative !important; inset: auto !important; z-index: auto !important; width: fit-content; padding: 0 !important; background: transparent !important; backdrop-filter: none !important; }
+.pop-stage .fixed[role="menu"] { width: max-content; }
+.pop-stack { display: flex; flex-direction: column; gap: 10px; }
+.pop-anchor, .pop-corner, .pop-abs { position: static; }
+.pop-stage .pop-abs { position: static !important; }
+.pop-center { display: flex; justify-content: center; }
+.pop-relative > [role="dialog"] { position: relative !important; inset: auto !important; width: min(960px, 100%) !important; max-width: 100% !important; }
+.pop-stage .dd-dialog, .pop-stage .dd-dialog--inline { position: relative; width: min(480px, 100%); }
+.pop-stage .dd-dialog.dd-dialog--right-sheet { height: auto; width: min(580px, 100%); border-radius: 24px; border: 1px solid #ffffff13; }
+.pop-stage .dd-toast { width: min(420px, 100%); }
+.pop-stage .dd-floating-activity { width: min(340px, 100%); }
+.pop-stage .dd-popup-surface[role="menu"], .pop-stage .dd-popup-surface[role="listbox"] { width: max-content; min-width: 190px; }
+.pop-menu-anchor { position: relative; }
+.pop-menu-anchor > [role="menu"], .pop-menu-anchor > [role="dialog"] { top: 0 !important; left: 0; right: auto !important; }
+.pop-note { display: flex; align-items: center; gap: 6px; margin-top: 24px; color: #9aa5b8; font-size: 11px; }

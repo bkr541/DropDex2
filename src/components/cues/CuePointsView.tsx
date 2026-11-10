@@ -8,7 +8,8 @@ import { cueFlagColor, WaveformCueMarker } from '../ui/media/WaveformCueMarker';
 import { CloudSyncIcon } from '../library/CloudSyncIcon';
 import { useSyncedPreviewKeys } from '../../hooks/useSyncedPreviewKeys';
 import { trackIdentityKey } from '../../lib/preview/trackIdentity';
-import { GenreEditPopover } from './GenreEditPopover';
+import { GenreEditPopover, GenreEditorContent } from './GenreEditPopover';
+import { CueApplyMenu } from './CueApplyMenu';
 import { TrackSourceTabs } from './TrackSourceTabs';
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -1087,62 +1088,26 @@ function CueWaveformPanel({
               <NavArrowDown width={15} height={15} aria-hidden="true" className={cn('transition-transform', applyMenuOpen && 'rotate-180')} />
             </ControlButton>
             {applyMenuOpen && (
-              <div
-                role="menu"
-                aria-label="Cue draft and Apply actions"
+              <CueApplyMenu
                 onKeyDown={handleApplyMenuKeyDown}
-                className="absolute right-0 top-[calc(100%+6px)] z-[90] min-w-[220px] overflow-hidden rounded-lg border border-[#34414b] bg-[#11181e] p-1.5 shadow-2xl"
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={saveDisabled}
-                  title={saving
-                    ? 'Saving cue changes…'
-                    : baselineProofRefreshNeeded && !dirty
-                      ? 'Refresh verified cue baseline proof for this legacy draft'
-                      : 'Save cue changes as a draft'}
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-foreground transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => { closeApplyMenuAndRestoreFocus(); void onSave().then(setEditorMessage); }}
-                >
-                  {saving ? <Refresh width={15} height={15} aria-hidden="true" className="animate-spin" /> : <FloppyDisk width={15} height={15} aria-hidden="true" />}
-                  <span>Save Draft</span>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={applyTrackDisabled}
-                  title={applyTrackAvailable ? 'Apply only the selected track to local Rekordbox' : 'Apply Track requires a saved pending draft for the selected track'}
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-foreground transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => { closeApplyMenuAndRestoreFocus(); onApplyTrack(); }}
-                >
-                  <DatabaseExport width={15} height={15} aria-hidden="true" />
-                  <span>Apply Track</span>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={applyAllDisabled}
-                  title={applyAllCount > 0 ? `Apply all ${applyAllCount} saved track changes to local Rekordbox` : 'Apply All requires at least one saved draft that needs apply'}
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-foreground transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => { closeApplyMenuAndRestoreFocus(); onApplyAll(); }}
-                >
-                  <DatabaseExport width={15} height={15} aria-hidden="true" />
-                  <span>Apply All ({applyAllCount})</span>
-                </button>
-                <div className="my-1 border-t border-white/[0.07]" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={discardDisabled}
-                  title="Discard unsaved cue changes and restore the saved/imported baseline"
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-amber-100 transition-colors hover:bg-amber-300/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => { closeApplyMenuAndRestoreFocus(); onDiscard(); }}
-                >
-                  <Undo width={15} height={15} aria-hidden="true" />
-                  <span>Discard Changes</span>
-                </button>
-              </div>
+                saving={saving}
+                saveDisabled={saveDisabled}
+                saveTitle={saving
+                  ? 'Saving cue changes…'
+                  : baselineProofRefreshNeeded && !dirty
+                    ? 'Refresh verified cue baseline proof for this legacy draft'
+                    : 'Save cue changes as a draft'}
+                applyTrackDisabled={applyTrackDisabled}
+                applyTrackTitle={applyTrackAvailable ? 'Apply only the selected track to local Rekordbox' : 'Apply Track requires a saved pending draft for the selected track'}
+                applyAllDisabled={applyAllDisabled}
+                applyAllCount={applyAllCount}
+                applyAllTitle={applyAllCount > 0 ? `Apply all ${applyAllCount} saved track changes to local Rekordbox` : 'Apply All requires at least one saved draft that needs apply'}
+                discardDisabled={discardDisabled}
+                onSave={() => { closeApplyMenuAndRestoreFocus(); void onSave().then(setEditorMessage); }}
+                onApplyTrack={() => { closeApplyMenuAndRestoreFocus(); onApplyTrack(); }}
+                onApplyAll={() => { closeApplyMenuAndRestoreFocus(); onApplyAll(); }}
+                onDiscard={() => { closeApplyMenuAndRestoreFocus(); onDiscard(); }}
+              />
             )}
           </div>
         </div>
@@ -1424,7 +1389,7 @@ function CueWaveformPanel({
           <div
             role="menu"
             aria-label={contextMenu.kind === 'add' ? 'Add cue' : 'Cue actions'}
-            className="fixed min-w-[190px] overflow-hidden rounded-lg border border-[#34414b] bg-[#11181e] p-1.5 shadow-2xl"
+            className="fixed min-w-[190px] overflow-hidden dd-popup-surface p-1.5"
             style={{ left: contextMenu.x, top: contextMenu.y }}
             onPointerDown={(event) => event.stopPropagation()}
           >
@@ -3698,83 +3663,25 @@ export function CuePointsView({ importId, onImport, mode = 'cues', onTrackOpen, 
             setEditingGenreTrackId(null);
             setGenreSaveError(null);
           }}>
-                            <div className="space-y-1.5" onClick={(event) => event.stopPropagation()}>
-                              <div className="flex items-center gap-1.5">
-                                <div className="min-w-0 flex-1">
-                                  <TextControl
-                                    type="text"
-                                    autoFocus
-                                    maxLength={REKORDBOX_GENRE_MAX_LENGTH}
-                                    value={editingGenreValue}
-                                    onChange={(event) => {
-                                      setEditingGenreValue(event.target.value);
-                                      setGenreSaveError((current) => current?.trackId === track.id ? null : current);
-                                    }}
-                                    onKeyDown={(event) => {
-                                      event.stopPropagation();
-                                      if (event.key === 'Escape') {
-                                        event.preventDefault();
-                                        setEditingGenreTrackId(null);
-                                        setGenreSaveError((current) => current?.trackId === track.id ? null : current);
-                                      } else if (event.key === 'Enter' && !event.repeat && genreEditingDirty && !genreSaving && genreEditingAvailable) {
-                                        event.preventDefault();
-                                        void saveInlineGenreDraft(track);
-                                      }
-                                    }}
-                                    disabled={genreSaving || !genreEditingAvailable}
-                                    aria-label={`Genre for ${track.title}`}
-                                    className="cue-genre-input disabled:opacity-60"
-                                    placeholder="Genre…"
-                                  />
-                                </div>
-                                {genreEditingDirty && (
-                                  <button
-                                    type="button"
-                                    className="shrink-0 text-primary hover:text-primary/80 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                                    title="Save pending Genre change"
-                                    aria-label={`Save pending Genre change for ${track.title}`}
-                                    disabled={genreSaving || !genreEditingAvailable}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      void saveInlineGenreDraft(track);
-                                    }}
-                                  >
-                                    {genreSaving ? <Refresh className="animate-spin" width={13} height={13} aria-hidden="true" /> : <FloppyDisk width={13} height={13} aria-hidden="true" />}
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  className="shrink-0 text-muted-foreground hover:text-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                                  title="Cancel genre edit"
-                                  aria-label={`Cancel genre edit for ${track.title}`}
-                                  disabled={genreSaving}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setEditingGenreTrackId(null);
-                                    setGenreSaveError((current) => current?.trackId === track.id ? null : current);
-                                  }}
-                                >
-                                  <Xmark width={13} height={13} aria-hidden="true" />
-                                </button>
-                              </div>
-                              {genreSaveError?.trackId === track.id && (
-                                <div className="flex items-center justify-between gap-2 text-[10px] text-red-300" role="alert">
-                                  <span>{genreSaveError.message}</span>
-                                  {genreSaveError.revisionConflict && (
-                                    <button
-                                      type="button"
-                                      className="shrink-0 font-bold text-red-200 underline underline-offset-2 hover:text-red-100"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        setMetadataDraftRetryNonce((value) => value + 1);
-                                      }}
-                                    >
-                                      Reload pending Genre
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
+            <GenreEditorContent
+              title={track.title}
+              value={editingGenreValue}
+              maxLength={REKORDBOX_GENRE_MAX_LENGTH}
+              dirty={genreEditingDirty}
+              saving={genreSaving}
+              available={genreEditingAvailable}
+              error={genreSaveError?.trackId === track.id ? genreSaveError : null}
+              onChange={(next) => {
+                setEditingGenreValue(next);
+                setGenreSaveError((current) => current?.trackId === track.id ? null : current);
+              }}
+              onSave={() => { void saveInlineGenreDraft(track); }}
+              onCancel={() => {
+                setEditingGenreTrackId(null);
+                setGenreSaveError((current) => current?.trackId === track.id ? null : current);
+              }}
+              onReload={() => setMetadataDraftRetryNonce((value) => value + 1)}
+            />
           </GenreEditPopover>
         )}
       </>

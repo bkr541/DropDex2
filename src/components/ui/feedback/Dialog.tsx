@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
-import { WarningTriangle, Xmark } from 'iconoir-react/regular';
+import { InfoCircle, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { cn } from '../../../lib/utils';
 import { ControlButton } from '../controls/ControlButton';
 import '../dropdex-feedback.css';
@@ -18,6 +18,7 @@ export function Dialog({
   actions,
   onClose,
   destructive = false,
+  icon,
   inline = false,
   closeOnBackdrop = true,
   placement = 'center',
@@ -28,6 +29,8 @@ export function Dialog({
   actions?: DialogAction[];
   onClose?: () => void;
   destructive?: boolean;
+  /** The icon beside the title. Defaults to a warning when destructive, an info mark otherwise. */
+  icon?: ReactNode;
   inline?: boolean;
   closeOnBackdrop?: boolean;
   placement?: 'center' | 'right';
@@ -54,7 +57,7 @@ export function Dialog({
     <section
       ref={surfaceRef}
       tabIndex={-1}
-      className={cn('dd-dialog', destructive && 'dd-dialog--destructive', inline && 'dd-dialog--inline', placement === 'right' && 'dd-dialog--right-sheet')}
+      className={cn('studio-surface dd-dialog', destructive && 'dd-dialog--destructive', inline && 'dd-dialog--inline', placement === 'right' && 'dd-dialog--right-sheet')}
       role="dialog"
       aria-modal={inline ? undefined : true}
       aria-labelledby={titleId}
@@ -66,16 +69,14 @@ export function Dialog({
       } : undefined}
     >
       <header>
-        {destructive && <WarningTriangle width={29} height={29} aria-hidden="true" />}
+        {icon ?? (destructive ? <WarningTriangle width={24} height={24} aria-hidden="true" /> : <InfoCircle width={24} height={24} aria-hidden="true" />)}
         <strong id={titleId}>{title}</strong>
         {onClose && <button type="button" className="dd-icon-dismiss" onClick={onClose} aria-label={`Close ${title}`}><Xmark aria-hidden="true" width={15} height={15} /></button>}
       </header>
       <div className="dd-dialog__body">{children}</div>
-      {actions && actions.length > 0 && <footer>{actions.map((action) => action.variant === 'primary'
-        ? <ControlButton key={action.label} variant="primary" disabled={action.disabled} onClick={action.onClick}>{action.label}</ControlButton>
-        : action.variant === 'secondary'
-          ? <ControlButton key={action.label} variant="secondary" disabled={action.disabled} onClick={action.onClick}>{action.label}</ControlButton>
-          : <button key={action.label} type="button" disabled={action.disabled} className={cn('dd-feedback-button', action.variant === 'danger' ? 'dd-feedback-button--danger' : 'dd-feedback-button--ghost')} onClick={action.onClick}>{action.label}</button>)}</footer>}
+      {actions && actions.length > 0 && <footer>{actions.map((action) => (
+        <ControlButton key={action.label} variant={action.variant === 'danger' ? 'danger' : action.variant === 'primary' ? 'primary' : 'secondary'} disabled={action.disabled} onClick={action.onClick}>{action.label}</ControlButton>
+      ))}</footer>}
     </section>
   );
   if (inline) return surface;

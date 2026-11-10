@@ -304,8 +304,8 @@
 /* USB records use the "Hairline Boxes" style from Layout Lab / Nested Groups: plain records, nested groups outlined by a hairline,
    label-and-value pairs two to a row, nested groups indented under the USB name. */
 .profile-usb-records { display: flex; flex-direction: column; gap: 12px; }
-.profile-usb-record { display: flex; flex-direction: column; gap: 8px; padding-inline: 12px; }
-.profile-usb-head { padding: 0; min-height: 0; }
+.profile-usb-record { display: flex; flex-direction: column; gap: 8px; }
+.profile-usb-head { padding: 6px 12px; min-height: 0; border-radius: 10px; }
 .profile-usb-head .profile-usb-name { color: var(--profile-ink); font-size: 16px; font-weight: 600; letter-spacing: .03em; }
 .profile-usb-label { color: var(--profile-muted); font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
 .profile-usb-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 28px; margin: 0; }
@@ -350,6 +350,7 @@
 .import-modal .import-group > .import-heading:last-child { margin-bottom: 0; }
 .import-modal .import-status-icon { margin-bottom: 12px; }
 .import-modal .import-group > .import-status-icon:only-of-type:last-child, .import-modal .import-group > .import-heading:last-child { margin-bottom: 0; }
+.import-modal .import-group--success { border-color: rgb(34 197 94 / .3); background: rgb(34 197 94 / .1); }
 .import-modal .import-group--accent > .import-status-icon { margin-bottom: 12px; }
 /* Label/value rows in the import popover run in two columns so every screen's buttons stay in view. */
 .import-modal .import-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 32px; }
@@ -360,4 +361,4 @@
 .import-modal .import-group__label { margin: 0 0 8px; color: var(--color-muted-foreground); font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
 
 /* Inside an open USB: groups indent under the USB name and sit 8px apart. */
-.usb-card-body { display: flex; flex-direction: column; gap: 8px; margin-left: 28px; padding: 0; }
+.usb-card-body { display: flex; flex-direction: column; gap: 8px; margin-left: 40px; margin-right: 12px; padding: 0; }

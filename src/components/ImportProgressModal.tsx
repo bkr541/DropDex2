@@ -22,8 +22,10 @@ export type { ImportUiStep };
 export function ImportProgressModal({
   currentStep = 'source',
   title = 'Import Rekordbox Library',
+  icon,
   progress,
   stepKey,
+  compact = false,
   stagePercent,
   status,
   ready,
@@ -34,8 +36,12 @@ export function ImportProgressModal({
   currentStep?: ImportUiStep;
   /** The popover title. Defaults to the import's. */
   title?: string;
+  /** The icon beside the title. Defaults to the import's database icon. */
+  icon?: React.ReactNode;
   /** Another process (Resume Analysis) can supply its own progress display in place of the import's five phases. */
   progress?: React.ReactNode;
+  /** Fits the popover to its content instead of the fixed 600px height. For short, single-purpose popovers. */
+  compact?: boolean;
   /** Changes whenever the body should slide to a new screen. Defaults to the current step. */
   stepKey?: string;
   /** How far through the current phase the import is (0 to 100), which gives the overall percentage. */
@@ -56,7 +62,7 @@ export function ImportProgressModal({
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0.9, opacity: 0 }}
-      className="studio-surface profile-modal import-modal relative w-full max-w-[624px] h-[600px] max-h-[calc(100dvh-2rem)] !overflow-hidden flex flex-col"
+      className={`studio-surface profile-modal import-modal relative w-full max-w-[624px] !overflow-hidden flex flex-col${compact ? '' : ' h-[600px] max-h-[calc(100dvh-2rem)]'}`}
       role="dialog"
       data-ready={ready ? 'true' : undefined}
       aria-modal="true"
@@ -80,7 +86,7 @@ export function ImportProgressModal({
       {/* Shared header — identical on every phase */}
       <div className="flex items-center justify-between px-7 pt-5 pb-0 shrink-0">
         <div className="flex items-center gap-2">
-          <Database className="shrink-0 text-[var(--color-control-primary)]" width={24} height={24} aria-hidden />
+          {icon ?? <Database className="shrink-0 text-[var(--color-control-primary)]" width={24} height={24} aria-hidden />}
           <h2 id="import-progress-title" className="import-modal__title text-[26px] leading-tight">
             {title}
           </h2>

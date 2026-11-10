@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { SLIDER_TRACK_HEIGHT, THUMB_SIZE, TRACK_BORDER, TRACK_PAD, sliderTravel } from './deleteAllSlider';
 
-const source = readFileSync(new URL('./DeleteAllLibrariesModal.tsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('./SlideToDelete.tsx', import.meta.url), 'utf8');
 
 describe('Delete All slider', () => {
   const thumb = THUMB_SIZE;

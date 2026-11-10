@@ -21,7 +21,7 @@ describe('Discovery set search popover', () => {
   it('uses the shared Quiet Figure display inside the Rekordbox import shell', () => {
     const markup = render(job());
     expect(markup).toContain('max-w-[624px]');
-    expect(markup).toContain('bg-primary/10 rounded-xl');
+    expect(markup).toContain('import-modal');
     expect(markup).toContain('data-testid="quiet-progress"');
     expect(markup).toContain('data-testid="quiet-phases"');
     for (const label of ['Queued', 'Searching', 'Collecting', 'Complete']) expect(markup).toContain(label);

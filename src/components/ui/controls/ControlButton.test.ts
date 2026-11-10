@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 const read = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8');
 const controlsCss = read('../dropdex-controls.css');
 const feedbackCss = read('../dropdex-feedback.css');
-const raisedPlate = controlsCss.match(/\.dd-control-button:is\(\.dd-control-button--primary, \.dd-control-button--secondary\) \{([^}]*)\}/)?.[1];
+const raisedPlate = controlsCss.match(/\.dd-control-button:is\(\.dd-control-button--primary, \.dd-control-button--secondary, \.dd-control-button--danger\) \{([^}]*)\}/)?.[1];
 
 describe('The one primary button', () => {
   it('shares a graphite plate with the secondary, with coral on the primary rim and label', () => {
@@ -17,6 +17,7 @@ describe('The one primary button', () => {
 
   it('sets its text in the shared button font (0.1em spacing)', () => {
     expect(raisedPlate).toMatch(/font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;[^}]*font-weight: 400;[^}]*letter-spacing: \.1em;[^}]*text-transform: uppercase;/);
+    expect(controlsCss).toContain('.dd-control-button.dd-control-button--primary,\n.dd-control-button.dd-control-button--secondary,\n.dd-control-button.dd-control-button--danger { text-transform: capitalize; }');
     expect(feedbackCss).toMatch(/\.dd-upload-button--primary \{[^}]*font-weight: 300; letter-spacing: \.1em; text-transform: uppercase;/);
   });
 
@@ -25,7 +26,7 @@ describe('The one primary button', () => {
   });
 
   it('is what dialogs, empty states and the library hero use for their main action', () => {
-    expect(read('../feedback/Dialog.tsx')).toContain('<ControlButton key={action.label} variant="primary"');
+    expect(read('../feedback/Dialog.tsx')).toContain("action.variant === 'primary' ? 'primary' : 'secondary'");
     expect(read('../feedback/EmptyState.tsx')).toContain('<ControlButton variant="primary"');
     expect(read('../../library/HeroActionButton.tsx')).toContain('<ControlButton variant="primary"');
     expect(read('../../player/NowPlayingBar.tsx')).toContain('<ControlButton variant="primary"');
@@ -37,14 +38,20 @@ describe('The one primary button', () => {
   });
 });
 
+describe('The one danger button', () => {
+  it('is the same raised plate as primary and secondary, in a soft red', () => {
+    expect(controlsCss).toMatch(/\.dd-control-button--danger \{[^}]*--dd-plate-border: #d9707c99;[^}]*--dd-plate-text: #eb8d97;/);
+  });
+});
+
 describe('The one secondary button', () => {
   it('uses silver on the raised plate and brightens the rim and label on hover', () => {
     expect(controlsCss).toMatch(/\.dd-control-button--secondary \{[^}]*--dd-plate-border: #ffffff1f;[^}]*--dd-plate-text: #cdd3dd;[^}]*--dd-plate-hover-border: #ffffff3d;[^}]*--dd-plate-hover-text: #fff;/);
-    expect(controlsCss).toMatch(/\.dd-control-button:is\(\.dd-control-button--primary, \.dd-control-button--secondary\):hover:not\(:disabled\) \{[^}]*border-color: var\(--dd-plate-hover-border\);[^}]*color: var\(--dd-plate-hover-text\);/);
+    expect(controlsCss).toMatch(/\.dd-control-button:is\(\.dd-control-button--primary, \.dd-control-button--secondary, \.dd-control-button--danger\):hover:not\(:disabled\) \{[^}]*border-color: var\(--dd-plate-hover-border\);[^}]*color: var\(--dd-plate-hover-text\);/);
   });
 
   it('dims the plate when disabled and keeps neutral and surface as outline variants', () => {
-    expect(controlsCss).toContain('.dd-control-button:is(.dd-control-button--primary, .dd-control-button--secondary):disabled { opacity: .35; }');
+    expect(controlsCss).toContain('.dd-control-button:is(.dd-control-button--primary, .dd-control-button--secondary, .dd-control-button--danger):disabled { opacity: .35; }');
     expect(controlsCss).toMatch(/\.dd-control-button--neutral,\s*\.dd-control-button--surface \{[^}]*border-color: #3a4655[^}]*background: transparent[^}]*color: #d8dee7/);
   });
 });

@@ -3,15 +3,16 @@ import { AnimatePresence, motion } from 'motion/react';
 import type { RekordboxImport } from '../types';
 import {
   getPersistedDeleteStrategy,
-  isDeleteConfirmationValid,
   type DeleteActiveStrategy,
 } from '../lib/rekordbox/libraryDeletion';
 import { cn } from '../lib/utils';
 import { Refresh, Trash, WarningTriangle, Xmark } from 'iconoir-react/regular';
-import { ControlButton, TextControl } from './ui/controls';
+import { ControlButton } from './ui/controls';
+import { SlideToDelete } from './SlideToDelete';
 
 interface DeleteLibraryModalProps {
   target: RekordboxImport | null;
+  /** Kept for callers; the modal now has one look. */
   profileStyle?: boolean;
   isActive: boolean;
   nextUsableImport: RekordboxImport | null;
@@ -24,7 +25,6 @@ interface DeleteLibraryModalProps {
 
 export function DeleteLibraryModal({
   target,
-  profileStyle = false,
   isActive,
   nextUsableImport,
   deleting,
@@ -33,7 +33,7 @@ export function DeleteLibraryModal({
   onClose,
   onConfirm,
 }: DeleteLibraryModalProps) {
-  const [confirmation, setConfirmation] = useState('');
+  const [confirmationValid, setConfirmationValid] = useState(false);
   const [strategy, setStrategy] = useState<DeleteActiveStrategy>('activate_next');
 
   const persistedStrategy = target ? getPersistedDeleteStrategy(target) : null;
@@ -44,7 +44,7 @@ export function DeleteLibraryModal({
     : 'activate_next');
 
   useEffect(() => {
-    setConfirmation('');
+    setConfirmationValid(false);
     setStrategy(isActive ? (nextUsableImport ? 'activate_next' : 'start_over') : 'activate_next');
   }, [target?.id, isActive, nextUsableImport?.id]);
 
@@ -56,7 +56,6 @@ export function DeleteLibraryModal({
       : 'Delete Active Book'
     : 'Delete Book';
   const actionLabel = retryingPendingDelete ? `Retry ${baseActionLabel}` : baseActionLabel;
-  const confirmationValid = isDeleteConfirmationValid(confirmation);
 
   return (
     <AnimatePresence>
@@ -78,124 +77,68 @@ export function DeleteLibraryModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-library-title"
-          className={cn('w-full max-w-2xl', profileStyle
-            ? 'studio-surface profile-modal p-4 sm:p-5'
-            : 'rounded-3xl border border-red-500/20 bg-[var(--color-panel)] p-6 shadow-2xl')}
+          className="studio-surface profile-modal import-modal relative w-full max-w-[624px] px-7 pb-6 pt-5"
         >
-          {/* Top row: icon + title + body  |  contextual warning */}
-          <div className={cn('flex gap-6', profileStyle && 'flex-col sm:flex-row')}>
-            <div className="flex min-w-0 flex-1 items-start gap-4">
-              <div className="shrink-0 rounded-2xl bg-red-500/10 p-3 text-red-400">
-                <WarningTriangle width={22} height={22} aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-400">Permanent action</p>
-                <h2 id="delete-library-title" className="mt-1 text-xl font-black">
-                  {isActive ? 'Delete active Rekordbox library?' : 'Delete Rekordbox library?'}
-                </h2>
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  DropDex will permanently delete this snapshot&apos;s imported tracks, playlists, cues, beat grids,
-                  phrase analysis, waveforms, recommendation data, retained analysis assets, cloud analysis objects,
-                  and staging files. Your DropDex account and app preferences are not affected.
-                </p>
-                <p className="mt-1.5 truncate font-mono text-xs text-muted-foreground" title={target.source_filename}>
-                  {target.source_filename}
-                </p>
-              </div>
-            </div>
+          <ControlButton variant="ghost" className="!absolute right-3 top-3 z-20" disabled={deleting} onClick={onClose} aria-label="Close">
+            <Xmark width={18} height={18} aria-hidden="true" />
+          </ControlButton>
+          <div className="flex items-center gap-2 pr-10">
+            <WarningTriangle width={24} height={24} aria-hidden="true" className="shrink-0 text-[var(--color-control-primary)]" />
+            <h2 id="delete-library-title" className="import-modal__title text-[26px] leading-tight">
+              {isActive ? 'Delete active Rekordbox library?' : 'Delete Rekordbox library?'}
+            </h2>
+          </div>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            DropDex will permanently delete this snapshot&apos;s imported tracks, playlists, cues, beat grids, phrase analysis, waveforms,
+            recommendation data, retained analysis assets, cloud analysis objects, and staging files. Your DropDex account and app preferences are not affected.
+          </p>
+          <p className="mt-2 truncate font-mono text-xs text-muted-foreground" title={target.source_filename}>{target.source_filename}</p>
 
-            {/* Right: conditional context panel */}
-            {retryingPendingDelete && (
-              <div className="w-52 shrink-0 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
-                <p className="text-sm font-bold text-amber-300">Deletion is already pending.</p>
-                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                  Retry will continue the original confirmed action: <span className="font-bold">{baseActionLabel}</span>.
-                  The strategy cannot change while this hard delete is in progress.
-                </p>
-              </div>
-            )}
-            {isActive && !nextUsableImport && !retryingPendingDelete && (
-              <div className="w-52 shrink-0 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
-                <p className="text-sm font-bold text-amber-300">This is your only usable library.</p>
-                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                  Deleting it will return DropDex to the same empty state shown before the first Rekordbox import.
-                </p>
-              </div>
-            )}
+          <div className="import-group import-group--amber mt-3 flex items-center gap-3 text-left">
+            <WarningTriangle width={16} height={16} aria-hidden="true" className="shrink-0 text-amber-400" />
+            <p className="text-[11px] leading-snug text-amber-100">
+              {retryingPendingDelete
+                ? `Deletion is already pending. Retry continues the original action: ${baseActionLabel}.`
+                : isActive && !nextUsableImport
+                  ? 'This is your only usable library. Deleting it returns DropDex to the empty state.'
+                  : 'This is a permanent action and cannot be undone.'}
+            </p>
           </div>
 
           {canChooseFallback && (
-            <div className="mt-4 flex gap-3">
-              <div className="shrink-0 pt-0.5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">After deletion</p>
-              </div>
-              <div className="flex flex-1 gap-3">
-                <button
-                  type="button"
-                  disabled={deleting}
-                  aria-pressed={strategy === 'activate_next'}
-                  onClick={() => setStrategy('activate_next')}
-                  className={cn(
-                    'flex-1 rounded-2xl border p-3 text-left transition-colors',
-                    strategy === 'activate_next'
-                      ? 'border-primary bg-primary/10'
-                      : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]',
-                  )}
-                >
-                  <p className="text-sm font-bold">Delete Active Book</p>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    Switch to the newest remaining snapshot: <span className="font-mono">{nextUsableImport?.source_filename}</span>.
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  disabled={deleting}
-                  aria-pressed={strategy === 'start_over'}
-                  onClick={() => setStrategy('start_over')}
-                  className={cn(
-                    'flex-1 rounded-2xl border p-3 text-left transition-colors',
-                    strategy === 'start_over'
-                      ? 'border-red-500/50 bg-red-500/10'
-                      : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]',
-                  )}
-                >
-                  <p className="text-sm font-bold">Delete &amp; Start Over</p>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    Leave DropDex with no active library. Other snapshots can be activated later in Settings.
-                  </p>
-                </button>
+            <div className="mt-3">
+              <p className="import-group__label">After deletion</p>
+              <div className="flex gap-3">
+                {([
+                  ['activate_next', 'Delete Active Book', `Switch to the newest remaining snapshot: ${nextUsableImport?.source_filename ?? ''}.`, 'border-[var(--color-control-primary)]'],
+                  ['start_over', 'Delete & Start Over', 'Leave DropDex with no active library. Other snapshots can be activated later in Settings.', 'border-[#d9707c]'],
+                ] as const).map(([value, label, text, selectedBorder]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={deleting}
+                    aria-pressed={strategy === value}
+                    onClick={() => setStrategy(value)}
+                    className={cn('import-group flex-1 !mb-0 text-left transition-colors', strategy === value ? selectedBorder : 'hover:border-[#ffffff33]')}
+                  >
+                    <p className="text-sm font-medium text-foreground">{label}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{text}</p>
+                  </button>
+                ))}
               </div>
             </div>
           )}
 
-          <div className="mt-4">
-            <label htmlFor="delete-library-confirmation" className="text-xs font-bold">
-              Type <span className="font-mono text-red-400">DELETE</span> exactly to confirm
-            </label>
-            <TextControl
-              icon={<Trash width={17} height={17} aria-hidden="true" />}
-              id="delete-library-confirmation"
-              autoFocus
-              disabled={deleting}
-              value={confirmation}
-              onChange={(event) => setConfirmation(event.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              className="font-mono"
-              containerClassName="mt-2"
-              placeholder="DELETE"
-            />
-            <p className="mt-1 text-[10px] text-muted-foreground">Confirmation is case-sensitive.</p>
+          <div className="mt-3">
+            <SlideToDelete disabled={deleting} onChange={setConfirmationValid} />
           </div>
 
           {error && (
-            <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs leading-relaxed text-red-300">
-              {error}
-            </div>
+            <div className="import-group mt-3 text-xs leading-relaxed text-red-300">{error}</div>
           )}
 
-          <div className="mt-4 flex gap-3">
-            <ControlButton type="button" variant="neutral" disabled={deleting} onClick={onClose} className="flex-1">
+          <div className="flex justify-center gap-3 pt-5">
+            <ControlButton type="button" variant="secondary" disabled={deleting} onClick={onClose}>
               <Xmark width={16} height={16} aria-hidden="true" /> Cancel
             </ControlButton>
             <ControlButton
@@ -203,7 +146,6 @@ export function DeleteLibraryModal({
               variant="danger"
               disabled={deleting || !confirmationValid}
               onClick={() => onConfirm(effectiveStrategy)}
-              className="flex-1"
             >
               {deleting ? (
                 <>

@@ -106,19 +106,6 @@ export function BackgroundImportPanel({
     // The access token can rotate during a long import; restart polling with it.
   }, [load]);
 
-  const paused = status?.analysis_status === 'paused' || status?.job_status === 'paused';
-  const interrupted = Boolean(
-    status && (
-      status.analysis_status === 'interrupted' ||
-      status.job_status === 'interrupted' ||
-      (status.worker_status === 'failed' && status.worker_active === false)
-    ),
-  );
-  const resumable = paused || interrupted;
-  const terminal = status ? ['completed', 'partial', 'failed'].includes(status.analysis_status) : false;
-  const progress = status?.progress_percent ?? 0;
-  const activeIndex = terminal ? IMPORT_PHASES.length - 1 : usbReleased ? 2 : 1;
-
   const runAction = async (nextAction: 'pause' | 'resume') => {
     setAction(nextAction);
     setError(null);
@@ -135,6 +122,50 @@ export function BackgroundImportPanel({
       setAction(null);
     }
   };
+
+  return (
+    <BackgroundImportPanelView
+      status={status}
+      usbReleased={usbReleased}
+      error={error}
+      action={action}
+      deletionPending={deletionPending}
+      onClose={onClose}
+      onManageLocalUpload={onManageLocalUpload}
+      onRequestDelete={onRequestDelete}
+      onPause={() => void runAction('pause')}
+      onResume={() => void runAction('resume')}
+    />
+  );
+}
+
+/** The panel itself, drawn from its status. The live panel and Layout Lab both render this. */
+export function BackgroundImportPanelView({
+  status, usbReleased, error, action, deletionPending, onClose, onManageLocalUpload, onRequestDelete, onPause, onResume,
+}: {
+  status: AnalysisStatusResponse | null;
+  usbReleased: boolean;
+  error: string | null;
+  action: 'pause' | 'resume' | null;
+  deletionPending: boolean;
+  onClose: () => void;
+  onManageLocalUpload: () => void;
+  onRequestDelete: () => void;
+  onPause: () => void;
+  onResume: () => void;
+}) {
+  const paused = status?.analysis_status === 'paused' || status?.job_status === 'paused';
+  const interrupted = Boolean(
+    status && (
+      status.analysis_status === 'interrupted' ||
+      status.job_status === 'interrupted' ||
+      (status.worker_status === 'failed' && status.worker_active === false)
+    ),
+  );
+  const resumable = paused || interrupted;
+  const terminal = status ? ['completed', 'partial', 'failed'].includes(status.analysis_status) : false;
+  const progress = status?.progress_percent ?? 0;
+  const activeIndex = terminal ? IMPORT_PHASES.length - 1 : usbReleased ? 2 : 1;
 
   return (
     <aside className="studio-surface profile-modal import-modal fixed bottom-20 right-4 z-[75] w-[min(390px,calc(100vw-2rem))] p-4 md:bottom-4">
@@ -161,8 +192,8 @@ export function BackgroundImportPanel({
       </div>
 
       {usbReleased ? (
-        <div className="import-group import-group--accent mt-3 flex items-center gap-3 text-xs text-[var(--color-control-primary-hover)]">
-          <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-[var(--color-control-primary)]" />
+        <div className="import-group import-group--success mt-3 flex items-center gap-3 text-xs text-green-100">
+          <CheckCircle width={16} height={16} aria-hidden="true" className="shrink-0 text-green-500" />
           USB released. The library is ready to browse.
         </div>
       ) : (
@@ -210,12 +241,12 @@ export function BackgroundImportPanel({
       {usbReleased && (
         <div className="mt-4 grid grid-cols-2 gap-2">
           {!terminal && !resumable && (
-            <ControlButton type="button" variant="secondary" disabled={action !== null} onClick={() => void runAction('pause')}>
+            <ControlButton type="button" variant="secondary" disabled={action !== null} onClick={() => onPause()}>
               {action === 'pause' ? <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> : <Pause width={13} height={13} aria-hidden="true" />} Pause
             </ControlButton>
           )}
           {resumable && (
-            <ControlButton type="button" variant="primary" disabled={action !== null} onClick={() => void runAction('resume')}>
+            <ControlButton type="button" variant="primary" disabled={action !== null} onClick={() => onResume()}>
               {action === 'resume' ? <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> : <Play width={13} height={13} aria-hidden="true" />} Resume
             </ControlButton>
           )}
@@ -227,3 +258,4 @@ export function BackgroundImportPanel({
     </aside>
   );
 }
+

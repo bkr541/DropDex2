@@ -300,6 +300,6 @@ describe('ContextMenu', () => {
     expect(markup).toContain('Load As Build');
     expect(markup).toContain('Left');
     expect(markup).toMatch(/disabled=""[^>]*>[^<]*<span>Load As Drop/);
-    expect(markup).toContain('border-[#34414b] bg-[#11181e]');
+    expect(markup).toContain('dd-popup-surface');
   });
 });

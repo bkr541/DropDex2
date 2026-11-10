@@ -54,8 +54,13 @@
 .dd-control-button--surface { border-color: #3a4655; background: transparent; box-shadow: none; color: #d8dee7; width: fit-content; }
 .dd-control-button--neutral:hover:not(:disabled),
 .dd-control-button--surface:hover:not(:disabled) { background: rgb(255 255 255 / .05); border-color: #566377; color: #fff; }
-.dd-control-button--danger { background: rgb(var(--color-control-red-rgb) / .14); border-color: rgb(var(--color-control-red-rgb) / .62); box-shadow: none; color: #ff7180; }
-.dd-control-button--danger:hover:not(:disabled) { background: rgb(var(--color-control-red-rgb) / .20); border-color: var(--color-control-red); }
+/* Danger is the same raised plate as primary and secondary, outlined and lettered in a soft red. */
+.dd-control-button--danger {
+  --dd-plate-border: #d9707c99;
+  --dd-plate-text: #eb8d97;
+  --dd-plate-hover-border: #eb8d97;
+  --dd-plate-hover-text: #ffb3ba;
+}
 /* Danger (text): no border, no background, half the height, and a softer red. */
 .dd-control-button--danger-outline { min-height: 30px; padding: 0 6px; gap: 6px; font-size: 11px; background: transparent; border-color: transparent; box-shadow: none; color: #d9707c; }
 .dd-control-button--danger-outline:hover:not(:disabled) { background: transparent; border-color: transparent; color: #eb8d97; }
@@ -86,7 +91,7 @@
   --dd-plate-hover-text: #6aefbb;
 }
 
-.dd-control-button:is(.dd-control-button--primary, .dd-control-button--secondary) {
+.dd-control-button:is(.dd-control-button--primary, .dd-control-button--secondary, .dd-control-button--danger) {
   padding: 0 16px;
   border-radius: 10px;
   border-color: var(--dd-plate-border);
@@ -102,14 +107,15 @@
 }
 
 .dd-control-button.dd-control-button--primary,
-.dd-control-button.dd-control-button--secondary { text-transform: capitalize; }
+.dd-control-button.dd-control-button--secondary,
+.dd-control-button.dd-control-button--danger { text-transform: capitalize; }
 
-.dd-control-button:is(.dd-control-button--primary, .dd-control-button--secondary):hover:not(:disabled) {
+.dd-control-button:is(.dd-control-button--primary, .dd-control-button--secondary, .dd-control-button--danger):hover:not(:disabled) {
   border-color: var(--dd-plate-hover-border);
   color: var(--dd-plate-hover-text);
 }
 
-.dd-control-button:is(.dd-control-button--primary, .dd-control-button--secondary):disabled { opacity: .35; }
+.dd-control-button:is(.dd-control-button--primary, .dd-control-button--secondary, .dd-control-button--danger):disabled { opacity: .35; }
 
 .dd-icon-button { width: 42px; height: 42px; display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: var(--radius-control); border: 1px solid var(--color-control-border); background: var(--color-control-surface-raised); color: #d8dee7; box-shadow: none; transition: border-color 140ms ease, background 140ms ease, color 140ms ease; }
 .dd-icon-button:hover { border-color: rgb(164 178 196 / .26); background: var(--color-control-surface-hover); }
@@ -181,7 +187,7 @@
 .dd-select-control { appearance: none; padding-right: 44px; cursor: pointer; }
 
 .dd-autocomplete { position: relative; z-index: 5; }
-.dd-autocomplete__list { position: absolute; z-index: 20; top: calc(100% + 3px); left: 0; right: 0; overflow: hidden; border: 1px solid var(--color-control-border); border-radius: 0 0 var(--radius-control) var(--radius-control); background: var(--color-control-surface); box-shadow: 0 10px 24px rgb(0 0 0 / .30); }
+.dd-autocomplete__list { position: absolute; z-index: 20; top: calc(100% + 3px); left: 0; right: 0; overflow: hidden; border: 1px solid #ffffff1f; border-radius: 12px; background: linear-gradient(165deg, #303540 0%, #272c36 36%, #212630 100%); box-shadow: inset 0 1px 0 #ffffff08, 0 12px 28px #00000059; }
 .dd-autocomplete__option { width: 100%; min-height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 14px; color: #f0f3f7; font-size: 13px; text-align: left; }
 .dd-autocomplete__option svg { color: #9da7b3; }
 .dd-autocomplete__option:hover,
@@ -291,8 +297,8 @@
 }
 .dd-control-button--danger-outline svg { width: 12px; height: 12px; }
 /* Primary and secondary: the same compact size as the danger button. */
-.dd-control-button--primary, .dd-control-button--secondary, .dd-control-button--neutral, .dd-control-button--surface { min-height: 30px; padding: 0 6px; gap: 6px; font-size: 11px; }
-.dd-control-button--primary svg, .dd-control-button--secondary svg, .dd-control-button--neutral svg, .dd-control-button--surface svg { width: 12px; height: 12px; }
+.dd-control-button--primary, .dd-control-button--secondary, .dd-control-button--danger, .dd-control-button--neutral, .dd-control-button--surface { min-height: 30px; padding: 0 6px; gap: 6px; font-size: 11px; }
+.dd-control-button--primary svg, .dd-control-button--secondary svg, .dd-control-button--danger svg, .dd-control-button--neutral svg, .dd-control-button--surface svg { width: 12px; height: 12px; }
 /* Primary and secondary run one step larger than the other compact buttons. */
-.dd-control-button--primary, .dd-control-button--secondary { min-height: 34px; }
-.dd-control-button--primary svg, .dd-control-button--secondary svg { width: 14px; height: 14px; }
+.dd-control-button--primary, .dd-control-button--secondary, .dd-control-button--danger { min-height: 34px; }
+.dd-control-button--primary svg, .dd-control-button--secondary svg, .dd-control-button--danger svg { width: 14px; height: 14px; }

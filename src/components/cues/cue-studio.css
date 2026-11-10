@@ -131,9 +131,9 @@
   overflow-y: auto;
   overflow-wrap: anywhere;
   padding: 10px;
-  border: 1px solid #465166;
-  border-radius: 10px;
-  background: #252b38;
+  border: 1px solid #ffffff1f;
+  border-radius: 12px;
+  background: linear-gradient(165deg, #303540 0%, #272c36 36%, #212630 100%);
   color: #f6f7fa;
   font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
   box-shadow: 0 8px 24px #00000059;
