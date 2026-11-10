@@ -66,7 +66,7 @@
 .cue-studio .cue-audio-dock .dd-media-button--play .dd-media-button__content { width: auto; height: auto; border: 0; border-radius: 0; background: transparent; color: #fff; }
 .cue-studio .cue-audio-dock .dd-media-button:disabled { opacity: .25; }
 .cue-studio .cue-browser__filters { gap: 16px; padding: 8px 16px; border-top: 0; }
-.cue-studio .cue-browser__source-tabs { display: flex; flex: 0 0 auto; min-width: 0; align-self: stretch; align-items: stretch; padding: 0; }
+.cue-studio .cue-browser__source-tabs { padding-inline: 16px; }
 .cue-studio .cue-browser__filter--key { flex: 0 0 72px; width: 72px; min-width: 72px; }
 .cue-studio .cue-browser__filter--cues { flex: 0 0 88px; width: 88px; min-width: 88px; }
 .cue-studio .cue-browser__filter--genre [role="listbox"] { width: 280px; max-width: calc(100vw - 32px); }

@@ -1,0 +1,44 @@
+/* Skeleton placeholders: grey blocks that pulse softly, sized like the content they stand in for. */
+.dd-skeleton { display: block; border-radius: 8px; background: linear-gradient(90deg, #ffffff08 0%, #ffffff14 50%, #ffffff08 100%); background-size: 200% 100%; animation: dd-skeleton-shimmer 1.4s ease-in-out infinite; }
+@keyframes dd-skeleton-shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .dd-skeleton { animation: none; } }
+
+/* The existing row, card and chip placeholders */
+.dd-skeleton-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 56px 56px 80px; align-items: center; gap: 14px; min-height: 48px; padding: 6px 16px; }
+.dd-skeleton-row > div { display: grid; gap: 6px; }
+.dd-skeleton-row > div > .dd-skeleton:first-child { height: 11px; width: 55%; }
+.dd-skeleton-row > div > .dd-skeleton:last-child { height: 9px; width: 35%; }
+.dd-skeleton-row__lead { width: 34px; height: 34px; border-radius: 6px; }
+.dd-skeleton-row__mini { height: 10px; }
+.dd-skeleton-row__tail { height: 10px; }
+.dd-skeleton-card { display: grid; gap: 8px; width: 200px; }
+.dd-skeleton-card__image { height: 150px; border-radius: 12px; }
+.dd-skeleton-card > .dd-skeleton:not(.dd-skeleton-card__image) { height: 11px; }
+.dd-skeleton-card__short { width: 60%; }
+.dd-skeleton-chip { display: inline-block; width: 64px; height: 24px; }
+.dd-skeleton-chip--wide { width: 110px; }
+.dd-skeleton-chip > .dd-skeleton { width: 100%; height: 100%; border-radius: 999px; }
+
+/* Whole pages */
+.dd-page-skeleton { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 8px 0 24px; }
+.dd-page-skeleton__hero { height: 218px; border-radius: 24px; }
+.dd-page-skeleton__tabs { display: flex; gap: 8px; padding-inline: 16px; }
+.dd-page-skeleton__tab { width: 96px; height: 28px; }
+.dd-page-skeleton__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.dd-page-skeleton__tile { height: 190px; border-radius: 16px; }
+.dd-page-skeleton__header { display: flex; align-items: center; gap: 14px; padding: 14px 16px; }
+.dd-page-skeleton__cover { flex: none; width: 36px; height: 36px; border-radius: 6px; }
+.dd-page-skeleton__lines { display: grid; flex: 1; gap: 6px; }
+.dd-page-skeleton__title { width: 260px; max-width: 60%; height: 20px; }
+.dd-page-skeleton__subtitle { width: 120px; height: 9px; }
+.dd-page-skeleton__figures { display: flex; gap: 24px; }
+.dd-page-skeleton__figure { width: 56px; height: 30px; }
+.dd-page-skeleton__timeline { height: 180px; border-radius: 12px; margin-inline: 16px; }
+.dd-page-skeleton__filters { display: flex; flex-wrap: wrap; gap: 16px; padding: 8px 16px; }
+.dd-page-skeleton__filter { width: 120px; height: 34px; }
+.dd-page-skeleton__rows { display: flex; flex-direction: column; }
+.dd-page-skeleton__section-title { width: 180px; height: 16px; margin-top: 8px; }
+.dd-page-skeleton__cards { display: flex; gap: 16px; overflow: hidden; }
+.dd-page-skeleton__card { flex: none; width: 216px; height: 188px; border-radius: 12px; }
+.dd-page-skeleton__panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.dd-page-skeleton__panel { height: 300px; border-radius: 16px; }

@@ -42,6 +42,7 @@ import { supabase } from '../../lib/supabase';
 import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { LibraryTab } from '../../navigation/appRoutes';
 import { Activity, CheckCircle, Circle, Clock, ControlSlider, Dashboard, Folder, Group, Key, Label, MusicNote, NavArrowLeft, Playlist, Refresh, Reports, SineWave, Upload, User, WarningTriangle } from 'iconoir-react/regular';
+import { PageSkeleton } from '../ui/feedback';
 import { ProfileSocialLinks } from './ProfileSocialLinks';
 import { LibraryGhostHero } from './LibraryGhostHero';
 import { ControlButton, FilterDropdown, SearchControl } from '../ui/controls';
@@ -744,11 +745,7 @@ export function LibraryView({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
           >
-            {importLoading && (
-              <div className="flex items-center justify-center py-24">
-                <Refresh className="animate-spin text-control-primary" width={32} height={32} aria-hidden="true" />
-              </div>
-            )}
+            {importLoading && <PageSkeleton variant="home" label="Loading your library" />}
 
             {!importLoading && importError && (
               <div className="text-center py-24 space-y-2">

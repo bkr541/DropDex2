@@ -98,7 +98,7 @@ describe('CuePointsView production Stage 3 render', () => {
     expect(markup).toMatch(/role="tab" aria-selected="true"[^>]*class="lib-tab"[^>]*>.*?Tracks<\/button>/);
     expect(markup).toMatch(/role="tab" aria-selected="false"[^>]*class="lib-tab"[^>]*>.*?Playlists<\/button>/);
     const sourceTabs = markup.indexOf('data-testid="cue-browser-source-tabs"');
-    expect(sourceTabs).toBeGreaterThan(markup.indexOf('data-testid="cue-browser-filters"'));
+    expect(sourceTabs).toBeLessThan(markup.indexOf('data-testid="cue-browser-filters"'));
     expect(sourceTabs).toBeLessThan(markup.indexOf('data-testid="cue-browser-search"'));
     expect(markup).toContain('aria-label="Search cue point tracks"');
     expect(markup).not.toContain('data-testid="cue-audio-dock"');

@@ -1,5 +1,6 @@
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
-import { Refresh, WarningTriangle } from 'iconoir-react/regular';
+import { WarningTriangle } from 'iconoir-react/regular';
+import { ListingSkeleton } from '../ui/feedback';
 import { ControlButton, DualRangeSlider, FilterDropdown, SearchControl } from '../ui/controls';
 import type { FilterDropdownOption } from '../ui/controls';
 import type { CueLoadState } from '../../lib/queries/analysisData';
@@ -96,10 +97,7 @@ export function AuditionLibrary({
           <ControlButton variant="ghost" onClick={onRetry}>Try again</ControlButton>
         </div>
       ) : loading ? (
-        <div className="flex items-center justify-center gap-3 border-t border-[var(--color-border-faint)] py-14 text-sm text-muted-foreground" role="status">
-          <Refresh className="animate-spin text-control-primary" width={22} height={22} aria-hidden="true" />
-          Loading your library…
-        </div>
+        <div className="border-t border-[var(--color-border-faint)]"><ListingSkeleton label="Loading your library" /></div>
       ) : tracks.length === 0 ? (
         <div className="border-t border-[var(--color-border-faint)] px-5 py-12 text-center">
           <p className="font-bold">No tracks match.</p>

@@ -13,6 +13,7 @@ import { useSyncedTrackFilter } from '../../hooks/useSyncedTrackFilter';
 import { trackIdentityKey } from '../../lib/preview/trackIdentity';
 import { GenreEditPopover, GenreEditorContent } from './GenreEditPopover';
 import { CueApplyMenu } from './CueApplyMenu';
+import { ListingSkeleton } from '../ui/feedback';
 import { TrackSourceTabs } from './TrackSourceTabs';
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -3903,8 +3904,8 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
       <section className={cn('cue-browser', artistLibrary ? 'artist-library-browser' : 'border-y border-[var(--color-border-faint)]')} style={{ overflow: 'clip' }}>
         <div ref={filterRowRef} className="cue-browser__chrome sticky z-20 border-b border-[var(--color-border-faint)]" style={{ top: waveformPanelHeight }}>
           <div className="flex flex-col">
+            {!artistLibrary && mode !== 'audition' && <TrackSourceTabs value={browserSource} onChange={setBrowserSource} />}
             <div className="cue-browser__filters flex flex-wrap items-stretch gap-x-5 gap-y-2.5 border-t border-[var(--color-border-faint)] px-4 py-2.5 md:px-5" data-testid="cue-browser-filters">
-              {!artistLibrary && mode !== 'audition' && <TrackSourceTabs value={browserSource} onChange={setBrowserSource} />}
 
 
               <div className="flex min-w-[200px] max-w-[320px] flex-1 flex-col justify-end" data-testid="cue-browser-search">
@@ -4046,10 +4047,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
             {synced.error && <ControlButton variant="ghost" onClick={cloudSynced.retry}>Retry Cloud status</ControlButton>}
           </div>
         ) : activeSourceLoading ? (
-          <div className="flex items-center justify-center gap-3 py-16 text-sm text-muted-foreground">
-            <Refresh className="animate-spin text-control-primary" width={22} height={22} aria-hidden="true" />
-            {synced.loading ? 'Loading Cloud sync status…' : browserSource === 'library' ? 'Loading library tracks…' : 'Loading playlist tracks…'}
-          </div>
+          <ListingSkeleton label={synced.loading ? 'Loading Cloud sync status' : browserSource === 'library' ? 'Loading library tracks' : 'Loading playlist tracks'} />
         ) : browserSource === 'playlists' && selectablePlaylists.length === 0 ? (
           <div className="px-5 py-14 text-center">
             <p className="font-bold">No imported playlists are available.</p>

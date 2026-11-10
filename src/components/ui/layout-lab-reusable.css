@@ -22,3 +22,4 @@ ul.rb-used { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; li
 .rb-used li { padding: 1px 8px; border: 1px solid #ffffff1f; border-radius: 999px; color: #cfd5df; font-size: 10px; }
 .rb-used--none { margin: 0; color: #707b85; font-size: 11px; }
 .rb-listing { overflow-x: auto; }
+.rb-skeleton { width: 100%; max-width: 820px; padding: 8px; border: 1px dashed #ffffff1f; border-radius: 12px; overflow: hidden; }

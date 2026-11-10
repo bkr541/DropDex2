@@ -39,7 +39,7 @@ My USBs displays one full-width USB record per row in a single vertical column. 
 
 Audio track listing headers use sentence case (only the first letter capitalized). Track-record Genre columns use 83.2px and wrap long values. Editing must use a full-width floating portal above the listing, keeping the displayed cell in place so opening the input or showing save errors cannot resize columns. Genre inputs have no leading icon and use the search input's underline-only focus style.
 
-Cue Points' Tracks/Playlists source switch is its own `TrackSourceTabs` component, positioned inline to the left of Search. It shares Library tab styling (icon beside text and active underline), not Library's placement or component ownership.
+Cue Points' Tracks/Playlists source switch is its own `TrackSourceTabs` component, in a full-width tab row above the filter row, laid out like the Library page's tab row (16px side padding, hairline underneath). It shares Library tab styling (icon beside text and active underline), not Library's component ownership.
 
 ## Accent tokens
 

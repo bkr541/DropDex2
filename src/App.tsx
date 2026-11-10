@@ -85,7 +85,7 @@ import { SyncedFilterError } from './components/library/LibraryFilterRow';
 import { useSyncedTrackFilter } from './hooks/useSyncedTrackFilter';
 import { LogOut } from 'iconoir-react/regular';
 import { StatTile, SurfaceCard, TabNavigation } from './components/ui/display';
-import { NoticeCard, SelectableOptionCard, StatusLoader } from './components/ui/feedback';
+import { NoticeCard, SelectableOptionCard, StatusLoader, type PageSkeletonVariant } from './components/ui/feedback';
 import './components/profile/profile.css';
 
 type ThemeOption = {
@@ -302,11 +302,14 @@ function LazyFeature({
   label,
   boundaryKey,
   onReturnToLibrary,
+  skeleton = 'listing',
 }: {
   children: ReactNode;
   label: string;
   boundaryKey: string;
   onReturnToLibrary: () => void;
+  /** The shape of the placeholder shown while the screen's code loads. */
+  skeleton?: PageSkeletonVariant;
 }) {
   return (
     <ApplicationErrorBoundary
@@ -314,7 +317,7 @@ function LazyFeature({
       resetKey={boundaryKey}
       onReturnToLibrary={onReturnToLibrary}
     >
-      <Suspense fallback={<RouteLoadingState label={label} />}>
+      <Suspense fallback={<RouteLoadingState label={label} variant={skeleton} />}>
         {children}
       </Suspense>
     </ApplicationErrorBoundary>
@@ -1293,12 +1296,13 @@ export default function App() {
             {currentView === 'set-lab' && (
               <div key="set-lab" className="min-w-0">
                 {!importSettled || importLoading ? (
-                  <RouteLoadingState label="Loading active library…" />
+                  <RouteLoadingState label="Loading active library…" variant="workspace" />
                 ) : importError ? (
                   <RouteLoadErrorState message={importError} onRetry={refetchImport} onReturnToLibrary={returnToLibrary} />
                 ) : userId && latestImport && latestImport.user_id === userId ? (
                   <LazyFeature
                     label="Loading Set Lab…"
+                    skeleton="workspace"
                     boundaryKey={`set-lab:${userId}:${latestImport.id}`}
                     onReturnToLibrary={returnToLibrary}
                   >
@@ -1330,7 +1334,7 @@ export default function App() {
                 exit={{ opacity: 0, y: 16 }}
                 className="min-w-0"
               >
-                <LazyFeature label="Loading Drop Lab…" boundaryKey={`${routeKey(route)}:drop-lab`} onReturnToLibrary={returnToLibrary}>
+                <LazyFeature label="Loading Drop Lab…" skeleton="workspace" boundaryKey={`${routeKey(route)}:drop-lab`} onReturnToLibrary={returnToLibrary}>
                   <DropLabView
                     sourceTrack={dropLabSourceTrack}
                     importId={dropLabSourceTrack?.import_id ?? importId}
@@ -1609,7 +1613,7 @@ export default function App() {
                 exit={{ opacity: 0, x: -20 }}
                 className="min-w-0"
               >
-                <LazyFeature label="Loading Discovery…" boundaryKey={`${routeKey(route)}:discovery`} onReturnToLibrary={returnToLibrary}>
+                <LazyFeature label="Loading Discovery…" skeleton="cards" boundaryKey={`${routeKey(route)}:discovery`} onReturnToLibrary={returnToLibrary}>
                   <DiscoveryView accessToken={session?.access_token ?? null} userId={userId} onEditTaste={handleEditProfile} />
                 </LazyFeature>
               </motion.div>

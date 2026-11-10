@@ -3,7 +3,7 @@ import { Bell, Download, Folder, Plus, Search, Trash } from 'iconoir-react/regul
 import { CheckboxControl, ContextMenu, ControlButton, DualRangeSlider, FilterDropdown, FormField, IconControlButton, Knob, SearchControl, SelectControl, TextareaControl, TextControl, ToolbarIconButton, ToolbarIconGroup } from './controls';
 import {
   AnalysisStatusBadge, CircularProgress, Dialog, EmptyState, ImportActivityBanner, NoticeCard, NotificationCard, ProgressBar, QuietProgress, SelectableOptionCard,
-  SkeletonBlock, SkeletonRow, StatusBadge, StatusDot, StatusLoader, quietOverallPercent,
+  ListingSkeleton, PageSkeleton, SkeletonBlock, SkeletonRow, StatusBadge, StatusDot, StatusLoader, quietOverallPercent,
 } from './feedback';
 import { RecordTrackListing } from './display/RecordTrackListing';
 import type { RekordboxTrack } from '../../types';
@@ -205,6 +205,8 @@ export function ReusableMockupsContent() {
       <Row rowNumber={44} file="TimelineLanes.tsx"><div className="rb-field rb-wide"><TimelineSectionLane sections={SECTIONS} leadIn={false} /><TimelineBeatLane ticks={[{ key: '1', leftPercent: 5, downbeat: true }, { key: '2', leftPercent: 10, downbeat: false }, { key: '3', leftPercent: 15, downbeat: false }, { key: '4', leftPercent: 20, downbeat: true }]} labels={[{ key: '1', leftPercent: 5, text: '1' }, { key: '2', leftPercent: 20, text: '5' }]} /></div></Row>
       <Row rowNumber={45} file="WaveformZoomControls.tsx"><div className="group/waveform relative rb-field" style={{ height: 80 }}><WaveformZoomControls onZoomIn={noop} onZoomOut={noop} canZoomIn canZoomOut /><span className="rb-pad">Hover this row to show the zoom controls</span></div></Row>
       <Row rowNumber={46} file="RecordTrackListing.tsx"><div className="rb-listing"><RecordTrackListing tracks={SAMPLE_TRACKS} importId={null} playback={false} playlistCounts={SAMPLE_COUNTS} getCueMarkers={() => []} getWaveformState={(id) => ({ status: 'unavailable', trackId: id })} ariaLabel="Sample tracks" /></div></Row>
+      <Row rowNumber={47} file="PageSkeleton.tsx"><div className="rb-stack" style={{ width: '100%' }}>{(['home', 'listing', 'cards', 'workspace'] as const).map((v) => <div key={v} className="rb-skeleton"><p className="rb-used-label">{v}</p><PageSkeleton variant={v} label={`${v} page`} /></div>)}</div></Row>
+      <Row rowNumber={48} file="PageSkeleton.tsx (ListingSkeleton)"><div className="rb-field rb-wide"><ListingSkeleton count={4} label="Loading tracks" /></div></Row>
       <p className="rb-note"><Bell width={12} height={12} aria-hidden="true" /> Not shown: TrackListing, TrackTimeline and the waveform components, which need live library data and the audio player. The RecordTrackListing row uses two sample tracks.</p>
     </div>
   );
