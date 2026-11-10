@@ -23,10 +23,90 @@ import './layout-lab-reusable.css';
 
 const noop = () => {};
 
+// The screens that use each component are found by reading the app's own source: every file (outside this component library) that
+// renders the component counts, and its path is turned into the name of the screen. It updates itself as the app changes.
+const SOURCES = import.meta.glob(['/src/**/*.tsx', '!/src/**/*.test.tsx', '!/src/components/ui/LayoutLab*'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+
+const SCREEN_RULES: Array<[RegExp, string]> = [
+  [/\/App\.tsx$/, 'App shell (Playlists, Profile frame)'],
+  [/library\/(LibraryView|LibraryHero|LibraryGhostHero|HeroActionButton|LibrarySearchResults)\.tsx$/, 'Home'],
+  [/library\/ArtistLibraryView\.tsx$/, 'Artist Library'],
+  [/library\/TrackDetailView\.tsx$/, 'Track detail'],
+  [/library\/PlaylistEditView\.tsx$/, 'Playlist edit'],
+  [/library\//, 'Library import preview'],
+  [/\/audition\//, 'Audition'],
+  [/\/cues\//, 'Cue Points'],
+  [/\/discovery\//, 'Discovery'],
+  [/\/drop-lab\//, 'Drop Lab'],
+  [/set-lab\//, 'Set Lab'],
+  [/\/flip-lab\//, 'Flip Lab'],
+  [/usb-management\//, 'USB Management'],
+  [/\/usb\//, 'USB connection'],
+  [/profile\/(DeveloperTab)/, 'Profile › Developer'],
+  [/profile\/(SoundCloudTab|ExternalMusicTab|Spotify)/, 'Profile › Music'],
+  [/profile\/RekordboxXml/, 'Profile › Rekordbox XML'],
+  [/profile\/(UsbLibrarySections|ImportSnapshotRow|UsbStat|StreamingSyncGroup|TrackSyncSelector)/, 'Profile › Library'],
+  [/profile\/(EditProfileView|ProfileSwitch)/, 'Profile › Account'],
+  [/profile\/DisplayPreferencesGroup|profile\/DashboardWidgetsGroup/, 'Profile › Personalization'],
+  [/\/profile\//, 'Profile'],
+  [/\/navigation\//, 'Navigation'],
+  [/\/player\//, 'Audio dock'],
+  [/\/(Import[A-Za-z]*|Resume[A-Za-z]*|BackgroundImportPanel)\.tsx$/, 'Rekordbox import'],
+  [/\/(DeleteAllLibrariesModal|DeleteLibraryModal)\.tsx$/, 'Delete popovers'],
+  [/\/AuthGate\.tsx$/, 'Sign in'],
+  [/\/(RouteStates|StartupConfigurationError)\.tsx$|\/errors\//, 'Error screens'],
+];
+
+function screenFor(path: string): string {
+  for (const [pattern, label] of SCREEN_RULES) if (pattern.test(path)) return label;
+  return path.replace(/^\/src\//, '').replace(/\.tsx$/, '');
+}
+
+const NAMES: Record<string, string[]> = {
+  'ToolbarIconButton.tsx': ['ToolbarIconButton', 'ToolbarIconGroup'],
+  'NotificationCenter.tsx (NotificationCard)': ['NotificationCard', 'NotificationCenter'],
+  'TrackTable.tsx': ['TrackTable', 'TrackNameCell', 'TrackTableHead', 'TrackTableHeadCell', 'TrackTableBody'],
+  'TimelineLanes.tsx': ['TimelineLane', 'TimelineSectionLane', 'TimelineBeatLane'],
+  'WaveformCueMarker.tsx': ['WaveformCueMarker', 'CueFlag'],
+};
+
+const exportedNames = (source: string) => [...source.matchAll(/export (?:function|const) ([A-Z][A-Za-z0-9]*)/g)].map((match) => match[1]);
+
+/** Screens that render any of these components. A use inside another reusable component counts as a use on that component's screens. */
+function screensForNames(names: string[], seen: Set<string>): Set<string> {
+  const found = new Set<string>();
+  for (const [path, source] of Object.entries(SOURCES)) {
+    const tags = names.flatMap((name) => [name, ...[...source.matchAll(new RegExp(`\\b${name} as ([A-Za-z0-9_]+)`, 'g'))].map((match) => match[1])]);
+    if (!tags.some((tag) => new RegExp(`<${tag}[\\s/>]`).test(source))) continue;
+    if (path.startsWith('/src/components/ui/')) {
+      const consumers = exportedNames(source).filter((name) => !names.includes(name) && !seen.has(name));
+      consumers.forEach((name) => seen.add(name));
+      if (consumers.length > 0) screensForNames(consumers, seen).forEach((screen) => found.add(screen));
+    } else {
+      found.add(screenFor(path));
+    }
+  }
+  return found;
+}
+
+function screensUsing(file: string): string[] {
+  const names = NAMES[file] ?? [file.replace(/\.tsx.*$/, '')];
+  return [...screensForNames(names, new Set(names))].sort();
+}
+
 function Row({ file, children, overlay = false }: { file: string; children: ReactNode; overlay?: boolean }) {
+  const screens = screensUsing(file);
   return (
     <section className="rb-row" data-testid="reusable-row">
-      <p className="rb-file">{file}</p>
+      <div>
+        <p className="rb-file">{file}</p>
+        <p className="rb-used-label">Used in</p>
+        {screens.length > 0 ? (
+          <ul className="rb-used">{screens.map((screen) => <li key={screen}>{screen}</li>)}</ul>
+        ) : (
+          <p className="rb-used rb-used--none">Not used on a screen yet</p>
+        )}
+      </div>
       <div className={`rb-stage${overlay ? ' pop-stage' : ''}`}>{children}</div>
     </section>
   );
@@ -110,7 +190,7 @@ export function ReusableMockupsContent() {
       <Row file="MediaTransportControlGroup.tsx"><MediaTransportControlGroup playing={playing} onTogglePlay={() => setPlaying((p) => !p)} onPrevious={noop} onRewind={noop} onForward={noop} onNext={noop} /></Row>
       <Row file="PlaybackSeekBar.tsx"><div className="rb-field rb-wide"><PlaybackSeekBar currentSeconds={seek} durationSeconds={300} seekable onSeek={setSeek} ariaLabel="Seek" /></div></Row>
       <Row file="AudioDock.tsx"><AudioDock><span className="rb-pad">AudioDock holds the player controls</span></AudioDock></Row>
-      <Row file="WaveformCueMarker.tsx"><div className="rb-wrap rb-marker"><WaveformCueMarker label="A" color="#d86c7d" /><WaveformCueMarker label="B" color="#5aa9d1" selected /><WaveformCueMarker label="M" color="#d2a35b" memory /></div></Row>
+      <Row file="WaveformCueMarker.tsx"><div className="rb-marker"><WaveformCueMarker label="A" color="#d86c7d" style={{ left: '15%' }} /><WaveformCueMarker label="B" color="#5aa9d1" selected style={{ left: '50%' }} /><WaveformCueMarker label="M" color="#d2a35b" memory style={{ left: '85%' }} /></div></Row>
       <Row file="WaveformSectionRow.tsx"><div className="rb-field rb-wide"><WaveformSectionRow sections={SECTIONS} leadIn={false} /></div></Row>
       <Row file="WaveformTimeRuler.tsx"><div className="rb-field rb-wide"><WaveformTimeRuler endMs={300000} ticks={[{ ms: 0, label: '0:00' }, { ms: 100000, label: '1:40' }, { ms: 200000, label: '3:20' }, { ms: 300000, label: '5:00' }]} /></div></Row>
       <Row file="TimelineLanes.tsx"><div className="rb-field rb-wide"><TimelineSectionLane sections={SECTIONS} leadIn={false} /><TimelineBeatLane ticks={[{ key: '1', leftPercent: 5, downbeat: true }, { key: '2', leftPercent: 10, downbeat: false }, { key: '3', leftPercent: 15, downbeat: false }, { key: '4', leftPercent: 20, downbeat: true }]} labels={[{ key: '1', leftPercent: 5, text: '1' }, { key: '2', leftPercent: 20, text: '5' }]} /></div></Row>
