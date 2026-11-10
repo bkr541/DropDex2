@@ -43,9 +43,9 @@ describe('imported database browser', () => {
     const markup = render();
     expect(markup).toContain('studio-surface cue-studio import-library-studio');
     expect(markup).not.toContain('class="glass');
-    expect(useLibraryTracks).toHaveBeenLastCalledWith('snapshot-B', { search: '', genre: '', artist: '', debounceMs: 180 });
+    expect(useLibraryTracks).toHaveBeenLastCalledWith('snapshot-B', { search: '', genre: '', artist: '', debounceMs: 180, enabled: true, syncedFilter: null });
     expect(markup).toContain('aria-label="Search imported tracks"');
-    for (const label of ['Genre', 'Artist', 'Metadata field']) expect(markup).toContain(`>${label}</p>`);
+    for (const label of ['Genre', 'Artist', 'Metadata field', 'Synced']) expect(markup).toContain(`>${label}</p>`);
     expect(markup).toContain('aria-label="Imported database track records"');
     expect(markup).toContain('Imported Track');
     expect(markup).toContain('Original Album');

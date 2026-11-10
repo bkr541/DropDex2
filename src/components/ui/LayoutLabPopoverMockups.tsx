@@ -12,6 +12,9 @@ import { ResumeAnalysisView } from '../ResumeAnalysisModal';
 import { BackgroundImportPanelView } from '../BackgroundImportPanel';
 import { DeleteAllLibrariesModal } from '../DeleteAllLibrariesModal';
 import { DeleteLibraryModal } from '../DeleteLibraryModal';
+import { CloudSyncDialog } from '../profile/CloudSyncDialog';
+import { CloudSyncProgressDialog } from '../profile/CloudSyncProgressDialog';
+import { CloudTrackDeleteDialog } from '../profile/CloudTracksGroup';
 import { DiscoveryScrapeProgressModal } from '../discovery/DiscoveryScrapeProgressModal';
 import { DropLabSourcePicker } from '../drop-lab/DropLabSourcePicker';
 import { CueApplyMenu } from '../cues/CueApplyMenu';
@@ -20,7 +23,6 @@ import { IconOptionMenu, VolumePopover } from '../cues/CueEditorToolbar';
 import { Magnet } from 'iconoir-react/regular';
 import type { AnalysisStatusResponse, CompleteResponse, ImportResult } from '../../lib/api/rekordboxImport';
 import type { DiscoveryScrapeJob, RekordboxImport } from '../../types';
-import '../profile/profile.css';
 import '../cues/cue-studio.css';
 import './layout-lab-popovers.css';
 
@@ -206,6 +208,30 @@ export function PopoverMockupsContent() {
           </div>
         </Specimen>
       </div>
+      <h2 className="pop-group">Profile</h2>
+      <div className="pop-grid">
+        <Specimen n={next()} name="Sync your tracks to the Cloud" kind="One-off" source="profile/CloudSyncDialog.tsx">
+          <div className="pop-center">
+            <CloudSyncDialog inline trackCount={359} onClose={noop} onSelectTracks={noop} onSyncAll={noop} />
+          </div>
+        </Specimen>
+        <Specimen n={next()} name="Cloud sync progress" kind="One-off" source="profile/CloudSyncProgressDialog.tsx">
+          <div className="pop-center">
+            <CloudSyncProgressDialog
+              inline
+              sync={{ phase: 'running', total: 359, processed: 120, synced: 108, skipped: 12, failed: 0, current: null, stopping: false, cancelled: false, failures: [], message: null }}
+              onClose={noop}
+              onStop={noop}
+            />
+          </div>
+        </Specimen>
+        <Specimen n={next()} name="Delete Cloud copy" kind="One-off" source="profile/CloudTracksGroup.tsx">
+          <div className="pop-center">
+            <CloudTrackDeleteDialog inline title="Where Have You Been" onClose={noop} onDelete={noop} />
+          </div>
+        </Specimen>
+      </div>
+
       <p className="pop-note"><Search width={12} height={12} aria-hidden="true" /> Not shown: the Cue Points apply-confirmation panel, which needs a live apply plan.</p>
     </div>
   );

@@ -79,6 +79,7 @@ describe('Artist Library page', () => {
     const markup = render();
     expect(markup).toContain('aria-label="Search artist library tracks"');
     expect(markup).toContain('data-testid="cue-browser-filters"');
+    expect(markup).toContain('>Synced</p>');
   });
 
   it('no longer has the profile card or the USB, analysis, genre, BPM and Camelot hero, which are on the Overview page', () => {

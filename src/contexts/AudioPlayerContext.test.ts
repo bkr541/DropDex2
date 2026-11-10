@@ -350,7 +350,17 @@ describe('playing from the cloud preview', () => {
     expect(cloud).toBeLessThan(play.indexOf('usb.ensurePermission()'));
     expect(play).toContain('if (await playCloudPreview(track, requestId)) return;');
     // A lost lookup is not an error; the drive may have come back while it ran.
-    expect(contextSource).toContain('if (!shouldTryCloudPreview(usbRef.current.status)) return false;');
+    expect(contextSource).toContain('if (!copy && !shouldTryCloudPreview(usbRef.current.status)) return false;');
+  });
+
+  it('plays an explicitly selected Cloud copy without attempting USB playback', () => {
+    const play = contextSource.slice(contextSource.indexOf('const playTrack = useCallback'));
+    const selected = play.indexOf('if (track.cloudPreview)');
+    const fallback = play.indexOf('if (shouldTryCloudPreview(usbRef.current.status))');
+    expect(selected).toBeGreaterThan(-1);
+    expect(selected).toBeLessThan(fallback);
+    expect(play.slice(selected, fallback)).toContain('return;');
+    expect(contextSource).toContain('fetchPreviewPlayback(copy.identityKey, { userId: copy.userId })');
   });
 
   it('marks cloud audio as not from the USB, so losing the drive does not stop it, and reports the source', () => {

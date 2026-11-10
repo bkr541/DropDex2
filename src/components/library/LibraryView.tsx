@@ -1,9 +1,10 @@
 import { sortRecordTracks } from '../ui/display/recordTrackSorting';
-import { LibraryFilterRow, matchesLibrarySearch, recordOptions } from './LibraryFilterRow';
+import { LibraryFilterRow, matchesLibrarySearch, recordOptions, SyncedFilterError } from './LibraryFilterRow';
 import { useLibraryListingViewport } from './useLibraryListingViewport';
 import { useAudioDockTracks } from '../../contexts/AudioDockWorkspaceContext';
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import { useTrackPlaylistCounts } from '../../hooks/useTrackPlaylistCounts';
+import { useSyncedTrackFilter } from '../../hooks/useSyncedTrackFilter';
 import './library-studio.css';
 import { useState, useMemo, useCallback, useEffect, type ElementType, type ReactNode } from 'react';
 import { useAudioPlayer } from '../../contexts/AudioPlayerContext';
@@ -43,7 +44,7 @@ import type { LibraryTab } from '../../navigation/appRoutes';
 import { Activity, CheckCircle, Circle, Clock, ControlSlider, Dashboard, Folder, Group, Key, Label, MusicNote, NavArrowLeft, Playlist, Refresh, Reports, SineWave, Upload, User, WarningTriangle } from 'iconoir-react/regular';
 import { ProfileSocialLinks } from './ProfileSocialLinks';
 import { LibraryGhostHero } from './LibraryGhostHero';
-import { ControlButton, SearchControl } from '../ui/controls';
+import { ControlButton, FilterDropdown, SearchControl } from '../ui/controls';
 
 
 const TABS: { id: LibraryTab; label: string; icon: ElementType }[] = [
@@ -390,7 +391,8 @@ export function RecentlyAddedPanel({ tracks, loading, ...tableProps }: Omit<Libr
   const [genre, setGenre] = useState('');
   const [key, setKey] = useState('');
   const [format, setFormat] = useState('');
-  const visible = tracks.filter((track) => matchesLibrarySearch(search, track.title, track.artist, track.genre)
+  const synced = useSyncedTrackFilter();
+  const visible = tracks.filter((track) => synced.matches(track) && matchesLibrarySearch(search, track.title, track.artist, track.genre)
     && (!genre || track.genre === genre) && (!key || track.musical_key === key) && (!format || track.file_format === format));
   return (
     <section className="pb-10" aria-label="Recently added tracks">
@@ -399,14 +401,15 @@ export function RecentlyAddedPanel({ tracks, loading, ...tableProps }: Omit<Libr
           { label: 'Genre', value: genre, onChange: setGenre, options: recordOptions(tracks.map((track) => track.genre)) },
           { label: 'Key', value: key, onChange: setKey, options: recordOptions(tracks.map((track) => track.musical_key)) },
           { label: 'Format', value: format, onChange: setFormat, options: recordOptions(tracks.map((track) => track.file_format)) },
+          synced.dropdown,
         ]} />
-      <LibraryTrackTable
+      {synced.error ? <SyncedFilterError error={synced.error} onRetry={synced.cloud.retry} /> : <LibraryTrackTable
         {...tableProps}
         tracks={visible}
-        loading={loading}
+        loading={loading || synced.loading}
         emptyText={tracks.length ? 'No tracks match your filters.' : 'No recently added tracks.'}
         framed={false}
-      />
+      />}
     </section>
   );
 }
@@ -582,6 +585,10 @@ export function LibraryView({
   onActiveTabChange,
   onSearchQueryChange,
 }: LibraryViewProps) {
+  const showSearch = searchQuery.trim().length >= 2;
+  const searchSynced = useSyncedTrackFilter(showSearch);
+  const isIncompleteView = activeTab === 'incomplete-analysis';
+  const incompleteSynced = useSyncedTrackFilter(isIncompleteView && !showSearch);
 
   const {
     results: searchResults,
@@ -590,7 +597,8 @@ export function LibraryView({
     loadingMore: searchLoadingMore,
     hasMore: searchHasMore,
     loadMore: loadMoreSearchResults,
-  } = useRekordboxSearch(importId, searchQuery);
+    error: searchError,
+  } = useRekordboxSearch(importId, searchQuery, searchSynced.filter, !searchSynced.blocked);
   const { stats: libraryStats } = useLibraryStats(importId);
 
   // ── Audio player ───────────────────────────────────────────────────────────
@@ -605,28 +613,53 @@ export function LibraryView({
     [toggleTrack],
   );
 
-  const showSearch = searchQuery.trim().length >= 2;
-  useAudioDockTracks(searchResults, null, undefined, showSearch);
+  useAudioDockTracks(searchResults, null, undefined, showSearch && !searchSynced.blocked);
 
   // ── Incomplete analysis list: opened from the Track Analysis card, with a way back to the overview ──
-  const isIncompleteView = activeTab === 'incomplete-analysis';
   const [incompleteTracks, setIncompleteTracks] = useState<RekordboxTrack[]>([]);
   const [incompleteFetching, setIncompleteFetching] = useState(false);
+  const [incompleteError, setIncompleteError] = useState<string | null>(null);
+  const visibleIncompleteTracks = useMemo(
+    () => incompleteTracks.filter(incompleteSynced.matches),
+    [incompleteTracks, incompleteSynced.matches],
+  );
 
   useEffect(() => {
-    if (!isIncompleteView || !importId) return;
+    if (!isIncompleteView || showSearch || !importId) return;
+    const controller = new AbortController();
+    const pageSize = 500;
+    const readTracks = async () => {
+      const tracks: RekordboxTrack[] = [];
+      for (let offset = 0; ; offset += pageSize) {
+        controller.signal.throwIfAborted();
+        const { data, error } = await supabase
+          .from('rekordbox_tracks')
+          .select('*')
+          .eq('import_id', importId)
+          .or('analysis_parse_status.is.null,analysis_parse_status.not.in.(completed,reused)')
+          .order('title')
+          .order('id')
+          .range(offset, offset + pageSize - 1)
+          .abortSignal(controller.signal);
+        if (error) throw new Error(error.message);
+        const page = (data ?? []) as RekordboxTrack[];
+        tracks.push(...page);
+        if (page.length < pageSize) return tracks;
+      }
+    };
+
+    setIncompleteTracks([]);
     setIncompleteFetching(true);
-    supabase
-      .from('rekordbox_tracks')
-      .select('*')
-      .eq('import_id', importId)
-      .or('analysis_parse_status.is.null,analysis_parse_status.not.in.(completed,reused)')
-      .order('title')
-      .then(({ data }) => {
-        setIncompleteTracks((data as RekordboxTrack[]) ?? []);
-        setIncompleteFetching(false);
-      });
-  }, [isIncompleteView, importId]);
+    setIncompleteError(null);
+    void readTracks().then((tracks) => {
+      if (!controller.signal.aborted) setIncompleteTracks(tracks);
+    }).catch(() => {
+      if (!controller.signal.aborted) setIncompleteError('Could not load tracks with incomplete analysis.');
+    }).finally(() => {
+      if (!controller.signal.aborted) setIncompleteFetching(false);
+    });
+    return () => controller.abort();
+  }, [isIncompleteView, showSearch, importId]);
 
   // ── Derived stats ──────────────────────────────────────────────────────────
 
@@ -652,8 +685,8 @@ export function LibraryView({
   );
 
   const incompleteTrackIds = useMemo(
-    () => incompleteTracks.map((t) => t.id),
-    [incompleteTracks],
+    () => visibleIncompleteTracks.map((t) => t.id),
+    [visibleIncompleteTracks],
   );
 
   const waveformIds = useMemo(() => {
@@ -680,28 +713,27 @@ export function LibraryView({
             transition={{ duration: 0.15 }}
           >
             <div className="space-y-4">
-              <div className="max-w-md ml-auto">
-                <SearchControl
-                  autoFocus
-                  placeholder="Search library…"
-                  value={searchQuery}
-                  onChange={(e) => onSearchQueryChange(e.target.value)}
-                  aria-label="Search library"
-                />
+              <div className="cue-studio flex flex-wrap items-end justify-end gap-3">
+                <div className="w-full max-w-md">
+                  <SearchControl autoFocus placeholder="Search library…" value={searchQuery}
+                    onChange={(event) => onSearchQueryChange(event.target.value)} aria-label="Search library" />
+                </div>
+                <FilterDropdown {...searchSynced.dropdown} className="cue-browser__filter" />
               </div>
-              <LibrarySearchResults
+              {searchSynced.error ? <SyncedFilterError error={searchSynced.error} onRetry={searchSynced.cloud.retry} /> : <LibrarySearchResults
                 query={searchQuery.trim()}
                 results={searchResults}
                 total={searchTotal}
-                loading={searchLoading}
+                loading={searchLoading || searchSynced.loading}
                 loadingMore={searchLoadingMore}
+                error={searchError}
                 hasMore={searchHasMore}
                 importId={importId}
                 onTrackClick={onTrackClick}
                 onLoadMore={() => { void loadMoreSearchResults(); }}
                 waveformStates={waveformStates}
                 onRetryWaveform={(trackId) => retryWaveform([trackId])}
-              />
+              />}
             </div>
           </motion.div>
         ) : (
@@ -820,15 +852,18 @@ export function LibraryView({
                           <ControlButton variant="ghost" onClick={() => onActiveTabChange('overview')} data-testid="incomplete-back">
                             <NavArrowLeft width={14} height={14} aria-hidden="true" /> Back to home
                           </ControlButton>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {incompleteFetching
+                          <div className="cue-studio"><FilterDropdown {...incompleteSynced.dropdown} className="cue-browser__filter" /></div>
+                          {!incompleteSynced.error && !incompleteError && <p className="text-xs text-muted-foreground font-mono">
+                            {incompleteFetching || incompleteSynced.loading
                               ? 'Loading…'
-                              : `${incompleteTracks.length.toLocaleString()} tracks with incomplete analysis`}
-                          </p>
-                          <LibraryTrackTable
-                            tracks={incompleteTracks}
-                            loading={incompleteFetching}
-                            emptyText="No tracks with incomplete analysis."
+                              : `${visibleIncompleteTracks.length.toLocaleString()} tracks with incomplete analysis`}
+                          </p>}
+                          {incompleteSynced.error ? <SyncedFilterError error={incompleteSynced.error} onRetry={incompleteSynced.cloud.retry} />
+                            : incompleteError ? <p className="px-4 text-sm text-red-300" role="alert">{incompleteError}</p>
+                            : <LibraryTrackTable
+                            tracks={visibleIncompleteTracks}
+                            loading={incompleteFetching || incompleteSynced.loading}
+                            emptyText={incompleteTracks.length ? 'No tracks match your filters.' : 'No tracks with incomplete analysis.'}
                             getWaveformState={getWaveformState}
                             retryWaveform={retryWaveform}
                             activeTrack={activeTrack}
@@ -837,7 +872,7 @@ export function LibraryView({
                             usbConnected={usbConnected}
                             onTrackClick={onTrackClick}
                             onPlay={handlePlay}
-                          />
+                          />}
                         </div>
                       )}
 

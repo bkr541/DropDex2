@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { buildPreviewJobs, runPreviewSync, type PreviewJob, type PreviewSyncDeps } from './previewSync';
+import { buildPreviewJobs, previewSyncStore, runPreviewSync, type PreviewJob, type PreviewSyncDeps } from './previewSync';
 import { previewStoragePath, trackIdentityKey } from './trackIdentity';
+import { fetchLibraryTracksPage } from '../queries/rekordbox';
 import type { RekordboxTrack } from '../../types';
 
 vi.mock('../supabase', () => ({ supabase: {} }));
+vi.mock('../queries/rekordbox', () => ({ fetchLibraryTracksPage: vi.fn() }));
 
 const encoded = { ok: true as const, skipped: false as const, bytes: new Uint8Array([1, 2, 3]), sizeBytes: 3, durationMs: 1000, bitrateKbps: 160, sampleRate: 44100, channels: 2, sourceSize: 10, sourceMtimeMs: 5000 };
 const job = (n: number, over: Partial<PreviewJob> = {}): PreviewJob => ({ trackId: `t${n}`, title: `Track ${n}`, identityKey: `m:1:${n}`, segments: ['Contents', `${n}.mp3`], ...over });
@@ -39,6 +41,14 @@ describe('preview sync runner', () => {
     expect(d.upload).not.toHaveBeenCalled();
   });
 
+  it('leaves a copy pending removal out of a subsequent sync', async () => {
+    const d = deps();
+    const existing = new Map([['m:1:1', { status: 'failed' as const, sourceSize: null, sourceMtimeMs: null, pendingRemoval: true }]]);
+    const result = await runPreviewSync({ jobs: [job(1)], existing, deps: d });
+    expect(result).toMatchObject({ failed: 1, processed: 1 });
+    expect(d.encode).not.toHaveBeenCalled();
+  });
+
   it('records a failed track in plain words and carries on with the rest', async () => {
     const d = deps({ encode: vi.fn(async ({ segments }) => (segments[1] === '2.mp3' ? { ok: false as const, error: { kind: 'not_found', message: 'raw' } } : encoded)) });
     const failures: string[] = [];
@@ -71,6 +81,33 @@ describe('preview sync runner', () => {
     const summary = await runPreviewSync({ jobs: [job(1), job(2), job(3)], existing: new Map(), deps: d, isCancelled: () => cancel, concurrency: 1 });
     expect(summary.cancelled).toBe(true);
     expect(summary.processed).toBe(1);
+  });
+});
+
+describe('Sync All preparation', () => {
+  it('becomes active before loading tracks and stops a pending page without encoding anything', async () => {
+    const fetchPage = vi.mocked(fetchLibraryTracksPage);
+    fetchPage.mockImplementationOnce((_importId, _offset, _limit, _filters, signal) => new Promise((_, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const d = deps();
+    const options = { userId: 'user', deps: d, existing: new Map() };
+    const pending = previewSyncStore.start('library', options);
+    expect(previewSyncStore.getState().phase).toBe('preparing');
+    await previewSyncStore.start('other-library', options);
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+
+    previewSyncStore.cancel();
+    expect(previewSyncStore.getState().stopping).toBe(true);
+    await pending;
+    expect(previewSyncStore.getState()).toMatchObject({ phase: 'done', stopping: false, cancelled: true, processed: 0 });
+    expect(d.encode).not.toHaveBeenCalled();
+
+    previewSyncStore.reset();
+    fetchPage.mockResolvedValueOnce({ items: [], total: 0, offset: 0, limit: 500, hasMore: false });
+    await previewSyncStore.start('library', options);
+    expect(previewSyncStore.getState()).toMatchObject({ phase: 'done', cancelled: false });
+    previewSyncStore.reset();
   });
 });
 

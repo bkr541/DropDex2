@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FilterDropdown, SearchControl } from '../ui/controls';
+import { ControlButton, FilterDropdown, SearchControl } from '../ui/controls';
 import type { FilterDropdownOption } from '../ui/controls/FilterDropdown';
 import '../cues/cue-studio.css';
 
@@ -27,6 +27,15 @@ export function LibraryFilterRow({ search, onSearchChange, label, placeholder, f
       {filters.map((filter) => <FilterDropdown key={filter.label} {...filter} className="cue-browser__filter" />)}
     </div>
   </div>;
+}
+
+export function SyncedFilterError({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div className="flex items-center gap-2 px-4 py-2 text-xs text-red-300" role="alert">
+      {error}
+      <ControlButton variant="ghost" onClick={onRetry}>Retry Cloud status</ControlButton>
+    </div>
+  );
 }
 
 export function recordOptions(values: Array<string | null | undefined>): FilterDropdownOption[] {

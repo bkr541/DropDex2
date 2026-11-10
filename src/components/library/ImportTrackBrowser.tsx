@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Page, Refresh, Xmark } from 'iconoir-react/regular';
 import type { RekordboxTrack } from '../../types';
 import { useLibraryStats, useLibraryTracks } from '../../hooks/useRekordboxTracks';
+import { useSyncedTrackFilter } from '../../hooks/useSyncedTrackFilter';
 import { ControlButton, ToolbarIconButton, ToolbarIconGroup } from '../ui/controls';
 import { NoticeCard, StatusLoader } from '../ui/feedback';
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
-import { LibraryFilterRow, type LibraryFilter } from './LibraryFilterRow';
+import { LibraryFilterRow, SyncedFilterError, type LibraryFilter } from './LibraryFilterRow';
 import { nextRecordSort } from '../ui/display/recordTrackSorting';
 import type { TrackTableSort } from '../ui/display/TrackTable';
 import { importMetadataFields, importMetadataValue, metadataLabel, metadataValue } from './importMetadata';
@@ -43,8 +44,9 @@ export function ImportTrackBrowser({ importId, compact = false, label = 'Importe
   const [field, setField] = useState(compact ? '' : 'track:album');
   const [sort, setSort] = useState<TrackTableSort | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // Filters are applied to the entire snapshot by the existing paginated query.
-  const library = useLibraryTracks(importId, { search, genre, artist, debounceMs: 180 });
+  const synced = useSyncedTrackFilter(!compact);
+  const library = useLibraryTracks(importId, { search, genre, artist, debounceMs: 180, enabled: !synced.blocked, syncedFilter: synced.filter });
+  const loading = library.loading || synced.loading;
   const statistics = useLibraryStats(importId);
   const fields = useMemo(() => importMetadataFields(library.tracks), [library.tracks]);
   const selected = library.tracks.find((track) => track.id === selectedId);
@@ -60,6 +62,7 @@ export function ImportTrackBrowser({ importId, compact = false, label = 'Importe
     { label: 'Artist', value: artist, onChange: resetSelection(setArtist), options: [{ value: '', label: 'All' }, ...(statistics.stats?.artistTotals ?? []).map(({ name, count }) => ({ value: name, label: `${name} (${count})` }))] },
     { label: 'Metadata field', value: field, onChange: (value) => { setField(value); if (!value && sort?.column === 'metadata') setSort(null); }, options: [{ value: '', label: 'Standard columns' }, ...fields] },
   ];
+  if (!compact) filters.push({ ...synced.dropdown, onChange: resetSelection(synced.dropdown.onChange) });
   // Narrow USB panels use the shared responsive records, so sorting also remains available without table headings.
   if (compact) filters.push(
     { label: 'Sort', value: sort?.column ?? '', onChange: (column) => setSort(column ? { column, direction: 'asc' } : null), options: [
@@ -75,16 +78,17 @@ export function ImportTrackBrowser({ importId, compact = false, label = 'Importe
   return <div className="import-library__browser">
     <LibraryFilterRow search={search} onSearchChange={resetSelection(setSearch)} label={label} placeholder="Search title, artist, or genre…" filters={filters} />
     <div className="import-library__result-summary">
-      <p className="text-xs text-muted-foreground" role="status">{library.loading ? 'Loading track records…' : `${library.tracks.length.toLocaleString()} of ${library.total.toLocaleString()} matching tracks`} · Select a record to inspect all metadata.</p>
+      <p className="text-xs text-muted-foreground" role="status">{loading ? 'Loading track records…' : `${library.tracks.length.toLocaleString()} of ${library.total.toLocaleString()} matching tracks`} · Select a record to inspect all metadata.</p>
       <ToolbarIconGroup><ToolbarIconButton label={compact ? `Refresh ${label.toLowerCase()}` : 'Refresh imported tracks'} onClick={retry} disabled={library.loading || library.loadingMore}>
         <Refresh width={16} height={16} aria-hidden="true" />
       </ToolbarIconButton></ToolbarIconGroup>
     </div>
     {statistics.error && <div className="px-4 pb-3"><NoticeCard tone="warning" action={<ControlButton variant="secondary" onClick={statistics.refresh}>Retry filters</ControlButton>}>Filter options could not be loaded.</NoticeCard></div>}
     {library.error && <div className="px-4 pb-3"><NoticeCard tone="error" action={<ControlButton variant="secondary" onClick={library.refresh}>Retry tracks</ControlButton>}>{library.error}</NoticeCard></div>}
-    {library.loading && <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"><StatusLoader label={compact ? `Loading ${label.toLowerCase()}` : 'Loading imported tracks'} /> Loading tracks…</div>}
-    {!library.loading && library.tracks.length === 0 && !library.error && <p className="px-4 py-8 text-center text-sm text-muted-foreground">No track records match your search and filters in this snapshot.</p>}
-    {library.tracks.length > 0 && <RecordTrackListing
+    {synced.error && <SyncedFilterError error={synced.error} onRetry={synced.cloud.retry} />}
+    {loading && <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"><StatusLoader label={compact ? `Loading ${label.toLowerCase()}` : 'Loading imported tracks'} /> Loading tracks…</div>}
+    {!loading && !synced.error && library.tracks.length === 0 && !library.error && <p className="px-4 py-8 text-center text-sm text-muted-foreground">No track records match your search and filters in this snapshot.</p>}
+    {!synced.blocked && library.tracks.length > 0 && <RecordTrackListing
       tracks={library.tracks} importId={importId} playback={false} renderLeading={() => null}
       className={compact ? 'usb-library-tracks' : undefined}
       sort={sort} onSort={(column) => setSort((current) => nextRecordSort(current, column))}

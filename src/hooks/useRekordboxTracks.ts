@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RekordboxTrack } from '../types';
 import {
   fetchLibraryStats,
@@ -8,6 +8,7 @@ import {
   type LibraryStats,
   type LibraryTrackFilters,
 } from '../lib/queries/rekordbox';
+import { syncedTrackPager, type SyncedTrackFilter } from '../lib/preview/syncedTrackFilter';
 import { subscribeToRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
 
 export function useRecentTracks(importId: string | null) {
@@ -76,6 +77,7 @@ interface UseLibraryTracksOptions extends LibraryTrackFilters {
   enabled?: boolean;
   debounceMs?: number;
   pageSize?: number;
+  syncedFilter?: SyncedTrackFilter | null;
 }
 
 export function useLibraryTracks(
@@ -88,6 +90,7 @@ export function useLibraryTracks(
     enabled = true,
     debounceMs = 0,
     pageSize = LIBRARY_TRACK_PAGE_SIZE,
+    syncedFilter = null,
   }: UseLibraryTracksOptions = {},
 ) {
   const [tracks, setTracks] = useState<RekordboxTrack[]>([]);
@@ -101,16 +104,21 @@ export function useLibraryTracks(
   const normalizedSearch = search?.trim() || null;
   const normalizedGenre = genre?.trim() || null;
   const normalizedArtist = artist?.trim() || null;
-
-  useEffect(() => subscribeToRekordboxAnalysisProgress((detail) => {
-    if (!importId || !enabled || detail.importId !== importId) return;
-    const generation = generationRef.current;
-    void fetchLibraryTracksPage(importId, 0, Math.max(pageSize, tracks.length), {
+  const readPage = useMemo(() => syncedTrackPager<RekordboxTrack>(
+    (offset, limit, signal) => fetchLibraryTracksPage(importId!, offset, limit, {
       search: normalizedSearch,
       genre: normalizedGenre,
       untaggedGenre,
       artist: normalizedArtist,
-    }).then((page) => {
+    }, signal),
+    syncedFilter,
+    (track) => track,
+  ), [importId, normalizedSearch, normalizedGenre, untaggedGenre, normalizedArtist, syncedFilter]);
+
+  useEffect(() => subscribeToRekordboxAnalysisProgress((detail) => {
+    if (!importId || !enabled || detail.importId !== importId) return;
+    const generation = generationRef.current;
+    void readPage(0, Math.max(pageSize, tracks.length)).then((page) => {
       if (generation !== generationRef.current) return;
       setTracks(page.items);
       setTotal(page.total);
@@ -118,10 +126,7 @@ export function useLibraryTracks(
   }), [
     enabled,
     importId,
-    normalizedArtist,
-    normalizedGenre,
-    untaggedGenre,
-    normalizedSearch,
+    readPage,
     pageSize,
     tracks.length,
   ]);
@@ -145,13 +150,9 @@ export function useLibraryTracks(
     setLoadingMore(false);
     setError(null);
 
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      fetchLibraryTracksPage(importId, 0, pageSize, {
-        search: normalizedSearch,
-        genre: normalizedGenre,
-        untaggedGenre,
-        artist: normalizedArtist,
-      })
+      readPage(0, pageSize, controller.signal)
         .then((page) => {
           if (cancelled || generation !== generationRef.current) return;
           setTracks(page.items);
@@ -171,14 +172,12 @@ export function useLibraryTracks(
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      controller.abort();
     };
   }, [
     importId,
     enabled,
-    normalizedSearch,
-    normalizedGenre,
-    untaggedGenre,
-    normalizedArtist,
+    readPage,
     debounceMs,
     pageSize,
     refreshNonce,
@@ -190,12 +189,7 @@ export function useLibraryTracks(
     setLoadingMore(true);
     setError(null);
     try {
-      const page = await fetchLibraryTracksPage(importId, tracks.length, pageSize, {
-        search: normalizedSearch,
-        genre: normalizedGenre,
-        untaggedGenre,
-        artist: normalizedArtist,
-      });
+      const page = await readPage(tracks.length, pageSize);
       if (generation !== generationRef.current) return;
       setTracks((current) => [...current, ...page.items]);
       setTotal(page.total);
@@ -214,10 +208,7 @@ export function useLibraryTracks(
     tracks.length,
     total,
     pageSize,
-    normalizedSearch,
-    normalizedGenre,
-    untaggedGenre,
-    normalizedArtist,
+    readPage,
   ]);
 
   const refresh = useCallback(() => setRefreshNonce((value) => value + 1), []);
@@ -234,11 +225,12 @@ export function useLibraryTracks(
   };
 }
 
-export function useRekordboxSearch(importId: string | null, query: string) {
+export function useRekordboxSearch(importId: string | null, query: string, syncedFilter?: SyncedTrackFilter | null, enabled = true) {
   const normalizedQuery = query.trim();
   const result = useLibraryTracks(importId, {
     search: normalizedQuery,
-    enabled: normalizedQuery.length > 0,
+    enabled: enabled && normalizedQuery.length > 0,
+    syncedFilter,
     debounceMs: 300,
   });
 

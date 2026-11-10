@@ -14,7 +14,9 @@ import type { UsbFileResolutionError } from '../lib/usb/resolveUsbFile';
 import { registerUsbPlaybackStopHandler } from '../lib/usb/usbPlaybackCoordinator';
 import { logger } from '../lib/logger';
 import { trackIdentityKey } from '../lib/preview/trackIdentity';
-import { fetchPreviewPlayback } from '../lib/queries/trackPreviews';
+import { fetchPreviewPlayback, type CloudTrack } from '../lib/queries/trackPreviews';
+
+type PlayableTrack = RekordboxTrack & Partial<Pick<CloudTrack, 'cloudPreview'>>;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -34,7 +36,7 @@ export type PlayerStatus =
 export type PlaybackSource = 'usb' | 'cloud';
 
 interface PlayerState {
-  activeTrack: RekordboxTrack | null;
+  activeTrack: PlayableTrack | null;
   /** Set once audio is attached; null while resolving, stopped or in error. */
   source: PlaybackSource | null;
   status: PlayerStatus;
@@ -65,7 +67,7 @@ type PlayerAction =
   | { type: 'CLEAR_ERROR' };
 
 export interface AudioPlayerContextValue extends PlayerState {
-  playTrack(track: RekordboxTrack): Promise<void>;
+  playTrack(track: PlayableTrack): Promise<void>;
   toggleTrack(track: RekordboxTrack): Promise<void>;
   pause(): void;
   resume(): Promise<void>;
@@ -426,27 +428,30 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
   }, [releaseCurrentSource]);
 
   /**
-   * Play the track from its DropDex Cloud preview. Only used when DropDex is not reading the USB. Returns false when
-   * there is nothing to play it from (no synced preview, or the lookup failed), so the normal USB handling can go on.
+   * Play a saved Cloud copy, or try it as a fallback for a regular library track.
+   * A missing preview leaves source selection to the caller.
    */
-  const playCloudPreview = useCallback(async (track: RekordboxTrack, requestId: number): Promise<boolean> => {
+  const playCloudPreview = useCallback(async (track: PlayableTrack, requestId: number): Promise<boolean> => {
+    const copy = track.cloudPreview;
     let preview: Awaited<ReturnType<typeof fetchPreviewPlayback>>;
     try {
-      preview = await fetchPreviewPlayback(trackIdentityKey(track));
+      preview = copy
+        ? await fetchPreviewPlayback(copy.identityKey, { userId: copy.userId })
+        : await fetchPreviewPlayback(trackIdentityKey(track));
     } catch (error) {
       logger.warn('preview.playback.lookup_failed', { trackId: track.id, title: track.title, message: error instanceof Error ? error.message : String(error) });
       return false;
     }
     if (requestId !== playRequestIdRef.current) return true;
     if (!preview) return false;
-    // The drive may have come back while the preview was being looked up. The USB always wins.
-    if (!shouldTryCloudPreview(usbRef.current.status)) return false;
+    // A drive that reconnected during a fallback lookup takes priority for regular library tracks.
+    if (!copy && !shouldTryCloudPreview(usbRef.current.status)) return false;
     logger.info('preview.playback.start', { trackId: track.id, title: track.title });
     await startAudio(track, requestId, preview.url, false, 'cloud');
     return true;
   }, [startAudio]);
 
-  const playTrack = useCallback(async (track: RekordboxTrack): Promise<void> => {
+  const playTrack = useCallback(async (track: PlayableTrack): Promise<void> => {
     const requestId = ++playRequestIdRef.current;
     pendingPlayRef.current = null;
 
@@ -461,6 +466,11 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
       releaseCurrentSource();
       dispatch({ type: 'ERROR', error: message, track });
     };
+
+    if (track.cloudPreview) {
+      if (!(await playCloudPreview(track, requestId))) failCurrent('This Cloud copy could not be played.');
+      return;
+    }
 
     // Always play from the USB while DropDex is reading it. Only when it is not, use the track's cloud preview.
     if (shouldTryCloudPreview(usbRef.current.status)) {

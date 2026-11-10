@@ -286,12 +286,14 @@ export async function fetchPlaylistTracksPage(
   playlistId: string,
   offset = 0,
   limit = PLAYLIST_TRACK_PAGE_SIZE,
+  signal?: AbortSignal,
 ): Promise<PaginatedResult<PlaylistTrackItem>> {
-  const { data, error } = await supabase.rpc('get_rekordbox_playlist_track_page', {
+  const query = supabase.rpc('get_rekordbox_playlist_track_page', {
     p_playlist_id: playlistId,
     p_offset: offset,
     p_limit: limit,
   });
+  const { data, error } = await (signal ? query.abortSignal(signal) : query);
   if (error) throw new Error(error.message);
   return parsePage<PlaylistTrackItem>(data);
 }

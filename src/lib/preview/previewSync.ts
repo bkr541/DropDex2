@@ -94,6 +94,10 @@ export async function runPreviewSync({
       return;
     }
     const before = existing.get(job.identityKey);
+    if (before?.pendingRemoval) {
+      fail(job, 'Finish removing this copy in See Tracks before syncing it again.');
+      return;
+    }
     const previous = before?.status === 'ready' && before.sourceSize != null && before.sourceMtimeMs != null
       ? { sourceSize: before.sourceSize, sourceMtimeMs: before.sourceMtimeMs }
       : null;
@@ -155,10 +159,11 @@ export function buildPreviewJobs(tracks: readonly RekordboxTrack[], expectedVolu
 }
 
 /** Every track of an import, fetched a page at a time. */
-export async function fetchAllImportTracks(importId: string): Promise<RekordboxTrack[]> {
+async function fetchAllImportTracks(importId: string, signal: AbortSignal): Promise<RekordboxTrack[]> {
   const all: RekordboxTrack[] = [];
   for (let offset = 0; ; offset += 500) {
-    const page = await fetchLibraryTracksPage(importId, offset, 500);
+    signal.throwIfAborted();
+    const page = await fetchLibraryTracksPage(importId, offset, 500, {}, signal);
     all.push(...page.items);
     if (!page.hasMore || page.items.length === 0) break;
   }
@@ -170,15 +175,16 @@ export async function fetchAllImportTracks(importId: string): Promise<RekordboxT
 export interface PreviewSyncState extends PreviewProgress {
   phase: 'idle' | 'preparing' | 'running' | 'done' | 'error';
   total: number;
+  stopping: boolean;
   cancelled: boolean;
   failures: PreviewFailure[];
   message: string | null;
 }
 
-const IDLE: PreviewSyncState = { phase: 'idle', total: 0, processed: 0, synced: 0, skipped: 0, failed: 0, current: null, cancelled: false, failures: [], message: null };
+const IDLE: PreviewSyncState = { phase: 'idle', total: 0, processed: 0, synced: 0, skipped: 0, failed: 0, current: null, stopping: false, cancelled: false, failures: [], message: null };
 
 let state: PreviewSyncState = IDLE;
-let cancelRequested = false;
+let activeController: AbortController | null = null;
 const listeners = new Set<() => void>();
 
 function publish(next: PreviewSyncState) {
@@ -193,18 +199,25 @@ export const previewSyncStore = {
     return () => { listeners.delete(listener); };
   },
   cancel() {
-    cancelRequested = true;
+    if (!activeController || state.stopping) return;
+    publish({ ...state, stopping: true });
+    activeController.abort();
   },
   reset() {
     if (state.phase !== 'preparing' && state.phase !== 'running') publish(IDLE);
   },
-  /** Starts a sync of `tracks`. Does nothing if one is already running. */
-  async start(tracks: RekordboxTrack[], options: { expectedVolume?: string | null; deps?: PreviewSyncDeps; userId?: string; existing?: Map<string, PreviewState> } = {}): Promise<void> {
-    if (state.phase === 'preparing' || state.phase === 'running') return;
-    cancelRequested = false;
-    publish({ ...IDLE, phase: 'preparing', total: tracks.length });
+  /** Starts a sync for selected tracks or for every track of an import ID. Does nothing if one is already running. */
+  async start(source: RekordboxTrack[] | string, options: { expectedVolume?: string | null; deps?: PreviewSyncDeps; userId?: string; existing?: Map<string, PreviewState> } = {}): Promise<void> {
+    if (activeController) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    activeController = controller;
+    publish({ ...IDLE, phase: 'preparing' });
+
+    let result: PreviewSyncState;
     try {
       const userId = options.userId ?? (await supabase.auth.getSession()).data.session?.user.id;
+      signal.throwIfAborted();
       if (!userId) throw new Error('You need to be signed in to sync.');
       const bridge = typeof window !== 'undefined' ? window.dropdexDesktop : undefined;
       const deps: PreviewSyncDeps | null = options.deps ?? (bridge ? {
@@ -215,24 +228,33 @@ export const previewSyncStore = {
       } : null);
       if (!deps) throw new Error('Syncing needs the DropDex desktop app, because it reads the files from your USB.');
 
-      const existing = options.existing ?? await fetchPreviewStates();
+      const tracks = typeof source === 'string' ? await fetchAllImportTracks(source, signal) : source;
+      signal.throwIfAborted();
+      const existing = options.existing ?? await fetchPreviewStates(signal);
+      signal.throwIfAborted();
       const jobs = buildPreviewJobs(tracks, options.expectedVolume);
       logger.info('preview.sync.started', { tracks: jobs.length });
       publish({ ...state, phase: 'running', total: jobs.length });
 
       const summary = await runPreviewSync({
         jobs, existing, deps,
-        isCancelled: () => cancelRequested,
+        isCancelled: () => signal.aborted,
         onProgress: (progress) => publish({ ...state, ...progress, phase: 'running' }),
         onFailure: (failure) => logger.error('preview.sync.track_failed', { trackId: failure.trackId, title: failure.title, message: failure.message }),
       });
       logger.info('preview.sync.finished', { synced: summary.synced, skipped: summary.skipped, failed: summary.failed, cancelled: summary.cancelled });
-      publish({ ...state, ...summary, phase: 'done', message: null });
+      result = { ...state, ...summary, phase: 'done', stopping: false, message: null };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error('preview.sync.failed', { message });
-      publish({ ...state, phase: 'error', message });
+      if (signal.aborted) {
+        result = { ...state, phase: 'done', stopping: false, cancelled: true, current: null };
+      } else {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('preview.sync.failed', { message });
+        result = { ...state, phase: 'error', message };
+      }
     }
+    activeController = null;
+    publish(result);
   },
 };
 

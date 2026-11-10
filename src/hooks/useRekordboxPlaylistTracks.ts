@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PlaylistTrackItem, PlaylistStats } from '../lib/queries/rekordbox';
 import {
   fetchPlaylistStats,
   fetchPlaylistTracksPage,
   PLAYLIST_TRACK_PAGE_SIZE,
 } from '../lib/queries/rekordbox';
+import { syncedTrackPager, type SyncedTrackFilter } from '../lib/preview/syncedTrackFilter';
 import { subscribeToRekordboxAnalysisProgress } from '../lib/rekordbox/analysisProgressEvents';
 
-export function useRekordboxPlaylistTracks(playlistId: string | null) {
+export function useRekordboxPlaylistTracks(playlistId: string | null, syncedFilter: SyncedTrackFilter | null = null, tracksEnabled = true) {
   const [tracks, setTracks] = useState<PlaylistTrackItem[]>([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<PlaylistStats | null>(null);
@@ -19,19 +20,24 @@ export function useRekordboxPlaylistTracks(playlistId: string | null) {
   const tracksRef = useRef<PlaylistTrackItem[]>([]);
 
   tracksRef.current = tracks;
+  const readPage = useMemo(() => syncedTrackPager<PlaylistTrackItem>(
+    (offset, limit, signal) => fetchPlaylistTracksPage(playlistId!, offset, limit, signal),
+    syncedFilter,
+    (row) => row.track,
+  ), [playlistId, syncedFilter]);
 
   useEffect(() => subscribeToRekordboxAnalysisProgress(() => {
-    if (!playlistId) return;
+    if (!playlistId || !tracksEnabled) return;
     const generation = generationRef.current;
     const visibleCount = Math.max(PLAYLIST_TRACK_PAGE_SIZE, tracksRef.current.length);
-    void fetchPlaylistTracksPage(playlistId, 0, visibleCount)
+    void readPage(0, visibleCount)
       .then((page) => {
         if (generation !== generationRef.current) return;
         setTracks(page.items);
         setTotal(page.total);
       })
       .catch(() => undefined);
-  }), [playlistId]);
+  }), [playlistId, readPage, tracksEnabled]);
 
   useEffect(() => {
     const generation = ++generationRef.current;
@@ -51,12 +57,14 @@ export function useRekordboxPlaylistTracks(playlistId: string | null) {
     setTracks([]);
     setTotal(0);
     setStats(null);
-    setLoading(true);
+    setLoading(tracksEnabled);
+    setLoadingMore(false);
     setStatsLoading(true);
     setError(null);
 
+    const controller = new AbortController();
     void Promise.all([
-      fetchPlaylistTracksPage(playlistId, 0, PLAYLIST_TRACK_PAGE_SIZE)
+      tracksEnabled ? readPage(0, PLAYLIST_TRACK_PAGE_SIZE, controller.signal)
         .then((page) => {
           if (cancelled || generation !== generationRef.current) return;
           setTracks(page.items);
@@ -64,7 +72,7 @@ export function useRekordboxPlaylistTracks(playlistId: string | null) {
         })
         .finally(() => {
           if (!cancelled && generation === generationRef.current) setLoading(false);
-        }),
+        }) : Promise.resolve(),
       fetchPlaylistStats(playlistId)
         .then((nextStats) => {
           if (!cancelled && generation === generationRef.current) setStats(nextStats);
@@ -79,20 +87,17 @@ export function useRekordboxPlaylistTracks(playlistId: string | null) {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [playlistId]);
+  }, [playlistId, readPage, tracksEnabled]);
 
   const loadMore = useCallback(async () => {
-    if (!playlistId || loading || loadingMore || tracks.length >= total) return;
+    if (!playlistId || !tracksEnabled || loading || loadingMore || tracks.length >= total) return;
     const generation = generationRef.current;
     setLoadingMore(true);
     setError(null);
     try {
-      const page = await fetchPlaylistTracksPage(
-        playlistId,
-        tracks.length,
-        PLAYLIST_TRACK_PAGE_SIZE,
-      );
+      const page = await readPage(tracks.length, PLAYLIST_TRACK_PAGE_SIZE);
       if (generation !== generationRef.current) return;
       setTracks((current) => [...current, ...page.items]);
       setTotal(page.total);
@@ -103,7 +108,7 @@ export function useRekordboxPlaylistTracks(playlistId: string | null) {
     } finally {
       if (generation === generationRef.current) setLoadingMore(false);
     }
-  }, [playlistId, loading, loadingMore, tracks.length, total]);
+  }, [playlistId, readPage, tracksEnabled, loading, loadingMore, tracks.length, total]);
 
   return {
     tracks,

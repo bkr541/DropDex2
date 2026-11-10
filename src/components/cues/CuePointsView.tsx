@@ -9,7 +9,7 @@ import { CloudSyncIcon } from '../library/CloudSyncIcon';
 import { LibraryListingFooter } from '../library/LibraryListingFooter';
 import { useLibraryListingViewport } from '../library/useLibraryListingViewport';
 import { useLibraryInfiniteScroll } from '../library/useLibraryInfiniteScroll';
-import { useSyncedPreviewKeys } from '../../hooks/useSyncedPreviewKeys';
+import { useSyncedTrackFilter } from '../../hooks/useSyncedTrackFilter';
 import { trackIdentityKey } from '../../lib/preview/trackIdentity';
 import { GenreEditPopover, GenreEditorContent } from './GenreEditPopover';
 import { CueApplyMenu } from './CueApplyMenu';
@@ -1530,6 +1530,8 @@ export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform }: {
 
 export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter, genreFilter, onGenreFilterChange, onTrackOpen, onSelectedTrackChange }: CuePointsViewProps) {
   const artistLibrary = mode === 'artist-library';
+  const synced = useSyncedTrackFilter(artistLibrary, true);
+  const cloudSynced = synced.cloud;
   const audition = mode !== 'cues';
   const auth = useAuthSession();
   const userId = auth.status === 'authenticated' ? auth.session.user.id : null;
@@ -1666,6 +1668,8 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
     genre: genre || null,
     untaggedGenre: genre === null,
     artist: artistFilter,
+    enabled: !synced.blocked,
+    syncedFilter: synced.filter,
     debounceMs: 220,
     pageSize: CUE_PAGE_SIZE,
   });
@@ -1687,7 +1691,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
     error: playlistTracksError,
     hasMore: playlistTracksHaveMore,
     loadMore: loadMorePlaylistTracks,
-  } = useRekordboxPlaylistTracks(activePlaylistId);
+  } = useRekordboxPlaylistTracks(activePlaylistId, synced.filter, !synced.blocked);
   const playlistTracks = useMemo(
     () => playlistTrackItems.map((item) => item.track),
     [playlistTrackItems],
@@ -2556,11 +2560,11 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
 
   const activeSourceTracks = browserSource === 'library' ? tracks : playlistTracks;
   const activeSourceTotal = browserSource === 'library' ? total : playlistTrackTotal;
-  const activeSourceLoading = browserSource === 'library'
+  const activeSourceLoading = synced.loading || (browserSource === 'library'
     ? loading
-    : playlistsLoading || (Boolean(activePlaylistId) && playlistTracksLoading);
+    : playlistsLoading || (Boolean(activePlaylistId) && playlistTracksLoading));
   const activeSourceLoadingMore = browserSource === 'library' ? loadingMore : playlistTracksLoadingMore;
-  const activeSourceError = browserSource === 'library' ? error : playlistsError ?? playlistTracksError;
+  const activeSourceError = synced.error ?? (browserSource === 'library' ? error : playlistsError ?? playlistTracksError);
   const activeSourceHasMore = browserSource === 'library' ? hasMore : playlistTracksHaveMore;
   const loadMoreActiveSource = browserSource === 'library' ? loadMore : loadMorePlaylistTracks;
   const autoPaginate = artistLibrary && activeSourceHasMore;
@@ -2604,7 +2608,6 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
 
   const activeSourceTrackIds = useMemo(() => activeSourceTracks.map((track) => track.id), [activeSourceTracks]);
   const playlistCounts = useTrackPlaylistCounts(activeSourceTrackIds);
-  const cloudSynced = useSyncedPreviewKeys(artistLibrary);
 
   const sourceSearchFilteredTracks = useMemo(() => {
     if (browserSource === 'library') return activeSourceTracks;
@@ -3943,6 +3946,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
                   ...(stats?.keyTotals ?? []).map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
                 ]}
               />
+              {artistLibrary && <FilterDropdown {...synced.dropdown} className="cue-browser__filter" />}
               <FilterDropdown
                 label="Cue States"
                 value={cueFilter}
@@ -4039,11 +4043,12 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
           <div className="flex items-center gap-3 px-5 py-8 text-sm text-red-300">
             <WarningTriangle width={20} height={20} aria-hidden="true" />
             <span>{activeSourceError}</span>
+            {synced.error && <ControlButton variant="ghost" onClick={cloudSynced.retry}>Retry Cloud status</ControlButton>}
           </div>
         ) : activeSourceLoading ? (
           <div className="flex items-center justify-center gap-3 py-16 text-sm text-muted-foreground">
             <Refresh className="animate-spin text-control-primary" width={22} height={22} aria-hidden="true" />
-            {browserSource === 'library' ? 'Loading library tracks…' : 'Loading playlist tracks…'}
+            {synced.loading ? 'Loading Cloud sync status…' : browserSource === 'library' ? 'Loading library tracks…' : 'Loading playlist tracks…'}
           </div>
         ) : browserSource === 'playlists' && selectablePlaylists.length === 0 ? (
           <div className="px-5 py-14 text-center">
@@ -4082,7 +4087,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
                 { id: 'bit-rate', label: 'Bit rate', hint: track.bitrate_kbps ? track.bitrate_kbps + ' kbps' : '—' },
                 ...(artistLibrary ? [{
                   id: 'cloud', label: 'Cloud preview',
-                  hint: <CloudSyncIcon synced={cloudSynced.keys.has(trackIdentityKey(track))} unknown={cloudSynced.failed} />,
+                  hint: <CloudSyncIcon synced={cloudSynced.keys.has(trackIdentityKey(track))} unknown={cloudSynced.failed || cloudSynced.loading} />,
                 }] : []),
               ]}
               rowKey={(track, rowIndex) => `${browserSource}:${selectedPlaylistId ?? 'library'}:${track.id}:${rowIndex}`}

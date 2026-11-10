@@ -3,6 +3,9 @@ import { useMemo, useState } from 'react';
 import { cn } from '../../lib/utils';
 import type { RekordboxTrack } from '../../types';
 import { useTrackPreviewWaveforms } from '../../hooks/useTrackPreviewWaveforms';
+import { FilterDropdown } from '../ui/controls';
+import { useSyncedTrackFilter } from '../../hooks/useSyncedTrackFilter';
+import { SyncedFilterError } from './LibraryFilterRow';
 import { useSimilarTracks } from '../../hooks/useSimilarTracks';
 import {
   useSimilarTrackSettings,
@@ -23,9 +26,10 @@ export function SimilarVibesSection({ track, importId, onTrackClick }: SimilarVi
   const { options, preset, setPreset, customTolerance, setCustomTolerance } =
     useSimilarTrackSettings();
   const { similarTracks, loading } = useSimilarTracks(track, importId, options);
-  const trackIds = useMemo(() => similarTracks.map((result) => result.track.id), [similarTracks]);
+  const synced = useSyncedTrackFilter();
+  const rows = useMemo(() => similarTracks.map(({ track }) => track).filter(synced.matches), [similarTracks, synced.matches]);
+  const trackIds = useMemo(() => rows.map((track) => track.id), [rows]);
   const { getState, retry } = useTrackPreviewWaveforms(importId, trackIds);
-  const rows = useMemo(() => similarTracks.map(({ track }) => track), [similarTracks]);
   const reasonsById = useMemo(() => new Map(similarTracks.map(({ track, reasons }) => [track.id, reasons])), [similarTracks]);
 
   // Local display state for the custom number input — only committed on blur/Enter
@@ -91,8 +95,9 @@ export function SimilarVibesSection({ track, importId, onTrackClick }: SimilarVi
         )}
       </div>
 
+      <div className="cue-studio"><FilterDropdown {...synced.dropdown} className="cue-browser__filter" /></div>
       {/* Results */}
-      {loading ? (
+      {synced.error ? <SyncedFilterError error={synced.error} onRetry={synced.cloud.retry} /> : loading || synced.loading ? (
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => (
             <div
@@ -101,7 +106,7 @@ export function SimilarVibesSection({ track, importId, onTrackClick }: SimilarVi
             />
           ))}
         </div>
-      ) : similarTracks.length > 0 ? (
+      ) : rows.length > 0 ? (
         <RecordTrackListing
           tracks={rows}
           importId={importId}
@@ -119,7 +124,7 @@ export function SimilarVibesSection({ track, importId, onTrackClick }: SimilarVi
         />
       ) : (
         <p className="text-xs text-muted-foreground italic text-center py-4">
-          No similar tracks found. Try widening the BPM range.
+          {similarTracks.length ? 'No similar tracks match the Synced filter.' : 'No similar tracks found. Try widening the BPM range.'}
         </p>
       )}
     </section>

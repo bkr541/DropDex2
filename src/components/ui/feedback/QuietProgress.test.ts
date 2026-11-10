@@ -40,7 +40,7 @@ describe('every progress popover uses QuietProgress', () => {
   it.each([
     'ImportStageProgress.tsx',
     'discovery/DiscoveryScrapeProgressModal.tsx',
-    'profile/StreamingSyncGroup.tsx',
+    'profile/CloudSyncProgressDialog.tsx',
     'ResumeAnalysisModal.tsx',
     'BackgroundImportPanel.tsx',
   ])('%s', (file) => {

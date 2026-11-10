@@ -10,6 +10,7 @@ interface LibrarySearchResultsProps {
   total: number;
   loading: boolean;
   loadingMore: boolean;
+  error?: string | null;
   hasMore: boolean;
   importId: string | null;
   onTrackClick: (track: RekordboxTrack) => void;
@@ -24,6 +25,7 @@ export function LibrarySearchResults({
   total,
   loading,
   loadingMore,
+  error,
   hasMore,
   importId,
   onTrackClick,
@@ -33,6 +35,7 @@ export function LibrarySearchResults({
 }: LibrarySearchResultsProps) {
   const label = loading
     ? 'Searching…'
+    : error ? 'Search failed'
     : results.length > 0
     ? `${total.toLocaleString()} result${total !== 1 ? 's' : ''} for "${query}" · showing ${results.length.toLocaleString()}`
     : `No results for "${query}"`;
@@ -56,7 +59,9 @@ export function LibrarySearchResults({
         </p>
       )}
 
-      {!loading && importId && results.length === 0 && (
+      {!loading && error && <p className="text-sm text-red-300" role="alert">{error}</p>}
+
+      {!loading && !error && importId && results.length === 0 && (
         <div className="text-center py-12 border-2 border-dashed border-[var(--color-border-subtle)] rounded-3xl">
           <Search width={28} height={28} aria-hidden="true" className="mx-auto text-muted-foreground opacity-30 mb-2" />
           <p className="text-sm text-muted-foreground italic">No tracks matching your search.</p>

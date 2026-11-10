@@ -19,24 +19,67 @@ describe('Streaming group in the Library tab', () => {
     expect(at).toBeLessThan(app.indexOf('Danger zone'));
   });
 
-  it('starts with the switch off and no sync button', async () => {
+  it('offers See Tracks with the sync switch off', async () => {
     const { StreamingSyncGroup } = await import('./StreamingSyncGroup');
-    const markup = renderToStaticMarkup(createElement(StreamingSyncGroup, { importId: 'i1', trackCount: 2283, sourceName: 'DJ STICK', deviceName: 'DJ STICK' }));
+    const markup = renderToStaticMarkup(createElement(StreamingSyncGroup, { userId: 'user', importId: 'i1', trackCount: 2283, sourceName: 'DJ STICK', deviceName: 'DJ STICK' }));
     expect(markup).toContain('Sync my music to the DropDex Cloud');
     expect(markup).toContain('aria-checked="false"');
+    expect(markup).toContain('See Tracks');
     expect(markup).not.toContain('streaming-sync-button');
+    expect(group.indexOf('See Tracks')).toBeLessThan(group.indexOf('streaming-sync-button'));
   });
 
-  it('opens a dialog with Cancel, Select Tracks and Sync All, in that order', () => {
-    const labels = [...group.matchAll(/\{ label: '([^']+)', variant/g)].map((m) => m[1]);
-    expect(labels).toEqual(['Cancel', 'Select Tracks', 'Sync All']);
-    expect(group).toContain("import { Dialog, QuietProgress, quietOverallPercent, type QuietPhase } from '../ui/feedback';");
+  it('confirms the selected Cloud copy with the standard destructive dialog', async () => {
+    const { CloudTrackDeleteDialog } = await import('./CloudTracksGroup');
+    const markup = renderToStaticMarkup(createElement(CloudTrackDeleteDialog, {
+      inline: true, title: 'Track to remove', onClose: vi.fn(), onDelete: vi.fn(),
+    }));
+    expect(markup).toContain('dd-dialog--destructive');
+    expect(markup).toContain('Delete Cloud copy?');
+    expect(markup).toContain('Track to remove');
+    expect(markup).toContain('Your original audio file and library record will stay in place.');
+    expect(markup).toContain('>Cancel</button>');
+    expect(markup).toContain('>Delete</button>');
   });
 
-  it('Sync All closes the dialog and starts the sync with every track in the library', () => {
-    const body = group.slice(group.indexOf('const syncAll'), group.indexOf('const selectTracks'));
-    expect(body.indexOf('setDialogOpen(false)')).toBeLessThan(body.indexOf('fetchAllImportTracks'));
-    expect(body).toContain('start(await fetchAllImportTracks(importId))');
+  it('uses the same Cloud Sync dialog in Profile and Layout Lab', async () => {
+    const { CloudSyncDialog } = await import('./CloudSyncDialog');
+    const markup = renderToStaticMarkup(createElement(CloudSyncDialog, {
+      inline: true, trackCount: 359, onClose: vi.fn(), onSelectTracks: vi.fn(), onSyncAll: vi.fn(),
+    }));
+    const lab = readFileSync(new URL('../ui/LayoutLabPopoverMockups.tsx', import.meta.url), 'utf8');
+    expect(group).toContain('<CloudSyncDialog');
+    expect(lab).toContain('<CloudSyncDialog inline trackCount={359}');
+    expect(markup).toContain('role="dialog"');
+    expect(markup).toContain('Sync your tracks to the Cloud');
+    expect(markup).toContain('Sync all 359 tracks, or choose which ones to sync.');
+    expect([...markup.matchAll(/>(Cancel|Select Tracks|Sync All)<\/button>/g)].map((match) => match[1]))
+      .toEqual(['Cancel', 'Select Tracks', 'Sync All']);
+  });
+
+  it('Sync All switches to the progress dialog and shows the current job controls', async () => {
+    const { CloudSyncProgressDialog } = await import('./CloudSyncProgressDialog');
+    const { previewSyncStore } = await import('../../lib/preview/previewSync');
+    const state = previewSyncStore.getState();
+    const render = (updates: Partial<typeof state>) => renderToStaticMarkup(createElement(CloudSyncProgressDialog, {
+      inline: true, sync: { ...state, ...updates }, onClose: vi.fn(), onStop: vi.fn(),
+    }));
+
+    expect(group).toContain('if (importId) start(importId)');
+    expect(group).toContain('open={dialogOpen && hasSync}');
+    expect(group).toContain('onStop={previewSyncStore.cancel}');
+    const preparing = render({ phase: 'preparing' });
+    expect(preparing).toContain('role="dialog"');
+    expect(preparing).toContain('Getting ready…');
+    expect(preparing).toContain('Run in Background');
+    expect(preparing).toContain('>Stop</button>');
+
+    const stopping = render({ phase: 'running', total: 4, processed: 1, stopping: true });
+    expect(stopping).toMatch(/<button[^>]*disabled=""[^>]*>Stopping…<\/button>/);
+    const stopped = render({ phase: 'done', total: 4, processed: 1, cancelled: true });
+    expect(stopped).toContain('Sync stopped');
+    expect(stopped).not.toContain('aria-valuenow="100"');
+    expect(stopped).toContain('>Done</button>');
   });
 
   it('Select Tracks shows the track group, and its Sync button starts only the picked tracks', () => {

@@ -437,7 +437,7 @@ describe('Cue Points Stage 2 browser workspace', () => {
   it('uses the existing library and Rekordbox playlist hooks behind one source switcher', () => {
     expect(source).toContain("useState<BrowserSource>('library')");
     expect(source).toContain('useRekordboxPlaylists(importId)');
-    expect(source).toContain('useRekordboxPlaylistTracks(activePlaylistId)');
+    expect(source).toContain('useRekordboxPlaylistTracks(activePlaylistId, synced.filter, !synced.blocked)');
     expect(source).toContain("{ value: 'library', label: 'Library' }");
     expect(source).toContain("{ value: 'playlists', label: 'Playlists' }");
     expect(source).toContain('playlistTrackItems.map((item) => item.track)');

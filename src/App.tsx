@@ -80,7 +80,9 @@ import { useTheme } from './theme/ThemeProvider';
 import type { ThemeId } from './theme/theme';
 import { CheckCircle, CompactDisc, Database, EditPencil, GraphUp, HalfMoon, InfoCircle, MusicNote, Refresh, SunLight, Upload, Usb, User, WarningTriangle, Xmark } from 'iconoir-react/regular';
 import { openLayoutLab } from './components/ui/openLayoutLab';
-import { ControlButton } from './components/ui/controls';
+import { ControlButton, FilterDropdown } from './components/ui/controls';
+import { SyncedFilterError } from './components/library/LibraryFilterRow';
+import { useSyncedTrackFilter } from './hooks/useSyncedTrackFilter';
 import { LogOut } from 'iconoir-react/regular';
 import { StatTile, SurfaceCard, TabNavigation } from './components/ui/display';
 import { NoticeCard, SelectableOptionCard, StatusLoader } from './components/ui/feedback';
@@ -446,15 +448,18 @@ export default function App() {
   } = useTrackPreviewWaveforms(selectedTrackImportId, selectedWaveformTrackIds);
   const selectedTrackWaveformState = getSelectedTrackWaveformState(selectedTrack?.id);
 
+  const playlistSynced = useSyncedTrackFilter(Boolean(selectedPlaylist));
   const {
     tracks: playlistTracks,
     total: playlistTrackTotal,
     stats: selectedPlaylistStats,
     loading: playlistTracksLoading,
     loadingMore: playlistTracksLoadingMore,
+    error: playlistTracksError,
     hasMore: playlistTracksHaveMore,
     loadMore: loadMorePlaylistTracks,
-  } = useRekordboxPlaylistTracks(selectedPlaylist?.id ?? null);
+  } = useRekordboxPlaylistTracks(selectedPlaylist?.id ?? null, playlistSynced.filter, !playlistSynced.blocked);
+  const playlistResultsLoading = playlistTracksLoading || playlistSynced.loading;
   const { stats: editingPlaylistStats } = usePlaylistStats(editingPlaylist?.id ?? null);
   const { tracks: recentTracks, loading: recentTracksLoading } = useRecentTracks(importId);
   const { memberships: trackPlaylists, loading: trackPlaylistsLoading } =
@@ -1048,7 +1053,7 @@ export default function App() {
     <AudioDockWorkspaceProvider>
     <>
     <RootFailureProbe />
-    <PlaylistDockQueue entries={playlistTracks} enabled={currentView === 'playlist'} />
+    <PlaylistDockQueue entries={playlistTracks} enabled={currentView === 'playlist' && !playlistSynced.blocked} />
     <div className="flex h-screen flex-col overflow-hidden font-sans relative">
       {/* Background ambience */}
       <div className="app-backdrop fixed inset-0 -z-10 overflow-hidden" data-testid="app-backdrop">
@@ -1169,7 +1174,7 @@ export default function App() {
                         <div className="flex flex-col">
                           <span className="text-[10px] text-muted-foreground uppercase">Tracks</span>
                           <span className="font-bold font-mono">
-                            {playlistTracksLoading ? '…' : playlistTrackTotal.toLocaleString()}
+                            {(selectedPlaylistStats?.trackCount ?? selectedPlaylist?.track_count)?.toLocaleString() ?? '…'}
                           </span>
                         </div>
                         <div className="flex flex-col">
@@ -1191,13 +1196,16 @@ export default function App() {
                   </div>
                 </div>
 
-                {playlistTracksLoading && (
+                <div className="cue-studio"><FilterDropdown {...playlistSynced.dropdown} className="cue-browser__filter" /></div>
+                {playlistSynced.error && <SyncedFilterError error={playlistSynced.error} onRetry={playlistSynced.cloud.retry} />}
+                {playlistTracksError && <p className="text-sm text-red-300" role="alert">{playlistTracksError}</p>}
+                {playlistResultsLoading && (
                   <div className="flex items-center justify-center py-16">
                     <Refresh className="animate-spin text-control-primary" width={32} height={32} aria-hidden="true" />
                   </div>
                 )}
 
-                {!playlistTracksLoading && (
+                {!playlistResultsLoading && !playlistSynced.error && (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
                     {playlistTracks.map((pt) => (
                       <TrackCard
@@ -1208,15 +1216,15 @@ export default function App() {
                         isActive={selectedTrack?.id === pt.track.id}
                       />
                     ))}
-                    {playlistTracks.length === 0 && (
+                    {!playlistTracksError && playlistTracks.length === 0 && (
                       <p className="text-center py-12 text-muted-foreground italic col-span-full">
-                        No tracks in this playlist.
+                        {playlistSynced.value === 'all' ? 'No tracks in this playlist.' : 'No tracks match the Synced filter.'}
                       </p>
                     )}
                   </div>
                 )}
 
-                {!playlistTracksLoading && playlistTracksHaveMore && (
+                {!playlistResultsLoading && !playlistSynced.error && playlistTracksHaveMore && (
                   <div className="flex justify-center">
                     <ControlButton variant="neutral" onClick={() => { void loadMorePlaylistTracks(); }} disabled={playlistTracksLoadingMore}>
                       {playlistTracksLoadingMore ? (
@@ -1536,7 +1544,7 @@ export default function App() {
                         )}
                       </section>
 
-                      <StreamingSyncGroup importId={latestImport?.id ?? null} trackCount={latestImport?.track_count ?? null} sourceName={latestImport?.device_name ?? latestImport?.source_filename ?? null} deviceName={latestImport?.device_name ?? null} />
+                      <StreamingSyncGroup userId={userId} importId={latestImport?.id ?? null} trackCount={latestImport?.track_count ?? null} sourceName={latestImport?.device_name ?? latestImport?.source_filename ?? null} deviceName={latestImport?.device_name ?? null} />
 
                       {/* Danger zone */}
                       <section className="profile-group">

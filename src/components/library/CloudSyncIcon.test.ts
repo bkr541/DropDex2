@@ -26,7 +26,7 @@ describe('cloud icon on the Library page track list', () => {
 
   it('shows cloud status in the Library row Actions menu', () => {
     expect(view).toContain("id: 'cloud', label: 'Cloud preview'");
-    expect(view).toContain('unknown={cloudSynced.failed}');
-    expect(view).toContain('useSyncedPreviewKeys(artistLibrary)');
+    expect(view).toContain('unknown={cloudSynced.failed || cloudSynced.loading}');
+    expect(view).toContain('useSyncedTrackFilter(artistLibrary, true)');
   });
 });
