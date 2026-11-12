@@ -1,3 +1,4 @@
+import './AuthGate.css';
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getSupabaseClient } from '../lib/supabase';
@@ -8,7 +9,7 @@ import {
   submitEmailOtp,
   verifyEmailOtp,
 } from '../auth/emailOtp';
-import { ArrowLeft, CheckCircle, Mail, PasswordCursor, Refresh, SendDiagonal, Trash, WarningTriangle } from 'iconoir-react/regular';
+import { CheckCircle, Mail, PasswordCursor, Refresh, SendDiagonal, Trash, WarningTriangle } from 'iconoir-react/regular';
 import { ControlButton, TextControl } from './ui/controls';
 
 function AuthenticationFailure({
@@ -41,13 +42,13 @@ function AuthenticationFailure({
         <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/15 text-red-400">
           <WarningTriangle width={26} height={26} aria-hidden="true" />
         </div>
-        <h1 id="authentication-failure-title" className="text-2xl font-black">
+        <h1 id="authentication-failure-title" className="auth-heading">
           Sign-in could not be initialized
         </h1>
         <p role="alert" className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">
           {error}
         </p>
-        <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+        <p className="auth-subtext mt-4">
           Retry the session check, or clear the local session and return to the sign-in screen if the saved session is damaged.
         </p>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -215,10 +216,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               <div className="w-16 h-16 brand-gradient rounded-full flex items-center justify-center mx-auto mb-6 shadow-brand-hero">
                 <Mail width={28} height={28} aria-hidden="true" className="text-white" />
               </div>
-              <h1 className="text-2xl font-bold mb-2">Enter your sign-in code</h1>
-              <p className="text-sm text-muted-foreground mb-7 leading-relaxed">
+              <h1 className="auth-heading">Enter your sign-in code</h1>
+              <p className="auth-subtext">
                 We sent an {EMAIL_OTP_LENGTH}-digit verification code to{' '}
-                <span className="text-foreground font-bold">{email}</span>.
+                <strong>{email}</strong>.
               </p>
 
               <form onSubmit={handleVerifyOtp} className="space-y-4">
@@ -232,7 +233,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   value={otp}
                   onChange={(event) => setOtp(normalizeEmailOtp(event.target.value))}
                   autoFocus
-                  className="text-center font-black tracking-[0.35em]"
+                  containerClassName="auth-code"
+                  className="auth-code__input"
                 />
 
                 {error && (
@@ -253,12 +255,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               </form>
 
               <div className="mt-6 flex flex-col items-center gap-3 text-sm">
-                <ControlButton type="button" variant="ghost" disabled={sending || resendSeconds > 0} onClick={() => void handleResendOtp()}>
-                  {sending ? <Refresh width={13} height={13} aria-hidden="true" className="animate-spin" /> : <Refresh width={13} height={13} aria-hidden="true" />}
+                <ControlButton type="button" variant="ghost" className="auth-text-button" disabled={sending || resendSeconds > 0} onClick={() => void handleResendOtp()}>
                   {sending ? 'Sending…' : resendSeconds > 0 ? `Resend code in ${resendSeconds}s` : 'Resend code'}
                 </ControlButton>
-                <ControlButton type="button" variant="ghost" onClick={handleChangeEmail}>
-                  <ArrowLeft width={13} height={13} aria-hidden="true" /> Use a different email
+                <ControlButton type="button" variant="ghost" className="auth-text-button" onClick={handleChangeEmail}>
+                  Use a different email
                 </ControlButton>
               </div>
             </motion.div>
@@ -269,9 +270,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 16 }}
             >
-              <h1 className="text-2xl font-bold mb-1">Sign In</h1>
-              <p className="text-sm text-muted-foreground mb-8">
-                Enter your email to receive a one-time verification code.
+              <h1 className="auth-heading">Sign In</h1>
+              <p className="auth-subtext">
+                Sign in to access DropDex
               </p>
               <form onSubmit={handleSendOtp} className="space-y-4">
                 <div>

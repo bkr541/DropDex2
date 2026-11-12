@@ -3,7 +3,7 @@ import { Bell, Download, Folder, Plus, Search, Trash } from 'iconoir-react/regul
 import { CheckboxControl, ContextMenu, ControlButton, DualRangeSlider, FilterDropdown, FormField, IconControlButton, Knob, SearchControl, SelectControl, TextareaControl, TextControl, ToolbarIconButton, ToolbarIconGroup, ToolbarRow } from './controls';
 import {
   AnalysisStatusBadge, CircularProgress, Dialog, EmptyState, ImportActivityBanner, NoticeCard, NotificationCard, ProgressBar, QuietProgress, SelectableOptionCard,
-  ListingSkeleton, PageSkeleton, SkeletonBlock, SkeletonRow, StatusBadge, StatusDot, StatusLoader, quietOverallPercent,
+  ListingSkeleton, PageSkeleton, SkeletonBlock, TrackPanelSkeleton, SkeletonRow, StatusBadge, StatusDot, StatusLoader, quietOverallPercent,
 } from './feedback';
 import { RecordTrackListing } from './display/RecordTrackListing';
 import type { RekordboxTrack } from '../../types';
@@ -208,6 +208,7 @@ export function ReusableMockupsContent() {
       <Row rowNumber={47} file="PageSkeleton.tsx"><div className="rb-stack" style={{ width: '100%' }}>{(['home', 'listing', 'cards', 'workspace'] as const).map((v) => <div key={v} className="rb-skeleton"><p className="rb-used-label">{v}</p><PageSkeleton variant={v} label={`${v} page`} /></div>)}</div></Row>
       <Row rowNumber={48} file="PageSkeleton.tsx (ListingSkeleton)"><div className="rb-field rb-wide"><ListingSkeleton count={4} label="Loading tracks" /></div></Row>
       <Row rowNumber={49} file="ToolbarRow.tsx"><div className="rb-field rb-wide"><ToolbarRow aria-label="Sample toolbar"><ToolbarIconButton label="Keep"><Plus width={20} height={20} /></ToolbarIconButton><ToolbarIconButton label="Maybe"><Search width={20} height={20} /></ToolbarIconButton><ToolbarIconButton label="Remove"><Trash width={20} height={20} /></ToolbarIconButton></ToolbarRow></div></Row>
+      <Row rowNumber={50} file="PageSkeleton.tsx (TrackPanelSkeleton)"><div className="rb-field rb-wide"><TrackPanelSkeleton label="Loading track" /></div></Row>
       <p className="rb-note"><Bell width={12} height={12} aria-hidden="true" /> Not shown: TrackListing, TrackTimeline and the waveform components, which need live library data and the audio player. The RecordTrackListing row uses two sample tracks.</p>
     </div>
   );

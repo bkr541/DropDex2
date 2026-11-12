@@ -691,6 +691,11 @@ export function AudioPlayerProvider({ children, imports = [] }: AudioPlayerProvi
   );
 }
 
+/** The audio player, or null when there is no provider (for example Layout Lab's standalone window). */
+export function useOptionalAudioPlayer(): AudioPlayerContextValue | null {
+  return useContext(AudioPlayerContext);
+}
+
 export function useAudioPlayer(): AudioPlayerContextValue {
   const ctx = useContext(AudioPlayerContext);
   if (!ctx) throw new Error('useAudioPlayer must be used within AudioPlayerProvider');

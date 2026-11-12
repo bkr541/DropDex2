@@ -13,7 +13,7 @@ import { useSyncedTrackFilter } from '../../hooks/useSyncedTrackFilter';
 import { trackIdentityKey } from '../../lib/preview/trackIdentity';
 import { GenreEditPopover, GenreEditorContent } from './GenreEditPopover';
 import { CueApplyMenu } from './CueApplyMenu';
-import { ListingSkeleton } from '../ui/feedback';
+import { ListingSkeleton, TrackPanelSkeleton } from '../ui/feedback';
 import { TrackSourceTabs } from './TrackSourceTabs';
 import { RecordTrackListing } from '../ui/display/RecordTrackListing';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -137,6 +137,8 @@ interface CuePointsViewProps {
   onTrackOpen?: (track: RekordboxTrack) => void;
   /** Library page only: told whenever the selected track changes, so the page can show that track's waveform. */
   onSelectedTrackChange?: (track: RekordboxTrack | null) => void;
+  /** Library page only: true until the list has loaded and its first track is selected, so the page can hold the track panel's space. */
+  onTrackPanelPendingChange?: (pending: boolean) => void;
   importId: string | null;
   onImport: () => void;
 }
@@ -684,6 +686,7 @@ type CueContextMenuState =
 
 function CueWaveformPanel({
   audition = false,
+  listLoading = false,
   track,
   beatGrid,
   cues,
@@ -726,6 +729,8 @@ function CueWaveformPanel({
   onGridVisibleChange,
 }: {
   audition?: boolean;
+  /** The track list is still loading, so no track is chosen yet. */
+  listLoading?: boolean;
   track: RekordboxTrack | null;
   beatGrid: BeatGridRow | null;
   cues: WorkingCue[];
@@ -998,6 +1003,7 @@ function CueWaveformPanel({
     setContextMenu({ kind: 'cue', x: event.clientX, y: event.clientY, cueId });
   }, [cueEditingAllowed, cueIntegrityError]);
 
+  if (!track && listLoading) return <TrackPanelSkeleton label="Loading the track panel" />;
   if (!track) {
     return (
       <section className="overflow-hidden border-t border-[var(--color-border-subtle)] bg-[var(--color-card)]">
@@ -1525,7 +1531,7 @@ export function CuePointsTrackPanel({ track, waveformState, onRetryWaveform }: {
   );
 }
 
-export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter, genreFilter, onGenreFilterChange, onTrackOpen, onSelectedTrackChange }: CuePointsViewProps) {
+export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter, genreFilter, onGenreFilterChange, onTrackOpen, onSelectedTrackChange, onTrackPanelPendingChange }: CuePointsViewProps) {
   const artistLibrary = mode === 'artist-library';
   const synced = useSyncedTrackFilter(artistLibrary, true);
   const cloudSynced = synced.cloud;
@@ -2716,6 +2722,14 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
     if (artistLibrary) selectedTrackChangeRef.current?.(selectedTrack);
   }, [artistLibrary, selectedTrack]);
 
+  // Pending covers the load and the moment between the list arriving and its first track being selected, so the panel never blinks away.
+  const trackPanelPending = activeSourceLoading || (orderedVisibleTracks.length > 0 && !selectedTrack);
+  const trackPanelPendingRef = useRef(onTrackPanelPendingChange);
+  trackPanelPendingRef.current = onTrackPanelPendingChange;
+  useEffect(() => {
+    if (artistLibrary) trackPanelPendingRef.current?.(trackPanelPending);
+  }, [artistLibrary, trackPanelPending]);
+
   useEffect(() => {
     let cancelled = false;
     const requestId = ++cueDraftLoadRequestRef.current;
@@ -3736,6 +3750,7 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
       {!artistLibrary && <div ref={waveformPanelWrapperRef} className="cue-studio__sticky sticky top-0 z-30 bg-[var(--color-background)]">
       <CueWaveformPanel
         audition={audition}
+        listLoading={activeSourceLoading}
         track={selectedTrack}
         beatGrid={beatGrid}
         cues={workingCues}
@@ -3966,7 +3981,9 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
                   { value: 'incomplete', label: 'Needs analysis' },
                 ]}
               />
+              {/* Hidden, not removed, until the library's real tempo range is known, so it does not show 60–200 and then change. */}
               <DualRangeSlider variant="inline"
+                className={stats ? undefined : 'invisible'}
                 bounds={bpmBounds}
                 value={bpmRange ?? bpmBounds}
                 onChange={setBpmRange}
@@ -3998,10 +4015,13 @@ export function CuePointsView({ importId, onImport, mode = 'cues', artistFilter,
           </div>
         </div>
 
+        {/* A small notice laid over the list's top right corner. It takes no height, so the list does not move when it appears or goes. */}
         {!audition && metadataDraftLoadStatus === 'loading' && userId && importId && (
-          <div className="flex items-center gap-2 border-b border-[var(--color-border-faint)] bg-white/[0.02] px-5 py-2.5 text-xs text-muted-foreground" role="status">
-            <Refresh className="animate-spin" width={14} height={14} aria-hidden="true" />
-            Loading pending Genre changes…
+          <div className="relative h-0" role="status">
+            <div className="absolute right-4 top-2 z-10 flex items-center gap-2 rounded-full border border-[var(--color-border-faint)] bg-[var(--color-card)] px-3 py-1 text-xs text-muted-foreground">
+              <Refresh className="animate-spin" width={12} height={12} aria-hidden="true" />
+              Loading pending Genre changes…
+            </div>
           </div>
         )}
 

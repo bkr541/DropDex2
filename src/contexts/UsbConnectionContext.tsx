@@ -632,6 +632,11 @@ export function UsbConnectionProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/** The USB connection, or null when there is no provider (for example Layout Lab's standalone window). */
+export function useOptionalUsbConnection(): UsbConnectionContextValue | null {
+  return useContext(UsbConnectionContext);
+}
+
 export function useUsbConnection(): UsbConnectionContextValue {
   const context = useContext(UsbConnectionContext);
   if (!context) throw new Error('useUsbConnection must be used within UsbConnectionProvider');

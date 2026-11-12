@@ -17,3 +17,19 @@
 .td-swatch { align-self: center; width: 10px; height: 10px; border-radius: 3px; }
 .td-empty { margin: 0; color: var(--color-muted-foreground, #a4adbd); font-size: 12px; }
 .td-error { margin: 0; color: #fca5a5; font-size: 12px; }
+
+/* Audio Intelligence: the DRMVYZ panel's sections, filled from the Rekordbox data. */
+.ai { display: flex; flex-direction: column; gap: 12px; }
+.ai-header { display: flex; align-items: center; gap: 8px; color: var(--color-control-primary); }
+.ai-header span { color: var(--color-foreground, #f6f7fa); font-size: 20px; font-weight: 300; letter-spacing: -.02em; }
+.ai-note { margin: 0; }
+.ai-bar { display: grid; grid-template-columns: 110px minmax(0, 1fr) 40px; align-items: center; gap: 10px; margin-top: 10px; font-size: 11px; color: var(--color-muted-foreground, #a4adbd); }
+.ai-bar i { display: block; height: 4px; border-radius: 999px; background: var(--color-surface, #323946); overflow: hidden; }
+.ai-bar b { display: block; height: 100%; border-radius: inherit; background: var(--color-control-primary); }
+.ai-bar em { font-style: normal; text-align: right; font-variant-numeric: tabular-nums; }
+.ai-structure li[data-current="true"] strong { color: var(--color-control-primary); }
+.ai-analyze { display: grid; gap: 8px; justify-items: start; padding: 12px 14px; border: 1px solid var(--color-border-subtle, #ffffff12); border-radius: 12px; }
+.ai-analyze > p { margin: 0; }
+.ai-bars { display: grid; gap: 6px; }
+.ai-bars .ai-bar { margin-top: 0; }
+.ai-sub { margin: 12px 0 6px; color: var(--color-muted-foreground, #a4adbd); font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }

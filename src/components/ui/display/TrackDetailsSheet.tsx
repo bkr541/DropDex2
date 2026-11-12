@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { InfoCircle } from 'iconoir-react/regular';
 import { Dialog } from '../feedback/Dialog';
@@ -6,6 +6,10 @@ import { logger } from '../../../lib/logger';
 import { fetchTrackBeatGrid, fetchTrackCues, fetchTrackPhrases, type BeatGridRow, type CueRow, type PhraseRow } from '../../../lib/queries/analysisData';
 import { fetchTrackPlaylists, type TrackPlaylistMembership } from '../../../lib/queries/rekordbox';
 import { formatTime } from '../../../lib/music/trackTiming';
+import { durationMsForTrack } from '../../../lib/music/trackTiming';
+import { barWindows } from '../../../lib/music/audioIntelligence';
+import { useTrackAudioAnalysis } from '../../../hooks/useTrackAudioAnalysis';
+import { AudioIntelligencePanel, usePlayheadMs } from './AudioIntelligencePanel';
 import './track-details.css';
 
 type Loaded<T> = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; data: T };
@@ -61,6 +65,23 @@ function Rows({ entries }: { entries: Array<[string, unknown]> }) {
   );
 }
 
+/** The Audio Intelligence panel, once the beat grid, phrases and cues it draws on have loaded. */
+function AudioIntelligenceSection({ beatGrid, phrases, cues, track }: {
+  beatGrid: Loaded<BeatGridRow | null>;
+  phrases: Loaded<PhraseRow[]>;
+  cues: Loaded<CueRow[]>;
+  track: { id: string; title: string; artist?: string | null } & Record<string, unknown>;
+}) {
+  const playheadMs = usePlayheadMs(track.id);
+  const bars = useMemo(() => (beatGrid.status === 'ready' && beatGrid.data ? barWindows(beatGrid.data.beats, null) : []), [beatGrid]);
+  const analysis = useTrackAudioAnalysis(track as { id: string; title: string; file_path?: string | null }, bars);
+  const waiting = [beatGrid, phrases, cues].find((state) => state.status !== 'ready');
+  if (waiting?.status === 'error') return <section className="td-section"><p className="td-error" role="alert">Audio Intelligence could not load. {waiting.message}</p></section>;
+  if (waiting || beatGrid.status !== 'ready' || phrases.status !== 'ready' || cues.status !== 'ready') return <section className="td-section"><p className="td-empty">Loading Audio Intelligence…</p></section>;
+  const durationMs = durationMsForTrack({ duration_ms: (track.duration_ms as number | null | undefined) ?? null, duration_seconds: (track.duration_seconds as number | null | undefined) ?? null }, beatGrid.data, phrases.data);
+  return <AudioIntelligencePanel track={track} beatGrid={beatGrid.data} phrases={phrases.data} cues={cues.data} durationMs={durationMs} playheadMs={playheadMs} audio={{ state: analysis.state, onAnalyze: () => void analysis.run() }} />;
+}
+
 function Section({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
   return (
     <section className="td-section">
@@ -99,6 +120,8 @@ export function TrackDetailsSheet({ track, onClose }: { track: { id: string; tit
       <div className="td" data-testid="track-details">
         {track.artist && <p className="td-artist">{track.artist}</p>}
 
+        <AudioIntelligenceSection beatGrid={beatGrid} phrases={phrases} cues={cues} track={track} />
+
         <Section title="Track" count={trackFields.length}><Rows entries={trackFields} /></Section>
         <Section title="Analysis" count={analysisFields.length}><Rows entries={analysisFields} /></Section>
 
@@ -120,26 +143,6 @@ export function TrackDetailsSheet({ track, onClose }: { track: { id: string; tit
         <Section title="Playlists" count={playlists.status === 'ready' ? playlists.data.length : undefined}>
           <Status state={playlists}>{(rows) => rows.length === 0 ? <p className="td-empty">In no playlists.</p> : (
             <ul className="td-list">{rows.map((entry) => <li key={entry.playlist.id}><strong>{entry.playlist.name}</strong><span>Position {entry.position + 1}</span></li>)}</ul>
-          )}</Status>
-        </Section>
-
-        <Section title="Beat grid">
-          <Status state={beatGrid}>{(grid) => grid == null ? <p className="td-empty">No beat grid.</p> : (
-            <Rows entries={[['beat_count', grid.beat_count], ['downbeat_count', grid.downbeat_count], ['bar_count', grid.bar_count], ['first_beat_ms', grid.first_beat_ms], ['first_downbeat_ms', grid.first_downbeat_ms], ['minimum_bpm', grid.minimum_bpm], ['maximum_bpm', grid.maximum_bpm], ['is_variable_tempo', grid.is_variable_tempo], ['source_tag', grid.source_tag], ['parser_version', grid.parser_version]]} />
-          )}</Status>
-        </Section>
-
-        <Section title="Phrases" count={phrases.status === 'ready' ? phrases.data.length : undefined}>
-          <Status state={phrases}>{(rows) => rows.length === 0 ? <p className="td-empty">No phrases.</p> : (
-            <ul className="td-list">
-              {rows.map((phrase) => (
-                <li key={phrase.id}>
-                  <strong>{phrase.normalized_label ?? phrase.source_kind ?? `Phrase ${phrase.phrase_index + 1}`}</strong>
-                  <span>{phrase.start_ms != null ? formatTime(phrase.start_ms) : '—'}{phrase.end_ms != null ? ` – ${formatTime(phrase.end_ms)}` : ''}</span>
-                  {phrase.source_mood && <em>{phrase.source_mood}</em>}
-                </li>
-              ))}
-            </ul>
           )}</Status>
         </Section>
       </div>

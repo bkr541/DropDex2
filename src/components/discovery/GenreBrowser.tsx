@@ -1,4 +1,4 @@
-import { Refresh } from 'iconoir-react/regular';
+import { SkeletonChip } from '../ui/feedback';
 import type { CatalogGenre } from '../../types';
 import { FilterDropdown } from '../ui/controls';
 import { orderGenres } from './genreBrowse';
@@ -16,8 +16,8 @@ export function GenreBrowser({ genres, loading, error, onRetry, selectedGenreId,
   return (
     <div className="discovery-genre-filter" data-testid="genre-browser">
       {loading ? (
-        <span className="discovery-genres-status" role="status">
-          <Refresh className="animate-spin text-control-primary" width={14} height={14} aria-hidden="true" /> Loading genres…
+        <span className="discovery-genres-status" role="status" aria-busy="true" aria-label="Loading genres">
+          {[64, 88, 72, 96, 80, 70].map((w) => <SkeletonChip key={w} />)}
         </span>
       ) : error ? (
         <span className="discovery-genres-status" role="alert">

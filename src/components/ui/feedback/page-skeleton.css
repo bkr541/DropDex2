@@ -42,3 +42,12 @@
 .dd-page-skeleton__card { flex: none; width: 216px; height: 188px; border-radius: 12px; }
 .dd-page-skeleton__panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .dd-page-skeleton__panel { height: 300px; border-radius: 16px; }
+.dd-track-panel-skeleton { display: flex; flex-direction: column; gap: 0; padding-bottom: 12px; }
+.dd-track-panel-skeleton__band { height: 33px; margin-top: 8px; border-radius: 0; }
+.dd-track-panel-skeleton__timeline { height: 210px; margin: 12px 16px 0; border-radius: 12px; }
+
+/* A Discovery row: heading, then cards. The padding matches the real row's, so what loads after it does not move. */
+.dd-shelf-skeleton { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px; min-width: 0; }
+.dd-shelf-skeleton__title { width: 140px; height: 16px; }
+.dd-shelf-skeleton__cards { display: flex; gap: 12px; overflow: hidden; }
+.dd-shelf-skeleton__card { flex: none; width: 216px; height: 188px; border-radius: 12px; }

@@ -297,6 +297,17 @@ const TrackCard = ({ track, onClick, isActive, position }: TrackCardProps) => {
   );
 };
 
+/**
+ * How a page arrives: it fades in place, with no sliding, and the old page leaves at once. Nothing moves while a page loads, and
+ * there is no empty gap between two pages; the page's own placeholders show while its content loads.
+ */
+const PAGE_MOTION = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0, transition: { duration: 0 } },
+  transition: { duration: 0.12 },
+} as const;
+
 function LazyFeature({
   children,
   label,
@@ -1082,7 +1093,7 @@ export default function App() {
         {/* Scrollable content */}
         <main className={cn(
           'flex-1',
-          (currentView === 'flip-lab' || currentView === 'audition')
+          (currentView === 'flip-lab' || currentView === 'audition' || currentView === 'settings')
             ? 'flex min-h-0 flex-col overflow-hidden p-6'
             : 'min-h-0 overflow-y-auto p-6',
           (currentView === 'cues' || currentView === 'audition' || currentView === 'discovery') && 'scrollbar-none',
@@ -1112,9 +1123,7 @@ export default function App() {
             {!routeBlocked && currentView === 'home' && (
               <motion.div
                 key="home"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
+                {...PAGE_MOTION}
               >
                 <LibraryView
                   latestImport={latestImport}
@@ -1145,9 +1154,7 @@ export default function App() {
             {!routeBlocked && currentView === 'playlist' && (
               <motion.div
                 key="playlist"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
+                {...PAGE_MOTION}
                 className="space-y-4"
               >
                 <div className="glass p-6 rounded-3xl mb-6 relative overflow-hidden">
@@ -1245,9 +1252,7 @@ export default function App() {
             {!routeBlocked && currentView === 'playlist-edit' && editingPlaylist && latestImport && userId && (
               <motion.div
                 key="playlist-edit"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
+                {...PAGE_MOTION}
                 className="min-w-0"
               >
                 <PlaylistEditView
@@ -1272,9 +1277,7 @@ export default function App() {
             {!routeBlocked && currentView === 'track' && selectedTrack && (
               <motion.div
                 key="track"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
+                {...PAGE_MOTION}
                 className="min-w-0"
               >
                 <TrackDetailView
@@ -1329,9 +1332,7 @@ export default function App() {
             {!routeBlocked && currentView === 'drop-lab' && (
               <motion.div
                 key="drop-lab"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 16 }}
+                {...PAGE_MOTION}
                 className="min-w-0"
               >
                 <LazyFeature label="Loading Drop Lab…" skeleton="workspace" boundaryKey={`${routeKey(route)}:drop-lab`} onReturnToLibrary={returnToLibrary}>
@@ -1356,9 +1357,7 @@ export default function App() {
             {!routeBlocked && currentView === 'import' && selectedImport && (
               <motion.div
                 key="import"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 16 }}
+                {...PAGE_MOTION}
                 className="min-w-0"
               >
                 <ImportLibraryView
@@ -1377,9 +1376,7 @@ export default function App() {
             {!routeBlocked && currentView === 'cues' && (
               <motion.div
                 key={currentView}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 16 }}
+                {...PAGE_MOTION}
                 className="min-w-0"
               >
                 <LazyFeature label="Loading Cue Points…" boundaryKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
@@ -1392,9 +1389,7 @@ export default function App() {
             {!routeBlocked && currentView === 'audition' && (
               <motion.div
                 key={currentView}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 16 }}
+                {...PAGE_MOTION}
                 className="min-w-0"
               >
                 <LazyFeature label="Loading Audition…" boundaryKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
@@ -1407,9 +1402,7 @@ export default function App() {
             {!routeBlocked && currentView === 'artist-library' && (
               <motion.div
                 key="artist-library"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
+                {...PAGE_MOTION}
                 className="space-y-6"
               >
                 <LazyFeature label="Loading Artist Library…" boundaryKey={`${routeKey(route)}:artist-library`} onReturnToLibrary={returnToLibrary}>
@@ -1437,9 +1430,7 @@ export default function App() {
             {!routeBlocked && currentView === 'settings' && (
               <motion.div
                 key="settings"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 16 }}
+                {...PAGE_MOTION}
                 className="profile-layout"
               >
                 <TabNavigation
@@ -1608,9 +1599,7 @@ export default function App() {
             {!routeBlocked && currentView === 'discovery' && (
               <motion.div
                 key="discovery"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
+                {...PAGE_MOTION}
                 className="min-w-0"
               >
                 <LazyFeature label="Loading Discovery…" skeleton="cards" boundaryKey={`${routeKey(route)}:discovery`} onReturnToLibrary={returnToLibrary}>
@@ -1623,9 +1612,7 @@ export default function App() {
             {!routeBlocked && currentView === 'flip-lab' && (
               <motion.div
                 key="flip-lab"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
+                {...PAGE_MOTION}
                 className="flex min-h-0 flex-1 flex-col"
               >
                 <FlipLabView
@@ -1640,9 +1627,7 @@ export default function App() {
             {!routeBlocked && currentView === 'usb' && (
               <motion.div
                 key="usb"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 16 }}
+                {...PAGE_MOTION}
                 className="min-w-0"
               >
                 <LazyFeature label="Loading USB Management…" boundaryKey={routeKey(route)} onReturnToLibrary={returnToLibrary}>
@@ -1658,8 +1643,11 @@ export default function App() {
       </div>
       </div>
 
-      <NowPlayingBar independentWorkspace={currentView === 'drop-lab' ? 'Drop Lab'
-        : currentView === 'set-lab' ? 'Set Lab' : currentView === 'flip-lab' ? 'Flip Lab' : undefined} />
+      <NowPlayingBar
+        independentWorkspace={currentView === 'drop-lab' ? 'Drop Lab'
+          : currentView === 'set-lab' ? 'Set Lab' : currentView === 'flip-lab' ? 'Flip Lab' : undefined}
+        holdWorkspaceTrack={currentView === 'artist-library' || currentView === 'cues' || currentView === 'audition'}
+      />
 
       {/* ── Mobile-only: navigation below the always-present dock ── */}
       <MobileNavBar

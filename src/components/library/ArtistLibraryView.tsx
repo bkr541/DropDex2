@@ -10,6 +10,7 @@ import type { PlaylistWithCount } from '../../lib/queries/rekordbox';
 import type { RekordboxTrack, UserPlaylistProfile } from '../../types';
 import { CuePointsTrackPanel, CuePointsView } from '../cues/CuePointsView';
 import { ControlButton } from '../ui/controls';
+import { TrackPanelSkeleton } from '../ui/feedback';
 import { RecentlyAddedPanel } from './LibraryView';
 import { LibraryTabBar } from './LibraryTabBar';
 import { ArtistsPanel, GenresPanel, PlaylistsPanel } from './LibraryTabPanels';
@@ -62,6 +63,8 @@ export function ArtistLibraryView({
   const [genreFilter, setGenreFilter] = useState<string | null>('');
   // The track picked in the Tracks table. The table selects the first track on load.
   const [selectedTrack, setSelectedTrack] = useState<RekordboxTrack | null>(null);
+  // True until the list has loaded and picked its first track. The panel's space is held meanwhile, so the page below does not jump.
+  const [trackPanelPending, setTrackPanelPending] = useState(true);
   const panelTrackIds = useMemo(() => (selectedTrack ? [selectedTrack.id] : []), [selectedTrack]);
   const panelWaveforms = useTrackPreviewWaveforms(importId, panelTrackIds);
   const tabs = useMemo(() => artistLibraryTabs(), []);
@@ -71,6 +74,7 @@ export function ArtistLibraryView({
   return (
     <div className="lib-scope studio-surface artist-library-studio" data-testid="artist-library">
       {/* The selected track's waveform, cue points and beat grid: the same panel as Track Intelligence. */}
+      {!selectedTrack && trackPanelPending && <TrackPanelSkeleton label="Loading the track panel" />}
       {selectedTrack && (
         <CuePointsTrackPanel
           key={selectedTrack.id}
@@ -113,6 +117,7 @@ export function ArtistLibraryView({
           onImport={onImport}
           onTrackOpen={onTrackClick}
           onSelectedTrackChange={setSelectedTrack}
+          onTrackPanelPendingChange={setTrackPanelPending}
         />
       </div>
       {activeTab === 'genres' && (

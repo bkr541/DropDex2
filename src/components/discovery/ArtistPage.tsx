@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PageSkeleton } from '../ui/feedback';
 import { ArtistHero } from './ArtistHero';
 import { ArtistStylesSidebar } from './ArtistStylesSidebar';
 import { type ArtistTabId } from './ArtistResultsTabs';
@@ -124,9 +125,7 @@ export function ArtistPage({
         {/* Main results area */}
         <div className="flex-1 min-w-0 space-y-4">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <Refresh className="animate-spin text-control-primary" width={28} height={28} aria-hidden="true" />
-            </div>
+            <PageSkeleton variant="feed" label="Loading sets" />
           ) : error ? (
             <div className="text-center py-12 space-y-2">
               <p className="text-red-400 font-bold text-sm">Failed to load setlists</p>

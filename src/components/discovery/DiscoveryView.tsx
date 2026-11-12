@@ -15,6 +15,7 @@ import { ArtistPage } from './ArtistPage';
 import { TrackListPage } from './TrackListPage';
 import { DiscoveryHomeFeed } from './DiscoveryHomeFeed';
 import { DiscoveryHero } from './DiscoveryHero';
+import { homeFeedState } from './homeFeedState';
 import { GenreBrowser } from './GenreBrowser';
 import { GenreArtistGrid } from './GenreArtistGrid';
 import { useCatalogGenres } from '../../hooks/useCatalogGenres';
@@ -73,6 +74,7 @@ export function DiscoveryView({ accessToken, userId = null, onEditTaste }: Disco
   const feedSetCount = feed.artists.reduce((total, artist) => total + artist.setlist_count, 0);
   const { genres: catalogGenres, loading: genresLoading, error: genresError, retry: retryGenres } = useCatalogGenres();
   const forYou = useDiscoveryForYou(userId, catalogGenres);
+  const homeState = homeFeedState(feed, forYou, genresLoading, catalogGenres.length);
   const selectedGenre = catalogGenres.find((genre) => genre.id === selectedGenreId) ?? null;
   const { detail: artistDetail, loading: detailLoading } = useArtistDetail(
     selectedArtist?.id ?? null,
@@ -210,7 +212,7 @@ export function DiscoveryView({ accessToken, userId = null, onEditTaste }: Disco
         {!selectedSetlistForDetail && (
           <>
             {showHomeFeed && (
-              <DiscoveryHero feed={feed} forYou={forYou} genres={catalogGenres}
+              <DiscoveryHero feed={feed} forYou={forYou} genres={catalogGenres} pending={homeState.pending} setlistsPending={homeState.setlistsPending}
                 onSelectArtist={handleArtistSelect} onOpenSetlist={handleOpenSetlist} />
             )}
             <div className="discovery-filters" data-testid="discovery-filters" role="group" aria-label="Discovery search and filters">
@@ -294,6 +296,7 @@ export function DiscoveryView({ accessToken, userId = null, onEditTaste }: Disco
             feed={feed}
             forYou={forYou}
             genres={catalogGenres}
+            genresLoading={genresLoading}
             onSelectArtist={handleArtistSelect}
             onOpenSetlist={handleOpenSetlist}
             onSelectGenre={setSelectedGenreId}

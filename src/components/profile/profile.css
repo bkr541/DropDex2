@@ -17,12 +17,26 @@
   --color-feedback-border: var(--profile-rule);
 }
 .profile-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
   width: 60%;
   min-width: 0;
+  min-height: 0;
   margin-inline: auto;
   padding-top: 16px;
 }
+.profile-layout > .profile-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* Nothing in Profile shows a scroll bar. The workspace and any list inside it still scroll when their content is taller than they are. */
+.profile-workspace, .profile-workspace * { scrollbar-width: none; -ms-overflow-style: none; }
+.profile-workspace::-webkit-scrollbar, .profile-workspace *::-webkit-scrollbar { display: none; }
+/* The page itself does not scroll on Profile. The tab row stays put and the workspace under it scrolls. */
 .profile-layout .profile-tabs {
+  flex: none;
   margin-bottom: 24px;
   border-bottom-color: #ffffff0d;
   font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;

@@ -1,0 +1,45 @@
+/* Auth headings use the Cue Points track title style (see .audition-header h2 in audition/AuditionTrackHeader.css). */
+.auth-heading {
+  color: #f6f7fa;
+  font-size: 28px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  letter-spacing: -.04em;
+}
+
+/* Supporting text under the headings uses the Cue Points artist label style (.audition-artist). Line height is looser because these wrap. */
+.auth-subtext {
+  color: #9aa5b8;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: .16em;
+  line-height: 1.6;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.auth-subtext strong { color: #f6f7fa; font-weight: 500; }
+
+/* Gap between a heading and the supporting text under it. The heading line box already adds about 3px below the letters. */
+.auth-heading + .auth-subtext { margin-top: 4px; }
+
+/* The code field is only as wide as its eight digits, centred, with the icon placed exactly as in the email field. */
+.auth-code { width: fit-content; margin-inline: auto; }
+.auth-code .auth-code__input {
+  width: calc(44px + 13px + 8 * (1.15ch + .35em));
+  font-weight: 900;
+  letter-spacing: .35em;
+  text-align: left;
+}
+
+/* Resend and Use a different email are plain text: no icon, box or fill, in any state. */
+.dd-control-button.auth-text-button,
+.dd-control-button.auth-text-button:hover:not(:disabled),
+.dd-control-button.auth-text-button:disabled {
+  min-height: 0;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.dd-control-button.auth-text-button:hover:not(:disabled) { color: #f6f7fa; }

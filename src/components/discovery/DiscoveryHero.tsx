@@ -7,6 +7,7 @@ import { dayNumber } from '../../lib/discovery/forYou';
 import { buildFreshWeek, pickCandidates } from '../../lib/discovery/headerGroups';
 import type { CatalogGenre, DiscoveryArtist, DiscoverySetlistResult } from '../../types';
 import { ControlButton } from '../ui/controls';
+import { SkeletonBlock } from '../ui/feedback';
 
 /** How long each group stays before the header moves to the next one. */
 export const HERO_CYCLE_MS = 9000;
@@ -50,6 +51,27 @@ interface DiscoveryHeroProps {
   genres: CatalogGenre[];
   onSelectArtist: (artist: DiscoveryArtist) => void;
   onOpenSetlist: (setlist: DiscoverySetlistResult) => void;
+  /** The feed, genres or personal rows are still loading, so what the header will show is not known yet. */
+  pending?: boolean;
+  /** Some top artist's latest sets have not arrived, so "Fresh this week" may still appear. */
+  setlistsPending?: boolean;
+}
+
+/** The header before it knows what to show: the same box and the same parts, so the page below does not move when it fills in. */
+export function DiscoveryHeroSkeleton() {
+  return (
+    <section className="discovery-hero" role="status" aria-busy="true" aria-live="polite" aria-label="Loading highlights" data-testid="discovery-hero-skeleton">
+      <div className="discovery-hero-group">
+        <div className="discovery-hero-main">
+          <SkeletonBlock className="discovery-hero-skeleton__label" />
+          <SkeletonBlock className="discovery-hero-skeleton__title" />
+          <SkeletonBlock className="discovery-hero-skeleton__figures" />
+          <SkeletonBlock className="discovery-hero-skeleton__actions" />
+        </div>
+        <div className="discovery-hero-chart"><SkeletonBlock className="discovery-hero-skeleton__chart" /></div>
+      </div>
+    </section>
+  );
 }
 
 const prefersReducedMotion = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -59,7 +81,7 @@ const prefersReducedMotion = () => typeof window !== 'undefined' && typeof windo
  * the last seven days) and "Picked for You" (an artist chosen from the user's favorites). A group with nothing to show is left out.
  * The cycle pauses while the pointer or keyboard focus is inside, and does not run at all for people who prefer reduced motion.
  */
-export function DiscoveryHero({ feed, forYou, genres, onSelectArtist, onOpenSetlist }: DiscoveryHeroProps) {
+export function DiscoveryHero({ feed, forYou, genres, onSelectArtist, onOpenSetlist, pending = false, setlistsPending = false }: DiscoveryHeroProps) {
   const fresh = useMemo(() => buildFreshWeek(feed.artists, feed.setlistsByArtist), [feed.artists, feed.setlistsByArtist]);
   const candidates = useMemo(() => pickCandidates(forYou.shelves, dayNumber()), [forYou.shelves]);
   const [pickIndex, setPickIndex] = useState(0);
@@ -82,6 +104,8 @@ export function DiscoveryHero({ feed, forYou, genres, onSelectArtist, onOpenSetl
     return () => window.clearTimeout(timer);
   }, [groups.length, paused, current]);
 
+  // Hold the space while the header's content is undecided. With a pick it is certain, and without one "Fresh this week" may still come.
+  if (pending || (!pick && setlistsPending)) return <DiscoveryHeroSkeleton />;
   if (groups.length === 0) return null;
   const group = groups[current];
   const names: Record<(typeof groups)[number], string> = { fresh: 'Fresh This Week', pick: 'Picked for You' };

@@ -1,6 +1,7 @@
 import { ArtistSetlistCard } from './ArtistSetlistCard';
+import { PageSkeleton } from '../ui/feedback';
 import type { DiscoverySetlistResult } from '../../types';
-import { MusicNote, Refresh } from 'iconoir-react/regular';
+import { MusicNote } from 'iconoir-react/regular';
 
 interface ArtistSetlistResultsProps {
   setlists: DiscoverySetlistResult[];
@@ -19,9 +20,7 @@ export function ArtistSetlistResults({
 }: ArtistSetlistResultsProps) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Refresh className="animate-spin text-control-primary" width={28} height={28} aria-hidden="true" />
-      </div>
+      <PageSkeleton variant="feed" label="Loading sets" />
     );
   }
 

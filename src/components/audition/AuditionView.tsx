@@ -8,6 +8,7 @@ import { logger } from '../../lib/logger';
 import { buildTimelineSections } from '../../lib/music/phraseSections';
 import { durationMsForTrack } from '../../lib/music/trackTiming';
 import { ControlButton } from '../ui/controls';
+import { TrackPanelSkeleton } from '../ui/feedback';
 import { AuditionDecisions } from './AuditionDecisions';
 import { AuditionFullSong } from './AuditionFullSong';
 import { AuditionLibrary } from './AuditionLibrary';
@@ -149,31 +150,35 @@ export function AuditionView({ importId, onImport }: AuditionViewProps) {
 
   return (
     <div className="studio-surface audition-studio" data-testid="audition-view">
-      <AuditionTrackHeader
-        track={selectedTrack}
-        durationMs={durationMs}
-      />
-
-      <AuditionFullSong
-        track={selectedTrack}
-        durationMs={durationMs}
-        waveformState={waveformState}
-        onRetryWaveform={() => retryWaveform(selectedTrackId ? [selectedTrackId] : undefined)}
-        sections={sections}
-        cues={analysis.cues}
-        beatGrid={analysis.beatGrid}
-        sectionsLoading={analysis.loading}
-        sectionsError={analysis.error}
-        onRetrySections={() => setAnalysisRetry((value) => value + 1)}
-        toolbar={<AuditionDecisions />}
-      >
-        <AuditionTransport
+      {loading && !selectedTrack ? <TrackPanelSkeleton label="Loading the track panel" extraHeight={13} /> : (
+        <>
+        <AuditionTrackHeader
           track={selectedTrack}
-          positionLabel={positionLabel}
-          onStepPrevious={previousTrack ? () => stepTo(previousTrack) : null}
-          onStepNext={nextTrack ? () => stepTo(nextTrack) : null}
+          durationMs={durationMs}
         />
-      </AuditionFullSong>
+
+        <AuditionFullSong
+          track={selectedTrack}
+          durationMs={durationMs}
+          waveformState={waveformState}
+          onRetryWaveform={() => retryWaveform(selectedTrackId ? [selectedTrackId] : undefined)}
+          sections={sections}
+          cues={analysis.cues}
+          beatGrid={analysis.beatGrid}
+          sectionsLoading={analysis.loading}
+          sectionsError={analysis.error}
+          onRetrySections={() => setAnalysisRetry((value) => value + 1)}
+          toolbar={<AuditionDecisions />}
+        >
+          <AuditionTransport
+            track={selectedTrack}
+            positionLabel={positionLabel}
+            onStepPrevious={previousTrack ? () => stepTo(previousTrack) : null}
+            onStepNext={nextTrack ? () => stepTo(nextTrack) : null}
+          />
+        </AuditionFullSong>
+        </>
+      )}
 
       <AuditionLibrary
         tracks={visibleTracks}

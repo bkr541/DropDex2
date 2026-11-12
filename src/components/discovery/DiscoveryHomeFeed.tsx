@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
-import { Refresh } from 'iconoir-react/regular';
+import { PageSkeleton, ShelfSkeleton } from '../ui/feedback';
 import type { DiscoveryFeed } from '../../hooks/useDiscoveryFeed';
 import type { DiscoveryForYou } from '../../hooks/useDiscoveryForYou';
 import { ArtistCard } from './ArtistCard';
 import { ArtistFeedRow } from './ArtistFeedRow';
 import { DiscoveryShelf } from './DiscoveryShelf';
 import { GenreTile } from './GenreTile';
+import { homeFeedState } from './homeFeedState';
 import { SetlistFeedCard } from './SetlistFeedCard';
 import type { CatalogGenre, DiscoveryArtist, DiscoverySetlistResult } from '../../types';
 
@@ -14,6 +15,7 @@ interface DiscoveryHomeFeedProps {
   forYou: DiscoveryForYou;
   /** Every genre in the catalog. */
   genres: CatalogGenre[];
+  genresLoading?: boolean;
   onSelectArtist: (artist: DiscoveryArtist) => void;
   onOpenSetlist: (setlist: DiscoverySetlistResult) => void;
   onSelectGenre: (genreId: string) => void;
@@ -33,7 +35,7 @@ const toDiscoveryArtist = (artist: { id: string; name: string; normalized_name: 
  * more of each favorite genre), then what is going on (trending artists, fresh sets), then ways in (popular
  * genres) and each top artist with their latest sets.
  */
-export function DiscoveryHomeFeed({ feed, forYou, genres, onSelectArtist, onOpenSetlist, onSelectGenre, onEditTaste }: DiscoveryHomeFeedProps) {
+export function DiscoveryHomeFeed({ feed, forYou, genres, genresLoading = false, onSelectArtist, onOpenSetlist, onSelectGenre, onEditTaste }: DiscoveryHomeFeedProps) {
   const { artists, setlistsByArtist } = feed;
 
   const freshSets = useMemo(() => {
@@ -45,11 +47,12 @@ export function DiscoveryHomeFeed({ feed, forYou, genres, onSelectArtist, onOpen
   }, [artists, setlistsByArtist]);
   const popularGenres = useMemo(() => [...genres].sort((a, b) => b.artistCount - a.artistCount).slice(0, POPULAR_GENRES), [genres]);
 
-  if (feed.loading && forYou.loading) {
+  // One skeleton until everything that decides the page's shape is in: the personal rows and the hero would otherwise appear above
+  // rows that are already showing and push them down.
+  const { pending, setlistsPending } = homeFeedState(feed, forYou, genresLoading, genres.length);
+  if (pending) {
     return (
-      <div className="studio-empty" role="status">
-        <Refresh className="animate-spin text-control-primary" width={24} height={24} aria-hidden="true" />
-      </div>
+      <PageSkeleton variant="feed" label="Loading Discovery" />
     );
   }
 
@@ -109,6 +112,8 @@ export function DiscoveryHomeFeed({ feed, forYou, genres, onSelectArtist, onOpen
             </DiscoveryShelf>
           )}
 
+          {/* Fresh sets fill in as each artist's sets arrive. Its place is held meanwhile, so Popular genres below does not move. */}
+          {freshSets.length === 0 && setlistsPending && <ShelfSkeleton label="Loading fresh sets" />}
           {freshSets.length > 0 && (
             <DiscoveryShelf title="Fresh sets" caption="Newest first" testId="discovery-shelf-fresh">
               {freshSets.map(({ setlist, artistName }) => <SetlistFeedCard key={setlist.id} setlist={setlist} artistName={artistName} onOpen={onOpenSetlist} />)}

@@ -26,7 +26,7 @@ export { SkeletonBlock } from './SkeletonBlock';
 export { SkeletonCard } from './SkeletonCard';
 export { SkeletonChip } from './SkeletonChip';
 export { SkeletonRow } from './SkeletonRow';
-export { ListingSkeleton, PageSkeleton } from './PageSkeleton';
+export { ListingSkeleton, PageSkeleton, ShelfSkeleton, TrackPanelSkeleton } from './PageSkeleton';
 export type { PageSkeletonVariant } from './PageSkeleton';
 export { StatusBadge } from './StatusBadge';
 export { StatusDot } from './StatusDot';

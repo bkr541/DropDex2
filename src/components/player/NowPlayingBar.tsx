@@ -53,14 +53,22 @@ function DockButton({ icon: Icon, label, active, children, primary, loading, cla
 export interface NowPlayingBarProps {
   /** Separate engines retain their own controls. The bottom dock is a disabled placeholder there. */
   independentWorkspace?: string;
+  /**
+   * On a screen that shows a track list, keep showing the last track the dock showed while that screen loads. The dock takes its track
+   * from the open screen, so without this it reads "Nothing playing yet" for the moments between screens.
+   */
+  holdWorkspaceTrack?: boolean;
 }
 
-export function NowPlayingBar({ independentWorkspace }: NowPlayingBarProps) {
+export function NowPlayingBar({ independentWorkspace, holdWorkspaceTrack = false }: NowPlayingBarProps) {
   const player = useAudioPlayer();
   const workspace = useAudioDockWorkspace();
   const usb = useUsbConnection();
   const standard = !independentWorkspace;
-  const track = standard ? player.activeTrack ?? workspace?.selectedTrack ?? workspace?.tracks[0] ?? null : null;
+  const workspaceTrack = workspace?.selectedTrack ?? workspace?.tracks[0] ?? null;
+  const [heldTrack, setHeldTrack] = useState(workspaceTrack);
+  useEffect(() => { if (workspaceTrack) setHeldTrack(workspaceTrack); }, [workspaceTrack]);
+  const track = standard ? player.activeTrack ?? workspaceTrack ?? (holdWorkspaceTrack ? heldTrack : null) : null;
   const active = standard && !!track && track.id === player.activeTrack?.id;
   const loading = active && ['resolving', 'loading'].includes(player.status);
   const buffering = active && ['buffering', 'seeking'].includes(player.status);
